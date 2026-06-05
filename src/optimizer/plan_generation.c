@@ -896,7 +896,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
    * Store the residual on the HASHJOIN node's own after_join_pred slot.  The HASHJOIN node sits on the
    * parent's aptr_list, has no spec_list, and never runs the generic scan loop, so this xasl-level slot
    * is otherwise unused on it.  It is consumed exclusively by the probe-loop evaluation in
-   * query_hash_join.c (hjoin_init_manager copies it into HASHJOIN_MANAGER.residual_pred).  Invariant: a
+   * query_hash_join.c (hjoin_init_manager copies it into HASHJOIN_MANAGER.after_join_pred).  Invariant: a
    * HASHJOIN node must never gain a spec_list / scan-loop execution, or the generic scan loop would
    * double-evaluate after_join_pred alongside the probe (asserted in hjoin_init_manager). */
   if (!bitset_is_empty (residual_terms))

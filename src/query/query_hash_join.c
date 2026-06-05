@@ -70,9 +70,9 @@
 static int hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 static int hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 					 HASHJOIN_CONTEXT * context);
-static int hjoin_eval_residual_on_null_fill (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context,
-					     HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
-					     DB_LOGICAL * ev_res);
+static int hjoin_eval_after_join_on_null_fill (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context,
+					       HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
+					       DB_LOGICAL * ev_res);
 static int hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 
 /* Hash Join Manager */
@@ -523,7 +523,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       stats->build.qualified_rows = build->list_id->tuple_cnt;
     }
 
-  if (context->residual_pred != NULL)
+  if (context->after_join_pred != NULL)
     {
       REGU_VARIABLE_LIST regup;
 
@@ -542,7 +542,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
     {
       bool fill_qualified = true;
 
-      if (context->residual_pred != NULL)
+      if (context->after_join_pred != NULL)
 	{
 	  DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -557,7 +557,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 		  break;	/* error_exit */
 		}
 
-	      ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
+	      ev_res = eval_pred (thread_p, context->after_join_pred, context->val_descr, NULL);
 	      if (ev_res == V_ERROR)
 		{
 		  error = ER_FAILED;
@@ -640,10 +640,10 @@ error_exit:
 }
 
 /*
- * hjoin_eval_residual_on_null_fill() - Evaluate context->residual_pred for an outer-join null-filled row.
+ * hjoin_eval_after_join_on_null_fill() - Evaluate context->after_join_pred for an outer-join null-filled row.
  *   return: Error code (NO_ERROR if successful, ER_FAILED on predicate error).
  *   thread_p(in): Thread entry.
- *   context(in): Hash join context (caller guarantees context->residual_pred != NULL).
+ *   context(in): Hash join context (caller guarantees context->after_join_pred != NULL).
  *   probe(in): Probe-side fetch info; its columns come from the current probe tuple.
  *   build(in): Build-side fetch info; null-padded for the null-filled row.
  *   ev_res(out): Predicate result (V_TRUE/V_FALSE/V_UNKNOWN); undefined on error.
@@ -651,18 +651,18 @@ error_exit:
  *   Shared by the two hjoin_outer_probe null-fill sites (NULL-key and no-match). Fetches the probe
  *   columns from the probe tuple, then clears the build-side vfetch_to values so the build columns
  *   read as NULL (build->fill_record is NULL for a null-filled row, mirroring the V_UNBOUND columns a
- *   merged tuple would carry; see qdata_set_value_list_to_null), then evaluates residual_pred. Unlike
+ *   merged tuple would carry; see qdata_set_value_list_to_null), then evaluates after_join_pred. Unlike
  *   the matched-pair site this clear is required per row. The textual mirror for the parallel path is
  *   px_hash_join_task_manager.cpp (execute_outer null-fill sites); keep both in sync.
  */
 static int
-hjoin_eval_residual_on_null_fill (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, HASHJOIN_FETCH_INFO * probe,
-				  HASHJOIN_FETCH_INFO * build, DB_LOGICAL * ev_res)
+hjoin_eval_after_join_on_null_fill (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context, HASHJOIN_FETCH_INFO * probe,
+				    HASHJOIN_FETCH_INFO * build, DB_LOGICAL * ev_res)
 {
   REGU_VARIABLE_LIST regup;
   int error = NO_ERROR;
 
-  assert (context->residual_pred != NULL);
+  assert (context->after_join_pred != NULL);
 
   *ev_res = V_UNKNOWN;
 
@@ -682,7 +682,7 @@ hjoin_eval_residual_on_null_fill (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * co
       pr_clear_value (regup->value.vfetch_to);
     }
 
-  *ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
+  *ev_res = eval_pred (thread_p, context->after_join_pred, context->val_descr, NULL);
   if (*ev_res == V_ERROR)
     {
       return ER_FAILED;
@@ -844,7 +844,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (xasl->spec_list == NULL);
 
   manager->during_join_pred = xasl->during_join_pred;
-  manager->residual_pred = xasl->after_join_pred;
+  manager->after_join_pred = xasl->after_join_pred;
   manager->num_parallel_threads = xasl->parallelism;
 
   manager->query_id = query_id;
@@ -880,7 +880,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (context->probe == NULL);
 
   context->during_join_pred = manager->during_join_pred;
-  context->residual_pred = manager->residual_pred;
+  context->after_join_pred = manager->after_join_pred;
   context->val_descr = manager->val_descr;
 
   assert (context->status == HASHJOIN_STATUS_NONE);
@@ -1542,7 +1542,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       assert (current_context->probe == NULL);
 
       current_context->during_join_pred = single_context->during_join_pred;
-      current_context->residual_pred = single_context->residual_pred;
+      current_context->after_join_pred = single_context->after_join_pred;
       current_context->val_descr = single_context->val_descr;
     }
 
@@ -3655,7 +3655,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  if (context->residual_pred != NULL)
+	  if (context->after_join_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -3684,7 +3684,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		      break;	/* error_exit */
 		    }
 
-		  ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
+		  ev_res = eval_pred (thread_p, context->after_join_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;
@@ -3706,7 +3706,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  assert (need_skip_next == false);
 		  continue;
 		}
-	    }			/* if (context->residual_pred != NULL) */
+	    }			/* if (context->after_join_pred != NULL) */
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
@@ -3857,12 +3857,12 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	      if (context->residual_pred != NULL)
+	      if (context->after_join_pred != NULL)
 		{
 		  DB_LOGICAL ev_res = V_UNKNOWN;
 
 		  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-		  error = hjoin_eval_residual_on_null_fill (thread_p, context, probe, build, &ev_res);
+		  error = hjoin_eval_after_join_on_null_fill (thread_p, context, probe, build, &ev_res);
 		  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		  if (error != NO_ERROR)
@@ -4056,10 +4056,10 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  /* A real match exists; this drives null-padding regardless of residual_pred. */
+	  /* A real match exists; this drives null-padding regardless of after_join_pred. */
 	  any_record_added = true;
 
-	  if (context->residual_pred != NULL)
+	  if (context->after_join_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -4068,15 +4068,15 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		{
 		  /*
 		   * When during_join_pred is present, it was just evaluated for THIS candidate pair and shares the
-		   * same regu_list_pred with residual_pred (see pred_list de-dup). Both probe and build vfetch_to values
+		   * same regu_list_pred with after_join_pred (see pred_list de-dup). Both probe and build vfetch_to values
 		   * are already current, so skip both fetches. Otherwise fetch the build side per candidate and the
 		   * probe side once per probe row.
 		   *
-		   * This skip is correct ONLY because during_join_pred and residual_pred share a single regu_list_pred
+		   * This skip is correct ONLY because during_join_pred and after_join_pred share a single regu_list_pred
 		   * per side: qo_init_projection_info builds ONE deduped pred_list per side covering the columns of both
-		   * predicates, and fetch_val_list (called for during_join_pred) loads the ENTIRE list -- so residual_pred's
+		   * predicates, and fetch_val_list (called for during_join_pred) loads the ENTIRE list -- so after_join_pred's
 		   * columns are guaranteed current too. If these per-side pred_lists are ever split so that during_join_pred
-		   * and residual_pred fetch different regu lists, this skip MUST be removed and both fetches restored.
+		   * and after_join_pred fetch different regu lists, this skip MUST be removed and both fetches restored.
 		   * The parallel mirror lives in px_hash_join_task_manager.cpp (execute_outer); keep both in sync.
 		   */
 		  if (context->during_join_pred == NULL)
@@ -4103,7 +4103,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 			}
 		    }
 
-		  ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
+		  ev_res = eval_pred (thread_p, context->after_join_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;
@@ -4125,7 +4125,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  assert (need_skip_next == false);
 		  continue;
 		}
-	    }			/* if (context->residual_pred != NULL) */
+	    }			/* if (context->after_join_pred != NULL) */
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
@@ -4151,12 +4151,12 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	  if (context->residual_pred != NULL)
+	  if (context->after_join_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-	      error = hjoin_eval_residual_on_null_fill (thread_p, context, probe, build, &ev_res);
+	      error = hjoin_eval_after_join_on_null_fill (thread_p, context, probe, build, &ev_res);
 	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	      if (error != NO_ERROR)

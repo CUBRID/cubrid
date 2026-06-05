@@ -44,25 +44,25 @@ namespace parallel_query
   namespace hash_join
   {
     /*
-     * hjoin_eval_residual_on_null_fill() - Evaluate context->residual_pred for an outer-join null-filled row.
+     * hjoin_eval_after_join_on_null_fill() - Evaluate context->after_join_pred for an outer-join null-filled row.
      *   return: Error code (NO_ERROR if successful, ER_FAILED on predicate error).
      *
-     *   File-local mirror of query_hash_join.c::hjoin_eval_residual_on_null_fill, used by the two
+     *   File-local mirror of query_hash_join.c::hjoin_eval_after_join_on_null_fill, used by the two
      *   execute_outer null-fill sites (NULL-key and no-match). Fetches the probe columns from the probe
      *   tuple, clears the build-side vfetch_to values so the build columns read as NULL (build is
      *   null-padded for a null-filled row; build->fill_record is NULL, mirroring the V_UNBOUND columns a
-     *   merged tuple would carry, see qdata_set_value_list_to_null), then evaluates residual_pred. The
-     *   caller guarantees context->residual_pred != nullptr. Keep this textually parallel to the serial
+     *   merged tuple would carry, see qdata_set_value_list_to_null), then evaluates after_join_pred. The
+     *   caller guarantees context->after_join_pred != nullptr. Keep this textually parallel to the serial
      *   implementation in query_hash_join.c.
      */
     static int
-    hjoin_eval_residual_on_null_fill (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *context,
-				      HASHJOIN_FETCH_INFO *probe, HASHJOIN_FETCH_INFO *build, DB_LOGICAL *ev_res)
+    hjoin_eval_after_join_on_null_fill (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *context,
+					HASHJOIN_FETCH_INFO *probe, HASHJOIN_FETCH_INFO *build, DB_LOGICAL *ev_res)
     {
       REGU_VARIABLE_LIST regup;
       int error = NO_ERROR;
 
-      assert (context->residual_pred != nullptr);
+      assert (context->after_join_pred != nullptr);
 
       *ev_res = V_UNKNOWN;
 
@@ -82,7 +82,7 @@ namespace parallel_query
 	  pr_clear_value (regup->value.vfetch_to);
 	}
 
-      *ev_res = eval_pred (&thread_ref, context->residual_pred, context->val_descr, nullptr);
+      *ev_res = eval_pred (&thread_ref, context->after_join_pred, context->val_descr, nullptr);
       if (*ev_res == V_ERROR)
 	{
 	  return ER_FAILED;
@@ -767,7 +767,7 @@ namespace parallel_query
 	  /* reuse TLS variables if already set */
 	  context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
 	  context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-	  context->residual_pred = spawn_manager->get_residual_pred (m_manager->residual_pred);
+	  context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
 	  context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
 	  context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
 
@@ -788,7 +788,7 @@ namespace parallel_query
 	  /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
 	  context->val_descr = nullptr;
 	  context->during_join_pred = nullptr;
-	  context->residual_pred = nullptr;
+	  context->after_join_pred = nullptr;
 	  context->outer.regu_list_pred = nullptr;
 	  context->inner.regu_list_pred = nullptr;
 
@@ -931,7 +931,7 @@ namespace parallel_query
       /* reuse TLS variables if already set */
       m_context->val_descr = spawn_manager->get_val_descr (m_manager->val_descr);
       m_context->during_join_pred = spawn_manager->get_during_join_pred (m_manager->during_join_pred);
-      m_context->residual_pred = spawn_manager->get_residual_pred (m_manager->residual_pred);
+      m_context->after_join_pred = spawn_manager->get_after_join_pred (m_manager->after_join_pred);
       m_context->outer.regu_list_pred = spawn_manager->get_outer_regu_list_pred (m_manager->outer->regu_list_pred);
       m_context->inner.regu_list_pred = spawn_manager->get_inner_regu_list_pred (m_manager->inner->regu_list_pred);
 
@@ -1052,7 +1052,7 @@ cleanup:
       /* set to nullptr; cleaned up by clear_spawner after all tasks are done */
       m_context->val_descr = nullptr;
       m_context->during_join_pred = nullptr;
-      m_context->residual_pred = nullptr;
+      m_context->after_join_pred = nullptr;
       m_context->outer.regu_list_pred = nullptr;
       m_context->inner.regu_list_pred = nullptr;
 
@@ -1269,7 +1269,7 @@ cleanup:
 
 		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-		  if (m_context->residual_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr)
 		    {
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -1296,7 +1296,7 @@ cleanup:
 			      break;	/* error_exit */
 			    }
 
-			  ev_res = eval_pred (&thread_ref, m_context->residual_pred, m_context->val_descr, nullptr);
+			  ev_res = eval_pred (&thread_ref, m_context->after_join_pred, m_context->val_descr, nullptr);
 			  if (ev_res == V_ERROR)
 			    {
 			      error = ER_FAILED;
@@ -1318,7 +1318,7 @@ cleanup:
 			  assert (need_skip_next == false);
 			  continue;
 			}
-		    }			/* if (m_context->residual_pred != nullptr) */
+		    }			/* if (m_context->after_join_pred != nullptr) */
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
@@ -1536,12 +1536,12 @@ cleanup:
 
 		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-		  if (m_context->residual_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr)
 		    {
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-		      error = hjoin_eval_residual_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
+		      error = hjoin_eval_after_join_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
 		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (error != NO_ERROR)
@@ -1680,10 +1680,10 @@ cleanup:
 
 		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-		  /* A real match exists; this drives null-padding regardless of residual_pred. */
+		  /* A real match exists; this drives null-padding regardless of after_join_pred. */
 		  any_record_added = true;
 
-		  if (m_context->residual_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr)
 		    {
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -1692,14 +1692,14 @@ cleanup:
 			{
 			  /*
 			   * When during_join_pred is present, it was just evaluated for THIS candidate pair and shares
-			   * the same regu_list_pred with residual_pred (see pred_list de-dup). Both probe and build
+			   * the same regu_list_pred with after_join_pred (see pred_list de-dup). Both probe and build
 			   * vfetch_to values are already current, so skip both fetches. Otherwise fetch the build side
 			   * per candidate and the probe side once per probe row.
 			   *
-			   * This skip is correct ONLY because during_join_pred and residual_pred share a single
+			   * This skip is correct ONLY because during_join_pred and after_join_pred share a single
 			   * regu_list_pred per side: qo_init_projection_info builds ONE deduped pred_list per side
 			   * covering the columns of both predicates, and fetch_val_list (called for during_join_pred)
-			   * loads the ENTIRE list -- so residual_pred's columns are guaranteed current too. If these
+			   * loads the ENTIRE list -- so after_join_pred's columns are guaranteed current too. If these
 			   * per-side pred_lists are ever split so the two predicates fetch different regu lists, this
 			   * skip MUST be removed and both fetches restored. The serial mirror lives in
 			   * query_hash_join.c (hjoin_outer_probe); keep both in sync.
@@ -1726,7 +1726,7 @@ cleanup:
 				}
 			    }
 
-			  ev_res = eval_pred (&thread_ref, m_context->residual_pred, m_context->val_descr, nullptr);
+			  ev_res = eval_pred (&thread_ref, m_context->after_join_pred, m_context->val_descr, nullptr);
 			  if (ev_res == V_ERROR)
 			    {
 			      error = ER_FAILED;
@@ -1748,7 +1748,7 @@ cleanup:
 			  assert (need_skip_next == false);
 			  continue;
 			}
-		    }			/* if (m_context->residual_pred != nullptr) */
+		    }			/* if (m_context->after_join_pred != nullptr) */
 
 		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
@@ -1777,12 +1777,12 @@ cleanup:
 
 		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-		  if (m_context->residual_pred != nullptr)
+		  if (m_context->after_join_pred != nullptr)
 		    {
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-		      error = hjoin_eval_residual_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
+		      error = hjoin_eval_after_join_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
 		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (error != NO_ERROR)
