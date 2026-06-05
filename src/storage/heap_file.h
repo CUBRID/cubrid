@@ -711,6 +711,8 @@ extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
 				VPID * new_page_vpid);
+extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
+				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
 

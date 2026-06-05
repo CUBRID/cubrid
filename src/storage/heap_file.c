@@ -26402,6 +26402,187 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 }
 
 int
+heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids, PGBUF_WATCHER * new_pg_watcher)
+{
+  PGBUF_WATCHER heap_hdr_watcher, last_pg_watcher;
+  PGBUF_WATCHER page_watcher;
+  HEAP_CHAIN new_page_chain, last_chain_prev;
+  HEAP_CHAIN *last_chain;
+  VPID *prev_vpid, *next_vpid;
+  VPID null_vpid, last_vpid;
+  VPID heap_hdr_vpid;
+  HEAP_HDR_STATS heap_hdr_prev;
+  HEAP_HDR_STATS *heap_hdr = NULL;
+  int error_code = NO_ERROR;
+  int i;
+
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  bool is_sysop_started = false;
+
+  assert (thread_p != NULL);
+  assert (hfid != NULL);
+  assert (npages > 0);
+  assert (new_page_vpids != NULL);
+  assert (new_pg_watcher != NULL);
+
+  PGBUF_INIT_WATCHER (new_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&heap_hdr_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  PGBUF_INIT_WATCHER (&last_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  for (i = 0; i < npages; i++)
+    {
+      VPID_SET_NULL (&new_page_vpids[i]);
+    }
+
+  heap_hdr_vpid.volid = hfid->vfid.volid;
+  heap_hdr_vpid.pageid = hfid->hpgid;
+  error_code = pgbuf_ordered_fix (thread_p, &heap_hdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &heap_hdr_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  heap_hdr = heap_get_header_stats_ptr (thread_p, heap_hdr_watcher.pgptr);
+  if (heap_hdr == NULL)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  assert (!VPID_ISNULL (&heap_hdr->estimates.last_vpid));
+  heap_hdr_prev = *heap_hdr;
+  last_vpid = heap_hdr->estimates.last_vpid;
+
+  new_page_chain.class_oid = heap_hdr->class_oid;
+  VPID_SET_NULL (&new_page_chain.prev_vpid);
+  VPID_SET_NULL (&new_page_chain.next_vpid);
+  new_page_chain.max_mvccid = MVCCID_NULL;
+  new_page_chain.flags = 0;
+  HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
+
+  log_sysop_start (thread_p);
+  is_sysop_started = true;
+
+  error_code = file_alloc_multiple (thread_p, &hfid->vfid, heap_vpid_init_new, &new_page_chain, npages, new_page_vpids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
+  VPID_SET_NULL (&null_vpid);
+  for (i = 0; i < npages; i++)
+    {
+      prev_vpid = (i == 0) ? &last_vpid : &new_page_vpids[i - 1];
+      next_vpid = (i == npages - 1) ? &null_vpid : &new_page_vpids[i + 1];
+      error_code = heap_add_chain_links (thread_p, hfid, &new_page_vpids[i], next_vpid, prev_vpid, &page_watcher,
+					 false, false);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto error;
+	}
+    }
+
+  error_code = heap_get_last_page (thread_p, hfid, heap_hdr, NULL, &last_vpid, &last_pg_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+  if (last_pg_watcher.pgptr == NULL)
+    {
+      assert_release (false);
+      error_code = ER_FAILED;
+      goto error;
+    }
+
+  if (last_pg_watcher.pgptr == heap_hdr_watcher.pgptr)
+    {
+      heap_hdr->next_vpid = new_page_vpids[0];
+    }
+  else
+    {
+      last_chain = heap_get_chain_ptr (thread_p, last_pg_watcher.pgptr);
+      if (last_chain == NULL)
+	{
+	  assert_release (false);
+	  error_code = ER_FAILED;
+	  goto error;
+	}
+
+      last_chain_prev = *last_chain;
+      last_chain->next_vpid = new_page_vpids[0];
+
+      addr.pgptr = last_pg_watcher.pgptr;
+      addr.vfid = &hfid->vfid;
+      addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+      log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN),
+				&last_chain_prev, last_chain);
+      pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+    }
+
+  pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
+  last_pg_watcher.pgptr = NULL;
+
+  heap_hdr->estimates.last_vpid = new_page_vpids[npages - 1];
+  heap_hdr->estimates.num_pages += npages;
+
+  addr.pgptr = heap_hdr_watcher.pgptr;
+  addr.vfid = &hfid->vfid;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
+			    &heap_hdr_prev, heap_hdr);
+  pgbuf_set_dirty (thread_p, addr.pgptr, DONT_FREE);
+
+  log_sysop_commit (thread_p);
+  is_sysop_started = false;
+
+  pgbuf_ordered_unfix (thread_p, &heap_hdr_watcher);
+  heap_hdr_watcher.pgptr = NULL;
+
+  new_pg_watcher->pgptr =
+    heap_scan_pb_lock_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, X_LOCK, NULL, new_pg_watcher);
+  if (new_pg_watcher->pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  assert (pgbuf_is_page_fixed_by_thread (thread_p, &new_page_vpids[0]));
+  return NO_ERROR;
+
+error:
+  if (page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
+      page_watcher.pgptr = NULL;
+    }
+
+  if (last_pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &last_pg_watcher);
+      last_pg_watcher.pgptr = NULL;
+    }
+
+  if (is_sysop_started)
+    {
+      log_sysop_abort (thread_p);
+    }
+
+  if (heap_hdr_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &heap_hdr_watcher);
+      heap_hdr_watcher.pgptr = NULL;
+    }
+
+  return error_code;
+}
+
+int
 heap_nonheader_page_capacity ()
 {
   return spage_max_record_size () - sizeof (HEAP_CHAIN);
