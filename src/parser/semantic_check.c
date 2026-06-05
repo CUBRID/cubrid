@@ -12208,15 +12208,39 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
-	      /* For remote INSERT SELECT, the SELECT subquery runs locally and needs name resolution
-	       * (flat_entity_list, range_var, column binding) on its FROM specs. */
+	      /* For a remote INSERT SELECT the SELECT subquery runs locally, but the remote DML path
+	       * breaks out of the normal query semantic check below, so the subquery is never processed
+	       * as a stand-alone query. Run the same steps a top-level SELECT receives
+	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
+	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
+	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
 	      if (node->node_type == PT_INSERT)
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
 		  if (subq != NULL)
 		    {
+		      PT_NODE *saved_top = sc_info_ptr->top_node;
+
 		      sc_info_ptr->system_class = false;
 		      pt_resolve_names (parser, subq, sc_info_ptr);
+		      if (!pt_has_error (parser))
+			{
+			  sc_info_ptr->top_node = subq;
+			  subq = pt_check_where (parser, subq);
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+			    }
+			  sc_info_ptr->top_node = saved_top;
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      node->info.insert.value_clauses->info.node_list.list = subq;
+			    }
+			}
 		    }
 		}
 	      break;
