@@ -1029,6 +1029,7 @@ cleanup:
       HASH_SCAN_KEY *key, *found_key;
 
       bool need_skip_next = false;
+      bool probe_vals_fetched = false;
 
       int error = NO_ERROR;
       bool has_error = false;
@@ -1146,6 +1147,8 @@ cleanup:
 
 	      tuple_index++;
 
+	      probe_vals_fetched = false;	/* reset per probe row */
+
 	      if (thread_is_on_trace (&thread_ref))
 		{
 		  stats->probe.read_rows++;
@@ -1225,11 +1228,17 @@ cleanup:
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      do
 			{
-			  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
+			  /* The probe tuple does not change across candidates for this probe row; fetch it once. */
+			  if (!probe_vals_fetched)
 			    {
-			      break;	/* error_exit */
+			      error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
+						      nullptr, nullptr, probe->tuple_record.tpl, PEEK);
+			      if (error != NO_ERROR)
+				{
+				  break;	/* error_exit */
+				}
+
+			      probe_vals_fetched = true;
 			    }
 
 			  error = fetch_val_list (&thread_ref, build->regu_list_pred, m_context->val_descr,
@@ -1335,6 +1344,7 @@ cleanup:
 
       bool need_skip_next = false;
       bool any_record_added;
+      bool probe_vals_fetched = false;
 
       int error = NO_ERROR;
       bool has_error = false;
@@ -1453,6 +1463,8 @@ cleanup:
 		}
 
 	      tuple_index++;
+
+	      probe_vals_fetched = false;	/* reset per probe row */
 
 	      if (thread_is_on_trace (&thread_ref))
 		{
@@ -1601,11 +1613,17 @@ cleanup:
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      do
 			{
-			  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
+			  /* The probe tuple does not change across candidates for this probe row; fetch it once. */
+			  if (!probe_vals_fetched)
 			    {
-			      break;		/* error_exit */
+			      error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
+						      nullptr, nullptr, probe->tuple_record.tpl, PEEK);
+			      if (error != NO_ERROR)
+				{
+				  break;		/* error_exit */
+				}
+
+			      probe_vals_fetched = true;
 			    }
 
 			  error = fetch_val_list (&thread_ref, build->regu_list_pred, m_context->val_descr,
@@ -1651,18 +1669,32 @@ cleanup:
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      do
 			{
-			  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
+			  /*
+			   * When during_join_pred is present, it was just evaluated for THIS candidate pair and shares
+			   * the same regu_list_pred with probe_pred (see pred_list de-dup). Both probe and build
+			   * vfetch_to values are already current, so skip both fetches. Otherwise fetch the build side
+			   * per candidate and the probe side once per probe row.
+			   */
+			  if (m_context->during_join_pred == nullptr)
 			    {
-			      break;	/* error_exit */
-			    }
+			      if (!probe_vals_fetched)
+				{
+				  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
+							  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
+				  if (error != NO_ERROR)
+				    {
+				      break;	/* error_exit */
+				    }
 
-			  error = fetch_val_list (&thread_ref, build->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, build->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
-			    {
-			      break;	/* error_exit */
+				  probe_vals_fetched = true;
+				}
+
+			      error = fetch_val_list (&thread_ref, build->regu_list_pred, m_context->val_descr,
+						      nullptr, nullptr, build->tuple_record.tpl, PEEK);
+			      if (error != NO_ERROR)
+				{
+				  break;	/* error_exit */
+				}
 			    }
 
 			  ev_res = eval_pred (&thread_ref, m_context->probe_pred, m_context->val_descr, nullptr);

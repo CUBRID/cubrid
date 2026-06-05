@@ -3419,6 +3419,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
   SCAN_CODE scan_code;
   bool need_skip_next = false;
+  bool probe_vals_fetched = false;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
   HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
@@ -3474,6 +3475,8 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   while ((scan_code = qfile_scan_list_next (thread_p, &probe->list_scan_id, &probe->tuple_record, PEEK)) == S_SUCCESS)
     {
+      probe_vals_fetched = false;	/* reset per probe row */
+
       HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
       if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
@@ -3593,12 +3596,18 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      do
 		{
-		  error =
-		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
-				    probe->tuple_record.tpl, PEEK);
-		  if (error != NO_ERROR)
+		  /* The probe tuple does not change across candidates for this probe row; fetch it once. */
+		  if (!probe_vals_fetched)
 		    {
-		      break;	/* error_exit */
+		      error =
+			fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+					probe->tuple_record.tpl, PEEK);
+		      if (error != NO_ERROR)
+			{
+			  break;	/* error_exit */
+			}
+
+		      probe_vals_fetched = true;
 		    }
 
 		  error =
@@ -3703,6 +3712,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   SCAN_CODE scan_code;
   bool need_skip_next = false;
   bool any_record_added;
+  bool probe_vals_fetched = false;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
   HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
@@ -3760,6 +3770,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   while ((scan_code = qfile_scan_list_next (thread_p, &probe->list_scan_id, &probe->tuple_record, PEEK)) == S_SUCCESS)
     {
+      probe_vals_fetched = false;	/* reset per probe row */
+
       HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
       if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
@@ -3958,12 +3970,18 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      do
 		{
-		  error =
-		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
-				    probe->tuple_record.tpl, PEEK);
-		  if (error != NO_ERROR)
+		  /* The probe tuple does not change across candidates for this probe row; fetch it once. */
+		  if (!probe_vals_fetched)
 		    {
-		      break;	/* error_exit */
+		      error =
+			fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+					probe->tuple_record.tpl, PEEK);
+		      if (error != NO_ERROR)
+			{
+			  break;	/* error_exit */
+			}
+
+		      probe_vals_fetched = true;
 		    }
 
 		  error =
@@ -4010,20 +4028,34 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      do
 		{
-		  error =
-		    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
-				    probe->tuple_record.tpl, PEEK);
-		  if (error != NO_ERROR)
+		  /*
+		   * When during_join_pred is present, it was just evaluated for THIS candidate pair and shares the
+		   * same regu_list_pred with probe_pred (see pred_list de-dup). Both probe and build vfetch_to values
+		   * are already current, so skip both fetches. Otherwise fetch the build side per candidate and the
+		   * probe side once per probe row.
+		   */
+		  if (context->during_join_pred == NULL)
 		    {
-		      break;	/* error_exit */
-		    }
+		      if (!probe_vals_fetched)
+			{
+			  error =
+			    fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
+					    probe->tuple_record.tpl, PEEK);
+			  if (error != NO_ERROR)
+			    {
+			      break;	/* error_exit */
+			    }
 
-		  error =
-		    fetch_val_list (thread_p, build->regu_list_pred, context->val_descr, NULL, NULL,
-				    build->tuple_record.tpl, PEEK);
-		  if (error != NO_ERROR)
-		    {
-		      break;	/* error_exit */
+			  probe_vals_fetched = true;
+			}
+
+		      error =
+			fetch_val_list (thread_p, build->regu_list_pred, context->val_descr, NULL, NULL,
+					build->tuple_record.tpl, PEEK);
+		      if (error != NO_ERROR)
+			{
+			  break;	/* error_exit */
+			}
 		    }
 
 		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
