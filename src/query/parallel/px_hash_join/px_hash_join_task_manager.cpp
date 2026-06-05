@@ -44,6 +44,54 @@ namespace parallel_query
   namespace hash_join
   {
     /*
+     * hjoin_eval_residual_on_null_fill() - Evaluate context->residual_pred for an outer-join null-filled row.
+     *   return: Error code (NO_ERROR if successful, ER_FAILED on predicate error).
+     *
+     *   File-local mirror of query_hash_join.c::hjoin_eval_residual_on_null_fill, used by the two
+     *   execute_outer null-fill sites (NULL-key and no-match). Fetches the probe columns from the probe
+     *   tuple, clears the build-side vfetch_to values so the build columns read as NULL (build is
+     *   null-padded for a null-filled row; build->fill_record is NULL, mirroring the V_UNBOUND columns a
+     *   merged tuple would carry, see qdata_set_value_list_to_null), then evaluates residual_pred. The
+     *   caller guarantees context->residual_pred != nullptr. Keep this textually parallel to the serial
+     *   implementation in query_hash_join.c.
+     */
+    static int
+    hjoin_eval_residual_on_null_fill (cubthread::entry &thread_ref, HASHJOIN_CONTEXT *context,
+				      HASHJOIN_FETCH_INFO *probe, HASHJOIN_FETCH_INFO *build, DB_LOGICAL *ev_res)
+    {
+      REGU_VARIABLE_LIST regup;
+      int error = NO_ERROR;
+
+      assert (context->residual_pred != nullptr);
+
+      *ev_res = V_UNKNOWN;
+
+      /* Outer (probe) columns come from the probe tuple. */
+      error = fetch_val_list (&thread_ref, probe->regu_list_pred, context->val_descr, nullptr, nullptr,
+			      probe->tuple_record.tpl, PEEK);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND columns a merged
+       * tuple would carry (see qdata_set_value_list_to_null). build->fill_record is NULL here, so the build values
+       * cannot be fetched from a tuple. */
+      for (regup = build->regu_list_pred; regup != nullptr; regup = regup->next)
+	{
+	  pr_clear_value (regup->value.vfetch_to);
+	}
+
+      *ev_res = eval_pred (&thread_ref, context->residual_pred, context->val_descr, nullptr);
+      if (*ev_res == V_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      return NO_ERROR;
+    }
+
+    /*
      * task_manager
      */
 
@@ -1493,34 +1541,7 @@ cleanup:
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-		      do
-			{
-			  REGU_VARIABLE_LIST regup;
-
-			  /* Outer (probe) columns come from the probe tuple. */
-			  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
-			    {
-			      break;	/* error_exit */
-			    }
-
-			  /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND
-			   * columns a merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record
-			   * is NULL here, so the build values cannot be fetched from a tuple. */
-			  for (regup = build->regu_list_pred; regup != nullptr; regup = regup->next)
-			    {
-			      pr_clear_value (regup->value.vfetch_to);
-			    }
-
-			  ev_res = eval_pred (&thread_ref, m_context->residual_pred, m_context->val_descr, nullptr);
-			  if (ev_res == V_ERROR)
-			    {
-			      error = ER_FAILED;
-			      break;	/* error_exit */
-			    }
-			}
-		      while (false);
+		      error = hjoin_eval_residual_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
 		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (error != NO_ERROR)
@@ -1761,34 +1782,7 @@ cleanup:
 		      DB_LOGICAL ev_res = V_UNKNOWN;
 
 		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-		      do
-			{
-			  REGU_VARIABLE_LIST regup;
-
-			  /* Outer (probe) columns come from the probe tuple. */
-			  error = fetch_val_list (&thread_ref, probe->regu_list_pred, m_context->val_descr,
-						  nullptr, nullptr, probe->tuple_record.tpl, PEEK);
-			  if (error != NO_ERROR)
-			    {
-			      break;	/* error_exit */
-			    }
-
-			  /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND
-			   * columns a merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record
-			   * is NULL here, so the build values cannot be fetched from a tuple. */
-			  for (regup = build->regu_list_pred; regup != nullptr; regup = regup->next)
-			    {
-			      pr_clear_value (regup->value.vfetch_to);
-			    }
-
-			  ev_res = eval_pred (&thread_ref, m_context->residual_pred, m_context->val_descr, nullptr);
-			  if (ev_res == V_ERROR)
-			    {
-			      error = ER_FAILED;
-			      break;	/* error_exit */
-			    }
-			}
-		      while (false);
+		      error = hjoin_eval_residual_on_null_fill (thread_ref, m_context, probe, build, &ev_res);
 		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (error != NO_ERROR)

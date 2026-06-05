@@ -50,6 +50,8 @@ static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * 
 static bool qo_hashjoin_residual_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_nodes, int t);
 static void qo_collect_hashjoin_residual_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
 static void qo_collect_hashjoin_after_join_residual_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result);
+static void qo_hashjoin_append_pred_segs (QO_ENV * env, PARSER_CONTEXT * parser, BITSET * segs,
+					  BITSET * projected_segs, PT_NODE ** pred_list, BITSET * added_segs_set);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -5898,6 +5900,51 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
 }
 
 /*
+ * qo_hashjoin_append_pred_segs () -
+ *   return: void
+ *   env(in): Optimization environment.
+ *   parser(in): Parser context for pt_point/parser_append_node.
+ *   segs(in): Candidate segments referenced by a predicate (during-join or residual).
+ *   projected_segs(in): The side's projected_segs; only segments projected by this side are emitted.
+ *   pred_list(in/out): The side's pred_list to append the column references to.
+ *   added_segs_set(in/out): Dedup set tracking which segments are already in pred_list.
+ *
+ *   For each segment of (segs INTERSECT projected_segs) that is a PT_NAME and not already in
+ *   added_segs_set, append a pt_point of its PT_NODE to pred_list and record it in added_segs_set.
+ *   Shared by the outer/inner during-join and residual pred_list build steps in
+ *   qo_init_projection_info (4 call sites with identical structure).
+ */
+static void
+qo_hashjoin_append_pred_segs (QO_ENV * env, PARSER_CONTEXT * parser, BITSET * segs, BITSET * projected_segs,
+			      PT_NODE ** pred_list, BITSET * added_segs_set)
+{
+  BITSET side_segs_set;
+  BITSET_ITERATOR seg_iter;
+  int seg_index;
+  PT_NODE *pred_node;
+
+  assert (env != NULL);
+  assert (parser != NULL);
+
+  bitset_init (&side_segs_set, env);
+  bitset_assign (&side_segs_set, segs);
+  bitset_intersect (&side_segs_set, projected_segs);
+
+  for (seg_index = bitset_iterate (&side_segs_set, &seg_iter); seg_index != -1;
+       seg_index = bitset_next_member (&seg_iter))
+    {
+      pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index));
+      if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (*added_segs_set, seg_index))
+	{
+	  *pred_list = parser_append_node (pt_point (parser, pred_node), *pred_list);
+	  bitset_add (added_segs_set, seg_index);
+	}
+    }
+
+  bitset_delset (&side_segs_set);
+}
+
+/*
  * qo_init_projection_info() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   env(in): Optimization environment.
@@ -6051,33 +6098,10 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   /* during_join_pred */
   if (!bitset_is_empty (&during_segs_set))
     {
-      bitset_assign (&temp_segs_set, &during_segs_set);
-      bitset_intersect (&temp_segs_set, &outer_plan->info->projected_segs);
-
-      for (during_index = bitset_iterate (&temp_segs_set, &during_iter); during_index != -1;
-	   during_index = bitset_next_member (&during_iter))
-	{
-	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (outer_pred_segs_set, during_index))
-	    {
-	      outer_info->pred_list = parser_append_node (pt_point (parser, pred_node), outer_info->pred_list);
-	      bitset_add (&outer_pred_segs_set, during_index);
-	    }
-	}
-
-      bitset_assign (&temp_segs_set, &during_segs_set);
-      bitset_intersect (&temp_segs_set, &inner_plan->info->projected_segs);
-
-      for (during_index = bitset_iterate (&temp_segs_set, &during_iter); during_index != -1;
-	   during_index = bitset_next_member (&during_iter))
-	{
-	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (inner_pred_segs_set, during_index))
-	    {
-	      inner_info->pred_list = parser_append_node (pt_point (parser, pred_node), inner_info->pred_list);
-	      bitset_add (&inner_pred_segs_set, during_index);
-	    }
-	}
+      qo_hashjoin_append_pred_segs (env, parser, &during_segs_set, &outer_plan->info->projected_segs,
+				    &outer_info->pred_list, &outer_pred_segs_set);
+      qo_hashjoin_append_pred_segs (env, parser, &during_segs_set, &inner_plan->info->projected_segs,
+				    &inner_info->pred_list, &inner_pred_segs_set);
     }
 
   /* residual_pred columns:
@@ -6108,34 +6132,12 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
       assert (bitset_subset (&during_segs_set, &residual_segs_set));
 
       /* outer columns */
-      bitset_assign (&temp_segs_set, &residual_segs_set);
-      bitset_intersect (&temp_segs_set, &outer_plan->info->projected_segs);
-
-      for (during_index = bitset_iterate (&temp_segs_set, &during_iter); during_index != -1;
-	   during_index = bitset_next_member (&during_iter))
-	{
-	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (outer_pred_segs_set, during_index))
-	    {
-	      outer_info->pred_list = parser_append_node (pt_point (parser, pred_node), outer_info->pred_list);
-	      bitset_add (&outer_pred_segs_set, during_index);
-	    }
-	}
+      qo_hashjoin_append_pred_segs (env, parser, &residual_segs_set, &outer_plan->info->projected_segs,
+				    &outer_info->pred_list, &outer_pred_segs_set);
 
       /* inner columns */
-      bitset_assign (&temp_segs_set, &residual_segs_set);
-      bitset_intersect (&temp_segs_set, &inner_plan->info->projected_segs);
-
-      for (during_index = bitset_iterate (&temp_segs_set, &during_iter); during_index != -1;
-	   during_index = bitset_next_member (&during_iter))
-	{
-	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, during_index));
-	  if (pred_node->node_type == PT_NAME && !BITSET_MEMBER (inner_pred_segs_set, during_index))
-	    {
-	      inner_info->pred_list = parser_append_node (pt_point (parser, pred_node), inner_info->pred_list);
-	      bitset_add (&inner_pred_segs_set, during_index);
-	    }
-	}
+      qo_hashjoin_append_pred_segs (env, parser, &residual_segs_set, &inner_plan->info->projected_segs,
+				    &inner_info->pred_list, &inner_pred_segs_set);
     }
 
   /* hash_key */
