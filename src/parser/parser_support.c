@@ -10071,6 +10071,7 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   char *name = NULL, *buf = NULL;
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
+  assert (size < PARTITION_VARCHAR_LEN);
 
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)

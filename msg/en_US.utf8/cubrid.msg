@@ -1471,7 +1471,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1372 Error occurred while handling a callback. code(%1$d), msg(%2$s)
 
-1373 Last Error
+1373 The length of the serial object name (%1$s_ai_%2$s) to be created with the Auto-Increment constraint exceeds %3$d.
+1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
+
+1375 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

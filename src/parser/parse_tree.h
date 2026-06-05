@@ -2118,6 +2118,8 @@ struct pt_parts_info
   PT_NODE *comment;		/* PT_VALUE */
 };
 #define PARTITIONED_SUB_CLASS_TAG "__p__"
+#define PARTITIONED_SUB_CLASS_TAG_LEN (5)	// strlen(PARTITIONED_SUB_CLASS_TAG)
+
 
 /* Info for DATA_TYPE node */
 struct pt_data_type_info

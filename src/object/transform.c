@@ -637,14 +637,8 @@ tf_install_meta_classes ()
 
 
 #define AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH (4)	// "_ai_"
-/*
- * AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH : (255 - 1) + 4 + (255 -1) + 1 = 513
- *   - sprintf (..., "%s_ai_%s", unique_name, attribute_name)
- */
 
-#define AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH \
-  ((DB_MAX_IDENTIFIER_LENGTH - 1) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + (DB_MAX_IDENTIFIER_LENGTH - 1) + 1)
-
+#if defined(DISABLE_ERROR_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW)
 static int
 set_auto_increment_serial_partial_name (char *serial_name, int copy_length, const char *name1, const char *name2)
 {
@@ -669,6 +663,7 @@ set_auto_increment_serial_partial_name (char *serial_name, int copy_length, cons
       return sprintf (serial_name, "%s_%s", name_buf, name2);
     }
 }
+#endif /* DISABLE_ERROR_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW */
 
 int
 set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name)
@@ -682,9 +677,15 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
     }
   else
     {
+#if !defined(DISABLE_ERROR_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW, 3, class_name, attr_name,
+	      (DB_MAX_SERIAL_NAME_LENGTH - 1));
+      return ER_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW;
+#else
       const int md5_str_len = 34;	// 1 + 32 + 1,  '_' + <md5(32)> + '\0'
       char md5_str[32 + 1] = { '\0' };
-      char name_buf[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH] = { '\0' };
+      char name_buf[DB_MAX_IDENTIFIER_LENGTH + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + DB_MAX_IDENTIFIER_LENGTH] =
+	{ '\0' };
       const char *dot = strchr (class_name, '.');
       int pos, copy_length = 0;
 
@@ -715,8 +716,10 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
 	{
 	  return pos;
 	}
+      assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
+#endif /* DISABLE_ERROR_AUTO_INCREMENT_SERIAL_NAME_OVERFLOW */
     }
 
-  assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
+
   return NO_ERROR;
 }
