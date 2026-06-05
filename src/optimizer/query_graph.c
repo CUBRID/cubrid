@@ -8263,7 +8263,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       pt_expr->type_enum = PT_TYPE_LOGICAL;
 
       term = qo_add_term (pt_expr, PREDICATE_TERM, env);
-      QO_TERM_SET_FLAG (term, QO_TERM_TRANSITIVE);
+      QO_TERM_SET_FLAG (term, QO_TERM_IMPLIED);
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
@@ -10005,9 +10005,10 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 	  continue;
 	}
 
-      if (QO_TERM_IS_FLAGED (term, QO_TERM_TRANSITIVE))
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
 	{
-	  /* skip transitive terms; they add no independent constraints and must not falsely invalidate the PK-FK full-join */
+	  /* skip implied transitive terms; they add no independent constraints and must not
+	   * falsely invalidate the PK-FK full-join */
 	  continue;
 	}
 

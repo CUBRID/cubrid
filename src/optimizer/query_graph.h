@@ -751,7 +751,7 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
-#define QO_TERM_TRANSITIVE          512	/* generated transitive join term (not from user predicate) */
+#define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
