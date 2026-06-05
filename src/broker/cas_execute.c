@@ -1922,6 +1922,9 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       cas_log_compile_begin_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
+      /* record-before-compile: covers a hang or crash in this batch item's
+       * compile/execute by leaving its SQL on disk first, so the log still shows
+       * which item was running */
       cas_log_flush_if_needed ();
 
       db_init_lexer_lineno ();

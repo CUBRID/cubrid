@@ -418,6 +418,9 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
 	    }
 	}
+      /* covers: the log-unit boundary -- a finished request/transaction, or a
+       * standalone event logged through cas_log_write_and_end (), is now fully
+       * written, so push it to disk */
       cas_log_flush_if_needed ();
     }
 
@@ -513,6 +516,8 @@ cas_log_query_cancel (int dummy, ...)
   cas_log_write_internal (log_fp, &tv, 0, buf, ap);
   va_end (ap);
   cas_fputc ('\n', log_fp);
+  /* covers: the query-cancel diagnostic -- flush it out promptly rather than
+   * leaving it buffered until the request's next flush */
   cas_log_flush_if_needed ();
 
   query_cancel_flag = 0;
