@@ -1375,7 +1375,9 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
   if (vacuum_Worker_threads != NULL)
     {
 #if defined (SERVER_MODE)
+#if !defined (NDEBUG)
       vacuum_Worker_threads->er_log_stats ();
+#endif
       vacuum_Worker_threads->stop_execution ();
 #endif // SERVER_MODE
 

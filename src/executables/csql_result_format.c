@@ -915,6 +915,8 @@ numeric_to_string (DB_VALUE * value, bool commas)
   char *return_string;
   int comma_length = 0;
   int str_length = 0;
+  int prec, scale;
+  int digits;
 
   do
     {
@@ -927,7 +929,10 @@ numeric_to_string (DB_VALUE * value, bool commas)
 
   numeric_db_value_print (value, str_buf);
 
-  comma_length = COMMAS_OFFSET (commas, DB_VALUE_PRECISION (value));
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+  digits = (scale < 0) ? (prec - scale) : (scale > prec ? scale : prec);
+
+  comma_length = COMMAS_OFFSET (commas, digits);
   str_length = strlen (str_buf) + 1;	// include '\0'
 
 
