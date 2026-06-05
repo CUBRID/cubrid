@@ -624,10 +624,13 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 
   if (class_->variable_count)
     {
-      /* compute the variable offsets relative to the end of the header (beginning of variable table) */
+      /* VOT offsets must be 4-byte aligned: the low 2 bits are reserved for flags
+       * (one of them is the OOS flag, read by OR_IS_OOS / masked off by OR_GET_VAR_OFFSET).
+       * Align the first offset, then re-align after adding each attribute length. */
       offset =
-	OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count,
-				    offset_size) + class_->fixed_size + OR_BOUND_BIT_BYTES (class_->fixed_count);
+	DB_ALIGN (OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count,
+					      offset_size) + class_->fixed_size
+		  + OR_BOUND_BIT_BYTES (class_->fixed_count), INT_ALIGNMENT);
 
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
@@ -638,6 +641,7 @@ put_varinfo (OR_BUF * buf, char *obj, SM_CLASS * class_, int offset_size)
 
 	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
+	  offset = DB_ALIGN (offset, INT_ALIGNMENT);
 	}
 
       or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (offset), offset_size);
@@ -668,12 +672,18 @@ re_check:
   if (class_->variable_count)
     {
       size += OR_VAR_TABLE_SIZE_INTERNAL (class_->variable_count, *offset_size_ptr);
+
+      /* The variable data area starts on a 4-byte boundary, and each variable
+       * attribute is padded to 4 bytes. Sizes here must agree with the offsets
+       * emitted by put_varinfo () and the bytes written by put_attributes (). */
+      size = DB_ALIGN (size, INT_ALIGNMENT);
+
       for (a = class_->fixed_count; a < class_->att_count; a++)
 	{
 	  att = &class_->attributes[a];
 	  mem = obj + att->offset;
 
-	  size += att->domain->type->get_disk_size_of_mem (mem, att->domain);
+	  size += DB_ALIGN (att->domain->type->get_disk_size_of_mem (mem, att->domain), INT_ALIGNMENT);
 	}
     }
 
@@ -735,11 +745,18 @@ put_attributes (OR_BUF * buf, char *obj, SM_CLASS * class_)
     {
       or_put_data (buf, obj + OBJ_HEADER_BOUND_BITS_OFFSET, OR_BOUND_BIT_BYTES (class_->fixed_count));
     }
-  /* write the variable attributes */
-
+  /* Write the variable attributes. The VOT offsets emitted by put_varinfo ()
+   * are 4-byte aligned, so we pad up to a 4-byte boundary at the start of the
+   * variable data area and after every attribute — that way the write cursor
+   * always lands on the offset the VOT advertises. */
+  if (att != NULL)
+    {
+      or_put_align32 (buf);
+    }
   for (; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       att->type->data_writemem (buf, obj + att->offset, att->domain);
+      or_put_align32 (buf);
     }
   return NO_ERROR;
 }
@@ -2021,14 +2038,16 @@ domain_size (TP_DOMAIN * domain)
 {
   int size;
 
-  size = tf_Metaclass_domain.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
+  size =
+    DB_ALIGN (tf_Metaclass_domain.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable), INT_ALIGNMENT);
 
-  size += enumeration_size (&DOM_GET_ENUMERATION (domain));
+  size += DB_ALIGN (enumeration_size (&DOM_GET_ENUMERATION (domain)), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size), INT_ALIGNMENT);
 
-  size += (domain->json_validator == NULL
-	   ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
+  size += DB_ALIGN ((domain->json_validator == NULL
+		     ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator))),
+		    INT_ALIGNMENT);
 
   return (size);
 }
@@ -2060,16 +2079,20 @@ domain_to_disk (OR_BUF * buf, TP_DOMAIN * domain)
   start = buf->ptr;
   offset = tf_Metaclass_domain.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_domain.mc_n_variable);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) domain->setdomain, (LSIZER) domain_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += enumeration_size (&DOM_GET_ENUMERATION (domain));
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += (domain->json_validator == NULL
 	     ? 0 : string_disk_size (db_json_get_schema_raw_from_validator (domain->json_validator)));
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2260,8 +2283,10 @@ metharg_to_disk (OR_BUF * buf, SM_METHOD_ARGUMENT * arg)
   /* VARIABLE OFFSET TABLE */
   start = buf->ptr;
   offset = tf_Metaclass_metharg.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2298,8 +2323,10 @@ metharg_size (SM_METHOD_ARGUMENT * arg)
 {
   int size;
 
-  size = tf_Metaclass_metharg.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable);
-  size += substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size);
+  size =
+    DB_ALIGN (tf_Metaclass_metharg.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_metharg.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) arg->domain, (LSIZER) domain_size), INT_ALIGNMENT);
 
   return (size);
 }
@@ -2371,18 +2398,23 @@ methsig_to_disk (OR_BUF * buf, SM_METHOD_SIGNATURE * sig)
   /* VARIABLE OFFSET TABLE */
   offset = tf_Metaclass_methsig.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.mc_n_variable);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (sig->function_name);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (sig->sql_definition);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) sig->value, (LSIZER) metharg_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) sig->args, (LSIZER) metharg_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2422,11 +2454,13 @@ methsig_size (SM_METHOD_SIGNATURE * sig)
 {
   int size;
 
-  size = tf_Metaclass_methsig.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.mc_n_variable);
-  size += string_disk_size (sig->function_name);
-  size += string_disk_size (sig->sql_definition);
-  size += substructure_set_size ((DB_LIST *) sig->value, (LSIZER) metharg_size);
-  size += substructure_set_size ((DB_LIST *) sig->args, (LSIZER) metharg_size);
+  size =
+    DB_ALIGN (tf_Metaclass_methsig.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methsig.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (sig->function_name), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (sig->sql_definition), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) sig->value, (LSIZER) metharg_size), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) sig->args, (LSIZER) metharg_size), INT_ALIGNMENT);
 
   return (size);
 }
@@ -2523,19 +2557,23 @@ method_to_disk (OR_BUF * buf, SM_METHOD * method)
   /* name */
   offset = tf_Metaclass_method.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_method.mc_n_variable);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (method->header.name);
 
   /* signature set */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) method->signatures, (LSIZER) methsig_size);
 
   /* property list */
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += property_list_size (method->properties);
 
   /* end of variables */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2577,10 +2615,11 @@ method_size (SM_METHOD * method)
 {
   int size;
 
-  size = tf_Metaclass_method.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_method.mc_n_variable);
-  size += string_disk_size (method->header.name);
-  size += substructure_set_size ((DB_LIST *) method->signatures, (LSIZER) methsig_size);
-  size += property_list_size (method->properties);
+  size =
+    DB_ALIGN (tf_Metaclass_method.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_method.mc_n_variable), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (method->header.name), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) method->signatures, (LSIZER) methsig_size), INT_ALIGNMENT);
+  size += DB_ALIGN (property_list_size (method->properties), INT_ALIGNMENT);
 
   return (size);
 }
@@ -2654,15 +2693,18 @@ methfile_to_disk (OR_BUF * buf, SM_METHOD_FILE * file)
   offset = tf_Metaclass_methfile.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.mc_n_variable);
 
   /* name */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (file->name);
 
   /* property list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   /* currently no properties */
   offset += property_list_size (NULL);
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2701,9 +2743,11 @@ methfile_size (SM_METHOD_FILE * file)
 {
   int size;
 
-  size = tf_Metaclass_methfile.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.mc_n_variable);
-  size += string_disk_size (file->name);
-  size += property_list_size (NULL);
+  size =
+    DB_ALIGN (tf_Metaclass_methfile.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_methfile.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (file->name), INT_ALIGNMENT);
+  size += DB_ALIGN (property_list_size (NULL), INT_ALIGNMENT);
 
   return (size);
 }
@@ -2782,9 +2826,11 @@ query_spec_to_disk (OR_BUF * buf, SM_QUERY_SPEC * query_spec)
   /* VARIABLE OFFSET TABLE */
   offset = tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (query_spec->specification);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2815,8 +2861,10 @@ query_spec_size (SM_QUERY_SPEC * statement)
 {
   int size;
 
-  size = tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable);
-  size += string_disk_size (statement->specification);
+  size =
+    DB_ALIGN (tf_Metaclass_query_spec.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_query_spec.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (statement->specification), INT_ALIGNMENT);
 
   return (size);
 }
@@ -2876,38 +2924,46 @@ attribute_to_disk (OR_BUF * buf, SM_ATTRIBUTE * att)
   /* VARIABLE OFFSET TABLE */
   /* name */
   offset = tf_Metaclass_attribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.mc_n_variable);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += string_disk_size (att->header.name);
 
   /* initial value variable */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   /* could avoid domain tag here ? */
   offset += or_packed_value_size (&att->default_value.value, 1, 1, 0);
 
   /* original value */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   /* could avoid domain tag here ? */
   offset += or_packed_value_size (&att->default_value.original_value, 1, 1, 0);
 
   /* domain list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) att->domain, (LSIZER) domain_size);
 
   /* trigger list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   (void) tr_get_cache_objects (att->triggers, &triggers);
   offset += object_set_size (triggers);
 
   /* property list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += property_list_size (att->properties);
 
   /* comment */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (att->comment);
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -2975,20 +3031,22 @@ attribute_size (SM_ATTRIBUTE * att)
   DB_OBJLIST *triggers;
   int size;
 
-  size = tf_Metaclass_attribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.mc_n_variable);
+  size =
+    DB_ALIGN (tf_Metaclass_attribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_attribute.mc_n_variable),
+	      INT_ALIGNMENT);
 
-  size += string_disk_size (att->header.name);
-  size += or_packed_value_size (&att->default_value.value, 1, 1, 0);
-  size += or_packed_value_size (&att->default_value.original_value, 1, 1, 0);
-  size += substructure_set_size ((DB_LIST *) att->domain, (LSIZER) domain_size);
+  size += DB_ALIGN (string_disk_size (att->header.name), INT_ALIGNMENT);
+  size += DB_ALIGN (or_packed_value_size (&att->default_value.value, 1, 1, 0), INT_ALIGNMENT);
+  size += DB_ALIGN (or_packed_value_size (&att->default_value.original_value, 1, 1, 0), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) att->domain, (LSIZER) domain_size), INT_ALIGNMENT);
 
   (void) tr_get_cache_objects (att->triggers, &triggers);
-  size += object_set_size (triggers);
+  size += DB_ALIGN (object_set_size (triggers), INT_ALIGNMENT);
 
   /* size += att_extension_size(att); */
-  size += property_list_size (att->properties);
+  size += DB_ALIGN (property_list_size (att->properties), INT_ALIGNMENT);
 
-  size += string_disk_size (att->comment);
+  size += DB_ALIGN (string_disk_size (att->comment), INT_ALIGNMENT);
 
   return (size);
 }
@@ -3191,14 +3249,17 @@ resolution_to_disk (OR_BUF * buf, SM_RESOLUTION * res)
   /* VARIABLE OFFSET TABLE */
   /* name */
   offset = tf_Metaclass_resolution.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (res->name);
 
   /* new name */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (res->alias);
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -3233,9 +3294,11 @@ resolution_size (SM_RESOLUTION * res)
 {
   int size;
 
-  size = tf_Metaclass_resolution.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable);
-  size += string_disk_size (res->name);
-  size += string_disk_size (res->alias);
+  size =
+    DB_ALIGN (tf_Metaclass_resolution.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_resolution.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (res->name), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (res->alias), INT_ALIGNMENT);
 
   return (size);
 }
@@ -3331,10 +3394,12 @@ repattribute_to_disk (OR_BUF * buf, SM_REPR_ATTRIBUTE * rat)
   offset = tf_Metaclass_repattribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable);
 
   /* domain list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size);
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
   /* fixed width attributes */
@@ -3369,9 +3434,11 @@ repattribute_size (SM_REPR_ATTRIBUTE * rat)
 {
   int size;
 
-  size = tf_Metaclass_repattribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable);
+  size =
+    DB_ALIGN (tf_Metaclass_repattribute.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_repattribute.mc_n_variable),
+	      INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) rat->domain, (LSIZER) domain_size), INT_ALIGNMENT);
 
   return (size);
 }
@@ -3428,11 +3495,13 @@ representation_size (SM_REPRESENTATION * rep)
 {
   int size;
 
-  size = tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable);
+  size =
+    DB_ALIGN (tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable),
+	      INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) rep->attributes, (LSIZER) repattribute_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) rep->attributes, (LSIZER) repattribute_size), INT_ALIGNMENT);
 
-  size += property_list_size (NULL);
+  size += DB_ALIGN (property_list_size (NULL), INT_ALIGNMENT);
 
   return (size);
 }
@@ -3454,12 +3523,15 @@ representation_to_disk (OR_BUF * buf, SM_REPRESENTATION * rep)
   start = buf->ptr;
   offset = tf_Metaclass_representation.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_representation.mc_n_variable);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += substructure_set_size ((DB_LIST *) rep->attributes, (LSIZER) repattribute_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += property_list_size (NULL);
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -3593,73 +3665,91 @@ put_class_varinfo (OR_BUF * buf, SM_CLASS * class_)
   offset = tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
 
   /* name */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += string_disk_size (sm_ch_name ((MOBJ) class_));
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->loader_commands);
 
   /* representation set */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->representations, (LSIZER) representation_size);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += object_set_size (class_->users);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += object_set_size (class_->inheritance);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->attributes, (LSIZER) attribute_size);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->shared, (LSIZER) attribute_size);
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->class_attributes, (LSIZER) attribute_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->methods, (LSIZER) method_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->class_methods, (LSIZER) method_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->method_files, (LSIZER) methfile_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->resolutions, (LSIZER) resolution_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->query_spec, (LSIZER) query_spec_size);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   (void) tr_get_cache_objects (class_->triggers, &triggers);
   offset += object_set_size (triggers);
 
   /* property list */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += property_list_size (class_->properties);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += string_disk_size (class_->comment);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
 
   offset += substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size);
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -3833,37 +3923,40 @@ tf_class_size (MOBJ classobj)
 
   size = OR_NON_MVCC_HEADER_SIZE;
 
-  size += tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable);
+  size +=
+    DB_ALIGN (tf_Metaclass_class.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_class.mc_n_variable), INT_ALIGNMENT);
 
-  size += string_disk_size (sm_ch_name ((MOBJ) class_));
-  size += string_disk_size (class_->loader_commands);
+  size += DB_ALIGN (string_disk_size (sm_ch_name ((MOBJ) class_)), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (class_->loader_commands), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->representations, (LSIZER) representation_size);
+  size +=
+    DB_ALIGN (substructure_set_size ((DB_LIST *) class_->representations, (LSIZER) representation_size), INT_ALIGNMENT);
 
-  size += object_set_size (class_->users);
-  size += object_set_size (class_->inheritance);
+  size += DB_ALIGN (object_set_size (class_->users), INT_ALIGNMENT);
+  size += DB_ALIGN (object_set_size (class_->inheritance), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->attributes, (LSIZER) attribute_size);
-  size += substructure_set_size ((DB_LIST *) class_->shared, (LSIZER) attribute_size);
-  size += substructure_set_size ((DB_LIST *) class_->class_attributes, (LSIZER) attribute_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->attributes, (LSIZER) attribute_size), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->shared, (LSIZER) attribute_size), INT_ALIGNMENT);
+  size +=
+    DB_ALIGN (substructure_set_size ((DB_LIST *) class_->class_attributes, (LSIZER) attribute_size), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->methods, (LSIZER) method_size);
-  size += substructure_set_size ((DB_LIST *) class_->class_methods, (LSIZER) method_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->methods, (LSIZER) method_size), INT_ALIGNMENT);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->class_methods, (LSIZER) method_size), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->method_files, (LSIZER) methfile_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->method_files, (LSIZER) methfile_size), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->resolutions, (LSIZER) resolution_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->resolutions, (LSIZER) resolution_size), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->query_spec, (LSIZER) query_spec_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->query_spec, (LSIZER) query_spec_size), INT_ALIGNMENT);
 
   (void) tr_get_cache_objects (class_->triggers, &triggers);
-  size += object_set_size (triggers);
+  size += DB_ALIGN (object_set_size (triggers), INT_ALIGNMENT);
 
-  size += property_list_size (class_->properties);
+  size += DB_ALIGN (property_list_size (class_->properties), INT_ALIGNMENT);
 
-  size += string_disk_size (class_->comment);
+  size += DB_ALIGN (string_disk_size (class_->comment), INT_ALIGNMENT);
 
-  size += substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size);
+  size += DB_ALIGN (substructure_set_size ((DB_LIST *) class_->partition, (LSIZER) partition_info_size), INT_ALIGNMENT);
 
   return (size);
 }
@@ -4249,10 +4342,12 @@ root_to_disk (OR_BUF * buf, ROOT_CLASS * root)
   offset = tf_Metaclass_root.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_root.mc_n_variable);
 
   /* name */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (sm_ch_name ((MOBJ) root));
 
   /* end of object */
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -4289,10 +4384,11 @@ root_size (MOBJ rootobj)
   root = (ROOT_CLASS *) rootobj;
 
   size = OR_NON_MVCC_HEADER_SIZE;
-  size += tf_Metaclass_root.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_root.mc_n_variable);
+  size +=
+    DB_ALIGN (tf_Metaclass_root.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_root.mc_n_variable), INT_ALIGNMENT);
 
   /* name */
-  size += string_disk_size (sm_ch_name ((MOBJ) root));
+  size += DB_ALIGN (string_disk_size (sm_ch_name ((MOBJ) root)), INT_ALIGNMENT);
 
   return (size);
 }
@@ -4879,18 +4975,23 @@ partition_info_to_disk (OR_BUF * buf, SM_PARTITION * partition_info)
 
   db_make_sequence (&val, partition_info->values);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (partition_info->pname);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (partition_info->expr);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += or_packed_value_size (&val, 1, 1, 0);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_offset (buf, offset);
   offset += string_disk_size (partition_info->comment);
 
+  offset = DB_ALIGN (offset, INT_ALIGNMENT);
   or_put_last_var_offset (buf, offset);
   buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -4930,13 +5031,15 @@ partition_info_size (SM_PARTITION * partition_info)
   int size;
   DB_VALUE val;
 
-  size = tf_Metaclass_partition.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_partition.mc_n_variable);
-  size += string_disk_size (partition_info->pname);
-  size += string_disk_size (partition_info->expr);
-  size += string_disk_size (partition_info->comment);
+  size =
+    DB_ALIGN (tf_Metaclass_partition.mc_fixed_size + OR_VAR_TABLE_SIZE (tf_Metaclass_partition.mc_n_variable),
+	      INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (partition_info->pname), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (partition_info->expr), INT_ALIGNMENT);
+  size += DB_ALIGN (string_disk_size (partition_info->comment), INT_ALIGNMENT);
 
   db_make_sequence (&val, partition_info->values);
-  size += or_packed_value_size (&val, 1, 1, 0);
+  size += DB_ALIGN (or_packed_value_size (&val, 1, 1, 0), INT_ALIGNMENT);
 
   return (size);
 }

@@ -1347,6 +1347,25 @@ db_attribute_is_auto_increment (DB_ATTRIBUTE * attribute)
 }
 
 /*
+ * db_attribute_is_invisible_column() - This function tests if attribute is 
+ *     defined as invisible column
+ * return : non-zero if invisible column is defined.
+ * attribute(in): attribute descriptor
+ */
+int
+db_attribute_is_invisible_column (DB_ATTRIBUTE * attribute)
+{
+  int status = 0;
+  if (attribute != NULL)
+    {
+      status = (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+    }
+
+  return (status);
+}
+
+
+/*
  * db_attribute_is_reverse_unique() - This function tests the status of the
  *    reverse UNIQUE for an attribute.
  * return : non-zero if reverse unique is defined.

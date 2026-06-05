@@ -33,6 +33,7 @@
 #include "porting.h"
 #include "network.h"
 #include "network_interface_cl.h"
+#include "dbi.h"
 #include "memory_alloc.h"
 #include "mem_block.hpp"
 #include "storage_common.h"
@@ -48,6 +49,7 @@
 #include "transaction_sr.h"
 #include "pl_sr.h"
 #include "vacuum.h"
+#include "oos_file.hpp"
 #include "serial.h"
 #endif /* defined (SA_MODE) */
 #include "oid.h"
@@ -9864,6 +9866,85 @@ cvacuum (void)
   err = xvacuum (thread_p);
 
   exit_server (*thread_p);
+
+  return err;
+#endif /* CS_MODE */
+}
+
+/*
+ * oos_get_stats_by_class_oid () - Client side: fetch OOS stats for a class by OID.
+ * return             : NO_ERROR or error code.
+ * class_oid (in)     : target class OID (resolved on client via db_find_class)
+ * stats (out)        : populated on success
+ */
+int
+oos_get_stats_by_class_oid (const OID * class_oid, struct db_oos_stats *stats)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  OR_ALIGNED_BUF (OR_OID_SIZE) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  int err = NO_ERROR;
+
+  if (class_oid == NULL || stats == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_oid (request, (OID *) class_oid);
+
+  err = net_client_request (NET_SERVER_OOS_STATS, request, OR_ALIGNED_BUF_SIZE (a_request),
+			    reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+
+  if (err == NO_ERROR)
+    {
+      char *ptr = or_unpack_int (reply, &err);
+      if (err == NO_ERROR)
+	{
+	  int volid, fileid;
+	  INT64 sumlen = 0;
+	  ptr = or_unpack_int (ptr, &stats->has_oos_file);
+	  ptr = or_unpack_int (ptr, &volid);
+	  ptr = or_unpack_int (ptr, &fileid);
+	  ptr = or_unpack_int (ptr, &stats->num_user_pages);
+	  ptr = or_unpack_int (ptr, &stats->page_size);
+	  ptr = or_unpack_int (ptr, &stats->num_recs);
+	  ptr = or_unpack_int64 (ptr, &sumlen);
+	  stats->oos_vfid_volid = volid;
+	  stats->oos_vfid_fileid = fileid;
+	  stats->recs_sumlen = sumlen;
+	}
+    }
+
+  return err;
+#else /* !CS_MODE */
+  int err;
+
+  if (class_oid == NULL || stats == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  {
+    OOS_STATS_INFO info;
+    THREAD_ENTRY *thread_p = enter_server ();
+
+    err = xoos_get_stats_by_class_oid (thread_p, class_oid, &info);
+
+    exit_server (*thread_p);
+
+    if (err == NO_ERROR)
+      {
+	stats->has_oos_file = info.has_oos_file;
+	stats->oos_vfid_volid = (int) info.oos_vfid.volid;
+	stats->oos_vfid_fileid = (int) info.oos_vfid.fileid;
+	stats->num_user_pages = info.num_user_pages;
+	stats->page_size = info.page_size;
+	stats->num_recs = info.num_recs;
+	stats->recs_sumlen = info.recs_sumlen;
+      }
+  }
 
   return err;
 #endif /* CS_MODE */
