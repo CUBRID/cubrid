@@ -202,7 +202,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     }
   else
     {
-      sprintf (new_class_name, "%s.%s", downcase_owner_name, db_get_string (&str_value));
+      snprintf (new_class_name, sizeof (new_class_name), "%s.%s", downcase_owner_name, db_get_string (&str_value));
       db_value_clear (&str_value);
       error = obj_get (serial_mop, SERIAL_ATTR_ATTR_NAME, &str_value);
       if (error != NO_ERROR)
