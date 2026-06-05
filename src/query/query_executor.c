@@ -2755,8 +2755,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     case HASHJOIN_PROC:
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.outer.regu_list_pred, is_final, false);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.inner.regu_list_pred, is_final, false);
-      /* The residual predicate pushed into the probe loop lives on this node's xasl->after_join_pred and is
-       * cleared by the generic after_join_pred clear in the is_final block below. */
 
       if (xasl->proc.hashjoin.stats_group.context_stats != NULL)
 	{
@@ -3358,8 +3356,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
     case HASHJOIN_PROC:
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.outer.regu_list_pred, is_final, true);
       pg_cnt += qexec_clear_regu_list (thread_p, xasl, xasl->proc.hashjoin.inner.regu_list_pred, is_final, true);
-      /* The residual predicate pushed into the probe loop lives on this node's xasl->after_join_pred and is
-       * cleared by the generic after_join_pred clear in the is_final block above. */
       break;
 
     default:
