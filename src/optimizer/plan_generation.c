@@ -693,9 +693,10 @@ qo_collect_hashjoin_residual_terms (QO_ENV * env, QO_PLAN * plan, BITSET * resul
  *	 FULL OUTER (JOIN_OUTER) is excluded: the serial outer probe never reaches
  *	 FULL OUTER, so its after-join terms are left where they are.
  *
- *	 This routine only collects; pruning of after_join_terms and of the local
- *	 predicate set copy feeding the parent after_join_pred is performed by the
- *	 caller, avoiding double evaluation.
+ *	 This routine only collects (into the caller's combined residual set);
+ *	 pruning of after_join_terms and of the local predicate set copy feeding
+ *	 the parent after_join_pred is performed by the caller, avoiding double
+ *	 evaluation.
  */
 static void
 qo_collect_hashjoin_after_join_residual_terms (QO_ENV * env, QO_PLAN * plan, BITSET * result)
@@ -2825,7 +2826,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
   BITSET residual_terms;
-  BITSET after_join_residual_terms;
 
   int parallelism;
 
@@ -2844,30 +2844,23 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
-  /* Two-input residual terms (incl. non-equi joins) that can be evaluated inside the probe loop.
-   * Prune them from both plan->sarged_terms and the local pred_set copy that feeds the parent list
-   * scan's if_pred, so the residual is evaluated in exactly one place (the probe). */
+  /* Residual terms (incl. non-equi joins) that can be evaluated inside the probe loop: two-input
+   * sarged terms (inner joins), plus eligible after-join WHERE terms of LEFT/RIGHT OUTER joins whose
+   * post-null-padding semantics the outer probe preserves.  Both collectors fill the single
+   * residual_terms set. */
   bitset_init (&residual_terms, env);
   qo_collect_hashjoin_residual_terms (env, plan, &residual_terms);
+  qo_collect_hashjoin_after_join_residual_terms (env, plan, &residual_terms);
   if (!bitset_is_empty (&residual_terms))
     {
+      /* Prune the pushed terms from their sources and from the local pred_set copy that feeds the
+       * parent if_pred/after_join_pred, so each is evaluated in exactly one place (the probe).
+       * sarged_terms and after_join_terms are disjoint by construction (query_planner.c builds
+       * sarged_terms by subtracting sarg_out_terms, which includes after_join_terms), so subtracting
+       * the combined set from each source removes exactly the terms collected from it. */
       bitset_difference (&(plan->sarged_terms), &residual_terms);
+      bitset_difference (&(plan->plan_un.join.after_join_terms), &residual_terms);
       bitset_difference (pred_set, &residual_terms);
-    }
-
-  /* For LEFT/RIGHT OUTER hash joins, the two-input WHERE residuals live in after_join_terms and are
-   * applied AFTER null-padding by the parent buildlist's after_join_pred.  The outer probe applies
-   * residual_pred to the final (matched or null-padded) tuple with the same semantics, so push the
-   * eligible ones into the probe loop.  Prune them from plan->plan_un.join.after_join_terms and from
-   * the local pred_set copy (which already unions after_join_terms in gen_outer) that feeds the
-   * parent after_join_pred, so each is evaluated in exactly one place (the probe). */
-  bitset_init (&after_join_residual_terms, env);
-  qo_collect_hashjoin_after_join_residual_terms (env, plan, &after_join_residual_terms);
-  if (!bitset_is_empty (&after_join_residual_terms))
-    {
-      bitset_difference (&(plan->plan_un.join.after_join_terms), &after_join_residual_terms);
-      bitset_difference (pred_set, &after_join_residual_terms);
-      bitset_union (&residual_terms, &after_join_residual_terms);
     }
 
   /* Record the pushed terms on the plan so the plan dump / trace can show where the residual predicate is
@@ -2969,7 +2962,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
 
 cleanup:
   bitset_delset (&residual_terms);
-  bitset_delset (&after_join_residual_terms);
   qo_clear_projection_info (env, &projection_info);
 
   return xasl;
