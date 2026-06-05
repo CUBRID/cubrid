@@ -8316,7 +8316,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	  segs_arr[nsegs++] = j;
 	}
 
-      if (nsegs < 2)
+      /* A two-segment group is always united by the direct edge term that merged it,
+       * so no new transitive pair can come out of it; require at least three segments. */
+      if (nsegs < 3)
 	{
 	  continue;
 	}
