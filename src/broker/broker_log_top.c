@@ -378,7 +378,7 @@ log_top_query (int argc, char *argv[], int arg_start)
   int i;
   int error = 0;
   long start_offset, end_offset;
-  char splitdir[256] = "";
+  char splitdir[512] = "";
   char prev_prefix[256] = "";
   char curr_prefix[256] = "";
   char org_cwd[PATH_MAX];
