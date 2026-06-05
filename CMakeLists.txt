@@ -413,6 +413,7 @@ set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
 set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
+set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -432,6 +433,7 @@ include_directories(
   src/monitor
   src/object
   src/optimizer
+  src/optimizer/histogram
   src/parser
   src/replication
   src/query

@@ -49,7 +49,8 @@ namespace cubconn::connection
   pool::pool () :
     m_max_connections (-1),
     m_max_connection_workers (-1),
-    m_min_connection_workers (-1)
+    m_min_connection_workers (-1),
+    m_freelist { nullptr, 0, 0 }
   {
     m_watcher = std::make_shared<thread_watcher> ();
     m_watcher->active = 0;
@@ -59,7 +60,7 @@ namespace cubconn::connection
   {
   }
 
-  void pool::initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers)
+  bool pool::initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers)
   {
     (void) os_set_signal_handler (SIGPIPE, SIG_IGN);
     (void) os_set_signal_handler (SIGFPE, SIG_IGN);
@@ -72,7 +73,12 @@ namespace cubconn::connection
 
     this->lock_resource ();
 
-    this->initialize_freelist (max_connections);
+    if (!this->initialize_freelist (max_connections))
+      {
+	this->release_resource ();
+
+	return false;
+      }
     this->initialize_coordinator (max_connection_workers, min_connection_workers);
     this->initialize_workers (max_connection_workers, min_connection_workers);
 
@@ -84,6 +90,8 @@ namespace cubconn::connection
     m_max_connections = max_connections;
     m_max_connection_workers = max_connection_workers;
     m_min_connection_workers = min_connection_workers;
+
+    return true;
   }
 
   void pool::finalize ()
@@ -151,6 +159,12 @@ namespace cubconn::connection
     else
       {
 	head = new freelist (32 * 1024);
+	if (!head->prepare ())
+	  {
+	    delete head;
+
+	    return nullptr;
+	  }
       }
     m_freelist.m_claim++;
 
@@ -210,9 +224,9 @@ namespace cubconn::connection
 #endif
   }
 
-  void pool::initialize_freelist (std::uint32_t max_connections)
+  bool pool::initialize_freelist (std::uint32_t max_connections)
   {
-    freelist *head;
+    freelist *node;
     std::size_t i;
 
     assert (m_mutex_holder == std::this_thread::get_id ());
@@ -222,10 +236,18 @@ namespace cubconn::connection
     m_freelist.m_max = static_cast<std::size_t> (static_cast<float> (max_connections) * /* margin */ 1.1);
     for (i = 0; i < m_freelist.m_max; i++)
       {
-	head = m_freelist.m_head;
-	m_freelist.m_head = new freelist (32 * 1024);
-	m_freelist.m_head->m_next = head;
+	node = new freelist (32 * 1024);
+	if (!node->prepare ())
+	  {
+	    delete node;
+
+	    return false;
+	  }
+	node->m_next = m_freelist.m_head;
+	m_freelist.m_head = node;
       }
+
+    return true;
   }
 
   void pool::finalize_freelist ()
@@ -318,6 +340,12 @@ namespace cubconn::connection
     struct timeval *timeout;
     bool compelete;
 
+    if (m_workers.empty ())
+      {
+	/* not initialized */
+	return;
+      }
+
     for (auto &worker : m_workers)
       {
 	worker::message request;
@@ -392,6 +420,12 @@ namespace cubconn::connection
     coordinator::message request;
     struct timeval *timeout;
     bool compelete;
+
+    if (!m_coordinator)
+      {
+	/* not initialized */
+	return;
+      }
 
     request.type = coordinator::message_type::SHUTDOWN;
     m_coordinator->enqueue (std::move (request));

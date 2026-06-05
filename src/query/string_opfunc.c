@@ -1257,7 +1257,7 @@ db_string_chr (DB_VALUE * res, DB_VALUE * dbval1, DB_VALUE * dbval2)
       dtmp = db_get_double (dbval1);
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (dbval1), DB_VALUE_SCALE (dbval1), &dtmp);
+      numeric_coerce_num_to_double (dbval1, db_get_numeric_scale (dbval1, NULL), &dtmp);
       break;
     case DB_TYPE_MONETARY:
       dtmp = (db_get_monetary (dbval1))->amount;
@@ -11230,7 +11230,7 @@ db_round_dbvalue_to_int (const DB_VALUE * src, int *result)
     case DB_TYPE_NUMERIC:
       {
 	double x = 0;
-	numeric_coerce_num_to_double (db_locate_numeric ((DB_VALUE *) src), DB_VALUE_SCALE (src), &x);
+	numeric_coerce_num_to_double (src, db_get_numeric_scale (src, NULL), &x);
 	*result = (int) ((x) > 0 ? ((x) + .5) : ((x) - .5));
 	return NO_ERROR;
       }
@@ -11733,8 +11733,7 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double ((DB_C_NUMERIC) db_locate_numeric (src_time2), DB_VALUE_SCALE (src_time2),
-				    &amount_d);
+      numeric_coerce_num_to_double (src_time2, db_get_numeric_scale (src_time2, NULL), &amount_d);
       break;
 
     default:
@@ -15689,15 +15688,17 @@ exit:
 static int
 adjust_precision (char *data, int precision, int scale)
 {
-  char tmp_data[DB_MAX_NUMERIC_PRECISION * 2 + 1];
+  char tmp_data[NUMERIC_MAX_STRING_SIZE];
   int scale_counter = 0;
   int i = 0;
   int before_dec_point = 0;
   int after_dec_point = 0;
   int space_started = false;
+  int max_precision = (scale == 0) ? DB_MAX_NUMERIC_PRECISION : DB_MAX_FIXED_NUMERIC_PRECISION;
 
-  if (data == NULL || precision < 0 || precision > DB_MAX_NUMERIC_PRECISION || scale < 0
-      || scale > DB_MAX_NUMERIC_PRECISION)
+  if (data == NULL || precision < 0 ||
+      precision > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) ||
+      scale < DB_MIN_NUMERIC_SCALE || scale > DB_MAX_NUMERIC_SCALE)
     {
       return DOMAIN_INCOMPATIBLE;
     }
@@ -15712,7 +15713,7 @@ adjust_precision (char *data, int precision, int scale)
       i++;
     }
 
-  for (; i < DB_MAX_NUMERIC_PRECISION && *(data + i) != '\0' && *(data + i) != '.'; i++)
+  for (; i < max_precision && *(data + i) != '\0' && *(data + i) != '.'; i++)
     {
       if (char_isdigit (*(data + i)))
 	{
@@ -15807,10 +15808,20 @@ adjust_precision (char *data, int precision, int scale)
       return DOMAIN_COMPATIBLE;
     }
 
-  if (before_dec_point + after_dec_point > DB_MAX_NUMERIC_PRECISION || after_dec_point > DB_DEFAULT_NUMERIC_PRECISION
-      || before_dec_point > precision - scale)
+  if (after_dec_point == 0)
     {
-      return DOMAIN_OVERFLOW;
+      if (before_dec_point > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE))
+	{
+	  return DOMAIN_OVERFLOW;
+	}
+    }
+  else
+    {
+      if (before_dec_point + after_dec_point > DB_MAX_FIXED_NUMERIC_PRECISION ||
+	  after_dec_point > DB_DEFAULT_NUMERIC_SCALE_FOR_TO_NUMBER || before_dec_point > precision - scale)
+	{
+	  return DOMAIN_OVERFLOW;
+	}
     }
 
   tmp_data[i] = '\0';
@@ -16005,7 +16016,8 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
 	  use_default_precision = 1;
 	}
 
-      if (precision + scale > DB_MAX_NUMERIC_PRECISION)
+      if ((scale == 0 && precision > (DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE)) ||
+	  (scale != 0 && precision + scale > DB_MAX_FIXED_NUMERIC_PRECISION))
 	{
 	  domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
@@ -16016,8 +16028,8 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
       if (use_default_precision == 1)
 	{
 	  /* scientific notation */
-	  precision = DB_MAX_NUMERIC_PRECISION;
-	  scale = DB_DEFAULT_NUMERIC_PRECISION;
+	  precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE_FOR_TO_NUMBER;
 	  break;
 	}
     }
@@ -16117,8 +16129,22 @@ db_to_number (const DB_VALUE * src_str, const DB_VALUE * format_str, const DB_VA
       goto format_mismatch;
     }
 
-  result_num->domain.numeric_info.precision = precision;
-  result_num->domain.numeric_info.scale = scale;
+  if (precision > DB_MAX_NUMERIC_PRECISION)
+    {
+      scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+      precision = DB_MAX_NUMERIC_PRECISION;
+    }
+
+  if (result_num->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      result_num->data.num.header.precision = precision;
+      result_num->data.num.header.scale = scale;
+    }
+  else
+    {
+      result_num->domain.numeric_info.precision = precision;
+      result_num->domain.numeric_info.scale = scale;
+    }
 
   if (do_free_buf_str)
     {
@@ -18632,14 +18658,14 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
   int error_status = NO_ERROR;
   int state = 1;
   int i, j, k;
-  char result_str[DB_MAX_NUMERIC_PRECISION + 2];
+  char result_str[NUMERIC_MAX_STRING_SIZE + 2];
   char *res_ptr;
   const char fraction_symbol = lang_digit_fractional_symbol (number_lang_id);
   const char digit_grouping_symbol = lang_digit_grouping_symbol (number_lang_id);
 
   result_str[0] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION] = '\0';
-  result_str[DB_MAX_NUMERIC_PRECISION + 1] = '\0';
+  result_str[NUMERIC_MAX_STRING_SIZE] = '\0';
+  result_str[NUMERIC_MAX_STRING_SIZE + 1] = '\0';
   *token_length = 0;
 
   while (state != 7 && src < last_src)
@@ -18706,10 +18732,6 @@ make_number (char *src, char *last_src, INTL_CODESET codeset, char *token, int *
 	    }
 	  i = j;
 
-	  if (k > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      return ER_IT_DATA_OVERFLOW;
-	    }
 	  if (k > 0)
 	    {
 	      k--;
