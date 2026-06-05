@@ -28768,7 +28768,8 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_CTE || node->node_type == PT_DOT_)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_CTE || node->node_type == PT_DOT_
+      || node->node_type == PT_VALUE)
     {
       *continue_walk = PT_LIST_WALK;
       return node;
