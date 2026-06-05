@@ -12597,44 +12597,47 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    if (oos_compression_enabled && oos_should_compress (attr_type) && image_len >= OOS_MIN_COMPRESS_LEN)
 	      {
 		int bound = cubcompress::bound < cubcompress::LZ4 > (image_len);
-		int comp_len;
 
-		if (bound <= 0)
+		/* bound <= 0 means image_len exceeds LZ4_MAX_INPUT_SIZE; skip
+		 * compression and store the value raw rather than failing the
+		 * insert. The NONE branch below handles it. */
+		if (bound > 0)
 		  {
-		    goto error_oos;
-		  }
-		tmp = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + bound);
-		if (tmp == NULL)
-		  {
-		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			    (size_t) (OOS_COMP_HEADER_SIZE + bound));
-		    goto error_oos;
-		  }
-		comp_len =
-		  cubcompress::compress < cubcompress::LZ4 > (image, image_len, tmp + OOS_COMP_HEADER_SIZE, bound);
+		    int comp_len;
 
-		if (comp_len <= 0)
-		  {
-		    /* Compress call failed (compressor.hpp already called er_set).
-		     * Clear the error and fall through to the NONE path — a successful
-		     * insert with raw bytes must not leave a dangling thread error. */
-		    er_clear ();
-		    db_private_free_and_init (thread_p, tmp);
-		  }
-		else if (comp_len + OOS_COMP_MIN_GAIN <= image_len)
-		  {
-		    /* Benefit gate: keep the compressed form only when it saves at
-		     * least OOS_COMP_MIN_GAIN bytes. The OOS_COMP_HEADER is prepended
-		     * either way (see the NONE branch below), so it cancels and is NOT
-		     * part of this comparison; the margin pays for the per-read
-		     * decompress cost. */
-		    algo = OOS_COMP_LZ4;
-		    stored_bytes = comp_len;
-		  }
-		else
-		  {
-		    /* Compressed is not smaller; fall through to NONE path. */
-		    db_private_free_and_init (thread_p, tmp);
+		    tmp = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + bound);
+		    if (tmp == NULL)
+		      {
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+				(size_t) (OOS_COMP_HEADER_SIZE + bound));
+			goto error_oos;
+		      }
+		    comp_len =
+		      cubcompress::compress < cubcompress::LZ4 > (image, image_len, tmp + OOS_COMP_HEADER_SIZE, bound);
+
+		    if (comp_len <= 0)
+		      {
+			/* Compress call failed (compressor.hpp already called er_set).
+			 * Clear the error and fall through to the NONE path — a successful
+			 * insert with raw bytes must not leave a dangling thread error. */
+			er_clear ();
+			db_private_free_and_init (thread_p, tmp);
+		      }
+		    else if (comp_len + OOS_COMP_MIN_GAIN <= image_len)
+		      {
+			/* Benefit gate: keep the compressed form only when it saves at
+			 * least OOS_COMP_MIN_GAIN bytes. The OOS_COMP_HEADER is prepended
+			 * either way (see the NONE branch below), so it cancels and is NOT
+			 * part of this comparison; the margin pays for the per-read
+			 * decompress cost. */
+			algo = OOS_COMP_LZ4;
+			stored_bytes = comp_len;
+		      }
+		    else
+		      {
+			/* Compressed is not smaller; fall through to NONE path. */
+			db_private_free_and_init (thread_p, tmp);
+		      }
 		  }
 	      }
 
