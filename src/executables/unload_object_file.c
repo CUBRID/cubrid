@@ -672,7 +672,7 @@ exit_on_error:
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
 
 /*
- * fprint_clob_value - print an internal CLOB DB_VALUE to TEXT_OUTPUT
+ * fprint_clob_value - print a CLOB DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
  *    tout(out): output
  *    value(in): DB_VALUE of type DB_TYPE_CLOB
