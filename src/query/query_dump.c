@@ -328,12 +328,8 @@ qdump_print_hashjoin_proc_node (HASHJOIN_PROC_NODE * node_p)
   qdump_print_regu_variable_list (node_p->inner.regu_list_pred);
   fprintf (foutput, "\n");
 
-  if (node_p->residual_pred)
-    {
-      fprintf (foutput, "[residual_pred]:");
-      qdump_print_predicate (node_p->residual_pred);
-      fprintf (foutput, "\n");
-    }
+  /* The residual predicate pushed into the probe loop lives on the HASHJOIN node's xasl->after_join_pred
+   * and is printed by the generic after_join predicate dump in qdump_print_xasl. */
 
   qdump_print_list_merge_info (&node_p->merge_info);
   fprintf (foutput, "\n");

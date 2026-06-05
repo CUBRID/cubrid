@@ -628,7 +628,7 @@ qo_hashjoin_residual_term_eligible (QO_ENV * env, QO_PLAN * plan, BITSET * join_
  *	 non-equi / range join conditions such as t1.c < t2.d) that reference
  *	 only the two join inputs and are not already realized as hash keys or
  *	 join edges.  These terms can be evaluated inside the probe loop
- *	 (proc->residual_pred) instead of by a scan above the hash join.
+ *	 (the HASHJOIN node's after_join_pred) instead of by a scan above the hash join.
  *
  *	 This routine only collects; it does NOT prune plan->sarged_terms.
  *	 Pruning is performed by the caller so that the local copy of the
@@ -685,7 +685,8 @@ qo_collect_hashjoin_residual_terms (QO_ENV * env, QO_PLAN * plan, BITSET * resul
  *	 plan->plan_un.join.after_join_terms (e.g. "t1 LEFT JOIN t2 ON t1.a=t2.b
  *	 WHERE t2.d > 20" -> the "t2.d > 20" term).  These are evaluated AFTER
  *	 null-padding by the parent buildlist's after_join_pred during the second
- *	 scan.  The outer hash-join probe applies proc->residual_pred to the final
+ *	 scan.  The outer hash-join probe applies the residual (the HASHJOIN node's
+ *	 after_join_pred) to the final
  *	 (matched or null-padded) tuple with the same semantics, so the eligible
  *	 ones can be evaluated inside the probe loop instead.
  *
@@ -890,13 +891,20 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   /* residual predicate: two-input residual conditions (incl. non-equi joins) pushed into the probe loop.
    * The referenced columns are fetched into val_descr through proc->outer/inner.regu_list_pred, whose
-   * coverage was extended for these terms in qo_init_projection_info. */
+   * coverage was extended for these terms in qo_init_projection_info.
+   *
+   * Store the residual on the HASHJOIN node's own after_join_pred slot.  The HASHJOIN node sits on the
+   * parent's aptr_list, has no spec_list, and never runs the generic scan loop, so this xasl-level slot
+   * is otherwise unused on it.  It is consumed exclusively by the probe-loop evaluation in
+   * query_hash_join.c (hjoin_init_manager copies it into HASHJOIN_MANAGER.residual_pred).  Invariant: a
+   * HASHJOIN node must never gain a spec_list / scan-loop execution, or the generic scan loop would
+   * double-evaluate after_join_pred alongside the probe (asserted in hjoin_init_manager). */
   if (!bitset_is_empty (residual_terms))
     {
       PT_NODE *probe_pred_pt = make_pred_from_bitset (env, residual_terms, is_always_true);
       if (probe_pred_pt != NULL)
 	{
-	  proc->residual_pred = pt_to_pred_expr (parser, probe_pred_pt);
+	  xasl = add_after_join_predicate (env, xasl, probe_pred_pt);
 	  parser_free_tree (parser, probe_pred_pt);
 	}
     }
@@ -6105,7 +6113,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
     }
 
   /* residual_pred columns:
-   * The residual terms pushed into the probe loop (proc->residual_pred) are evaluated through the
+   * The residual terms pushed into the probe loop (the HASHJOIN node's after_join_pred) are evaluated through the
    * outer/inner regu_list_pred, which are built from pred_list.  Add the columns referenced by
    * the probe terms to pred_list (so they are fetched into val_descr) and to plan_segs_set (so
    * they are projected into the build/probe list files and resolvable via name_list). */

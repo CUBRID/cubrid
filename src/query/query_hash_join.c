@@ -837,10 +837,15 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->join_type = merge_info->join_type;
   manager->key_cnt = merge_info->ls_column_cnt;
 
-  manager->during_join_pred = xasl->during_join_pred;
-  manager->num_parallel_threads = xasl->parallelism;
+  /* A HASHJOIN node must never gain a spec_list / scan-loop execution; if it did, the generic scan loop
+   * would double-evaluate after_join_pred alongside the probe.  The residual conditions pushed into the
+   * probe loop are stored on this node's after_join_pred slot (see make_hashjoin_proc in
+   * plan_generation.c), so this slot is consumed exclusively by the probe-loop evaluation below. */
+  assert (xasl->spec_list == NULL);
 
-  manager->residual_pred = proc->residual_pred;
+  manager->during_join_pred = xasl->during_join_pred;
+  manager->residual_pred = xasl->after_join_pred;
+  manager->num_parallel_threads = xasl->parallelism;
 
   manager->query_id = query_id;
   manager->val_descr = val_descr;

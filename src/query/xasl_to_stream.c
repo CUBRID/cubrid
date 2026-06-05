@@ -3641,14 +3641,6 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* residual_pred */
-  offset = xts_save_pred_expr (node_p->residual_pred);
-  if (offset == ER_FAILED)
-    {
-      return NULL;
-    }
-  ptr = or_pack_int (ptr, offset);
-
   /* merge_info */
   ptr = xts_process_ls_merge_info (ptr, &node_p->merge_info);
   if (ptr == NULL)
@@ -6356,9 +6348,6 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
   /* inner */
   size += (PTR_SIZE		/* Offset of inner.xasl */
 	   + PTR_SIZE);		/* Offset of inner.regu_list_pred */
-
-  /* residual_pred */
-  size += PTR_SIZE;
 
   /* merge_info */
   tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);

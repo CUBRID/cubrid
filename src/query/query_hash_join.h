@@ -389,12 +389,10 @@ typedef struct hashjoin_manager
   JOIN_TYPE join_type;
   int key_cnt;
 
-  /* Pointer to a member of XASL_NODE. */
-  PRED_EXPR *during_join_pred;
+  /* Pointers to members of XASL_NODE. */
+  PRED_EXPR *during_join_pred;	/* copy of xasl->during_join_pred */
+  PRED_EXPR *residual_pred;	/* copy of the hash join node's xasl->after_join_pred */
   int num_parallel_threads;
-
-  /* Pointer to a member of HASHJOIN_PROC_NODE. */
-  PRED_EXPR *residual_pred;
 
   /* Pointer to a member of XASL_STATE. */
   QUERY_ID query_id;
