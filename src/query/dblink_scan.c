@@ -404,7 +404,13 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
   unsigned char type;
 
   value = &dbval->data;
+  /* A typed NULL (e.g. NUMERIC/DATE domain with the null flag set) must be bound as NULL,
+   * not decoded through its type branch; otherwise it yields a precision-0 error or a zero date. */
   type = dbval->domain.general_info.type;
+  if (DB_IS_NULL (dbval))
+    {
+      type = DB_TYPE_NULL;
+    }
   switch (type)
     {
     case DB_TYPE_BIT:
@@ -437,8 +443,11 @@ dblink_bind_dbval_to_param (int stmt_handle, int param_index, DB_VALUE * dbval)
       u_type = CCI_U_TYPE_NUMERIC;
       value = (void *) numeric_db_value_print (dbval, num_str);
       break;
-    case DB_TYPE_DOUBLE:
     case DB_TYPE_FLOAT:
+      a_type = CCI_A_TYPE_FLOAT;
+      u_type = CCI_U_TYPE_FLOAT;
+      break;
+    case DB_TYPE_DOUBLE:
       a_type = CCI_A_TYPE_DOUBLE;
       u_type = CCI_U_TYPE_DOUBLE;
       break;
