@@ -91,6 +91,7 @@ static INT64 saved_log_fpos = 0;
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
+static void cas_fwrite_replace_newline (FILE * fp, const char *str);
 static INT64 cas_ftell (FILE * stream);
 static int cas_fseek (FILE * stream, INT64 offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
@@ -781,6 +782,16 @@ cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_in
 static void
 cas_fprintf_password (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->pwd_info_ptr != NULL && hide_pwd_info_ptr->used == 0)
+    {
+      /* 'used' is reset to 0 by INIT_HIDE_PASSWORD_INFO() in parser_create_parser()
+       * and incremented by password_add_offset() in csql_grammar.y for each password found while parsing.
+       * A zero value means the statement was already scanned and has no password,
+       * so write the SQL directly without the printf machinery. */
+      cas_fwrite_replace_newline (fp, query);
+      return;
+    }
+
   password_fprintf (fp, query, hide_pwd_info_ptr, cas_fprintf);
 }
 
@@ -801,19 +812,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 	}
       else
 	{
-	  char *s;
-
-	  for (s = query; *s; s++)
-	    {
-	      if (*s == '\n' || *s == '\r')
-		{
-		  cas_fputc (' ', log_fp);
-		}
-	      else
-		{
-		  cas_fputc (*s, log_fp);
-		}
-	    }
+	  cas_fwrite_replace_newline (log_fp, query);
 	}
 
       if (newline)
@@ -1289,6 +1288,36 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
   result = fwrite (ptr, size, nmemb, stream);
 
   return result;
+}
+
+/*
+ * cas_fwrite_replace_newline () -
+ *   Write a string, replacing embedded newlines with spaces so the SQL stays on one log line.
+ *   strcspn () finds each newline-free run, which is written in a single cas_fwrite ()
+ *   instead of one call per character.
+ *
+ * note:
+ *   This is a byte-level scan rather than a SQL parse,
+ *   so newlines inside string literals are also replaced.
+ */
+static void
+cas_fwrite_replace_newline (FILE * fp, const char *str)
+{
+  while (*str)
+    {
+      size_t run = strcspn (str, "\r\n");
+
+      if (run > 0)
+	{
+	  cas_fwrite (str, run, 1, fp);
+	  str += run;
+	}
+      if (*str)
+	{
+	  cas_fputc (' ', fp);
+	  str++;
+	}
+    }
 }
 
 static INT64
