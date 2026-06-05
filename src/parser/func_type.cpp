@@ -870,7 +870,7 @@ namespace func_type
 	      {
 		if ((PT_IS_SIMPLE_CHAR_STRING_TYPE (arg1->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg2->type_enum)) ||
 		    (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg2->type_enum) && PT_IS_NATIONAL_CHAR_STRING_TYPE (arg1->type_enum)) ||
-		    (PT_IS_LOB_TYPE (arg1->type_enum) || PT_IS_LOB_TYPE (arg2->type_enum)))
+		    (PT_IS_LOB_FAMILY_TYPE (arg1->type_enum) || PT_IS_LOB_FAMILY_TYPE (arg2->type_enum)))
 		  {
 		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
 				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
@@ -1653,7 +1653,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  break;
 	}
 
-      if (PT_IS_LOB_TYPE (arg_type) || PT_IS_LOB_TYPE (sep_type))
+      if (PT_IS_LOB_FAMILY_TYPE (arg_type) || PT_IS_LOB_FAMILY_TYPE (sep_type))
 	{
 	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
 		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));

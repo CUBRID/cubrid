@@ -21610,60 +21610,37 @@ primitive_type
 	| BLOB_
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | BLOB_);
 
+			/* BLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
+			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
+			 * Server uses LANG_SYS_CODESET (createdb codeset) at runtime. */
 			container_2 ctn;
 			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
 			if (dt)
 			  {
 			    dt->type_enum = PT_TYPE_BLOB;
-
 			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
-
-			    dt->info.data_type.units = -1;          /* character set is not allowed */
-			    dt->info.data_type.collation_id = LANG_COLL_DEFAULT;   /* collation is not supported */
-			    dt->info.data_type.has_cs_spec = false;
-			    dt->info.data_type.has_coll_spec = false;
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_BLOB), dt);
 			$$ = ctn;
 
 		DBG_PRINT}}
-	| CLOB_ opt_charset
-		{{
+	| CLOB_
+		{{ DBG_TRACE_GRAMMAR(primitive_type, | CLOB_);
+
+			/* CLOB: inline storage capped at DB_MAX_LOB_PRECISION (1 GiB).
+			 * codeset / collation slots are not used — mirrors BFILE/CFILE.
+			 * Server uses LANG_SYS_CODESET (createdb codeset) at runtime. */
 			container_2 ctn;
 			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
-			PT_NODE *charset_node = $2;
 			if (dt)
 			  {
-			    int charset, coll_id;
-
 			    dt->type_enum = PT_TYPE_CLOB;
-
 			    dt->info.data_type.precision = DB_MAX_LOB_PRECISION;
-
-			    /* CLOB allows only CHARACTER SET, collation is not supported */
-			    if (pt_check_grammar_charset_collation
-				  (this_parser, charset_node, NULL, &charset, &coll_id) == NO_ERROR)
-			      {
-				dt->info.data_type.units = charset;     /* storage character set */
-			      }
-			    else
-			      {
-				dt->info.data_type.units = -1;         /* no charset specified */
-			      }
-
-			    dt->info.data_type.collation_id = LANG_COLL_DEFAULT;     /* collation is not supported */
-			    dt->info.data_type.has_cs_spec = (charset_node != NULL);
-			    dt->info.data_type.has_coll_spec = false;
 			  }
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_CLOB), dt);
 			$$ = ctn;
 
-			if (charset_node)
-			  {
-			    parser_free_node (this_parser, charset_node);
-			  }
-
-		}}
+		DBG_PRINT}}
 	| class_name opt_identity
 		{{ DBG_TRACE_GRAMMAR(primitive_type, | class_name opt_identity );
 
@@ -25155,7 +25132,9 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if(typ == PT_TYPE_BFILE || typ == PT_TYPE_CFILE || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
+                        if (typ == PT_TYPE_BFILE || typ == PT_TYPE_CFILE
+                            || typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB
+                            || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
                                 PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));

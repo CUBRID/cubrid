@@ -786,7 +786,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    {
 	      pt_desired_type = p->type_enum;
 
-	      if (pt_desired_type == PT_TYPE_BFILE || pt_desired_type == PT_TYPE_CFILE)
+	      if (PT_IS_LOB_FAMILY_TYPE (pt_desired_type))
 		{
 		  error = ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 		  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
@@ -12679,7 +12679,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
   /* NOT NULL : gaining is not always allowed */
   if (is_att_prop_set (attr_chg_prop->p[P_NOT_NULL], ATT_CHG_PROPERTY_GAINED))
     {
-      if (t == PT_TYPE_BFILE || t == PT_TYPE_CFILE)
+      if (PT_IS_LOB_FAMILY_TYPE (t))
 	{
 	  error = ER_SM_NOT_NULL_NOT_ALLOWED;
 	  *new_attempt = false;
