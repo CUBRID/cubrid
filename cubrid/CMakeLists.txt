@@ -501,6 +501,7 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -529,6 +530,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
   ${STORAGE_DIR}/ftab_set.hpp
