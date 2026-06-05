@@ -5740,6 +5740,10 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_CLOB_FROM_FILE:
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
+    case PT_BFILE_TO_BLOB:
+    case PT_BLOB_TO_BFILE:
+    case PT_CFILE_TO_CLOB:
+    case PT_CLOB_TO_CFILE:
     case PT_TYPEOF:
     case PT_INET_ATON:
     case PT_INET_NTOA:

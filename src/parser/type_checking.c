@@ -2928,6 +2928,58 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_BFILE_TO_BLOB:
+      num = 0;
+
+      /* one overload: BFILE -> BLOB */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_BFILE;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_BLOB_TO_BFILE:
+      num = 0;
+
+      /* one overload: BLOB -> BFILE */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_BLOB;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BFILE;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CFILE_TO_CLOB:
+      num = 0;
+
+      /* one overload: CFILE -> CLOB */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_CFILE;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_CLOB;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
+    case PT_CLOB_TO_CFILE:
+      num = 0;
+
+      /* one overload: CLOB -> CFILE */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_CLOB;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_CFILE;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_BLOB_TO_BIT:
       num = 0;
 
@@ -6750,6 +6802,10 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_CLOB_FROM_FILE:
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
+    case PT_BFILE_TO_BLOB:
+    case PT_BLOB_TO_BFILE:
+    case PT_CFILE_TO_CLOB:
+    case PT_CLOB_TO_CFILE:
     case PT_TYPEOF:
     case PT_INDEX_CARDINALITY:
     case PT_INCR:
@@ -8914,6 +8970,10 @@ pt_is_able_to_determine_return_type (const PT_OP_TYPE op)
     case PT_CLOB_FROM_FILE:
     case PT_CLOB_LENGTH:
     case PT_CLOB_TO_CHAR:
+    case PT_BFILE_TO_BLOB:
+    case PT_BLOB_TO_BFILE:
+    case PT_CFILE_TO_CLOB:
+    case PT_CLOB_TO_CFILE:
     case PT_TYPEOF:
     case PT_YEARF:
     case PT_MONTHF:
@@ -12057,6 +12117,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_BIT_TO_BFILE:
     case PT_CHAR_TO_BFILE:
     case PT_BFILE_FROM_FILE:
+    case PT_BLOB_TO_BFILE:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_BFILE);
       if (dt == NULL)
@@ -12103,6 +12164,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_CHAR_TO_CFILE:
     case PT_CFILE_FROM_FILE:
+    case PT_CLOB_TO_CFILE:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_CFILE);
       if (dt == NULL)
@@ -12114,6 +12176,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_BIT_TO_BLOB:
     case PT_CHAR_TO_BLOB:
     case PT_BLOB_FROM_FILE:
+    case PT_BFILE_TO_BLOB:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_BLOB);
       if (dt == NULL)
@@ -12160,6 +12223,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 
     case PT_CHAR_TO_CLOB:
     case PT_CLOB_FROM_FILE:
+    case PT_CFILE_TO_CLOB:
       assert (dt == NULL);
       dt = pt_make_prim_data_type (parser, PT_TYPE_CLOB);
       if (dt == NULL)
@@ -17318,6 +17382,54 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  return 1;
 	}
 
+    case PT_BFILE_TO_BLOB:
+      error = db_bfile_to_blob (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_BLOB_TO_BFILE:
+      error = db_blob_to_bfile (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CFILE_TO_CLOB:
+      error = db_cfile_to_clob (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_CLOB_TO_CFILE:
+      error = db_clob_to_cfile (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
     case PT_CLOB_LENGTH:
       error = db_clob_length (arg1, result);
       if (error < 0)
@@ -18318,7 +18430,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	   op == PT_BFILE_TO_BIT || op == PT_BFILE_LENGTH || op == PT_CHAR_TO_CFILE || op == PT_CFILE_TO_CHAR ||
 	   op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_BIT_TO_BLOB || op == PT_CHAR_TO_BLOB ||
 	   op == PT_BLOB_TO_BIT || op == PT_BLOB_LENGTH || op == PT_CHAR_TO_CLOB || op == PT_CLOB_TO_CHAR ||
-	   op == PT_CLOB_LENGTH || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
+	   op == PT_CLOB_LENGTH || op == PT_BLOB_TO_BFILE || op == PT_BFILE_TO_BLOB || op == PT_CLOB_TO_CFILE ||
+	   op == PT_CFILE_TO_CLOB || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_TZ_OFFSET)
     {
       goto end;
     }

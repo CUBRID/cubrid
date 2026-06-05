@@ -629,6 +629,10 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_BIT_TO_BLOB:
     case T_CHAR_TO_CLOB:
     case T_LOB_LENGTH:
+    case T_BFILE_TO_BLOB:
+    case T_BLOB_TO_BFILE:
+    case T_CFILE_TO_CLOB:
+    case T_CLOB_TO_CFILE:
       if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tpl, &peek_left) != NO_ERROR)
 	{
 	  goto error;
@@ -2358,6 +2362,54 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    {
 	      goto error;
 	    }
+	}
+
+      break;
+
+    case T_BFILE_TO_BLOB:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_bfile_to_blob (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_BLOB_TO_BFILE:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_blob_to_bfile (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_CFILE_TO_CLOB:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_cfile_to_clob (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      break;
+
+    case T_CLOB_TO_CFILE:
+      if (DB_IS_NULL (peek_left))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_clob_to_cfile (peek_left, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
 	}
 
       break;
