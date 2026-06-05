@@ -492,6 +492,9 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
       *s = '\0';
     }
 
+  /* flush before execute so the statement and binds are on disk if it hangs or crashes */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&exec_begin, NULL);
 
   ret_code =
