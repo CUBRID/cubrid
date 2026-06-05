@@ -874,9 +874,12 @@ static int heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CON
 static int heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
+static int heap_delete_home_delete_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
+static int heap_delete_relocation_delete_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
+					      const RECDES * forward_recdes);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -22683,7 +22686,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23154,7 +23157,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23177,6 +23180,21 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	}
+
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the forward
+       * REC_NEWHOME record before the destructive physical delete below removes the forward slot.
+       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID
+       * is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is
+       * reclaimed by vacuum. */
+      if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  rc = heap_delete_relocation_delete_oos (thread_p, context, &forward_recdes);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return rc;
+	    }
+	}
       /*
        * Delete forward record
        */
@@ -23186,10 +23204,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * should not be referenced anywhere in the database.
        */
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL,
+				RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23509,11 +23528,25 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the home record
+       * before the destructive physical delete below removes the slot. There is no new image on
+       * DELETE and OOS OIDs are never shared across rows, so every OOS OID is reclaimed. MVCC mode
+       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+      if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+	{
+	  error_code = heap_delete_home_delete_oos (thread_p, context);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable,
-				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23578,10 +23611,13 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
+ *   rcvindex(in): recovery index for the delete log record. Normally RVHF_DELETE; pass
+ *                 RVHF_DELETE_NEWHOME_NOTIFY_VACUUM for the MVCC remove_old_forward forward
+ *                 REC_NEWHOME delete so vacuum's forward-walk reclaims the old OOS records.
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable, LOG_LSA * undo_lsa)
+			  bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -23608,12 +23644,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
 
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, &temp_recdes, NULL);
     }
   else
     {
       /* log record descriptor */
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -24086,11 +24122,20 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 	}
 
-      /* log operation */
+      /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
+       * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
+       * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
+       * from the undo image; otherwise (non-OOS, or SA mode handled by the eager-delete path above)
+       * use the plain RVHF_DELETE — no behavior change. See ADR-0001. */
+      LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
+      if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  delete_rcvindex = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM;
+	}
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa);
+				&forward_recdes, true, &prev_version_lsa, delete_rcvindex);
 
-      /* undo lsa for SUPPLEMENT_UPDATE log 
+      /* undo lsa for SUPPLEMENT_UPDATE log
        * case : 1. relocation to home
        *        2. relocation to bigone
        *        3. relocation to relocation (new forward recdes doesn't fit in existing forward page) */
@@ -24218,6 +24263,11 @@ for (const OID & candidate:oids)
  * Compares the OOS OID lists from the pre-update (home) recdes and the new recdes. OIDs present
  * only in the old list are deleted; OIDs that appear in both (same physical OOS referenced before
  * and after) are preserved. Caller guards on home_recdes.type == REC_HOME and OOS flag set.
+ *
+ * Despite historical naming ("SA_MODE"), the !is_mvcc_op gate also fires for SERVER_MODE updates
+ * to MVCC-disabled classes (catalog tables), so this code can execute server-side too. Caller MUST
+ * abort the transaction on error so oos_delete's per-chunk undo records replay any partial deletes
+ * during rollback; otherwise the home recdes will reference already-deleted OOS chunks.
  *
  * Strict failure handling: heap_recdes_compute_oos_flag is robust, so a missing OOS file or a failed
  * OID extraction at this point indicates real corruption — log and propagate.
@@ -24383,6 +24433,152 @@ for (const OID & old_oid:old_oos_oids)
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
 			"SA_MODE eager OOS cleanup (relocation): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_delete_home_delete_oos () - Eagerly delete the OOS records of a DELETEd REC_HOME row.
+ *
+ * Called from heap_delete_home on the non-MVCC branch (is_mvcc_op == false) before the destructive
+ * heap_log_delete_physical / heap_delete_physical. MVCC mode keeps the old OOS alive for concurrent
+ * readers and lets vacuum reclaim it later; SA_MODE has no readers and no vacuum, so deletion happens
+ * here or not at all.
+ *
+ * Unlike the UPDATE siblings there is no new image on DELETE, and OOS OIDs are freshly allocated per
+ * heap record (never shared across rows), so EVERY OOS OID referenced by the home record is deleted
+ * unconditionally — no overlap / still-referenced check is needed (see ADR-0001 "delete-all-safe").
+ *
+ * Despite the historical "SA_MODE" naming on the siblings, the !is_mvcc_op gate also fires for
+ * SERVER_MODE deletes of MVCC-disabled classes (catalog tables), so this code can execute server-side
+ * too. Caller MUST abort the transaction on error so oos_delete's per-chunk undo records replay any
+ * partial deletes during rollback; otherwise the home recdes will reference already-deleted OOS chunks.
+ *
+ * Strict failure handling: a missing OOS file or a failed OID extraction at this point indicates real
+ * corruption — log and propagate.
+ */
+static int
+heap_delete_home_delete_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  OID_VECTOR old_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete): heap_recdes_get_oos_oids(home) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, context->home_recdes.length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+for (const OID & old_oid:old_oos_oids)
+    {
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup (delete): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_delete_relocation_delete_oos () - Eager OOS cleanup for a DELETEd relocated (REC_RELOCATION) row.
+ *
+ * Called from heap_delete_relocation on the non-MVCC branch (is_mvcc_op == false) before the
+ * destructive forward heap_log_delete_physical / heap_delete_physical. Mirrors
+ * heap_delete_home_delete_oos but extracts the OOS OIDs from the forward REC_NEWHOME record, because
+ * for REC_RELOCATION the actual data (and OOS attributes) live on the forward page; the home slot
+ * holds only an 8-byte forwarding OID.
+ *
+ * As with the REC_HOME case there is no new image on DELETE and OOS OIDs are never shared across rows,
+ * so EVERY OOS OID referenced by the forward record is deleted unconditionally (ADR-0001
+ * "delete-all-safe").
+ *
+ * Despite the historical "SA_MODE" naming, the !is_mvcc_op gate also fires for SERVER_MODE deletes of
+ * MVCC-disabled classes (catalog tables), so this code can execute server-side too. Caller MUST abort
+ * the transaction on error so oos_delete's per-chunk undo records replay any partial deletes during
+ * rollback; otherwise the forward recdes will reference already-deleted OOS chunks.
+ *
+ * Strict failure handling: a missing OOS file or a failed OID extraction at this point indicates real
+ * corruption — log and propagate.
+ */
+static int
+heap_delete_relocation_delete_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
+				   const RECDES * forward_recdes)
+{
+  OID_VECTOR old_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (forward_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete relocation): heap_recdes_get_oos_oids(forward) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, fwd_rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, forward_recdes->length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete relocation): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+for (const OID & old_oid:old_oos_oids)
+    {
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup (delete relocation): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
 			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
 			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
 			VFID_AS_ARGS (&context->hfid.vfid),
