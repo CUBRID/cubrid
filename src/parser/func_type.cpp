@@ -1595,6 +1595,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  break;
 	}
 
+      if (PT_IS_LOB_FAMILY_TYPE (arg_type) || PT_IS_LOB_FAMILY_TYPE (sep_type))
 	{
 	  PT_ERRORmf3 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
 		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
