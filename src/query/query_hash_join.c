@@ -838,8 +838,9 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->key_cnt = merge_info->ls_column_cnt;
 
   manager->during_join_pred = xasl->during_join_pred;
-  manager->residual_pred = proc->residual_pred;
   manager->num_parallel_threads = xasl->parallelism;
+
+  manager->residual_pred = proc->residual_pred;
 
   manager->query_id = query_id;
   manager->val_descr = val_descr;
