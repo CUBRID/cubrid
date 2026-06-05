@@ -198,6 +198,7 @@ namespace cubconn::connection
     context (context &&) noexcept = delete;
     context &operator= (context &&) noexcept = delete;
 
+    bool prepare ();
     void reset ();
   };
 }

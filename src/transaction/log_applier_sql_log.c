@@ -415,6 +415,7 @@ sl_write_update_sql (DB_OTMPL * inst_tp, DB_VALUE * key)
 	{
 	  return ER_FAILED;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&next_value);
 
       string_buffer serial_name_strbuf;
 
