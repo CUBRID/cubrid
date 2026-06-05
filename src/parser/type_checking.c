@@ -9150,33 +9150,19 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
     case PT_ESTIMATED_DATA_FREE:
-      /* Qualify a bare constant class-name literal with the current schema (e.g. 't1' -> 'user1.t1'),
-       * the same way a normal table reference is resolved.  Only a dot-less literal shorter than the
-       * identifier limit is handled here: sm_user_specified_name () assumes a validated identifier and
-       * would trip its length/format asserts -- or overrun its fixed buffer in a release build -- on an
-       * arbitrary value.  An already-qualified ('owner.name'), malformed, or over-length value is left
-       * unchanged for the server, which lower-cases and resolves it (or returns NULL) on its own. */
       if (PT_IS_VALUE_NODE (arg1) && PT_IS_CHAR_STRING_TYPE (arg1->type_enum)
-	  && arg1->info.value.data_value.str != NULL
-	  && arg1->info.value.data_value.str->length < DB_MAX_IDENTIFIER_LENGTH
-	  && memchr (PT_VALUE_GET_BYTES (arg1), '.', arg1->info.value.data_value.str->length) == NULL)
+	  && arg1->info.value.data_value.str != NULL && arg1->info.value.data_value.str->length < DB_MAX_CLASS_LENGTH)
 	{
+	  const char *name = (const char *) PT_VALUE_GET_BYTES (arg1);
 	  char realname[DB_MAX_IDENTIFIER_LENGTH];
 
-	  if (sm_user_specified_name ((const char *) PT_VALUE_GET_BYTES (arg1), realname,
-				      DB_MAX_IDENTIFIER_LENGTH) != NULL)
+	  if (strchr (name, '.') == NULL && sm_user_specified_name (name, realname, DB_MAX_IDENTIFIER_LENGTH) != NULL)
 	    {
 	      arg1->info.value.data_value.str = pt_append_bytes (parser, NULL, realname, strlen (realname));
+	      /* text and db_value still hold the old name; clear so both are refreshed from the qualified one */
 	      arg1->info.value.text = NULL;
-	      if (arg1->info.value.db_value.need_clear)
-		{
-		  pr_clear_value (&arg1->info.value.db_value);
-		}
-	      if (arg1->info.value.db_value_is_initialized)
-		{
-		  arg1->info.value.db_value_is_initialized = false;
-		  pt_value_to_db (parser, arg1);
-		}
+	      arg1->info.value.db_value_is_initialized = false;
+	      pt_value_to_db (parser, arg1);
 	    }
 	}
       break;
