@@ -4038,6 +4038,13 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		   * same regu_list_pred with residual_pred (see pred_list de-dup). Both probe and build vfetch_to values
 		   * are already current, so skip both fetches. Otherwise fetch the build side per candidate and the
 		   * probe side once per probe row.
+		   *
+		   * This skip is correct ONLY because during_join_pred and residual_pred share a single regu_list_pred
+		   * per side: qo_init_projection_info builds ONE deduped pred_list per side covering the columns of both
+		   * predicates, and fetch_val_list (called for during_join_pred) loads the ENTIRE list -- so residual_pred's
+		   * columns are guaranteed current too. If these per-side pred_lists are ever split so that during_join_pred
+		   * and residual_pred fetch different regu lists, this skip MUST be removed and both fetches restored.
+		   * The parallel mirror lives in px_hash_join_task_manager.cpp (execute_outer); keep both in sync.
 		   */
 		  if (context->during_join_pred == NULL)
 		    {

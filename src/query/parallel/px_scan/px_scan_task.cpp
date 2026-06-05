@@ -605,7 +605,13 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
-	/* serial reference (query_executor.c) evaluates after_join_pred before if_pred. */
+	/* SYNC GUARD: this qualification ladder MUST evaluate every predicate kind that px_scan_checker.cpp admits
+	 * for parallel scan, in the same serial order query_executor.c uses (after_join_pred then if_pred). If the
+	 * checker admits a predicate that is not evaluated here, results are silently wrong -- this exact class of bug
+	 * was fixed for after_join_pred. Keep this ladder and the pred-check clusters in px_scan_checker.cpp in
+	 * lockstep.
+	 *
+	 * serial reference (query_executor.c) evaluates after_join_pred before if_pred. */
 	if (m_xasl->after_join_pred)
 	  {
 	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);

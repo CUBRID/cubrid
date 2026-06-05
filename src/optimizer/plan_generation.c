@@ -2857,7 +2857,13 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
        * parent if_pred/after_join_pred, so each is evaluated in exactly one place (the probe).
        * sarged_terms and after_join_terms are disjoint by construction (query_planner.c builds
        * sarged_terms by subtracting sarg_out_terms, which includes after_join_terms), so subtracting
-       * the combined set from each source removes exactly the terms collected from it. */
+       * the combined set from each source removes exactly the terms collected from it.
+       *
+       * SINGLE-INVOCATION INVARIANT: this subtraction permanently mutates the plan's bitsets, so
+       * gen_hashjoin must run at most once per QO_PLAN.  This holds today: qo_to_xasl runs exactly
+       * once on the chosen plan, and the hint-retry path rebuilds a fresh QO_PLAN rather than reusing
+       * this one.  A second invocation on the same plan would find sarged_terms/after_join_terms
+       * already drained, collect nothing, and emit a hash join WITHOUT its residual predicate. */
       bitset_difference (&(plan->sarged_terms), &residual_terms);
       bitset_difference (&(plan->plan_un.join.after_join_terms), &residual_terms);
       bitset_difference (pred_set, &residual_terms);
@@ -6088,6 +6094,18 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	  bitset_union (&plan_segs_set, &QO_TERM_SEGS (term));
 	  bitset_union (&residual_segs_set, &QO_TERM_SEGS (term));
 	}
+
+      /* INVARIANT: every segment referenced by a pushed residual term must already be projected by one of the two
+       * join inputs. These terms previously fed the parent if/after_join_pred sitting directly above this join, so
+       * their columns are guaranteed to be projected out of the outer or inner list file. Below we split
+       * residual_segs_set against each side's projected_segs and emit only the PT_NAME segments found there; if a
+       * residual segment belonged to neither side it would be silently dropped (never fetched into val_descr), and
+       * the residual predicate would evaluate against a stale/NULL value. Assert that nothing is dropped: every
+       * residual segment is a subset of (outer projected_segs UNION inner projected_segs). during_segs_set is dead
+       * here (last used above) and reused as scratch. */
+      bitset_assign (&during_segs_set, &outer_plan->info->projected_segs);
+      bitset_union (&during_segs_set, &inner_plan->info->projected_segs);
+      assert (bitset_subset (&during_segs_set, &residual_segs_set));
 
       /* outer columns */
       bitset_assign (&temp_segs_set, &residual_segs_set);
