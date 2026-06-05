@@ -9162,7 +9162,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	      /* text and db_value still hold the old name; clear so both are refreshed from the qualified one */
 	      arg1->info.value.text = NULL;
 	      arg1->info.value.db_value_is_initialized = false;
-	      pt_value_to_db (parser, arg1);
+	      (void) pt_value_to_db (parser, arg1);
 	    }
 	}
       break;
