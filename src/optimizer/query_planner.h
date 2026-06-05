@@ -222,7 +222,6 @@ struct qo_plan
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
       BITSET hash_terms;	/* hash_terms for hash list scan */
-      BITSET residual_terms;	/* residual terms pushed into the hash-join probe loop (after_join_pred) */
     } join;
 
     struct

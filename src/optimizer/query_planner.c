@@ -1488,14 +1488,6 @@ qo_plan_print_outer_join_terms (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "after:");
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.after_join_terms), f);
     }
-  /* Residual terms pushed into the hash-join probe loop (the HASHJOIN node's after_join_pred).  These were removed from
-   * sarged_terms / after_join_terms by gen_hashjoin, so without this line they would be invisible in the
-   * plan dump.  Print them so a DBA can see where each residual predicate is evaluated. */
-  if (!bitset_is_empty (&(plan->plan_un.join.residual_terms)))
-    {
-      fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "residual:");
-      qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.residual_terms), f);
-    }
 }
 
 
@@ -2980,7 +2972,6 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   bitset_init (&(plan->plan_un.join.during_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.after_join_terms), info->env);
   bitset_init (&(plan->plan_un.join.hash_terms), info->env);
-  bitset_init (&(plan->plan_un.join.residual_terms), info->env);
 
   /* set join terms */
   bitset_assign (&(plan->plan_un.join.join_terms), join_terms);
@@ -3083,7 +3074,6 @@ qo_join_free (QO_PLAN * plan)
   bitset_delset (&(plan->plan_un.join.during_join_terms));
   bitset_delset (&(plan->plan_un.join.after_join_terms));
   bitset_delset (&(plan->plan_un.join.hash_terms));
-  bitset_delset (&(plan->plan_un.join.residual_terms));
 }
 
 /*

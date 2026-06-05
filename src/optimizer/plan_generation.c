@@ -2863,27 +2863,18 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   qo_collect_hashjoin_after_join_residual_terms (env, plan, &residual_terms);
   if (!bitset_is_empty (&residual_terms))
     {
-      /* Prune the pushed terms from their sources and from the local pred_set copy that feeds the
-       * parent if_pred/after_join_pred, so each is evaluated in exactly one place (the probe).
-       * sarged_terms and after_join_terms are disjoint by construction (query_planner.c builds
-       * sarged_terms by subtracting sarg_out_terms, which includes after_join_terms), so subtracting
-       * the combined set from each source removes exactly the terms collected from it.
-       *
-       * SINGLE-INVOCATION INVARIANT: this subtraction permanently mutates the plan's bitsets, so
-       * gen_hashjoin must run at most once per QO_PLAN.  This holds today: qo_to_xasl runs exactly
-       * once on the chosen plan, and the hint-retry path rebuilds a fresh QO_PLAN rather than reusing
-       * this one.  A second invocation on the same plan would find sarged_terms/after_join_terms
-       * already drained, collect nothing, and emit a hash join WITHOUT its residual predicate. */
-      bitset_difference (&(plan->sarged_terms), &residual_terms);
-      bitset_difference (&(plan->plan_un.join.after_join_terms), &residual_terms);
+      /* Prune the pushed terms from the LOCAL pred_set copy only, so the parent list scan's
+       * if_pred / after_join_pred (built from pred_set in init_list_scan_proc below) skip the
+       * pushed terms while the probe loop evaluates them, giving exactly one evaluation site.
+       * The plan's own sarged_terms / after_join_terms bitsets are intentionally left untouched:
+       * the parent predicate for this hash-join node is built solely from pred_set, not from the
+       * plan bitsets, so no double evaluation can occur.  pred_set already holds the union of
+       * sarged_terms and (for outer joins) after_join_terms, so subtracting the combined
+       * residual_terms removes exactly the collected terms.  Leaving the plan bitsets immutable
+       * means the dump shows these terms in their original sargs: / after: sections, and the
+       * probe-time evaluation site is observable through the PROBE row counts in the server trace. */
       bitset_difference (pred_set, &residual_terms);
     }
-
-  /* Record the pushed terms on the plan so the plan dump / trace can show where the residual predicate is
-   * evaluated.  We have just removed these terms from sarged_terms / after_join_terms; qo_plan_dump runs
-   * AFTER this xasl-gen step (pt_to_buildlist_proc -> qo_to_xasl -> gen_hashjoin), so without this record
-   * the pushed predicate would be invisible in every plan/trace section. */
-  bitset_assign (&(plan->plan_un.join.residual_terms), &residual_terms);
 
   switch (plan->parallel_opt_use)
     {
