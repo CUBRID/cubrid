@@ -152,6 +152,8 @@ struct t_srv_handle
 
   /* CGW fields */
   void *cgw_hstmt;
+  void *cgw_col_binding;
+  void *cgw_col_binding_buff;
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;
