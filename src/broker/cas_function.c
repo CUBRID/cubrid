@@ -1044,6 +1044,9 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   cas_log_write (query_seq_num_next_value (), true, "schema_info %s %s %s %d", get_schema_type_str (schema_type),
 		 (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
 
+  /* flush before schema_info so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   srv_h_id = ux_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
 
   cas_log_write (query_seq_num_current_value (), false, "schema_info srv_h_id %d", srv_h_id);
@@ -1084,6 +1087,9 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
     }
 
   cas_log_write (0, true, "oid_put");
+
+  /* flush before oid_put so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
 
   ux_oid_put (argc, argv, net_buf);
 
@@ -1166,6 +1172,8 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   if (cmd == CCI_OID_DROP)
     {
       cas_log_write (0, true, "oid drop");
+      /* flush before the OID operation so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1176,6 +1184,8 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_IS_INSTANCE)
     {
       cas_log_write (0, true, "oid is_instance");
+      /* flush before the OID operation so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
       if (obj == NULL)
 	{
 	  err_code = 0;
@@ -1198,6 +1208,8 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_LOCK_READ)
     {
       cas_log_write (0, true, "oid lock_read");
+      /* flush before the OID operation so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1208,6 +1220,8 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_LOCK_WRITE)
     {
       cas_log_write (0, true, "oid lock_write");
+      /* flush before the OID operation so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1218,6 +1232,8 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_CLASS_NAME)
     {
       cas_log_write (0, true, "oid get_class_name");
+      /* flush before the OID operation so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1497,6 +1513,9 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %d %s", srv_h_id,
 		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
+  /* flush before next_result so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   ux_next_result (srv_handle, flag, net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -1710,6 +1729,9 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
 
+  /* flush before cursor_close so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   ux_cursor_close (srv_handle);
 
   return FN_KEEP_CONN;
@@ -1736,6 +1758,9 @@ fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_update srv_h_id %d, cursor %d", srv_h_id,
 		 cursor_pos);
+
+  /* flush before cursor_update so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
 
   ux_cursor_update (srv_handle, cursor_pos, argc, argv, net_buf);
 
@@ -2013,6 +2038,9 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_generated_keys %d", srv_h_id);
 
+  /* flush before get_generated_keys so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   ux_get_generated_keys (srv_handle, net_buf);
 
   return FN_KEEP_CONN;
@@ -2049,6 +2077,10 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
     }
 
   cas_log_write (0, false, "lob_new lob_type=%d", lob_type);
+
+  /* flush before the LOB operation so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_new (lob_type, net_buf);
@@ -2090,6 +2122,10 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
 
   elo_debug = db_get_elo (&lob_dbval);
   cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
+
+  /* flush before the LOB operation so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_write (&lob_dbval, offset, data_length, data_buf, net_buf);
@@ -2131,6 +2167,10 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   elo_debug = db_get_elo (&lob_dbval);
   cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
+
+  /* flush before the LOB operation so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&lob_new_begin, NULL);
 
   err_code = ux_lob_read (&lob_dbval, offset, data_length, net_buf);
