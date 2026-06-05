@@ -7912,10 +7912,6 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
 {
 
 
-  // HOTFIX!
-  // todo: this function is buggy. by doing this, we give up unloaddb.
-  return S_SUCCESS;
-
   if (!heap_recdes_contains_oos (context->recdes_p))
     {
       return S_SUCCESS;
@@ -7971,10 +7967,18 @@ heap_record_replace_oos_oids_with_values_if_exists (THREAD_ENTRY * thread_p, HEA
     }
 
   // return OOS value-expanded record to caller
-  // TODO: what if OOS-expanded record doesn't fit in original area (2 * DB_PAGESIZE)?
+  // If OOS-expanded record doesn't fit in original area, reallocate through scan_cache.
   if (context->recdes_p->area_size < (int) build_record.get_size ())
     {
-      return S_DOESNT_FIT;
+      if (context->scan_cache != NULL)
+	{
+	  context->scan_cache->assign_recdes_to_area (*context->recdes_p, build_record.get_size ());
+	}
+
+      if (context->recdes_p->area_size < (int) build_record.get_size ())
+	{
+	  return S_DOESNT_FIT;
+	}
     }
 
   if (context->ispeeking == PEEK)
