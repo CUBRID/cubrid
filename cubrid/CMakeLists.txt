@@ -319,6 +319,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
   ${OBJECT_DIR}/schema_system_catalog.cpp
   ${OBJECT_DIR}/transform.c
   )
@@ -360,25 +361,45 @@ set(PARALLEL_HASH_JOIN_HEADERS
   ${PARALLEL_HASH_JOIN_DIR}/px_hash_join.hpp
 )
 
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.cpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.cpp
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_drain_fsm.cpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_slot_walker.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_handler.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_join_info.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_task.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_input_handler_ftabs.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_handler.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_result_type.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_slot_iterator.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_join_info.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_task.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_trace_handler.hpp
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_heap.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_list.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_input_handler_index.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_key_range_list.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_page_dispatcher.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_chain_pool.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_overflow_drain_fsm.hpp
+  ${PARALLEL_SCAN_DIR}/index/px_scan_index_leaf_slot_walker.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_handler.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_result_type.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_join_info.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_type_enum.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan.hpp
   )
 
 set(PARALLEL_QUERY_SOURCES
@@ -398,7 +419,6 @@ set(PARALLEL_QUERY_HEADERS
   ${PARALLEL_QUERY_DIR}/px_thread_safe_queue.hpp
   ${PARALLEL_QUERY_DIR}/px_interrupt.hpp
   ${PARALLEL_QUERY_DIR}/px_parallel.hpp
-  ${PARALLEL_QUERY_DIR}/px_ftab_set.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -497,6 +517,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
@@ -512,6 +533,7 @@ set(STORAGE_SOURCES
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/double_write_buffer.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
   ${STORAGE_DIR}/vpid.hpp
 )
@@ -641,7 +663,7 @@ set (CUBRID_LIB_SOURCES
   ${TRANSACTION_SOURCES}
   ${XASL_SOURCES}
   ${PARALLEL_HASH_JOIN_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   )
@@ -661,7 +683,7 @@ set (CUBRID_LIB_HEADERS
   ${XASL_HEADERS}
   ${LOADDB_HEADERS}
   ${PARALLEL_HASH_JOIN_HEADERS}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   )

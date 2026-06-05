@@ -1034,9 +1034,10 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   /* Now calculate next value */
   if (nth > 1)
     {
-      numeric_coerce_int_to_num (nth, num);
-      db_make_numeric (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      numeric_coerce_int_to_num (nth, num, NULL);
+      db_make_numeric (&tmp_val, num, DB_MAX_FIXED_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false, false);
       numeric_db_value_mul (inc_val, &tmp_val, &add_val);
+      FLOAT_TO_FIXED_NUMERIC (&add_val);
     }
   else
     {
@@ -1051,6 +1052,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  return ret;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
       ret = numeric_db_value_compare (cur_val, &tmp_val, &cmp_result);
       if (ret != NO_ERROR)
 	{
@@ -1073,6 +1075,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
       else
 	{
 	  (void) numeric_db_value_add (cur_val, &add_val, result_val);
+	  FLOAT_TO_FIXED_NUMERIC (result_val);
 	}
     }
   else
@@ -1082,6 +1085,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  return ret;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
       ret = numeric_db_value_compare (cur_val, &tmp_val, &cmp_result);
       if (ret != NO_ERROR)
 	{
@@ -1104,6 +1108,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
       else
 	{
 	  (void) numeric_db_value_add (cur_val, &add_val, result_val);
+	  FLOAT_TO_FIXED_NUMERIC (result_val);
 	}
     }
 

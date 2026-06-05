@@ -1013,7 +1013,7 @@ trigger_to_object (TR_TRIGGER * trigger)
       goto error;
     }
 
-  obt_p = dbt_create_object_internal (class_p);
+  obt_p = dbt_create_object_internal (class_p, false);
   if (obt_p == NULL)
     {
       goto error;

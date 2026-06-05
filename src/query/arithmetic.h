@@ -66,6 +66,7 @@ extern int db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB
  */
 extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
+extern int db_collection_to_string_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
 
 // json functions
