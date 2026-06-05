@@ -2407,6 +2407,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (IS_DBLINK_CURSOR_REWIND_XASL (xasl_p))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_DBLINK_CURSOR_REWIND);
+	  fprintf (foutput, "%sXASL_DBLINK_CURSOR_REWIND", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (XASL_IS_FLAGED (xasl_p, XASL_TOP_MOST_XASL))
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_TOP_MOST_XASL);

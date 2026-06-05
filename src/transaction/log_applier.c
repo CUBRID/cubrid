@@ -51,6 +51,7 @@
 #include "log_lsa.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "oid.h"
 #include "oos_file.hpp"
 #include "db_value_printer.hpp"
 #include "db.h"
@@ -59,6 +60,7 @@
 #include "network_interface_cl.h"
 #include "schema_system_catalog_constants.h"
 #include "file_io.h"
+#include "memory_alloc.h"
 #include "memory_hash.h"
 #include "schema_manager.h"
 #include "log_applier_sql_log.h"
@@ -252,6 +254,16 @@ struct la_item
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
 
+typedef struct la_oos_cache_entry LA_OOS_CACHE_ENTRY;
+struct la_oos_cache_entry
+{
+  LA_OOS_CACHE_ENTRY *next;
+  TRANID tranid;		/* tx scope guard against cross-tx OID reuse across SYSOP_END */
+  OID head_oid;			/* hash key: master's chunk_index=0 OID */
+  int length;			/* payload bytes (no OOS header prefix) */
+  char data[1];			/* flexible array — entry + payload share one alloc */
+};
+
 typedef struct la_apply LA_APPLY;
 struct la_apply
 {
@@ -423,6 +435,25 @@ LA_INFO la_Info;
 
 LA_RECDES_POOL la_recdes_pool;
 
+/* OOS sql.log value cache: one entry per OOS column value, keyed by master's
+ * head OID (chunk_index=0).  Linked list owns memory; hash gives O(1) lookup.
+ * Lazily allocated; cleared (not destroyed) on tx boundaries so the bucket
+ * array survives.  Single-threaded — see CBRD-26618 TODO below for parallel
+ * applylogdb migration plan.  Cache miss is treated as an invariant
+ * violation: la_resolve_oos_value_for_sql_log returns ER_FAILED so the
+ * operator sees a loud error rather than a silently synthesized placeholder. */
+#define LA_OOS_CACHE_HASH_SIZE  1024
+
+/* TODO(CBRD-26618): when parallel applylogdb is introduced, migrate these
+ * globals to per-LA_APPLY (or per-worker) state.  The tranid filter alone is
+ * NOT sufficient under concurrency — two workers processing different
+ * transactions can interleave la_cache_oos_value / la_lookup_oos_value /
+ * la_clear_oos_cache and race on the linked list and MHT_TABLE. */
+static LA_OOS_CACHE_ENTRY *la_oos_cache_head = NULL;
+static LA_OOS_CACHE_ENTRY *la_oos_cache_tail = NULL;
+static MHT_TABLE *la_oos_cache_hash = NULL;
+static TRANID la_oos_current_tranid = NULL_TRANID;
+
 static bool la_applier_need_shutdown = false;
 static bool la_applier_shutdown_by_signal = false;
 static char la_slave_db_name[DB_MAX_IDENTIFIER_LENGTH + 1];
@@ -501,6 +532,12 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
+static int la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size);
+static int la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length);
+static LA_OOS_CACHE_ENTRY *la_lookup_oos_value (const OID * head_oid);
+static void la_clear_oos_cache (void);
+static int la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att,
+					     DB_VALUE * value);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -517,7 +554,7 @@ static int la_get_next_update_log (LOG_RECORD_HEADER * prev_lrec, LOG_PAGE * pgp
 				   char **data, int *d_length);
 static int la_get_relocation_recdes (LOG_RECORD_HEADER * lrec, LOG_PAGE * pgptr, unsigned int match_rcvindex,
 				     void **logs, char **rec_type, RECDES * recdes);
-static int la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes);
+static int la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out);
 static int la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *rcvindex, char *rec_type,
 			  bool is_mvcc_class);
 static void la_log_apply_error (const char *op_name, int err_id, LA_ITEM * item, int error);
@@ -528,7 +565,8 @@ static int la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDE
 static int la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_apply_delete_log (LA_ITEM * item);
 static int la_apply_update_log (LA_ITEM * item);
-static int la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item);
+static int la_apply_insert_log (LA_ITEM * item);
+static int la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item);
 static int la_update_query_execute (const char *sql, bool au_disable);
 static int la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * vals, bool au_disable);
 static int la_apply_statement_log (LA_ITEM * item);
@@ -3550,6 +3588,275 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
   return donetime->at_time;
 }
 
+static int
+la_get_raw_offset_internal (OR_BUF * buf, int *error, int offset_size)
+{
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return or_get_byte (buf, error);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return or_get_short (buf, error);
+    }
+  else
+    {
+      assert (offset_size == OR_INT_SIZE);
+      return or_get_int (buf, error);
+    }
+}
+
+/*
+ * la_lookup_oos_value () - O(1) cache lookup by master's head OID.
+ *   Tranid filter rejects stale entries surviving across LOG_SYSOP_END
+ *   mini-batches that happen to land on a recycled OOS slot OID.
+ */
+static LA_OOS_CACHE_ENTRY *
+la_lookup_oos_value (const OID * head_oid)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+
+  if (head_oid == NULL || OID_ISNULL (head_oid) || la_oos_cache_hash == NULL)
+    {
+      return NULL;
+    }
+
+  entry = (LA_OOS_CACHE_ENTRY *) mht_get (la_oos_cache_hash, head_oid);
+  if (entry == NULL || entry->tranid != la_oos_current_tranid)
+    {
+      return NULL;
+    }
+  return entry;
+}
+
+static void
+la_clear_oos_cache (void)
+{
+  LA_OOS_CACHE_ENTRY *entry = la_oos_cache_head;
+  LA_OOS_CACHE_ENTRY *next_entry;
+
+  /* mht_clear (no rem_func) drops bucket entries; linked list owns memory.
+   * MHT_TABLE itself is kept alive across transactions to amortize bucket
+   * array alloc — see TODO at globals for parallel-applier migration. */
+  if (la_oos_cache_hash != NULL)
+    {
+      (void) mht_clear (la_oos_cache_hash, NULL, NULL);
+    }
+
+  while (entry != NULL)
+    {
+      next_entry = entry->next;
+      free_and_init (entry);
+      entry = next_entry;
+    }
+
+  la_oos_cache_head = NULL;
+  la_oos_cache_tail = NULL;
+}
+
+/*
+ * la_get_oos_chunk_oid () - Peek the LOG_DATA at item->target_lsa and extract
+ *   the OID where the OOS chunk was inserted on the master.  Reads only the
+ *   fixed-size LOG_REC header — no redo body alloc/decompress.  Fills
+ *   chunk_oid only for RVOOS_INSERT records; otherwise leaves OID_NULL and
+ *   returns NO_ERROR so the caller can fall back gracefully.
+ *
+ *   For single-chunk OOS, target_lsa points at the only chunk = head chunk;
+ *   thus the result is master's head OID.  Multi-chunk uses
+ *   la_rebuild_oos_recdes() to capture head OID instead.
+ */
+static int
+la_get_oos_chunk_oid (LA_ITEM * item, LOG_PAGE * pgptr, OID * chunk_oid)
+{
+  LOG_RECORD_HEADER *lrec;
+  PGLENGTH offset;
+  LOG_PAGEID pageid;
+  LOG_DATA *logdata = NULL;
+  int log_size = 0;
+  int error = NO_ERROR;
+
+  if (chunk_oid == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  OID_SET_NULL (chunk_oid);
+
+  if (item == NULL || pgptr == NULL || LSA_ISNULL (&item->target_lsa))
+    {
+      return NO_ERROR;
+    }
+
+  lrec = LOG_GET_LOG_RECORD_HEADER (pgptr, &item->target_lsa);
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + item->target_lsa.offset;
+  pageid = item->target_lsa.pageid;
+
+  LA_LOG_READ_ALIGN (error, offset, pageid, pgptr);
+  if (error != NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  /* First switch picks record size for the page-boundary fit check; second
+   * switch (after the advance) casts to the type-specific struct.  Cannot
+   * be merged because LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT may shift pgptr. */
+  switch (lrec->type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_UNDOREDO);
+      break;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_MVCC_UNDOREDO);
+      break;
+    case LOG_REDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_REDO);
+      break;
+    case LOG_MVCC_REDO_DATA:
+      log_size = DB_SIZEOF (LOG_REC_MVCC_REDO);
+      break;
+    default:
+      return NO_ERROR;
+    }
+
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, log_size, offset, pageid, pgptr);
+  if (error != NO_ERROR)
+    {
+      return NO_ERROR;
+    }
+
+  switch (lrec->type)
+    {
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      logdata = &((LOG_REC_UNDOREDO *) ((char *) pgptr->area + offset))->data;
+      break;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      logdata = &((LOG_REC_MVCC_UNDOREDO *) ((char *) pgptr->area + offset))->undoredo.data;
+      break;
+    case LOG_REDO_DATA:
+      logdata = &((LOG_REC_REDO *) ((char *) pgptr->area + offset))->data;
+      break;
+    case LOG_MVCC_REDO_DATA:
+      logdata = &((LOG_REC_MVCC_REDO *) ((char *) pgptr->area + offset))->redo.data;
+      break;
+    default:
+      return NO_ERROR;		/* unreachable — handled above */
+    }
+
+  if (logdata->rcvindex != RVOOS_INSERT)
+    {
+      return NO_ERROR;
+    }
+
+  /* OOS abuses LOG_DATA.offset as slotid (see oos_log_insert_physical). */
+  chunk_oid->volid = logdata->volid;
+  chunk_oid->pageid = logdata->pageid;
+  chunk_oid->slotid = logdata->offset;
+  return NO_ERROR;
+}
+
+/*
+ * la_cache_oos_value () - Stash one OOS column value (already assembled
+ *   into a contiguous payload) keyed by master's head OID.  Single allocation
+ *   for entry + payload via flexible array member.
+ */
+static int
+la_cache_oos_value (const OID * head_oid, const char *payload, int payload_length)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  size_t alloc_size;
+
+  if (head_oid == NULL || OID_ISNULL (head_oid) || payload == NULL || payload_length <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "invalid OOS value for SQL log cache");
+      return ER_FAILED;
+    }
+
+  if (la_oos_cache_hash == NULL)
+    {
+      la_oos_cache_hash = mht_create ("OOS cache", LA_OOS_CACHE_HASH_SIZE, oid_hash, oid_compare_equals);
+      if (la_oos_cache_hash == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) LA_OOS_CACHE_HASH_SIZE * sizeof (void *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+
+  alloc_size = offsetof (LA_OOS_CACHE_ENTRY, data) + (size_t) payload_length;
+  entry = (LA_OOS_CACHE_ENTRY *) malloc (alloc_size);
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  entry->next = NULL;
+  entry->tranid = la_oos_current_tranid;
+  entry->head_oid = *head_oid;
+  entry->length = payload_length;
+  memcpy (entry->data, payload, payload_length);
+
+  /* mht_put overwrites a stale mapping for the same OID (cross-tx OID reuse).
+   * The previous owner's entry stays in the linked list until next clear,
+   * but is no longer reachable via lookup. */
+  if (mht_put (la_oos_cache_hash, &entry->head_oid, entry) == NULL)
+    {
+      free_and_init (entry);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (la_oos_cache_tail == NULL)
+    {
+      la_oos_cache_head = entry;
+    }
+  else
+    {
+      la_oos_cache_tail->next = entry;
+    }
+  la_oos_cache_tail = entry;
+
+  return NO_ERROR;
+}
+
+/*
+ * la_resolve_oos_value_for_sql_log () - Cache lookup → readval.  Used by
+ *   la_get_current() for each OOS column when emitting INSERT/UPDATE sql.log
+ *   lines.  A miss is treated as an invariant violation (eager assembly +
+ *   tranid scope make a hit guaranteed in normal operation) and surfaces as
+ *   ER_FAILED so an operator sees a loud signal in the error log instead of
+ *   silently synthesized data.  The heap-row sql.log callers already isolate
+ *   this error from row replication via er_stack_push / pop +
+ *   la_set_error_sql_log.
+ */
+static int
+la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM_ATTRIBUTE * att, DB_VALUE * value)
+{
+  LA_OOS_CACHE_ENTRY *entry;
+  OR_BUF buf;
+
+  entry = la_lookup_oos_value (head_oid);
+  if (entry == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "OOS value missing from SQL log cache");
+      return ER_FAILED;
+    }
+
+  if ((DB_BIGINT) entry->length != oos_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "OOS cached value length mismatches inline length");
+      return ER_FAILED;
+    }
+
+  or_init (&buf, entry->data, entry->length);
+  return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+}
+
 /*
  * la_get_current()
  *   return: NO_ERROR or error code
@@ -3563,7 +3870,9 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
+  bool *vars_oos = NULL;
   int i, j, offset, offset2, pad;
+  int raw_offset, raw_offset2;
   char *bits, *start, *v_start;
   int rc = NO_ERROR;
   DB_VALUE value;
@@ -3578,12 +3887,26 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 		  DB_SIZEOF (int) * sm_class->variable_count);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      offset = or_get_offset_internal (buf, &rc, offset_size);
+
+      vars_oos = (bool *) malloc (DB_SIZEOF (bool) * sm_class->variable_count);
+      if (vars_oos == NULL)
+	{
+	  free_and_init (vars);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  DB_SIZEOF (bool) * sm_class->variable_count);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      raw_offset = la_get_raw_offset_internal (buf, &rc, offset_size);
+      offset = OR_GET_VAR_OFFSET (raw_offset);
       for (i = 0; i < sm_class->variable_count; i++)
 	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
+	  raw_offset2 = la_get_raw_offset_internal (buf, &rc, offset_size);
+	  offset2 = OR_GET_VAR_OFFSET (raw_offset2);
 	  vars[i] = offset2 - offset;
+	  vars_oos[i] = OR_IS_OOS (raw_offset);
 	  offset = offset2;
+	  raw_offset = raw_offset2;
 	}
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
@@ -3622,6 +3945,10 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
 	    {
 	      free_and_init (vars);
 	    }
+	  if (vars_oos != NULL)
+	    {
+	      free_and_init (vars_oos);
+	    }
 	  return error;
 	}
     }
@@ -3644,7 +3971,43 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   for (i = sm_class->fixed_count, j = 0; i < sm_class->att_count && j < sm_class->variable_count;
        i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
     {
-      att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
+      if (vars_oos[j])
+	{
+	  OR_BUF inline_buf;
+	  OID oos_oid = OID_INITIALIZER;
+	  DB_BIGINT oos_length = 0;
+
+	  if (vars[j] >= OR_OOS_INLINE_SIZE)
+	    {
+	      or_init (&inline_buf, buf->ptr, vars[j]);
+	      or_get_oid (&inline_buf, &oos_oid);
+	      oos_length = or_get_bigint (&inline_buf, &error);
+	      if (error != NO_ERROR)
+		{
+		  free_and_init (vars);
+		  free_and_init (vars_oos);
+		  return error;
+		}
+	    }
+
+	  error = la_resolve_oos_value_for_sql_log (&oos_oid, oos_length, att, &value);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (vars);
+	      free_and_init (vars_oos);
+	      return error;
+	    }
+	}
+      else
+	{
+	  error = att->type->data_readval (buf, &value, att->domain, vars[j], true, NULL, 0);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (vars);
+	      free_and_init (vars_oos);
+	      return error;
+	    }
+	}
       v_start += vars[j];
       buf->ptr = v_start;
 
@@ -3654,6 +4017,7 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
       if (error != NO_ERROR)
 	{
 	  free_and_init (vars);
+	  free_and_init (vars_oos);
 	  return error;
 	}
     }
@@ -3661,6 +4025,10 @@ la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL 
   if (vars != NULL)
     {
       free_and_init (vars);
+    }
+  if (vars_oos != NULL)
+    {
+      free_and_init (vars_oos);
     }
 
   return error;
@@ -4488,8 +4856,10 @@ la_append_oos_chunk (LA_OOS_CHUNK ** chunks, int *chunk_count, int *chunk_capaci
 /*
  * la_rebuild_oos_recdes() - rebuild a multi-chunk OOS record from log records
  *   return: NO_ERROR or error code
- *   lsa(in): LSA of the first logged OOS chunk
+ *   lsa(in): LSA of the first logged OOS chunk (master's tail chunk)
  *   recdes(out): merged OOS record description
+ *   head_oid_out(out): master's chunk_index=0 OID — used as sql.log cache key.
+ *                     May be NULL if the caller does not need it.
  *
  * Note:
  *   Multi-chunk OOS chunks are logged from tail to head. This function follows
@@ -4499,7 +4869,7 @@ la_append_oos_chunk (LA_OOS_CHUNK ** chunks, int *chunk_count, int *chunk_capaci
  *   the caller.
  */
 static int
-la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
+la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes, OID * head_oid_out)
 {
   LOG_LSA current_lsa;
   TRANID trid = NULL_TRANID;
@@ -4513,6 +4883,11 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 
   assert (lsa != NULL);
   assert (recdes != NULL);
+
+  if (head_oid_out != NULL)
+    {
+      OID_SET_NULL (head_oid_out);
+    }
 
   LSA_COPY (&current_lsa, lsa);
 
@@ -4612,6 +4987,39 @@ la_rebuild_oos_recdes (LOG_LSA * lsa, RECDES * recdes)
 	      if (oos_header.chunk_index == 0)
 		{
 		  found_head_chunk = true;
+
+		  /* Capture master's head OID for the sql.log cache key.
+		   * OOS log records stuff slotid into LOG_DATA.offset
+		   * (oos_log_insert_physical), so unpack the same way. */
+		  if (head_oid_out != NULL && log_info != NULL)
+		    {
+		      LOG_DATA *logdata = NULL;
+		      switch (current_log_record->type)
+			{
+			case LOG_UNDOREDO_DATA:
+			case LOG_DIFF_UNDOREDO_DATA:
+			  logdata = &((LOG_REC_UNDOREDO *) log_info)->data;
+			  break;
+			case LOG_MVCC_UNDOREDO_DATA:
+			case LOG_MVCC_DIFF_UNDOREDO_DATA:
+			  logdata = &((LOG_REC_MVCC_UNDOREDO *) log_info)->undoredo.data;
+			  break;
+			case LOG_REDO_DATA:
+			  logdata = &((LOG_REC_REDO *) log_info)->data;
+			  break;
+			case LOG_MVCC_REDO_DATA:
+			  logdata = &((LOG_REC_MVCC_REDO *) log_info)->redo.data;
+			  break;
+			default:
+			  break;
+			}
+		      if (logdata != NULL && logdata->rcvindex == RVOOS_INSERT)
+			{
+			  head_oid_out->volid = logdata->volid;
+			  head_oid_out->pageid = logdata->pageid;
+			  head_oid_out->slotid = logdata->offset;
+			}
+		    }
 		}
 	    }
 	}
@@ -5619,30 +6027,28 @@ la_apply_dummy_oos_log (LA_APPLY * apply, LA_ITEM * item)
 }
 
 /*
- * la_apply_insert_log() - apply the insert log to the target slave
+ * la_apply_oos_insert_log() - apply an OOS insert log to the target slave
  *   return: NO_ERROR or error code
  *   apply(in/out): apply list state
- *   item(in): replication item
+ *   item(in): OOS replication item
  *
  * Note:
- *      Apply the insert log to the target slave.
- *      . get the target log page
- *      . get the record description
- *      . fetch the class info
- *      . create a replication object to be flushed and add it to a link
- *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ *      OOS INSERT and UPDATE both emit RVREPL_OOS_INSERT items before the
+ *      heap row item.  This function applies the OOS chunk record and, when
+ *      sql logging is enabled, caches the assembled OOS value so the later
+ *      heap INSERT/UPDATE sql.log path can reconstruct the column value.
  */
 static int
-la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
+la_apply_oos_insert_log (LA_APPLY * apply, LA_ITEM * item)
 {
   int error = NO_ERROR;
   DB_OBJECT *class_obj;
   LOG_PAGE *pgptr = NULL;
-  unsigned int rcvindex;
+  unsigned int rcvindex = 0;
   RECDES *recdes;
   LOG_PAGEID old_pageid = NULL_PAGEID;
-  bool is_mvcc_class;
-  bool rebuild_oos = item->item_type == RVREPL_OOS_INSERT && apply->need_oos_rebuild;
+  bool rebuild_oos = apply->need_oos_rebuild;
+  OID oos_head_oid = OID_INITIALIZER;	/* master's chunk_index=0 OID — sql.log cache key */
 
   error = la_flush_repl_items (false);
   if (error != NO_ERROR)
@@ -5663,11 +6069,11 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
     }
 
   recdes = la_assign_recdes_from_pool ();
-  is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
 
   if (rebuild_oos)
     {
-      error = la_rebuild_oos_recdes (&item->target_lsa, recdes);
+      /* Multi-chunk: walk WAL and concatenate; capture chunk_index=0 OID. */
+      error = la_rebuild_oos_recdes (&item->target_lsa, recdes, &oos_head_oid);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -5692,11 +6098,17 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 	  goto end;
 	}
 
-      /* retrieve the target record description */
-      error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+      /* retrieve the target OOS record description */
+      error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, false);
       if (error != NO_ERROR)
 	{
 	  goto end;
+	}
+
+      /* Single-chunk: target_lsa already points at the only/head chunk. */
+      if (la_enable_sql_logging)
+	{
+	  (void) la_get_oos_chunk_oid (item, pgptr, &oos_head_oid);
 	}
     }
 
@@ -5708,7 +6120,7 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
       goto end;
     }
 
-  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT && rcvindex != RVOOS_INSERT)
+  if (rcvindex != RVOOS_INSERT)
     {
       er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
       error = ER_FAILED;
@@ -5718,10 +6130,22 @@ la_apply_insert_log (LA_APPLY * apply, LA_ITEM * item)
 
   if (la_enable_sql_logging)
     {
-      int ret;
+      int ret = NO_ERROR;
 
+      /* sql.log is an audit artifact; cache OOM / mht_put failure here must
+       * not abort row replication.  er_stack_push/pop isolates the error so
+       * la_set_error_sql_log records it without propagation. */
       er_stack_push ();
-      ret = la_write_insert_sql_log (item, class_obj, recdes);
+
+      /* OOS chunk: stash the assembled value keyed by master's head OID;
+       * la_get_current() will pick it up at heap-row sql.log time.
+       * No sql.log line is emitted for the chunk record itself. */
+      if (!OID_ISNULL (&oos_head_oid) && recdes->length > OOS_RECORD_HEADER_SIZE)
+	{
+	  ret = la_cache_oos_value (&oos_head_oid, recdes->data + OOS_RECORD_HEADER_SIZE,
+				    recdes->length - OOS_RECORD_HEADER_SIZE);
+	}
+
       er_stack_pop ();
       if (ret != NO_ERROR)
 	{
@@ -5746,8 +6170,126 @@ end:
     {
       la_Info.insert_counter++;
       la_Info.num_unflushed++;
-      /* RVREPL_DUMMY_OOS_RECORD is handled by la_apply_dummy_oos_log; only inserts reach here. */
-      la_Info.pending_oos_flush = (item->item_type == RVREPL_OOS_INSERT);
+      la_Info.pending_oos_flush = true;
+    }
+
+  if (old_pageid != NULL_PAGEID)
+    {
+      la_release_page_buffer (old_pageid);
+    }
+
+  return error;
+}
+
+/*
+ * la_apply_insert_log() - apply the insert log to the target slave
+ *   return: NO_ERROR or error code
+ *   item(in): replication item
+ *
+ * Note:
+ *      Apply the insert log to the target slave.
+ *      . get the target log page
+ *      . get the record description
+ *      . fetch the class info
+ *      . create a replication object to be flushed and add it to a link
+ *      . If la_enable_sql_logging(config param is ha_enable_sql_logging) is enabled, the query is written to a file.
+ */
+static int
+la_apply_insert_log (LA_ITEM * item)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *class_obj;
+  LOG_PAGE *pgptr = NULL;
+  unsigned int rcvindex;
+  RECDES *recdes;
+  LOG_PAGEID old_pageid = NULL_PAGEID;
+  bool is_mvcc_class;
+
+  error = la_flush_repl_items (false);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  class_obj = db_find_class (item->class_name);
+  if (class_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      if (er_errid () == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+
+      goto end;
+    }
+
+  recdes = la_assign_recdes_from_pool ();
+  is_mvcc_class = la_is_mvcc_class (ws_oid (class_obj));
+
+  /* get the target log page */
+  old_pageid = item->target_lsa.pageid;
+  pgptr = la_get_page (old_pageid);
+  if (pgptr == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+      old_pageid = NULL_PAGEID;
+      goto end;
+    }
+
+  /* retrieve the target record description */
+  error = la_get_recdes (&item->target_lsa, pgptr, recdes, &rcvindex, la_Info.rec_type, is_mvcc_class);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (recdes->type == REC_ASSIGN_ADDRESS || recdes->type == REC_RELOCATION)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_insert : rectype.type = %d\n", recdes->type);
+      error = ER_FAILED;
+
+      goto end;
+    }
+
+  if (rcvindex != RVHF_INSERT && rcvindex != RVHF_MVCC_INSERT)
+    {
+      er_log_debug (ARG_FILE_LINE, "apply_insert : rcvindex = %d\n", rcvindex);
+      error = ER_FAILED;
+
+      goto end;
+    }
+
+  if (la_enable_sql_logging)
+    {
+      int ret;
+
+      er_stack_push ();
+      ret = la_write_insert_sql_log (item, class_obj, recdes);
+      er_stack_pop ();
+      if (ret != NO_ERROR)
+	{
+	  la_set_error_sql_log (item->class_name, la_get_item_pk_value (item));
+	}
+    }
+
+  error = la_repl_add_object (class_obj, item, recdes);
+
+end:
+  if (error != NO_ERROR)
+    {
+      la_Info.pending_oos_flush = false;
+      la_log_apply_error ("apply_insert", ER_HA_LA_FAILED_TO_APPLY_INSERT, item, error);
+    }
+  else
+    {
+      la_Info.insert_counter++;
+      la_Info.num_unflushed++;
+      la_Info.pending_oos_flush = false;
     }
 
   if (old_pageid != NULL_PAGEID)
@@ -6112,8 +6654,15 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
       return NO_ERROR;
     }
 
+  /* Scope subsequent OOS sql.log cache lookups (la_cache_*, la_find_*, la_resolve_*)
+   * to this transaction.  The cache itself may legitimately survive across
+   * LOG_SYSOP_END mini-batches, but a stale entry from a previous transaction
+   * with the same chunk OID must not be matched by the current one. */
+  la_oos_current_tranid = tranid;
+
   if (rectype == LOG_ABORT)
     {
+      la_clear_oos_cache ();
       la_clear_applied_info (apply);
       return NO_ERROR;
     }
@@ -6129,6 +6678,7 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 	  la_clear_applied_info (apply);
 	}
 
+      la_clear_oos_cache ();
       return NO_ERROR;
     }
 
@@ -6163,8 +6713,11 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 		  break;
 
 		case RVREPL_DATA_INSERT:
+		  error = la_apply_insert_log (item);
+		  break;
+
 		case RVREPL_OOS_INSERT:
-		  error = la_apply_insert_log (apply, item);
+		  error = la_apply_oos_insert_log (apply, item);
 		  break;
 
 		case RVREPL_DUMMY_OOS_RECORD:
@@ -6262,6 +6815,11 @@ end:
   else
     {
       la_clear_applied_info (apply);
+    }
+
+  if (!(rectype == LOG_SYSOP_END && has_more_commit_items))
+    {
+      la_clear_oos_cache ();
     }
 
   return error;
@@ -7414,6 +7972,17 @@ la_shutdown (void)
 	}
 
       free_and_init (la_Info.cache_pb);
+    }
+
+  /* OOS sql.log cache: drop entries via la_clear_oos_cache (mht_clear keeps
+   * the bucket array alive across transactions) and then release the table
+   * itself.  Without this destroy path, the bucket array would leak ~8KB on
+   * applier shutdown / HA failover. */
+  la_clear_oos_cache ();
+  if (la_oos_cache_hash != NULL)
+    {
+      mht_destroy (la_oos_cache_hash);
+      la_oos_cache_hash = NULL;
     }
 
   if (la_Info.repl_lists)
@@ -9100,6 +9669,486 @@ la_delay_replica (time_t eot_time)
 
   return NO_ERROR;
 }
+
+#if defined(CS_MODE)
+static const char *
+la_repl_filter_type_string (REPL_FILTER_TYPE type)
+{
+  switch (type)
+    {
+    case REPL_FILTER_NONE:
+      return "REPL_FILTER_NONE";
+    case REPL_FILTER_INCLUDE_TBL:
+      return "REPL_FILTER_INCLUDE_TBL";
+    case REPL_FILTER_EXCLUDE_TBL:
+      return "REPL_FILTER_EXCLUDE_TBL";
+    default:
+      return "UNKNOWN";
+    }
+}
+
+static void
+la_count_repl_lists (const LA_INFO * info, int *active_repl_count, int *long_repl_count, int *active_repl_item_count)
+{
+  *active_repl_count = 0;
+  *long_repl_count = 0;
+  *active_repl_item_count = 0;
+
+  if (info->repl_lists == NULL || info->repl_cnt <= 0)
+    {
+      return;
+    }
+
+  for (int i = 0; i < info->repl_cnt; i++)
+    {
+      LA_APPLY *apply = info->repl_lists[i];
+
+      if (apply == NULL)
+	{
+	  continue;
+	}
+
+      if (apply->tranid != 0 || apply->num_items > 0)
+	{
+	  (*active_repl_count)++;
+	  *active_repl_item_count += apply->num_items;
+	}
+
+      if (apply->is_long_trans)
+	{
+	  (*long_repl_count)++;
+	}
+    }
+}
+
+static void
+la_dump_repl_filter (FILE * out, const LA_REPL_FILTER * filter, int indent)
+{
+  int filter_count;
+
+  if (filter == NULL)
+    {
+      fprintf (out, "%*s\"repl_filter\": null", indent, "");
+      return;
+    }
+
+  filter_count = filter->num_filters;
+  if (filter_count < 0)
+    {
+      filter_count = 0;
+    }
+  if (filter->list_size >= 0 && filter_count > filter->list_size)
+    {
+      filter_count = filter->list_size;
+    }
+  if (filter->list == NULL)
+    {
+      filter_count = 0;
+    }
+
+  fprintf (out, "%*s\"repl_filter\": {\n", indent, "");
+  fprintf (out, "%*s\"type\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_repl_filter_type_string (filter->type));
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"list_size\": %d,\n", indent + 2, "", filter->list_size);
+  fprintf (out, "%*s\"num_filters\": %d,\n", indent + 2, "", filter->num_filters);
+  fprintf (out, "%*s\"filters\": [\n", indent + 2, "");
+  for (int i = 0; i < filter_count; i++)
+    {
+      fprintf (out, "%*s", indent + 4, "");
+      logwr_dump_json_string_value (out, filter->list[i]);
+      fprintf (out, "%s\n", (i + 1 < filter_count) ? "," : "");
+    }
+  fprintf (out, "%*s]\n", indent + 2, "");
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_info (FILE * out)
+{
+  int indent = 2;
+  LA_INFO *info = &la_Info;
+  time_t now = time (NULL);
+  long delay_seconds;
+  long long apply_gap_pages;
+  long long commit_gap_pages;
+  long long required_gap_pages;
+  int active_repl_count;
+  int long_repl_count;
+  int active_repl_item_count;
+
+  if (out == NULL)
+    {
+      out = stdout;
+    }
+
+  delay_seconds =
+    (info->log_record_time > 0 && now >= info->log_record_time) ? (long) (now - info->log_record_time) : -1;
+  apply_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->final_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->final_lsa.pageid) : -1;
+  commit_gap_pages =
+    (info->final_lsa.pageid != NULL_PAGEID && info->committed_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->final_lsa.pageid - info->committed_lsa.pageid) : -1;
+  required_gap_pages =
+    (info->append_lsa.pageid != NULL_PAGEID && info->required_lsa.pageid != NULL_PAGEID)
+    ? (long long) (info->append_lsa.pageid - info->required_lsa.pageid) : -1;
+  la_count_repl_lists (info, &active_repl_count, &long_repl_count, &active_repl_item_count);
+
+  const char *apply_state = NULL;
+  switch (info->apply_state)
+    {
+    case HA_LOG_APPLIER_STATE_NA:
+      apply_state = "HA_LOG_APPLIER_STATE_NA";
+      break;
+    case HA_LOG_APPLIER_STATE_UNREGISTERED:
+      apply_state = "HA_LOG_APPLIER_STATE_UNREGISTERED";
+      break;
+    case HA_LOG_APPLIER_STATE_RECOVERING:
+      apply_state = "HA_LOG_APPLIER_STATE_RECOVERING";
+      break;
+    case HA_LOG_APPLIER_STATE_WORKING:
+      apply_state = "HA_LOG_APPLIER_STATE_WORKING";
+      break;
+    case HA_LOG_APPLIER_STATE_DONE:
+      apply_state = "HA_LOG_APPLIER_STATE_DONE";
+      break;
+    case HA_LOG_APPLIER_STATE_ERROR:
+      apply_state = "HA_LOG_APPLIER_STATE_ERROR";
+      break;
+    default:
+      apply_state = "UNKNOWN";
+    }
+
+  const char *last_file_state = NULL;
+  switch (info->last_file_state)
+    {
+    case LOG_HA_FILESTAT_CLEAR:
+      last_file_state = "LOG_HA_FILESTAT_CLEAR";
+      break;
+    case LOG_HA_FILESTAT_ARCHIVED:
+      last_file_state = "LOG_HA_FILESTAT_ARCHIVED";
+      break;
+    case LOG_HA_FILESTAT_SYNCHRONIZED:
+      last_file_state = "LOG_HA_FILESTAT_SYNCHRONIZED";
+      break;
+    default:
+      last_file_state = "UNKNOWN";
+    }
+
+  const char *last_server_state = NULL;
+  switch (info->last_server_state)
+    {
+    case HA_SERVER_STATE_NA:
+      last_server_state = "HA_SERVER_STATE_NA";
+      break;
+    case HA_SERVER_STATE_IDLE:
+      last_server_state = "HA_SERVER_STATE_IDLE";
+      break;
+    case HA_SERVER_STATE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_TO_BE_ACTIVE:
+      last_server_state = "HA_SERVER_STATE_TO_BE_ACTIVE";
+      break;
+    case HA_SERVER_STATE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_STANDBY";
+      break;
+    case HA_SERVER_STATE_TO_BE_STANDBY:
+      last_server_state = "HA_SERVER_STATE_TO_BE_STANDBY";
+      break;
+    case HA_SERVER_STATE_MAINTENANCE:
+      last_server_state = "HA_SERVER_STATE_MAINTENANCE";
+      break;
+    case HA_SERVER_STATE_DEAD:
+      last_server_state = "HA_SERVER_STATE_DEAD";
+      break;
+    default:
+      last_server_state = "UNKNOWN";
+    }
+
+  const char *la_status = NULL;
+  switch (info->status)
+    {
+    case LA_STATUS_BUSY:
+      la_status = "LA_STATUS_BUSY";
+      break;
+    case LA_STATUS_IDLE:
+      la_status = "LA_STATUS_IDLE";
+      break;
+    default:
+      la_status = "UNKNOWN";
+    }
+
+  fprintf (out, "{\n");
+  fprintf (out, "%*s\"la_info\": {\n", indent, "");
+
+  fprintf (out, "%*s\"log_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->log_path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"loginf_path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, info->loginf_path);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"support_summary\": {\n", indent + 2, "");
+  fprintf (out, "%*s\"dump_time\": %ld,\n", indent + 4, "", (long) now);
+  fprintf (out, "%*s\"delay_seconds\": %ld,\n", indent + 4, "", delay_seconds);
+  fprintf (out, "%*s\"apply_gap_pages\": %lld,\n", indent + 4, "", apply_gap_pages);
+  fprintf (out, "%*s\"commit_gap_pages\": %lld,\n", indent + 4, "", commit_gap_pages);
+  fprintf (out, "%*s\"required_gap_pages\": %lld,\n", indent + 4, "", required_gap_pages);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 4, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 4, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 4, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 4, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 4, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 4, "", info->prev_total_rows);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 4, "", (long) info->log_record_time);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 4, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 4, "", info->num_unflushed);
+  fprintf (out, "%*s\"apply_state\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"status\": ", indent + 4, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, "\n");
+  fprintf (out, "%*s},\n\n", indent + 2, "");
+
+  la_dump_la_act_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  la_dump_la_arv_log (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_file_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_file_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"start_vsize\": %lu,\n", indent + 2, "", info->start_vsize);
+  fprintf (out, "%*s\"start_time\": %ld,\n", indent + 2, "", (long) info->start_time);
+  fprintf (out, "%*s\"log_record_time\": %ld,\n", indent + 2, "", (long) info->log_record_time);
+
+  fprintf (out, "%*s\"final_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->final_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"last_committed_rep_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->last_committed_rep_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"repl_cnt\": %d,\n", indent + 2, "", info->repl_cnt);
+  fprintf (out, "%*s\"cur_repl\": %d,\n", indent + 2, "", info->cur_repl);
+  fprintf (out, "%*s\"active_repl_count\": %d,\n", indent + 2, "", active_repl_count);
+  fprintf (out, "%*s\"long_repl_count\": %d,\n", indent + 2, "", long_repl_count);
+  fprintf (out, "%*s\"active_repl_item_count\": %d,\n", indent + 2, "", active_repl_item_count);
+  fprintf (out, "%*s\"total_rows\": %d,\n", indent + 2, "", info->total_rows);
+  fprintf (out, "%*s\"prev_total_rows\": %d,\n", indent + 2, "", info->prev_total_rows);
+  la_dump_la_apply_list (out, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"commit_head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"commit_tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->commit_tail);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_deleted_archive_num\": %d,\n", indent + 2, "", info->last_deleted_archive_num);
+  fprintf (out, "%*s\"last_time_archive_deleted\": %ld,\n", indent + 2, "", (long) info->last_time_archive_deleted);
+
+  fprintf (out, "%*s\"log_data\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->log_data);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"rec_type\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->rec_type);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"undo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->undo_unzip_ptr);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"redo_unzip_ptr\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->redo_unzip_ptr);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"apply_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, apply_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"max_mem_size\": %d,\n", indent + 2, "", info->max_mem_size);
+
+  fprintf (out, "%*s\"cache_pb\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, info->cache_pb);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"cache_buffer_size\": %d,\n", indent + 2, "", info->cache_buffer_size);
+  fprintf (out, "%*s\"last_is_end_of_record\": %s,\n", indent + 2, "", info->last_is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"is_end_of_record\": %s,\n", indent + 2, "", info->is_end_of_record ? "true" : "false");
+  fprintf (out, "%*s\"last_server_state\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, last_server_state);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_role_changed\": %s,\n", indent + 2, "", info->is_role_changed ? "true" : "false");
+
+  fprintf (out, "%*s\"append_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->append_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"eof_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->eof_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"required_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &info->required_lsa, indent + 4);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"insert_counter\": %lu,\n", indent + 2, "", info->insert_counter);
+  fprintf (out, "%*s\"update_counter\": %lu,\n", indent + 2, "", info->update_counter);
+  fprintf (out, "%*s\"delete_counter\": %lu,\n", indent + 2, "", info->delete_counter);
+  fprintf (out, "%*s\"schema_counter\": %lu,\n", indent + 2, "", info->schema_counter);
+  fprintf (out, "%*s\"commit_counter\": %lu,\n", indent + 2, "", info->commit_counter);
+  fprintf (out, "%*s\"fail_counter\": %lu,\n", indent + 2, "", info->fail_counter);
+  fprintf (out, "%*s\"log_commit_time\": %ld,\n", indent + 2, "", (long) info->log_commit_time);
+  fprintf (out, "%*s\"required_lsa_changed\": %s,\n", indent + 2, "", info->required_lsa_changed ? "true" : "false");
+  fprintf (out, "%*s\"status\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, la_status);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"is_apply_info_updated\": %s,\n", indent + 2, "", info->is_apply_info_updated ? "true" : "false");
+  fprintf (out, "%*s\"num_unflushed\": %d,\n", indent + 2, "", info->num_unflushed);
+
+  fprintf (out, "%*s\"log_path_lockf_vdes\": %d,\n", indent + 2, "", info->log_path_lockf_vdes);
+  fprintf (out, "%*s\"db_lockf_vdes\": %d,\n", indent + 2, "", info->db_lockf_vdes);
+
+  la_dump_repl_filter (out, &info->repl_filter, indent + 2);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"reinit_copylog\": %s,\n", indent + 2, "", info->reinit_copylog ? "true" : "false");
+  fprintf (out, "%*s\"maxslotted_reclength\": %d\n", indent + 2, "", info->maxslotted_reclength);
+
+  fprintf (out, "%*s}\n", indent, "");
+  fprintf (out, "}\n");
+
+  fflush (out);
+}
+
+void
+la_dump_la_act_log (FILE * out, int indent)
+{
+  LA_ACT_LOG *a = &la_Info.act_log;
+  LOG_PAGE *hdr_page = a->hdr_page;
+  LOG_HEADER *log_hdr = a->log_hdr;
+
+  fprintf (out, "%*s\"la_act_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, a->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", a->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"db_iopagesize\": %d,\n", indent + 2, "", a->db_iopagesize);
+  fprintf (out, "%*s\"db_logpagesize\": %d\n", indent + 2, "", a->db_logpagesize);
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_arv_log (FILE * out, int indent)
+{
+  LA_ARV_LOG *r = &la_Info.arv_log;
+  LOG_PAGE *hdr_page = r->hdr_page;
+  LOG_ARV_HEADER *log_hdr = r->log_hdr;
+
+  if (r->log_vdes == NULL_VOLDES)
+    {
+      fprintf (out, "%*s\"la_arv_log\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"la_arv_log\": {\n", indent, "");
+  fprintf (out, "%*s\"path\": ", indent + 2, "");
+  logwr_dump_json_string_value (out, r->path);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"log_vdes\": %d,\n", indent + 2, "", r->log_vdes);
+
+  logwr_dump_log_page_hdr (out, hdr_page != NULL ? &hdr_page->hdr : NULL, indent + 2);
+  fprintf (out, ",\n\n");
+
+  logwr_dump_log_arv_header (out, log_hdr, indent + 2);
+  fprintf (out, ",\n\n");
+
+  fprintf (out, "%*s\"arv_num\": %d\n", indent + 2, "", r->arv_num);
+  fprintf (out, "%*s}", indent, "");
+}
+
+void
+la_dump_la_apply_list (FILE * out, int indent)
+{
+  if (la_Info.repl_lists == NULL)
+    {
+      fprintf (out, "%*s\"repl_lists\": null", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s\"repl_lists\": [\n", indent, "");
+  for (int i = 0; i < la_Info.repl_cnt; i++)
+    {
+      la_dump_la_apply (out, i, indent + 2);
+      fprintf (out, "%s\n", (i + 1 < la_Info.repl_cnt) ? "," : "");
+    }
+  fprintf (out, "%*s]", indent, "");
+}
+
+void
+la_dump_la_apply (FILE * out, int idx, int indent)
+{
+  if (idx < 0 || la_Info.repl_lists == NULL || idx >= la_Info.repl_cnt)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  LA_APPLY *apply = la_Info.repl_lists[idx];
+  if (apply == NULL)
+    {
+      fprintf (out, "%*snull", indent, "");
+      return;
+    }
+
+  fprintf (out, "%*s{\n", indent, "");
+  fprintf (out, "%*s\"index\": %d,\n", indent + 2, "", idx);
+  fprintf (out, "%*s\"tranid\": %d,\n", indent + 2, "", apply->tranid);
+  fprintf (out, "%*s\"num_items\": %d,\n", indent + 2, "", apply->num_items);
+  fprintf (out, "%*s\"is_long_trans\": %s,\n", indent + 2, "", apply->is_long_trans ? "true" : "false");
+
+  fprintf (out, "%*s\"start_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->start_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"last_lsa\": ", indent + 2, "");
+  logwr_dump_log_lsa (out, &apply->last_lsa, indent + 4);
+  fprintf (out, ",\n");
+
+  fprintf (out, "%*s\"head\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->head);
+  fprintf (out, ",\n");
+  fprintf (out, "%*s\"tail\": ", indent + 2, "");
+  logwr_dump_json_pointer_value (out, apply->tail);
+  fprintf (out, "\n");
+
+  fprintf (out, "%*s}", indent, "");
+}
+
+#endif /* CS_MODE */
 
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 int

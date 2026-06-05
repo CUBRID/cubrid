@@ -181,6 +181,7 @@ set (BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
   ${BASE_DIR}/span.hpp
+  ${BASE_DIR}/byte_span_writer.hpp
   ${BASE_DIR}/ifsys.hpp
   ${BASE_DIR}/packet_buffer.hpp
   ${BASE_DIR}/DMRB.hpp
@@ -268,6 +269,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
+  ${QUERY_DIR}/dblink_2pc_daemon.c
+  ${QUERY_DIR}/dblink_global_tran_catalog.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp

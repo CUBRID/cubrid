@@ -47,7 +47,7 @@ STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_I
 STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -587,16 +587,14 @@ db_get_bit (const DB_VALUE * value, int *length)
  * db_get_char() -
  * return :
  * value(in):
- * length(out):
  */
 DB_CONST_C_CHAR
-db_get_char (const DB_VALUE * value, int *length)
+db_get_char (const DB_VALUE * value)
 {
   const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
 #endif
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
@@ -607,25 +605,14 @@ db_get_char (const DB_VALUE * value, int *length)
   switch (value->data.ch.info.style)
     {
     case SMALL_STRING:
-      {
-	str = value->data.ch.sm.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.sm.size,
-			 (INTL_CODESET) value->data.ch.info.codeset, length);
-      }
+      str = value->data.ch.sm.buf;
       break;
     case MEDIUM_STRING:
-      {
-	str = value->data.ch.medium.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.medium.size,
-			 (INTL_CODESET) value->data.ch.info.codeset, length);
-      }
+      str = value->data.ch.medium.buf;
       break;
     case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	str = NULL;
-	*length = 0;
-      }
+      /* Currently not implemented */
+      str = NULL;
       break;
     }
 

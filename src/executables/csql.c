@@ -1217,6 +1217,81 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	}
       break;
 
+    case S_CMD_VACUUM:
+      if (au_is_dba_group_member (Au_user))
+	{
+	  error_code = db_vacuum ();
+	  if (error_code != NO_ERROR)
+	    {
+	      csql_display_csql_err (0, 0);
+	    }
+	  else
+	    {
+#if defined(CS_MODE)
+	      /* svacuum only wakes the vacuum master daemon and returns immediately;
+	       * vacuum runs asynchronously in the background. */
+	      fprintf (csql_Output_fp, "Vacuum master daemon has been signaled. (vacuum runs asynchronously)\n");
+#else /* SA_MODE */
+	      fprintf (csql_Output_fp, "Vacuum is complete.\n");
+#endif
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Running vacuum is only allowed for users in the DBA group\n");
+	}
+      break;
+
+    case S_CMD_OOS_STATS:
+      if (au_is_dba_group_member (Au_user))
+	{
+	  DB_OOS_STATS stats;
+	  const char *class_name = (argument[0] == '\0') ? NULL : argument;
+
+	  if (class_name == NULL)
+	    {
+	      fprintf (csql_Output_fp, "Usage: ;oos_stats <class_name>\n");
+	      break;
+	    }
+
+	  error_code = db_get_oos_stats (class_name, &stats);
+	  if (error_code != NO_ERROR)
+	    {
+	      csql_display_csql_err (0, 0);
+	    }
+	  else if (!stats.has_oos_file)
+	    {
+	      fprintf (csql_Output_fp, "Class '%s' has no OOS file.\n", class_name);
+	    }
+	  else
+	    {
+	      INT64 logical_bytes = stats.recs_sumlen;
+	      INT64 actual_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+	      INT64 uncleaned_bytes = actual_bytes - logical_bytes;
+	      if (uncleaned_bytes < 0)
+		{
+		  uncleaned_bytes = 0;
+		}
+	      fprintf (csql_Output_fp, "OOS statistics for class '%s':\n", class_name);
+	      fprintf (csql_Output_fp, "  OOS VFID            : (volid=%d, fileid=%d)\n",
+		       stats.oos_vfid_volid, stats.oos_vfid_fileid);
+	      fprintf (csql_Output_fp, "  Physical pages      : %d\n", stats.num_user_pages);
+	      fprintf (csql_Output_fp, "  Page size           : %d bytes\n", stats.page_size);
+	      fprintf (csql_Output_fp, "  Actual disk size    : %lld bytes\n", (long long) actual_bytes);
+	      fprintf (csql_Output_fp, "  Live OOS records    : %d\n", stats.num_recs);
+	      fprintf (csql_Output_fp, "  Logical data size   : %lld bytes  (sum of live record bodies)\n",
+		       (long long) logical_bytes);
+	      fprintf (csql_Output_fp,
+		       "  Uncleaned (slack)   : %lld bytes  (actual - logical; drops after vacuum+page-dealloc)\n",
+		       (long long) uncleaned_bytes);
+	    }
+	}
+      else
+	{
+	  fprintf (csql_Output_fp, "Running oos_stats is only allowed for users in the DBA group\n");
+	}
+      break;
+
     case S_CMD_KILLTRAN:
       if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	{
@@ -3724,7 +3799,7 @@ csql_display_trace (void)
 {
   const char *stmts = NULL;
   DB_SESSION *session = NULL;
-  int stmt_id, dummy, db_error;
+  int stmt_id, db_error;
   DB_QUERY_RESULT *result = NULL;
   DB_VALUE trace;
   FILE *pf;
@@ -3773,7 +3848,7 @@ csql_display_trace (void)
     {
       pf = csql_popen (csql_Pager_cmd, csql_Output_fp);
       fprintf (pf, "\n=== Auto Trace ===\n");
-      fprintf (pf, "%s\n", db_get_char (&trace, &dummy));
+      fprintf (pf, "%s\n", db_get_char (&trace));
       csql_pclose (pf, csql_Output_fp);
     }
 
