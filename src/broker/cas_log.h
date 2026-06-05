@@ -46,6 +46,7 @@ typedef enum
 extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
+extern void cas_log_flush_if_needed (void);
 #ifdef CAS_ERROR_LOG
 extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
 #endif

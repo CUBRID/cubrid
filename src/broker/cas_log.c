@@ -73,9 +73,9 @@ static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index);
 #endif
-static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush,
-				    const char *fmt, va_list ap);
-static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
+static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, const char *fmt,
+				    va_list ap);
+static void cas_log_write2_internal (FILE * fp, const char *fmt, va_list ap);
 
 static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
@@ -252,6 +252,24 @@ cas_log_close (bool flag)
 
 }
 
+/*
+ * cas_log_flush_if_needed () -
+ *   Push the buffered SQL log to disk, but only in SQL_LOG_MODE_ALL.
+ *   ERROR and TIMEOUT modes are skipped on purpose: those modes keep the log of
+ *   a request only when it ends in an error or timeout and otherwise rewind it
+ *   with saved_log_fpos, so flushing mid-request could commit lines that are
+ *   about to be discarded. Callers that want a line on disk before a blocking
+ *   call (prepare, execute) therefore get durability in ALL mode only.
+ */
+void
+cas_log_flush_if_needed (void)
+{
+  if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
+    {
+      cas_fflush (log_fp);
+    }
+}
+
 static void
 cas_log_backup (T_CUBRID_FILE_ID fid)
 {
@@ -293,7 +311,7 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
     }
 
   va_start (ap, fmt);
-  cas_log_write_internal (log_fp, NULL, 0, false, fmt, ap);
+  cas_log_write_internal (log_fp, NULL, 0, fmt, ap);
   va_end (ap);
 
   cas_fseek (log_fp, saved_log_fpos, SEEK_SET);
@@ -399,13 +417,13 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
 	    }
 	}
+      cas_log_flush_if_needed ();
     }
 
 }
 
 static void
-cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush, const char *fmt,
-			va_list ap)
+cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, const char *fmt, va_list ap)
 {
   char *buf, *p;
   int len, n;
@@ -435,11 +453,6 @@ cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_nu
     }
 
   cas_fwrite (buf, (p - buf), 1, fp);
-
-  if (do_flush == true)
-    {
-      cas_fflush (fp);
-    }
 }
 
 void
@@ -460,7 +473,7 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
     }
 
@@ -473,7 +486,6 @@ cas_log_query_cancel (int dummy, ...)
   va_list ap;
   const char *fmt;
   char buf[LINE_MAX];
-  bool log_mode;
   struct timeval tv;
 
   if (log_fp == NULL || query_cancel_flag != 1)
@@ -496,11 +508,11 @@ cas_log_query_cancel (int dummy, ...)
       snprintf (buf, LINE_MAX, "query_cancel");
     }
 
-  log_mode = as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL;
   va_start (ap, dummy);
-  cas_log_write_internal (log_fp, &tv, 0, log_mode, buf, ap);
+  cas_log_write_internal (log_fp, &tv, 0, buf, ap);
   va_end (ap);
   cas_fputc ('\n', log_fp);
+  cas_log_flush_if_needed ();
 
   query_cancel_flag = 0;
 
@@ -526,7 +538,7 @@ cas_log_write (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
     }
@@ -551,7 +563,7 @@ cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, .
 	  saved_log_fpos = cas_ftell (log_fp);
 	}
       va_start (ap, fmt);
-      cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (log_fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
       cas_log_end (SQL_LOG_MODE_ALL, -1, -1);
@@ -590,7 +602,7 @@ cas_log_open_and_write (char *br_name, unsigned int seq_num, bool unit_start, co
 	}
 
       va_start (ap, fmt);
-      cas_log_write_internal (fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write_internal (fp, NULL, seq_num, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', fp);
 
@@ -606,7 +618,7 @@ cas_log_get_fd_status (void)
 }
 
 static void
-cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
+cas_log_write2_internal (FILE * fp, const char *fmt, va_list ap)
 {
   char *buf, *p;
   int len, n;
@@ -623,11 +635,6 @@ cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
   p += n;
 
   cas_fwrite (buf, (p - buf), 1, fp);
-
-  if (do_flush == true)
-    {
-      cas_fflush (fp);
-    }
 }
 
 void
@@ -644,7 +651,7 @@ cas_log_write2_nonl (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, fmt, ap);
       va_end (ap);
     }
 
@@ -664,7 +671,7 @@ cas_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, fmt, ap);
       va_end (ap);
       cas_fputc ('\n', log_fp);
     }
@@ -1192,7 +1199,7 @@ cas_slow_log_write_and_end (struct timeval *log_time, unsigned int seq_num, cons
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, fmt, ap);
       va_end (ap);
 
       cas_slow_log_end ();
@@ -1215,7 +1222,7 @@ cas_slow_log_write (struct timeval *log_time, unsigned int seq_num, bool unit_st
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write_internal (slow_log_fp, log_time, seq_num, false, fmt, ap);
+      cas_log_write_internal (slow_log_fp, log_time, seq_num, fmt, ap);
       va_end (ap);
     }
 
@@ -1235,7 +1242,7 @@ cas_slow_log_write2 (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (slow_log_fp, false, fmt, ap);
+      cas_log_write2_internal (slow_log_fp, fmt, ap);
       va_end (ap);
     }
 
