@@ -805,8 +805,7 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
    * In that role the local branch must still be committed/aborted through phase 2,
    * because phase 1 was never entered for these execute types.
    */
-  if (execute_2pc_type == LOG_2PC_EXECUTE_COMMIT_DECISION
-      || execute_2pc_type == LOG_2PC_EXECUTE_ABORT_DECISION)
+  if (execute_2pc_type == LOG_2PC_EXECUTE_COMMIT_DECISION || execute_2pc_type == LOG_2PC_EXECUTE_ABORT_DECISION)
     {
       state = log_2pc_commit_second_phase (thread_p, tdes, decision);
     }
