@@ -196,7 +196,14 @@ typedef enum
    * it together with a log-format bump. */
   RVOOS_NOTIFY_VACUUM = 134,
   RVREPL_DUMMY_OOS_RECORD = 135,	/* multi-chunk OOS replication marker */
-  RV_LAST_LOGID = RVREPL_DUMMY_OOS_RECORD,
+  /* PINNED on-disk value: append-only, never renumber (RV_fun[] is positionally indexed by
+   * rcvindex). Tags the MVCC remove_old_forward forward REC_NEWHOME delete in heap_update_relocation
+   * so vacuum's forward-walk can reclaim the old forward's OOS records from the delete's undo image.
+   * Classified as an MVCC op (LOG_IS_MVCC_OPERATION) but NOT a heap op (LOG_IS_MVCC_HEAP_OPERATION):
+   * its undo is logged as MVCC undo (chained for the forward-walk) yet vacuum must not "collect" the
+   * already-deleted slot. Crash recovery replays the delete identically to RVHF_DELETE. */
+  RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 136,
+  RV_LAST_LOGID = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

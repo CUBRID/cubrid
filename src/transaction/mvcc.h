@@ -265,7 +265,8 @@ typedef enum mvcc_satisfies_vacuum_result MVCC_SATISFIES_VACUUM_RESULT;
   (LOG_IS_MVCC_HEAP_OPERATION (rcvindex) \
    || LOG_IS_MVCC_BTREE_OPERATION (rcvindex) \
    || ((rcvindex) == RVES_NOTIFY_VACUUM) \
-   || ((rcvindex) == RVOOS_NOTIFY_VACUUM))
+   || ((rcvindex) == RVOOS_NOTIFY_VACUUM) \
+   || ((rcvindex) == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM))
 
 extern MVCC_SATISFIES_SNAPSHOT_RESULT mvcc_satisfies_snapshot (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
 							       MVCC_SNAPSHOT * snapshot);
