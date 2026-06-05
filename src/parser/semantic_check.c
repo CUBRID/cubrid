@@ -268,6 +268,7 @@ static PT_UNION_COMPATIBLE pt_get_select_list_coll_compat (PARSER_CONTEXT * pars
 static PT_UNION_COMPATIBLE pt_apply_union_select_list_collation (PARSER_CONTEXT * parser, PT_NODE * query,
 								 SEMAN_COMPATIBLE_INFO * cinfo, int num_cinfo);
 static PT_NODE *pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_mark_remote_union_operands (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static void pt_check_vacuum (PARSER_CONTEXT * parser, PT_NODE * node);
 
@@ -12235,6 +12236,15 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			    {
 			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      /* mark set-operator operands as union sub-queries so their XASL are
+			       * gathered into the set-operator aptr_list and executed (see
+			       * pt_mark_remote_union_operands) */
+			      subq =
+				parser_walk_tree (parser, subq, pt_mark_remote_union_operands, NULL, pt_continue_walk,
+						  NULL);
+			    }
 			  sc_info_ptr->top_node = saved_top;
 			  if (subq != NULL && !pt_has_error (parser))
 			    {
@@ -17651,6 +17661,44 @@ pt_mark_union_leaf_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
       if (PT_IS_UNION (arg) || PT_IS_INTERSECTION (arg) || PT_IS_DIFFERENCE (arg))
 	{
 	  arg->info.query.q.union_.is_leaf_node = 1;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_mark_remote_union_operands () - walking function marking the operands of a
+ *   set operator (UNION/DIFFERENCE/INTERSECTION) as union sub-queries.
+ *
+ *   For a remote INSERT SELECT the SELECT subquery is processed by a dedicated
+ *   semantic path that breaks out before mq_translate, where
+ *   mq_set_union_query normally marks set-operator operands as
+ *   PT_IS_UNION_SUBQUERY. Without that marking pt_to_uncorr_subquery_list (via
+ *   pt_uncorr_post -> pt_is_subquery) does not gather the operand XASLs into the
+ *   set-operator's aptr_list, so the operands never execute; the combine step
+ *   then reads empty operand list files (query_id 0) and fails with
+ *   "Unknown query identifier: 0". This restores the same marking on the
+ *   subquery so the operands are gathered and executed. Nested set operators are
+ *   handled because the walk visits every set-operator node.
+ */
+static PT_NODE *
+pt_mark_remote_union_operands (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_UNION (node) || PT_IS_INTERSECTION (node) || PT_IS_DIFFERENCE (node))
+    {
+      PT_NODE *arg1 = node->info.query.q.union_.arg1;
+      PT_NODE *arg2 = node->info.query.q.union_.arg2;
+
+      if (arg1 != NULL && PT_IS_QUERY (arg1))
+	{
+	  arg1->info.query.is_subquery = PT_IS_UNION_SUBQUERY;
+	}
+      if (arg2 != NULL && PT_IS_QUERY (arg2))
+	{
+	  arg2->info.query.is_subquery = PT_IS_UNION_SUBQUERY;
 	}
     }
 
