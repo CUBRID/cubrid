@@ -8103,11 +8103,13 @@ qo_assign_eq_classes (QO_ENV * env)
  *   segment equivalence groups using transitive closure.
  *   env(in):
  *
- * Note: Uses the eq_root union-find (built during term discovery) to identify
- *   equivalence groups.  For each group with N segments on different nodes,
- *   appends join terms for all missing (head, tail) node pairs at the end of
- *   env->terms.  qo_discover_edges() — called immediately after — folds the
- *   new terms into the edge zone and handles sorting.
+ * Note: Builds a local segment union-find from unconditional inner-join equi-join
+ *   edge terms only; outer-join edges, DUMMY_JOIN, AFTER/DURING_JOIN equalities and
+ *   always-true transitive copies (PT_EXPR_INFO_TRANSITIVE) are excluded, so the
+ *   generated terms never cross an outer-join boundary.  For each group with
+ *   segments on different nodes, appends join terms for all missing (head, tail)
+ *   node pairs at the end of env->terms.  qo_discover_edges() — called immediately
+ *   after — folds the new terms into the edge zone and handles sorting.
  */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
@@ -8154,9 +8156,19 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     {
       QO_TERM *jterm = QO_ENV_TERM (env, t);
       QO_SEGMENT *s1, *s2;
+      PT_NODE *tpe;
       int r1, r2;
 
       if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+	{
+	  continue;
+	}
+      /* Always-true transitive copies produced by qo_reduce_equality_terms
+       * (PT_EXPR_INFO_TRANSITIVE) connect segments that are all reduced to the same
+       * constant; closure over them would only proliferate terms that qo_discover_edges
+       * reclassifies as QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      tpe = QO_TERM_PT_EXPR (jterm);
+      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
 	{
 	  continue;
 	}
@@ -8260,7 +8272,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 
 /*
  * qo_collect_transitive_join_specs () - Collect candidate transitive join
- *   specifications using the segment union-find (eq_root).
+ *   specifications using the caller-built segment union-find (root_arr).
  *   return: 0 on success, -1 on memory allocation failure
  *   env(in):
  *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
@@ -8270,9 +8282,9 @@ qo_generate_transitive_join_terms (QO_ENV * env)
  *   cap_p(in/out): Pointer to the current capacity of the specs array
  *
  * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  For each
- *   equivalence group with segments on 2+ distinct nodes, emits a
- *   QO_TRANSITIVE_JOIN_SPEC for every node pair that lacks a direct edge term,
- *   unless the group contains an outer-join term.
+ *   equivalence group with three or more segments, emits a QO_TRANSITIVE_JOIN_SPEC
+ *   for every distinct node pair that lacks a direct edge term (after/during-join
+ *   terms between the pair also count as existing terms).
  */
 static int
 qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
@@ -8283,7 +8295,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
   QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
-  bool group_all_transitive, already_has_term;
+  bool already_has_term;
 
   /* Process each segment that is its own root (i.e., the canonical root of a group). */
   for (i = 0; i < env->nsegs; i++)
@@ -8305,40 +8317,6 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	}
 
       if (nsegs < 2)
-	{
-	  continue;
-	}
-
-      /* Determine whether every edge term in this group already carries PT_EXPR_INFO_TRANSITIVE.
-       * Outer/during-join boundaries need not be re-checked here: root_arr was built from
-       * inner-join equi-join terms only, so this eqclass contains no outer-connected segment. */
-      group_all_transitive = true;
-      for (t = 0; t < env->nterms; t++)
-	{
-	  PT_NODE *tpe;
-	  term = QO_ENV_TERM (env, t);
-	  if (!QO_IS_EDGE_TERM (term))
-	    {
-	      continue;
-	    }
-	  nom = QO_TERM_NOMINAL_SEG (term);
-	  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
-	    {
-	      continue;
-	    }
-	  tpe = QO_TERM_PT_EXPR (term);
-	  if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
-	    {
-	      group_all_transitive = false;
-	      break;
-	    }
-	}
-
-      /* Skip groups where every edge term already has PT_EXPR_INFO_TRANSITIVE: new specs
-       * would also receive the flag and be reclassified QO_TC_DUMMY_JOIN by
-       * qo_discover_edges, contributing no new join paths.  Avoids O(n^2) DUMMY_JOIN
-       * proliferation for queries rewritten by qo_reduce_equality_terms. */
-      if (group_all_transitive)
 	{
 	  continue;
 	}
