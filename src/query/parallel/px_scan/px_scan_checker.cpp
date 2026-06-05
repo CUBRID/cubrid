@@ -541,6 +541,15 @@ namespace parallel_scan
 	  }
       }
 
+    if (sibling->after_join_pred)
+      {
+	temp = check<is_outptr_list> (sibling->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
     if (sibling->instnum_pred || sibling->instnum_val)
       {
 	set_flag (result, CANNOT_LIST_MERGE);
@@ -713,6 +722,15 @@ namespace parallel_scan
     if (arg->if_pred)
       {
 	temp = check<is_outptr_list> (arg->if_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
+    if (arg->after_join_pred)
+      {
+	temp = check<is_outptr_list> (arg->after_join_pred);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
