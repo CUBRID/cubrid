@@ -238,6 +238,7 @@ static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_transitive_join_terms (QO_ENV *);
+static void qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 					     QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
@@ -8110,7 +8111,7 @@ qo_assign_eq_classes (QO_ENV * env)
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  int i, ti, t;
+  int i;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   PARSER_CONTEXT *parser;
@@ -8137,64 +8138,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  /* Build a segment union-find from unconditional inner-join equi-join edge terms only.
-   * Conditional equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must
-   * not seed the closure: an inner term derived across an outer-join boundary changes results. */
-  for (ti = 0; ti < env->nsegs; ti++)
-    {
-      root_arr[ti] = ti;
-    }
-  for (t = 0; t < env->nterms; t++)
-    {
-      QO_TERM *jterm = QO_ENV_TERM (env, t);
-      QO_SEGMENT *s1, *s2;
-      PT_NODE *tpe;
-      int r1, r2;
-
-      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
-	{
-	  continue;
-	}
-      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
-       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
-      tpe = QO_TERM_PT_EXPR (jterm);
-      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
-	{
-	  continue;
-	}
-      s1 = QO_TERM_SEG (jterm);
-      s2 = QO_TERM_OID_SEG (jterm);
-      if (s1 == NULL || s2 == NULL)
-	{
-	  continue;
-	}
-      r1 = QO_SEG_IDX (s1);
-      while (root_arr[r1] != r1)
-	{
-	  root_arr[r1] = root_arr[root_arr[r1]];
-	  r1 = root_arr[r1];
-	}
-      r2 = QO_SEG_IDX (s2);
-      while (root_arr[r2] != r2)
-	{
-	  root_arr[r2] = root_arr[root_arr[r2]];
-	  r2 = root_arr[r2];
-	}
-      if (r1 != r2)
-	{
-	  root_arr[r1] = r2;
-	}
-    }
-  /* Flatten so root_arr[i] is the canonical root of segment i. */
-  for (ti = 0; ti < env->nsegs; ti++)
-    {
-      int r = ti;
-      while (root_arr[r] != r)
-	{
-	  r = root_arr[r];
-	}
-      root_arr[ti] = r;
-    }
+  qo_build_transitive_seg_roots (env, root_arr);
 
   if (qo_collect_transitive_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
       || specs_count == 0)
@@ -8257,6 +8201,81 @@ qo_generate_transitive_join_terms (QO_ENV * env)
     }
 
   free_and_init (specs);
+}
+
+/*
+ * qo_build_transitive_seg_roots () - Build the segment union-find used for
+ *   transitive join term generation.
+ *   env(in):
+ *   root_arr(out): caller-allocated array of env->nsegs entries; on return,
+ *	  root_arr[i] is the canonical root of segment i.
+ *
+ * Note: Unions only unconditional inner-join equi-join edge terms.  Conditional
+ *   equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must not
+ *   seed the closure: an inner term derived across an outer-join boundary changes results.
+ */
+static void
+qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr)
+{
+  int ti, t;
+
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      root_arr[ti] = ti;
+    }
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      QO_TERM *jterm = QO_ENV_TERM (env, t);
+      QO_SEGMENT *s1, *s2;
+      PT_NODE *tpe;
+      int r1, r2;
+
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+	{
+	  continue;
+	}
+      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
+       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      tpe = QO_TERM_PT_EXPR (jterm);
+      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	{
+	  continue;
+	}
+      s1 = QO_TERM_SEG (jterm);
+      s2 = QO_TERM_OID_SEG (jterm);
+      if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+      r1 = QO_SEG_IDX (s1);
+      while (root_arr[r1] != r1)
+	{
+	  root_arr[r1] = root_arr[root_arr[r1]];
+	  r1 = root_arr[r1];
+	}
+      r2 = QO_SEG_IDX (s2);
+      while (root_arr[r2] != r2)
+	{
+	  root_arr[r2] = root_arr[root_arr[r2]];
+	  r2 = root_arr[r2];
+	}
+      if (r1 != r2)
+	{
+	  root_arr[r1] = r2;
+	}
+    }
+
+  /* Flatten so root_arr[i] is the canonical root of segment i. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      int r = ti;
+      while (root_arr[r] != r)
+	{
+	  r = root_arr[r];
+	}
+      root_arr[ti] = r;
+    }
 }
 
 /*
