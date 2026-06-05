@@ -560,14 +560,10 @@ extern int heap_init_func_pred_unpack_info (THREAD_ENTRY * thread_p, HEAP_CACHE_
 extern void heap_free_func_pred_unpack_info (THREAD_ENTRY * thread_p, int n_indexes,
 					     FUNC_PRED_UNPACK_INFO * func_indx_preds, int *attr_info_started);
 
-#define ENABLE_ENHANCE_AUTO_INCR_TEST
 /* auto-increment */
 extern int heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					 HEAP_SCANCACHE * scan_cache, int *is_set
-#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-					 , int auto_incr_pos, char *serial_name
-#endif
-  );
+					 HEAP_SCANCACHE * scan_cache, int *is_set, int auto_incr_pos,
+					 char *serial_name);
 
 extern void heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records);
 #if defined (SA_MODE)

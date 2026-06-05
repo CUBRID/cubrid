@@ -12559,10 +12559,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int flag;
   TP_DOMAIN *result_domain;
   bool has_user_format;
-#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
+  char auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   int auto_incr_pos = -1;
-#endif
 
   thread_p->no_logging = (bool) insert->no_logging;
 
@@ -12664,7 +12662,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   n_indexes = attr_info.last_classrepr->n_indexes;
 
 
-#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+  // find auto_increment column position if exists
   for (i = 0; i < attr_info.num_values; i++)
     {
       if (attr_info.last_classrepr->attributes[i].is_autoincrement)
@@ -12673,7 +12671,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 	}
     }
-#endif
 
   /* first values should be the results of default expressions */
   num_default_expr = insert->num_default_expr;
@@ -13030,22 +13027,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
-#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
+
 	      if (auto_incr_pos >= 0)
 		{
 		  if (heap_set_autoincrement_value
 		      (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos,
-		       serial_name) != NO_ERROR)
+		       auto_incr_serial_name) != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
-#else
-	      if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-#endif
 
 	      if (insert->do_replace && insert->has_uniques)
 		{
@@ -13213,21 +13204,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
-#if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
 	  if (auto_incr_pos >= 0)
 	    {
 	      if (heap_set_autoincrement_value
-		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos, serial_name) != NO_ERROR)
+		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos,
+		   auto_incr_serial_name) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	    }
-#else
-	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
-	    {
-	      GOTO_EXIT_ON_ERROR;
-	    }
-#endif
 
 	  if (insert->do_replace && insert->has_uniques)
 	    {
