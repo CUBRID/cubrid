@@ -377,8 +377,8 @@ typedef struct hashjoin_proc_node
 {
   HASHJOIN_INPUT outer;
   HASHJOIN_INPUT inner;
-  QFILE_LIST_MERGE_INFO merge_info;
   PRED_EXPR *residual_pred;	/* residual conditions pushed into the probe loop */
+  QFILE_LIST_MERGE_INFO merge_info;
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
