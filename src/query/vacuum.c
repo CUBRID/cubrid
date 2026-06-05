@@ -720,11 +720,27 @@ typedef struct vacuum_oos_vfid_cache_entry
   VFID oos_vfid;		/* value; VFID_NULL sentinel means "no OOS file" */
 } VACUUM_OOS_VFID_CACHE_ENTRY;
 
-static bool vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
-					  int *evict_idx, const VFID * heap_vfid, VFID * out_oos_vfid);
+/* Tri-state result of vacuum_oos_vfid_cache_lookup so the caller can distinguish a legitimate
+ * "this heap has no OOS file" (NONE) from a transient lookup failure (ERROR). On ERROR the error
+ * is left set for the caller to log; the caller er_clear()s and leaves the OOS unreclaimed (a
+ * bounded, logged leak per ADR-0002) rather than failing the vacuum block. */
+typedef enum
+{
+  VACUUM_OOS_VFID_FOUND,	/* resolved a non-null OOS VFID into out_oos_vfid */
+  VACUUM_OOS_VFID_NONE,		/* heap legitimately has no OOS file (negative sentinel cached) */
+  VACUUM_OOS_VFID_ERROR		/* transient lookup failure; error left set, not cached */
+} VACUUM_OOS_VFID_LOOKUP_RESULT;
+
+static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p,
+								   VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
+								   int *evict_idx, const VFID * heap_vfid,
+								   VFID * out_oos_vfid);
 static int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vfid,
 					       const OID_VECTOR & oos_oids);
+static void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY * thread_p, const RECDES * undo_recdes,
+					     const VFID * heap_vfid, VACUUM_OOS_VFID_CACHE_ENTRY * oos_vfid_cache,
+					     int *oos_vfid_cache_size, int *oos_vfid_cache_evict_idx);
 static int vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
@@ -2451,7 +2467,8 @@ vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       return error_code;
     }
 
-for (const OID & oos_oid:oos_oids)
+  // *INDENT-OFF*
+  for (const OID & oos_oid : oos_oids)
     {
       error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
@@ -2461,6 +2478,7 @@ for (const OID & oos_oid:oos_oids)
 	  return error_code;
 	}
     }
+  // *INDENT-ON*
 
   return NO_ERROR;
 }
@@ -3428,8 +3446,12 @@ vacuum_rv_redo_vacuum_complete (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  * Caches a VFID_NULL sentinel for heaps with no OOS file, so non-OOS heaps skip file_descriptor_get
  * on repeat lookups. Only the genuine "no OOS file" case (false return, no error set) is cached;
  * transient failures are not — see the in-body comments for why caching one would poison the block.
+ *
+ * Returns a tri-state: FOUND (out_oos_vfid set to a non-null OOS VFID), NONE (heap legitimately has
+ * no OOS file; negative sentinel cached), or ERROR (transient lookup failure; the error is left set
+ * for the caller to log and clear — it is intentionally NOT er_clear()ed here, and NOT cached).
  */
-static bool
+static VACUUM_OOS_VFID_LOOKUP_RESULT
 vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENTRY * cache, int *cache_size,
 			      int *evict_idx, const VFID * heap_vfid, VFID * out_oos_vfid)
 {
@@ -3445,7 +3467,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
       if (VFID_EQ (&cache[i].heap_vfid, heap_vfid))
 	{
 	  VFID_COPY (out_oos_vfid, &cache[i].oos_vfid);
-	  return !VFID_ISNULL (out_oos_vfid);
+	  return VFID_ISNULL (out_oos_vfid) ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
 	}
     }
 
@@ -3457,15 +3479,16 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
 
   if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
     {
-      er_clear ();
-      return false;
+      /* Transient failure — do NOT cache and do NOT er_clear: leave the error set for the caller
+       * to log, then the caller clears it (bounded, logged leak per ADR-0002). */
+      return VACUUM_OOS_VFID_ERROR;
     }
 
   hfid = file_descriptor.heap.hfid;
   if (HFID_IS_NULL (&hfid))
     {
-      er_clear ();
-      return false;
+      /* Transient failure — do NOT cache; leave the error (if any) set for the caller. */
+      return VACUUM_OOS_VFID_ERROR;
     }
 
   if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
@@ -3474,9 +3497,8 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
       if (er_errid () != NO_ERROR)
 	{
 	  /* Transient failure (pgbuf_fix returned NULL with ER_PB_BAD_PAGEID, spage_get_record
-	   * failure, etc.) — do NOT cache. Next call retries. */
-	  er_clear ();
-	  return false;
+	   * failure, etc.) — do NOT cache. Leave the error set for the caller to log/clear. */
+	  return VACUUM_OOS_VFID_ERROR;
 	}
       /* Legitimate "no OOS file": heap_hdr->oos_vfid was VFID_NULL with docreate=false and no
        * error was raised. Fall through to cache the VFID_NULL negative sentinel. */
@@ -3496,7 +3518,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY * thread_p, VACUUM_OOS_VFID_CACHE_ENT
   VFID_COPY (&cache[slot].heap_vfid, heap_vfid);
   VFID_COPY (&cache[slot].oos_vfid, out_oos_vfid);
 
-  return !VFID_ISNULL (out_oos_vfid);
+  return VFID_ISNULL (out_oos_vfid) ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
 }
 
 /*
@@ -3583,7 +3605,8 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY * thread_p, const VFID * oos_vf
   // *INDENT-ON*
 
   log_sysop_start (thread_p);
-for (const OID & oid:sorted_oos_oids)
+  // *INDENT-OFF*
+  for (const OID & oid : sorted_oos_oids)
     {
       /* Idempotency for block retry: a sibling forward-walk earlier in this block may have
        * committed its sysop before a later one failed. On retry, the earlier OID's chunk is
@@ -3605,6 +3628,7 @@ for (const OID & oid:sorted_oos_oids)
 	  break;
 	}
     }
+  // *INDENT-ON*
   if (error_code == NO_ERROR)
     {
       log_sysop_commit (thread_p);
@@ -3614,6 +3638,76 @@ for (const OID & oid:sorted_oos_oids)
       log_sysop_abort (thread_p);
     }
   return error_code;
+}
+
+/*
+ * vacuum_forward_walk_reclaim_oos () - Reclaim the OOS records referenced by an OOS-bearing heap
+ *   pre-image found in a vacuum forward-walk undo record. Shared by the RVHF_UPDATE_NOTIFY_VACUUM
+ *   (update_old_home) and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (remove_old_forward) paths.
+ *
+ * thread_p (in)               : Thread entry.
+ * undo_recdes (in)            : Undo (pre-image) heap recdes reconstructed from the log undo data.
+ * heap_vfid (in)              : VFID of the heap file the record lives in (the log_vacuum vfid).
+ * oos_vfid_cache (in/out)     : Per-block heap-VFID -> OOS-VFID cache.
+ * oos_vfid_cache_size (in/out): Cache population counter.
+ * oos_vfid_cache_evict_idx    : Round-robin eviction cursor.
+ *
+ * NOTE: Any OOS reclaim failure degrades to a bounded, logged leak (log loudly, er_clear, return).
+ * It never propagates an error or fails the block — that would trip the shutdown-only assert in
+ * vacuum_finished_block_vacuum and risk wedging vacuum. See ADR-0002.
+ */
+static void
+vacuum_forward_walk_reclaim_oos (THREAD_ENTRY * thread_p, const RECDES * undo_recdes, const VFID * heap_vfid,
+				 VACUUM_OOS_VFID_CACHE_ENTRY * oos_vfid_cache, int *oos_vfid_cache_size,
+				 int *oos_vfid_cache_evict_idx)
+{
+  /* Only object-instance records (REC_HOME / REC_NEWHOME) carry an OOS-bearing VOT. Other undo
+   * images are forwarding pointers: heap_update_bigone and heap_update_relocation's update_old_home
+   * log the old REC_BIGONE / REC_RELOCATION home slot, which is just an 8-byte OID. Feeding such a
+   * record to heap_recdes_contains_oos reinterprets the OID's pageid as an MVCC header — a pageid
+   * with bit 27 set spuriously trips OR_MVCC_FLAG_HAS_OOS, after which heap_recdes_get_oos_oids walks
+   * a bogus VOT and hits assert_release. Mirror the record-type guard the eager-delete paths apply
+   * (forward_recdes.type == REC_NEWHOME / home_recdes.type == REC_HOME). */
+  if (!((undo_recdes->type == REC_HOME || undo_recdes->type == REC_NEWHOME) && heap_recdes_contains_oos (undo_recdes)))
+    {
+      return;
+    }
+
+  VFID oos_vfid;
+  VACUUM_OOS_VFID_LOOKUP_RESULT lookup_result =
+    vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, oos_vfid_cache_size, oos_vfid_cache_evict_idx, heap_vfid,
+				  &oos_vfid);
+  if (lookup_result == VACUUM_OOS_VFID_ERROR)
+    {
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			   "transient OOS vfid lookup failure; leaving OOS unreclaimed "
+			   "(bounded leak per ADR-0002) heap_vfid=%d|%d", VFID_AS_ARGS (heap_vfid));
+      er_clear ();
+      /* DO NOT propagate; the block must complete. */
+    }
+  else if (lookup_result == VACUUM_OOS_VFID_FOUND)
+    {
+      OID_VECTOR oos_oids;
+      int oos_err = heap_recdes_get_oos_oids (undo_recdes, oos_oids);
+
+      if (oos_err == NO_ERROR)
+	{
+	  oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, oos_oids);
+	}
+
+      if (oos_err != NO_ERROR)
+	{
+	  /* vacuum_forward_walk_delete_old_oos already aborted its own sysop, so partial deletes rolled
+	   * back; the leak is just the un-deleted OOS records. */
+	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			       "forward-walk oos cleanup failed; leaving OOS unreclaimed "
+			       "(bounded leak per ADR-0002) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+			       VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
+	  er_clear ();
+	  /* DO NOT propagate; the block must complete. */
+	}
+    }
+  /* VACUUM_OOS_VFID_NONE: heap legitimately has no OOS file — nothing to do. */
 }
 
 /*
@@ -3838,37 +3932,8 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      undo_recdes.data = undo_data + sizeof (INT16);
 	      undo_recdes.length = undo_data_size - sizeof (INT16);
 
-	      /* Only object-instance records (REC_HOME / REC_NEWHOME) carry an OOS-bearing VOT. Other
-	       * RVHF_UPDATE_NOTIFY_VACUUM undo images are forwarding pointers: heap_update_bigone and
-	       * heap_update_relocation's update_old_home log the old REC_BIGONE / REC_RELOCATION home
-	       * slot, which is just an 8-byte OID. Feeding such a record to heap_recdes_contains_oos
-	       * reinterprets the OID's pageid as an MVCC header — a pageid with bit 27 set spuriously
-	       * trips OR_MVCC_FLAG_HAS_OOS, after which heap_recdes_get_oos_oids walks a bogus VOT and
-	       * hits assert_release. Mirror the record-type guard the eager-delete paths already apply
-	       * (forward_recdes.type == REC_NEWHOME / home_recdes.type == REC_HOME). */
-	      VFID oos_vfid;
-	      if ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME)
-		  && heap_recdes_contains_oos (&undo_recdes)
-		  && vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, &oos_vfid_cache_size,
-						   &oos_vfid_cache_evict_idx, &log_vacuum.vfid, &oos_vfid))
-		{
-		  OID_VECTOR oos_oids;
-		  int oos_err = heap_recdes_get_oos_oids (&undo_recdes, oos_oids);
-
-		  if (oos_err == NO_ERROR)
-		    {
-		      oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, oos_oids);
-		    }
-
-		  if (oos_err != NO_ERROR)
-		    {
-		      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-					   "forward-walk oos cleanup failed: heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
-					   VFID_AS_ARGS (&log_vacuum.vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
-		      error_code = oos_err;
-		      goto end;
-		    }
-		}
+	      vacuum_forward_walk_reclaim_oos (thread_p, &undo_recdes, &log_vacuum.vfid, oos_vfid_cache,
+					       &oos_vfid_cache_size, &oos_vfid_cache_evict_idx);
 	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
@@ -4000,6 +4065,23 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	      ASSERT_NO_ERROR ();
 	    }
 	  db_private_free_and_init (thread_p, es_uri);
+	}
+      else if (log_record_data.rcvindex == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
+	{
+	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
+	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
+	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
+	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. See ADR-0001. */
+	  if (undo_data != NULL && undo_data_size > (int) sizeof (INT16))
+	    {
+	      RECDES undo_recdes;
+	      undo_recdes.type = *(INT16 *) undo_data;
+	      undo_recdes.data = undo_data + sizeof (INT16);
+	      undo_recdes.length = undo_data_size - sizeof (INT16);
+
+	      vacuum_forward_walk_reclaim_oos (thread_p, &undo_recdes, &log_vacuum.vfid, oos_vfid_cache,
+					       &oos_vfid_cache_size, &oos_vfid_cache_evict_idx);
+	    }
 	}
       else
 	{
@@ -4503,9 +4585,11 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
 
   /* We are here because the file that will be vacuumed is not dropped. */
   if (!LOG_IS_MVCC_BTREE_OPERATION (log_record_data->rcvindex)
-      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM)
+      && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
+      && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
     {
-      /* Only unpack undo data for BTREE ops, RVHF_UPDATE_NOTIFY_VACUUM (forward-walk OOS cleanup), and ES. */
+      /* Only unpack undo data for BTREE ops, RVHF_UPDATE_NOTIFY_VACUUM (forward-walk OOS cleanup),
+       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (remove_old_forward OOS cleanup), and ES. */
       return NO_ERROR;
     }
 
@@ -8453,27 +8537,6 @@ bridge_vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, const VFID * oos_vfid, R
   VFID_COPY (&helper.oos_vfid, oos_vfid);
   helper.record = *record;
   return vacuum_heap_oos_delete (thread_p, &helper);
-}
-
-/*
- * bridge_vacuum_cleanup_prev_version_oos () - Deprecated stub.
- *
- * The prev_version_lsa chain walker (vacuum_cleanup_prev_version_oos) was removed in Phase 2
- * of the OOS inline-log-walk refactor; OOS reclamation from old versions now happens inline
- * in the forward-walk code path. This stub exists solely so the DISABLED_ unit tests in
- * test_oos_vacuum_server.cpp still link until the test sources are updated in Phase 3.
- * The tests are all DISABLED_-prefixed, so this body never executes at runtime.
- */
-int
-bridge_vacuum_cleanup_prev_version_oos (THREAD_ENTRY * thread_p, const HFID * hfid, const VFID * oos_vfid,
-					const LOG_LSA * prev_lsa)
-{
-  (void) thread_p;
-  (void) hfid;
-  (void) oos_vfid;
-  (void) prev_lsa;
-  assert_release (false);	/* Should never be called — tests are DISABLED_. */
-  return ER_FAILED;
 }
 
 /*
