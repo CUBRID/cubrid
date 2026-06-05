@@ -331,6 +331,13 @@ qdump_print_hashjoin_proc_node (HASHJOIN_PROC_NODE * node_p)
   qdump_print_list_merge_info (&node_p->merge_info);
   fprintf (foutput, "\n");
 
+  if (node_p->residual_pred)
+    {
+      fprintf (foutput, "[residual_pred]:");
+      qdump_print_predicate (node_p->residual_pred);
+      fprintf (foutput, "\n");
+    }
+
   return true;
 }
 

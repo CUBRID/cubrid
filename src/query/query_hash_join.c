@@ -520,6 +520,21 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       stats->build.qualified_rows = build->list_id->tuple_cnt;
     }
 
+  if (context->residual_pred != NULL)
+    {
+      REGU_VARIABLE_LIST regup;
+
+      /* Inner (build) side is null-padded for every probe row in this function: its fetch values are NULL, mirroring
+       * the V_UNBOUND columns a merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record is
+       * NULL here, so the build values are never fetched from a tuple. Because nothing in the per-row loop below ever
+       * writes these vfetch_to values (only probe->regu_list_pred is fetched, and eval_pred does not write vfetch_to),
+       * the clear is hoisted out of the loop and performed exactly once. */
+      for (regup = build->regu_list_pred; regup != NULL; regup = regup->next)
+	{
+	  pr_clear_value (regup->value.vfetch_to);
+	}
+    }
+
   while ((scan_code = qfile_scan_list_next (thread_p, &probe->list_scan_id, &probe->tuple_record, PEEK)) == S_SUCCESS)
     {
       bool fill_qualified = true;
@@ -530,8 +545,6 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
 	  do
 	    {
-	      REGU_VARIABLE_LIST regup;
-
 	      /* Outer (probe) columns come from the probe tuple. */
 	      error =
 		fetch_val_list (thread_p, probe->regu_list_pred, context->val_descr, NULL, NULL,
@@ -539,14 +552,6 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 	      if (error != NO_ERROR)
 		{
 		  break;	/* error_exit */
-		}
-
-	      /* Inner (build) side is null-padded: its fetch values are NULL, mirroring the V_UNBOUND columns a
-	       * merged tuple would carry (see qdata_set_value_list_to_null). build->fill_record is NULL here, so
-	       * the build values cannot be fetched from a tuple. */
-	      for (regup = build->regu_list_pred; regup != NULL; regup = regup->next)
-		{
-		  pr_clear_value (regup->value.vfetch_to);
 		}
 
 	      ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);

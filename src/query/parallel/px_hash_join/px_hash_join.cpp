@@ -338,6 +338,7 @@ error_exit:
 	}
 
       context->during_join_pred = single_context->during_join_pred;
+      context->residual_pred = single_context->residual_pred;
       context->val_descr = single_context->val_descr;
 
       context->status = HASHJOIN_STATUS_PARALLEL_PROBE;

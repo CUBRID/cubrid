@@ -889,7 +889,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   /* residual predicate: two-input residual conditions (incl. non-equi joins) pushed into the probe loop.
    * The referenced columns are fetched into val_descr through proc->outer/inner.regu_list_pred, whose
    * coverage was extended for these terms in qo_init_projection_info. */
-  if (residual_terms != NULL && !bitset_is_empty (residual_terms))
+  if (!bitset_is_empty (residual_terms))
     {
       PT_NODE *probe_pred_pt = make_pred_from_bitset (env, residual_terms, is_always_true);
       if (probe_pred_pt != NULL)
@@ -6079,7 +6079,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
    * outer/inner regu_list_pred, which are built from pred_list.  Add the columns referenced by
    * the probe terms to pred_list (so they are fetched into val_descr) and to plan_segs_set (so
    * they are projected into the build/probe list files and resolvable via name_list). */
-  if (residual_terms != NULL && !bitset_is_empty (residual_terms))
+  if (!bitset_is_empty (residual_terms))
     {
       for (term_index = bitset_iterate (residual_terms, &term_iter); term_index != -1;
 	   term_index = bitset_next_member (&term_iter))
