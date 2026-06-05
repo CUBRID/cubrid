@@ -225,6 +225,8 @@ struct t_srv_handle
 #endif				/* CAS_FOR_MYSQL */
 #if defined (CAS_FOR_CGW)
   SQLHSTMT cgw_hstmt;
+  void *cgw_col_binding;
+  void *cgw_col_binding_buff;
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;

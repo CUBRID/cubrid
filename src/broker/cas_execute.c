@@ -235,6 +235,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 */
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 #if defined(CAS_FOR_CGW)
+static void cgw_cleanup_col_bindings (T_SRV_HANDLE * srv_handle);
 static int cgw_fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 #endif /* CAS_FOR_CGW */
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -3286,6 +3287,7 @@ ux_cursor_close (T_SRV_HANDLE * srv_handle)
       return;
     }
 #if defined(CAS_FOR_CGW)
+  cgw_cleanup_col_bindings (srv_handle);
   cgw_cursor_close (srv_handle);
 #else
   ux_free_result (srv_handle->q_result[idx].result);
@@ -5814,6 +5816,33 @@ oid_data_set (T_NET_BUF * net_buf, DB_OBJECT * obj, int attr_num, char **attr_na
 }
 
 #if defined (CAS_FOR_CGW)
+static void
+cgw_cleanup_col_bindings (T_SRV_HANDLE * srv_handle)
+{
+  T_COL_BINDER *col_binding;
+  T_COL_BINDER *col_binding_buff;
+
+  if (srv_handle == NULL)
+    {
+      return;
+    }
+
+  col_binding = (T_COL_BINDER *) srv_handle->cgw_col_binding;
+  col_binding_buff = (T_COL_BINDER *) srv_handle->cgw_col_binding_buff;
+
+  if (col_binding != NULL)
+    {
+      cgw_cleanup_binder (col_binding);
+      srv_handle->cgw_col_binding = NULL;
+    }
+
+  if (col_binding_buff != NULL)
+    {
+      cgw_cleanup_binder (col_binding_buff);
+      srv_handle->cgw_col_binding_buff = NULL;
+    }
+}
+
 static int
 cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		  T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5829,6 +5858,8 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   SQLLEN total_row_count = 0;
   T_BROKER_VERSION client_version = req_info->client_version;
   T_CGW_HANDLE *cgw_handle = NULL;
+  T_COL_BINDER *col_binding = NULL;
+  T_COL_BINDER *col_binding_buff = NULL;
 
   if (result_set_idx < 0 || result_set_idx > 1)
     {
@@ -5844,6 +5875,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 
   if (srv_handle->is_cursor_open == false)
     {
+      cgw_cleanup_col_bindings (srv_handle);
       err_code = cgw_execute (cgw_handle->hdbc, srv_handle, &row_count);
       if (err_code < 0)
 	{
@@ -5859,7 +5891,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto fetch_error;
 	}
-
+      cgw_cleanup_col_bindings (srv_handle);
       err_code = cgw_execute (cgw_handle->hdbc, srv_handle, &row_count);
       if (err_code < 0)
 	{
@@ -5878,20 +5910,22 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
       goto fetch_error;
     }
 
+  col_binding = (T_COL_BINDER *) srv_handle->cgw_col_binding;
+  col_binding_buff = (T_COL_BINDER *) srv_handle->cgw_col_binding_buff;
+
   if (col_binding == NULL)
     {
-      if (col_binding_buff)
-	{
-	  cgw_cleanup_binder (col_binding_buff);
-	  col_binding_buff = NULL;
-	}
-
-      err_code = cgw_col_bindings (srv_handle->cgw_hstmt, num_cols, &col_binding, &col_binding_buff);
+      err_code = cgw_col_bindings (srv_handle->cgw_hstmt, num_cols,
+				   (T_COL_BINDER **) & srv_handle->cgw_col_binding,
+				   (T_COL_BINDER **) & srv_handle->cgw_col_binding_buff);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
 	  goto fetch_error;
 	}
+
+      col_binding = (T_COL_BINDER *) srv_handle->cgw_col_binding;
+      col_binding_buff = (T_COL_BINDER *) srv_handle->cgw_col_binding_buff;
     }
 
   if (cas_shard_flag == ON)
@@ -5931,17 +5965,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	    {
 	      fetch_end_flag = 1;
 
-	      if (col_binding)
-		{
-		  cgw_cleanup_binder (col_binding);
-		  col_binding = NULL;
-		}
-
-	      if (col_binding_buff)
-		{
-		  cgw_cleanup_binder (col_binding_buff);
-		  col_binding_buff = NULL;
-		}
+	      cgw_cleanup_col_bindings (srv_handle);
 
 	      err_code = cgw_cursor_close (srv_handle);
 	      if (err_code < 0)
@@ -5993,17 +6017,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
 	{
 	  fetch_end_flag = 1;
 
-	  if (col_binding)
-	    {
-	      cgw_cleanup_binder (col_binding);
-	      col_binding = NULL;
-	    }
-
-	  if (col_binding_buff)
-	    {
-	      cgw_cleanup_binder (col_binding_buff);
-	      col_binding_buff = NULL;
-	    }
+	  cgw_cleanup_col_bindings (srv_handle);
 
 	  err_code = cgw_cursor_close (srv_handle);
 	  if (err_code < 0)
@@ -6042,17 +6056,7 @@ cgw_fetch_result (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, ch
   return 0;
 
 fetch_error:
-  if (col_binding)
-    {
-      cgw_cleanup_binder (col_binding);
-      col_binding = NULL;
-    }
-
-  if (col_binding_buff)
-    {
-      cgw_cleanup_binder (col_binding_buff);
-      col_binding_buff = NULL;
-    }
+  cgw_cleanup_col_bindings (srv_handle);
 
   return err_code;
 }
@@ -11830,6 +11834,7 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 void
 ux_cgw_free_stmt (T_SRV_HANDLE * srv_handle)
 {
+  cgw_cleanup_col_bindings (srv_handle);
   cgw_free_stmt (srv_handle);
 }
 
