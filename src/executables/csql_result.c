@@ -565,13 +565,6 @@ get_current_result (int **lengths, const CUR_RESULT_INFO * result_info, const CS
 	      || (TP_IS_CHAR_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_CLOB))
 	      || (TP_IS_BIT_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_BLOB)));
 
-      //TODO : develop에 merge하기 전에 지우기
-      if ((TP_IS_CHAR_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_CLOB))
-	  || (TP_IS_BIT_TYPE (value_type) && (result_info->attr_types[i] == DB_TYPE_BLOB)))
-	{
-	  assert_release (false);
-	}
-
       switch (value_type)
 	{
 	case DB_TYPE_NULL:	/* null value */

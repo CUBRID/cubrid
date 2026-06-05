@@ -59,6 +59,7 @@ namespace cubload
   int to_db_varchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_make_nchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_clob (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_float (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_double (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -75,6 +76,8 @@ namespace cubload
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_blob_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_db_blob_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -157,6 +160,10 @@ namespace cubload
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
     setters_[DB_TYPE_VARBIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_VARBIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
+    setters_[DB_TYPE_BLOB][LDR_BSTR] = &to_db_blob_from_bin_str;
+    setters_[DB_TYPE_BLOB][LDR_XSTR] = &to_db_blob_from_hex_str;
+
+    setters_[DB_TYPE_CLOB][LDR_STR] = &to_db_clob;
 
     setters_[DB_TYPE_BFILE][LDR_ELO_EXT] = &to_db_elo_ext;
     setters_[DB_TYPE_BFILE][LDR_ELO_INT] = &to_db_elo_int;
@@ -423,6 +430,30 @@ namespace cubload
   int to_db_make_varnchar (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return to_db_generic_char (DB_TYPE_VARNCHAR, str, str_size, attr, val);
+  }
+
+  int
+  to_db_clob (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    /*
+     * Internal CLOB is stored inline like a character string, but it is not a
+     * fixed-precision type: the trailing-pad truncation that to_db_generic_char
+     * performs for CHAR/VARCHAR is meaningless here. A CLOB only has the single
+     * absolute LOB size limit (DB_MAX_LOB_PRECISION), so apply a plain bound check.
+     */
+    int char_count = 0;
+    const tp_domain &domain = attr->get_domain ();
+    INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
+
+    intl_char_count ((unsigned char *) str, (int) str_size, codeset, &char_count);
+
+    if (char_count > domain.precision)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_CLOB));
+	return ER_IT_DATA_OVERFLOW;
+      }
+
+    return db_make_clob (val, domain.precision, str, (int) str_size, codeset, domain.collation_id);
   }
 
   int
@@ -756,6 +787,96 @@ namespace cubload
 	return error_code;
       }
     db_value_clear (&temp);
+
+    return error_code;
+  }
+
+  /*
+   * Internal BLOB is stored inline like a bit string, but it must be built with
+   * the BLOB primitive (db_make_blob), not by borrowing the VARBIT conversion
+   * path. The on-disk layout being identical today is incidental; routing BLOB
+   * through VARBIT functions couples the two types and would break if the BLOB
+   * storage diverges later. The literal is parsed into a raw bit buffer here and
+   * handed directly to db_make_blob.
+   */
+  int
+  to_db_blob_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    int error_code = NO_ERROR;
+    char *bstring = NULL;
+    std::size_t dest_size;
+
+    dest_size = (str_size + 7) / 8;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_bit_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	return error_code;
+      }
+
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, (int) str_size);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    /* val takes ownership of bstring */
+    val->need_clear = true;
+
+    return error_code;
+  }
+
+  int
+  to_db_blob_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    int error_code = NO_ERROR;
+    char *bstring = NULL;
+    std::size_t dest_size;
+
+    dest_size = (str_size + 1) / 2;
+
+    bstring = (char *) db_private_alloc (NULL, dest_size + 1);
+    if (bstring == NULL)
+      {
+	error_code = er_errid ();
+	assert (error_code != NO_ERROR);
+
+	return error_code;
+      }
+
+    if (qstr_hex_to_bin (bstring, (int) dest_size, const_cast<char *> (str), (int) str_size) != (int) str_size)
+      {
+	db_private_free_and_init (NULL, bstring);
+
+	error_code = ER_OBJ_DOMAIN_CONFLICT;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+
+	return error_code;
+      }
+
+    error_code = db_make_blob (val, DB_MAX_LOB_PRECISION, bstring, ((int) str_size) * 4);
+    if (error_code != NO_ERROR)
+      {
+	db_private_free_and_init (NULL, bstring);
+	return error_code;
+      }
+
+    /* val takes ownership of bstring */
+    val->need_clear = true;
 
     return error_code;
   }
