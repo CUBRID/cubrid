@@ -707,7 +707,15 @@ cas_log_compile_begin_write_query_string (char *query, int size, HIDE_PWD_INFO_P
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
-      cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+      /* Skip the write if the query carries a password: the parser has not run yet,
+       * so masking is not reliable and a flush here would put the plaintext password
+       * on disk. cas_log_compile_end_write_query_string () writes it masked once the
+       * parser provides the offsets. Password-free queries are written now so the SQL
+       * is on disk before the compile (record-before-compile). */
+      if (!password_exist (query))
+	{
+	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+	}
     }
 }
 
@@ -743,7 +751,12 @@ cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_I
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
-      cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+      /* skip the write if the query has a password (see cas_log_compile_begin_write_query_string ());
+       * compile_end writes it masked after the parser runs */
+      if (!password_exist (query))
+	{
+	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_VISIBLE_PW);
+	}
     }
 }
 
