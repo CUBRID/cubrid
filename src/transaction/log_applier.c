@@ -72,6 +72,7 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
+#include "compressor.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
@@ -3838,6 +3839,10 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
 {
   LA_OOS_CACHE_ENTRY *entry;
   OR_BUF buf;
+  char *decoded_data;
+  char *free_ptr;
+  int decoded_len;
+  int error;
 
   entry = la_lookup_oos_value (head_oid);
   if (entry == NULL)
@@ -3853,8 +3858,39 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
       return ER_FAILED;
     }
 
-  or_init (&buf, entry->data, entry->length);
-  return att->type->data_readval (&buf, value, att->domain, entry->length, true, NULL, 0);
+  /* entry->data holds the layer-2 OOS blob: [ OOS_COMP_HEADER (8B) | image-or-lz4-bytes ].
+   * Decode it before data_readval — the replication stream carries compressed bytes
+   * (the standby decodes, not decompress-before-send). entry->data is cache-owned and
+   * must not be freed here; pass NULL as scratch so oos_payload_decode never frees it.
+   * We make a working copy so oos_payload_decode can memmove into it for the NONE case. */
+  {
+    char *work_buf = (char *) db_private_alloc (NULL, entry->length);
+    if (work_buf == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) entry->length);
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+    memcpy (work_buf, entry->data, entry->length);
+
+    /* scratch == NULL: oos_payload_decode will free work_buf if it needs to
+     * allocate a fresh LZ4 buffer (it frees buf when buf != scratch). */
+    error = oos_payload_decode (entry->length, work_buf, NULL, &decoded_data, &decoded_len, &free_ptr);
+    if (error != NO_ERROR)
+      {
+	/* oos_payload_decode freed work_buf and set er. */
+	return error;
+      }
+  }
+
+  or_init (&buf, decoded_data, decoded_len);
+  error = att->type->data_readval (&buf, value, att->domain, decoded_len, true, NULL, 0);
+
+  if (free_ptr != NULL)
+    {
+      db_private_free_and_init (NULL, free_ptr);
+    }
+
+  return error;
 }
 
 /*

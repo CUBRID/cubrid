@@ -78,6 +78,7 @@
 #include "log_append.hpp"
 #include "string_buffer.hpp"
 #include "tde.h"
+#include "compressor.hpp"
 
 #include <algorithm>
 #include <set>
@@ -10593,6 +10594,55 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 }
 
 /*
+ * OOS payload compression write-path helpers (CBRD-26756)
+ *
+ * The shared codec (OOS_COMP_HEADER, oos_comp_header_put/get, oos_payload_decode)
+ * lives in oos_file.hpp so both the heap read path and the replication applier
+ * use the same decoder.  The write-path gate (oos_compression_enabled,
+ * oos_should_compress) is kept here because it is only needed at insert time.
+ *
+ * Layer-2 OOS blob layout: [ OOS_COMP_HEADER (8B) | image-or-lz4-bytes ].
+ * The inline heap stub length (oos_lengths[i]) equals the full blob size:
+ * OOS_COMP_HEADER_SIZE + stored_bytes, satisfying the oos_read invariant.
+ */
+
+/* TODO(CBRD-26881): promote this to a real system parameter
+ * (oos_enable_compression BOOL default TRUE via prm_get_bool_value) so ops/tests
+ * can toggle OOS payload compression at runtime. For now it is a build-time
+ * constant. */
+static const bool oos_compression_enabled = true;
+
+/*
+ * oos_should_compress () - whether an OOS payload of the given type benefits
+ *   from a transparent LZ4 pass at the OOS boundary.
+ *
+ * Compress variable-length types that reach OOS raw (uncompressed by their own
+ * data_writeval). Skip DB_TYPE_VARCHAR (already LZ4 in mr_writeval_string_internal),
+ * DB_TYPE_BLOB / DB_TYPE_CLOB (external ES; only the locator is inline), and
+ * everything else.
+ *
+ * DB_TYPE_VARNCHAR_DEPRECATED: pr_do_db_value_string_compression returns
+ * immediately when db_type != DB_TYPE_VARCHAR, so VARNCHAR reaches OOS raw —
+ * it is a legitimate compression target.
+ */
+static bool
+oos_should_compress (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_JSON:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VARNCHAR_DEPRECATED:	/* reaches OOS uncompressed; see comment above */
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
  *   Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
  *   On success raw->data is either the caller scratch (when oos_len fits) or a
@@ -10654,7 +10704,34 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       assert_release (false);
       return;
     }
-  raw->length = (int) oos_len;
+
+  /* Decode the layer-2 OOS blob: [ OOS_COMP_HEADER (8B) | image-or-lz4-bytes ].
+   * oos_payload_decode handles both NONE (memmove in-place) and LZ4 (fresh alloc).
+   * raw->data is the freeable base; after decode it points to the original image. */
+  {
+    char *buf = raw->data;
+    char *decoded_data;
+    char *free_ptr;
+    int decoded_len;
+
+    if (oos_payload_decode ((int) oos_len, buf, oos_scratch, &decoded_data, &decoded_len, &free_ptr) != NO_ERROR)
+      {
+	/* oos_payload_decode freed buf (if heap-backed) and set er. */
+	raw->data = NULL;
+	assert_release_error (er_errid () != NO_ERROR);
+	return;
+      }
+
+    raw->data = decoded_data;
+    raw->length = decoded_len;
+    /* area_size: decoded_data == buf means in-place memmove (scratch or heap);
+     * area_size was already set correctly above.  For a fresh LZ4 alloc,
+     * decoded_data != buf, so update area_size to the new allocation size. */
+    if (decoded_data != buf)
+      {
+	raw->area_size = decoded_len;
+      }
+  }
 }
 
 /*
@@ -12460,6 +12537,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   LOG_TDES *tdes;
   int tran_index;
   int i;
+  char *tmp = NULL;		/* layer-2 blob: [OOS_COMP_HEADER | image-or-lz4]. Separate from recdes.data. */
 
   recdes.area_size = IO_MAX_PAGE_SIZE;
   recdes.length = 0;
@@ -12504,14 +12582,91 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 	    {
 	      goto error_oos;
 	    }
-	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
-	    {
-	      goto error_oos;
-	    }
 
-	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
-	  (*oos_oids)[i] = oos_oid;
-	  (*oos_lengths)[i] = (DB_BIGINT) recdes.length;
+	  /* Build the layer-2 OOS blob: [OOS_COMP_HEADER (8B) | image-or-lz4-bytes].
+	   * tmp is a SEPARATE allocation from recdes.data; it is freed on every exit
+	   * (here and at error_oos) and never aliased with recdes.data. */
+	  {
+	    char *image = recdes.data;
+	    int image_len = recdes.length;	/* L_u: serialized image length */
+	    DB_TYPE attr_type = attr_info->values[i].last_attrepr->domain->type->id;
+	    unsigned char algo = OOS_COMP_NONE;
+	    int stored_bytes = image_len;
+	    int src_len;
+
+	    if (oos_compression_enabled && oos_should_compress (attr_type) && image_len >= OOS_MIN_COMPRESS_LEN)
+	      {
+		int bound = cubcompress::bound < cubcompress::LZ4 > (image_len);
+		int comp_len;
+
+		if (bound <= 0)
+		  {
+		    goto error_oos;
+		  }
+		tmp = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + bound);
+		if (tmp == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    (size_t) (OOS_COMP_HEADER_SIZE + bound));
+		    goto error_oos;
+		  }
+		comp_len =
+		  cubcompress::compress < cubcompress::LZ4 > (image, image_len, tmp + OOS_COMP_HEADER_SIZE, bound);
+
+		if (comp_len <= 0)
+		  {
+		    /* Compress call failed (compressor.hpp already called er_set).
+		     * Clear the error and fall through to the NONE path — a successful
+		     * insert with raw bytes must not leave a dangling thread error. */
+		    er_clear ();
+		    db_private_free_and_init (thread_p, tmp);
+		  }
+		else if (comp_len + OOS_COMP_MIN_GAIN <= image_len)
+		  {
+		    /* Benefit gate: keep the compressed form only when it saves at
+		     * least OOS_COMP_MIN_GAIN bytes. The OOS_COMP_HEADER is prepended
+		     * either way (see the NONE branch below), so it cancels and is NOT
+		     * part of this comparison; the margin pays for the per-read
+		     * decompress cost. */
+		    algo = OOS_COMP_LZ4;
+		    stored_bytes = comp_len;
+		  }
+		else
+		  {
+		    /* Compressed is not smaller; fall through to NONE path. */
+		    db_private_free_and_init (thread_p, tmp);
+		  }
+	      }
+
+	    if (algo == OOS_COMP_NONE)
+	      {
+		/* Skipped or not beneficial: store the raw image after the header. */
+		tmp = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + image_len);
+		if (tmp == NULL)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    (size_t) (OOS_COMP_HEADER_SIZE + image_len));
+		    goto error_oos;
+		  }
+		memcpy (tmp + OOS_COMP_HEADER_SIZE, image, image_len);
+		stored_bytes = image_len;
+	      }
+
+	    oos_comp_header_put (tmp, algo, image_len);
+	    src_len = OOS_COMP_HEADER_SIZE + stored_bytes;
+
+	    if (oos_insert (thread_p, oos_vfid, oos_buffer (tmp, (size_t) src_len), oos_oid) != NO_ERROR)
+	      {
+		goto error_oos;
+	      }
+
+	    thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
+	    (*oos_oids)[i] = oos_oid;
+	    (*oos_lengths)[i] = (DB_BIGINT) src_len;	/* inline stub length = layer-2 blob size */
+
+	    db_private_free_and_init (thread_p, tmp);
+	  }
+
 	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
 	    {
 	      free_and_init (recdes.data);
@@ -12526,6 +12681,10 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   return S_SUCCESS;
 
 error_oos:
+  if (tmp != NULL)
+    {
+      db_private_free_and_init (thread_p, tmp);
+    }
   if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
     {
       free_and_init (recdes.data);
