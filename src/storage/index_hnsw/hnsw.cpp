@@ -399,7 +399,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 // HNSW WAL Logging Structures and Functions
 // =====================================================================
 
-typedef struct hnsw_insert_log_header
+typedef struct hnsw_rv_log_header
 {
   OID oid;
   BTID btid;
@@ -407,10 +407,10 @@ typedef struct hnsw_insert_log_header
   int hnsw_M;
   int hnsw_efConstruction;
   int metric;
-} HNSW_INSERT_LOG_HEADER;
+} HNSW_RV_LOG_HEADER;
 
 /*
- * hnsw_pack_insert_data() - Pack vector insertion data into WAL log.
+ * hnsw_pack_rv_log_data() - Pack an HNSW recovery-log record (header [+ vector]) into a WAL buffer.
  *
  * return      : Total packed size
  * buffer(out) : Output buffer (must be pre-allocated)
@@ -420,17 +420,17 @@ typedef struct hnsw_insert_log_header
  * vector      : Vector values
  */
 static int
-hnsw_get_insert_log_data_size (int dimension)
+hnsw_get_rv_log_data_size (int dimension)
 {
-  return (int) sizeof (HNSW_INSERT_LOG_HEADER) + dimension * (int) sizeof (float);
+  return (int) sizeof (HNSW_RV_LOG_HEADER) + dimension * (int) sizeof (float);
 }
 
 static int
-hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
+hnsw_pack_rv_log_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
 		       const hnsw_build_params &params, const float *vector)
 {
-  HNSW_INSERT_LOG_HEADER *log_data = (HNSW_INSERT_LOG_HEADER *) buffer;
-  int total_size = hnsw_get_insert_log_data_size (params.dimension);
+  HNSW_RV_LOG_HEADER *log_data = (HNSW_RV_LOG_HEADER *) buffer;
+  int total_size = hnsw_get_rv_log_data_size (params.dimension);
 
   if (params.dimension <= 0 || params.m <= 0 || params.ef_construction <= 0 || vector == NULL
       || total_size > buffer_size)
@@ -444,7 +444,7 @@ hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OI
   log_data->hnsw_M = params.m;
   log_data->hnsw_efConstruction = params.ef_construction;
   log_data->metric = static_cast<int> (params.metric);
-  memcpy (buffer + sizeof (HNSW_INSERT_LOG_HEADER), vector, params.dimension * sizeof (float));
+  memcpy (buffer + sizeof (HNSW_RV_LOG_HEADER), vector, params.dimension * sizeof (float));
 
   return total_size;
 }
@@ -501,14 +501,14 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   if (!log_is_in_crash_recovery ())
     {
       const hnsw_build_params &params = index->get_build_params ();
-      int wal_data_size = hnsw_get_insert_log_data_size (params.dimension);
+      int wal_data_size = hnsw_get_rv_log_data_size (params.dimension);
       std::vector<char> wal_data (wal_data_size);
 
       for (int idx = 0; idx < n_vectors; idx++)
 	{
 	  const OID *cur_oid = &oid[idx];
 	  const float *cur_vector = vector + idx * params.dimension;
-	  int packed_size = hnsw_pack_insert_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
+	  int packed_size = hnsw_pack_rv_log_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
 	  if (packed_size != wal_data_size)
 	    {
 	      return ER_FAILED;
@@ -519,7 +519,7 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
 	   * (OID/BTID/params) is needed for undo; the vector is only needed for redo. */
 	  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
 	  log_append_undo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr,
-				(int) sizeof (HNSW_INSERT_LOG_HEADER), wal_data.data ());
+				(int) sizeof (HNSW_RV_LOG_HEADER), wal_data.data ());
 	  log_append_dboutside_redo (thread_p, RVHNSW_INSERT_ELEMENT, wal_data_size, wal_data.data ());
 	}
     }
@@ -552,9 +552,9 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
 
       if (found)
 	{
-	  int data_size = hnsw_get_insert_log_data_size (params.dimension);   /* header + vector */
+	  int data_size = hnsw_get_rv_log_data_size (params.dimension);   /* header + vector */
 	  std::vector<char> wal_data (data_size);
-	  if (hnsw_pack_insert_data (wal_data.data (), data_size, btid, oid, params, old_vector.data ()) != data_size)
+	  if (hnsw_pack_rv_log_data (wal_data.data (), data_size, btid, oid, params, old_vector.data ()) != data_size)
 	    {
 	      return ER_FAILED;
 	    }
@@ -562,7 +562,7 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
 	  /* UNDO (revive, needs the vector) must be appended before REDO (tombstone, header only). */
 	  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
 	  log_append_undo_data (thread_p, RVHNSW_DELETE_ELEMENT, &addr, data_size, wal_data.data ());
-	  log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (HNSW_INSERT_LOG_HEADER),
+	  log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (HNSW_RV_LOG_HEADER),
 				     wal_data.data ());
 	}
     }
@@ -614,14 +614,14 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   hnsw_build_params params;
   std::vector<float> vector_data;
 
-  if (rcv->length >= (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv->length >= (int) sizeof (HNSW_RV_LOG_HEADER))
     {
-      const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+      const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
       btid = &log_data->btid;
       oid = &log_data->oid;
 
       if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
-	  || rcv->length != hnsw_get_insert_log_data_size (log_data->dimension))
+	  || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
 	{
 	  return ER_FAILED;
 	}
@@ -629,7 +629,7 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       params = hnsw_build_params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
 				  static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
       vector_data.resize (log_data->dimension);
-      memcpy (vector_data.data (), rcv->data + sizeof (HNSW_INSERT_LOG_HEADER),
+      memcpy (vector_data.data (), rcv->data + sizeof (HNSW_RV_LOG_HEADER),
 	      log_data->dimension * sizeof (float));
     }
 
@@ -705,12 +705,12 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
 
-  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
   const BTID *btid = &log_data->btid;
   const OID *oid = &log_data->oid;
 
@@ -766,12 +766,12 @@ hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
 
-  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
   const BTID *btid = &log_data->btid;
   const OID *oid = &log_data->oid;
 
@@ -798,8 +798,8 @@ hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 
   /* Compensation: log the tombstone as a delete REDO before applying it, so a crash during or
    * after rollback replays it. */
-  char wal_data[sizeof (HNSW_INSERT_LOG_HEADER)];
-  memcpy (wal_data, rcv->data, sizeof (HNSW_INSERT_LOG_HEADER));
+  char wal_data[sizeof (HNSW_RV_LOG_HEADER)];
+  memcpy (wal_data, rcv->data, sizeof (HNSW_RV_LOG_HEADER));
   log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (wal_data), wal_data);
 
   return index->remove (thread_p, oid);
@@ -821,24 +821,24 @@ hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_undo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
 
-  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
   const BTID *btid = &log_data->btid;
   const OID *oid = &log_data->oid;
 
   if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
-      || rcv->length != hnsw_get_insert_log_data_size (log_data->dimension))
+      || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
     {
       return ER_FAILED;
     }
 
   hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
 			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
-  const float *vector = (const float *) (rcv->data + sizeof (HNSW_INSERT_LOG_HEADER));
+  const float *vector = (const float *) (rcv->data + sizeof (HNSW_RV_LOG_HEADER));
 
   if (index_manager == nullptr)
     {
@@ -865,24 +865,24 @@ hnsw_rv_undo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_redo_revive_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
 
-  const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
   const BTID *btid = &log_data->btid;
   const OID *oid = &log_data->oid;
 
   if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
-      || rcv->length != hnsw_get_insert_log_data_size (log_data->dimension))
+      || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
     {
       return ER_FAILED;
     }
 
   hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
 			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
-  const float *vector = (const float *) (rcv->data + sizeof (HNSW_INSERT_LOG_HEADER));
+  const float *vector = (const float *) (rcv->data + sizeof (HNSW_RV_LOG_HEADER));
 
   if (index_manager == nullptr)
     {
@@ -1250,11 +1250,6 @@ hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, c
   std::string backend_id = backend->get_id ();
   if (log_is_in_crash_recovery ())
     {
-      /* CUBVEC-180 fix: reuse the disk-flushed graph (preserves levels/slots) instead of wiping
-       * and rebuilding only from the redo window. Wiping would drop rows committed before the
-       * last checkpoint (their insert REDO is outside the window). Only the unflushed tail is
-       * replayed, idempotently, by the redo handlers. Fall back to a fresh index if nothing is on
-       * disk yet (e.g. the index was created entirely within the redo window). */
       int load_error = load_index (thread_p, btid, index_out);
       if (load_error == NO_ERROR && index_out != NULL)
 	{
