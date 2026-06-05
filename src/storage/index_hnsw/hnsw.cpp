@@ -548,7 +548,14 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
        * (e.g. after an UPDATE = delete + insert). */
       std::vector<float> old_vector (params.dimension);
       bool found = false;
-      index->peek_live_vector (thread_p, oid, old_vector.data (), &found);
+      int peek_error = index->peek_live_vector (thread_p, oid, old_vector.data (), &found);
+      if (peek_error != NO_ERROR)
+	{
+	  /* Could not read the live node (e.g. page access failure). Fail the DELETE rather than
+	   * tombstone the node with no UNDO/REDO record, which would leave heap and index diverging
+	   * (rollback could not revive it, recovery could not re-apply the committed delete). */
+	  return peek_error;
+	}
 
       if (found)
 	{
@@ -705,7 +712,9 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
+  /* DELETE REDO is a header-only record; require the exact length so a malformed/mismatched
+   * record is rejected at the recovery boundary instead of tombstoning by OID on bad input. */
+  if (rcv == NULL || rcv->data == NULL || rcv->length != (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
@@ -766,7 +775,9 @@ hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 int
 hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
 {
-  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
+  /* INSERT UNDO is a header-only record; require the exact length (same rationale as the
+   * header-only DELETE REDO record). */
+  if (rcv == NULL || rcv->data == NULL || rcv->length != (int) sizeof (HNSW_RV_LOG_HEADER))
     {
       return ER_FAILED;
     }
