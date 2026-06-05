@@ -669,7 +669,11 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   {
     std::vector<float> existing (params.dimension);
     bool found = false;
-    index->peek_live_vector (thread_p, oid, existing.data (), &found);
+    error = index->peek_live_vector (thread_p, oid, existing.data (), &found);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
     if (found && memcmp (existing.data (), vector_data.data (), params.dimension * sizeof (float)) == 0)
       {
 	return NO_ERROR;
