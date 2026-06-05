@@ -266,8 +266,7 @@ ux_cgw_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
 
-      /* record-before-commit: the commit can hang on WAL/lock, so put the buffered
-       * statement and its result line on disk before entering it */
+      /* flush before commit so the result line is on disk if it hangs */
       cas_log_flush_if_needed ();
       err_code = ux_cgw_end_tran (CCI_TRAN_COMMIT, true, false);
       cas_log_write (0, false, "auto_commit %d", err_code);
@@ -277,7 +276,7 @@ ux_cgw_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
 
-      /* record-before-rollback: same as the commit path above */
+      /* same as the commit path above */
       cas_log_flush_if_needed ();
       err_code = ux_cgw_end_tran (CCI_TRAN_ROLLBACK, true, false);
       cas_log_write (0, false, "auto_rollback %d", err_code);

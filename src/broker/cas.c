@@ -1325,13 +1325,7 @@ exit_on_end:
       as_info->uts_status = UTS_STATUS_IDLE;
     }
 
-  /*
-   * Flush this request's SQL-log tail before returning to the request loop, so a
-   * statement's result line reaches disk as soon as the request finishes instead
-   * of waiting for the next statement's flush barrier (matters for an explicit
-   * transaction that then idles). cas_log_flush_if_needed () is a no-op outside
-   * SQL_LOG_MODE_ALL.
-   */
+  /* flush this request's log tail before waiting for the next request */
   cas_log_flush_if_needed ();
 
   net_buf_clear (net_buf);

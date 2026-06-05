@@ -1923,9 +1923,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       cas_log_compile_begin_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
 
-      /* record-before-compile: covers a hang or crash in this batch item's
-       * compile/execute by leaving its SQL on disk first, so the log still shows
-       * which item was running */
+      /* flush before compile so this batch item's SQL is on disk if it hangs or crashes */
       cas_log_flush_if_needed ();
 
       db_init_lexer_lineno ();
@@ -9653,8 +9651,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
 
-      /* record-before-commit: the commit can hang on WAL/lock, so put the buffered
-       * statement and its result line on disk before entering it */
+      /* flush before commit so the result line is on disk if it hangs */
       cas_log_flush_if_needed ();
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true, false);
       cas_log_write (0, false, "auto_commit %d", err_code);
@@ -9664,7 +9661,7 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
 
-      /* record-before-rollback: same as the commit path above */
+      /* same as the commit path above */
       cas_log_flush_if_needed ();
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true, false);
       cas_log_write (0, false, "auto_rollback %d", err_code);

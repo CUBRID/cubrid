@@ -85,7 +85,7 @@ fn_cgw_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
-  /* record-before-commit: flush the end_tran line before the commit, which can hang */
+  /* flush before commit so the end_tran line is on disk if it hangs */
   cas_log_flush_if_needed ();
 
   gettimeofday (&end_tran_begin, NULL);
@@ -233,8 +233,7 @@ fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
 
-  /* record-before-compile: covers a hang or crash in the parse/compile call below
-   * by leaving the SQL on disk first */
+  /* flush before compile so the SQL is on disk if it hangs or crashes */
   cas_log_flush_if_needed ();
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
@@ -666,7 +665,7 @@ fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
-  /* record-before-fetch: a large fetch can block, so put the request on disk first */
+  /* flush before fetch so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
@@ -802,7 +801,7 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
-  /* record-before-fetch: a large fetch can block, so put the request on disk first */
+  /* flush before fetch so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);

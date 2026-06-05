@@ -255,12 +255,9 @@ cas_log_close (bool flag)
 
 /*
  * cas_log_flush_if_needed () -
- *   Push the buffered SQL log to disk, but only in SQL_LOG_MODE_ALL.
- *   ERROR and TIMEOUT modes are skipped on purpose: those modes keep the log of
- *   a request only when it ends in an error or timeout and otherwise rewind it
- *   with saved_log_fpos, so flushing mid-request could commit lines that are
- *   about to be discarded. Callers that want a line on disk before a blocking
- *   call (prepare, execute) therefore get durability in ALL mode only.
+ *   Flush the buffered SQL log, but only in SQL_LOG_MODE_ALL. ERROR and TIMEOUT
+ *   modes rewind unkept requests with saved_log_fpos, so an early flush could
+ *   write lines that are about to be discarded.
  */
 void
 cas_log_flush_if_needed (void)
@@ -419,12 +416,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	}
 
-      /* covers: the log-unit boundary. AS-IS flushed every line as cas_log_write ()
-       * wrote it (a per-line fflush in SQL_LOG_MODE_ALL); that per-line flush was
-       * removed, so the lines accumulated by this unit's cas_log_write () /
-       * cas_log_write_and_set_savedpos () calls are flushed together here, once the
-       * finished request/transaction (or a standalone event logged through
-       * cas_log_write_and_end ()) is fully written */
+      /* flush the buffered lines at the end of the log unit */
       cas_log_flush_if_needed ();
     }
 
@@ -521,8 +513,7 @@ cas_log_query_cancel (int dummy, ...)
   va_end (ap);
   cas_fputc ('\n', log_fp);
 
-  /* covers: the query-cancel diagnostic -- flush it out promptly rather than
-   * leaving it buffered until the request's next flush */
+  /* flush the query-cancel line promptly */
   cas_log_flush_if_needed ();
 
   query_cancel_flag = 0;

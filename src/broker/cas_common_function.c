@@ -372,13 +372,7 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
       write2_func ("\n");
     }
 
-  /*
-   * Record-before-execute: flush the statement and its bind values to disk
-   * before the caller executes it, so a crash or hang during execution still
-   * leaves the SQL on the log. This is the single flush point shared by the
-   * regular, array and CGW execute paths. cas_log_flush_if_needed () only flushes in
-   * SQL_LOG_MODE_ALL, so the slow log is excluded here.
-   */
+  /* flush before execute so the statement and binds are on disk if it hangs or crashes */
   if (!slow_log)
     {
       cas_log_flush_if_needed ();
