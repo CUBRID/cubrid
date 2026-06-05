@@ -8103,13 +8103,9 @@ qo_assign_eq_classes (QO_ENV * env)
  *   segment equivalence groups using transitive closure.
  *   env(in):
  *
- * Note: Builds a local segment union-find from unconditional inner-join equi-join
- *   edge terms only; outer-join edges, DUMMY_JOIN, AFTER/DURING_JOIN equalities and
- *   always-true transitive copies (PT_EXPR_INFO_TRANSITIVE) are excluded, so the
- *   generated terms never cross an outer-join boundary.  For each group with
- *   segments on different nodes, appends join terms for all missing (head, tail)
- *   node pairs at the end of env->terms.  qo_discover_edges() — called immediately
- *   after — folds the new terms into the edge zone and handles sorting.
+ * Note: Builds a segment union-find from unconditional inner-join equi-join edge terms
+ *   only, then appends join terms for every missing node pair of each group at the end
+ *   of env->terms; qo_discover_edges() — called right after — folds them into the edge zone.
  */
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
@@ -8141,13 +8137,9 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  /* Build a segment union-find for transitive closure using ONLY unconditional inner-join
-   * equi-join edge terms.  The global eq_root union-find (qo_equivalence) also merges segments
-   * across outer-join ON / during-join equalities, but those equalities are conditional and must
-   * NOT seed an inner transitive join term: deriving an inner term across an outer-join boundary
-   * changes the result set (e.g. for "a=b and b=c and c=d(+)" only a,b,c may be transitively
-   * connected, never d).  QO_INNER_JOIN_TERM excludes outer-join edges, DUMMY_JOIN, and
-   * AFTER/DURING_JOIN terms. */
+  /* Build a segment union-find from unconditional inner-join equi-join edge terms only.
+   * Conditional equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must
+   * not seed the closure: an inner term derived across an outer-join boundary changes results. */
   for (ti = 0; ti < env->nsegs; ti++)
     {
       root_arr[ti] = ti;
@@ -8163,10 +8155,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
 	{
 	  continue;
 	}
-      /* Always-true transitive copies produced by qo_reduce_equality_terms
-       * (PT_EXPR_INFO_TRANSITIVE) connect segments that are all reduced to the same
-       * constant; closure over them would only proliferate terms that qo_discover_edges
-       * reclassifies as QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
+       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
       tpe = QO_TERM_PT_EXPR (jterm);
       if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
 	{
@@ -8218,9 +8208,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  /* root_arr/segs_arr are used only by qo_collect_transitive_join_specs() and are no longer
-   * needed below.  Free them before the qo_add_term() loop so that a longjmp from qo_abort()
-   * inside qo_add_term() cannot bypass their cleanup. */
+  /* No longer needed below; free before the qo_add_term() loop so that a longjmp
+   * from qo_abort() cannot bypass their cleanup. */
   free_and_init (root_arr);
   free_and_init (segs_arr);
 
@@ -8281,10 +8270,8 @@ qo_generate_transitive_join_terms (QO_ENV * env)
  *   count_p(in/out): Pointer to the current number of collected specs
  *   cap_p(in/out): Pointer to the current capacity of the specs array
  *
- * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  For each
- *   equivalence group with three or more segments, emits a QO_TRANSITIVE_JOIN_SPEC
- *   for every distinct node pair that lacks a direct edge term (after/during-join
- *   terms between the pair also count as existing terms).
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one spec per
+ *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
  */
 static int
 qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
