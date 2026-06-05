@@ -534,9 +534,9 @@ cas_sig_handler (int signo)
   er_print_crash_callstack (signo);
 
   /*
-   * Best-effort flush before _exit (), which does not drain stdio. Not the durability
-   * guarantee -- the record-before barriers are. fflush () is async-signal-unsafe, so a
-   * crash mid-write may flush only partial output.
+   * Best-effort flush before _exit (), which does not drain stdio.
+   * The record-before barriers are the real durability guarantee, not this flush.
+   * fflush () is async-signal-unsafe, so a crash mid-write may flush only partial output.
    */
   cas_log_flush_if_needed ();
 
