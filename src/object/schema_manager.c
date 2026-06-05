@@ -2289,13 +2289,13 @@ char *
 sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH];
   int user_specified_name_len;
   const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+  assert (buf_size >= DB_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2315,7 +2315,7 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       assert (strchr (dot + 1, '.') == NULL);
 
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
-      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH);
 
       /*
        * e.g.   name: user_name.object_name
@@ -2324,11 +2324,11 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
    * In this case, return only the object name without raising an error. And expect that the object is not found */
-  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH)
     {
-      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
 
       /*
        * e.g.   name: object_name (exceeds)

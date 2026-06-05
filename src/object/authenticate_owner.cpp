@@ -78,7 +78,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   DB_VALUE value, str_value;
   char new_class_name[DB_MAX_IDENTIFIER_LENGTH];
   const char *serial_name = NULL;
-  char serial_new_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char serial_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool is_abort = false;
@@ -197,8 +197,8 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
 
   if (DB_IS_NULL (&str_value) || db_get_string (&str_value) == NULL)
     {
-      assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
-      snprintf (serial_new_name, DB_MAX_SERIAL_NAME_LENGTH, "%s.%s", downcase_owner_name, serial_name);
+      assert (strlen (serial_name) < DB_MAX_IDENTIFIER_LENGTH);
+      snprintf (serial_new_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, serial_name);
     }
   else
     {

@@ -4005,7 +4005,7 @@ disk_to_class (OR_BUF * buf, SM_CLASS ** class_ptr)
   DB_OBJLIST *triggers;
   DB_VALUE value;
   int rc = NO_ERROR;
-  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
 

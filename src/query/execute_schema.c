@@ -5806,7 +5806,7 @@ static int
 do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name)
 {
   MOP serial_class = NULL;
-  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_IDENTIFIER serial_obj_id;
   int error = NO_ERROR;
 
@@ -11692,7 +11692,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
@@ -11763,7 +11763,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);

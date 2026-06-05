@@ -1135,7 +1135,7 @@ populate_auto_increment (OBJ_TEMPLATE * template_ptr)
   int error = NO_ERROR;
   DB_VALUE val;
   DB_DATA_STATUS data_status;
-  char auto_increment_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
   MOP serial_class_mop = NULL, serial_mop;
   DB_IDENTIFIER serial_obj_id;
   const char *class_name;

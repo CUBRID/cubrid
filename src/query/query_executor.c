@@ -12560,7 +12560,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   TP_DOMAIN *result_domain;
   bool has_user_format;
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
-  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   int auto_incr_pos = -1;
 #endif
 

@@ -883,7 +883,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   DB_OBJECT *serial_object = NULL;
   DB_VALUE value;
   DB_OTMPL *obj_tmpl = NULL;
-  char serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   int save;
   bool au_disable_flag = false;
@@ -1347,9 +1347,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
-      char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+      char other_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      do_find_serial_by_query (serial_name, other_serial_name, sizeof (serial_name));
       if (other_serial_name[0] != '\0')
 	{
 	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
@@ -1938,7 +1938,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   int error = NO_ERROR;
   PT_NODE *auto_increment_node, *start_val_node, *inc_val_node;
   PT_NODE *dtyp;
-  char *att_name = NULL, serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char *att_name = NULL, serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE start_val, inc_val, max_val, min_val;
   DB_VALUE zero, value, *pval = NULL;
   DB_VALUE cmp_result;
@@ -2202,7 +2202,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
   PT_NODE *dtyp;
-  char *att_name = NULL, serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0', };
+  char *att_name = NULL, serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   DB_VALUE e38, current_val, max_val, value;
   int i, compare_result, save;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
@@ -2412,7 +2412,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ret_msg_id = 0;
 
   const char *serial_name = NULL, *serial_owner_name = NULL;
-  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char user_specified_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP serial_mop = NULL, owner_mop = NULL;
   const char *comment = NULL;
 
@@ -3006,7 +3006,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       serial_name = (char *) PT_NODE_SR_NAME (statement);
       serial_owner_name = statement->info.serial.owner_name->info.name.original;
 
-      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, sizeof (user_specified_serial_name));
       serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, user_specified_serial_name);
       if (serial_mop == NULL)
 	{
