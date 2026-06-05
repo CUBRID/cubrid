@@ -37,7 +37,7 @@ namespace parallel_query
       , m_spawner (nullptr)
       , m_val_descr (nullptr)
       , m_during_join_pred (nullptr)
-      , m_probe_pred (nullptr)
+      , m_residual_pred (nullptr)
       , m_outer_regu_list_pred (nullptr)
       , m_inner_regu_list_pred (nullptr)
     {
@@ -112,9 +112,9 @@ namespace parallel_query
     }
 
     PRED_EXPR *
-    spawn_manager::get_probe_pred (PRED_EXPR *src)
+    spawn_manager::get_residual_pred (PRED_EXPR *src)
     {
-      return spawn (src, m_probe_pred);
+      return spawn (src, m_residual_pred);
     }
 
     REGU_VARIABLE_LIST

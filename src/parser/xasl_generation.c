@@ -27963,15 +27963,15 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      cnt += ret;
 	    }
 	}
-      /* HASHJOIN_PROC evaluates an extra residual predicate (proc.hashjoin.probe_pred) inside the probe
+      /* HASHJOIN_PROC evaluates an extra residual predicate (proc.hashjoin.residual_pred) inside the probe
        * loop; fold it into the key for completeness, mirroring the during/after_join_pred blocks above.
-       * The optimizer (qo_hashjoin_probe_term_eligible) currently excludes correlated terms from probe_pred,
+       * The optimizer (qo_hashjoin_residual_term_eligible) currently excludes correlated terms from residual_pred,
        * so today this never carries a correlated value the key would otherwise miss.  This walk is therefore
        * defensive: it keeps the key exhaustive over every predicate attached to the cached XASL, so that a
        * future relaxation of the push-eligibility rules cannot silently produce a key collision. */
-      if (xasl_src->type == HASHJOIN_PROC && xasl_src->proc.hashjoin.probe_pred)
+      if (xasl_src->type == HASHJOIN_PROC && xasl_src->proc.hashjoin.residual_pred)
 	{
-	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->proc.hashjoin.probe_pred, SQ_TYPE_PRED);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) xasl_src->proc.hashjoin.residual_pred, SQ_TYPE_PRED);
 	  if (ret == ER_FAILED)
 	    {
 	      return ER_FAILED;

@@ -524,7 +524,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
     {
       bool fill_qualified = true;
 
-      if (context->probe_pred != NULL)
+      if (context->residual_pred != NULL)
 	{
 	  DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -549,7 +549,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 		  pr_clear_value (regup->value.vfetch_to);
 		}
 
-	      ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+	      ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
 	      if (ev_res == V_ERROR)
 		{
 		  error = ER_FAILED;
@@ -778,7 +778,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->key_cnt = merge_info->ls_column_cnt;
 
   manager->during_join_pred = xasl->during_join_pred;
-  manager->probe_pred = proc->probe_pred;
+  manager->residual_pred = proc->residual_pred;
   manager->num_parallel_threads = xasl->parallelism;
 
   manager->query_id = query_id;
@@ -814,7 +814,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   assert (context->probe == NULL);
 
   context->during_join_pred = manager->during_join_pred;
-  context->probe_pred = manager->probe_pred;
+  context->residual_pred = manager->residual_pred;
   context->val_descr = manager->val_descr;
 
   assert (context->status == HASHJOIN_STATUS_NONE);
@@ -1476,7 +1476,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
       assert (current_context->probe == NULL);
 
       current_context->during_join_pred = single_context->during_join_pred;
-      current_context->probe_pred = single_context->probe_pred;
+      current_context->residual_pred = single_context->residual_pred;
       current_context->val_descr = single_context->val_descr;
     }
 
@@ -3589,7 +3589,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  if (context->probe_pred != NULL)
+	  if (context->residual_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -3618,7 +3618,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		      break;	/* error_exit */
 		    }
 
-		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;
@@ -3640,7 +3640,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  assert (need_skip_next == false);
 		  continue;
 		}
-	    }			/* if (context->probe_pred != NULL) */
+	    }			/* if (context->residual_pred != NULL) */
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
@@ -3791,7 +3791,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	      if (context->probe_pred != NULL)
+	      if (context->residual_pred != NULL)
 		{
 		  DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -3817,7 +3817,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 			  pr_clear_value (regup->value.vfetch_to);
 			}
 
-		      ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		      ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
 		      if (ev_res == V_ERROR)
 			{
 			  error = ER_FAILED;
@@ -4018,10 +4018,10 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  /* A real match exists; this drives null-padding regardless of probe_pred. */
+	  /* A real match exists; this drives null-padding regardless of residual_pred. */
 	  any_record_added = true;
 
-	  if (context->probe_pred != NULL)
+	  if (context->residual_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -4030,7 +4030,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		{
 		  /*
 		   * When during_join_pred is present, it was just evaluated for THIS candidate pair and shares the
-		   * same regu_list_pred with probe_pred (see pred_list de-dup). Both probe and build vfetch_to values
+		   * same regu_list_pred with residual_pred (see pred_list de-dup). Both probe and build vfetch_to values
 		   * are already current, so skip both fetches. Otherwise fetch the build side per candidate and the
 		   * probe side once per probe row.
 		   */
@@ -4058,7 +4058,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 			}
 		    }
 
-		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;
@@ -4080,7 +4080,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  assert (need_skip_next == false);
 		  continue;
 		}
-	    }			/* if (context->probe_pred != NULL) */
+	    }			/* if (context->residual_pred != NULL) */
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
@@ -4106,7 +4106,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
 	  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
-	  if (context->probe_pred != NULL)
+	  if (context->residual_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res = V_UNKNOWN;
 
@@ -4132,7 +4132,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		      pr_clear_value (regup->value.vfetch_to);
 		    }
 
-		  ev_res = eval_pred (thread_p, context->probe_pred, context->val_descr, NULL);
+		  ev_res = eval_pred (thread_p, context->residual_pred, context->val_descr, NULL);
 		  if (ev_res == V_ERROR)
 		    {
 		      error = ER_FAILED;

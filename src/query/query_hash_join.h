@@ -368,7 +368,7 @@ typedef struct hashjoin_context
 
   HASH_LIST_SCAN hash_scan;
   PRED_EXPR *during_join_pred;
-  PRED_EXPR *probe_pred;
+  PRED_EXPR *residual_pred;
   VAL_DESCR *val_descr;
 
   HASHJOIN_STATUS status;
@@ -391,7 +391,7 @@ typedef struct hashjoin_manager
 
   /* Pointer to a member of XASL_NODE. */
   PRED_EXPR *during_join_pred;
-  PRED_EXPR *probe_pred;
+  PRED_EXPR *residual_pred;
   int num_parallel_threads;
 
   /* Pointer to a member of XASL_STATE. */
