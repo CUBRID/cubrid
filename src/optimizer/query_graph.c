@@ -8112,7 +8112,7 @@ qo_assign_eq_classes (QO_ENV * env)
 static void
 qo_generate_transitive_join_terms (QO_ENV * env)
 {
-  int i, ti;
+  int i, ti, t;
   QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   PARSER_CONTEXT *parser;
@@ -8139,15 +8139,59 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  /* Build eq-root array once; passed to qo_collect_transitive_join_specs and reused below. */
+  /* Build a segment union-find for transitive closure using ONLY unconditional inner-join
+   * equi-join edge terms.  The global eq_root union-find (qo_equivalence) also merges segments
+   * across outer-join ON / during-join equalities, but those equalities are conditional and must
+   * NOT seed an inner transitive join term: deriving an inner term across an outer-join boundary
+   * changes the result set (e.g. for "a=b and b=c and c=d(+)" only a,b,c may be transitively
+   * connected, never d).  QO_INNER_JOIN_TERM excludes outer-join edges, DUMMY_JOIN, and
+   * AFTER/DURING_JOIN terms. */
   for (ti = 0; ti < env->nsegs; ti++)
     {
-      QO_SEGMENT *rs = QO_ENV_SEG (env, ti);
-      while (QO_SEG_EQ_ROOT (rs))
+      root_arr[ti] = ti;
+    }
+  for (t = 0; t < env->nterms; t++)
+    {
+      QO_TERM *jterm = QO_ENV_TERM (env, t);
+      QO_SEGMENT *s1, *s2;
+      int r1, r2;
+
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
 	{
-	  rs = QO_SEG_EQ_ROOT (rs);
+	  continue;
 	}
-      root_arr[ti] = QO_SEG_IDX (rs);
+      s1 = QO_TERM_SEG (jterm);
+      s2 = QO_TERM_OID_SEG (jterm);
+      if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+      r1 = QO_SEG_IDX (s1);
+      while (root_arr[r1] != r1)
+	{
+	  root_arr[r1] = root_arr[root_arr[r1]];
+	  r1 = root_arr[r1];
+	}
+      r2 = QO_SEG_IDX (s2);
+      while (root_arr[r2] != r2)
+	{
+	  root_arr[r2] = root_arr[root_arr[r2]];
+	  r2 = root_arr[r2];
+	}
+      if (r1 != r2)
+	{
+	  root_arr[r1] = r2;
+	}
+    }
+  /* Flatten so root_arr[i] is the canonical root of segment i. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      int r = ti;
+      while (root_arr[r] != r)
+	{
+	  r = root_arr[r];
+	}
+      root_arr[ti] = r;
     }
 
   if (qo_collect_transitive_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
@@ -8239,7 +8283,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
   QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
   QO_NODE *node1, *node2, *head_node, *tail_node;
   QO_TERM *term;
-  bool group_has_outer_join, group_all_transitive, already_has_term;
+  bool group_all_transitive, already_has_term;
 
   /* Process each segment that is its own root (i.e., the canonical root of a group). */
   for (i = 0; i < env->nsegs; i++)
@@ -8265,11 +8309,9 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	  continue;
 	}
 
-      /* Single pass: outer-join check and PT_EXPR_INFO_TRANSITIVE term coverage.
-       * Break early on outer-join; group_all_transitive state is irrelevant then.
-       * Do NOT break on non-transitive term: remaining terms may still include
-       * an outer-join that must be detected. */
-      group_has_outer_join = false;
+      /* Determine whether every edge term in this group already carries PT_EXPR_INFO_TRANSITIVE.
+       * Outer/during-join boundaries need not be re-checked here: root_arr was built from
+       * inner-join equi-join terms only, so this eqclass contains no outer-connected segment. */
       group_all_transitive = true;
       for (t = 0; t < env->nterms; t++)
 	{
@@ -8284,21 +8326,12 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	    {
 	      continue;
 	    }
-	  if (IS_OUTER_JOIN_TYPE (QO_TERM_JOIN_TYPE (term)))
-	    {
-	      group_has_outer_join = true;
-	      break;
-	    }
 	  tpe = QO_TERM_PT_EXPR (term);
 	  if (tpe == NULL || !PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
 	    {
 	      group_all_transitive = false;
+	      break;
 	    }
-	}
-
-      if (group_has_outer_join)
-	{
-	  continue;
 	}
 
       /* Skip groups where every edge term already has PT_EXPR_INFO_TRANSITIVE: new specs
