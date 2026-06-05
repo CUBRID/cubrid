@@ -1266,7 +1266,7 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
   unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   struct timeval check_time = { 0, 0 };
-  struct tm *lt;
+  struct tm tm_buf;
   char empty_str[4] = { 0x00, };
 
   if (cipher_buf == NULL)
@@ -1283,9 +1283,10 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
       return ER_TF_BUFFER_OVERFLOW;
     }
 
-  /* Note: no srand() here. The filler RNG is seeded thread-locally inside shake_dblink_password()
-   * and crypt_dblink_bin_to_str() (rand_r), so this helper is safe to call from concurrent server
-   * threads (2PC catalog path) without racing on or reseeding the process-wide RNG. */
+  /* Thread-safe: localtime_r writes into the caller's tm_buf instead of a
+   * process-wide static buffer, so concurrent calls from multiple worker
+   * threads (_db_global_tran insert path) cannot corrupt each other's keys.
+   * The filler RNG also uses rand_r (seeded per-call), not the global RNG. */
 
   if (!passwd)
     {
@@ -1300,15 +1301,15 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
   length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
   passwd = confused;
 
-  if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
+  if (localtime_r ((time_t *) & check_time.tv_sec, &tm_buf) == NULL)
     {
       sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
     }
   else
     {
       if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		    check_time.tv_usec) >= (int) sizeof (private_key))
+		    tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday, tm_buf.tm_hour, tm_buf.tm_min,
+		    tm_buf.tm_sec, check_time.tv_usec) >= (int) sizeof (private_key))
 	{
 	  assert_release (0);
 	  private_key[sizeof (private_key) - 1] = '\0';
