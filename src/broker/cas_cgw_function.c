@@ -621,6 +621,7 @@ fn_cgw_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
+  /* no SQL-log line precedes this call, so no record-before flush */
   ux_cgw_cursor (srv_h_id, offset, origin, net_buf);
 
   return FN_KEEP_CONN;

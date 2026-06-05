@@ -956,6 +956,7 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
+  /* no SQL-log line precedes this call, so no record-before flush */
   ux_cursor (srv_h_id, offset, origin, net_buf);
 
   return FN_KEEP_CONN;
@@ -1070,6 +1071,7 @@ fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   net_arg_get_cci_object (&pageid, &slotid, &volid, argv[0]);
 
+  /* this op is logged after the call below, so no record-before flush */
   ret = ux_oid_get (argc, argv, net_buf);
 
   cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid, (ret < 0 ? "ERR" : ""));
@@ -1422,6 +1424,8 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
     }
 
   err_code = 0;
+
+  /* the collection ops below write no SQL-log line first, so no record-before flush */
   switch (cmd)
     {
     case CCI_COL_GET:
@@ -1825,6 +1829,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
+      /* the query is compiled and executed below without a SQL-log line, so no record-before flush */
       db_init_lexer_lineno ();
       session = db_open_buffer (sql_stmt);
       if (!session)
@@ -1999,6 +2004,7 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
     {
       DB_BIGINT query_id;
       net_arg_get_bigint (&query_id, argv[0]);
+      /* no SQL-log line precedes this call, so no record-before flush */
       ux_make_out_rs (query_id, net_buf, req_info);
     }
   else
