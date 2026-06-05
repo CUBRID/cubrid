@@ -197,7 +197,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
 
   if (DB_IS_NULL (&str_value) || db_get_string (&str_value) == NULL)
     {
-      assert (strlen (serial_name) < DB_MAX_IDENTIFIER_LENGTH);
+      assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
       snprintf (serial_new_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, serial_name);
     }
   else

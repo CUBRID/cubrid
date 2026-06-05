@@ -17385,7 +17385,11 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 #if defined(ENABLE_ENHANCE_AUTO_INCR_TEST)
 	      if (serial_name[0] == '\0')
 		{
-		  build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+		  ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+		  if (ret != NO_ERROR)
+		    {
+		      goto exit_on_error;
+		    }
 		}
 #else
 	      if (serial_name[0] == '\0')
