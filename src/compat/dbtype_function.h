@@ -163,8 +163,18 @@
 #define DB_MAKE_ENUMERATION(value, index, str, size, codeset, collation) \
 	db_make_enumeration(value, index, str, size, codeset, collation)
 
-#define DB_MAKE_CLOB(value, max_char_length, str, char_str_byte_size) \
+/* Keep the six-argument macro form source-compatible with CBRD-26801-era
+ * callers, but do not revive caller-selected CLOB codeset/collation policy.
+ * db_make_clob() owns CLOB's fixed server codeset and binary collation. */
+#define DB_MAKE_CLOB_4(value, max_char_length, str, char_str_byte_size) \
         db_make_clob (value, max_char_length, str, char_str_byte_size)
+
+#define DB_MAKE_CLOB_6(value, max_char_length, str, char_str_byte_size, codeset, collation_id) \
+        db_make_clob (value, max_char_length, str, char_str_byte_size)
+
+#define DB_MAKE_CLOB_SELECT(_1, _2, _3, _4, _5, _6, NAME, ...) NAME
+#define DB_MAKE_CLOB(...) \
+        DB_MAKE_CLOB_SELECT (__VA_ARGS__, DB_MAKE_CLOB_6, DB_MAKE_CLOB_6, DB_MAKE_CLOB_4) (__VA_ARGS__)
 
 #define DB_MAKE_BLOB(value, max_byte_length, str, byte_str_size) \
         db_make_blob(value, max_byte_length, str, byte_str_size)

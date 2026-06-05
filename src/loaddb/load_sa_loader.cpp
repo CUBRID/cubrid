@@ -562,12 +562,14 @@ static int ldr_int_db_short (LDR_CONTEXT *context, const char *str, size_t len, 
 static int ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+static int ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
+static int ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-
+static int ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -2870,6 +2872,49 @@ ldr_str_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
 }
 
 /*
+ * ldr_str_db_clob -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    att():
+ */
+static int
+ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  DB_VALUE val;
+  int max_char_length = att->domain->precision;
+
+  db_make_null (&val);
+
+  /*
+   * Internal CLOB is stored inline like a character string, but it is not a
+   * fixed-precision type: the trailing-pad truncation that ldr_str_db_varchar
+   * performs for CHAR/VARCHAR is meaningless here. A CLOB only has the single
+   * absolute LOB size limit (att->domain->precision == DB_MAX_LOB_PRECISION),
+   * so apply a plain bound check.
+   */
+  if (max_char_length <= 0 || max_char_length > DB_MAX_LOB_PRECISION)
+    {
+      max_char_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_char_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CLOB));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CLOB, str);
+    }
+
+  CHECK_ERR (err, db_make_clob (&val, max_char_length, str, (int) len));
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  db_value_clear (&val);
+  return err;
+}
+
+/*
  * ldr_bstr_elem -
  *    return:
  *    context():
@@ -2945,6 +2990,69 @@ ldr_bstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:
+  db_value_clear (&val);
+  return err;
+}
+
+/*
+ * ldr_bstr_db_blob -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    att():
+ * Note:
+ *    Internal BLOB is stored inline like a bit string, but it must be built with
+ *    the BLOB primitive (db_make_blob), not by borrowing the VARBIT loader path.
+ *    The identical on-disk layout today is incidental; routing BLOB through the
+ *    VARBIT functions couples the two types and would break if the BLOB storage
+ *    diverges later. The bit literal is parsed into a raw buffer and handed to
+ *    db_make_blob directly.
+ */
+static int
+ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  size_t dest_size;
+  char *bstring = NULL;
+  DB_VALUE val;
+  int max_bit_length = att->domain->precision;
+
+  db_make_null (&val);
+
+  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+    {
+      max_bit_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_bit_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
+    }
+
+  dest_size = (len + 7) / 8;
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
+
+  if (qstr_bit_to_bin (bstring, (int) dest_size, (char *) str, (int) len) != (int) len)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
+    }
+
+  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len));
+
+  /* val takes ownership of this piece of memory */
+  val.need_clear = true;
+  bstring = NULL;
+
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  if (bstring != NULL)
+    {
+      db_private_free_and_init (NULL, bstring);
+    }
   db_value_clear (&val);
   return err;
 }
@@ -3033,6 +3141,69 @@ ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:
+  db_value_clear (&val);
+  return err;
+}
+
+/*
+ * ldr_xstr_db_blob -
+ *    return:
+ *    context():
+ *    str():
+ *    len():
+ *    att():
+ * Note:
+ *    Internal BLOB is stored inline like a bit string, but it must be built with
+ *    the BLOB primitive (db_make_blob), not by borrowing the VARBIT loader path.
+ *    The identical on-disk layout today is incidental; routing BLOB through the
+ *    VARBIT functions couples the two types and would break if the BLOB storage
+ *    diverges later. The hex literal is parsed into a raw buffer and handed to
+ *    db_make_blob directly.
+ */
+static int
+ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
+{
+  int err = NO_ERROR;
+  size_t dest_size;
+  char *bstring = NULL;
+  DB_VALUE val;
+  int max_bit_length = att->domain->precision;
+
+  db_make_null (&val);
+
+  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+    {
+      max_bit_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_bit_length / 4)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
+    }
+
+  dest_size = (len + 1) / 2;
+  CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
+
+  if (qstr_hex_to_bin (bstring, (int) dest_size, (char *) str, (int) len) != (int) len)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
+      CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
+    }
+
+  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len * 4));
+
+  /* val takes ownership of this piece of memory */
+  val.need_clear = true;
+  bstring = NULL;
+
+  CHECK_ERR (err, ldr_generic (context, &val));
+
+error_exit:
+  if (bstring != NULL)
+    {
+      db_private_free_and_init (NULL, bstring);
+    }
   db_value_clear (&val);
   return err;
 }
@@ -5385,6 +5556,15 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
     case DB_TYPE_VARBIT:
       attdesc->setter[LDR_BSTR] = &ldr_bstr_db_varbit;
       attdesc->setter[LDR_XSTR] = &ldr_xstr_db_varbit;
+      break;
+
+    case DB_TYPE_BLOB:
+      attdesc->setter[LDR_BSTR] = &ldr_bstr_db_blob;
+      attdesc->setter[LDR_XSTR] = &ldr_xstr_db_blob;
+      break;
+
+    case DB_TYPE_CLOB:
+      attdesc->setter[LDR_STR] = &ldr_str_db_clob;
       break;
 
     case DB_TYPE_BFILE:

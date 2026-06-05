@@ -1053,6 +1053,22 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_type = arg1->type_enum;
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP) && arg_type != cast_type)
+    {
+      bool implicit_lob_cast_allowed =
+	((PT_IS_CHAR_STRING_TYPE (arg_type) && cast_type == PT_TYPE_CLOB)
+	 || (arg_type == PT_TYPE_CLOB && PT_IS_CHAR_STRING_TYPE (cast_type))
+	 || (PT_IS_BIT_STRING_TYPE (arg_type) && cast_type == PT_TYPE_BLOB)
+	 || (arg_type == PT_TYPE_BLOB && PT_IS_BIT_STRING_TYPE (cast_type)));
+
+      if ((PT_IS_LOBFILE_TYPE (arg_type) || PT_IS_LOBFILE_TYPE (cast_type)
+	   || PT_IS_LOB_TYPE (arg_type) || PT_IS_LOB_TYPE (cast_type))
+	  && !implicit_lob_cast_allowed)
+	{
+	  cast_is_valid = PT_CAST_INVALID;
+	}
+    }
+
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
@@ -1202,6 +1218,22 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_CLOB:
       switch (cast_type)
 	{
+	case PT_TYPE_BLOB:
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	case PT_TYPE_DATE:
+	case PT_TYPE_TIME:
+	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_TIMESTAMPTZ:
+	case PT_TYPE_TIMESTAMPLTZ:
+	case PT_TYPE_DATETIME:
+	case PT_TYPE_DATETIMETZ:
+	case PT_TYPE_DATETIMELTZ:
+	  if (arg_type == PT_TYPE_CLOB)
+	    {
+	      cast_is_valid = PT_CAST_INVALID;
+	    }
+	  break;
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1241,6 +1273,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CFILE:
+	case PT_TYPE_CLOB:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:

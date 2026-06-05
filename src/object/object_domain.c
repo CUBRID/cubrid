@@ -5815,22 +5815,10 @@ bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size)
 
 #define ROUND(x)		  ((x) > 0 ? ((x) + .5) : ((x) - .5))
 #define SECONDS_IN_A_DAY	  (long)(86400)	/* 24L * 60L * 60L */
-#define TP_IS_CHAR_STRING(db_val_type)					\
-    (db_val_type == DB_TYPE_CHAR || db_val_type == DB_TYPE_VARCHAR)
 
-#define TP_IS_LOB(db_val_type)                                          \
-    (db_val_type == DB_TYPE_BLOB || db_val_type == DB_TYPE_CLOB)
-
-#define TP_IS_DATETIME_TYPE(db_val_type) TP_IS_DATE_OR_TIME_TYPE (db_val_type)
-
+#undef TP_IMPLICIT_COERCION_NOT_ALLOWED
 #define TP_IMPLICIT_COERCION_NOT_ALLOWED(src_type, dest_type)		\
-   ((TP_IS_CHAR_STRING(src_type) && !(TP_IS_CHAR_STRING(dest_type) ||	\
-				      TP_IS_DATETIME_TYPE(dest_type) || \
-				      TP_IS_NUMERIC_TYPE(dest_type) ||	\
-				      dest_type == DB_TYPE_ENUMERATION)) ||\
-    (!TP_IS_CHAR_STRING(src_type) && src_type != DB_TYPE_ENUMERATION &&	\
-     TP_IS_CHAR_STRING(dest_type)) ||					\
-    (TP_IS_LOB(src_type) || TP_IS_LOB(dest_type)))
+   tp_implicit_coercion_not_allowed (src_type, dest_type)
 
 /*
  * tp_value_string_to_double - Coerce a string to a double.
@@ -7423,11 +7411,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
    */
   db_value_domain_init (target, desired_type, desired_domain->precision, desired_domain->scale);
 
-  if (TP_IS_CHAR_TYPE (desired_type) || desired_type == DB_TYPE_CLOB)
+  /* CLOB is character-shaped storage, but its value/domain does not carry
+   * per-value codeset/collation; keep it out of generic string collation setup. */
+  if (TP_IS_CHAR_TYPE (desired_type))
     {
       if (desired_domain->collation_flag == TP_DOMAIN_COLL_ENFORCE)
 	{
-	  if (TP_IS_CHAR_TYPE (original_type) || desired_type == DB_TYPE_CLOB)
+	  if (TP_IS_CHAR_TYPE (original_type))
 	    {
 	      db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
 					      TP_DOMAIN_COLLATION (desired_domain));

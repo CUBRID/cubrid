@@ -75,6 +75,8 @@ static void print_set (print_output & output_ctx, DB_SET * set);
 static int fprint_special_set (TEXT_OUTPUT * tout, DB_SET * set);
 static int bfmt_print (int bfmt, const DB_VALUE * the_db_bit, char *string, int max_size);
 static int print_quoted_str (TEXT_OUTPUT * tout, const char *str, int len, int max_token_len);
+static int fprint_clob_value (TEXT_OUTPUT * tout, DB_VALUE * value);
+static int fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
@@ -684,6 +686,86 @@ need_append_dot (const char *val)
 }
 
 /*
+ * fprint_clob_value - print an internal CLOB DB_VALUE to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): output
+ *    value(in): DB_VALUE of type DB_TYPE_CLOB
+ * Note:
+ *    Internal CLOB is stored inline like a character string, so it is printed
+ *    as a quoted string. Kept separate from the CHAR/VARCHAR case so that
+ *    CLOB-specific formatting can diverge without touching that path.
+ */
+static int
+fprint_clob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  const char *str_ptr;
+  int len;
+
+  str_ptr = db_get_string (value);
+  len = db_get_string_size (value);
+  if (len < 0)
+    {
+      len = (int) strlen (str_ptr);
+    }
+
+  CHECK_PRINT_ERROR (print_quoted_str (tout, str_ptr, len, MAX_DISPLAY_COLUMN));
+
+exit_on_error:
+  return error;
+}
+
+/*
+ * fprint_blob_value - print an internal BLOB DB_VALUE to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): output
+ *    value(in): DB_VALUE of type DB_TYPE_BLOB
+ * Note:
+ *    Internal BLOB is stored inline like a bit string, so it is printed as a
+ *    hex string. Kept separate from the BIT/VARBIT case so that BLOB-specific
+ *    formatting can diverge without touching that path.
+ */
+static int
+fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  char buf[INTERNAL_BUFFER_SIZE];
+  char *ptr = NULL;
+  int max_size = ((db_get_string_length (value) + 3) / 4) + 1;
+
+  if (max_size > INTERNAL_BUFFER_SIZE)
+    {
+      ptr = (char *) malloc (max_size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) max_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  else
+    {
+      ptr = buf;
+    }
+
+  if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) != NO_ERROR)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit_on_error;
+    }
+
+  CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
+  CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, max_size - 1, MAX_DISPLAY_COLUMN));
+
+exit_on_error:
+  if (ptr != buf)
+    {
+      free_and_init (ptr);
+    }
+  return error;
+}
+
+/*
  * fprint_special_strings - print special DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
  *    tout(out): output
@@ -800,6 +882,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 
       CHECK_PRINT_ERROR (print_quoted_str (tout, str_ptr, len, MAX_DISPLAY_COLUMN));
       break;
+    case DB_TYPE_CLOB:
+      CHECK_PRINT_ERROR (fprint_clob_value (tout, value));
+      break;
     case DB_TYPE_NUMERIC:
       ptr = numeric_db_value_print (value, buf);
       CHECK_PRINT_ERROR (text_print (tout, NULL, 0, !strchr (ptr, '.') ? "%s." : "%s", ptr));
@@ -835,6 +920,9 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 	  }
 	break;
       }
+    case DB_TYPE_BLOB:
+      CHECK_PRINT_ERROR (fprint_blob_value (tout, value));
+      break;
 
       /* other stubs */
     case DB_TYPE_ERROR:
