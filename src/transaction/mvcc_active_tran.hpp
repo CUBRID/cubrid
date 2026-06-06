@@ -25,6 +25,7 @@
 
 #include "storage_common.h"
 
+#include <atomic>
 #include <cassert>
 #include <cstdint>
 
@@ -77,14 +78,14 @@ struct mvcc_active_tran
     /* bit area to store MVCCIDS status - size BITAREA_MAX_SIZE */
     unit_type *m_bit_area;
     /* first MVCCID whose status is stored in bit area */
-    volatile MVCCID m_bit_area_start_mvccid;
+    std::atomic<MVCCID> m_bit_area_start_mvccid;
     /* the area length expressed in bits */
-    volatile size_t m_bit_area_length;
+    std::atomic<size_t> m_bit_area_length;
 
     /* long time transaction mvccid array */
     MVCCID *m_long_tran_mvccids;
     /* long time transactions mvccid array length */
-    volatile size_t m_long_tran_mvccids_length;
+    std::atomic<size_t> m_long_tran_mvccids_length;
 
     bool m_initialized;
 

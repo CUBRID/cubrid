@@ -218,17 +218,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_setup_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cgw_cas_init () < 0)

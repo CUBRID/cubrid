@@ -521,7 +521,7 @@ cas_get_graceful_down_timeout (void)
 void
 cas_sig_handler (int signo)
 {
-  static int is_doing_signal_handler = 0;
+  static volatile sig_atomic_t is_doing_signal_handler = 0;
 
   if (is_doing_signal_handler)
     {
@@ -547,11 +547,51 @@ cas_sig_handler (int signo)
 #endif
 }
 
+#if !defined(WINDOWS)
+void
+cas_setup_signal_handlers (void)
+{
+  struct sigaction sa;
+
+  sigemptyset (&sa.sa_mask);
+
+  /* Termination signals should not use SA_RESTART; blocking syscalls must
+   * return EINTR so that graceful shutdown is not delayed by I/O. */
+  sa.sa_flags = 0;
+  sa.sa_handler = cas_sig_handler;
+  sigaction (SIGTERM, &sa, NULL);
+  sigaction (SIGINT, &sa, NULL);
+
+  /* Crash signals: SA_RESTART is acceptable. */
+  sa.sa_flags = SA_RESTART;
+  sigaction (SIGSEGV, &sa, NULL);
+  sigaction (SIGABRT, &sa, NULL);
+  sigaction (SIGFPE, &sa, NULL);
+  sigaction (SIGILL, &sa, NULL);
+  sigaction (SIGBUS, &sa, NULL);
+  sigaction (SIGSYS, &sa, NULL);
+
+  sa.sa_handler = SIG_IGN;
+  sigaction (SIGUSR1, &sa, NULL);
+  sigaction (SIGPIPE, &sa, NULL);
+  sigaction (SIGXFSZ, &sa, NULL);
+}
+#endif /* !WINDOWS */
+
 void
 cas_final (void)
 {
+#if !defined(WINDOWS)
+  struct sigaction sa;
+  sigemptyset (&sa.sa_mask);
+  sa.sa_flags = 0;
+  sa.sa_handler = SIG_IGN;
+  sigaction (SIGTERM, &sa, NULL);
+  sigaction (SIGINT, &sa, NULL);
+#else
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
+#endif
   cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
@@ -782,7 +822,10 @@ query_cancel (int signo)
 {
 #if !defined(WINDOWS)
   struct timespec ts;
-  signal (signo, SIG_IGN);
+
+  /* Do not change the signal disposition to SIG_IGN here.  The handler
+   * must remain installed during a long-running request so that repeated
+   * cancel signals are not lost. */
   db_set_interrupt (1);
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;

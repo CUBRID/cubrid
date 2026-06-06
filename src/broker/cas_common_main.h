@@ -54,6 +54,7 @@ int net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_head
 void set_cas_info_size (void);
 #if !defined(WINDOWS)
 void query_cancel (int signo);
+void cas_setup_signal_handlers (void);
 #endif
 #if defined(WINDOWS)
 LONG WINAPI CreateMiniDump (struct _EXCEPTION_POINTERS *pException);
