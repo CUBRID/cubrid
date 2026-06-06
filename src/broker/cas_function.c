@@ -286,7 +286,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
 
-  /* flush before compile so the SQL is on disk if it hangs or crashes */
+  /* record-before barrier: flush before compile so the SQL is on disk if it hangs or crashes */
   cas_log_flush_if_needed ();
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
@@ -578,7 +578,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       *s = '\0';
     }
 
-  /* flush before execute so the statement and binds are on disk if it hangs or crashes */
+  /* record-before barrier: flush before execute so the statement and binds are on disk if it hangs or crashes */
   cas_log_flush_if_needed ();
 
   gettimeofday (&exec_begin, NULL);
@@ -712,6 +712,7 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       int isol_level;
 
+      /* this is a local call, not a blocking server op, so no record-before flush */
       ux_get_tran_setting (NULL, &isol_level);
       cas_log_write (0, true, "get_db_parameter isolation_level %d", isol_level);
 
@@ -723,6 +724,7 @@ fn_get_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       int lock_timeout;
       char lock_timeout_string[32];
 
+      /* this is a local call, not a blocking server op, so no record-before flush */
       ux_get_tran_setting (&lock_timeout, NULL);
 
       if (lock_timeout == 0)
@@ -806,6 +808,7 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       cas_log_write (0, true, "set_db_parameter isolation_level %d", isol_level);
 
+      /* this is a local call, not a blocking server op, so no record-before flush */
       if (ux_set_isolation_level (isol_level, net_buf) < 0)
 	return FN_KEEP_CONN;
 
@@ -830,6 +833,7 @@ fn_set_db_parameter (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  return FN_KEEP_CONN;
 	}
 
+      /* this is a local call, not a blocking server op, so no record-before flush */
       ux_set_lock_timeout (lock_timeout);
 
       if (lock_timeout == 0)
@@ -899,6 +903,7 @@ fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_b
 
   cas_log_write (0, true, "set_cas_change_mode %s", mode == CAS_CHANGE_MODE_AUTO ? "AUTO" : "KEEP");
 
+  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_set_cas_change_mode (mode, net_buf);
 
   return FN_KEEP_CONN;
@@ -959,7 +964,7 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
-  /* no SQL-log line precedes this call, so no record-before flush */
+  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_cursor (srv_h_id, offset, origin, net_buf);
 
   return FN_KEEP_CONN;
@@ -1007,7 +1012,7 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
-  /* flush before fetch so the request is on disk if it blocks */
+  /* record-before barrier: flush before fetch so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
@@ -1048,7 +1053,7 @@ fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   cas_log_write (query_seq_num_next_value (), true, "schema_info %s %s %s %d", get_schema_type_str (schema_type),
 		 (arg1 ? arg1 : "NULL"), (arg2 ? arg2 : "NULL"), flag);
 
-  /* flush before schema_info so the request is on disk if it blocks */
+  /* record-before barrier: flush before schema_info so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   srv_h_id = ux_schema_info (schema_type, arg1, arg2, flag, net_buf, req_info, query_seq_num_current_value ());
@@ -1074,7 +1079,7 @@ fn_oid_get (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   net_arg_get_cci_object (&pageid, &slotid, &volid, argv[0]);
 
-  /* this op is logged after the call below, so no record-before flush */
+  /* no SQL-log line precedes this call, so no record-before flush */
   ret = ux_oid_get (argc, argv, net_buf);
 
   cas_log_write (0, true, "oid_get @%d|%d|%d %s", pageid, slotid, volid, (ret < 0 ? "ERR" : ""));
@@ -1093,7 +1098,7 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   cas_log_write (0, true, "oid_put");
 
-  /* flush before oid_put so the request is on disk if it blocks */
+  /* record-before barrier: flush before oid_put so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_oid_put (argc, argv, net_buf);
@@ -1116,6 +1121,7 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   net_arg_get_char (auto_commit_mode, argv[0]);
 
+  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_get_db_version (net_buf, req_info);
 
   if (auto_commit_mode == TRUE)
@@ -1171,6 +1177,7 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   net_arg_get_dbobject (&obj, argv[1]);
   if (cmd != CCI_OID_IS_INSTANCE)
     {
+      /* no SQL-log line precedes this call, so no record-before flush */
       if ((err_code = ux_check_object (obj, net_buf)) < 0)
 	{
 	  goto fn_oid_error;
@@ -1180,8 +1187,10 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   if (cmd == CCI_OID_DROP)
     {
       cas_log_write (0, true, "oid drop");
-      /* flush before the OID operation so the request is on disk if it blocks */
+
+      /* record-before barrier: flush before the OID operation so the request is on disk if it blocks */
       cas_log_flush_if_needed ();
+
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1192,8 +1201,10 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_IS_INSTANCE)
     {
       cas_log_write (0, true, "oid is_instance");
-      /* flush before the OID operation so the request is on disk if it blocks */
+
+      /* record-before barrier: flush before the OID operation so the request is on disk if it blocks */
       cas_log_flush_if_needed ();
+
       if (obj == NULL)
 	{
 	  err_code = 0;
@@ -1216,8 +1227,10 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_LOCK_READ)
     {
       cas_log_write (0, true, "oid lock_read");
-      /* flush before the OID operation so the request is on disk if it blocks */
+
+      /* record-before barrier: flush before the OID operation so the request is on disk if it blocks */
       cas_log_flush_if_needed ();
+
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1228,8 +1241,10 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_LOCK_WRITE)
     {
       cas_log_write (0, true, "oid lock_write");
-      /* flush before the OID operation so the request is on disk if it blocks */
+
+      /* record-before barrier: flush before the OID operation so the request is on disk if it blocks */
       cas_log_flush_if_needed ();
+
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1240,8 +1255,10 @@ fn_oid (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO *
   else if (cmd == CCI_OID_CLASS_NAME)
     {
       cas_log_write (0, true, "oid get_class_name");
-      /* flush before the OID operation so the request is on disk if it blocks */
+
+      /* record-before barrier: flush before the OID operation so the request is on disk if it blocks */
       cas_log_flush_if_needed ();
+
       if (obj == NULL)
 	{
 	  ERROR_INFO_SET (CAS_ER_OBJECT, CAS_ERROR_INDICATOR);
@@ -1311,6 +1328,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   net_arg_get_char (cmd, argv[0]);
   net_arg_get_dbobject (&obj, argv[1]);
 
+  /* no SQL-log line precedes this call, so no record-before flush */
   if ((err_code = ux_check_object (obj, net_buf)) < 0)
     {
       NET_BUF_ERR_SET (net_buf);
@@ -1431,7 +1449,7 @@ fn_collection (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
 
   err_code = 0;
 
-  /* the collection ops below write no SQL-log line first, so no record-before flush */
+  /* no SQL-log line precedes this call, so no record-before flush */
   switch (cmd)
     {
     case CCI_COL_GET:
@@ -1523,7 +1541,7 @@ fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "next_result %d %s", srv_h_id,
 		 (srv_handle->use_query_cache == true) ? "(QC)" : "");
 
-  /* flush before next_result so the request is on disk if it blocks */
+  /* record-before barrier: flush before next_result so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_next_result (srv_handle, flag, net_buf, req_info);
@@ -1557,6 +1575,8 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   set_query_timeout (NULL, query_timeout);
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
+
+  /* this is flushed inside the call below, so no record-before flush here */
   ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info, auto_commit_mode);
 
   cas_log_write (0, true, "execute_batch end");
@@ -1654,7 +1674,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 				 CAS_SCHEMA_DEFAULT_CHARSET);
     }
 
-  /* flush before execute so the statement and binds are on disk if it hangs or crashes */
+  /* record-before barrier: flush before execute so the statement and binds are on disk if it hangs or crashes */
   cas_log_flush_if_needed ();
 
   gettimeofday (&exec_begin, NULL);
@@ -1739,7 +1759,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
 
-  /* flush before cursor_close so the request is on disk if it blocks */
+  /* record-before barrier: flush before cursor_close so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_cursor_close (srv_handle);
@@ -1769,7 +1789,7 @@ fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_update srv_h_id %d, cursor %d", srv_h_id,
 		 cursor_pos);
 
-  /* flush before cursor_update so the request is on disk if it blocks */
+  /* record-before barrier: flush before cursor_update so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_cursor_update (srv_handle, cursor_pos, argc, argv, net_buf);
@@ -1794,6 +1814,7 @@ fn_get_attr_type_str (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf
   net_arg_get_str (&class_name, &size, argv[0]);
   net_arg_get_str (&attr_name, &size, argv[1]);
 
+  /* no SQL-log line precedes this call, so no record-before flush */
   ux_get_attr_type_str (class_name, attr_name, net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -1835,7 +1856,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       cas_log_query_info_init (srv_h_id, TRUE);
       srv_handle->query_info_flag = TRUE;
 
-      /* the query is compiled and executed below without a SQL-log line, so no record-before flush */
+      /* no SQL-log line precedes this call, so no record-before flush */
       db_init_lexer_lineno ();
       session = db_open_buffer (sql_stmt);
       if (!session)
@@ -1875,6 +1896,7 @@ fn_get_query_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
       db_close_session (session);
     }
 
+  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_get_query_info (srv_h_id, info_type, net_buf);
 
 end:
@@ -1959,6 +1981,7 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   net_arg_get_int (&srv_h_id, argv[0]);
 
+  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_get_parameter_info (srv_h_id, net_buf);
 
   return FN_KEEP_CONN;
@@ -1987,6 +2010,7 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     }
   else
     {
+      /* no SQL-log line precedes this call, so no record-before flush */
       err_code = ux_check_connection ();
       cas_log_write (0, true, "check_cas %d", err_code);
     }
@@ -2058,7 +2082,7 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "get_generated_keys %d", srv_h_id);
 
-  /* flush before get_generated_keys so the request is on disk if it blocks */
+  /* record-before barrier: flush before get_generated_keys so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   ux_get_generated_keys (srv_handle, net_buf);
@@ -2098,7 +2122,7 @@ fn_lob_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   cas_log_write (0, false, "lob_new lob_type=%d", lob_type);
 
-  /* flush before the LOB operation so the request is on disk if it blocks */
+  /* record-before barrier: flush before the LOB operation so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   gettimeofday (&lob_new_begin, NULL);
@@ -2143,7 +2167,7 @@ fn_lob_write (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   elo_debug = db_get_elo (&lob_dbval);
   cas_log_write (0, false, "lob_write lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
 
-  /* flush before the LOB operation so the request is on disk if it blocks */
+  /* record-before barrier: flush before the LOB operation so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   gettimeofday (&lob_new_begin, NULL);
@@ -2188,7 +2212,7 @@ fn_lob_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
   elo_debug = db_get_elo (&lob_dbval);
   cas_log_write (0, false, "lob_read lob_type=%d offset=%lld, length=%d", elo_debug->type, offset, data_length);
 
-  /* flush before the LOB operation so the request is on disk if it blocks */
+  /* record-before barrier: flush before the LOB operation so the request is on disk if it blocks */
   cas_log_flush_if_needed ();
 
   gettimeofday (&lob_new_begin, NULL);

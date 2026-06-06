@@ -255,9 +255,11 @@ cas_log_close (bool flag)
 
 /*
  * cas_log_flush_if_needed () -
- *   Flush the buffered SQL log, but only in SQL_LOG_MODE_ALL. ERROR and TIMEOUT
- *   modes rewind unkept requests with saved_log_fpos, so an early flush could
- *   write lines that are about to be discarded.
+ *   Flush the buffered SQL log, but only in SQL_LOG_MODE_ALL.
+ *
+ * note:
+ *   ERROR and TIMEOUT modes rewind unkept requests with saved_log_fpos,
+ *   so an early flush could write lines that are about to be discarded.
  */
 void
 cas_log_flush_if_needed (void)
@@ -416,7 +418,7 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	    }
 	}
 
-      /* flush the buffered lines at the end of the log unit */
+      /* boundary guard: persist the buffered lines at the end of the log unit */
       cas_log_flush_if_needed ();
     }
 
@@ -513,7 +515,7 @@ cas_log_query_cancel (int dummy, ...)
   va_end (ap);
   cas_fputc ('\n', log_fp);
 
-  /* flush the query-cancel line promptly */
+  /* boundary guard: persist the query-cancel line as soon as it is logged */
   cas_log_flush_if_needed ();
 
   query_cancel_flag = 0;
