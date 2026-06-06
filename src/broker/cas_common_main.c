@@ -534,11 +534,12 @@ cas_sig_handler (int signo)
   er_print_crash_callstack (signo);
 
   /*
-   * Best-effort flush before _exit (), which does not drain stdio.
-   * The record-before barriers are the real durability guarantee, not this flush.
-   * fflush () is async-signal-unsafe;
-   * if the crash interrupted a log write in progress,
-   * this flush may push out only part of the buffer.
+   * _exit () below does not flush stdio buffers, so push the buffered SQL log to
+   * disk first; otherwise a crash loses the lines written since the last flush.
+   * cas_free () already flushes through cas_log_close () on the graceful signals,
+   * so this is mainly for the fatal ones (SIGSEGV, SIGBUS, ...). cas_log_flush_if_needed ()
+   * is gated on SQL_LOG_MODE_ALL, which is exactly the mode whose per-line flush
+   * was consolidated; ERROR/TIMEOUT modes keep their previous best-effort behavior.
    */
   cas_log_flush_if_needed ();
 

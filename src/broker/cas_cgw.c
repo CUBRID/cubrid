@@ -881,9 +881,6 @@ exit_on_end:
     }
 
 
-  /* boundary guard: persist this request's log tail before waiting for the next request */
-  cas_log_flush_if_needed ();
-
   net_buf_clear (net_buf);
 
   FREE_MEM (read_msg);

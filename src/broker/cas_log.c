@@ -255,11 +255,12 @@ cas_log_close (bool flag)
 
 /*
  * cas_log_flush_if_needed () -
- *   Flush the buffered SQL log, but only in SQL_LOG_MODE_ALL.
- *
- * note:
- *   ERROR and TIMEOUT modes rewind unkept requests with saved_log_fpos,
- *   so an early flush could write lines that are about to be discarded.
+ *   Push the buffered SQL log to disk, but only in SQL_LOG_MODE_ALL.
+ *   ERROR and TIMEOUT modes are skipped on purpose: those modes keep the log of
+ *   a request only when it ends in an error or timeout and otherwise rewind it
+ *   with saved_log_fpos, so flushing mid-request could commit lines that are
+ *   about to be discarded. Callers that want a line on disk before a blocking
+ *   call (prepare, execute) therefore get durability in ALL mode only.
  */
 void
 cas_log_flush_if_needed (void)
@@ -417,8 +418,6 @@ cas_log_end (int mode, int run_time_sec, int run_time_msec)
 	      cas_log_write_and_set_savedpos (log_fp, "%s", "END OF LOG\n\n");
 	    }
 	}
-
-      /* boundary guard: persist the buffered lines at the end of the log unit */
       cas_log_flush_if_needed ();
     }
 
@@ -514,8 +513,6 @@ cas_log_query_cancel (int dummy, ...)
   cas_log_write_internal (log_fp, &tv, 0, buf, ap);
   va_end (ap);
   cas_fputc ('\n', log_fp);
-
-  /* boundary guard: persist the query-cancel line as soon as it is logged */
   cas_log_flush_if_needed ();
 
   query_cancel_flag = 0;
@@ -736,9 +733,6 @@ cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR
 	{
 	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
 	  cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
-
-	  /* boundary guard: persist the masked SQL as soon as it is masked */
-	  cas_log_flush_if_needed ();
 	}
     }
 
@@ -780,9 +774,6 @@ cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INF
 	{
 	  cas_fseek (log_fp, saved_temp_stmt_fpos, SEEK_SET);
 	  cas_log_write_query_string_internal (query, size, false, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
-
-	  /* boundary guard: persist the masked SQL as soon as it is masked */
-	  cas_log_flush_if_needed ();
 	}
     }
 

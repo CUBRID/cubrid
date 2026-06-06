@@ -85,9 +85,6 @@ fn_cgw_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
-  /* record-before barrier: flush before end_tran so the request is on disk if it blocks */
-  cas_log_flush_if_needed ();
-
   gettimeofday (&end_tran_begin, NULL);
 
   err_code = ux_cgw_end_tran ((char) tran_type, false, false);
@@ -232,8 +229,6 @@ fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
-
-  /* record-before barrier: flush before compile so the SQL is on disk if it hangs or crashes */
   cas_log_flush_if_needed ();
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
@@ -492,9 +487,6 @@ fn_cgw_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
       *s = '\0';
     }
 
-  /* record-before barrier: flush before execute so the statement and binds are on disk if it hangs or crashes */
-  cas_log_flush_if_needed ();
-
   gettimeofday (&exec_begin, NULL);
 
   ret_code =
@@ -621,7 +613,6 @@ fn_cgw_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ
   net_arg_get_int (&offset, argv[1]);
   net_arg_get_char (origin, argv[2]);
 
-  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_cgw_cursor (srv_h_id, offset, origin, net_buf);
 
   return FN_KEEP_CONN;
@@ -669,9 +660,6 @@ fn_cgw_get_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
 
-  /* record-before barrier: flush before fetch so the request is on disk if it blocks */
-  cas_log_flush_if_needed ();
-
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
 
   return FN_KEEP_CONN;
@@ -692,7 +680,6 @@ fn_cgw_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   net_arg_get_char (auto_commit_mode, argv[0]);
 
-  /* this is a local call, not a blocking server op, so no record-before flush */
   ux_get_db_version (net_buf, req_info);
 
   if (auto_commit_mode == TRUE)
@@ -726,7 +713,6 @@ fn_cgw_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
     }
   else
     {
-      /* no SQL-log line precedes this call, so no record-before flush */
       err_code = ux_cgw_check_connection ();
       cas_log_write (0, true, "check_cas %d", err_code);
     }
@@ -759,9 +745,6 @@ fn_cgw_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "cursor_close srv_h_id %d", srv_h_id);
-
-  /* record-before barrier: flush before cursor_close so the request is on disk if it blocks */
-  cas_log_flush_if_needed ();
 
   ux_cgw_cursor_close (srv_handle);
 
@@ -809,9 +792,6 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
 
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "fetch srv_h_id %d cursor_pos %d fetch_count %d",
 		 srv_h_id, cursor_pos, fetch_count);
-
-  /* record-before barrier: flush before fetch so the request is on disk if it blocks */
-  cas_log_flush_if_needed ();
 
   ux_cgw_fetch (srv_handle, cursor_pos, fetch_count, fetch_flag, result_set_index, net_buf, req_info);
 

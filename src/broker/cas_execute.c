@@ -1922,8 +1922,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       net_arg_get_str (&sql_stmt, &sql_size, argv[query_index]);
       cas_log_write_nonl (0, false, "batch %d : ", query_index + 1);
       cas_log_compile_begin_write_query_string_nonl (sql_stmt, strlen (sql_stmt), NULL);
-
-      /* record-before barrier: flush before compile so this batch item's SQL is on disk if it hangs or crashes */
       cas_log_flush_if_needed ();
 
       db_init_lexer_lineno ();
@@ -1966,8 +1964,6 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
-
-      /* this cosmetic marker is not worth an extra per-item flush, so no record-before flush */
       cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
 
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
@@ -9652,9 +9648,6 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
-
-      /* record-before barrier: flush before commit so the result line is on disk if it hangs */
-      cas_log_flush_if_needed ();
       err_code = ux_end_tran (CCI_TRAN_COMMIT, true, false);
       cas_log_write (0, false, "auto_commit %d", err_code);
       logddl_set_msg ("auto_commit %d", err_code);
@@ -9662,9 +9655,6 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   else if (req_info->need_auto_commit == TRAN_AUTOROLLBACK)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_aborted ()? "(local)" : "(server)");
-
-      /* record-before barrier: flush before rollback so the result line is on disk if it hangs */
-      cas_log_flush_if_needed ();
       err_code = ux_end_tran (CCI_TRAN_ROLLBACK, true, false);
       cas_log_write (0, false, "auto_rollback %d", err_code);
       logddl_set_msg ("auto_rollback %d", err_code);
