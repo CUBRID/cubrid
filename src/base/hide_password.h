@@ -69,7 +69,6 @@ extern "C"
   void password_fprintf (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 			 int (*cas_fprintf) (FILE *, const char *, ...));
   int password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
-  bool password_exist (char *query);
 
 #ifdef __cplusplus
 }

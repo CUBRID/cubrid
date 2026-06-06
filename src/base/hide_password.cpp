@@ -752,21 +752,6 @@ password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_i
   return ret;
 }
 
-bool
-password_exist (char *query)
-{
-  hide_password chp;
-  HIDE_PWD_INFO t_pwd_info;
-  bool exist;
-
-  INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
-  chp.find_password_positions (query, &t_pwd_info);
-  exist = (t_pwd_info.used > 0);
-  QUIT_HIDE_PASSWORD_INFO (&t_pwd_info);
-
-  return exist;
-}
-
 /*
  * password_add_offset () -
  *   hide_pwd_info_ptr(in/out):

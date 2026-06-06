@@ -229,7 +229,6 @@ fn_cgw_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
-  cas_log_flush_if_needed ();
 
   SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
 

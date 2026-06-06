@@ -46,7 +46,6 @@ typedef enum
 extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
-extern void cas_log_flush_if_needed (void);
 #ifdef CAS_ERROR_LOG
 extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
 #endif
@@ -59,6 +58,9 @@ extern void cas_log_write (unsigned int seq_num, bool unit_start, const char *fm
 extern void cas_log_write_and_end (unsigned int seq_num, bool unit_start, const char *fmt, ...);
 extern void cas_log_write2_nonl (const char *fmt, ...);
 extern void cas_log_write2 (const char *fmt, ...);
+extern void cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *fmt, ...);
+extern void cas_log_write2_nonl_noflush (const char *fmt, ...);
+extern void cas_log_flush_if_needed (void);
 extern void cas_log_write_value_string (char *value, int size);
 extern void cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void cas_log_write_client_ip (const unsigned char *ip_addr);
