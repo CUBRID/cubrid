@@ -97,6 +97,9 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   cas_log_write (0, false, "end_tran %s", get_tran_type_str (tran_type));
 
+  /* record-before barrier: flush before end_tran so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   gettimeofday (&end_tran_begin, NULL);
 
 #ifdef CCI_XA
@@ -1142,6 +1145,9 @@ fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
   net_arg_get_str (&class_name, &class_name_size, argv[0]);
   net_arg_get_char (flag, argv[1]);
 
+  /* record-before barrier: flush before get_class_num_objs so the request is on disk if it blocks */
+  cas_log_flush_if_needed ();
+
   ux_get_class_num_objs (class_name, flag, net_buf);
 
   return FN_KEEP_CONN;
@@ -1904,11 +1910,19 @@ fn_savepoint (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
   if (cmd == 1)
     {				/* set */
       cas_log_write (0, true, "savepoint %s", savepoint_name);
+
+      /* record-before barrier: flush before savepoint so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
+
       err_code = db_savepoint_transaction (savepoint_name);
     }
   else if (cmd == 2)
     {				/* rollback */
       cas_log_write (0, true, "rollback_savepoint %s", savepoint_name);
+
+      /* record-before barrier: flush before rollback_savepoint so the request is on disk if it blocks */
+      cas_log_flush_if_needed ();
+
       err_code = db_abort_to_savepoint (savepoint_name);
     }
   else
