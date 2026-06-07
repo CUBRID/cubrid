@@ -91,7 +91,7 @@ static INT64 saved_log_fpos = 0;
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
-static void cas_fwrite_replace_newline (FILE * fp, const char *str);
+static void cas_fwrite_oneline (FILE * fp, const char *str);
 static INT64 cas_ftell (FILE * stream);
 static int cas_fseek (FILE * stream, INT64 offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
@@ -840,7 +840,7 @@ cas_fprintf_password (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_pt
        * and incremented by password_add_offset() in csql_grammar.y for each password found while parsing.
        * A zero value means the statement was already scanned and has no password,
        * so write the SQL directly without the printf machinery. */
-      cas_fwrite_replace_newline (fp, query);
+      cas_fwrite_oneline (fp, query);
       return;
     }
 
@@ -864,7 +864,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 	}
       else
 	{
-	  cas_fwrite_replace_newline (log_fp, query);
+	  cas_fwrite_oneline (log_fp, query);
 	}
 
       if (newline)
@@ -1343,7 +1343,7 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
 }
 
 /*
- * cas_fwrite_replace_newline () -
+ * cas_fwrite_oneline () -
  *   Write a string, replacing embedded newlines with spaces so the SQL stays on one log line.
  *   strcspn () finds each newline-free run, which is written in a single cas_fwrite ()
  *   instead of one call per character.
@@ -1353,7 +1353,7 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
  *   so newlines inside string literals are also replaced.
  */
 static void
-cas_fwrite_replace_newline (FILE * fp, const char *str)
+cas_fwrite_oneline (FILE * fp, const char *str)
 {
   while (*str)
     {
