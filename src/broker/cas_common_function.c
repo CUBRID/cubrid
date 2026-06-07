@@ -373,12 +373,8 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
     }
 
   /*
-   * The bind lines above are written without the per-line flush; flush them
-   * here in one call before the caller executes the statement, so a crash or
-   * hang during execution still leaves them on the log. This is the single
-   * flush point of the bind block, shared by the regular, array and CGW
-   * execute paths. cas_log_flush_if_needed () only flushes in SQL_LOG_MODE_ALL,
-   * so the slow log is excluded here.
+   * The bind lines above skip the per-line flush,
+   * so flush them here in one call before the statement is executed.
    */
   if (!slow_log)
     {

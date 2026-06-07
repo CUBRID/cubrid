@@ -1963,7 +1963,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       SQL_LOG2_EXEC_BEGIN (as_info->cur_sql_log2, stmt_id);
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
-      cas_log_write2_nonl (" %s\n", use_plan_cache ? "(PC)" : "");
+      cas_log_write2 (" %s", use_plan_cache ? "(PC)" : "");
 
       if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
 	{

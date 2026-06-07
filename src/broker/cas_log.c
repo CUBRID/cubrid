@@ -253,6 +253,15 @@ cas_log_close (bool flag)
 
 }
 
+void
+cas_log_flush_if_needed (void)
+{
+  if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
+    {
+      cas_fflush (log_fp);
+    }
+}
+
 static void
 cas_log_backup (T_CUBRID_FILE_ID fid)
 {
@@ -467,7 +476,6 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 
 }
 
-/* same as cas_log_write_nonl (), but never flushes; used to bulk the bind value block */
 void
 cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 {
@@ -657,27 +665,6 @@ cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
 }
 
 void
-cas_log_write2_nonl (const char *fmt, ...)
-{
-
-  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
-    {
-      cas_log_open (shm_appl->broker_name);
-    }
-
-  if (log_fp != NULL)
-    {
-      va_list ap;
-
-      va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
-      va_end (ap);
-    }
-
-}
-
-/* same as cas_log_write2_nonl (), but never flushes; used to bulk the bind value block */
-void
 cas_log_write2_nonl_noflush (const char *fmt, ...)
 {
 
@@ -695,19 +682,6 @@ cas_log_write2_nonl_noflush (const char *fmt, ...)
       va_end (ap);
     }
 
-}
-
-/*
- * cas_log_flush_if_needed () -
- *   Flush the buffered SQL log, but only in SQL_LOG_MODE_ALL.
- */
-void
-cas_log_flush_if_needed (void)
-{
-  if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
-    {
-      cas_fflush (log_fp);
-    }
 }
 
 void
