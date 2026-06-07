@@ -1939,6 +1939,9 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 
       SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, sql_stmt);
 
+      /* record-before barrier: flush before compile so this batch item's SQL is on disk if it hangs or crashes */
+      cas_log_flush_if_needed ();
+
       stmt_id = db_compile_statement (session);
 
       assert ((stmt_id < 0) || (stmt_id == 1));
