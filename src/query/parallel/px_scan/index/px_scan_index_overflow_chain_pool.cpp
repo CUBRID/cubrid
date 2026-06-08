@@ -50,6 +50,21 @@ namespace parallel_index_scan
     m_overflow_cv.notify_all ();
   }
 
+  /* Requires m_overflow_mutex held; see header. Asserts the failing thread is still counted —
+     this function MUST NOT decrement helpers (the failing thread decrements exactly once later
+     via its own exit_help). Adding a decrement here causes a double-decrement → helpers underflow
+     → permanent slot leak or premature close that re-introduces the ABA. */
+  void
+  overflow_chain_pool::mark_chain_dead_locked (overflow_slot &slot)
+  {
+    assert (slot.active);
+    assert (slot.helpers > 0);
+    VPID_SET_NULL (&slot.cur_vpid);
+    slot.chain_walked = true;
+    slot.claim_in_flight = false;
+    m_overflow_cv.notify_all ();
+  }
+
   /* cap == parallelism + producer/late-joiner time-disjoint per worker => -1 unreachable; -1 path is defense-in-depth. */
   int
   overflow_chain_pool::try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
@@ -116,15 +131,22 @@ namespace parallel_index_scan
     slot.claim_in_flight = true;
     lock.unlock ();
 
-    /* Fix outside mutex — UNCONDITIONAL. Deadlock-free: writer requires leaf-X before overflow-X
-     * (btree.c:9818/31524), and producer holds leaf-S blocking that leaf-X. So no writer can hold
-     * overflow-X while we wait here. */
+    /* Fix happens AFTER unlocking m_overflow_mutex — that is what removes the lock-order inversion:
+     * no page latch is taken while the mutex is held, so the mutex can never sit inside a
+     * leaf<->overflow latch cycle. Correctness rests on this alone. (Secondary, and only while the
+     * producer still holds its leaf-S in OVERFLOW_SHARED: a writer needs leaf-X before overflow-X
+     * (btree.c:9818/31524), so it cannot hold overflow-X against this UNCONDITIONAL fix.) */
     PAGE_PTR page = pgbuf_fix (thread_p, &claim_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (page == NULL)
       {
 	ASSERT_ERROR ();
 	lock.lock ();
-	close_slot_locked (slot);
+	/* Option B: mark the chain dead but keep the slot occupied. This failing thread is itself
+	   a counted helper; it decrements once via its caller's exit_help. Each other straggler
+	   also drains via its own exit_help; the last out (helpers==0) runs close_slot_locked.
+	   Because try_publish only reuses !active slots and the slot stays active until fully
+	   drained, the slot index cannot be recycled under a straggler (ABA prevented). */
+	mark_chain_dead_locked (slot);
 	return S_ERROR;
       }
 
@@ -136,7 +158,8 @@ namespace parallel_index_scan
 	ASSERT_ERROR ();
 	pgbuf_unfix (thread_p, page);
 	lock.lock ();
-	close_slot_locked (slot);
+	/* Option B (see pgbuf_fix-failure path above): dead-mark, defer close to last-out exit_help. */
+	mark_chain_dead_locked (slot);
 	return S_ERROR;
       }
 
@@ -173,10 +196,13 @@ namespace parallel_index_scan
 
     if (!slot.active)
       {
-	/* Already force-closed by claim_next error path; helpers counter is stale. */
+	/* Under Option B an error-dead chain stays active until the last helper drains it, so this
+	   no longer fires for error paths. Its remaining role: guard a redundant exit_help after a
+	   legitimate last-out close. Do NOT remove — a stray double-exit would trip the assert below
+	   or underflow helpers. */
 	return;
       }
-    assert (slot.helpers > 0);
+    assert (slot.helpers > 0);   /* holds under Option B: the failing thread stays counted (>=1). */
     --slot.helpers;
     if (slot.helpers == 0)
       {
@@ -243,6 +269,10 @@ namespace parallel_index_scan
 	    if (pr_clone_value (&ps.key, out_local_key) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
+		/* clone may have left a partial value; release it here — the caller will not
+		   (out_local_clear_key is still false on this path). */
+		pr_clear_value (out_local_key);
+		db_make_null (out_local_key);
 		/* undo the helpers++ */
 		--ps.helpers;
 		if (ps.helpers == 0)

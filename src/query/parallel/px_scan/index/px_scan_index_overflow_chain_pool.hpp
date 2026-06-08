@@ -45,7 +45,9 @@ namespace parallel_index_scan
     bool     active;            /* slot in use; gates round-robin pick + termination predicate. */
     bool     claim_in_flight;   /* one in-flight claim at a time; predicate-loop in claim_next. */
     DB_VALUE key;               /* deep-copied from producer's m_slot_key at publish; slot-owned. */
-    bool     clear_key;         /* needs pr_clear_value on close. */
+    bool     clear_key;         /* slot.key currently owns variable-length storage. close_slot_locked
+				   clears unconditionally (pr_clear_value on a NULL value is a safe
+				   no-op); init() uses this flag to release pre-existing slots on reinit. */
   };
 
   /* (A) Multi-chain shared overflow pool (v2): cap = parallelism slots, helper supply matches chain demand. */
@@ -107,6 +109,12 @@ namespace parallel_index_scan
     private:
       /* Requires m_overflow_mutex held; clears key, resets all slot fields, notifies waiters. */
       void close_slot_locked (overflow_slot &slot);
+
+      /* Requires m_overflow_mutex held. Marks the chain DEAD (cursor exhausted) but does NOT
+         end slot occupancy: leaves active/helpers/key/clear_key untouched so the slot index
+         cannot be recycled by try_publish while a straggler helper still holds it (ABA guard).
+         The last exit_help to bring helpers to 0 runs close_slot_locked. */
+      void mark_chain_dead_locked (overflow_slot &slot);
 
       std::mutex                  m_overflow_mutex;
       std::condition_variable     m_overflow_cv;
