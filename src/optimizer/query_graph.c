@@ -9491,11 +9491,6 @@ qo_term_dump (QO_TERM * term, FILE * f)
       fputs (" (mergeable)", f);
     }
 
-  if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
-    {
-      fputs (" (implied)", f);
-    }
-
   switch (QO_TERM_JOIN_TYPE (term))
     {
     case NO_JOIN:
