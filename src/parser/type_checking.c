@@ -7654,7 +7654,12 @@ pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE *
 	{
 	  consp = sm_class_constraints (cls);
 
-	  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	  if (au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	    {
+	      er_clear ();
+	      return false;
+	    }
+
 	  attr = classobj_find_attribute (class_, node->info.name.original, 0);
 	  if (attr == NULL)
 	    {
