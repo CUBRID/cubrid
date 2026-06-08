@@ -1212,11 +1212,20 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   find = strstr (url, ":?");
   if (find)
     {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
+      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
     }
   else
     {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
+      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
+    }
+  /* snprintf returns the length that WOULD have been written (excluding the null terminator);
+   * ret >= buffer size means the URL was truncated. This is a data-modifying path, so fail
+   * explicitly instead of connecting with a truncated (wrong) URL. */
+  if (ret < 0 || ret >= MAX_LEN_CONNECTION_URL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote INSERT SELECT: connection URL too long (truncated)");
+      return ER_DBLINK;
     }
 
   /* Reuse remote conn from dblink pool within the same local transaction */

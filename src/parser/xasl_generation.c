@@ -18875,7 +18875,19 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
   insert->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
 
-  /* build qualified remote table name: [owner.]table */
+  /* build qualified remote table name: [owner.]table
+   *
+   * TODO: The remote table name (here) and remote column names (remote_attr_names, below) are
+   *       emitted to the remote server unquoted (dblink_insert_open builds "INSERT INTO <table>
+   *       [(<cols>)] VALUES (?, ...)").  Quoting makes identifiers case-sensitive, but unquoted
+   *       identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase) and
+   *       the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`).  The remote DBMS
+   *       type is unknown at XASL generation (remote INSERT SELECT also targets Oracle/MySQL via the
+   *       gateway), and info.name.original has already dropped the user's quoting, so faithful
+   *       requoting is not possible here.  Proper per-DB quoting is deferred, consistent with the
+   *       correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql).  Consequence:
+   *       remote table/column names that require quoting (reserved words, mixed-case, special chars)
+   *       are not supported in remote INSERT SELECT. */
   entity_name = into_spec->info.spec.entity_name;
   insert->remote_table_name = NULL;
   if (entity_name->info.name.resolved)
