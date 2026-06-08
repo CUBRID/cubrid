@@ -151,8 +151,8 @@ struct walk_info
   QO_TERM *term;
 };
 
-typedef struct qo_transitive_join_spec QO_TRANSITIVE_JOIN_SPEC;
-struct qo_transitive_join_spec
+typedef struct qo_implied_join_spec QO_IMPLIED_JOIN_SPEC;
+struct qo_implied_join_spec
 {
   QO_SEGMENT *head_seg;
   QO_SEGMENT *tail_seg;
@@ -237,10 +237,10 @@ static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
 static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
-static void qo_generate_transitive_join_terms (QO_ENV *);
-static void qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr);
-static int qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-					     QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
+static void qo_generate_implied_join_terms (QO_ENV *);
+static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
+static int qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
+					     QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -596,11 +596,11 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
-  /* Generate transitive join terms from the union-find segment groups before
+  /* Generate implied join terms from the union-find segment groups before
    * qo_discover_edges() rearranges the term array.  New terms are appended at
    * the end; qo_discover_edges() will fold them into the edge zone and sort.
    */
-  qo_generate_transitive_join_terms (env);
+  qo_generate_implied_join_terms (env);
 
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
@@ -694,7 +694,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
-  /* Pre-allocate room for transitive join terms (at most C(nnodes,2) extras per eqclass in
+  /* Pre-allocate room for implied join terms (at most C(nnodes,2) extras per eqclass in
    * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
    * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
   extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
@@ -5887,7 +5887,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
-  env->tmp_transitive_specs = NULL;
+  env->implied_specs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -6007,10 +6007,10 @@ qo_env_free (QO_ENV * env)
 	  free_and_init (env->terms);
 	}
 
-      /* Scratch specs buffer that survived a longjmp out of qo_generate_transitive_join_terms(). */
-      if (env->tmp_transitive_specs)
+      /* Scratch specs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
+      if (env->implied_specs)
 	{
-	  free_and_init (env->tmp_transitive_specs);
+	  free_and_init (env->implied_specs);
 	}
 
       if (env->partitions)
@@ -8107,7 +8107,7 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
- * qo_generate_transitive_join_terms () - Generate implied join terms from
+ * qo_generate_implied_join_terms () - Generate implied join terms from
  *   segment equivalence groups using transitive closure.
  *   env(in):
  *
@@ -8116,10 +8116,10 @@ qo_assign_eq_classes (QO_ENV * env)
  *   of env->terms; qo_discover_edges() — called right after — folds them into the edge zone.
  */
 static void
-qo_generate_transitive_join_terms (QO_ENV * env)
+qo_generate_implied_join_terms (QO_ENV * env)
 {
   int i;
-  QO_TRANSITIVE_JOIN_SPEC *specs = NULL;
+  QO_IMPLIED_JOIN_SPEC *specs = NULL;
   int specs_count = 0, specs_cap = 0;
   PARSER_CONTEXT *parser;
   int *root_arr = NULL;
@@ -8145,9 +8145,9 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       return;
     }
 
-  qo_build_transitive_seg_roots (env, root_arr);
+  qo_build_implied_seg_roots (env, root_arr);
 
-  if (qo_collect_transitive_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
+  if (qo_collect_implied_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
       || specs_count == 0)
     {
       if (specs)
@@ -8165,7 +8165,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   free_and_init (segs_arr);
 
   /* Hand specs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
-  env->tmp_transitive_specs = specs;
+  env->implied_specs = specs;
 
   parser = QO_ENV_PARSER (env);
 
@@ -8210,13 +8210,13 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
-  env->tmp_transitive_specs = NULL;
+  env->implied_specs = NULL;
   free_and_init (specs);
 }
 
 /*
- * qo_build_transitive_seg_roots () - Build the segment union-find used for
- *   transitive join term generation.
+ * qo_build_implied_seg_roots () - Build the segment union-find used for
+ *   implied join term generation.
  *   env(in):
  *   root_arr(out): caller-allocated array of env->nsegs entries; on return,
  *	  root_arr[i] is the canonical root of segment i.
@@ -8226,7 +8226,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
  *   seed the closure: an inner term derived across an outer-join boundary changes results.
  */
 static void
-qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr)
+qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 {
   int ti, t;
 
@@ -8290,7 +8290,7 @@ qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr)
 }
 
 /*
- * qo_collect_transitive_join_specs () - Collect candidate transitive join
+ * qo_collect_implied_join_specs () - Collect candidate implied join
  *   specifications using the caller-built segment union-find (root_arr).
  *   return: 0 on success, -1 on memory allocation failure
  *   env(in):
@@ -8304,8 +8304,8 @@ qo_build_transitive_seg_roots (QO_ENV * env, int *root_arr)
  *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
  */
 static int
-qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-				  QO_TRANSITIVE_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
+				  QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
 {
   int i, j, k, t;
   int nsegs;
@@ -8334,7 +8334,7 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	}
 
       /* A two-segment group is always united by the direct edge term that merged it,
-       * so no new transitive pair can come out of it; require at least three segments. */
+       * so no new implied pair can come out of it; require at least three segments. */
       if (nsegs < 3)
 	{
 	  continue;
@@ -8422,8 +8422,8 @@ qo_collect_transitive_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	      if (*count_p >= *cap_p)
 		{
 		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
-		  QO_TRANSITIVE_JOIN_SPEC *np =
-		    (QO_TRANSITIVE_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_TRANSITIVE_JOIN_SPEC) * new_cap);
+		  QO_IMPLIED_JOIN_SPEC *np =
+		    (QO_IMPLIED_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_IMPLIED_JOIN_SPEC) * new_cap);
 		  if (np == NULL)
 		    {
 		      return -1;
@@ -10029,7 +10029,7 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 
       if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
 	{
-	  /* skip implied transitive terms; they add no independent constraints and must not
+	  /* skip implied join terms; they add no independent constraints and must not
 	   * falsely invalidate the PK-FK full-join */
 	  continue;
 	}
