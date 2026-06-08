@@ -21,9 +21,13 @@
 //
 
 #include "bestspace.hpp"
-#include "page_buffer.h"
+#include "xserver_interface.h"
+#include "heap_file.h"
 #include "slotted_page.h"
 #include "error_manager.h"
+
+#include <cstdint>
+#include <utility>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -205,6 +209,8 @@ namespace cubstorage
     : m_L3 ()
     , m_L2 ()
     , m_L1 ()
+    , m_recs_num (0)
+    , m_recs_sumlen (0)
   {
   }
 
@@ -239,7 +245,7 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::find (std::uint16_t size, std::size_t bias, PAGE_PTR &pgptr)
+  bestspace::shard::find (HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     status error;
     tier minimum;
@@ -251,26 +257,19 @@ namespace cubstorage
 	minimum++;
       }
 
-    error = L3_find (minimum, size, bias, false, pgptr);
-    if (error == status::CONTENDED)
-      {
-	error = L3_find (minimum, size, bias, true, pgptr);
-      }
-
-    assert (error != status::CONTENDED);
-
+    error = L3_find (minimum, size, bias, page_watcher);
     if (error == status::FOUND || error == status::FAILURE)
       {
 	return error;
       }
 
-    assert (error == status::NOT_FOUND);
+    assert (error == status::NOT_FOUND || error == status::CONTENDED);
 
-    return allocate ();
+    return allocate (hfid, size, page_watcher);
   }
 
   bestspace::status
-  bestspace::shard::L3_find (tier minimum, std::uint16_t size, std::size_t bias, bool wait, PAGE_PTR &pgptr)
+  bestspace::shard::L3_find (tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
     std::size_t length, i;
@@ -286,7 +285,7 @@ namespace cubstorage
 	length = l3.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L2_find (minimum, size, pos[ (i + bias) % length], bias, wait, pgptr);
+	    error = L2_find (minimum, size, pos[ (i + bias) % length], bias, page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -331,8 +330,8 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias, bool wait,
-			     PAGE_PTR &pgptr)
+  bestspace::shard::L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
+			     PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
     std::size_t length, i;
@@ -348,7 +347,7 @@ namespace cubstorage
 	length = l2.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L1_find (size, l2_index, pos[ (i + bias) % length], wait, pgptr);
+	    error = L1_find (size, l2_index, pos[ (i + bias) % length], page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -394,12 +393,15 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, bool wait, PAGE_PTR &pgptr)
+  bestspace::shard::L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p;
     std::size_t freespace;
     VPID vpid, old_vpid;
     L1 expected, desired;
+    status error;
+
+    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
 
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
@@ -410,30 +412,12 @@ namespace cubstorage
       }
 
     // now, fix a page to check the actual free space
-    thread_p = thread_get_thread_entry_info ();
     old_vpid = expected.get_vpid ();
-    pgptr = pgbuf_fix (thread_p, &old_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
-		       wait ? PGBUF_UNCONDITIONAL_LATCH : PGBUF_CONDITIONAL_LATCH);
-    if (pgptr == NULL)
+
+    error = L1_fix (l2_index, l1_index, expected, old_vpid, page_watcher);
+    if (error != status::SUCCESS)
       {
-	switch (er_errid ())
-	  {
-	  case NO_ERROR:
-	    return wait ? status::NOT_FOUND : status::CONTENDED;
-
-	  case ER_PB_BAD_PAGEID:
-	    L1_remove (l2_index, l1_index, expected);
-	    [[fallthrough]];
-
-	  case ER_LK_PAGE_TIMEOUT:
-	    er_clear ();
-	    return status::NOT_FOUND;
-
-	  case ER_INTERRUPTED:
-	    return status::FAILURE;
-	  }
-
-	return status::FAILURE;
+	return error;
       }
 
     // L1 might be changed
@@ -441,7 +425,8 @@ namespace cubstorage
     // newest
     vpid = expected.get_vpid ();
     // store the old and get the actual free space
-    freespace = spage_max_space_for_new_record (thread_p, pgptr);
+    thread_p = thread_get_thread_entry_info ();
+    freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
     if (freespace < size)
       {
 	// there is no enough space and the free space information is wrong
@@ -456,9 +441,7 @@ namespace cubstorage
 		L2_update (l2_index, l1_index);
 	      }
 	  }
-	pgbuf_unfix (thread_p, pgptr);
-	pgptr = NULL;
-
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
 	return status::NOT_FOUND;
       }
 
@@ -475,6 +458,39 @@ namespace cubstorage
 	  }
       }
     return status::FOUND;
+  }
+
+  bestspace::status
+  bestspace::shard::L1_fix (std::size_t l2_index, std::size_t l1_index, L1 l1, VPID vpid, PGBUF_WATCHER &page_watcher)
+  {
+    cubthread::entry *thread_p;
+    int wait_msecs;
+    int error_code;
+
+    thread_p = thread_get_thread_entry_info ();
+    wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+    error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &page_watcher);
+    (void) xlogtb_reset_wait_msecs (thread_p, wait_msecs);
+    if (error_code != NO_ERROR)
+      {
+	if (error_code == ER_LK_PAGE_TIMEOUT)
+	  {
+	    er_clear ();
+	    return status::CONTENDED;
+	  }
+	if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+	  {
+	    L1_remove (l2_index, l1_index, l1);
+	    er_clear ();
+	    return status::NOT_FOUND;
+	  }
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  }
+	return status::FAILURE;
+      }
+    return status::SUCCESS;
   }
 
   void
@@ -527,24 +543,82 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::allocate_pages ()
+  bestspace::shard::allocate_pages (cubthread::entry &thread_ref, std::uint16_t size,
+				    std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher)
   {
+    std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> result;
+    std::size_t pos, offset;
     std::size_t i;
+    int freespace;
+    L1 l1;
 
-    for (i = 0; i < 56; i++)
+    // get 8 indices from L1, ordered by smallest free space
+    result.fill (std::make_pair (std::numeric_limits<std::uint16_t>::max (), std::numeric_limits<std::uint16_t>::max ()));
+    for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
       {
+	l1 = m_L1[i].load ();
+	freespace = l1.get_freespace ();
+
+	if (freespace >= result[ALLOC_BATCH_SIZE - 1].second)
+	  {
+	    continue;
+	  }
+
+	pos = ALLOC_BATCH_SIZE - 1;
+	while (pos > 0 && freespace < result[pos - 1].second)
+	  {
+	    result[pos] = result[pos - 1];
+	    pos--;
+	  }
+
+	result[pos] = std::make_pair (i, freespace);
+      }
+
+    // renew the L1s
+    offset = 0;
+    freespace = spage_max_space_for_new_record (&thread_ref, page_watcher.pgptr);
+    if (freespace - static_cast<int> (size) > static_cast<int> (result[0].second))
+      {
+	l1.set_freespace (freespace - size);
+	l1.set_vpid (vpids[0]);
+	m_L1[result[0].first].store (l1);
+
+	L2_update (result[0].first / L2_FANOUT, result[0].first % L2_FANOUT);
+	offset++;
+      }
+    for (i = 1; i < ALLOC_BATCH_SIZE; i++)
+      {
+	l1.set_freespace (freespace);
+	l1.set_vpid (vpids[i]);
+	m_L1[result[i - (1 - offset)].first].store (l1);
+
+	L2_update (result[i - (1 - offset)].first / L2_FANOUT, result[i - (1 - offset)].first % L2_FANOUT);
       }
   }
 
   bestspace::status
-  bestspace::shard::allocate ()
+  bestspace::shard::allocate (HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
   {
+    std::array<VPID, ALLOC_BATCH_SIZE> vpids;
+    cubthread::entry *thread_p;
+    int error;
+
     // set allcating bit
     if (allocate_mark () != status::SUCCESS)
       {
 	return status::ALLOCATING;
       }
 
+    thread_p = thread_get_thread_entry_info ();
+    error = heap_alloc_new_pages (thread_p, hfid, ALLOC_BATCH_SIZE, vpids.data (), &page_watcher);
+    if (error != NO_ERROR)
+      {
+	allocate_unmark ();
+	return status::FAILURE;
+      }
+
+    allocate_pages (*thread_p, size, vpids, page_watcher);
+    allocate_unmark ();
     return status::FOUND;
   }
 
@@ -554,7 +628,7 @@ namespace cubstorage
   }
 
   int
-  bestspace::find (cubthread::entry &thread_ref, std::uint16_t size, PAGE_PTR &pgptr)
+  bestspace::find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
   {
     std::size_t shard, bias;
     std::size_t i;
@@ -563,7 +637,6 @@ namespace cubstorage
     int errid;
 
     assert (size > 0 && size < DB_PAGESIZE);
-    pgptr = NULL;
 
     // early return or clear stale error to avoid error corruption in below path
     errid = er_errid_if_has_error ();
@@ -573,6 +646,15 @@ namespace cubstorage
       }
     er_clear ();
 
+    if (hfid == NULL || HFID_IS_NULL (hfid) ||
+	page_watcher.next != NULL || page_watcher.prev != NULL || page_watcher.pgptr != NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	return ER_FAILED;
+      }
+
+    PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
     retry = 0;
     shard = thread_ref.index % SHARD_COUNT;
     bias = thread_ref.tran_index < 0 ? -thread_ref.tran_index : thread_ref.tran_index;
@@ -580,7 +662,7 @@ namespace cubstorage
       {
 	for (i = 0; i < SHARD_COUNT; i++)
 	  {
-	    error = m_shard[ (shard + i) % SHARD_COUNT].find (size, bias, pgptr);
+	    error = m_shard[ (shard + i) % SHARD_COUNT].find (hfid, size, bias, page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||
 		    error == status::FAILURE);

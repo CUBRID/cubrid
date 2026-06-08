@@ -24,6 +24,7 @@
 #define _BESTSPACE_HPP_
 
 #include "thread_entry.hpp"
+#include "page_buffer.h"
 #include "storage_common.h"
 #include "dbtype_def.h"
 
@@ -39,6 +40,12 @@ namespace cubstorage
   class bestspace
   {
     private:
+      static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
+      static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
+      static constexpr std::size_t L3_FANOUT = 7;
+      static constexpr std::size_t L2_FANOUT = 8;
+      static constexpr std::size_t SHARD_COUNT = 8;
+
       enum class status
       {
 	NOT_FOUND,
@@ -79,11 +86,6 @@ namespace cubstorage
 	return result;
       }
 
-      static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
-      static constexpr std::size_t L3_FANOUT = 7;
-      static constexpr std::size_t L2_FANOUT = 8;
-      static constexpr std::size_t SHARD_COUNT = 8;
-
       class bitmap
       {
 	public:
@@ -109,6 +111,11 @@ namespace cubstorage
 	T load () const noexcept
 	{
 	  return value.load ();
+	}
+
+	void store (T desired) noexcept
+	{
+	  value.store (desired);
 	}
 
 	bool compare_exchange_strong (T &expected, T desired) noexcept
@@ -198,33 +205,38 @@ namespace cubstorage
 	  shard () noexcept;
 	  ~shard () = default;
 
-	  status find (std::uint16_t size, std::size_t bias, PAGE_PTR &pgptr);
+	  status find (HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
 
 	private:
 	  atomic_wrapper<L3> m_L3;
 	  atomic_wrapper<L2> m_L2[L3_FANOUT];
 	  atomic_wrapper<L1> m_L1[L3_FANOUT * L2_FANOUT];
 
-	  status L3_find (tier minimum, std::uint16_t size, std::size_t bias, bool wait, PAGE_PTR &pgptr);
+	  std::atomic<std::uint64_t> m_recs_num;
+	  std::atomic<float> m_recs_sumlen;
+
+	  status L3_find (tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L3_update (std::size_t l2_index);
 
-	  status L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias, bool wait, PAGE_PTR &pgptr);
+	  status L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L2_update (std::size_t l2_index, std::size_t l1_index);
 
-	  status L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, bool wait, PAGE_PTR &pgptr);
+	  status L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher);
+	  status L1_fix (std::size_t l2_index, std::size_t l1_index, L1 l1, VPID vpid, PGBUF_WATCHER &page_watcher);
 	  void L1_remove (std::size_t l2_index, std::size_t l1_index, L1 l1);
 
 	  status allocate_mark ();
 	  void allocate_unmark ();
-	  void allocate_pages ();
-	  status allocate ();
+	  void allocate_pages (cubthread::entry &thread_ref, std::uint16_t size, std::array<VPID, ALLOC_BATCH_SIZE> &vpids,
+			       PGBUF_WATCHER &page_watcher);
+	  status allocate (HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
       };
 
     public:
       bestspace () noexcept;
       ~bestspace () = default;
 
-      int find (cubthread::entry &thread_ref, std::uint16_t size, PAGE_PTR &pgptr);
+      int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
 
@@ -247,7 +259,7 @@ namespace cubstorage
       static_assert (alignof (atomic_wrapper<L2>) == 64, "bestspace::atomic_wrapper<L2> must be aligned as 64 bytes");
       static_assert (alignof (atomic_wrapper<L3>) == 64, "bestspace::atomic_wrapper<L3> must be aligned as 64 bytes");
 
-      static_assert (sizeof (shard) == 4096, "bestspace::shard must be 4096 bytes");
+      static_assert (sizeof (shard) == 4160, "bestspace::shard must be 4160 bytes");
       static_assert (alignof (shard) == 64, "bestspace::shard must be aligned as 64 bytes");
   };
 }

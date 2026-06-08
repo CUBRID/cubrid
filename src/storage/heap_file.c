@@ -26289,20 +26289,18 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 int
 heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids, PGBUF_WATCHER * new_pg_watcher)
 {
-  int error_code = NO_ERROR;
-  int i;
-  VPID heap_hdr_vpid;
-  VPID null_vpid;
-  VPID last_vpid;
-  VPID *prev_vpid;
-  VPID *next_vpid;
-  HEAP_CHAIN new_page_chain;
-  HEAP_CHAIN *last_chain;
-  HEAP_CHAIN last_chain_prev;
-  HEAP_HDR_STATS *heap_hdr = NULL;
-  HEAP_HDR_STATS heap_hdr_prev;
   PGBUF_WATCHER heap_hdr_watcher, last_pg_watcher;
   PGBUF_WATCHER page_watcher;
+  HEAP_CHAIN new_page_chain, last_chain_prev;
+  HEAP_CHAIN *last_chain;
+  VPID *prev_vpid, *next_vpid;
+  VPID null_vpid, last_vpid;
+  VPID heap_hdr_vpid;
+  HEAP_HDR_STATS heap_hdr_prev;
+  HEAP_HDR_STATS *heap_hdr = NULL;
+  int error_code = NO_ERROR;
+  int i;
+
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   bool is_sysop_started = false;
 
@@ -26365,7 +26363,6 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
     {
       prev_vpid = (i == 0) ? &last_vpid : &new_page_vpids[i - 1];
       next_vpid = (i == npages - 1) ? &null_vpid : &new_page_vpids[i + 1];
-
       error_code = heap_add_chain_links (thread_p, hfid, &new_page_vpids[i], next_vpid, prev_vpid, &page_watcher,
 					 false, false);
       if (error_code != NO_ERROR)
