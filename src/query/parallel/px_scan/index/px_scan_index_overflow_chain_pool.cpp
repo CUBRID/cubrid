@@ -25,6 +25,7 @@
 #include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "memory_alloc.h"
 #include "object_primitive.h"
 #include "page_buffer.h"
 #include "storage_common.h"
@@ -34,11 +35,38 @@
 
 namespace parallel_index_scan
 {
+  /* clone slot.key on the common heap (heap_id 0) so any worker thread can later free it; see clear_key_common_heap. */
+  int
+  overflow_chain_pool::clone_key_common_heap (DB_VALUE *dest, const DB_VALUE *src)
+  {
+#if defined (SERVER_MODE)
+    HL_HEAPID old_heap = db_private_set_heapid_to_thread (NULL, 0);
+#endif
+    int rc = pr_clone_value (src, dest);
+#if defined (SERVER_MODE)
+    (void) db_private_set_heapid_to_thread (NULL, old_heap);
+#endif
+    return rc;
+  }
+
+  /* free slot.key on common heap: last-out helper differs from producer; cross-thread private-heap free aborts. */
+  void
+  overflow_chain_pool::clear_key_common_heap (DB_VALUE *val)
+  {
+#if defined (SERVER_MODE)
+    HL_HEAPID old_heap = db_private_set_heapid_to_thread (NULL, 0);
+#endif
+    pr_clear_value (val);
+#if defined (SERVER_MODE)
+    (void) db_private_set_heapid_to_thread (NULL, old_heap);
+#endif
+  }
+
   /* m_overflow_mutex held; clears key, resets all slot fields. */
   void
   overflow_chain_pool::close_slot_locked (overflow_slot &slot)
   {
-    pr_clear_value (&slot.key);
+    clear_key_common_heap (&slot.key);
     db_make_null (&slot.key);
     slot.clear_key = false;
     slot.active = false;
@@ -83,7 +111,7 @@ namespace parallel_index_scan
 	    slot.active = true;
 	    /* null before clone (slot-reuse safety). */
 	    db_make_null (&slot.key);
-	    if (pr_clone_value (key, &slot.key) != NO_ERROR)
+	    if (clone_key_common_heap (&slot.key, key) != NO_ERROR)
 	      {
 		/* clone failed; roll back partial key. */
 		close_slot_locked (slot);
