@@ -121,7 +121,8 @@ struct locator_class_collect_ctx
   const char *prefix;		/* NULL = no filter; otherwise trailing-'*' prefix */
   int prefix_len;
   OID *oids;
-  int count;
+  int count;			/* number of OIDs collected so far */
+  int capacity;			/* allocated slots in oids */
 };
 
 bool locator_Dont_check_foreign_key = false;
@@ -138,7 +139,6 @@ static INT32 locator_Pseudo_pageid_crt = -2;
 static int locator_permoid_class_name (THREAD_ENTRY * thread_p, const char *classname, const OID * class_oid);
 static bool locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry);
 static bool locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char *name);
-static int locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args);
 static int locator_defence_drop_class_name_entry (const void *name, void *ent, void *args);
 static int locator_force_drop_class_name_entry (const void *name, void *ent, void *args);
@@ -1227,40 +1227,18 @@ locator_wildcard_name_matches (const LOCATOR_CLASS_COLLECT_CTX * ctx, const char
   return strncmp (name, ctx->prefix, ctx->prefix_len) == 0;
 }
 
-/*
- * locator_count_class_func () - mht_map_no_key callback that counts user
- *                               classes matching the optional wildcard prefix.
- *
- * return        : always NO_ERROR
- * thread_p (in) : thread entry (unused)
- * data (in)     : LOCATOR_CLASSNAME_ENTRY *
- * args (in/out) : LOCATOR_CLASS_COLLECT_CTX * — ctx->count is incremented per match
- */
-static int
-locator_count_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
-{
-  LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
-  LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
-
-  if (locator_is_user_class_entry (entry)
-      && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
-    {
-      ctx->count++;
-    }
-  return NO_ERROR;
-}
+#define LOCATOR_CLASS_OIDS_INITIAL_CAPACITY 16
 
 /*
  * locator_collect_class_func () - mht_map_no_key callback that copies the OID
- *                                 of each matching user class into ctx->oids.
+ *                                 of each matching user class into ctx->oids,
+ *                                 growing the buffer on demand.
  *
- * return        : always NO_ERROR
+ * return        : NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY on realloc failure
  * thread_p (in) : thread entry (unused)
  * data (in)     : LOCATOR_CLASSNAME_ENTRY *
- * args (in/out) : LOCATOR_CLASS_COLLECT_CTX * — ctx->oids must be pre-allocated
- *                 large enough to hold all matches; ctx->count is the next slot
- *
- * Note: Pair with locator_count_class_func — first pass counts, second pass collects.
+ * args (in/out) : LOCATOR_CLASS_COLLECT_CTX * — ctx->oids/capacity grow as
+ *                 needed; ctx->count is the next slot to fill.
  */
 static int
 locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
@@ -1268,12 +1246,30 @@ locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
   LOCATOR_CLASSNAME_ENTRY *entry = (LOCATOR_CLASSNAME_ENTRY *) data;
   LOCATOR_CLASS_COLLECT_CTX *ctx = (LOCATOR_CLASS_COLLECT_CTX *) args;
 
-  if (locator_is_user_class_entry (entry)
-      && (ctx->prefix == NULL || locator_wildcard_name_matches (ctx, entry->e_name)))
+  if (!locator_is_user_class_entry (entry)
+      || (ctx->prefix != NULL && !locator_wildcard_name_matches (ctx, entry->e_name)))
     {
-      COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);
-      ctx->count++;
+      return NO_ERROR;
     }
+
+  /* count is the next slot to fill (valid range 0..capacity-1).
+   * count == capacity means the buffer is full, so grow before writing.
+   * capacity == 0 is the first allocation: realloc(NULL, ...) behaves as malloc. */
+  if (ctx->count == ctx->capacity)
+    {
+      int new_capacity = (ctx->capacity == 0) ? LOCATOR_CLASS_OIDS_INITIAL_CAPACITY : ctx->capacity * 2;
+      OID *new_oids = (OID *) realloc (ctx->oids, (size_t) new_capacity * sizeof (OID));
+      if (new_oids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) new_capacity * sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      ctx->oids = new_oids;
+      ctx->capacity = new_capacity;
+    }
+
+  COPY_OID (&ctx->oids[ctx->count], &entry->e_current.oid);
+  ctx->count++;
   return NO_ERROR;
 }
 
@@ -1287,14 +1283,13 @@ locator_collect_class_func (THREAD_ENTRY * thread_p, void *data, void *args)
   *   oids_p(out)   : caller must free with free_and_init()
   *   count_p(out)  : number of OIDs in *oids_p
   *
-  * Note: Two-pass approach — first counts, then collects — so malloc is
-  *       exactly sized.  Reader lock is held across both passes.
+  * Note: Single pass under reader lock — the OID buffer grows via realloc
+  *       (see locator_collect_class_func).
   */
 int
 locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_p)
 {
-  LOCATOR_CLASS_COLLECT_CTX ctx = { NULL, 0, NULL, 0 };	/* prefix=NULL: no filter */
-  int total;
+  LOCATOR_CLASS_COLLECT_CTX ctx = { NULL, 0, NULL, 0, 0 };	/* prefix=NULL: no filter */
   int error_code = NO_ERROR;
 
   assert (oids_p != NULL && count_p != NULL);
@@ -1308,26 +1303,7 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
       return ER_FAILED;
     }
 
-  /* Pass 1: count user classes exactly */
-  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_class_func, &ctx);
-  if (error_code != NO_ERROR || ctx.count == 0)
-    {
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      return error_code;
-    }
-
-  total = ctx.count;
-  ctx.count = 0;
-
-  ctx.oids = (OID *) malloc (total * sizeof (OID));
-  if (ctx.oids == NULL)
-    {
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) total * sizeof (OID));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* Pass 2: collect OIDs — reader lock is still held, table cannot change */
+  /* Single pass: collect OIDs, growing the buffer on demand */
   error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_class_func, &ctx);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
@@ -1338,9 +1314,7 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
       return error_code;
     }
 
-  assert (total == ctx.count);
-
-  *oids_p = ctx.oids;
+  *oids_p = ctx.oids;		/* NULL if no user classes — count is 0, same as before */
   *count_p = ctx.count;
 
   return NO_ERROR;
@@ -1356,8 +1330,7 @@ locator_get_user_class_oids (THREAD_ENTRY * thread_p, OID ** oids_p, int *count_
  * oids_p  (out) : allocated array of matching OIDs; caller frees with free_and_init()
  * count_p (out) : number of entries in *oids_p
  *
- * Note: Uses a two-pass approach under reader lock — first counts matches,
- *       then allocates an exact-sized OID array and collects results.
+ * Note: Single pass under reader lock — the OID buffer grows via realloc.
  *       Only OIDs are collected under the lock; class names must be fetched
  *       by the caller via heap_get_class_name() after this function returns.
  */
@@ -1367,7 +1340,6 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
   LOCATOR_CLASS_COLLECT_CTX ctx;
   char prefix_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   int prefix_len;
-  int matched_count = 0;
   int error_code = NO_ERROR;
 
   assert (pattern != NULL && oids_p != NULL && count_p != NULL);
@@ -1393,6 +1365,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
   ctx.prefix_len = prefix_len;
   ctx.oids = NULL;
   ctx.count = 0;
+  ctx.capacity = 0;
 
   if (csect_enter_as_reader (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE, INF_WAIT) != NO_ERROR)
     {
@@ -1400,26 +1373,7 @@ locator_find_class_oids_by_pattern (THREAD_ENTRY * thread_p, const char *pattern
       return ER_FAILED;
     }
 
-  /* Pass 1: count matching entries */
-  error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_count_class_func, &ctx);
-  if (error_code != NO_ERROR || ctx.count == 0)
-    {
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      return error_code;
-    }
-
-  matched_count = ctx.count;
-  ctx.count = 0;
-
-  ctx.oids = (OID *) malloc (matched_count * sizeof (OID));
-  if (ctx.oids == NULL)
-    {
-      csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) matched_count * sizeof (OID));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  /* Pass 2: collect OIDs — reader lock still held, table cannot change */
+  /* Single pass: collect matching OIDs, growing the buffer on demand */
   error_code = mht_map_no_key (thread_p, locator_Mht_classnames, locator_collect_class_func, &ctx);
 
   csect_exit (thread_p, CSECT_LOCATOR_SR_CLASSNAME_TABLE);

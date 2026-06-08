@@ -1370,10 +1370,10 @@ extern char *or_unpack_sha1 (char *ptr, SHA1Hash * sha1);
 extern int or_packed_spacedb_size (const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols, const SPACEDB_FILES * files);
 extern char *or_pack_spacedb (char *ptr, const SPACEDB_ALL * all, const SPACEDB_ONEVOL * vols,
 			      const SPACEDB_FILES * files);
-extern int or_packed_spacedb_table_sizes_size (const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length);
-extern char *or_pack_spacedb_table_sizes (char *ptr, const SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length);
+extern int or_packed_spacedb_table_sizes_size (const SPACEDB_TABLE_SIZES_HEADER * table_sizes, int array_length);
+extern char *or_pack_spacedb_table_sizes (char *ptr, const SPACEDB_TABLE_SIZES_HEADER * table_sizes, int array_length);
 extern char *or_unpack_spacedb (char *ptr, SPACEDB_ALL * all, SPACEDB_ONEVOL ** vols, SPACEDB_FILES * files);
-extern char *or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER *table_sizes, int array_length);
+extern char *or_unpack_spacedb_table_sizes (char *ptr, SPACEDB_TABLE_SIZES_HEADER * table_sizes, int array_length);
 
 /* class object */
 extern int classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, int *pageid);
