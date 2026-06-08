@@ -151,8 +151,8 @@ struct walk_info
   QO_TERM *term;
 };
 
-typedef struct qo_implied_join_spec QO_IMPLIED_JOIN_SPEC;
-struct qo_implied_join_spec
+typedef struct qo_implied_join_pair QO_IMPLIED_JOIN_PAIR;
+struct qo_implied_join_pair
 {
   QO_SEGMENT *head_seg;
   QO_SEGMENT *tail_seg;
@@ -239,8 +239,8 @@ static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_implied_join_terms (QO_ENV *);
 static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
-static int qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-					  QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
+static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -5887,7 +5887,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
-  env->implied_specs = NULL;
+  env->implied_pairs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -6007,10 +6007,10 @@ qo_env_free (QO_ENV * env)
 	  free_and_init (env->terms);
 	}
 
-      /* Scratch specs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
-      if (env->implied_specs)
+      /* Scratch pairs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
+      if (env->implied_pairs)
 	{
-	  free_and_init (env->implied_specs);
+	  free_and_init (env->implied_pairs);
 	}
 
       if (env->partitions)
@@ -8119,8 +8119,8 @@ static void
 qo_generate_implied_join_terms (QO_ENV * env)
 {
   int i;
-  QO_IMPLIED_JOIN_SPEC *specs = NULL;
-  int specs_count = 0, specs_cap = 0;
+  QO_IMPLIED_JOIN_PAIR *pairs = NULL;
+  int pair_count = 0, pair_cap = 0;
   PARSER_CONTEXT *parser;
   int *root_arr = NULL;
   int *segs_arr = NULL;
@@ -8147,12 +8147,11 @@ qo_generate_implied_join_terms (QO_ENV * env)
 
   qo_build_implied_seg_roots (env, root_arr);
 
-  if (qo_collect_implied_join_specs (env, root_arr, segs_arr, &specs, &specs_count, &specs_cap) != 0
-      || specs_count == 0)
+  if (qo_collect_implied_join_pairs (env, root_arr, segs_arr, &pairs, &pair_count, &pair_cap) != 0 || pair_count == 0)
     {
-      if (specs)
+      if (pairs)
 	{
-	  free_and_init (specs);
+	  free_and_init (pairs);
 	}
       free_and_init (root_arr);
       free_and_init (segs_arr);
@@ -8164,15 +8163,15 @@ qo_generate_implied_join_terms (QO_ENV * env)
   free_and_init (root_arr);
   free_and_init (segs_arr);
 
-  /* Hand specs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
-  env->implied_specs = specs;
+  /* Hand pairs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
+  env->implied_pairs = pairs;
 
   parser = QO_ENV_PARSER (env);
 
-  for (i = 0; i < specs_count; i++)
+  for (i = 0; i < pair_count; i++)
     {
-      QO_SEGMENT *head_seg = specs[i].head_seg;
-      QO_SEGMENT *tail_seg = specs[i].tail_seg;
+      QO_SEGMENT *head_seg = pairs[i].head_seg;
+      QO_SEGMENT *tail_seg = pairs[i].tail_seg;
       PT_NODE *pt_expr;
       QO_TERM *term;
 
@@ -8210,8 +8209,8 @@ qo_generate_implied_join_terms (QO_ENV * env)
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
-  env->implied_specs = NULL;
-  free_and_init (specs);
+  env->implied_pairs = NULL;
+  free_and_init (pairs);
 }
 
 /*
@@ -8290,22 +8289,22 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 }
 
 /*
- * qo_collect_implied_join_specs () - Collect candidate implied join
- *   specifications using the caller-built segment union-find (root_arr).
+ * qo_collect_implied_join_pairs () - Collect candidate implied join
+ *   segment pairs using the caller-built segment union-find (root_arr).
  *   return: 0 on success, -1 on memory allocation failure
  *   env(in):
  *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
  *   segs_arr(in): Scratch buffer of size env->nsegs for collecting group segments; caller owns.
- *   specs_p(in/out): Pointer to the dynamically growing specs array
- *   count_p(in/out): Pointer to the current number of collected specs
- *   cap_p(in/out): Pointer to the current capacity of the specs array
+ *   pairs_p(in/out): Pointer to the dynamically growing pairs array
+ *   count_p(in/out): Pointer to the current number of collected pairs
+ *   cap_p(in/out): Pointer to the current capacity of the pairs array
  *
- * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one spec per
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one pair per
  *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
  */
 static int
-qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-			       QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+			       QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p)
 {
   int i, j, k, t;
   int nsegs;
@@ -8340,7 +8339,7 @@ qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	  continue;
 	}
 
-      /* Emit one spec per (head_node, tail_node) pair; also check already-collected specs
+      /* Emit one pair per (head_node, tail_node); also check already-collected pairs
        * to avoid duplicates when the same node has multiple segments in the eqclass. */
       int group_start_count = *count_p;
       for (j = 0; j < nsegs; j++)
@@ -8405,8 +8404,8 @@ qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 		{
 		  for (t = group_start_count; t < *count_p; t++)
 		    {
-		      if (QO_SEG_HEAD ((*specs_p)[t].head_seg) == head_node
-			  && QO_SEG_HEAD ((*specs_p)[t].tail_seg) == tail_node)
+		      if (QO_SEG_HEAD ((*pairs_p)[t].head_seg) == head_node
+			  && QO_SEG_HEAD ((*pairs_p)[t].tail_seg) == tail_node)
 			{
 			  already_has_term = true;
 			  break;
@@ -8422,18 +8421,18 @@ qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
 	      if (*count_p >= *cap_p)
 		{
 		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
-		  QO_IMPLIED_JOIN_SPEC *np =
-		    (QO_IMPLIED_JOIN_SPEC *) realloc (*specs_p, sizeof (QO_IMPLIED_JOIN_SPEC) * new_cap);
+		  QO_IMPLIED_JOIN_PAIR *np =
+		    (QO_IMPLIED_JOIN_PAIR *) realloc (*pairs_p, sizeof (QO_IMPLIED_JOIN_PAIR) * new_cap);
 		  if (np == NULL)
 		    {
 		      return -1;
 		    }
-		  *specs_p = np;
+		  *pairs_p = np;
 		  *cap_p = new_cap;
 		}
 
-	      (*specs_p)[*count_p].head_seg = head_seg;
-	      (*specs_p)[*count_p].tail_seg = tail_seg;
+	      (*pairs_p)[*count_p].head_seg = head_seg;
+	      (*pairs_p)[*count_p].tail_seg = tail_seg;
 	      (*count_p)++;
 	    }
 	}

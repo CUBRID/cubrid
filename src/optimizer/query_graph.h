@@ -882,11 +882,11 @@ struct qo_env
   BITSET *tmp_bitset;
 
   /*
-   * Scratch buffer of implied-join specs owned by qo_generate_implied_join_terms().
+   * Scratch buffer of implied-join pairs owned by qo_generate_implied_join_terms().
    * Held here only so qo_env_free() can release it if qo_add_term() longjmps out via qo_abort().
-   * (void * because QO_IMPLIED_JOIN_SPEC is private to query_graph.c.)
+   * (void * because QO_IMPLIED_JOIN_PAIR is private to query_graph.c.)
    */
-  void *implied_specs;
+  void *implied_pairs;
 
   /*
    * The final plan produced by the optimizer.
