@@ -40,9 +40,15 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 {
   int num_ids = 0, id_size = sizeof (DBLINK_CONN_INFO);
   char *ids;
+  bool is_autocommit;
 
-  DBLINK_CONN_ENTRY *dblink_conn = qmgr_dblink_get_conn_entry (thread_p);
+  DBLINK_CONN_ENTRY *dblink_conn = qmgr_dblink_get_conn_entry (thread_p, &is_autocommit);
   DBLINK_CONN_ENTRY *dblink = dblink_conn;
+
+  if (is_autocommit)
+    {
+      return 0;
+    }
 
   while (dblink)
     {

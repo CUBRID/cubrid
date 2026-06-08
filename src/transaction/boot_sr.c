@@ -3380,12 +3380,39 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
        */
 #ifdef CCI_XA
       if (LOG_ISTRAN_ACTIVE (tdes))
-#else
-      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
-#endif
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
+      else if (LOG_ISTRAN_2PC_PREPARE (tdes))
+	{
+	  /* The participant CAS disconnected while holding a prepared branch.
+	   * The coordinator daemon will deliver the commit/abort decision via a
+	   * new gateway connection.  Keep the slot alive (do NOT call
+	   * logtb_release_tran_index) and mark it as a loose-end so that
+	   * log_2pc_attach_global_tran() can find it when fn_xa_end_tran()
+	   * attaches to deliver the decision. */
+	  TR_TABLE_CS_ENTER (thread_p);
+	  if (!tdes->isloose_end)
+	    {
+	      tdes->isloose_end = true;
+	      log_Gl.trantable.num_prepared_loose_end_indices++;
+	    }
+	  TR_TABLE_CS_EXIT (thread_p);
+
+	  perfmon_stop_watch (thread_p);
+#if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
+	  CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
+#endif /* ENABLE_SYSTEMTAP */
+
+	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, save_index);
+	  return NO_ERROR;
+	}
+#else
+      if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
+	{
+	  (void) xtran_server_abort (thread_p);
+	}
+#endif
 
       perfmon_stop_watch (thread_p);
 

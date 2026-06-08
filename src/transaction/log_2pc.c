@@ -1141,10 +1141,10 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * clie
   tdes->isloose_end = false;
   tdes->isolation = client_tdes->isolation;
   tdes->wait_msecs = client_tdes->wait_msecs;
-  /*
-   * The client identification remains the same. So there is not a need
-   * to set clientids.
-   */
+  /* Transfer the connection-level client_id to the prepared slot so that
+   * xboot_unregister_client() matches and properly releases this slot when
+   * the attaching client (daemon or recovery CAS) disconnects. */
+  tdes->client_id = client_tdes->client_id;
 
   /* Return the table entry that is not going to be used anymore */
   logtb_free_tran_index (thread_p, client_tdes->tran_index);
