@@ -647,6 +647,7 @@ static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN
 
 static PT_NODE *pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static void pt_mark_produced_groupby_refs (AGGREGATE_INFO * info, PT_NODE * arg_list);
 static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						 int *continue_walk);
 static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -4051,13 +4052,13 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
+	      arg_list = parser_walk_tree (parser, arg_list, NULL, NULL, pt_substitute_groupby_ref_post, info);
 
-	      tree->info.function.arg_list =
-		parser_walk_tree (parser, tree->info.function.arg_list, NULL, NULL, pt_substitute_groupby_ref_post,
-				  info);
-	      regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+	      regu_constant_list =
+		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
-	      scan_regu_constant_list = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+	      scan_regu_constant_list =
+		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
 
 	      if (!regu_constant_list || !scan_regu_constant_list)
 		{
@@ -4097,6 +4098,12 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
+		      /* trim the copied separator as well; arg_list must stay in sync with the original */
+		      if (arg_list != NULL && arg_list->next != NULL)
+			{
+			  parser_free_tree (parser, arg_list->next);
+			  arg_list->next = NULL;
+			}
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
@@ -4139,7 +4146,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	    {
 	      regu_dbval_type_init (aggregate_list->accumulator.value2, pt_node_to_db_type (tree));
 	    }
-	  aggregate_list->opr_dbtype = pt_node_to_db_type (arg_list);
+	  aggregate_list->opr_dbtype = pt_node_to_db_type (tree->info.function.arg_list);
 
 	  if (info->out_list && info->value_list && info->regu_list)
 	    {
@@ -4147,24 +4154,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  // add dummy output name nodes, one for each argument
-		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
-		    {
-		      pt_val = parser_new_node (parser, PT_VALUE);
-		      if (pt_val == NULL)
-			{
-			  PT_INTERNAL_ERROR (parser, "allocate new node");
-			  return NULL;
-			}
-
-		      pt_val->type_enum = PT_TYPE_INTEGER;
-		      pt_val->info.value.data_value.i = 0;
-		      parser_append_node (pt_val, info->out_names);
-		    }
-
-		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
-							      &value_list, &regu_position_list) == NULL)
+		  if (pt_node_list_to_value_and_reguvar_list (parser, arg_list, &value_list, &regu_position_list) ==
+		      NULL)
 		    {
 		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
 							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
@@ -4179,17 +4170,40 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      return NULL;
 		    }
 
-		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+		  bool need_append = !(PT_IS_POINTER_REF_NODE (arg_list) && arg_list->info.pointer.produced);
 
-		  // until now we have constructed the value_list, regu_list and out_list
-		  // they are based on the current aggregate node information and we need to append them to the global
-		  // information, i.e in info
-		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-								    regu_constant_list);
+		  if (need_append)
+		    {
+		      // add dummy output name nodes, one for each argument
+		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+			{
+			  pt_val = parser_new_node (parser, PT_VALUE);
+			  if (pt_val == NULL)
+			    {
+			      PT_INTERNAL_ERROR (parser, "allocate new node");
+			      return NULL;
+			    }
 
-		  // also we need to update the scan_regu_list from info
-		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+			  pt_val->type_enum = PT_TYPE_INTEGER;
+			  pt_val->info.value.data_value.i = 0;
+			  parser_append_node (pt_val, info->out_names);
+			}
+
+
+		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+
+		      // until now we have constructed the value_list, regu_list and out_list
+		      // they are based on the current aggregate node information and we need to append them to the global
+		      // information, i.e in info
+		      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+									regu_constant_list);
+
+		      // also we need to update the scan_regu_list from info
+		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+
+		      pt_mark_produced_groupby_refs (info, arg_list);
+		    }
 		}
 	      else
 		{
@@ -4653,7 +4667,9 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 
   if (out_list != NULL && value_list != NULL && regu_list != NULL)
     {
-      (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
+      PT_NODE *select_list_p = parser_copy_tree_list (parser, select_list);
+      (void) parser_walk_tree (parser, out_names, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
+      (void) parser_walk_tree (parser, select_list_p, NULL, NULL, pt_substitute_groupby_ref_pre, &info);
     }
 
   select_node->info.query.q.select.list =
@@ -28574,8 +28590,6 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
       break;
 
     default:
-      *only_allowed = false;
-      *continue_walk = PT_STOP_WALK;
       break;
     }
 
@@ -28634,15 +28648,30 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
       return node;
     }
 
+  if (node->node_type == PT_NODE_POINTER)
+    {
+      return node;
+    }
+
   if (!pt_is_shareable_groupby_ref (parser, node))
     {
       return node;
     }
 
-  for (out_name = info->args; out_name != NULL; out_name = out_name->next)
+  if (node->node_type != PT_NAME && node->node_type != PT_EXPR && node->node_type != PT_FUNCTION)
     {
+      return node;
+    }
 
-      if (pt_check_path_eq (parser, node, out_name) == 0)
+  for (PT_NODE * args = info->args; args != NULL; args = args->next)
+    {
+      out_name = args;
+      while (out_name && out_name->node_type == PT_NODE_POINTER)
+	{
+	  out_name = out_name->info.pointer.node;
+	}
+
+      if (pt_compare_sort_spec_expr (parser, node, out_name))
 	{
 	  already_exist = true;
 	  break;
@@ -28651,15 +28680,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   if (!already_exist)
     {
-      PT_NODE *pointer = pt_point_ref (parser, node);
       DB_VALUE *dbval = NULL;
-
-      if (pointer == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return node;
-	}
-
       regu_alloc (dbval);
       if (dbval == NULL)
 	{
@@ -28667,22 +28688,57 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  return node;
 	}
       pt_data_type_init_value (node, dbval);
-      pointer->etc = dbval;
-      info->args = parser_append_node (pointer, info->args);
+
+      PT_NODE *reg = pt_point_ref (parser, node);
+      if (reg == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return node;
+	}
+      reg->etc = dbval;
+      info->args = parser_append_node (reg, info->args);
     }
 
   return node;
 }
 
 
+/*
+ * pt_mark_produced_groupby_refs () - marks collected args whose shared DB_VALUE is produced by the
+ *				      regu variables of the aggregate just appended
+ *   return: none
+ *   info(in): aggregate info
+ *   subst_arg_list(in): substituted argument list of the appended aggregate; its top-level POINTER_REF
+ *			 nodes identify the shared DB_VALUEs that now have a producer
+ */
+static void
+pt_mark_produced_groupby_refs (AGGREGATE_INFO * info, PT_NODE * arg_list)
+{
+  PT_NODE *node, *out_name;
+
+  for (node = arg_list; node != NULL; node = node->next)
+    {
+      if (!PT_IS_POINTER_REF_NODE (node))
+	{
+	  continue;
+	}
+
+      for (out_name = info->args; out_name != NULL; out_name = out_name->next)
+	{
+	  if (PT_IS_POINTER_REF_NODE (out_name) && out_name->etc == node->etc)
+	    {
+	      out_name->info.pointer.produced = 1;
+	      break;
+	    }
+	}
+    }
+}
+
 static PT_NODE *
 pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
   PT_NODE *out_name, *new_node, *tmp, *pointer;
-  DB_VALUE *dbval = NULL;
-  int i = 0;
-  bool already_exist = false;
 
   if (node == NULL)
     {
@@ -28694,9 +28750,15 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
       return node;
     }
 
-  for (out_name = info->args; out_name != NULL; out_name = out_name->next, i++)
+  for (PT_NODE * args = info->args; args != NULL; args = args->next)
     {
-      if (PT_IS_POINTER_REF_NODE (out_name) && pt_check_path_eq (parser, node, out_name) == 0)
+      out_name = args;
+      while (out_name && out_name->node_type == PT_NODE_POINTER)
+	{
+	  out_name = out_name->info.pointer.node;
+	}
+
+      if (pt_compare_sort_spec_expr (parser, node, out_name))
 	{
 	  new_node = parser_copy_tree (parser, node);
 	  if (new_node == NULL)
@@ -28712,7 +28774,8 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	      return node;
 	    }
 
-	  pointer->etc = (DB_VALUE *) out_name->etc;
+	  pointer->etc = (DB_VALUE *) args->etc;
+	  pointer->info.pointer.produced = args->info.pointer.produced;
 	  tmp = node->next;
 	  pointer->next = tmp;
 
