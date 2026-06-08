@@ -72,7 +72,6 @@
 #if !defined(WINDOWS)
 #include "heartbeat.h"
 #endif
-#include "compressor.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 
@@ -3840,7 +3839,6 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
   LA_OOS_CACHE_ENTRY *entry;
   OR_BUF buf;
   char *decoded_data;
-  char *free_ptr;
   int decoded_len;
   int error;
 
@@ -3874,7 +3872,7 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
 
     /* scratch == NULL: oos_payload_decode will free work_buf if it needs to
      * allocate a fresh LZ4 buffer (it frees buf when buf != scratch). */
-    error = oos_payload_decode (entry->length, work_buf, NULL, &decoded_data, &decoded_len, &free_ptr);
+    error = oos_payload_decode (entry->length, work_buf, NULL, &decoded_data, &decoded_len);
     if (error != NO_ERROR)
       {
 	/* oos_payload_decode freed work_buf and set er. */
@@ -3885,10 +3883,8 @@ la_resolve_oos_value_for_sql_log (const OID * head_oid, DB_BIGINT oos_length, SM
   or_init (&buf, decoded_data, decoded_len);
   error = att->type->data_readval (&buf, value, att->domain, decoded_len, true, NULL, 0);
 
-  if (free_ptr != NULL)
-    {
-      db_private_free_and_init (NULL, free_ptr);
-    }
+  /* decoded_data is a private-heap buffer (scratch was NULL): always ours to free. */
+  db_private_free_and_init (NULL, decoded_data);
 
   return error;
 }

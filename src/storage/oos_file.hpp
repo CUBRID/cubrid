@@ -56,7 +56,7 @@ enum oos_comp_algo
  * On-disk layout (explicit byte ops below; do not rely on struct padding):
  *   byte 0        : algo  (oos_comp_algo)
  *   bytes 1-3     : zero (reserved)
- *   bytes 4-7     : uncompressed_len (int, little-endian via OR_PUT_INT)
+ *   bytes 4-7     : uncompressed_len (int, big-endian via OR_PUT_INT)
  *
  * Note: OOS files are not cross-endian-portable today (matches
  * oos_record_header which is memcpy'd as a POD). OR_PUT_INT/OR_GET_INT make
@@ -70,13 +70,6 @@ typedef struct oos_comp_header
 } OOS_COMP_HEADER;
 
 #define OOS_COMP_HEADER_SIZE ((int) sizeof (OOS_COMP_HEADER))
-
-/*
- * OOS_MIN_COMPRESS_LEN — minimum payload size before attempting LZ4.
- * OOS columns are >512B by construction so this rarely excludes anything,
- * but keeps us from wasting CPU on tiny payloads where LZ4 framing cannot win.
- */
-#define OOS_MIN_COMPRESS_LEN 255
 
 /*
  * OOS_COMP_MIN_GAIN — minimum bytes LZ4 must save to be worth keeping.
@@ -124,31 +117,26 @@ oos_comp_header_get (const char *src, OOS_COMP_HEADER *hdr)
  *   buf          : the buffer holding the blob (may be scratch or heap-alloc'd).
  *   scratch      : the caller's optional fast-path buffer; NULL means every
  *                  buffer is heap-alloc'd and must be freed.
- *   data_out     : set to the start of the decoded image on success; the caller
- *                  must NOT free this pointer directly — use free_out.
+ *   data_out     : set to the start of the decoded image on success.  The caller
+ *                  owns it and frees it via db_private_free_and_init (NULL, *data_out)
+ *                  unless *data_out == scratch (the in-place fast path).
  *   length_out   : set to the decoded image byte length on success.
- *   free_out     : set to the pointer that the caller must free via
- *                  db_private_free_and_init(NULL, free_out) when non-NULL and
- *                  != scratch.  If free_out == buf this is a memmove-in-place
- *                  result; if free_out != buf it is a fresh allocation.
  *
  *   Returns NO_ERROR on success.  On failure sets er and returns ER_FAILED;
  *   buf is freed (if heap-backed) and data_out is set to NULL.
  *
- * NONE path:  memmove image over header in-place; data_out = buf; free_out = buf.
- * LZ4  path:  fresh db_private_alloc; data_out = fresh; free_out = fresh;
- *             buf (if heap-backed) is freed by this function.
+ * NONE path:  memmove image over header in-place; data_out = buf.
+ * LZ4  path:  fresh db_private_alloc; data_out = fresh; buf (if heap-backed) freed here.
  */
 inline int
 oos_payload_decode (int blob_len, char *buf, const char *scratch,
-		    char **data_out, int *length_out, char **free_out)
+		    char **data_out, int *length_out)
 {
   OOS_COMP_HEADER h;
   int payload_len = blob_len - OOS_COMP_HEADER_SIZE;
 
   *data_out = NULL;
   *length_out = 0;
-  *free_out = NULL;
 
   if (payload_len < 0)
     {
@@ -178,7 +166,6 @@ oos_payload_decode (int blob_len, char *buf, const char *scratch,
       memmove (buf, buf + OOS_COMP_HEADER_SIZE, (size_t) payload_len);
       *data_out = buf;
       *length_out = payload_len;
-      *free_out = buf;
       return NO_ERROR;
     }
   else if (h.algo == OOS_COMP_LZ4)
@@ -228,7 +215,6 @@ oos_payload_decode (int blob_len, char *buf, const char *scratch,
 	}
       *data_out = dst;
       *length_out = h.uncompressed_len;
-      *free_out = dst;
       return NO_ERROR;
     }
   else
@@ -240,6 +226,137 @@ oos_payload_decode (int blob_len, char *buf, const char *scratch,
 	}
       return ER_FAILED;
     }
+}
+
+/*
+ * OOS payload compression policy (write path).  oos_should_compress () picks the
+ * OOS-bound types that reach the file uncompressed; oos_payload_encode () builds
+ * the layer-2 blob.  Both live here next to oos_payload_decode () so the whole
+ * codec stays in one module and every reader and the writer share it.
+ */
+
+/* TODO(CBRD-26881): promote to a real system parameter (oos_enable_compression
+ * BOOL default TRUE via prm_get_bool_value) so ops/tests can toggle OOS payload
+ * compression at runtime.  For now it is a build-time constant. */
+constexpr bool OOS_COMPRESSION_ENABLED = true;
+
+/*
+ * oos_should_compress () - whether an OOS payload of the given type benefits
+ *   from a transparent LZ4 pass at the OOS boundary.
+ *
+ * Compress variable-length types that reach OOS raw (uncompressed by their own
+ * data_writeval).  Skip DB_TYPE_VARCHAR (already LZ4 in mr_writeval_string_internal),
+ * DB_TYPE_BLOB / DB_TYPE_CLOB (external ES; only the locator is inline), and
+ * everything else.
+ *
+ * DB_TYPE_VARNCHAR_DEPRECATED: pr_do_db_value_string_compression returns
+ * immediately when db_type != DB_TYPE_VARCHAR, so VARNCHAR reaches OOS raw —
+ * it is a legitimate compression target.
+ */
+inline bool
+oos_should_compress (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_VARBIT:
+    case DB_TYPE_JSON:
+    case DB_TYPE_SET:
+    case DB_TYPE_MULTISET:
+    case DB_TYPE_SEQUENCE:
+    case DB_TYPE_VARNCHAR_DEPRECATED:	/* reaches OOS uncompressed; see comment above */
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * oos_payload_encode () - Build a layer-2 OOS blob from a serialized image:
+ *   [ OOS_COMP_HEADER (8B) | image-or-lz4-bytes ].
+ *
+ *   type         : the attribute's DB_TYPE (decides whether LZ4 is attempted).
+ *   image        : serialized image bytes (length image_len).
+ *   image_len    : the serialized image byte length.
+ *   blob_out     : set to a freshly db_private_alloc'd blob; the caller frees it
+ *                  via db_private_free_and_init (thread_p, *blob_out).
+ *   blob_len_out : set to the blob byte length (OOS_COMP_HEADER_SIZE + stored_bytes),
+ *                  which is also the inline heap stub length passed to oos_insert.
+ *
+ *   Returns NO_ERROR on success.  On failure sets er, returns ER_FAILED, and
+ *   leaves *blob_out NULL.
+ *
+ * LZ4 is attempted only for oos_should_compress (type) and the compressed form is
+ * kept only when it saves at least OOS_COMP_MIN_GAIN bytes (the header is prepended
+ * either way, so it cancels out of the comparison).  Otherwise the raw image is
+ * stored after the header.  There is no minimum-length floor: a payload too small
+ * to win simply fails the gain gate and falls back to raw, matching PG, which keeps
+ * a compressed datum only when it is actually smaller.
+ */
+inline int
+oos_payload_encode (THREAD_ENTRY *thread_p, DB_TYPE type, const char *image, int image_len,
+		    char **blob_out, int *blob_len_out)
+{
+  unsigned char algo = OOS_COMP_NONE;
+  int stored_bytes = image_len;
+  char *blob = NULL;
+
+  *blob_out = NULL;
+  *blob_len_out = 0;
+
+  if (OOS_COMPRESSION_ENABLED && oos_should_compress (type))
+    {
+      int bound = cubcompress::bound<cubcompress::LZ4> (image_len);
+
+      /* bound <= 0 means image_len exceeds LZ4_MAX_INPUT_SIZE; store the value raw. */
+      if (bound > 0)
+	{
+	  int comp_len;
+
+	  blob = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + bound);
+	  if (blob == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		      (size_t) (OOS_COMP_HEADER_SIZE + bound));
+	      return ER_FAILED;
+	    }
+
+	  comp_len = cubcompress::compress<cubcompress::LZ4> (image, image_len, blob + OOS_COMP_HEADER_SIZE, bound);
+	  if (comp_len > 0 && comp_len + OOS_COMP_MIN_GAIN <= image_len)
+	    {
+	      algo = OOS_COMP_LZ4;
+	      stored_bytes = comp_len;
+	    }
+	  else
+	    {
+	      /* compress () failed (it already called er_set) or the result is not
+	       * smaller enough; fall back to raw.  Clear only a real compressor error
+	       * so a successful raw insert leaves no dangling thread error. */
+	      if (comp_len <= 0)
+		{
+		  er_clear ();
+		}
+	      db_private_free_and_init (thread_p, blob);
+	    }
+	}
+    }
+
+  if (algo == OOS_COMP_NONE)
+    {
+      blob = (char *) db_private_alloc (thread_p, OOS_COMP_HEADER_SIZE + image_len);
+      if (blob == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) (OOS_COMP_HEADER_SIZE + image_len));
+	  return ER_FAILED;
+	}
+      memcpy (blob + OOS_COMP_HEADER_SIZE, image, image_len);
+      stored_bytes = image_len;
+    }
+
+  oos_comp_header_put (blob, algo, image_len);
+  *blob_out = blob;
+  *blob_len_out = OOS_COMP_HEADER_SIZE + stored_bytes;
+  return NO_ERROR;
 }
 
 struct oos_record_header
