@@ -12045,7 +12045,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       if (server->node_type == PT_DBLINK_TABLE_DML)
 	{
-	  return;			/* already converted */
+	  return;		/* already converted */
 	}
 
       ct->info.dblink_table.is_name = true;

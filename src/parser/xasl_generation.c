@@ -18892,12 +18892,10 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert->remote_table_name = NULL;
   if (entity_name->info.name.resolved)
     {
-      insert->remote_table_name =
-	pt_append_string (parser, insert->remote_table_name, entity_name->info.name.resolved);
+      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.resolved);
       insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, ".");
     }
-  insert->remote_table_name =
-    pt_append_string (parser, insert->remote_table_name, entity_name->info.name.original);
+  insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.original);
   if (insert->remote_table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -18942,8 +18940,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      col_name = col->info.name.original;
 	    }
-	  else if (col->node_type == PT_DOT_
-		   && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+	  else if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
 	    {
 	      col_name = col->info.dot.arg2->info.name.original;
 	    }

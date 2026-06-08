@@ -12230,7 +12230,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			  subq = pt_check_where (parser, subq);
 			  if (subq != NULL && !pt_has_error (parser))
 			    {
-			      subq = parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+			      subq =
+				parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
 			    }
 			  if (subq != NULL && !pt_has_error (parser))
 			    {
@@ -12257,8 +12258,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			      if (node->info.insert.attr_list != NULL)
 				{
 				  int ac = pt_length_of_list (node->info.insert.attr_list);
-				  int cc =
-				    pt_length_of_select_list (pt_get_select_list (parser, subq), EXCLUDE_HIDDEN_COLUMNS);
+				  int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
+								     EXCLUDE_HIDDEN_COLUMNS);
 				  if (ac != cc)
 				    {
 				      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,

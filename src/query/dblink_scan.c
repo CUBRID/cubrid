@@ -1168,8 +1168,7 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  */
 int
 dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
-			   const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			   DBLINK_INSERT_STATE * state)
+		    const char *table_name, char **attr_names, int num_attrs, int num_bind, DBLINK_INSERT_STATE * state)
 {
   int ret, i, remaining;
   T_CCI_ERROR err_buf;
@@ -1269,7 +1268,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  sql_len += strlen (attr_names[i]) + 4;
 	}
     }
-  sql_len += (size_t) num_bind * 4 + 16;
+  sql_len += (size_t) num_bind *4 + 16;
 
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)

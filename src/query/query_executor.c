@@ -12549,8 +12549,8 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 
   /* open remote connection and prepare INSERT statement */
   if (dblink_insert_open (thread_p, insert->remote_url, insert->remote_user, insert->remote_pwd,
-				 insert->remote_table_name, insert->remote_attr_names,
-				 insert->remote_num_attrs, val_no, &dblink_state) != NO_ERROR)
+			  insert->remote_table_name, insert->remote_attr_names,
+			  insert->remote_num_attrs, val_no, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;

@@ -113,10 +113,10 @@ struct dblink_insert_state
 };
 
 extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
-				      const char *table_name, char **attr_names, int num_attrs, int num_bind,
-				      DBLINK_INSERT_STATE * state);
+			       const char *table_name, char **attr_names, int num_attrs, int num_bind,
+			       DBLINK_INSERT_STATE * state);
 extern int dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals,
-					     int num_vals);
+				      int num_vals);
 extern void dblink_insert_rollback (DBLINK_INSERT_STATE * state);
 extern void dblink_insert_close (DBLINK_INSERT_STATE * state);
 
