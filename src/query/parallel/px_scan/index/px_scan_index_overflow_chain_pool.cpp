@@ -35,7 +35,7 @@
 
 namespace parallel_index_scan
 {
-  /* clone slot.key on the common heap (heap_id 0) so any worker thread can later free it; see clear_key_common_heap. */
+  /* clone slot.key on common heap (id 0) so any worker thread can free it. */
   int
   overflow_chain_pool::clone_key_common_heap (DB_VALUE *dest, const DB_VALUE *src)
   {
@@ -49,7 +49,7 @@ namespace parallel_index_scan
     return rc;
   }
 
-  /* free slot.key on common heap: last-out helper differs from producer; cross-thread private-heap free aborts. */
+  /* free slot.key on common heap; cross-thread private-heap free (last-out helper != producer) aborts. */
   void
   overflow_chain_pool::clear_key_common_heap (DB_VALUE *val)
   {

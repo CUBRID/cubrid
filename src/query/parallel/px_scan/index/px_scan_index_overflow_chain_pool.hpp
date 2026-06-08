@@ -111,7 +111,7 @@ namespace parallel_index_scan
       /* m_overflow_mutex held; marks chain dead, slot stays occupied (ABA guard) — last-out exit_help closes it. */
       void mark_chain_dead_locked (overflow_slot &slot);
 
-      /* slot.key published by producer, freed by last-out helper (other thread); clone/clear on common heap (id 0). */
+      /* slot.key cloned by producer, freed by another (last-out) thread; use common heap (id 0). */
       static int clone_key_common_heap (DB_VALUE *dest, const DB_VALUE *src);
       static void clear_key_common_heap (DB_VALUE *val);
 
