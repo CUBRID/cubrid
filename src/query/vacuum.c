@@ -1607,6 +1607,10 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	      // debug crashes; but can release do about it? just try to clean as much as possible
 	      er_clear ();
 	      error_code = NO_ERROR;
+	      // The for-header has no increment; page_ptr advances only on the success path below.
+	      // A bare continue here re-tests the same page_ptr forever (release-only CPU spin).
+	      // Advance to the next page group (obj_ptr) so a persistently-failing page is skipped.
+	      page_ptr = obj_ptr;
 	      continue;
 	    }
 #endif // not DEBUG
@@ -2429,7 +2433,9 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 /*
  * vacuum_oos_find_vfid_for_heap_record () - Lazy lookup of the heap's OOS VFID when the current
  *   record carries the OOS flag but the helper has not cached oos_vfid yet. A missing OOS file
- *   at this point means real corruption: log, assert, fail.
+ *   at this point is unexpected (false-positive flag / dropped file / recovery-ordering edge);
+ *   it must not abort vacuum, so log it, clear the error, leave oos_vfid NULL, and skip OOS
+ *   cleanup for this record (bounded leak per ADR-0002).
  */
 static int
 vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
@@ -2442,12 +2448,27 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
     {
       return NO_ERROR;
     }
-  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
-		       "OOS flag set but no OOS VFID found for hfid %d|%d (slotid=%d, rectype=%d, rec_len=%d).",
-		       VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, (int) helper->record_type,
-		       helper->record.length);
-  assert_release (false);
-  return ER_FAILED;
+  /* A record carrying OR_MVCC_FLAG_HAS_OOS whose heap has no resolvable OOS file is NOT a
+   * lazy-creation artifact (the file is created with docreate=true when the OOS chunk is
+   * written, before the flag is committed). It indicates a false-positive HAS_OOS flag, a
+   * dropped OOS file, or a recovery-ordering edge. None of these may fail/abort vacuum:
+   * returning ER_FAILED here re-arms the release-only spin in the vacuum_heap_page loop
+   * (it er_clear()+continues without advancing page_ptr). Log, clear, and skip OOS cleanup
+   * for this record - bounded, logged leak per ADR-0002. See commit 1bf7dda05. */
+  {
+    int repid_and_flags = OR_GET_INT (helper->record.data + OR_REP_OFFSET);
+    int mvcc_flags = OR_GET_MVCC_FLAG (helper->record.data);
+    int offset_size = OR_GET_OFFSET_SIZE (helper->record.data);
+    vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			 "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
+			 "repid_and_flags=0x%08x mvcc_flags=0x%02x offset_size=%d - skipping OOS cleanup "
+			 "(bounded leak per ADR-0002)",
+			 VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, (int) helper->record_type,
+			 helper->record.length, repid_and_flags, mvcc_flags, offset_size);
+  }
+  er_clear ();
+  VFID_SET_NULL (&helper->oos_vfid);
+  return NO_ERROR;
 }
 
 /*
