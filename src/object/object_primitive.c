@@ -10796,7 +10796,7 @@ mr_getmem_char (void *mem, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 static int
 mr_data_lengthmem_char (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  assert (!IS_FLOATING_PRECISION (domain->precision));
+  assert (domain == NULL || !IS_FLOATING_PRECISION (domain->precision));
   return mr_data_lengthmem_char_type_common (memptr, domain, disk);
 }
 
