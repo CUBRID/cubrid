@@ -5887,6 +5887,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
+  env->tmp_transitive_specs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -6004,6 +6005,12 @@ qo_env_free (QO_ENV * env)
 	      qo_term_free (QO_ENV_TERM (env, i));
 	    }
 	  free_and_init (env->terms);
+	}
+
+      /* Scratch specs buffer that survived a longjmp out of qo_generate_transitive_join_terms(). */
+      if (env->tmp_transitive_specs)
+	{
+	  free_and_init (env->tmp_transitive_specs);
 	}
 
       if (env->partitions)
@@ -8157,6 +8164,9 @@ qo_generate_transitive_join_terms (QO_ENV * env)
   free_and_init (root_arr);
   free_and_init (segs_arr);
 
+  /* Hand specs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
+  env->tmp_transitive_specs = specs;
+
   parser = QO_ENV_PARSER (env);
 
   for (i = 0; i < specs_count; i++)
@@ -8200,6 +8210,7 @@ qo_generate_transitive_join_terms (QO_ENV * env)
       QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
     }
 
+  env->tmp_transitive_specs = NULL;
   free_and_init (specs);
 }
 

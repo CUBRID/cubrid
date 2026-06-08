@@ -882,6 +882,13 @@ struct qo_env
   BITSET *tmp_bitset;
 
   /*
+   * Scratch buffer of transitive-join specs owned by qo_generate_transitive_join_terms().
+   * Held here only so qo_env_free() can release it if qo_add_term() longjmps out via qo_abort().
+   * (void * because QO_TRANSITIVE_JOIN_SPEC is private to query_graph.c.)
+   */
+  void *tmp_transitive_specs;
+
+  /*
    * The final plan produced by the optimizer.
    */
   QO_PLAN *final_plan;
