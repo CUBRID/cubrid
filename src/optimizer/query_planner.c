@@ -1204,7 +1204,8 @@ qo_top_plan_new (QO_PLAN * plan)
 			  /* at here, we can not merge orderby_num pred with inst_num pred */
 			  ;	/* give up; DO NOT DELETE ME - need future work */
 			}
-		      else if (!is_index_w_prefix && !tree->info.query.q.select.connect_by
+		      else if (!plan->need_final_sort
+			       && !is_index_w_prefix && !tree->info.query.q.select.connect_by
 			       && !pt_has_analytic (parser, tree))
 			{
 			  orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
@@ -4373,7 +4374,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* prefer order by skip plan over sort plan */
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
+      if (!a->need_final_sort && qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -4381,7 +4382,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
     {
-      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
+      if (!b->need_final_sort && qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -12361,6 +12362,11 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   if (plan == NULL || plan->info == NULL)
     {
       assert (false);
+      return false;
+    }
+
+  if (plan->need_final_sort)
+    {
       return false;
     }
 

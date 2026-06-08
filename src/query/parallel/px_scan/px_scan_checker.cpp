@@ -532,23 +532,18 @@ namespace parallel_scan
 	set_flag (result, CANNOT_LIST_MERGE);
       }
 
-    /* SYNC GUARD: every predicate kind admitted here (cleared for parallel scan) MUST also be evaluated in
-     * px_scan_task.cpp::drain_slot_oids, in the same serial order query_executor.c uses (after_join_pred then
-     * if_pred). A predicate that this checker admits but drain_slot_oids fails to evaluate silently produces wrong
-     * results -- this exact class of bug was fixed for after_join_pred. Keep this cluster and the qualification
-     * ladder in px_scan_task.cpp in lockstep. */
-    if (sibling->if_pred)
+    if (sibling->after_join_pred)
       {
-	temp = check<is_outptr_list> (sibling->if_pred);
+	temp = check<is_outptr_list> (sibling->after_join_pred);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
-    if (sibling->after_join_pred)
+    if (sibling->if_pred)
       {
-	temp = check<is_outptr_list> (sibling->after_join_pred);
+	temp = check<is_outptr_list> (sibling->if_pred);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -724,23 +719,18 @@ namespace parallel_scan
 	buildvalue_opt = false;
       }
 
-    /* SYNC GUARD: every predicate kind admitted here (cleared for parallel scan) MUST also be evaluated in
-     * px_scan_task.cpp::drain_slot_oids, in the same serial order query_executor.c uses (after_join_pred then
-     * if_pred). A predicate that this checker admits but drain_slot_oids fails to evaluate silently produces wrong
-     * results -- this exact class of bug was fixed for after_join_pred. Keep this cluster and the qualification
-     * ladder in px_scan_task.cpp in lockstep. */
-    if (arg->if_pred)
+    if (arg->after_join_pred)
       {
-	temp = check<is_outptr_list> (arg->if_pred);
+	temp = check<is_outptr_list> (arg->after_join_pred);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
       }
 
-    if (arg->after_join_pred)
+    if (arg->if_pred)
       {
-	temp = check<is_outptr_list> (arg->after_join_pred);
+	temp = check<is_outptr_list> (arg->if_pred);
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
