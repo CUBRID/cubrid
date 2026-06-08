@@ -82,7 +82,7 @@ namespace cubstorage
       class bitmap
       {
 	public:
-	  bitmap ();
+	  bitmap () noexcept;
 	  ~bitmap () = default;
 
 	  bool empty ();
@@ -96,10 +96,26 @@ namespace cubstorage
 	  std::uint8_t m_bits;
       };
 
+      template <typename T>
+      struct alignas (64) atomic_wrapper
+      {
+	std::atomic<T> value;
+
+	T load () const noexcept
+	{
+	  return value.load ();
+	}
+
+	bool compare_exchange_strong (T &expected, T desired) noexcept
+	{
+	  return value.compare_exchange_strong (expected, desired);
+	}
+      };
+
       class L1
       {
 	public:
-	  L1 ();
+	  L1 () noexcept;
 	  ~L1 () = default;
 
 	  std::uint16_t get_freespace ();
@@ -118,7 +134,7 @@ namespace cubstorage
       class L2
       {
 	public:
-	  L2 () = default;
+	  L2 () noexcept;
 	  ~L2 () = default;
 
 	  std::size_t find (tier minimum, std::array<std::size_t, BITS_PER_BYTE> &pos);
@@ -142,7 +158,7 @@ namespace cubstorage
       class L3
       {
 	public:
-	  L3 () = default;
+	  L3 () noexcept;
 	  ~L3 () = default;
 
 	  static constexpr std::uint64_t FLAG_MASK = 0x8080808080808080;
@@ -153,10 +169,13 @@ namespace cubstorage
 	  void clear (std::size_t index);
 	  void set (tier fs, std::size_t index);
 
+	  bool is_allocating ();
+	  void clear_allocating ();
+	  void set_allocating ();
+
 	  friend bool operator== (const L3 &lhs, const L3 &rhs)
 	  {
-	    uint64_t lhs_value = 0;
-	    uint64_t rhs_value = 0;
+	    uint64_t lhs_value, rhs_value;
 
 	    std::memcpy (&lhs_value, lhs.m_freespace.data (), sizeof (uint64_t));
 	    std::memcpy (&rhs_value, rhs.m_freespace.data (), sizeof (uint64_t));
@@ -168,18 +187,18 @@ namespace cubstorage
 	  std::array<bitmap, 8> m_freespace;
       };
 
-      class shard
+      class alignas (64) shard
       {
 	public:
-	  shard () = default;
+	  shard () noexcept;
 	  ~shard () = default;
 
 	  status find (std::uint16_t size, std::size_t bias, PAGE_PTR &pgptr);
 
 	private:
-	  std::atomic<L3> m_L3;
-	  std::atomic<L2> m_L2[7];
-	  std::atomic<L1> m_L1[56];
+	  atomic_wrapper<L3> m_L3;
+	  atomic_wrapper<L2> m_L2[7];
+	  atomic_wrapper<L1> m_L1[56];
 
 	  status L3_find (tier minimum, std::uint16_t size, std::size_t bias, bool wait, PAGE_PTR &pgptr);
 	  void L3_update (std::size_t l2_index);
@@ -192,7 +211,7 @@ namespace cubstorage
       };
 
     public:
-      bestspace () = default;
+      bestspace () noexcept;
       ~bestspace () = default;
 
       int find (cubthread::entry &thread_ref, std::uint16_t size, PAGE_PTR &pgptr);
@@ -204,12 +223,22 @@ namespace cubstorage
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
       static_assert (std::is_trivially_copyable<bitmap>::value, "bestspace::bitmap must be trivially copyable");
+
       static_assert (sizeof (L1) == 8, "bestspace::L1 must be 8 bytes");
       static_assert (sizeof (L2) == 8, "bestspace::L2 must be 8 bytes");
       static_assert (sizeof (L3) == 8, "bestspace::L3 must be 8 bytes");
-      static_assert (std::atomic<L1>::is_always_lock_free, "bestspace::L1 must be lock-free");
-      static_assert (std::atomic<L2>::is_always_lock_free, "bestspace::L2 must be lock-free");
-      static_assert (std::atomic<L3>::is_always_lock_free, "bestspace::L3 must be lock-free");
+      static_assert (std::atomic<L1>::is_always_lock_free, "std::atomic<bestspace::L1> must be lock-free");
+      static_assert (std::atomic<L2>::is_always_lock_free, "std::atomic<bestspace::L2> must be lock-free");
+      static_assert (std::atomic<L3>::is_always_lock_free, "std::atomic<bestspace::L3> must be lock-free");
+      static_assert (sizeof (atomic_wrapper<L1>) == 64, "bestspace::atomic_wrapper<L1> must be 64 bytes");
+      static_assert (sizeof (atomic_wrapper<L2>) == 64, "bestspace::atomic_wrapper<L2> must be 64 bytes");
+      static_assert (sizeof (atomic_wrapper<L3>) == 64, "bestspace::atomic_wrapper<L3> must be 64 bytes");
+      static_assert (alignof (atomic_wrapper<L1>) == 64, "bestspace::atomic_wrapper<L1> must be aligned as 64 bytes");
+      static_assert (alignof (atomic_wrapper<L2>) == 64, "bestspace::atomic_wrapper<L2> must be aligned as 64 bytes");
+      static_assert (alignof (atomic_wrapper<L3>) == 64, "bestspace::atomic_wrapper<L3> must be aligned as 64 bytes");
+
+      static_assert (sizeof (shard) == 4096, "bestspace::shard must be 4096 bytes");
+      static_assert (alignof (shard) == 64, "bestspace::shard must be aligned as 64 bytes");
   };
 }
 

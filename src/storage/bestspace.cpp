@@ -30,7 +30,7 @@
 
 namespace cubstorage
 {
-  bestspace::bitmap::bitmap ()
+  bestspace::bitmap::bitmap () noexcept
     : m_bits (0)
   {
   }
@@ -75,10 +75,10 @@ namespace cubstorage
     return size;
   }
 
-  bestspace::L1::L1 ()
+  bestspace::L1::L1 () noexcept
     : m_freespace (0)
-    , m_volid (0)
-    , m_pageid (0)
+    , m_volid (NULL_VOLID)
+    , m_pageid (NULL_PAGEID)
   {
   }
 
@@ -105,6 +105,11 @@ namespace cubstorage
   {
     m_pageid = vpid.pageid;
     m_volid = vpid.volid;
+  }
+
+  bestspace::L2::L2 () noexcept
+    : m_freespace ()
+  {
   }
 
   std::size_t
@@ -162,6 +167,11 @@ namespace cubstorage
     m_freespace[static_cast<std::size_t> (fs)].set (index);
   }
 
+  bestspace::L3::L3 () noexcept
+    : m_freespace ()
+  {
+  }
+
   std::size_t
   bestspace::L3::find (tier minimum, std::array<std::size_t, BITS_PER_BYTE> &pos)
   {
@@ -191,6 +201,43 @@ namespace cubstorage
     m_freespace[static_cast<std::size_t> (fs)].set (index);
   }
 
+  bestspace::shard::shard () noexcept
+    : m_L3 ()
+    , m_L2 ()
+    , m_L1 ()
+  {
+  }
+
+  bool
+  bestspace::L3::is_allocating ()
+  {
+    uint64_t value;
+
+    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
+
+    return (value & FLAG_ALLOCATING);
+  }
+
+  void
+  bestspace::L3::clear_allocating ()
+  {
+    uint64_t value;
+
+    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
+    value &= ~FLAG_ALLOCATING;
+    std::memcpy (static_cast<void *> (m_freespace.data ()), &value, sizeof (uint64_t));
+  }
+
+  void
+  bestspace::L3::set_allocating ()
+  {
+    uint64_t value;
+
+    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
+    value |= FLAG_ALLOCATING;
+    std::memcpy (static_cast<void *> (m_freespace.data ()), &value, sizeof (uint64_t));
+  }
+
   bestspace::status
   bestspace::shard::find (std::uint16_t size, std::size_t bias, PAGE_PTR &pgptr)
   {
@@ -216,6 +263,8 @@ namespace cubstorage
       {
 	return error;
       }
+
+    assert (error == status::NOT_FOUND);
 
     // TODO: need to allocate
     return status::NOT_FOUND;
@@ -383,10 +432,6 @@ namespace cubstorage
 
 	  case ER_INTERRUPTED:
 	    return status::FAILURE;
-
-	  default:
-	    // impossible !
-	    assert (false);
 	  }
 
 	return status::FAILURE;
@@ -446,14 +491,21 @@ namespace cubstorage
       }
   }
 
+  bestspace::bestspace () noexcept
+    : m_shard ()
+  {
+  }
+
   int
   bestspace::find (cubthread::entry &thread_ref, std::uint16_t size, PAGE_PTR &pgptr)
   {
     std::size_t shard, bias;
     status error;
     int errid;
+    std::size_t i;
 
-    assert (size < DB_PAGESIZE);
+    assert (size > 0 && size < DB_PAGESIZE);
+    pgptr = NULL;
 
     // early return or clear stale error to avoid error corruption in below path
     errid = er_errid_if_has_error ();
@@ -463,16 +515,17 @@ namespace cubstorage
       }
     er_clear ();
 
-    pgptr = NULL;
-
     shard = thread_ref.index % 8;
     bias = thread_ref.tran_index < 0 ? -thread_ref.tran_index : thread_ref.tran_index;
 
-    error = m_shard[shard].find (size, bias, pgptr);
-    if (error == status::FAILURE)
+    for (i = 0; i < 8; i++)
       {
-	ASSERT_ERROR ();
-	return er_errid ();
+	error = m_shard[shard].find (size, bias, pgptr);
+	if (error == status::FAILURE)
+	  {
+	    ASSERT_ERROR ();
+	    return er_errid ();
+	  }
       }
     // TODO: NOT FOUND? OR CAN'T ALLOCATE?
 
