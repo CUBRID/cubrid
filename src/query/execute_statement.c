@@ -1349,7 +1349,7 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     {
       char other_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      do_find_serial_by_query (serial_name, other_serial_name, sizeof (serial_name));
+      do_find_serial_by_query (serial_name, other_serial_name, sizeof (other_serial_name));
       if (other_serial_name[0] != '\0')
 	{
 	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
