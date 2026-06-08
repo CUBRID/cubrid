@@ -2688,8 +2688,7 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		}
 	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
 		{
-		  /* semi/anti: structurally inner join, but freeze the inner (RHS) under its outer antecedent;
-		   * LHS remains reorderable. semi/anti execution rides on the inner-scan XASL flag. */
+		  /* structurally inner, but freeze RHS under its outer antecedent; LHS stays reorderable */
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
 		}

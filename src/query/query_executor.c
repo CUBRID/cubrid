@@ -8669,10 +8669,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}			/* if (qualified) */
 
-      /* single-fetch semi/anti inner: if THIS level's own predicate rejected the physical row,
-       * clear single_fetched so QPROC_SINGLE_INNER advances to the next physical row instead of
-       * stopping after the first non-qualifying row (leaf-deferral). Only applies to this level's
-       * own rejection, not to a downstream scan_ptr suppression (which is handled below). */
+      /* leaf-deferral: on THIS level's own predicate reject, clear single_fetched so QPROC_SINGLE_INNER
+         advances to the next physical row (not a downstream scan_ptr suppression, handled below) */
       if (!qualified && XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec != NULL)
 	{
 	  xasl->curr_spec->s_id.single_fetched = false;
@@ -8715,8 +8713,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
 	      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
 		{
-		  /* anti join: emit this outer row once iff the inner produced no qualifying row.
-		   * inner uses single_fetch=QPROC_SINGLE_INNER, so it yields at most one qualifying row. */
+		  /* anti: emit outer iff inner produced no qualifying row (single_fetch yields at most one) */
 		  xasl->next_scan_on = false;
 		  if (xs_scan == S_ERROR)
 		    {
@@ -8724,10 +8721,10 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		    }
 		  if (xs_scan == S_SUCCESS)
 		    {
-		      /* inner matched -> advance it to S_END so its page latches are released before the next
-		       * outer row scans. Because of single_fetch this is a short drain (one more call returns
-		       * S_END), not a full inner scan; memoization is disabled for semi/anti inners, so no cache
-		       * corruption. */
+		      /* v1 invariant: single-fetch (QPROC_SINGLE_INNER) scan-like inner; drain bounded (one more
+		         call returns S_END), releases latches; memoize disabled for semi/anti inners.
+		         TODO(composite-RHS): a composite/derived inner must not blind-drain the subtree (side
+		         effects / instnum / CONNECT BY) -- re-evaluate the drain bound then. */
 		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
 							  next_scan_fnc + 1)) == S_SUCCESS)
 			{
@@ -9809,18 +9806,16 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				    {
 				      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
 					{
-					  /* anti: a qualifying inner row means this outer is suppressed; record the
-					   * match and let the loop drain the inner to S_END (do not emit here). */
+					  /* anti: qualifying inner row suppresses this outer; record match, loop drains
+					     inner to S_END. v1 invariant: scan-like single-fetch inner, drain bounded.
+					     TODO(composite-RHS): composite/derived inner must not blind-drain the subtree
+					     (side effects / instnum / CONNECT BY). */
 					  scan_ptr_qualified = true;
 					}
 				      else
 					{
-					  /* one iteration successfully completed.
-					   * SEMI join has no dedicated branch here: it rides this same path, but its inner
-					   * scan carries single_fetch=QPROC_SINGLE_INNER (set in mark_access_as_semi_anti_join),
-					   * so the inner stops after the first qualifying row and this outer row is emitted
-					   * exactly once. A plain inner join also reaches this branch and emits once per
-					   * qualifying inner row. */
+					  /* SEMI rides this path with no dedicated branch: single_fetch inner stops at first
+					     qualifying row so the outer emits once; plain inner join emits once per inner row */
 					  assert (!XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_SEMIJOIN)
 						  || xasl->scan_ptr->curr_spec == NULL
 						  || xasl->scan_ptr->curr_spec->single_fetch == QPROC_SINGLE_INNER);
@@ -16100,11 +16095,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			    }
 			}
 		      {
-			/* Skip memoize if this scan, or any scan nested below it on the scan_ptr chain, is a
-			 * semi/anti single-fetch inner. Memoizing an ancestor caches the whole subtree including
-			 * the nested semi/anti per-outer first-match/zero-match state, which must not be reused
-			 * across outer rows that share the ancestor's join key (skip-level semi/anti, where the
-			 * semi/anti inner is not adjacent to its referenced outer). */
+			/* skip memoize if any scan on the scan_ptr chain is a semi/anti single-fetch inner:
+			   caching the subtree would reuse stale per-outer match state (skip-level semi/anti) */
 			bool sa_in_chain = false;
 			XASL_NODE *dxp;
 			for (dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)

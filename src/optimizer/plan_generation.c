@@ -807,6 +807,8 @@ qo_plan_get_semi_anti_join_type (QO_PLAN * plan)
 	  plan = plan->plan_un.follow.head;
 	  continue;
 	default:
+	  /* v1: SEMI/ANTI inner is scan-like; default also hit by ordinary inner joins so no assert.
+	     TODO(composite-RHS): recover the flag explicitly, not silent NONE. */
 	  return PT_JOIN_NONE;
 	}
     }
@@ -2169,9 +2171,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
       outer = plan->plan_un.join.outer;
       inner = plan->plan_un.join.inner;
 
-      /* semi/anti hard guard (PG-style freeze): the semi/anti operand must be the inner of a
-       * nested-loop / index join. A semi/anti node on the outer side, or as a merge/hash inner,
-       * would silently produce wrong results; abort plan generation instead. */
+      /* hard guard: semi/anti operand must be the NL/IDX inner; outer-side or merge/hash inner = wrong results */
       if (qo_plan_get_semi_anti_join_type (outer) != PT_JOIN_NONE
 	  || (qo_plan_get_semi_anti_join_type (inner) != PT_JOIN_NONE
 	      && plan->plan_un.join.join_method != QO_JOINMETHOD_NL_JOIN
@@ -2281,8 +2281,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		}
 	      else
 		{
-		  /* semi/anti join: the inner is a single-fetch NL inner; tag the flag so the
-		   * executor applies first-match (semi) / zero-match (anti) semantics. */
+		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
 		  PT_JOIN_TYPE sa_type = qo_plan_get_semi_anti_join_type (inner);
 		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
 		    {
