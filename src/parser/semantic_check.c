@@ -10782,8 +10782,7 @@ pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 
   if (info->skip_nested_for_outer_gate
       && (node->node_type == PT_SELECT
-	  || node->node_type == PT_UNION
-	  || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION))
+	  || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION))
     {
       /* outer-gate: nested-subquery ref not modelled by the freeze; skip subtree, keep walking siblings */
       *continue_walk = PT_LIST_WALK;
@@ -10867,8 +10866,7 @@ pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
  *      references the inner and exactly one local-outer spec, with no nested query and no third table.
  */
 static bool
-pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id,
-				       PT_NODE * from_list)
+pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id, PT_NODE * from_list)
 {
   PT_SEMI_ANTI_CONJUNCT_INFO info;
 
