@@ -85,6 +85,10 @@
   ((OID_ISTEMP(oid)) ? (unsigned int)(-((oid)->pageid) % htsize) :\
                        lock_get_hash_value(oid, htsize))
 
+/* volid sentinel tagging an MVCCID-packed OID as a transaction self-lock key (see
+ * lock_create_search_key); -2 aliases no real volume, NULL_VOLID, or pseudo OID. */
+#define LK_TRANSACTION_LOCK_VOLID ((short) -2)
+
 /* thread is lock-waiting ? */
 #define LK_IS_LOCKWAIT_THREAD(thrd) \
   ((thrd)->lockwait != NULL \
@@ -585,6 +589,7 @@ static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
 static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid);
+static void lock_pack_mvccid_to_oid (MVCCID mvccid, OID * oid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 #endif /* SERVER_MODE */
@@ -689,7 +694,12 @@ lock_create_search_key (OID * oid, OID * class_oid)
     }
 
   /* set correct type */
-  if (oid != NULL && OID_IS_ROOTOID (oid))
+  if (oid != NULL && class_oid == NULL && oid->volid == LK_TRANSACTION_LOCK_VOLID)
+    {
+      /* MVCCID-packed transaction self-lock key. */
+      search_key.type = LOCK_RESOURCE_TRANSACTION;
+    }
+  else if (oid != NULL && OID_IS_ROOTOID (oid))
     {
       search_key.type = LOCK_RESOURCE_ROOT_CLASS;
     }
@@ -707,6 +717,20 @@ lock_create_search_key (OID * oid, OID * class_oid)
 
   /* done! */
   return search_key;
+}
+
+/*
+ * lock_pack_mvccid_to_oid - Pack an MVCCID into an OID for use as a transaction self-lock key.
+ *
+ *   mvccid(in): the inserter's MVCCID
+ *   oid(out): OID stamped with LK_TRANSACTION_LOCK_VOLID and the packed MVCCID
+ */
+static void
+lock_pack_mvccid_to_oid (MVCCID mvccid, OID * oid)
+{
+  oid->pageid = (int) (mvccid & 0xFFFFFFFFULL);
+  oid->slotid = (short) ((mvccid >> 32) & 0xFFFFULL);
+  oid->volid = LK_TRANSACTION_LOCK_VOLID;
 }
 
 static void *
@@ -853,6 +877,7 @@ lock_res_key_copy (void *src, void *dest)
 
     case LOCK_RESOURCE_CLASS:
     case LOCK_RESOURCE_ROOT_CLASS:
+    case LOCK_RESOURCE_TRANSACTION:
       COPY_OID (&dest_k->oid, &src_k->oid);
       OID_SET_NULL (&dest_k->class_oid);
       break;
@@ -883,6 +908,7 @@ lock_res_key_compare (void *k1, void *k2)
     case LOCK_RESOURCE_INSTANCE:
     case LOCK_RESOURCE_CLASS:
     case LOCK_RESOURCE_ROOT_CLASS:
+    case LOCK_RESOURCE_TRANSACTION:
       /* fast and dirty oid comparison */
       if (OID_EQ (&k1_k->oid, &k2_k->oid))
 	{
@@ -1440,6 +1466,7 @@ lock_insert_into_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+    case LOCK_RESOURCE_TRANSACTION:	/* Tracked like an instance lock */
 #if defined(CUBRID_DEBUG)
       if (tran_lock->inst_hold_list != NULL)
 	{
@@ -1547,6 +1574,7 @@ lock_delete_from_tran_hold_list (LK_ENTRY * entry_ptr, int owner_tran_index)
       break;
 
     case LOCK_RESOURCE_INSTANCE:
+    case LOCK_RESOURCE_TRANSACTION:	/* Tracked like an instance lock */
       if (tran_lock->inst_hold_list == entry_ptr)
 	{
 	  tran_lock->inst_hold_list = entry_ptr->tran_next;
@@ -2187,6 +2215,16 @@ set_error:
 		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
 	}
       break;
+
+    case LOCK_RESOURCE_TRANSACTION:
+      /* No class to name; emit the simple message like the INSTANCE branch with a NULL classname. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
+	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
+	      entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
+	      lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
+	      entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
+      break;
+
     default:
       break;
     }
@@ -6272,6 +6310,125 @@ end:
 #endif
 
   return granted;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_transaction_mvccid - Acquire a transaction self-lock keyed by an MVCCID
+ *
+ * return: one of following values)
+ *     LK_GRANTED
+ *     LK_NOTGRANTED_DUE_ABORTED
+ *     LK_NOTGRANTED_DUE_TIMEOUT
+ *     LK_NOTGRANTED_DUE_ERROR
+ *
+ *   mvccid(in): the MVCCID identifying the transaction to lock on (the inserter's MVCCID)
+ *   lock(in): requested lock mode (X_LOCK for the inserter's own self-lock,
+ *             S_LOCK for a waiter that wants to block until the inserter ends)
+ *   cond_flag(in): LK_COND_LOCK / LK_UNCOND_LOCK
+ *
+ * NOTE: released at end-of-transaction; re-locking the same MVCCID is idempotent (one entry per tran).
+ */
+int
+lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag)
+{
+#if !defined (SERVER_MODE)
+  return LK_GRANTED;
+#else /* !SERVER_MODE */
+  int tran_index;
+  int wait_msecs;
+  int granted;
+  OID tran_oid;
+  LK_ENTRY *tran_entry = NULL;
+
+  if (!MVCCID_IS_VALID (mvccid))
+    {
+      /* Nothing to serialize on. */
+      return LK_GRANTED;
+    }
+
+  if (lock == NULL_LOCK)
+    {
+      return LK_GRANTED;
+    }
+
+  lock_pack_mvccid_to_oid (mvccid, &tran_oid);
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  if (cond_flag == LK_COND_LOCK)
+    {
+      wait_msecs = LK_FORCE_ZERO_WAIT;
+    }
+  else
+    {
+      wait_msecs = logtb_find_wait_msecs (tran_index);
+    }
+
+  /* class_oid == NULL, but stamped LOCK_RESOURCE_TRANSACTION so it never aliases a real class. */
+  granted = lock_internal_perform_lock_object (thread_p, tran_index, &tran_oid, NULL, lock, wait_msecs,
+					       &tran_entry, NULL);
+  return granted;
+#endif /* !SERVER_MODE */
+}
+
+/*
+ * lock_unlock_transaction_mvccid - Release a transaction self-lock acquired with
+ *                                  lock_transaction_mvccid
+ *
+ * return: nothing
+ *
+ *   mvccid(in): the MVCCID used to acquire the lock
+ *   lock(in): the lock mode that was acquired (unused except for tracing symmetry)
+ *
+ * NOTE: force-releases the lock regardless of isolation level.
+ */
+void
+lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return;
+#else /* !SERVER_MODE */
+  int tran_index;
+  OID tran_oid;
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+
+  if (!MVCCID_IS_VALID (mvccid))
+    {
+      return;
+    }
+
+  lock_pack_mvccid_to_oid (mvccid, &tran_oid);
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* Build the TRANSACTION-typed search key directly (lock_find_tran_hold_entry would force INSTANCE). */
+  search_key = lock_create_search_key (&tran_oid, NULL);
+  assert (search_key.type == LOCK_RESOURCE_TRANSACTION);
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      /* not found -- nothing to release */
+      return;
+    }
+  /* find() leaves the resource mutex locked. */
+
+  entry_ptr = res_ptr->holder;
+  for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->tran_index == tran_index)
+	{
+	  break;
+	}
+    }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+  if (entry_ptr != NULL)
+    {
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
+    }
 #endif /* !SERVER_MODE */
 }
 

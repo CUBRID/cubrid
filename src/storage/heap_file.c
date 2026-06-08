@@ -20945,6 +20945,18 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
+  /* Take the transaction self-lock (keyed by MVCCID) once per inserter; unique/FK waiters block on
+   * it now that appended rows no longer take a per-row X-lock (see btree.c). */
+  if (lock == X_LOCK)
+    {
+      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+      if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+    }
+
   /* retrieve number of slots in page */
   slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
 
@@ -20963,6 +20975,14 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       if (lock == NULL_LOCK)
 	{
 	  /* immediately return without locking it */
+	  return NO_ERROR;
+	}
+
+      /* An appended slot (slot_id == slot_count) has a fresh OID no one can lock, so skip the per-row
+       * lock; reused slots still take the conditional lock below to guard an uncommitted deleter. */
+      if (slot_id == slot_count)
+	{
+	  /* appended slot: fresh OID, no live lock can exist -> skip. */
 	  return NO_ERROR;
 	}
 

@@ -154,6 +154,7 @@ typedef enum
   LOCK_RESOURCE_INSTANCE,	/* An instance resource */
   LOCK_RESOURCE_CLASS,		/* A class resource */
   LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
+  LOCK_RESOURCE_TRANSACTION,	/* A transaction self-lock keyed by the inserter's MVCCID; allows unique-key/FK checks to wait for an in-progress inserter (which takes no per-row X-lock) */
   LOCK_RESOURCE_OBJECT		/* An object resource. Obsolete */
 } LOCK_RESOURCE_TYPE;
 
@@ -200,6 +201,8 @@ extern int lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, c
 extern int lock_object_wait_msecs (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
 				   int cond_flag, int wait_msecs);
 extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag);
+extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
+extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK class_lock);
