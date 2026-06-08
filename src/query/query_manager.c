@@ -3969,6 +3969,9 @@ qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
+  /* re-initialize */
+  tran_entry_p->is_dblink_autocommit = true;
+
   qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
   tran_entry_p->dblink_entry = NULL;
 
