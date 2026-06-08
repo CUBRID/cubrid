@@ -409,10 +409,13 @@ dblink_bind_param (int stmt_handle, VAL_DESCR * vd, DBLINK_HOST_VARS * host_vars
       value = &vd->dbval_ptr[i].data;
       /* A typed NULL (e.g. NUMERIC/DATE domain with the null flag set) must be bound as NULL,
        * not decoded through its type branch; otherwise it yields a precision-0 error or a zero date. */
-      type = vd->dbval_ptr[i].domain.general_info.type;
       if (DB_IS_NULL (&vd->dbval_ptr[i]))
 	{
 	  type = DB_TYPE_NULL;
+	}
+      else
+	{
+	  type = vd->dbval_ptr[i].domain.general_info.type;
 	}
       switch (type)
 	{
