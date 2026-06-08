@@ -4170,7 +4170,15 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      return NULL;
 		    }
 
-		  bool need_append = !(PT_IS_POINTER_REF_NODE (arg_list) && arg_list->info.pointer.produced);
+		  bool need_append = false;
+		  for (PT_NODE * arg = arg_list; arg != NULL; arg = arg->next)
+		    {
+		      if (!(PT_IS_POINTER_REF_NODE (arg) && arg->info.pointer.produced))
+			{
+			  need_append = true;
+			  break;
+			}
+		    }
 
 		  if (need_append)
 		    {
