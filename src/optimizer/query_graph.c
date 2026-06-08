@@ -240,7 +240,7 @@ static void qo_assign_eq_classes (QO_ENV *);
 static void qo_generate_implied_join_terms (QO_ENV *);
 static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-					     QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
+					  QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -8305,7 +8305,7 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
  */
 static int
 qo_collect_implied_join_specs (QO_ENV * env, int *root_arr, int *segs_arr,
-				  QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
+			       QO_IMPLIED_JOIN_SPEC ** specs_p, int *count_p, int *cap_p)
 {
   int i, j, k, t;
   int nsegs;
