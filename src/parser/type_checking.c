@@ -5419,7 +5419,15 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
 	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION)
 	    {
-	      arg1_eq_type = arg2_eq_type = arg1_type;
+	      if (arg1_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+		{
+		  /* NA column vs constant: use inferred type (e.g. string literal) */
+		  arg1_eq_type = arg2_eq_type = common_type;
+		}
+	      else
+		{
+		  arg1_eq_type = arg2_eq_type = arg1_type;
+		}
 	      if (arg3_type != PT_TYPE_NONE)
 		{
 		  arg3_eq_type = arg1_type;
@@ -5443,7 +5451,14 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
 		   && arg2_type != PT_TYPE_ENUMERATION)
 	    {
-	      arg1_eq_type = arg2_eq_type = arg2_type;
+	      if (arg2_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+		{
+		  arg1_eq_type = arg2_eq_type = common_type;
+		}
+	      else
+		{
+		  arg1_eq_type = arg2_eq_type = arg2_type;
+		}
 	      if (arg1_type != arg2_type && PT_IS_NUMERIC_TYPE (arg2_type) && arg2_type != PT_TYPE_NUMERIC
 		  && op != PT_EQ && op != PT_EQ_SOME && op != PT_EQ_ALL)
 		{
@@ -5468,6 +5483,16 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		      arg3_eq_type = arg2_type;
 		    }
 		}
+	    }
+	  else if (arg1_type == PT_TYPE_NA && PT_IS_CHAR_STRING_TYPE (arg2_type)
+		   && PT_IS_NAME_NODE (arg1) && !PT_IS_NAME_NODE (arg2))
+	    {
+	      arg1_eq_type = arg2_eq_type = arg2_type;
+	    }
+	  else if (arg2_type == PT_TYPE_NA && PT_IS_CHAR_STRING_TYPE (arg1_type)
+		   && PT_IS_NAME_NODE (arg2) && !PT_IS_NAME_NODE (arg1))
+	    {
+	      arg1_eq_type = arg2_eq_type = arg1_type;
 	    }
 	}
 
