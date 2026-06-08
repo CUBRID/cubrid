@@ -44,7 +44,7 @@ namespace cubstorage
   void
   bestspace::bitmap::set (std::size_t index)
   {
-    assert (index < 8);
+    assert (index < BITS_PER_BYTE);
 
     m_bits |= (0x1 << index);
   }
@@ -52,7 +52,7 @@ namespace cubstorage
   void
   bestspace::bitmap::clear (std::size_t index)
   {
-    assert (index < 8);
+    assert (index < BITS_PER_BYTE);
 
     m_bits &= ~ (0x1 << index);
   }
@@ -266,8 +266,7 @@ namespace cubstorage
 
     assert (error == status::NOT_FOUND);
 
-    // TODO: need to allocate
-    return status::NOT_FOUND;
+    return allocate ();
   }
 
   bestspace::status
@@ -377,7 +376,7 @@ namespace cubstorage
 	desired = expected;
 	desired.clear (l1_index);
 
-	l1 = m_L1[l2_index * 8 + l1_index].load ();
+	l1 = m_L1[l2_index * L2_FANOUT + l1_index].load ();
 	tier_to = size_to_tier (l1.get_freespace ());
 	if (tier_to > tier::FS0)
 	  {
@@ -403,7 +402,7 @@ namespace cubstorage
     L1 expected, desired;
 
     // first, check the recorded free space
-    expected = m_L1[l2_index * 8 + l1_index].load ();
+    expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     if (expected.get_freespace () < size)
       {
 	// there is no enough space
@@ -438,7 +437,7 @@ namespace cubstorage
       }
 
     // L1 might be changed
-    expected = m_L1[l2_index * 8 + l1_index].load ();
+    expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     // newest
     vpid = expected.get_vpid ();
     // store the old and get the actual free space
@@ -452,7 +451,7 @@ namespace cubstorage
 	    desired.set_freespace (freespace);
 
 	    // and I'm the only one that can modify this L1
-	    if (m_L1[l2_index * 8 + l1_index].compare_exchange_strong (expected, desired))
+	    if (m_L1[l2_index * L2_FANOUT + l1_index].compare_exchange_strong (expected, desired))
 	      {
 		L2_update (l2_index, l1_index);
 	      }
@@ -470,7 +469,7 @@ namespace cubstorage
 	desired.set_freespace (freespace - size);
 
 	// and I'm the only one that can modify this L1
-	if (m_L1[l2_index * 8 + l1_index].compare_exchange_strong (expected, desired))
+	if (m_L1[l2_index * L2_FANOUT + l1_index].compare_exchange_strong (expected, desired))
 	  {
 	    L2_update (l2_index, l1_index);
 	  }
@@ -485,10 +484,68 @@ namespace cubstorage
 
     desired.set_freespace (0);
     desired.set_vpid (vpid_Null_vpid);
-    if (m_L1[l2_index * 8 + l1_index].compare_exchange_strong (expected, desired))
+    if (m_L1[l2_index * L2_FANOUT + l1_index].compare_exchange_strong (expected, desired))
       {
 	L2_update (l2_index, l1_index);
       }
+  }
+
+  bestspace::status
+  bestspace::shard::allocate_mark ()
+  {
+    L3 expected, desired;
+
+    expected = m_L3.load ();
+    do
+      {
+	desired = expected;
+	if (desired.is_allocating ())
+	  {
+	    return status::ALLOCATING;
+	  }
+	desired.set_allocating ();
+      }
+    while (!m_L3.compare_exchange_strong (expected, desired));
+
+    return status::SUCCESS;
+  }
+
+  void
+  bestspace::shard::allocate_unmark ()
+  {
+    // update L3 and clear allocating bit
+    L3 expected, desired;
+
+    expected = m_L3.load ();
+    do
+      {
+	desired = expected;
+	assert (desired.is_allocating ());
+	desired.clear_allocating ();
+      }
+    while (!m_L3.compare_exchange_strong (expected, desired));
+  }
+
+  void
+  bestspace::shard::allocate_pages ()
+  {
+    std::size_t i;
+
+    for (i = 0; i < 56; i++)
+      {
+      }
+  }
+
+  bestspace::status
+  bestspace::shard::allocate ()
+  {
+    // set allcating bit
+    if (allocate_mark () != status::SUCCESS)
+      {
+	return status::ALLOCATING;
+      }
+
+    return status::FOUND;
   }
 
   bestspace::bestspace () noexcept
@@ -500,9 +557,10 @@ namespace cubstorage
   bestspace::find (cubthread::entry &thread_ref, std::uint16_t size, PAGE_PTR &pgptr)
   {
     std::size_t shard, bias;
+    std::size_t i;
+    std::size_t retry;
     status error;
     int errid;
-    std::size_t i;
 
     assert (size > 0 && size < DB_PAGESIZE);
     pgptr = NULL;
@@ -515,22 +573,45 @@ namespace cubstorage
       }
     er_clear ();
 
-    shard = thread_ref.index % 8;
+    retry = 0;
+    shard = thread_ref.index % SHARD_COUNT;
     bias = thread_ref.tran_index < 0 ? -thread_ref.tran_index : thread_ref.tran_index;
-
-    for (i = 0; i < 8; i++)
+    while (true)
       {
-	error = m_shard[shard].find (size, bias, pgptr);
-	if (error == status::FAILURE)
+	for (i = 0; i < SHARD_COUNT; i++)
 	  {
-	    ASSERT_ERROR ();
-	    return er_errid ();
+	    error = m_shard[ (shard + i) % SHARD_COUNT].find (size, bias, pgptr);
+	    assert (error == status::FOUND ||
+		    error == status::ALLOCATING ||
+		    error == status::FAILURE);
+	    if (error == status::FOUND)
+	      {
+		return NO_ERROR;
+	      }
+	    if (error == status::FAILURE)
+	      {
+		ASSERT_ERROR ();
+		return er_errid ();
+	      }
 	  }
-      }
-    // TODO: NOT FOUND? OR CAN'T ALLOCATE?
 
-    // TODO: advance to next shard
-    return NO_ERROR;
+	assert (error == status::ALLOCATING);
+
+	// NOT FOUND AND CAN'T ALLOCATE
+	if (retry < 20)
+	  {
+	    std::this_thread::yield ();
+	  }
+	else
+	  {
+	    std::this_thread::sleep_for (std::chrono::microseconds (10));
+	  }
+	retry++;
+      }
+
+    // impossible !
+    assert (false);
+    return ER_FAILED;
   }
 
   bestspace::tier

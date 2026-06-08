@@ -44,6 +44,8 @@ namespace cubstorage
 	NOT_FOUND,
 	FOUND,
 	CONTENDED,
+	ALLOCATING,
+	SUCCESS,
 	FAILURE
       };
 
@@ -78,6 +80,9 @@ namespace cubstorage
       }
 
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
+      static constexpr std::size_t L3_FANOUT = 7;
+      static constexpr std::size_t L2_FANOUT = 8;
+      static constexpr std::size_t SHARD_COUNT = 8;
 
       class bitmap
       {
@@ -197,8 +202,8 @@ namespace cubstorage
 
 	private:
 	  atomic_wrapper<L3> m_L3;
-	  atomic_wrapper<L2> m_L2[7];
-	  atomic_wrapper<L1> m_L1[56];
+	  atomic_wrapper<L2> m_L2[L3_FANOUT];
+	  atomic_wrapper<L1> m_L1[L3_FANOUT * L2_FANOUT];
 
 	  status L3_find (tier minimum, std::uint16_t size, std::size_t bias, bool wait, PAGE_PTR &pgptr);
 	  void L3_update (std::size_t l2_index);
@@ -208,6 +213,11 @@ namespace cubstorage
 
 	  status L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, bool wait, PAGE_PTR &pgptr);
 	  void L1_remove (std::size_t l2_index, std::size_t l1_index, L1 l1);
+
+	  status allocate_mark ();
+	  void allocate_unmark ();
+	  void allocate_pages ();
+	  status allocate ();
       };
 
     public:
@@ -219,7 +229,7 @@ namespace cubstorage
       static tier size_to_tier (std::uint16_t size);
 
     private:
-      std::array<shard, 8> m_shard;
+      std::array<shard, SHARD_COUNT> m_shard;
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
       static_assert (std::is_trivially_copyable<bitmap>::value, "bestspace::bitmap must be trivially copyable");
