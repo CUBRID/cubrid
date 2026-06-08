@@ -48,6 +48,23 @@ extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *resul
 
 using namespace cubpl;
 
+static PT_NODE *
+pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
+{
+  bool *has_table_access;
+
+  has_table_access = (bool *) arg;
+  assert (has_table_access != NULL);
+
+  if (tree && tree->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (tree))
+    {
+      *has_table_access = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
@@ -543,6 +560,7 @@ namespace cubmethod
 	error = handler->prepare_compile (s);
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
+	    bool has_table_access;
 	    DB_SESSION *db_session = handler->get_db_session ();
 	    const prepare_info &info = handler->get_prepare_info ();
 
@@ -553,6 +571,10 @@ namespace cubmethod
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+
+	    has_table_access = false;
+	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
+	    semantics.has_table_access = has_table_access ? 1 : 0;
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)

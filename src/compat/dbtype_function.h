@@ -144,8 +144,8 @@
 
 #define DB_MAKE_SHORT DB_MAKE_SMALLINT
 
-#define DB_MAKE_NUMERIC(value, num, precision, scale) \
-        db_make_numeric(value, num, precision, scale)
+#define DB_MAKE_NUMERIC(value, num, precision, scale, is_value_negative, is_float_numeric) \
+        db_make_numeric(value, num, precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative, is_float_numeric)
 
 #define DB_MAKE_BIT(value, bit_length, bit_str, bit_str_bit_size) \
         db_make_bit(value, bit_length, bit_str, bit_str_bit_size)
@@ -195,7 +195,7 @@
 #define DB_GET_ELO(v) db_get_elo(v)
 #define DB_GET_NUMERIC(v) db_get_numeric(v)
 #define DB_GET_BIT(v, l) db_get_bit(v, l)
-#define DB_GET_CHAR(v, l) db_get_char(v, l)
+#define DB_GET_CHAR(v) db_get_char(v)
 
 #define DB_GET_STRING_SIZE(v) db_get_string_size(v)
 #define DB_GET_ENUM_SHORT(v) db_get_enum_short(v)
@@ -313,7 +313,7 @@ extern "C"
   extern DB_ELO *db_get_elo (const DB_VALUE * value);
   extern DB_C_NUMERIC db_get_numeric (const DB_VALUE * value);
   extern DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length);
-  extern DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length);
+  extern DB_CONST_C_CHAR db_get_char (const DB_VALUE * value);
 
   extern int db_get_string_size (const DB_VALUE * value);
   extern unsigned short db_get_enum_short (const DB_VALUE * value);
@@ -330,6 +330,10 @@ extern "C"
   extern int db_value_precision (const DB_VALUE * value);
   extern int db_value_scale (const DB_VALUE * value);
   extern JSON_DOC *db_get_json_document (const DB_VALUE * value);
+  extern int db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric);
+  extern int db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric);
+  extern void db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
+						  bool * is_float_numeric_ptr);
 
   extern int db_make_null (DB_VALUE * value);
   extern int db_make_int (DB_VALUE * value, const int num);
@@ -349,7 +353,8 @@ extern "C"
   extern int db_make_method_error (DB_VALUE * value, const int errcode, const char *errmsg);
   extern int db_make_short (DB_VALUE * value, const DB_C_SHORT num);
   extern int db_make_bigint (DB_VALUE * value, const DB_BIGINT num);
-  extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale);
+  extern int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
+			      const int byte_size, const bool is_value_negative, const bool is_float_numeric);
   extern int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str, const int bit_str_bit_size);
   extern int db_make_varbit (DB_VALUE * value, const int max_bit_length, DB_CONST_C_BIT bit_str,
 			     const int bit_str_bit_size);
