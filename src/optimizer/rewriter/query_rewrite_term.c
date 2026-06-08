@@ -471,6 +471,25 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
   while ((expr = *wherep))
     {
+      /* anti inner: reducing a term located in an ANTI ON condition can substitute the inner attr with a
+       * constant, turning the ON predicate into an outer-only sarg that drops the non-matching rows the
+       * anti-join must emit; leave ANTI ON terms as join predicates (SEMI is unaffected: first-match) */
+      if (expr->node_type == PT_EXPR && node->node_type == PT_SELECT)
+	{
+	  PT_NODE *anti_spec;
+	  for (anti_spec = node->info.query.q.select.from; anti_spec; anti_spec = anti_spec->next)
+	    {
+	      if (anti_spec->info.spec.location == expr->info.expr.location
+		  && anti_spec->info.spec.join_type == PT_JOIN_ANTI)
+		break;
+	    }
+	  if (anti_spec != NULL)
+	    {
+	      wherep = &(*wherep)->next;
+	      continue;
+	    }
+	}
+
       col = NULL;		/* init - reserve for constant column of derived-table */
 
       /* check for 1st phase; keep out OR conjunct; 1st init */
@@ -575,9 +594,7 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
-	      /* anti inner: keep the ON term a join predicate; a const-reduced outer sarg would drop non-matching rows */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
-		  && spec->info.spec.join_type != PT_JOIN_ANTI
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
 		  && !derived_table->info.query.q.select.single_table_opt)
 		{
