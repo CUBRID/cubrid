@@ -88,10 +88,12 @@ namespace parallel_scan
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
+    m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 
   void accumulative_trace_storage::add_stats (trace_handler &trace_handler)
   {
+    // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
     m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
     if (!m_is_initialized)
       {

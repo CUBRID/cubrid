@@ -26754,15 +26754,7 @@ cleanup:
   return error;
 }
 
-/*
- * qexec_clear_topn_items () - free xasl->topn_items heap, tuples, and container;
- *			       NULL-safe. Encapsulates the free pattern inlined
- *			       at qexec_clear_xasl (:2828, :3053) so the parallel
- *			       result handler can reuse the verified sequence.
- * return : void
- * thread_p (in) :
- * xasl (in/out) : XASL whose topn_items will be freed and cleared
- */
+/* free xasl->topn_items heap+tuples+container, NULL-safe; shared free sequence reused by parallel result handler */
 void
 qexec_clear_topn_items (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
@@ -26774,14 +26766,17 @@ qexec_clear_topn_items (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       return;
     }
 
+  /* inline twins at qexec_clear_xasl share this deref-before-guard; out of scope here (follow-up ticket) */
   heap = xasl->topn_items->heap;
-  for (i = 0; i < heap->element_count; i++)
-    {
-      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
-    }
-
   if (heap != NULL)
     {
+      for (i = 0; i < heap->element_count; i++)
+	{
+	  if (QEXEC_GET_BH_TOPN_TUPLE (heap, i) != NULL)	/* cheap insurance; qexec_clear_topn_tuple self-guards too */
+	    {
+	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
+	    }
+	}
       bh_destroy (thread_p, heap);
     }
 
