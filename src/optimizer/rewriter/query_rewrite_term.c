@@ -575,7 +575,9 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		}
 
 	      /* if arg2 is derived alias col, get its corresponding constant column from derived-table */
+	      /* anti inner: keep the ON term a join predicate; a const-reduced outer sarg would drop non-matching rows */
 	      if (spec && spec->info.spec.derived_table_type == PT_IS_SUBQUERY
+		  && spec->info.spec.join_type != PT_JOIN_ANTI
 		  && (derived_table = spec->info.spec.derived_table) && derived_table->node_type == PT_SELECT
 		  && !derived_table->info.query.q.select.single_table_opt)
 		{
