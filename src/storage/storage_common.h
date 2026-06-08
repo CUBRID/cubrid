@@ -828,6 +828,10 @@ typedef enum
   T_LOB_LENGTH,
   T_TYPEOF,
   T_INDEX_CARDINALITY,
+  T_ESTIMATED_TABLE_ROWS,
+  T_ESTIMATED_AVG_ROW_LENGTH,
+  T_ESTIMATED_DATA_LENGTH,
+  T_ESTIMATED_DATA_FREE,
   T_EVALUATE_VARIABLE,
   T_DEFINE_VARIABLE,
   T_PREDICATE,
@@ -868,6 +872,7 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
+  T_COLLECTION_TO_STRING,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/
@@ -1094,7 +1099,8 @@ typedef enum
   SM_ATTFLAG_PRIMARY_KEY = 128,	/* attribute has a primary key 0x80 */
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
-  SM_ATTFLAG_PARTITION_KEY = 1024	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
+  SM_ATTFLAG_INVISIBLE_COLUMN = 2048	/* attribute is invisible 0x800 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */
