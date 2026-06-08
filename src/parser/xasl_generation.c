@@ -66,9 +66,10 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
+#include "dbtype_def.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
-#include "px_heap_scan_checker.hpp"
+#include "px_scan_checker.hpp"
 #include "px_query_checker.hpp"
 #if defined(WINDOWS)
 #include "wintcp.h"
@@ -6786,15 +6787,9 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
-      /*
-       * To avoid being set to default Numeric, set numeric(any,any) to precision = 0, scale = 0.
-       * TO DO: We need to define a separate type for numeric(any,any) in the future.
-       */
-      int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
-
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
-      regu->domain->precision = numeric[PRM_PRECISION];
-      regu->domain->scale = numeric[PRM_SCALE];
+      regu->domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+      regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
   return regu;
@@ -7259,11 +7254,12 @@ pt_to_misc_operand (REGU_VARIABLE * regu, PT_MISC_TYPE misc_specifier)
  * pt_make_prim_data_type_fortonum () -
  *   return:
  *   parser(in):
- *   prec(in):
- *   scale(in):
+ *
+ *  Note : this function creates a PT_DATA_TYPE with NUMERIC type for PT_TO_NUMBER.
+ *         the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC.
  */
 PT_NODE *
-pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
+pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser)
 {
   PT_NODE *dt = NULL;
 
@@ -7273,16 +7269,9 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
       return NULL;
     }
 
-  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
-    {
-      parser_free_tree (parser, dt);
-      dt = NULL;
-      return NULL;
-    }
-
   dt->type_enum = PT_TYPE_NUMERIC;
-  dt->info.data_type.precision = prec;
-  dt->info.data_type.dec_precision = scale;
+  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 
   return dt;
 }
@@ -7366,131 +7355,6 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     }
 
   return dt;
-}
-
-/*
- * pt_to_regu_resolve_domain () -
- *   return:
- *   p_precision(out):
- *   p_scale(out):
- *   node(in):
- */
-void
-pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
-{
-  const char *format_buf;
-  const char *fbuf_end_ptr;
-  int format_sz;
-  int precision, scale, maybe_sci_notation = 0;
-
-  if (node == NULL)
-    {
-      *p_precision = DB_MAX_NUMERIC_PRECISION;
-      *p_scale = DB_DEFAULT_NUMERIC_SCALE;
-    }
-  else
-    {
-      switch (node->info.value.db_value.data.ch.info.style)
-	{
-	case SMALL_STRING:
-	  format_sz = node->info.value.db_value.data.ch.sm.size;
-	  format_buf = (char *) node->info.value.db_value.data.ch.sm.buf;
-	  break;
-
-	case MEDIUM_STRING:
-	  format_sz = node->info.value.db_value.data.ch.medium.size;
-	  format_buf = node->info.value.db_value.data.ch.medium.buf;
-	  break;
-
-	default:
-	  format_sz = 0;
-	  format_buf = NULL;
-	}
-
-      fbuf_end_ptr = format_buf + format_sz - 1;
-
-      precision = scale = 0;
-
-      /* analyze format string */
-      if (format_sz > 0)
-	{
-	  /* skip white space or CR prefix */
-	  while (format_buf < fbuf_end_ptr && (*format_buf == ' ' || *format_buf == '\t' || *format_buf == '\n'))
-	    {
-	      format_buf++;
-	    }
-
-	  while (*format_buf != '.' && format_buf <= fbuf_end_ptr)
-	    {
-	      switch (*format_buf)
-		{
-		case '9':
-		case '0':
-		  precision++;
-		  break;
-		case '+':
-		case '-':
-		case ',':
-		case ' ':
-		case '\t':
-		case '\n':
-		  break;
-
-		case 'c':
-		case 'C':
-		case 's':
-		case 'S':
-		  if (precision == 0)
-		    {
-		      break;
-		    }
-		  [[fallthrough]];
-
-		default:
-		  maybe_sci_notation = 1;
-		}
-	      format_buf++;
-	    }
-
-	  if (*format_buf == '.')
-	    {
-	      format_buf++;
-	      while (format_buf <= fbuf_end_ptr)
-		{
-		  switch (*format_buf)
-		    {
-		    case '9':
-		    case '0':
-		      scale++;
-		    case '+':
-		    case '-':
-		    case ',':
-		    case ' ':
-		    case '\t':
-		    case '\n':
-		      break;
-
-		    default:
-		      maybe_sci_notation = 1;
-		    }
-		  format_buf++;
-		}
-	    }
-
-	  precision += scale;
-	}
-
-      if (!maybe_sci_notation && (precision + scale) < DB_MAX_NUMERIC_PRECISION)
-	{
-	  *p_precision = precision;
-	  *p_scale = scale;
-	}
-      else
-	{
-	  *p_precision = DB_MAX_NUMERIC_PRECISION;
-	  *p_scale = DB_DEFAULT_NUMERIC_PRECISION;
-	}
-    }
 }
 
 /*
@@ -7892,7 +7756,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_TO_BASE64 || node->info.expr.op == PT_FROM_BASE64
 		       || node->info.expr.op == PT_FROM_BASE64 || node->info.expr.op == PT_SLEEP
 		       || node->info.expr.op == PT_TZ_OFFSET || node->info.expr.op == PT_CRC32
-		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ)
+		       || node->info.expr.op == PT_DISK_SIZE || node->info.expr.op == PT_CONV_TZ
+		       || node->info.expr.op == PT_COLLECTION_TO_STRING)
 		{
 		  r1 = NULL;
 
@@ -8161,6 +8026,19 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  r2 = NULL;
 		  r3 = NULL;
 
+		  domain = pt_xasl_node_to_domain (parser, node);
+		  if (domain == NULL)
+		    {
+		      goto end_expr_op_switch;
+		    }
+		}
+	      else if (node->info.expr.op == PT_ESTIMATED_TABLE_ROWS
+		       || node->info.expr.op == PT_ESTIMATED_AVG_ROW_LENGTH
+		       || node->info.expr.op == PT_ESTIMATED_DATA_LENGTH
+		       || node->info.expr.op == PT_ESTIMATED_DATA_FREE)
+		{
+		  r1 = NULL;
+		  r2 = pt_to_regu_variable (parser, node->info.expr.arg1, unbox);
 		  domain = pt_xasl_node_to_domain (parser, node);
 		  if (domain == NULL)
 		    {
@@ -9051,17 +8929,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_TO_NUMBER:
 		  {
-		    int precision, scale;
+		    /* the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC. */
 
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&precision, &scale, node->info.expr.arg2);
-		    data_type = pt_make_prim_data_type_fortonum (parser, precision, scale);
+		    data_type = pt_make_prim_data_type_fortonum (parser);
 
 		    /* create NUMERIC domain with default precision and scale. */
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
-
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&domain->precision, &domain->scale, node->info.expr.arg2);
 
 		    r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 
@@ -9354,11 +9227,43 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    {
 		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
-		  else
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_TABLE_ROWS:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_TABLE_ROWS, domain);
+		  if (parser->parent_proc_xasl != NULL)
 		    {
-		      /* should not happen */
-		      assert (false);
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
 		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_AVG_ROW_LENGTH:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_AVG_ROW_LENGTH, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_DATA_LENGTH:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_LENGTH, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
+		  break;
+
+		case PT_ESTIMATED_DATA_FREE:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_ESTIMATED_DATA_FREE, domain);
+		  if (parser->parent_proc_xasl != NULL)
+		    {
+		      XASL_SET_FLAG (parser->parent_proc_xasl, XASL_NO_FIXED_SCAN);
+		    }
+		  /* else: no scan context (e.g., INSERT VALUES), flag not needed */
 		  break;
 
 		case PT_EXEC_STATS:
@@ -9431,6 +9336,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_CRC32:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_CRC32, domain);
+		  break;
+
+		case PT_COLLECTION_TO_STRING:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_COLLECTION_TO_STRING, domain);
 		  break;
 
 		default:
@@ -12449,20 +12358,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 					   NULL, where, NULL, NULL, regu_attributes_pred, regu_attributes_rest, NULL,
 					   output_val_list, regu_var_list, NULL, cache_pred, cache_rest,
 					   NULL, NO_SCHEMA, db_values_array_p, regu_attributes_reserved);
-	      if (access_method == ACCESS_METHOD_SEQUENTIAL
-		  && PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN))
-		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
-		}
 
-	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+	      if (access == NULL)
 		{
-		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
-		  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
-		}
-	      else
-		{
-		  assert (access->num_parallel_threads == -1 /* auto-compute */ );
+		  return NULL;
 		}
 
 	      if (scan_type == TARGET_CLASS && prm_get_bool_value (PRM_ID_ENABLE_HEAP_FIXED_SCAN))
@@ -12700,6 +12599,23 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);
 		}
 
+	      if (access->access == ACCESS_METHOD_SEQUENTIAL || access->access == ACCESS_METHOD_INDEX)
+		{
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		    }
+		  if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+		    {
+		      ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+		      access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+		    }
+		  else
+		    {
+		      assert (access->num_parallel_threads == -1 /* auto-compute from regu_init */ );
+		    }
+		}
+
 	      access->next = access_list;
 	      access_list = access;
 	    }
@@ -12836,6 +12752,15 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {
+      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_NO_PARALLEL_SCAN))
+	{
+	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	}
+      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PARALLEL_THREAD))
+	{
+	  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+	  access->num_parallel_threads = spec->info.spec.num_parallel_threads;
+	}
       return access;
     }
 
@@ -17187,7 +17112,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 
@@ -17418,7 +17343,7 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 
@@ -18657,7 +18582,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
   if (pt_has_error (parser))
@@ -19853,7 +19778,7 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_HINT_ENUM hint_flags =
     PT_HINT_ORDERED | PT_HINT_USE_IDX_DESC | PT_HINT_NO_COVERING_IDX | PT_HINT_NO_IDX_DESC | PT_HINT_USE_NL |
     PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_NO_MULTI_RANGE_OPT | PT_HINT_RECOMPILE | PT_HINT_NO_SORT_LIMIT |
-    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_HEAP_SCAN |
+    PT_HINT_LEADING | PT_HINT_NO_USE_HASH | PT_HINT_USE_HASH | PT_HINT_NO_PARALLEL_SCAN |
     PT_HINT_NO_PARALLEL_SUBQUERY | PT_HINT_NO_PARALLEL_HASH_JOIN | PT_HINT_PARALLEL;
   PT_NODE *arg = NULL;
 
@@ -22580,7 +22505,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
   /* fill in XASL cache related information */
@@ -26097,7 +26022,7 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
 
-  scan_check_parallel_heap_scan_possible (xasl);
+  scan_check_parallel_scan_possible (xasl);
 
   return xasl;
 }

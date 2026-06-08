@@ -242,6 +242,7 @@ extern int stats_get_statistics_from_server (OID * classoid, unsigned int timest
 					     char **stats_buffer);
 extern int stats_update_statistics (MOP classop, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
+extern int update_histogram_for_all_classes (void);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
 			    int deduplicate_key_pos);

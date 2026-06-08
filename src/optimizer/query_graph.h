@@ -200,7 +200,8 @@ struct qo_index
  */
 #define QO_GET_CLASS_STATS(entryp) \
        ((entryp)->self_allocated ? (entryp)->stats : (entryp)->smclass->stats)
-
+#define QO_GET_HIST_STATS(entryp) \
+       ((entryp)->smclass->histogram)
 /*
  *  This structure is the head of a list of QO_INDEX_ENTRY index structures.
  *  The purpose for this node is to have a place to store cumulative
