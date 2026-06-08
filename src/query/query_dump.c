@@ -2432,14 +2432,14 @@ qdump_print_xasl (xasl_node * xasl_p)
       if (fl & XASL_NL_SEMIJOIN)
 	{
 	  fl &= ~XASL_NL_SEMIJOIN;
-	  fprintf (foutput, "%ssemi join", (nflag ? "|" : ""));
+	  fprintf (foutput, "%sXASL_NL_SEMIJOIN", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
       if (fl & XASL_NL_ANTIJOIN)
 	{
 	  fl &= ~XASL_NL_ANTIJOIN;
-	  fprintf (foutput, "%santi join", (nflag ? "|" : ""));
+	  fprintf (foutput, "%sXASL_NL_ANTIJOIN", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
