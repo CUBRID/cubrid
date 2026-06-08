@@ -243,6 +243,7 @@ function do_unloaddb ()
 	local opts="$user $pass -s "
 	local do_schema_unload=0
 	local do_data_unload=0
+	local schema_pid=
 
 	for ((i = 0; i < $num_tables; i++))
 	do
@@ -278,10 +279,17 @@ function do_unloaddb ()
 		if [ $from_file -eq 1 ];then
 			opts=$opts" --input-class-only --input-class-file $filename"
 		fi
+		# Run the schema unload concurrently with the data, but capture its PID and
+		# wait on it below so it is not orphaned -- otherwise the schema files could
+		# still be incomplete when "Completed." is printed.
 		(silent_cd $target_dir;cubrid unloaddb $opts $database) &
+		schema_pid=$!
 	fi
 
 	if [ $do_data_unload -eq 0 ];then
+		if [ -n "$schema_pid" ];then
+			wait $schema_pid
+		fi
 		return
 	fi
 
@@ -297,6 +305,10 @@ function do_unloaddb ()
 		echo "process $slot_num: failed" > $log_prefix.status
 	else
 		echo "process $slot_num: success" > $log_prefix.status
+	fi
+
+	if [ -n "$schema_pid" ];then
+		wait $schema_pid
 	fi
 
 	# move unloaddb logfile to $logdir

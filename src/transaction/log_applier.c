@@ -5057,7 +5057,7 @@ la_write_update_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
 
   AU_SAVE_AND_DISABLE (au_save);
 
-  inst_tp = dbt_create_object_internal (class_obj);
+  inst_tp = dbt_create_object_internal (class_obj, false);
   if (inst_tp == NULL)
     {
       ret = ER_FAILED;
@@ -5257,7 +5257,7 @@ la_write_insert_sql_log (LA_ITEM * item, DB_OBJECT * class_obj, RECDES * recdes)
 
   AU_SAVE_AND_DISABLE (au_save);
 
-  inst_tp = dbt_create_object_internal (class_obj);
+  inst_tp = dbt_create_object_internal (class_obj, false);
   if (inst_tp == NULL)
     {
       ret = ER_FAILED;
@@ -5524,6 +5524,9 @@ la_apply_statement_log (LA_ITEM * item)
     case CUBRID_STMT_CREATE_SERIAL:
     case CUBRID_STMT_ALTER_SERIAL:
     case CUBRID_STMT_DROP_SERIAL:
+
+    case CUBRID_STMT_UPDATE_HISTOGRAM:
+    case CUBRID_STMT_DROP_HISTOGRAM:
 
     case CUBRID_STMT_DROP_DATABASE:
 
