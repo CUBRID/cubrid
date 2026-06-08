@@ -16,7 +16,7 @@
  *
  */
 
-/* px_scan_index_overflow_chain_pool.cpp — multi-chain shared overflow pool v3: key-publish (Option B), fix-outside-mutex (T2). */
+/* multi-chain shared overflow pool v3: key-publish (Option B), fix-outside-mutex. */
 
 #include "px_scan_index_overflow_chain_pool.hpp"
 
@@ -34,7 +34,7 @@
 
 namespace parallel_index_scan
 {
-  /* Requires m_overflow_mutex held; clears slot key and resets all fields. */
+  /* m_overflow_mutex held; clears key, resets all slot fields. */
   void
   overflow_chain_pool::close_slot_locked (overflow_slot &slot)
   {
@@ -50,10 +50,7 @@ namespace parallel_index_scan
     m_overflow_cv.notify_all ();
   }
 
-  /* Requires m_overflow_mutex held; see header. Asserts the failing thread is still counted —
-     this function MUST NOT decrement helpers (the failing thread decrements exactly once later
-     via its own exit_help). Adding a decrement here causes a double-decrement → helpers underflow
-     → permanent slot leak or premature close that re-introduces the ABA. */
+  /* m_overflow_mutex held; never decrement helpers — exit_help owns the one decrement (else underflow → leak/ABA). */
   void
   overflow_chain_pool::mark_chain_dead_locked (overflow_slot &slot)
   {
@@ -65,7 +62,7 @@ namespace parallel_index_scan
     m_overflow_cv.notify_all ();
   }
 
-  /* cap == parallelism + producer/late-joiner time-disjoint per worker => -1 unreachable; -1 path is defense-in-depth. */
+  /* cap==parallelism + producer/late-joiner time-disjoint => -1 unreachable; -1 is defense-in-depth. */
   int
   overflow_chain_pool::try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
 				    const DB_VALUE *key, int range_idx)
@@ -84,11 +81,11 @@ namespace parallel_index_scan
 	    slot.chain_walked = false;
 	    slot.claim_in_flight = false;
 	    slot.active = true;
-	    /* MANDATORY: ensure null before clone (belt-and-suspenders for slot reuse). */
+	    /* null before clone (slot-reuse safety). */
 	    db_make_null (&slot.key);
 	    if (pr_clone_value (key, &slot.key) != NO_ERROR)
 	      {
-		/* clone failed; roll back via close_slot_locked (clears partial key state). */
+		/* clone failed; roll back partial key. */
 		close_slot_locked (slot);
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
 		return -1;
@@ -116,8 +113,7 @@ namespace parallel_index_scan
 	return S_END;
       }
 
-    /* Predicate-loop: wait for any in-flight claim to finish before taking the cursor.
-     * Shared CV may fire spuriously or for unrelated slots — recheck predicate every wakeup. */
+    /* predicate-loop: shared CV wakes spuriously / for other slots — recheck before taking cursor. */
     while (slot.claim_in_flight)
       {
 	m_overflow_cv.wait (lock);
@@ -131,21 +127,13 @@ namespace parallel_index_scan
     slot.claim_in_flight = true;
     lock.unlock ();
 
-    /* Fix happens AFTER unlocking m_overflow_mutex — that is what removes the lock-order inversion:
-     * no page latch is taken while the mutex is held, so the mutex can never sit inside a
-     * leaf<->overflow latch cycle. Correctness rests on this alone. (Secondary, and only while the
-     * producer still holds its leaf-S in OVERFLOW_SHARED: a writer needs leaf-X before overflow-X
-     * (btree.c:9818/31524), so it cannot hold overflow-X against this UNCONDITIONAL fix.) */
+    /* fix outside m_overflow_mutex: no latch held under the mutex → can't form a leaf<->overflow latch cycle. */
     PAGE_PTR page = pgbuf_fix (thread_p, &claim_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
     if (page == NULL)
       {
 	ASSERT_ERROR ();
 	lock.lock ();
-	/* Option B: mark the chain dead but keep the slot occupied. This failing thread is itself
-	   a counted helper; it decrements once via its caller's exit_help. Each other straggler
-	   also drains via its own exit_help; the last out (helpers==0) runs close_slot_locked.
-	   Because try_publish only reuses !active slots and the slot stays active until fully
-	   drained, the slot index cannot be recycled under a straggler (ABA prevented). */
+	/* Option B: dead-mark; slot stays active till last-out exit_help closes it — no straggler recycle (ABA guard). */
 	mark_chain_dead_locked (slot);
 	return S_ERROR;
       }
@@ -158,7 +146,7 @@ namespace parallel_index_scan
 	ASSERT_ERROR ();
 	pgbuf_unfix (thread_p, page);
 	lock.lock ();
-	/* Option B (see pgbuf_fix-failure path above): dead-mark, defer close to last-out exit_help. */
+	/* Option B (see pgbuf_fix path): dead-mark, defer close to last-out exit_help. */
 	mark_chain_dead_locked (slot);
 	return S_ERROR;
       }
@@ -196,13 +184,10 @@ namespace parallel_index_scan
 
     if (!slot.active)
       {
-	/* Under Option B an error-dead chain stays active until the last helper drains it, so this
-	   no longer fires for error paths. Its remaining role: guard a redundant exit_help after a
-	   legitimate last-out close. Do NOT remove — a stray double-exit would trip the assert below
-	   or underflow helpers. */
+	/* guards a redundant exit_help after last-out close; do NOT remove — stray double-exit underflows helpers. */
 	return;
       }
-    assert (slot.helpers > 0);   /* holds under Option B: the failing thread stays counted (>=1). */
+    assert (slot.helpers > 0);   /* holds: failing thread stays counted (>=1). */
     --slot.helpers;
     if (slot.helpers == 0)
       {
@@ -269,8 +254,7 @@ namespace parallel_index_scan
 	    if (pr_clone_value (&ps.key, out_local_key) != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
-		/* clone may have left a partial value; release it here — the caller will not
-		   (out_local_clear_key is still false on this path). */
+		/* clone may leave a partial value; release here — caller won't (out_local_clear_key still false). */
 		pr_clear_value (out_local_key);
 		db_make_null (out_local_key);
 		/* undo the helpers++ */

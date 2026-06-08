@@ -138,7 +138,7 @@ namespace parallel_index_scan
 		m_drain_state = drain_state::IDLE;
 		return S_END;
 	      }
-	    /* m_slot_key is valid here: walker.cpp sets it before begin_leaf_drain, and key is immutable (MVCC: no in-place mutation). */
+	    /* m_slot_key valid here: walker.cpp sets it before begin_leaf_drain; key immutable (MVCC). */
 	    int published_idx = handler->try_publish_overflow (thread_p,
 				m_pending_ovf_vpid,
 				&walker->m_slot_key,

@@ -45,9 +45,7 @@ namespace parallel_index_scan
     bool     active;            /* slot in use; gates round-robin pick + termination predicate. */
     bool     claim_in_flight;   /* one in-flight claim at a time; predicate-loop in claim_next. */
     DB_VALUE key;               /* deep-copied from producer's m_slot_key at publish; slot-owned. */
-    bool     clear_key;         /* slot.key currently owns variable-length storage. close_slot_locked
-				   clears unconditionally (pr_clear_value on a NULL value is a safe
-				   no-op); init() uses this flag to release pre-existing slots on reinit. */
+    bool     clear_key;         /* slot.key owns var-length storage; init() frees pre-existing slots on reinit. */
   };
 
   /* (A) Multi-chain shared overflow pool (v2): cap = parallelism slots, helper supply matches chain demand. */
@@ -90,7 +88,7 @@ namespace parallel_index_scan
 	m_no_more_leaves = false;
       }
 
-      /* returns slot_idx >= 0; -1 only on broken cap==parallelism invariant (er_set+assert inside); key deep-copied from producer's m_slot_key. */
+      /* returns slot_idx>=0; -1 only on broken cap==parallelism invariant; key deep-copied from producer. */
       int try_publish (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
 		       const DB_VALUE *key, int range_idx);
       /* slot_idx mandatory: identifies which chain to advance. */
@@ -98,7 +96,7 @@ namespace parallel_index_scan
       void release_page (THREAD_ENTRY *thread_p, PAGE_PTR page);
       /* slot_idx mandatory: decrements helpers on the specific slot. */
       void exit_help (THREAD_ENTRY *thread_p, int slot_idx);
-      /* wait_or_help: round-robin pick; out_local_key owned by caller on S_SUCCESS (pr_clear_value if out_local_clear_key); cleared on S_END/S_ERROR. */
+      /* caller owns out_local_key on S_SUCCESS (per out_local_clear_key); cleared on S_END/S_ERROR. */
       SCAN_CODE wait_or_help (THREAD_ENTRY *thread_p, PAGE_PTR &out_page,
 			      DB_VALUE *out_local_key, bool *out_local_clear_key,
 			      int &out_range_idx, int &out_slot_idx);
@@ -107,13 +105,10 @@ namespace parallel_index_scan
       void signal_no_more_leaves ();
 
     private:
-      /* Requires m_overflow_mutex held; clears key, resets all slot fields, notifies waiters. */
+      /* m_overflow_mutex held; clears key, resets slot fields, notifies waiters. */
       void close_slot_locked (overflow_slot &slot);
 
-      /* Requires m_overflow_mutex held. Marks the chain DEAD (cursor exhausted) but does NOT
-         end slot occupancy: leaves active/helpers/key/clear_key untouched so the slot index
-         cannot be recycled by try_publish while a straggler helper still holds it (ABA guard).
-         The last exit_help to bring helpers to 0 runs close_slot_locked. */
+      /* m_overflow_mutex held; marks chain dead, slot stays occupied (ABA guard) — last-out exit_help closes it. */
       void mark_chain_dead_locked (overflow_slot &slot);
 
       std::mutex                  m_overflow_mutex;
