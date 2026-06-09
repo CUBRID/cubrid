@@ -95,40 +95,6 @@ extern bool is_server_alive (void);
 #endif
 
 #if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
-#endif
-
-/*****************************
-  cas_error.c function list
- *****************************/
-extern int is_error_info_set (void);
-extern void err_msg_set (T_NET_BUF * net_buf, const char *file, int line);
-extern int error_info_set (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_force (int err_number, int err_indicator, const char *file, int line);
-extern int error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg, bool force,
-				    const char *file, int line);
-extern void error_info_clear (void);
-extern void set_server_aborted (bool is_aborted);
-extern bool is_server_aborted (void);
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-/*****************************
-  move from cas_log.c
- *****************************/
-extern void cas_log_error_handler (unsigned int eid);
-extern void cas_log_error_handler_begin (void);
-extern void cas_log_error_handler_end (void);
-extern void cas_log_error_handler_clear (void);
-extern char *cas_log_error_handler_asprint (char *buf, size_t bufsz, bool clear);
-
-/*****************************
-  move from cas_sql_log2.c
- *****************************/
-extern void set_optimization_level (int level);
-extern void reset_optimization_level_as_saved (void);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern int ux_lobfile_new (int lobfile_type, T_NET_BUF * net_buf);
 extern int ux_lobfile_write (DB_VALUE * lobfile_dbval, int64_t offset, int size, char *data, T_NET_BUF * net_buf);
 extern int ux_lobfile_read (DB_VALUE * lobfile_dbval, int64_t offset, int size, T_NET_BUF * net_buf);
