@@ -20954,9 +20954,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
-  /* Take the transaction self-lock (keyed by MVCCID) once per inserter; unique/FK waiters block on
-   * it now that appended rows no longer take a per-row X-lock (see btree.c). */
-  if (lock == X_LOCK)
+  /* Self-lock keyed by the inserter's MVCCID: unique/FK checkers wait on it instead of a per-row
+   * X-lock on appended rows. Only MVCC-class inserts carry an insert-MVCCID a checker can observe
+   * as INSERT_IN_PROGRESS, so only those can have a waiter. */
+#if defined (SERVER_MODE)
+  if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
       MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
       if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
@@ -20965,6 +20967,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  return error_code;
 	}
     }
+#endif /* SERVER_MODE */
 
   /* retrieve number of slots in page */
   slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
