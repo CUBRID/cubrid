@@ -1174,36 +1174,18 @@ start:
 
 /*
   * locator_is_user_class_entry () - Returns true if entry is a permanent
-  *                                  non-system class.
+  *                                  user class (not a system table).
   */
 static bool
 locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
 {
-  const OID *class_oid;
-
   if (entry->e_current.action != LC_CLASSNAME_EXIST)
     {
       return false;
     }
 
-  class_oid = &entry->e_current.oid;
-
-  if (OID_ISNULL (class_oid))
-    {
-      return false;
-    }
-
-  /* Fast path: filter by OID against cached system class OIDs */
-  if (oid_is_system_class (class_oid))
-    {
-      return false;
-    }
-
-  /*
-   * Name-based filter: catches system classes/vclasses whose OIDs are NOT
-   * in oid_Cache (e.g. "dual", "_db_resolution", "db_class", "db_vclass", ...).
-   */
-  if (sm_is_system_class (entry->e_name) || sm_is_system_vclass (entry->e_name))
+  /* Name-based filter for system classes. */
+  if (sm_is_system_class (entry->e_name))
     {
       return false;
     }
