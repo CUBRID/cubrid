@@ -9391,7 +9391,8 @@ pr_midxkey_add_prefix (DB_VALUE * result, DB_VALUE * prefix, DB_VALUE * postfix,
 	}
     }
 
-  assert (prefix_size >= OR_MULTI_MAX_OFFSET || i == midx_postfix->domain->precision || offset <= 0);
+  assert (prefix_size >= OR_MULTI_MAX_OFFSET || i == midx_postfix->domain->precision || offset <= 0
+	  || (offset + prefix_size) >= OR_MULTI_MAX_OFFSET);
 
   /* fallthrough: i */
   for (; i < midx_postfix->domain->precision; i++)
