@@ -752,6 +752,7 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_PRED     64	/* multi column && in OP, (a,b) in .. */
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
+#define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -880,6 +881,13 @@ struct qo_env
    * A temporary bitset.  This is needed for expr_segs() in build_query_graph
    */
   BITSET *tmp_bitset;
+
+  /*
+   * Scratch buffer of implied-join pairs owned by qo_generate_implied_join_terms().
+   * Held here only so qo_env_free() can release it if qo_add_term() longjmps out via qo_abort().
+   * (void * because QO_IMPLIED_JOIN_PAIR is private to query_graph.c.)
+   */
+  void *implied_pairs;
 
   /*
    * The final plan produced by the optimizer.
