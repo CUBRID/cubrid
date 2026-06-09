@@ -4675,9 +4675,8 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 
   if (out_list != NULL && value_list != NULL && regu_list != NULL)
     {
-      PT_NODE *select_list_p = parser_copy_tree_list (parser, select_list);
       (void) parser_walk_tree (parser, out_names, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
-      (void) parser_walk_tree (parser, select_list_p, NULL, NULL, pt_substitute_groupby_ref_pre, &info);
+      (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
     }
 
   select_node->info.query.q.select.list =
@@ -28784,10 +28783,11 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 
 	  pointer->etc = (DB_VALUE *) args->etc;
 	  pointer->info.pointer.produced = args->info.pointer.produced;
+
 	  tmp = node->next;
 	  pointer->next = tmp;
-
 	  node->next = NULL;
+
 	  return pointer;
 	}
     }
