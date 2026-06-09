@@ -33,6 +33,7 @@
 #include <string.h>
 #include <errno.h>
 
+#include "bestspace.hpp"
 #include "heap_file.h"
 
 #include "deduplicate_key.h"
@@ -5424,6 +5425,12 @@ end:
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   logpb_force_flush_pages (thread_p);
+
+  // skip in case of boot/internal heap
+  if (class_oid && !OID_ISNULL (class_oid))
+    {
+      cubstorage::bestspaces.create ((OID *) class_oid, hfid);
+    }
 
   return NO_ERROR;
 

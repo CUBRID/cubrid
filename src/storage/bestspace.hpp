@@ -28,18 +28,32 @@
 #include "storage_common.h"
 #include "dbtype_def.h"
 
+#include <optional>
 #include <array>
 #include <limits>
 #include <atomic>
 #include <cstring>
 #include <cstdint>
+#include <mutex>
 #include <type_traits>
 
 namespace cubstorage
 {
+#if defined (UNIT_TEST_BESTSPACE)
+  struct bestspace_test_probe;
+#endif
+
+  //////////////////////////////////////////////////////////////////////////
+  // base class
+  //////////////////////////////////////////////////////////////////////////
+
   class bestspace
   {
     private:
+#if defined (UNIT_TEST_BESTSPACE)
+      friend struct bestspace_test_probe;
+#endif
+
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       static constexpr std::size_t L3_FANOUT = 7;
@@ -262,6 +276,52 @@ namespace cubstorage
       static_assert (sizeof (shard) == 4160, "bestspace::shard must be 4160 bytes");
       static_assert (alignof (shard) == 64, "bestspace::shard must be aligned as 64 bytes");
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // bestspace register/unregister
+  //////////////////////////////////////////////////////////////////////////
+
+  class bestspace_registry
+  {
+    private:
+      struct bestspace_entry
+      {
+	OID class_oid;
+	HFID hfid;
+	bestspace *entry;
+	bestspace_entry *next;
+      };
+
+    public:
+      bestspace_registry ();
+      ~bestspace_registry ();
+
+      void create (OID *class_oid, HFID *hfid);
+      void destroy (OID *class_oid, VFID *vfid);
+      void destroy (OID *class_oid, HFID *hfid);
+      int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
+
+    private:
+      bestspace_entry *m_head;
+      std::mutex m_mutex;
+
+      static constexpr std::size_t TLS_MAX_SIZE = 20;
+      inline static thread_local bestspace_entry *TLS_head = nullptr;
+      inline static thread_local std::size_t TLS_size = 0;
+
+      void insert_entry (bestspace_entry *&head, bestspace_entry *entry);
+      void destroy_entry (bestspace_entry *entry);
+      std::optional<std::pair<bestspace_entry *, bestspace_entry *>> find_entry (bestspace_entry *head, OID *class_oid,
+	  VFID *vfid);
+      std::optional<std::pair<bestspace_entry *, bestspace_entry *>> find_entry (bestspace_entry *head, OID *class_oid,
+	  HFID *hfid);
+
+      bestspace_entry *get_node_from_list (bestspace_entry *&head, OID *class_oid, VFID *vfid);
+      bestspace_entry *get_node_from_list (bestspace_entry *&head, OID *class_oid, HFID *hfid);
+      bestspace_entry *get_tail_from_list (bestspace_entry *&head);
+  };
+
+  extern bestspace_registry bestspaces;
 }
 
 #endif // _BESTSPACE_HPP_
