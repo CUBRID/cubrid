@@ -237,6 +237,13 @@ namespace cubstorage
     , m_L1 ()
     , m_recs_num (0)
     , m_recs_sumlen (0)
+    , m_request (0)
+    , m_advance_shard (0)
+    , m_fetch_L3 (0)
+    , m_fetch_L2 (0)
+    , m_fetch_L1 (0)
+    , m_found (0)
+    , m_allocated (0)
   {
   }
 
@@ -317,10 +324,12 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::find (HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::find (OID *class_oid, HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     status error;
     tier minimum;
+
+    m_request.fetch_add (1);
 
     // convert and advance
     minimum = size_to_tier (size);
@@ -329,7 +338,7 @@ namespace cubstorage
 	minimum++;
       }
 
-    error = L3_find (minimum, size, bias, page_watcher);
+    error = L3_find (class_oid, minimum, size, bias, page_watcher);
     if (error == status::FOUND || error == status::FAILURE)
       {
 	return error;
@@ -340,8 +349,21 @@ namespace cubstorage
     return allocate (hfid, size, page_watcher);
   }
 
+  void bestspace::shard::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
+				    std::uint32_t &fetch_L2, std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated)
+  {
+    request += m_request.load ();
+    advanced_shard += m_advance_shard.load ();
+    fetch_L3 += m_fetch_L3.load ();
+    fetch_L2 += m_fetch_L2.load ();
+    fetch_L1 += m_fetch_L1.load ();
+    found += m_found.load ();
+    allocated += m_allocated.load ();
+  }
+
   bestspace::status
-  bestspace::shard::L3_find (tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::L3_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t bias,
+			     PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
     std::size_t length, i;
@@ -354,10 +376,11 @@ namespace cubstorage
     for (; minimum <= tier::FS8; minimum++)
       {
 	l3 = m_L3.load ();
+	m_fetch_L3.fetch_add (1);
 	length = l3.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L2_find (minimum, size, pos[ (i + bias) % length], bias, page_watcher);
+	    error = L2_find (class_oid, minimum, size, pos[ (i + bias) % length], bias, page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -380,29 +403,37 @@ namespace cubstorage
     L3 expected, desired;
     L2 l2;
 
-    expected = m_L3.load ();
-    do
+    while (true)
       {
-	desired = expected;
-
-	l2 = m_L2[l2_index].load ();
-	length = l2.collect (tiers);
-	desired.clear (l2_index);
-	for (i = 0; i < length; i++)
+	expected = m_L3.load ();
+	do
 	  {
-	    desired.set (tiers[i], l2_index);
+	    desired = expected;
+
+	    l2 = m_L2[l2_index].load ();
+	    length = l2.collect (tiers);
+	    desired.clear (l2_index);
+	    for (i = 0; i < length; i++)
+	      {
+		desired.set (tiers[i], l2_index);
+	      }
+
+	    if (desired == expected)
+	      {
+		return;
+	      }
 	  }
+	while (!m_L3.compare_exchange_strong (expected, desired));
 
-	if (desired == expected)
+	if (l2 == m_L2[l2_index].load ())
 	  {
-	    return;
+	    break;
 	  }
       }
-    while (!m_L3.compare_exchange_strong (expected, desired));
   }
 
   bestspace::status
-  bestspace::shard::L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
+  bestspace::shard::L2_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
 			     PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
@@ -416,10 +447,11 @@ namespace cubstorage
     for (; minimum <= tier::FS8; minimum++)
       {
 	l2 = m_L2[l2_index].load ();
+	m_fetch_L2.fetch_add (1);
 	length = l2.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L1_find (size, l2_index, pos[ (i + bias) % length], page_watcher);
+	    error = L1_find (class_oid, size, l2_index, pos[ (i + bias) % length], page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -437,44 +469,55 @@ namespace cubstorage
   void
   bestspace::shard::L2_update (std::size_t l2_index, std::size_t l1_index)
   {
+    tier tier_to, tier_now;
     L2 expected, desired;
     L1 l1;
-    tier tier_to;
 
-    expected = m_L2[l2_index].load ();
-    do
+    while (true)
       {
-	desired = expected;
-	desired.clear (l1_index);
-
-	l1 = m_L1[l2_index * L2_FANOUT + l1_index].load ();
-	tier_to = size_to_tier (l1.get_freespace ());
-	if (tier_to > tier::FS0)
+	expected = m_L2[l2_index].load ();
+	do
 	  {
-	    desired.set (tier_to, l1_index);
+	    desired = expected;
+	    desired.clear (l1_index);
+
+	    l1 = m_L1[l2_index * L2_FANOUT + l1_index].load ();
+	    tier_to = size_to_tier (l1.get_freespace ());
+	    if (tier_to > tier::FS0)
+	      {
+		desired.set (tier_to, l1_index);
+	      }
+
+	    if (desired == expected)
+	      {
+		return;
+	      }
 	  }
+	while (!m_L2[l2_index].compare_exchange_strong (expected, desired));
 
-	if (desired == expected)
+	tier_now = size_to_tier (m_L1[l2_index * L2_FANOUT + l1_index].load ().get_freespace ());
+	if (tier_now == tier_to)
 	  {
-	    return;
+	    break;
 	  }
       }
-    while (!m_L2[l2_index].compare_exchange_strong (expected, desired));
 
     L3_update (l2_index);
   }
 
   bestspace::status
-  bestspace::shard::L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::L1_find (OID *class_oid, std::uint16_t size, std::size_t l2_index, std::size_t l1_index,
+			     PGBUF_WATCHER &page_watcher)
   {
-    cubthread::entry *thread_p;
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
     std::size_t freespace;
     VPID vpid, old_vpid;
     L1 expected, desired;
+    OID page_class_oid;
     status error;
 
     assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
-
+    m_fetch_L1.fetch_add (1);
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     if (expected.get_freespace () < size)
@@ -492,12 +535,21 @@ namespace cubstorage
 	return error;
       }
 
+    // is this page still belongs to the class (class_oid) ?
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP ||
+	heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
+	|| !OID_EQ (&page_class_oid, class_oid))
+      {
+	L1_remove (l2_index, l1_index, expected);
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
+	return status::NOT_FOUND;
+      }
+
     // L1 might be changed
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     // newest
     vpid = expected.get_vpid ();
     // store the old and get the actual free space
-    thread_p = thread_get_thread_entry_info ();
     freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
     if (freespace < size)
       {
@@ -529,6 +581,8 @@ namespace cubstorage
 	    L2_update (l2_index, l1_index);
 	  }
       }
+
+    m_found.fetch_add (1);
     return status::FOUND;
   }
 
@@ -678,6 +732,7 @@ namespace cubstorage
     // set allcating bit
     if (allocate_mark () != status::SUCCESS)
       {
+	m_advance_shard.fetch_add (1);
 	return status::ALLOCATING;
       }
 
@@ -688,6 +743,8 @@ namespace cubstorage
 	allocate_unmark ();
 	return status::FAILURE;
       }
+
+    m_allocated.fetch_add (ALLOC_BATCH_SIZE);
 
     allocate_pages (*thread_p, size, vpids, page_watcher);
     allocate_unmark ();
@@ -711,15 +768,18 @@ namespace cubstorage
   }
 
   int
-  bestspace::find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
+  bestspace::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+		   PGBUF_WATCHER &page_watcher)
   {
     std::size_t shard, bias;
     std::size_t i;
     std::size_t retry;
+    bool continue_check;
     status error;
     int errid;
 
     assert (size > 0 && size < DB_PAGESIZE);
+    assert (!heap_is_big_length (size));
 
     // early return or clear stale error to avoid error corruption in below path
     errid = er_errid_if_has_error ();
@@ -745,7 +805,7 @@ namespace cubstorage
       {
 	for (i = 0; i < SHARD_COUNT; i++)
 	  {
-	    error = m_shard[ (shard + i) % SHARD_COUNT].find (hfid, size, bias, page_watcher);
+	    error = m_shard[ (shard + i) % SHARD_COUNT].find (class_oid, hfid, size, bias, page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||
 		    error == status::FAILURE);
@@ -772,6 +832,13 @@ namespace cubstorage
 	    std::this_thread::sleep_for (std::chrono::microseconds (10));
 	  }
 	retry++;
+
+	// IF INTERRUPTED
+	if (logtb_is_interrupted (&thread_ref, true, &continue_check))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    return ER_INTERRUPTED;
+	  }
       }
 
     // impossible !
@@ -808,13 +875,54 @@ namespace cubstorage
     return tier::FS8;
   }
 
+  void
+  bestspace::show_stats ()
+  {
+    std::size_t i;
+
+    std::uint32_t request = 0;
+    std::uint32_t advanced_shard = 0;
+    std::uint32_t fetch_L3 = 0;
+    std::uint32_t fetch_L2 = 0;
+    std::uint32_t fetch_L1 = 0;
+    std::uint32_t found = 0;
+    std::uint32_t allocated = 0;
+    for (i = 0; i < SHARD_COUNT; i++)
+      {
+	m_shard[i].get_stats (request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
+      }
+
+    printf ("  request: %d, advanced_shard: %d, fetch_L3: %d, fetch_L2: %d, fetch_L1: %d, found: %d, allocated page: %d\n",
+	    request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // bestspace register/unregister
   //////////////////////////////////////////////////////////////////////////
 
+  bestspace_registry::registry_cache::registry_cache ()
+    : head (nullptr)
+    , size (0)
+    , generation (0)
+  {
+  }
+
+  bestspace_registry::registry_cache::~registry_cache ()
+  {
+    registry_entry *next;
+
+    while (head)
+      {
+	next = head->next;
+	delete head;
+	head = next;
+      }
+  }
+
   bestspace_registry::bestspace_registry ()
     : m_head (nullptr)
     , m_mutex ()
+    , m_generation (1)
   {
   }
 
@@ -828,6 +936,9 @@ namespace cubstorage
       {
 	node = m_head;
 	m_head = m_head->next;
+
+	printf ("\nclass_oid { %d, %d, %d }\n", node->class_oid.volid, node->class_oid.pageid, node->class_oid.slotid);
+	node->entry->show_stats ();
 
 	delete node->entry;
 	delete node;
@@ -878,6 +989,7 @@ namespace cubstorage
     node = get_node_from_list (m_head, class_oid, vfid);
     if (node)
       {
+	m_generation.fetch_add (1);
 	destroy_entry (node);
       }
   }
@@ -892,6 +1004,7 @@ namespace cubstorage
     node = get_node_from_list (m_head, class_oid, hfid);
     if (node)
       {
+	m_generation.fetch_add (1);
 	destroy_entry (node);
       }
   }
@@ -923,7 +1036,13 @@ namespace cubstorage
 	return error;
       }
 
-    return find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
+    error = find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
+    if (error == ER_MHT_NOTFOUND)
+      {
+	return find (thread_ref, hfid, size, page_watcher);
+      }
+
+    return error;
   }
 
   int
@@ -931,16 +1050,25 @@ namespace cubstorage
 				       PGBUF_WATCHER &page_watcher)
   {
     registry_entry *cache;
+    std::uint64_t generation;
 
-    cache = get_node_from_list (TLS_head, class_oid, hfid);
+    generation = m_generation.load ();
+    if (TLS_cache.generation != generation)
+      {
+	TLS_cache.generation = generation;
+	invalidate_entries (TLS_cache.head);
+	return ER_MHT_NOTFOUND;
+      }
+
+    cache = get_node_from_list (TLS_cache.head, class_oid, hfid);
     if (!cache)
       {
 	return ER_MHT_NOTFOUND;
       }
 
     // make this cache the first (LRU)
-    insert_entry (TLS_head, cache);
-    return (cache->entry)->find (thread_ref, hfid, size, page_watcher);
+    insert_entry (TLS_cache.head, cache);
+    return (cache->entry)->find (thread_ref, class_oid, hfid, size, page_watcher);
   }
 
   int
@@ -963,23 +1091,21 @@ namespace cubstorage
     ulock.unlock ();
 
     // register in TLS list
-    if (TLS_size < TLS_MAX_SIZE)
+    if (TLS_cache.size < TLS_MAX_SIZE)
       {
 	cache = new registry_entry;
-	cache->class_oid = *class_oid;
-	cache->hfid = *hfid;
-	cache->entry = entry;
-	TLS_size++;
+	TLS_cache.size++;
       }
     else
       {
-	cache = get_tail_from_list (TLS_head);
-	cache->class_oid = *class_oid;
-	cache->hfid = *hfid;
-	cache->entry = entry;
+	cache = get_tail_from_list (TLS_cache.head);
       }
-    insert_entry (TLS_head, cache);
-    return entry->find (thread_ref, hfid, size, page_watcher);
+    cache->class_oid = *class_oid;
+    cache->hfid = *hfid;
+    cache->entry = entry;
+
+    insert_entry (TLS_cache.head, cache);
+    return entry->find (thread_ref, class_oid, hfid, size, page_watcher);
   }
 
   void
@@ -1024,6 +1150,18 @@ namespace cubstorage
 	  }
       }
     return std::nullopt;
+  }
+
+  void
+  bestspace_registry::invalidate_entries (registry_entry *head)
+  {
+    while (head)
+      {
+	OID_SET_NULL (&head->class_oid);
+	HFID_SET_NULL (&head->hfid);
+	head->entry = nullptr;
+	head = head->next;
+      }
   }
 
   bestspace_registry::registry_entry *
