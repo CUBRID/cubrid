@@ -3665,7 +3665,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   QFILE_TUPLE_RECORD overflow_record = { NULL, 0 };
   SCAN_CODE scan_code;
   bool need_skip_next = false;
-  bool any_record_added;
+  bool any_key_matched;
 
   HASHJOIN_FETCH_INFO *outer, *inner;
   HASHJOIN_FETCH_INFO *build = NULL, *probe = NULL;
@@ -3813,7 +3813,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	}
 
-      any_record_added = false;
+      any_key_matched = false;
 
       do
 	{
@@ -3908,6 +3908,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	    }			/* if (context->during_join_pred != NULL) */
 
+	  any_key_matched = true;
+
 	  if (context->after_join_pred != NULL)
 	    {
 	      DB_LOGICAL ev_res;
@@ -3943,8 +3945,6 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      break;		/* error_exit */
 	    }
-
-	  any_record_added = true;
 	}
       while (true);
 
@@ -3953,7 +3953,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  break;		/* error_exit */
 	}
 
-      if (!any_record_added)
+      if (!any_key_matched)
 	{
 	  if (context->after_join_pred != NULL)
 	    {
@@ -3999,7 +3999,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      break;		/* error_exit */
 	    }
-	}			/* if (!any_record_added) */
+	}			/* if (!any_key_matched) */
     }				/* while (qfile_scan_list_next (probe_scan_id)) */
 
   if (thread_is_on_trace (thread_p))

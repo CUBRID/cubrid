@@ -1317,7 +1317,7 @@ cleanup:
       HASH_SCAN_KEY *key, *found_key;
 
       bool need_skip_next = false;
-      bool any_record_added;
+      bool any_key_matched;
 
       int error = NO_ERROR;
       bool has_error = false;
@@ -1519,7 +1519,7 @@ cleanup:
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
 	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
-	      any_record_added = false;
+	      any_key_matched = false;
 
 	      do
 		{
@@ -1587,6 +1587,8 @@ cleanup:
 			}
 		    }			/* if (m_context->during_join_pred != nullptr) */
 
+		  any_key_matched = true;
+
 		  if (m_context->after_join_pred != nullptr)
 		    {
 		      DB_LOGICAL ev_res;
@@ -1623,8 +1625,6 @@ cleanup:
 		    {
 		      break;		/* error_exit */
 		    }
-
-		  any_record_added = true;
 		}
 	      while (true);
 
@@ -1636,7 +1636,7 @@ cleanup:
 		  break;		/* error_exit */
 		}
 
-	      if (!any_record_added)
+	      if (!any_key_matched)
 		{
 		  if (m_context->after_join_pred != nullptr)
 		    {
@@ -1686,7 +1686,7 @@ cleanup:
 		      has_error = true;
 		      break;		/* error_exit */
 		    }
-		}	/* if (!any_record_added) */
+		}	/* if (!any_key_matched) */
 	    }
 	  while (true);
 
