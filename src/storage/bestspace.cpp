@@ -26,14 +26,19 @@
 #include "slotted_page.h"
 #include "error_manager.h"
 
-#include <cstdint>
+#include <mutex>
 #include <utility>
+#include <cstdint>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace cubstorage
 {
+  //////////////////////////////////////////////////////////////////////////
+  // base class
+  //////////////////////////////////////////////////////////////////////////
+
   bestspace::bitmap::bitmap () noexcept
     : m_bits (0)
   {
@@ -84,6 +89,9 @@ namespace cubstorage
     , m_volid (NULL_VOLID)
     , m_pageid (NULL_PAGEID)
   {
+    static_assert (offsetof (L1, m_freespace) == offsetof (bestspace_entry, freespace), "offset must be same");
+    static_assert (offsetof (L1, m_volid) == offsetof (bestspace_entry, volid), "offset must be same");
+    static_assert (offsetof (L1, m_pageid) == offsetof (bestspace_entry, pageid), "offset must be same");
   }
 
   std::uint16_t
@@ -151,6 +159,15 @@ namespace cubstorage
   }
 
   void
+  bestspace::L2::clear ()
+  {
+    uint64_t val;
+
+    val = 0;
+    std::memcpy (static_cast<void *> (m_freespace.data ()), &val, sizeof (uint64_t));
+  }
+
+  void
   bestspace::L2::clear (std::size_t index)
   {
     uint64_t val;
@@ -182,6 +199,15 @@ namespace cubstorage
     assert (minimum >= tier::FS1 && minimum <= tier::FS8);
 
     return m_freespace[static_cast<std::size_t> (minimum)].find (pos, BITS_PER_BYTE - 1);
+  }
+
+  void
+  bestspace::L3::clear ()
+  {
+    uint64_t val;
+
+    val = 0;
+    std::memcpy (static_cast<void *> (m_freespace.data ()), &val, sizeof (uint64_t));
   }
 
   void
@@ -242,6 +268,52 @@ namespace cubstorage
     std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
     value |= FLAG_ALLOCATING;
     std::memcpy (static_cast<void *> (m_freespace.data ()), &value, sizeof (uint64_t));
+  }
+
+  void
+  bestspace::shard::initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT])
+  {
+    std::array<tier, BITS_PER_BYTE> tiers;
+    std::size_t length;
+    std::size_t i, j;
+    tier fs;
+    L3 l3;
+    L2 l2;
+    L1 l1;
+
+    // L1
+    for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
+      {
+	l1.set_vpid ({ entries[i].pageid, entries[i].volid });
+	l1.set_freespace (entries[i].freespace);
+	m_L1[i].store (l1);
+      }
+    // L2
+    for (i = 0; i < L3_FANOUT; i++)
+      {
+	l2.clear ();
+	for (j = 0; j < L2_FANOUT; j++)
+	  {
+	    fs = size_to_tier (entries[i * L2_FANOUT + j].freespace);
+	    if (fs > tier::FS0)
+	      {
+		l2.set (fs, j);
+	      }
+	  }
+	m_L2[i].store (l2);
+      }
+    // L3
+    l3.clear ();
+    for (i = 0; i < L3_FANOUT; i++)
+      {
+	l2 = m_L2[i].load ();
+	length = l2.collect (tiers);
+	for (j = 0; j < length; j++)
+	  {
+	    l3.set (tiers[j], i);
+	  }
+      }
+    m_L3.store (l3);
   }
 
   bestspace::status
@@ -627,6 +699,17 @@ namespace cubstorage
   {
   }
 
+  void
+  bestspace::initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT])
+  {
+    std::size_t i;
+
+    for (i = 0; i < SHARD_COUNT; i++)
+      {
+	m_shard[i].initialize_by_entries (entries[i]);
+      }
+  }
+
   int
   bestspace::find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
   {
@@ -725,4 +808,288 @@ namespace cubstorage
     return tier::FS8;
   }
 
+  //////////////////////////////////////////////////////////////////////////
+  // bestspace register/unregister
+  //////////////////////////////////////////////////////////////////////////
+
+  bestspace_registry::bestspace_registry ()
+    : m_head (nullptr)
+    , m_mutex ()
+  {
+  }
+
+  bestspace_registry::~bestspace_registry ()
+  {
+    registry_entry *node;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    while (m_head)
+      {
+	node = m_head;
+	m_head = m_head->next;
+
+	delete node->entry;
+	delete node;
+      }
+  }
+
+  void
+  bestspace_registry::create (OID *class_oid, HFID *hfid)
+  {
+    registry_entry *node;
+
+    node = new registry_entry;
+    node->class_oid = *class_oid;
+    node->hfid = *hfid;
+    node->entry = new bestspace;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    assert (!find_entry (m_head, class_oid, hfid));
+    insert_entry (m_head, node);
+  }
+
+  void
+  bestspace_registry::create (OID *class_oid, HFID *hfid,
+			      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT])
+  {
+    registry_entry *node;
+
+    node = new registry_entry;
+    node->class_oid = *class_oid;
+    node->hfid = *hfid;
+    node->entry = new bestspace;
+    node->entry->initialize_by_entries (entries);
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    assert (!find_entry (m_head, class_oid, hfid));
+    insert_entry (m_head, node);
+  }
+
+  void
+  bestspace_registry::destroy (OID *class_oid, VFID *vfid)
+  {
+    registry_entry *node;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    node = get_node_from_list (m_head, class_oid, vfid);
+    if (node)
+      {
+	destroy_entry (node);
+      }
+  }
+
+  void
+  bestspace_registry::destroy (OID *class_oid, HFID *hfid)
+  {
+    registry_entry *node;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    node = get_node_from_list (m_head, class_oid, hfid);
+    if (node)
+      {
+	destroy_entry (node);
+      }
+  }
+
+  int
+  bestspace_registry::find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
+  {
+    if (heap_stats_find_best_page (&thread_ref, hfid, size, true, NULL, &page_watcher) == NULL)
+      {
+	return er_errid ();
+      }
+    return NO_ERROR;
+  }
+
+  int
+  bestspace_registry::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+			    PGBUF_WATCHER &page_watcher)
+  {
+    int error;
+
+    if (!class_oid || OID_ISNULL (class_oid) || class_oid->pageid == 193)
+      {
+	return find (thread_ref, hfid, size, page_watcher);
+      }
+
+    error = find_from_cache (thread_ref, class_oid, hfid, size, page_watcher);
+    if (error != ER_MHT_NOTFOUND)
+      {
+	return error;
+      }
+
+    return find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
+  }
+
+  int
+  bestspace_registry::find_from_cache (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+				       PGBUF_WATCHER &page_watcher)
+  {
+    registry_entry *cache;
+
+    cache = get_node_from_list (TLS_head, class_oid, hfid);
+    if (!cache)
+      {
+	return ER_MHT_NOTFOUND;
+      }
+
+    // make this cache the first (LRU)
+    insert_entry (TLS_head, cache);
+    return (cache->entry)->find (thread_ref, hfid, size, page_watcher);
+  }
+
+  int
+  bestspace_registry::find_from_global (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+					PGBUF_WATCHER &page_watcher)
+  {
+    registry_entry *cache;
+    bestspace *entry;
+
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    auto pair = find_entry (m_head, class_oid, hfid);
+    if (!pair)
+      {
+	// invalid class oid and hfid
+	return ER_MHT_NOTFOUND;
+      }
+    entry = (pair->second)->entry;
+
+    ulock.unlock ();
+
+    // register in TLS list
+    if (TLS_size < TLS_MAX_SIZE)
+      {
+	cache = new registry_entry;
+	cache->class_oid = *class_oid;
+	cache->hfid = *hfid;
+	cache->entry = entry;
+	TLS_size++;
+      }
+    else
+      {
+	cache = get_tail_from_list (TLS_head);
+	cache->class_oid = *class_oid;
+	cache->hfid = *hfid;
+	cache->entry = entry;
+      }
+    insert_entry (TLS_head, cache);
+    return entry->find (thread_ref, hfid, size, page_watcher);
+  }
+
+  void
+  bestspace_registry::insert_entry (registry_entry *&head, registry_entry *entry)
+  {
+    entry->next = head;
+    head = entry;
+  }
+
+  void
+  bestspace_registry::destroy_entry (registry_entry *entry)
+  {
+    delete entry->entry;
+    delete entry;
+  }
+
+  std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
+      bestspace_registry::find_entry (registry_entry *head, OID *class_oid, VFID *vfid)
+  {
+    registry_entry *prev;
+
+    for (prev = nullptr; head; prev = head, head = head->next)
+      {
+	if (OID_EQ (&head->class_oid, class_oid) && VFID_EQ (&head->hfid.vfid, vfid))
+	  {
+	    return std::make_pair (prev, head);
+	  }
+      }
+    return std::nullopt;
+  }
+
+  std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
+      bestspace_registry::find_entry (registry_entry *head, OID *class_oid, HFID *hfid)
+  {
+    registry_entry *prev;
+
+    for (prev = nullptr; head; prev = head, head = head->next)
+      {
+	if (OID_EQ (&head->class_oid, class_oid) && HFID_EQ (&head->hfid, hfid))
+	  {
+	    return std::make_pair (prev, head);
+	  }
+      }
+    return std::nullopt;
+  }
+
+  bestspace_registry::registry_entry *
+  bestspace_registry::get_node_from_list (registry_entry *&head, OID *class_oid, VFID *vfid)
+  {
+    auto pair = find_entry (head, class_oid, vfid);
+    if (!pair)
+      {
+	return nullptr;
+      }
+
+    if (pair->first)
+      {
+	(pair->first)->next = (pair->second)->next;
+      }
+    else
+      {
+	head = (pair->second)->next;
+      }
+    return pair->second;
+  }
+
+  bestspace_registry::registry_entry *
+  bestspace_registry::get_node_from_list (registry_entry *&head, OID *class_oid, HFID *hfid)
+  {
+    auto pair = find_entry (head, class_oid, hfid);
+    if (!pair)
+      {
+	return nullptr;
+      }
+
+    if (pair->first)
+      {
+	(pair->first)->next = (pair->second)->next;
+      }
+    else
+      {
+	head = (pair->second)->next;
+      }
+    return pair->second;
+  }
+
+  bestspace_registry::registry_entry *
+  bestspace_registry::get_tail_from_list (registry_entry *&head)
+  {
+    registry_entry *prev, *curr;
+
+    if (!head)
+      {
+	return nullptr;
+      }
+    for (prev = nullptr, curr = head; curr->next; prev = curr, curr = curr->next);
+    if (prev)
+      {
+	prev->next = nullptr;
+      }
+    else
+      {
+	head = nullptr;
+      }
+    return curr;
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // bestspace registry
+  //////////////////////////////////////////////////////////////////////////
+
+  bestspace_registry bestspaces;
 }

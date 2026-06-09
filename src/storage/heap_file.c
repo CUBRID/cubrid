@@ -33,6 +33,7 @@
 #include <string.h>
 #include <errno.h>
 
+#include "bestspace.hpp"
 #include "heap_file.h"
 
 #include "deduplicate_key.h"
@@ -198,9 +199,22 @@ struct heap_hdr_stats
 {
   /* the first must be class_oid */
   OID class_oid;
+
   VFID ovf_vfid;		/* Overflow file identifier (if any) */
+
   VPID next_vpid;		/* Next page (i.e., the 2nd page of heap file) */
+  VPID last_vpid;		/* Last page */
+
   int unfill_space;		/* Stop inserting when page has run below this. leave it for updates */
+
+  int num_pages;		/* Estimation of number of heap pages. Consult file manager if accurate number is needed */
+  int num_recs;			/* Estimation of number of objects in heap */
+  float recs_sumlen;		/* Estimation total length of records */
+
+  // *INDENT-OFF*
+  cubstorage::bestspace_entry bestspaces[1][56];
+  // *INDENT-ON*
+
   struct
   {
     int num_pages;		/* Estimation of number of heap pages. Consult file manager if accurate number is
@@ -224,14 +238,8 @@ struct heap_hdr_stats
     VPID full_search_vpid;
     VPID second_best[HEAP_NUM_BEST_SPACESTATS];
     HEAP_BESTSPACE best[HEAP_NUM_BEST_SPACESTATS];
-  } estimates;			/* Probably, the set of pages with more free space on the heap. Changes to any values
-				 * of this array (either page or the free space for the page) are not logged since
-				 * these values are only used for hints. These values may not be accurate at any given
-				 * time and the entries may contain duplicated pages. */
+  } estimates;
 
-  int reserve0_for_future;	/* Nothing reserved for future */
-  int reserve1_for_future;	/* Nothing reserved for future */
-  int reserve2_for_future;	/* Nothing reserved for future */
 };
 
 typedef struct heap_stats_entry HEAP_STATS_ENTRY;
@@ -631,8 +639,6 @@ static HEAP_FINDSPACE heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p
 							 HEAP_BESTSPACE * bestspace, int *idx_badspace,
 							 int record_length, int needed_space,
 							 HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
-static PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-					   HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
 static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				      VPID * hdr_vpid, bool scan_all, bool can_cycle);
 
@@ -3521,7 +3527,7 @@ heap_stats_find_page_in_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, H
  * as a side effect to reflect more accurate space on some of the
  * set of best pages.
  */
-static PAGE_PTR
+PAGE_PTR
 heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
 			   HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
 {
@@ -5339,10 +5345,23 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   /* Now insert header */
   memset (&heap_hdr, 0, sizeof (heap_hdr));
   heap_hdr.class_oid = *class_oid;
+
   VFID_SET_NULL (&heap_hdr.ovf_vfid);
+
   VPID_SET_NULL (&heap_hdr.next_vpid);
+  heap_hdr.last_vpid.volid = hfid->vfid.volid;
+  heap_hdr.last_vpid.pageid = hfid->hpgid;
 
   heap_hdr.unfill_space = (int) ((float) DB_PAGESIZE * prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
+
+  heap_hdr.bestspaces[0][0].freespace =
+    spage_max_space_for_new_record (thread_p, addr_hdr.pgptr) - sizeof (HEAP_HDR_STATS);
+  heap_hdr.bestspaces[0][0].volid = hfid->vfid.volid;
+  heap_hdr.bestspaces[0][0].pageid = hfid->hpgid;
+
+  heap_hdr.num_pages = 1;
+  heap_hdr.num_recs = 0;
+  heap_hdr.recs_sumlen = 0.0;
 
   heap_hdr.estimates.num_pages = 1;
   heap_hdr.estimates.num_recs = 0;
@@ -5429,6 +5448,15 @@ end:
   vacuum_log_add_dropped_file (thread_p, &hfid->vfid, class_oid, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   logpb_force_flush_pages (thread_p);
+
+  // skip in case of boot/internal heap
+  if (class_oid && !OID_ISNULL (class_oid))
+    {
+      cubstorage::bestspace_entry bestspaces[8][56];
+      std::memset (bestspaces[1], 0, sizeof (uint64_t) * 7 * 56);
+      std::memcpy (bestspaces[0], heap_hdr.bestspaces, sizeof (uint64_t) * 56);
+      cubstorage::bestspaces.create ((OID *) class_oid, hfid, bestspaces);
+    }
 
   return NO_ERROR;
 
@@ -20984,9 +21012,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
   if (home_hint_p == NULL)
     {
+      assert (!HFID_IS_NULL (&context->hfid));
+
       /* find and fix page for insert */
-      if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length,
-				     true, context->scan_cache_p, context->home_page_watcher_p) == NULL)
+      if (cubstorage::bestspaces.find (*thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+				       *context->home_page_watcher_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -21127,8 +21157,10 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
     }
 #endif
 
-  if (heap_stats_find_best_page (thread_p, &context->hfid, context->recdes_p->length, false,
-				 context->scan_cache_p, context->home_page_watcher_p) == NULL)
+  assert (!HFID_IS_NULL (&context->hfid));
+
+  if (cubstorage::bestspaces.find (*thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+				   *context->home_page_watcher_p) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
