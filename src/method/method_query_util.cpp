@@ -462,25 +462,11 @@ namespace cubmethod
   std::string convert_db_value_to_string (DB_VALUE *value, DB_VALUE *value_string)
   {
     const char *val_str = NULL;
-    int err, len;
-
-    DB_TYPE val_type = db_value_type (value);
-
-    if (val_type == DB_TYPE_NCHAR || val_type == DB_TYPE_VARNCHAR)
+    int err;
+    err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
+    if (err >= 0)
       {
-	err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARNCHAR));
-	if (err >= 0)
-	  {
-	    val_str = db_get_nchar (value_string, &len);
-	  }
-      }
-    else
-      {
-	err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
-	if (err >= 0)
-	  {
-	    val_str = db_get_char (value_string, &len);
-	  }
+	val_str = db_get_char (value_string);
       }
 
     return std::string (val_str);
@@ -718,9 +704,7 @@ namespace cubmethod
 	break;
 
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
       case DB_TYPE_VARCHAR:
-      case DB_TYPE_VARNCHAR:
       {
 	int def_size = db_get_string_size (def);
 	const char *def_str_p = db_get_string (def);

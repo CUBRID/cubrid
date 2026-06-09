@@ -75,8 +75,6 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
     case CCI_U_TYPE_ENUM:
     case CCI_U_TYPE_JSON:
     case CCI_U_TYPE_BIT:
@@ -106,8 +104,6 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
     {
     case CCI_U_TYPE_CHAR:
     case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
       {
 	int len = strlen (p + 1);
 
@@ -163,12 +159,12 @@ is_bind_with_size (char *buf, int *tot_val_size, int *info_size)
 
   if (p[0] == 'V')
     {
-      if (memcmp (p, "VARCHAR", 7) && memcmp (p, "VARBIT", 6) && memcmp (p, "VARNCHAR", 8))
+      if (memcmp (p, "VARCHAR", 7) && memcmp (p, "VARBIT", 6))
 	{
 	  return false;
 	}
     }
-  else if (memcmp (p, "CHAR", 4) && memcmp (p, "BIT", 3) && memcmp (p, "NCHAR", 5))
+  else if (memcmp (p, "CHAR", 4) && memcmp (p, "BIT", 3))
     {
       return false;
     }

@@ -35,14 +35,14 @@ SELECT 'stored_proc_arg', arg_name, '', sp_of.sp_name
 FROM   _db_stored_procedure_args WHERE arg_name IN :reserved
 UNION ALL
 SELECT 'user', name, '', ''
-FROM   db_user WHERE LOWER(name) IN :reserved
+FROM   _db_user WHERE LOWER(name) IN :reserved
 UNION ALL
 SELECT 'trigger', name, '', ''
-FROM   db_trigger WHERE name IN :reserved
+FROM   _db_trigger WHERE name IN :reserved
 UNION ALL
 SELECT 'trigger_attribute', target_attribute, '', name 
-FROM   db_trigger WHERE target_attribute IN :reserved
+FROM   _db_trigger WHERE target_attribute IN :reserved
 UNION ALL
 SELECT 'serial', name, '', ''
-FROM   db_serial WHERE name IN :reserved;
+FROM   _db_serial WHERE name IN :reserved;
 

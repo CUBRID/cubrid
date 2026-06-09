@@ -125,13 +125,7 @@
 #define FLAG_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(int,e0,e1)
 #define INT_PTR_EXCHANGE(e0,e1)    EXCHANGE_BUILDER(int *,e0,e1)
 
-#define BISET_EXCHANGE(s0,s1) \
-    do { \
-	BITSET tmp; \
-	BITSET_MOVE(tmp, s0); \
-	BITSET_MOVE(s0, s1); \
-	BITSET_MOVE(s1, tmp); \
-    } while (0)
+#define BITSET_EXCHANGE(s0,s1)     bitset_exchange(&(s0), &(s1))
 
 #define PUT_FLAG(cond, flag) \
     do { \
@@ -186,6 +180,7 @@ static void get_term_rank (QO_ENV * env, QO_TERM * term);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
+static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
@@ -447,6 +442,9 @@ qo_optimize_helper (QO_ENV * env)
   (void) parser_walk_tree (parser, tree, build_query_graph_function_index, &local_env, NULL, NULL);
   (void) add_hint (env, tree);
   add_using_index (env, tree->info.query.q.select.using_index);
+
+  /* adjust correlation level before analyzing term. TO_DO: add routines to adjust in mq_translate() */
+  parser_walk_leaves (parser, tree, get_local_subqueries_pre, env, NULL, NULL);
 
   /* add dep term */
   {
@@ -2915,6 +2913,11 @@ set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset)
        * for shared variables, and it doesn't really hurt anyone just
        * to ignore failures here.
        */
+      if (attr->node_type == PT_NAME)
+	{
+	  attr->info.name.histogram = seg->pt_node->info.name.histogram;
+	  attr->info.name.null_frequency = seg->pt_node->info.name.null_frequency;
+	}
       bitset_add (bitset, QO_SEG_IDX (seg));
     }
 
@@ -3374,6 +3377,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3392,6 +3396,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
@@ -4092,9 +4100,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   /*
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
-   * those pointers have to be maintained in the new array.  The proper
-   * way to make sure that they are consistent is to use the bitset_assign()
-   * macro, not just to do the bitcopy that memcpy() will do.
+   * those pointers have to be maintained in the new array.
    */
   tmp = NULL;
   if ((n + 1) > 0)
@@ -4103,25 +4109,38 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       if (tmp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
+	  env->nsubqueries--;
 	  return;
 	}
     }
   else
     {
+      env->nsubqueries--;
       return;
     }
 
-  memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
-  for (i = 0; i < n; i++)
-    {
-      QO_SUBQUERY *subq;
-      subq = &env->subqueries[i];
-      BITSET_MOVE (tmp[i].segs, subq->segs);
-      BITSET_MOVE (tmp[i].nodes, subq->nodes);
-      BITSET_MOVE (tmp[i].terms, subq->terms);
-    }
   if (env->subqueries)
     {
+      memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
+      for (i = 0; i < n; i++)
+	{
+	  QO_SUBQUERY *src, *dst;
+	  src = &env->subqueries[i];
+	  dst = &tmp[i];
+
+	  if (src->segs.setp == src->segs.set.word)
+	    {
+	      dst->segs.setp = dst->segs.set.word;
+	    }
+	  if (src->nodes.setp == src->nodes.set.word)
+	    {
+	      dst->nodes.setp = dst->nodes.set.word;
+	    }
+	  if (src->terms.setp == src->terms.set.word)
+	    {
+	      dst->terms.setp = dst->terms.set.word;
+	    }
+	}
       free_and_init (env->subqueries);
     }
   env->subqueries = tmp;
@@ -4135,7 +4154,6 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
   tmp->idx = n;
 }
-
 
 /*
  * get_local_subqueries_pre () - Builds vector of locally correlated
@@ -4393,6 +4411,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      if (spec->info.spec.id == arg->info.name.spec_id)
 		{
+		  p_node = QO_ENV_NODE (env, i);
 		  break;
 		}
 	    }
@@ -4406,60 +4425,53 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
       if (found && tree->info.query.q.select.leading)
 	{
-	  /* find last leading node */
-	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
+	  if (!tree->info.query.q.select.leading->next)
 	    {
-	      ;			/* nop */
-	    }
-	  for (i = 0; i < env->nnodes; i++)
-	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      if (spec->info.spec.id == arg->info.name.spec_id)
+	      /* If arg is one, it is the root node */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  last_ordered_idx = QO_NODE_IDX (node);
-		  break;
+		  node = QO_ENV_NODE (env, i);
+		  if (node != p_node)
+		    {		/* skip out the first ordered node */
+		      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+		    }
 		}
 	    }
-
-	  /* iterate over all nodes */
-	  for (i = 0; i < env->nnodes; i++)
+	  else
 	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      /* check for arg list */
-	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
+	      /* If there are two or more args, it only depends on the previous arg. */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  if (spec->info.spec.id == arg->info.name.spec_id)
+		  node = QO_ENV_NODE (env, i);
+		  spec = QO_NODE_ENTITY_SPEC (node);
+		  /* check for arg list */
+		  p_arg = NULL;
+		  for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
 		    {
-		      if (p_arg)
-			{	/* skip out the first leading spec */
-			  /* find prev node */
-			  for (k = 0; k < env->nnodes; k++)
-			    {
-			      p_node = QO_ENV_NODE (env, k);
-			      p_spec = QO_NODE_ENTITY_SPEC (p_node);
-			      if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+		      if (spec->info.spec.id == arg->info.name.spec_id)
+			{
+			  if (p_arg)
+			    {	/* skip out the first leading spec */
+			      /* find prev node */
+			      for (k = 0; k < env->nnodes; k++)
 				{
-				  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-				  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
-				  break;
+				  p_node = QO_ENV_NODE (env, k);
+				  p_spec = QO_NODE_ENTITY_SPEC (p_node);
+				  if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+				    {
+				      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)),
+						     &(QO_NODE_OUTER_DEP_SET (p_node)));
+				      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+				      break;
+				    }
 				}
 			    }
+			  break;	/* exit loop for arg traverse */
 			}
-		      break;	/* exit loop for arg traverse */
+		      p_arg = arg;	/* save previous arg */
 		    }
-		  p_arg = arg;	/* save previous arg */
-		}
-
-	      /* not found in arg list */
-	      if (!arg)
-		{
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
-		}
-
-	    }			/* for (i = ... ) */
+		}		/* for (i = ... ) */
+	    }
 	}
     }
 
@@ -5171,6 +5183,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int attr_id;
   QO_ATTR_CUM_STATS *cum_statsp;
   ATTR_STATS *attr_statsp;
+  int attr_hist_statsp_index = 0;
   BTREE_STATS *bt_statsp;
   int n_attrs;
   const char *name;
@@ -5179,6 +5192,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
+  HIST_STATS *hist_stats;
   bool is_reserved_name = false;
 
   if ((QO_SEG_PT_NODE (seg))->info.name.meta_class == PT_RESERVED)
@@ -5247,6 +5261,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
       stats = QO_GET_CLASS_STATS (class_info_entryp);
+      hist_stats = QO_GET_HIST_STATS (class_info_entryp);
       QO_ASSERT (env, stats != NULL);
       if (stats->attr_stats == NULL)
 	{
@@ -5268,8 +5283,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* search the attribute from the class information */
       attr_statsp = stats->attr_stats;
+      attr_hist_statsp_index = 0;
       n_attrs = stats->n_attrs;
-      for (j = 0; j < n_attrs; j++, attr_statsp++)
+      for (j = 0; j < n_attrs; j++, attr_statsp++, attr_hist_statsp_index++)
 	{
 	  if (attr_statsp->id == attr_id)
 	    {
@@ -5285,6 +5301,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
+
+      /* set histogram */
+      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
+	}
+      else
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	}
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -6028,13 +6056,13 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
    * 'env' attribute is the same in both, don't bother with it.
    */
   TERMCLASS_EXCHANGE (t0->term_class, t1->term_class);
-  BISET_EXCHANGE (t0->nodes, t1->nodes);
-  BISET_EXCHANGE (t0->segments, t1->segments);
+  BITSET_EXCHANGE (t0->nodes, t1->nodes);
+  BITSET_EXCHANGE (t0->segments, t1->segments);
   DOUBLE_EXCHANGE (t0->selectivity, t1->selectivity);
   INT_EXCHANGE (t0->rank, t1->rank);
   PT_NODE_EXCHANGE (t0->pt_expr, t1->pt_expr);
   INT_EXCHANGE (t0->location, t1->location);
-  BISET_EXCHANGE (t0->subqueries, t1->subqueries);
+  BITSET_EXCHANGE (t0->subqueries, t1->subqueries);
   JOIN_TYPE_EXCHANGE (t0->join_type, t1->join_type);
   INT_EXCHANGE (t0->can_use_index, t1->can_use_index);
   SEGMENTPTR_EXCHANGE (t0->index_seg[0], t1->index_seg[0]);
@@ -6785,7 +6813,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* for each attribute of this constraint */
   for (i = 0; *nseg_idxp < seg_idx_num; i++)
     {
-
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
 	  matched = false;
@@ -6802,7 +6829,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for
 		   * the last matching segment.
 		   */
-		  bitset_delset (&working);
 		  matched = true;
 		  count_matched_index_attributes++;
 		  break;
@@ -6813,19 +6839,19 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 	      seg_idx[*nseg_idxp] = -1;	/* not found matched segment */
 	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
 	    }			/* if (!matched) */
+
+	  if (*nseg_idxp == seg_idx_num)
+	    {
+	      break;
+	    }
 	}
 
-      if (*nseg_idxp == seg_idx_num)
-	{
-	  break;
-	}
       attrp = consp->attributes[i];
 
       matched = false;
       /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
       for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	{
-
 	  segp = QO_ENV_SEG (env, iseg);
 
 	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
@@ -7289,8 +7315,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
       if (qo_is_non_mvcc_class_with_index (class_entryp))
 	{
-	  /* Do not use index of db_serial/db_has_apply_info for scanning. Current index scanning is optimized for
-	   * MVCC, while db_serial and db_ha_apply_info have MVCC disabled.
+	  /* Do not use index of _db_serial/_db_ha_apply_info for scanning. Current index scanning is optimized for
+	   * MVCC, while _db_serial and _db_ha_apply_info have MVCC disabled.
 	   */
 	  constraints = NULL;
 	}
@@ -8458,7 +8484,6 @@ qo_seg_width (QO_SEGMENT * seg)
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       /* do guessing for variable character type */
       size = size * (2 / 3);
       break;
@@ -8753,8 +8778,6 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  bitset_delset (&order_nodes);
-
   /* In order to create a SORT-LIMIT plan, the query must have a valid limit. All other conditions for creating the
    * plan have been met.
    */
@@ -8789,10 +8812,12 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
     }
 
   env->use_sort_limit = QO_SL_USE;
+  bitset_delset (&order_nodes);
   return;
 
 sort_limit_possible:
   env->use_sort_limit = QO_SL_POSSIBLE;
+  bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   return;
 

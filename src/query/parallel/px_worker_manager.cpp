@@ -27,30 +27,52 @@
 #include "px_worker_manager.hpp"
 #include "px_worker_manager_global.hpp"
 
+#include "memory_alloc.h"
+#include "thread_manager.hpp"
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace parallel_query
 {
   worker_manager::worker_manager()
+    : m_active_tasks (0),
+      m_reserved_workers (0)
   {
-    m_reserved_workers = 0;
-    m_working_workers = 0;
   }
 
   worker_manager::~worker_manager()
   {
-    assert (m_reserved_workers == 0);
+    release_workers ();
   }
 
-  bool worker_manager::try_reserve_workers (int parallelism)
+  worker_manager *worker_manager::try_reserve_workers (int num_workers)
   {
-    bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
-    if (result)
+    assert (num_workers > 0);
+
+    int reserved = worker_manager_global::get_manager().try_reserve_workers (num_workers);
+    if (reserved == 0)
       {
-	m_reserved_workers += parallelism;
+	return nullptr;
       }
-    return result;
+
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+    assert (thread_p != nullptr);
+
+    worker_manager *manager = (worker_manager *) db_private_alloc (thread_p, sizeof (worker_manager));
+    if (manager == nullptr)
+      {
+	worker_manager_global::get_manager().release_workers (reserved);
+	return nullptr;
+      }
+
+    manager = placement_new (manager);
+
+    assert (manager->m_reserved_workers == 0);
+    manager->m_reserved_workers = reserved;
+    assert (manager->m_active_tasks.load () == 0);
+
+    return manager;
   }
 
   void worker_manager::release_workers ()
@@ -59,60 +81,34 @@ namespace parallel_query
       {
 	return;
       }
-    while (m_working_workers.load () > 0)
-      {
-	thread_sleep (1);
-      }
+
+    wait_workers ();
+
     worker_manager_global::get_manager().release_workers (m_reserved_workers);
     m_reserved_workers = 0;
+
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+    assert (thread_p != nullptr);
+
+    this->~worker_manager();
+    db_private_free (thread_p, this);
+  }
+
+  void worker_manager::wait_workers ()
+  {
+    assert (m_reserved_workers > 0);
+    while (m_active_tasks.load (std::memory_order_acquire) > 0)
+      {
+	std::this_thread::yield ();
+      }
   }
 
   void worker_manager::push_task (cubthread::entry_task *task)
   {
-    m_working_workers.fetch_add (1);
+    assert (task != nullptr);
+    assert (m_reserved_workers > 0);
+    assert (m_active_tasks.load () < m_reserved_workers);
+    m_active_tasks.fetch_add (1, std::memory_order_release);
     worker_manager_global::get_manager().push_task (task);
-    assert (m_working_workers.load () <= m_reserved_workers);
-  }
-
-  worker_manager_with_dedicated_pool::worker_manager_with_dedicated_pool()
-  {
-    m_reserved_workers = 0;
-    m_active_tasks = 0;
-    m_worker_pool = nullptr;
-  }
-
-  worker_manager_with_dedicated_pool::~worker_manager_with_dedicated_pool()
-  {
-    assert (m_reserved_workers == 0);
-    assert (m_active_tasks.load () == 0);
-    assert (m_worker_pool == nullptr);
-  }
-
-  bool worker_manager_with_dedicated_pool::try_reserve_workers (int parallelism, int task_queue_size)
-  {
-    bool result = worker_manager_global::get_manager().try_reserve_workers (parallelism);
-    if (result)
-      {
-	assert (m_worker_pool == nullptr);
-	m_reserved_workers += parallelism;
-	m_worker_pool = cubthread::get_manager()->create_worker_pool (parallelism, task_queue_size,
-			"parallel_query_worker_pool_with_task_queue", NULL, 1, false);
-      }
-    return result;
-  }
-
-  void worker_manager_with_dedicated_pool::release_workers ()
-  {
-    cubthread::get_manager()->destroy_worker_pool (m_worker_pool);
-    m_worker_pool = nullptr;
-    worker_manager_global::get_manager().release_workers (m_reserved_workers);
-    m_reserved_workers = 0;
-    assert (m_active_tasks.load () == 0);
-  }
-
-  void worker_manager_with_dedicated_pool::push_task (cubthread::entry_task *task)
-  {
-    m_active_tasks.fetch_add (1);
-    cubthread::get_manager()->push_task (m_worker_pool, task);
   }
 }

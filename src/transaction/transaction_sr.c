@@ -80,9 +80,9 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
+#ifndef CCI_XA
   /* dblink transaction commit first */
   QMGR_TRAN_STATUS dblink_tran = qmgr_check_dblink_trans (thread_p, false);
-
   if (dblink_tran == QMGR_TRAN_DBLINK_ABORTED)
     {
       /* transaction is aborted for dblink commit fail */
@@ -92,7 +92,7 @@ xtran_server_commit (THREAD_ENTRY * thread_p, bool retain_lock)
 #endif /* ENABLE_SYSTEMTAP */
       return TRAN_UNACTIVE_ABORTED_INFORMING_PARTICIPANTS;
     }
-
+#endif
   state = log_commit (thread_p, tran_index, retain_lock);
 
 #if defined(ENABLE_SYSTEMTAP)

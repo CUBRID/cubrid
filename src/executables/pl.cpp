@@ -215,7 +215,7 @@ main (int argc, char *argv[])
 
 	/* error message log file */
 	char er_msg_file[PATH_MAX];
-	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_pl.err", db_name.c_str ());
+	snprintf (er_msg_file, sizeof (er_msg_file) - 1, "pl/%s_pl.err", db_name.c_str ());
 	er_init (er_msg_file, ER_NEVER_EXIT);
       }
 
@@ -514,7 +514,7 @@ pl_status_server (const PL_SERVER_INFO pl_info, const std::string &db_name)
     cubpl::connection_view cv = connection_pool.claim ();
     if (cv->is_valid())
       {
-	cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS, 0);
+	cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_STATUS);
 	status = cv->send_buffer_args (header);
 	if (status != NO_ERROR)
 	  {
@@ -580,7 +580,7 @@ pl_ping_server (const PL_SERVER_INFO pl_info, const char *db_name, char *buf)
 
   if (cv->is_valid())
     {
-      cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
+      cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING);
       status = cv->send_buffer_args (header);
       if (status != NO_ERROR)
 	{

@@ -200,7 +200,8 @@ struct qo_index
  */
 #define QO_GET_CLASS_STATS(entryp) \
        ((entryp)->self_allocated ? (entryp)->stats : (entryp)->smclass->stats)
-
+#define QO_GET_HIST_STATS(entryp) \
+       ((entryp)->smclass->histogram)
 /*
  *  This structure is the head of a list of QO_INDEX_ENTRY index structures.
  *  The purpose for this node is to have a place to store cumulative
@@ -741,7 +742,6 @@ struct qo_term
 #define QO_TERM_MULTI_COL_SEGS(t)  (t)->multi_col_segs
 #define QO_TERM_MULTI_COL_CNT(t)   (t)->multi_col_cnt
 #define QO_TERM_PRED_ORDER(t)   (t)->pred_order
-
 
 #define QO_TERM_EQUAL_OP             1	/* is equal op ? */
 #define QO_TERM_RANGELIST            2	/* is RANGE (r1, r2, ...) ? */

@@ -23,6 +23,7 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <math.h>
 
 #include "optimizer.h"
 
@@ -116,6 +117,9 @@ static PT_NODE *qo_get_orderby_num_upper_bound_node (PARSER_CONTEXT * parser, PT
 						     bool * is_new_node);
 static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * index_entryp,
 					BITSET * multi_col_segs, BITSET * multi_col_range_segs, BITSET * index_segs);
+
+static QO_PLAN *qo_find_driving_scan_plan (QO_PLAN * plan);
+static void qo_apply_parallel_index_scan_threshold (QO_PLAN * plan);
 
 static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info);
 static void qo_clear_projection_info (QO_ENV * env, PROJECTION_INFO * info);
@@ -597,11 +601,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     {
       pos_cnt = outer_info->pred_count;
 
-      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      pos_list = (int *) malloc (pos_cnt * sizeof (int));
       if (pos_list == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (int) * pos_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
 	  goto error_exit;
 	}
 
@@ -640,11 +644,11 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
     {
       pos_cnt = inner_info->pred_count;
 
-      pos_list = (int *) malloc (sizeof (int) * pos_cnt);
+      pos_list = (int *) malloc (pos_cnt * sizeof (int));
       if (pos_list == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, sizeof (int) * pos_cnt);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
 	  goto error_exit;
 	}
 
@@ -697,7 +701,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
   return xasl;
@@ -711,8 +715,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
-      error = er_errid ();
+      assert_release_error (er_errid () != NO_ERROR);
     }
 
   return NULL;
@@ -1165,13 +1168,44 @@ add_sort_spec (QO_ENV * env, XASL_NODE * xasl, QO_PLAN * plan, DB_VALUE * ordby_
 	{
 	  xasl->ordbynum_flag = XASL_ORDBYNUM_FLAG_SCAN_CONTINUE;
 	}
+
+      xasl->ordbynum_val = ordby_val;
+
       limit_infop = qo_get_key_limit_from_ordbynum (parser, plan, xasl, false);
       if (limit_infop)
 	{
-	  xasl->orderby_limit = limit_infop->upper;
+	  if ((qo_is_iscan (subplan) || qo_is_iscan_from_orderby (subplan))
+	      && (subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_USE
+		  || subplan->skip_orderby_opt == QO_PLAN_SKIP_ORDERBY_CAN_USE))
+	    {
+	      assert (xasl->instnum_pred == NULL);
+	      assert (xasl->ordbynum_pred != NULL);
+	      assert (xasl->save_instnum_val == NULL);
+
+	      xasl->instnum_pred = xasl->ordbynum_pred;
+	      xasl->ordbynum_pred = NULL;
+
+	      xasl->save_instnum_val = xasl->instnum_val;
+	      xasl->instnum_val = xasl->ordbynum_val;
+	      xasl->instnum_flag = xasl->ordbynum_flag;
+
+	      xasl->ordbynum_val = NULL;
+	      xasl->ordbynum_flag = 0;
+
+	      KEY_INFO *key_infop = &xasl->spec_list->indexptr->key_info;
+	      key_infop->key_limit_l = limit_infop->lower;
+	      key_infop->key_limit_u = limit_infop->upper;
+	      key_infop->key_limit_reset = false;
+
+	      XASL_SET_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
+	    }
+	  else
+	    {
+	      xasl->orderby_limit = limit_infop->upper;
+	    }
+
 	  db_private_free (NULL, limit_infop);
 	}
-      xasl->ordbynum_val = ordby_val;
     }
 
   return xasl;
@@ -1727,7 +1761,7 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	       * Only PT_NAME segments are allowed,
 	       * except for function expressions that match an existing function-based index.
 	       */
-	      assert_release (QO_SEG_FUNC_INDEX (seg));
+	      assert_release_error (QO_SEG_FUNC_INDEX (seg));
 	      /* Nothing to do */
 	    }
 	}
@@ -1874,15 +1908,12 @@ check_hashjoin_xasl (QO_ENV * env, XASL_NODE * xasl)
 	}
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
   return xasl;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
-    {
-      assert_release (false);
-    }
+  assert_release_error (er_errid () != NO_ERROR);
 
   return NULL;
 }
@@ -2261,7 +2292,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			  }
 		      }
 
-		    if (pt_is_expr_node (left) || pt_is_function (left))
+		    if (!pt_is_name_node (left))
 		      {
 			/* append to the expr list */
 			left_elist = parser_append_node (pt_point (parser, left), left_elist);
@@ -2272,7 +2303,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 			bitset_union (&plan_segs, &(QO_TERM_SEGS (term)));
 		      }
 
-		    if (pt_is_expr_node (rght) || pt_is_function (rght))
+		    if (!pt_is_name_node (rght))
 		      {
 			/* append to the expr list */
 			rght_elist = parser_append_node (pt_point (parser, rght), rght_elist);
@@ -2299,6 +2330,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    left_list = parser_append_node (left_nlist, left_elist);
 	    left_xasl = make_buildlist_proc (env, left_list);
+	    left_xasl->parallelism = xasl->parallelism;
 	    left_xasl = gen_outer (env, outer, &EMPTY_SET, NULL, NULL, left_xasl);
 	    bitset_assign (&((outer->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2312,6 +2344,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* make expr, name list */
 	    rght_list = parser_append_node (rght_nlist, rght_elist);
 	    rght_xasl = make_buildlist_proc (env, rght_list);
+	    rght_xasl->parallelism = xasl->parallelism;
 	    rght_xasl = gen_outer (env, inner, &EMPTY_SET, NULL, NULL, rght_xasl);
 	    bitset_assign (&((inner->info)->projected_segs), &temp_segs);	/* restore */
 
@@ -2587,18 +2620,44 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *hashjoin_xasl = NULL;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
+  int parallelism;
+
   int error = NO_ERROR;
 
   assert (env != NULL);
-  assert (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN
-	  && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
+  assert (plan != NULL);
+  assert (plan->plan_type == QO_PLANTYPE_JOIN);
+  assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
   assert (pred_set != NULL);
   assert (xasl != NULL);
+  assert (xasl->selected_upd_list == NULL);
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
+
+  switch (plan->parallel_opt_use)
+    {
+    case PLAN_PARALLEL_OPT_USE:
+      parallelism = xasl->parallelism;
+      break;
+
+    case PLAN_PARALLEL_OPT_NO:
+    case PLAN_PARALLEL_OPT_CANNOT_USE:
+      parallelism = 0;		/* disable */
+      break;
+
+    case PLAN_PARALLEL_OPT_CAN_USE:
+      parallelism = -1;		/* auto-compute */
+      break;
+
+    default:
+      /* impossible case */
+      assert (false);
+      parallelism = 0;
+      break;
+    }
 
   /* projection_info */
   error = qo_init_projection_info (env, plan, pred_set, &projection_info);
@@ -2617,6 +2676,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  outer_xasl->parallelism = parallelism;
 
   outer_xasl = gen_outer (env, outer_plan, &EMPTY_SET, NULL, NULL, outer_xasl);
   if (outer_xasl == NULL)
@@ -2631,6 +2691,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  inner_xasl->parallelism = parallelism;
 
   inner_xasl = gen_outer (env, inner_plan, &EMPTY_SET, NULL, NULL, inner_xasl);
   if (inner_xasl == NULL)
@@ -2645,6 +2706,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     {
       goto error_exit;
     }
+  hashjoin_xasl->parallelism = parallelism;
 
   /* buildlist_proc */
   xasl = add_uncorrelated (env, xasl, hashjoin_xasl);
@@ -2664,7 +2726,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
       goto error_exit;
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   qo_clear_projection_info (env, &projection_info);
@@ -2672,10 +2734,13 @@ cleanup:
   return xasl;
 
 error_exit:
-  if (er_errid () == NO_ERROR)
+  if (pt_has_error (QO_ENV_PARSER (env)))
     {
-      assert_release (false);
+      pt_report_to_ersys (QO_ENV_PARSER (env), PT_SEMANTIC);
+      pt_reset_error (QO_ENV_PARSER (env));
     }
+
+  assert_release_error (er_errid () != NO_ERROR);
 
   xasl = NULL;
 
@@ -2813,7 +2878,7 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
 	  summary->fixed_io_cost = plan->fixed_io_cost;
 	  summary->variable_cpu_cost = plan->variable_cpu_cost;
 	  summary->variable_io_cost = plan->variable_io_cost;
-	  summary->cardinality = (plan->info)->cardinality;
+	  summary->cardinality = (plan->info)->group_rows;
 	  summary->xasl = xasl;
 	  select->info.query.q.select.qo_summary = summary;
 	}
@@ -2826,11 +2891,186 @@ preserve_info (QO_ENV * env, QO_PLAN * plan, XASL_NODE * xasl)
       if (plan != NULL && xasl != NULL)
 	{
 	  xasl->projected_size = (plan->info)->projected_size;
-	  xasl->cardinality = (plan->info)->cardinality;
+	  /* If no aggregate function, group_rows is the same as cardinality. */
+	  xasl->cardinality = (plan->info)->group_rows;
 	}
     }
 
   return xasl;
+}
+
+/*
+ * qo_find_driving_scan_plan () - Descend the plan tree to the leftmost scan
+ *   return: leftmost QO_PLANTYPE_SCAN plan, or NULL if none
+ *   plan(in): root plan
+ */
+static QO_PLAN *
+qo_find_driving_scan_plan (QO_PLAN * plan)
+{
+  while (plan != NULL)
+    {
+      if (plan->plan_type == QO_PLANTYPE_JOIN)
+	{
+	  plan = plan->plan_un.join.outer;
+	}
+      else if (plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type != SORT_LIMIT)
+	{
+	  /* SORT_LIMIT excluded: top-N early-stop defeated by parallel leaf-page split. */
+	  plan = plan->plan_un.sort.subplan;
+	}
+      else
+	{
+	  break;
+	}
+    }
+  if (plan != NULL && plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return plan;
+    }
+  return NULL;
+}
+
+/*
+ * qo_apply_parallel_index_scan_threshold () - Decide whether parallel index
+ *                                             scan is worthwhile for the
+ *                                             driving table, and write the
+ *                                             degree back to its PT_SPEC.
+ *   return: void
+ *   plan(in): root plan
+ *
+ * Note: When the driving table is an index-family scan, compute
+ *       metric = ceil (sel * leaf_pages).  If the metric is below the
+ *       session threshold (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD) or
+ *       any required input is missing, mark the spec with
+ *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
+ *       degree and record it on the spec so xasl_generation propagates
+ *       it to the server exactly like a user hint.
+ *       An explicit PARALLEL(N) hint bypasses the metric check.
+ */
+static void
+qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
+{
+  QO_PLAN *driving;
+  PT_NODE *spec;
+  PT_NODE *select;
+  QO_NODE_INDEX_ENTRY *index_entry;
+  QO_ATTR_CUM_STATS *cum_stats;
+  QO_NODE *nodep;
+  QO_TERM *termp;
+  BITSET_ITERATOR iter;
+  double sel;
+  double metric;
+  int threshold;
+  int cap;
+  int degree;
+  int t;
+  bool has_hint;
+
+  driving = qo_find_driving_scan_plan (plan);
+  if (driving == NULL)
+    {
+      return;
+    }
+
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+    {
+      return;
+    }
+
+  if (driving->info == NULL || driving->info->env == NULL)
+    {
+      return;
+    }
+
+  spec = QO_NODE_ENTITY_SPEC (driving->plan_un.scan.node);
+  if (spec == NULL)
+    {
+      return;
+    }
+
+  select = QO_ENV_PT_TREE (driving->info->env);
+  if (select == NULL || !PT_IS_SELECT (select))
+    {
+      return;
+    }
+
+  has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
+  if (has_hint)
+    {
+      /* PRM_ID_PARALLELISM=0 must veto hints; PARALLEL(N) otherwise bypasses global disable. */
+      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+      if (cap <= 0 || spec->info.spec.num_parallel_threads <= 1)
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	}
+      else if (spec->info.spec.num_parallel_threads > cap)
+	{
+	  spec->info.spec.num_parallel_threads = cap;
+	}
+      return;
+    }
+
+  index_entry = driving->plan_un.scan.index;
+  if (index_entry == NULL)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  cum_stats = &index_entry->cum_stats;
+  if (!cum_stats->is_indexed || cum_stats->pages <= 0)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  nodep = driving->plan_un.scan.node;
+  sel = 1.0;
+  for (t = bitset_iterate (&(driving->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      sel *= QO_TERM_SELECTIVITY (termp);
+    }
+  if (sel > 1.0)
+    {
+      sel = 1.0;
+    }
+  if (sel < 0.0)
+    {
+      sel = 0.0;
+    }
+
+  threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
+  metric = ceil (sel * (double) cum_stats->pages);
+
+  if (metric < (double) threshold)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  {
+    UINT64 x = (UINT64) (metric / (threshold > 0 ? (double) threshold : 1.0));
+    /* degree = floor(log2(x)) + 2, matching compute_parallel_degree's start_degree=2 formula */
+    degree = (x <= 1) ? 2 : ((63 - __builtin_clzll (x)) + 2);
+  }
+  cap = prm_get_integer_value (PRM_ID_PARALLELISM);
+  if (cap <= 0)
+    {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+  if (degree > cap)
+    {
+      degree = cap;
+    }
+  if (degree > PRM_MAX_PARALLELISM)
+    {
+      degree = PRM_MAX_PARALLELISM;
+    }
+
+  spec->info.spec.num_parallel_threads = degree;
+  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_PARALLEL_THREAD);
 }
 
 /*
@@ -2857,6 +3097,8 @@ qo_to_xasl (QO_PLAN * plan, xasl_node * xasl)
 
   if (plan && xasl && (env = (plan->info)->env))
     {
+      qo_apply_parallel_index_scan_threshold (plan);
+
       xasl = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, xasl);
 
       lastxasl = xasl;
@@ -5431,6 +5673,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   PT_NODE *term_expr, *pred_node;
   PT_NODE *outer_part, *inner_part;
   PT_NODE *name_list;
+  PT_NODE *hash_key = NULL;
 
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
@@ -5481,7 +5724,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  BITSET_CLEAR (temp_segs_set);
 
 	  term_expr = QO_TERM_PT_EXPR (term);
-	  assert_release (term_expr->info.expr.op != PT_RANGE);
+
+	  if (term_expr->info.expr.op == PT_RANGE)
+	    {
+	      /* impossible case */
+	      assert_release_error (false);
+	      goto error_exit;
+	    }
 
 	  qo_expr_segs (env, pt_left_part (term_expr), &temp_segs_set);
 
@@ -5498,17 +5747,17 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  else
 	    {
 	      /* impossible case */
-	      assert (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
-	  if (pt_is_expr_node (outer_part) || pt_is_function (outer_part))
+	  if (!pt_is_name_node (outer_part))
 	    {
 	      outer_info->expr_list = parser_append_node (pt_point (parser, outer_part), outer_info->expr_list);
 	      bitset_add (&outer_info->exprs_set, term_index);
 	    }
 
-	  if (pt_is_expr_node (inner_part) || pt_is_function (inner_part))
+	  if (!pt_is_name_node (inner_part))
 	    {
 	      inner_info->expr_list = parser_append_node (pt_point (parser, inner_part), inner_info->expr_list);
 	      bitset_add (&inner_info->exprs_set, term_index);
@@ -5584,7 +5833,15 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	}
     }
 
+  /* hash_key */
+  hash_key = pt_make_integer_value (parser, -1);
+  if (hash_key == NULL)
+    {
+      goto error_exit;
+    }
+
   /* outer_info */
+  outer_info->expr_list = parser_append_node (outer_info->expr_list /* back */ , hash_key /* front */ );
   outer_info->expr_count = pt_length_of_list (outer_info->expr_list);
 
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
@@ -5593,17 +5850,25 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   outer_info->name_count = pt_length_of_list (outer_info->name_list);
 
   outer_info->expr_name_list =
-    parser_append_node (outer_info->name_list /* node */ , outer_info->expr_list /* list */ );
+    parser_append_node (outer_info->name_list /* back */ , outer_info->expr_list /* front */ );
   assert (outer_info->expr_name_list != NULL);
 
   outer_info->expr_name_count = pt_length_of_list (outer_info->expr_name_list);
   assert (outer_info->expr_name_count > 0);
   assert (outer_info->expr_name_count == outer_info->expr_count + outer_info->name_count);
-  assert (outer_info->expr_count == bitset_cardinality (&outer_info->exprs_set));
+  assert (outer_info->expr_count == bitset_cardinality (&outer_info->exprs_set) + 1 /* hash_key */ );
 
   outer_info->pred_count = pt_length_of_list (outer_info->pred_list);
 
+  /* hash_key */
+  hash_key = pt_make_integer_value (parser, -1);
+  if (hash_key == NULL)
+    {
+      goto error_exit;
+    }
+
   /* inner_info */
+  inner_info->expr_list = parser_append_node (inner_info->expr_list /* back */ , hash_key /* front */ );
   inner_info->expr_count = pt_length_of_list (inner_info->expr_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
@@ -5612,13 +5877,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
 
   inner_info->expr_name_list =
-    parser_append_node (inner_info->name_list /* node */ , inner_info->expr_list /* list */ );
+    parser_append_node (inner_info->name_list /* back */ , inner_info->expr_list /* front */ );
   assert (inner_info->expr_name_list != NULL);
 
   inner_info->expr_name_count = pt_length_of_list (inner_info->expr_name_list);
   assert (inner_info->expr_name_count > 0);
   assert (inner_info->expr_name_count == inner_info->expr_count + inner_info->name_count);
-  assert (inner_info->expr_count == bitset_cardinality (&inner_info->exprs_set));
+  assert (inner_info->expr_count == bitset_cardinality (&inner_info->exprs_set) + 1 /* hash_key */ );
 
   inner_info->pred_count = pt_length_of_list (inner_info->pred_list);
 
@@ -5649,7 +5914,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
   final_info->name_count = pt_length_of_list (final_info->name_list);
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
 cleanup:
@@ -5666,7 +5931,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 
@@ -5827,8 +6092,10 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 
   outer_expr = outer_info->expr_list;
   inner_expr = inner_info->expr_list;
-  outer_expr_pos = 0;
-  inner_expr_pos = 0;
+
+  /* after hash_key */
+  outer_expr_pos = 1;
+  inner_expr_pos = 1;
 
   value_index = 0;
 
@@ -5865,7 +6132,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (seg_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5876,7 +6143,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (found_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -5907,7 +6174,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (seg_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 	  assert (bitset_next_member (&seg_iter) == -1);
@@ -5918,7 +6185,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  if (found_index == -1)
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -5991,7 +6258,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	  else
 	    {
 	      /* impossible case */
-	      assert_release (false);
+	      assert_release_error (false);
 	      goto error_exit;
 	    }
 
@@ -6022,7 +6289,7 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	}
     }
 
-  ASSERT_NO_ERROR ();
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
   assert (!pt_has_error (parser));
 
 cleanup:
@@ -6039,7 +6306,7 @@ error_exit:
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      assert_release (false);
+      assert_release_error (er_errid () != NO_ERROR);
       error = er_errid ();
     }
 

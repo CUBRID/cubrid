@@ -109,12 +109,18 @@ extern "C"
     CAS_CHANGE_MODE_DEFAULT = CAS_CHANGE_MODE_AUTO
   } CAS_CHANGE_MODE;
 
+  typedef int T_BROKER_VERSION;
+
+
+
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
+
+#define MAX_HA_DBINFO_LENGTH    (SRV_CON_DBNAME_SIZE + MAX_CONN_INFO_LENGTH)
 
 #define MSG_HEADER_INFO_SIZE        CAS_INFO_SIZE
 #define MSG_HEADER_MSG_SIZE         ((int) sizeof(int))
@@ -353,9 +359,7 @@ extern "C"
                 *((char **) (MSG_P)) = (char *) "";		\
                 break;						\
               }							\
-	} while (0)
-
-  typedef int T_BROKER_VERSION;
+              } while (0)
 
   extern const char *cas_bi_get_broker_info (void);
   extern char cas_bi_get_dbms_type (void);

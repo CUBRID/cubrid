@@ -32,6 +32,7 @@ package com.cubrid.plcsql.compiler.serverapi;
 
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.data.ColumnInfo;
+import com.cubrid.jsp.data.Dependency;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -52,33 +53,39 @@ public class SqlSemantics {
 
     // for normal return
     public int kind;
+    public boolean hasTableAccess;
     public String rewritten;
-    public List<PlParamInfo>
-            hostExprs; // host variables and auto parameters and their SQL types required in their
-    // locations
+    public List<PlParamInfo> hostExprs; // host variables and auto parameters
     public List<ColumnInfo> selectList; // (only for select statements) columns and their SQL types
     public List<String>
             intoTargetStrs; // (only for select stetements with an into-clause) into variables
+    public List<Dependency>
+            dependencies; // db objects (pairs of type and name) that this Static SQL uses
 
     public SqlSemantics(
             int seqNo,
             int kind,
+            boolean hasTableAccess,
             String rewritten,
             List<PlParamInfo> hostExprs,
             List<ColumnInfo> selectList,
-            List<String> intoTargetStrs) {
+            List<String> intoTargetStrs,
+            List<Dependency> dependencies) {
 
         this.seqNo = seqNo;
         this.kind = kind;
+        this.hasTableAccess = hasTableAccess;
         this.rewritten = rewritten;
         this.hostExprs = hostExprs;
         this.selectList = selectList;
         this.intoTargetStrs = intoTargetStrs;
+        this.dependencies = dependencies;
     }
 
     public SqlSemantics(CUBRIDUnpacker unpacker) {
         this.seqNo = unpacker.unpackInt();
         this.kind = unpacker.unpackInt();
+        this.hasTableAccess = (unpacker.unpackInt() == 1);
         this.rewritten = unpacker.unpackCString();
 
         if (this.kind < 0) {
@@ -108,6 +115,14 @@ public class SqlSemantics {
             intoTargetStrs = new ArrayList<>();
             for (int i = 0; i < intoTargetsCnt; i++) {
                 intoTargetStrs.add(unpacker.unpackCString());
+            }
+        }
+
+        int dependenciesCnt = unpacker.unpackInt();
+        if (dependenciesCnt > 0) {
+            dependencies = new ArrayList<>();
+            for (int i = 0; i < dependenciesCnt; i++) {
+                dependencies.add(new Dependency(unpacker));
             }
         }
     }

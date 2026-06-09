@@ -200,10 +200,11 @@ static UTIL_ARG_MAP ua_Addvol_Option_Map[] = {
   {ADDVOL_VOLUME_SIZE_S, {ARG_STRING}, {0}},
   {ADDVOL_FILE_PATH_S, {ARG_STRING}, {0}},
   {ADDVOL_COMMENT_S, {ARG_STRING}, {0}},
-  {ADDVOL_PURPOSE_S, {ARG_STRING}, {(void *) "generic"}},
+  {ADDVOL_PURPOSE_S, {ARG_STRING}, {0}},
   {ADDVOL_SA_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_CS_MODE_S, {ARG_BOOLEAN}, {0}},
   {ADDVOL_MAX_WRITESIZE_IN_SEC_S, {ARG_STRING}, {0}},
+  {ADDVOL_VOLTYPE_S, {ARG_STRING}, {0}},
   {0, {0}, {0}}
 };
 
@@ -216,6 +217,7 @@ static GETOPT_LONG ua_Addvol_Option[] = {
   {ADDVOL_SA_MODE_L, 0, 0, ADDVOL_SA_MODE_S},
   {ADDVOL_CS_MODE_L, 0, 0, ADDVOL_CS_MODE_S},
   {ADDVOL_MAX_WRITESIZE_IN_SEC_L, 1, 0, ADDVOL_MAX_WRITESIZE_IN_SEC_S},
+  {ADDVOL_VOLTYPE_L, 1, 0, ADDVOL_VOLTYPE_S},
   {0, 0, 0, 0}
 };
 
@@ -331,6 +333,31 @@ static GETOPT_LONG ua_Diag_Option[] = {
   {DIAG_EMERGENCY_L, 0, 0, DIAG_EMERGENCY_S},
   {DIAG_CLASS_NAME_L, 1, 0, DIAG_CLASS_NAME_S},
   {DIAG_INPUT_FILE_L, 1, 0, DIAG_INPUT_FILE_S},
+  {0, 0, 0, 0}
+};
+
+static UTIL_ARG_MAP ua_Filemgr_Option_Map[] = {
+  {OPTION_STRING_TABLE, {0}, {0}},
+  {CLEANFILEDB_SA_MODE_S, {ARG_BOOLEAN}, {0}},
+  {CLEANFILEDB_CS_MODE_S, {ARG_BOOLEAN}, {0}},
+  {CLEANFILEDB_OUTPUT_FILE_S, {ARG_STRING}, {0}},
+  {CLEANFILEDB_DUMP_FILE_LIST_S, {ARG_BOOLEAN}, {0}},
+  {CLEANFILEDB_CLEAN_INVALID_FILE_S, {ARG_BOOLEAN}, {0}},
+#if !defined(NDEBUG)
+  {CLEANFILEDB_DELETE_TARGET_FILE_S, {ARG_STRING}, {0}},
+#endif
+  {0, {0}, {0}}
+};
+
+static GETOPT_LONG ua_Filemgr_Option[] = {
+  {CLEANFILEDB_SA_MODE_L, 0, 0, CLEANFILEDB_SA_MODE_S},
+  {CLEANFILEDB_CS_MODE_L, 0, 0, CLEANFILEDB_CS_MODE_S},
+  {CLEANFILEDB_OUTPUT_FILE_L, 1, 0, CLEANFILEDB_OUTPUT_FILE_S},
+  {CLEANFILEDB_DUMP_FILE_LIST_L, 0, 0, CLEANFILEDB_DUMP_FILE_LIST_S},
+  {CLEANFILEDB_CLEAN_INVALID_FILE_L, 0, 0, CLEANFILEDB_CLEAN_INVALID_FILE_S},
+#if !defined(NDEBUG)
+  {CLEANFILEDB_DELETE_TARGET_FILE_L, 1, 0, CLEANFILEDB_DELETE_TARGET_FILE_S},
+#endif
   {0, 0, 0, 0}
 };
 
@@ -950,6 +977,7 @@ static UTIL_MAP ua_Utility_Map[] = {
   {OPTIMIZEDB, SA_ONLY, 1, UTIL_OPTION_OPTIMIZEDB, "optimizedb", ua_Optimize_Option, ua_Optimize_Option_Map},
   {INSTALLDB, SA_ONLY, 1, UTIL_OPTION_INSTALLDB, "installdb", ua_Install_Option, ua_Install_Option_Map},
   {DIAGDB, SA_ONLY, 1, UTIL_OPTION_DIAGDB, "diagdb", ua_Diag_Option, ua_Diag_Option_Map},
+  {CLEANFILEDB, SA_CS, 1, UTIL_OPTION_CLEANFILEDB, "cleanfiledb", ua_Filemgr_Option, ua_Filemgr_Option_Map},
   {PATCHDB, SA_ONLY, 2, UTIL_OPTION_PATCHDB, "patchdb", ua_Patch_Option, ua_Patch_Option_Map},
   {CHECKDB, SA_CS, 1, UTIL_OPTION_CHECKDB, "checkdb", ua_Check_Option, ua_Check_Option_Map},
   {ALTERDBHOST, SA_ONLY, 1, UTIL_OPTION_ALTERDBHOST, "alterdbhost", ua_Alterdbhost_Option, ua_Alterdbhost_Option_Map},

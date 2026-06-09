@@ -32,8 +32,12 @@
 #include "thread_entry_task.hpp"
 #include "thread_task.hpp"
 #include "thread_waiter.hpp"
+#if defined (SERVER_MODE)
+#include "thread_worker_pool_impl.hpp"
+#endif
 
 // other module includes
+#include "count_registry.hpp"
 #include "base_flag.hpp"
 
 #include <mutex>
@@ -55,14 +59,11 @@ namespace cubthread
 {
 
   // forward definition
-  template <typename Context>
+  class connection;
   class worker_pool;
   class looper;
   class daemon;
   class daemon_entry_manager;
-
-  // alias for worker_pool<entry>
-  using entry_workpool = worker_pool<entry>;
 
   // cubthread::manager
   //
@@ -96,18 +97,24 @@ namespace cubthread
   //
   //  how to use:
   //     1. daemon -
+  //	      REGISTER_DAEMON (name);
   //          daemon *my_daemon = cubthread::get_manager ()->create_daemon (daemon_looper, daemon_task_p);
   //          // daemon loops and execute task on each iteration
   //          cubthread::get_manager ()->destroy_daemon (my_daemon);
   //
-  //     2. entry_workpool -
-  //          entry_workpool *my_workpool = cubthread::get_manager ()->create_worker_pool (MAX_THREADS, MAX_JOBS);
-  //          cubthread::get_manager ()->push_task (entry_workpool, entry_task_p);
+  //     2. worker_pool -
+  //	      REGISTER_WORKERPOOL (name, getter);
+  //          worker_pool *my_workpool = cubthread::get_manager ()->create_worker_pool<pool_type> (MAX_THREADS, MAX_JOBS);
+  //          cubthread::get_manager ()->push_task (my_workpool, entry_task_p);
   //          cubthread::get_manager ()->destroy_worker_pool (my_workpool);
   //
   class manager
   {
     public:
+      using connection_registry_t = cubbase::count_registry<connection>;
+      using workerpool_registry_t = cubbase::count_registry<worker_pool>;
+      using daemon_registry_t = cubbase::count_registry<daemon>;
+
       manager ();
       ~manager ();
 
@@ -123,32 +130,21 @@ namespace cubthread
       // worker pool management
       //////////////////////////////////////////////////////////////////////////
 
-      // create a entry_workpool with pool_size number of threads
+      // create a worker pool with pool_size number of threads
       // notes: if there are not pool_size number of entries available, worker pool is not created and NULL is returned
       //        signature emulates worker_pool constructor signature
-      entry_workpool *create_worker_pool (std::size_t pool_size, std::size_t task_max_count, const char *name,
-					  entry_manager *context_manager, std::size_t core_count,
-					  bool debug_logging, bool pool_threads = false,
-					  wait_seconds wait_for_task_time = std::chrono::seconds (5));
+      template<typename Res, typename ... CtArgs>
+      Res *create_worker_pool (std::size_t pool_size, std::size_t core_count, CtArgs &&... args);
 
-      // destroy worker pool
-      void destroy_worker_pool (entry_workpool *&worker_pool_arg);
+      template <typename Res>
+      void destroy_worker_pool (Res *&worker_pool_arg);
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (entry_workpool *worker_pool_arg, entry_task *exec_p);
+      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p);
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (entry_workpool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
-
-      // try to execute task if there are available thread in worker pool
-      // if worker_pool_arg is NULL, the task is executed immediately
-      bool try_task (entry &thread_p, entry_workpool *worker_pool_arg, entry_task *exec_p);
-
-      // return if pool is full
-      // for SERVER_MODE see worker_pool::is_full
-      // for SA_MODE it is always false
-      bool is_pool_full (entry_workpool *worker_pool_arg);
+      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash, bool method_mode);
 
       //////////////////////////////////////////////////////////////////////////
       // daemon management
@@ -167,12 +163,12 @@ namespace cubthread
 
       // create daemon thread
       //
-      // note: signature should match context-based daemon constructor. only exception is context manager which is
+      // note: signature should match context-based daemon constructor. only exception is entry manager which is
       //       moved at the end to allow a default value
       //
       // todo: remove default daemon name
-      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p, const char *daemon_name = "",
-			     entry_manager *context_manager = NULL);
+      daemon *create_daemon (const looper &looper_arg, entry_task *exec_p,
+			     const char *daemon_name = "", entry_manager *entry_mgr = NULL);
       // destroy daemon thread
       void destroy_daemon (daemon *&daemon_arg);
 
@@ -200,6 +196,11 @@ namespace cubthread
 	return m_all_entries;
       }
 
+      entry_manager &get_entry_manager (void)
+      {
+	return m_entry_manager;
+      }
+
       lockfree::tran::system &get_lockfree_transys ()
       {
 	return *m_lf_tran_sys;
@@ -219,6 +220,18 @@ namespace cubthread
       template <typename Func, typename ... Args>
       void map_entries (Func &&func, Args &&... args);
 
+      void clear_all_holder_anchor (void)
+      {
+	for (std::size_t it = 0; it < m_max_threads; it++)
+	  {
+	    m_all_entries[it].m_holder_anchor = NULL;
+	  }
+      }
+
+      // claim/retire entries
+      entry *claim_entry (void);
+      void retire_entry (entry &entry_p);
+
     private:
 
       // define friend classes/functions to access claim_entry/retire_entry functions
@@ -229,13 +242,9 @@ namespace cubthread
       // private type aliases
       using entry_dispatcher = resource_shared_pool<entry>;
 
-      // claim/retire entries
-      entry *claim_entry (void);
-      void retire_entry (entry &entry_p);
-
-      // generic implementation to create and destroy resources (specialize through daemon and entry_workpool)
-      template <typename Res, typename ... CtArgs>
-      Res *create_and_track_resource (std::vector<Res *> &tracker, size_t entries_count, CtArgs &&... args);
+      // generic implementation to create and destroy resources (specialize through daemon and worker pool)
+      template <typename Res, typename Base, typename ... CtArgs>
+      Res *create_and_track_resource (std::vector<Base *> &tracker, size_t entries_count, CtArgs &&... args);
       template <typename Res>
       void destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count);
       template <typename Res>
@@ -249,7 +258,7 @@ namespace cubthread
       // guard for thread resources
       std::mutex m_entries_mutex;
       // worker pools
-      std::vector<entry_workpool *> m_worker_pools;
+      std::vector<worker_pool *> m_worker_pools;
       // daemons
       std::vector<daemon *> m_daemons;
       // daemons without entries
@@ -261,12 +270,23 @@ namespace cubthread
       entry_dispatcher *m_entry_dispatcher;
       // available entries count
       std::size_t m_available_entries_count;
-      entry_manager *m_entry_manager;
-      daemon_entry_manager *m_daemon_entry_manager;
+      entry_manager m_entry_manager;
+      daemon_entry_manager m_daemon_entry_manager;
 
       // lock-free transaction system
       lockfree::tran::system *m_lf_tran_sys;
   };
+
+  //////////////////////////////////////////////////////////////////////////
+  // alias
+  //////////////////////////////////////////////////////////////////////////
+#if defined (SERVER_MODE)
+  using worker_pool_type = cubthread::worker_pool_impl<false>;
+  using stats_worker_pool_type = cubthread::worker_pool_impl<true>;
+#else
+  using worker_pool_type = cubthread::worker_pool;
+  using stats_worker_pool_type = cubthread::worker_pool;
+#endif
 
   //////////////////////////////////////////////////////////////////////////
   // thread logging flags
@@ -318,13 +338,9 @@ namespace cubthread
 
   // backward compatibility initialization
   int initialize_thread_entries (bool with_lock_free = true);
-  entry *get_main_entry (void);
 
   // get thread manager
   manager *get_manager (void);
-
-  // quick fix for unit test mock-ups
-  void set_manager (manager *manager);
 
   // get maximum thread count
   std::size_t get_max_thread_count (void);
@@ -346,6 +362,48 @@ namespace cubthread
   // template / inline functions
   //////////////////////////////////////////////////////////////////////////
 
+  template<typename Res, typename ... CtArgs>
+  Res *
+  manager::create_worker_pool (std::size_t pool_size, std::size_t core_count, CtArgs &&... args)
+  {
+    static_assert (std::is_base_of_v<worker_pool, Res>);
+
+#if defined (SERVER_MODE)
+    Res *workerpool;
+
+    assert (m_worker_pools.size () <= workerpool_registry_t::count ());
+
+    // reserve pool_size entries and add to m_worker_pools
+    workerpool = create_and_track_resource<Res> (m_worker_pools, pool_size,
+		 pool_size, core_count, std::forward<CtArgs> (args)...);
+    if (workerpool)
+      {
+	workerpool->initialize (pool_size, core_count);
+      }
+    return workerpool;
+#else // not SERVER_MODE = SA_MODE
+    return NULL;
+#endif // not SERVER_MODE = SA_MODE
+  }
+
+  template <typename Res>
+  void
+  manager::destroy_worker_pool (Res *&worker_pool_arg)
+  {
+#if defined (SERVER_MODE)
+    if (worker_pool_arg == NULL)
+      {
+	return;
+      }
+    // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
+    worker_pool *base_arg = worker_pool_arg;
+    destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_worker_count ());
+    worker_pool_arg = NULL;
+#else // not SERVER_MODE = SA_MODE
+    assert (worker_pool_arg == NULL);
+#endif // not SERVER_MODE = SA_MODE
+  }
+
   template <typename Func, typename ... Args>
   void
   manager::map_entries (Func &&func, Args &&... args)
@@ -361,7 +419,83 @@ namespace cubthread
       }
   }
 
+  template <typename Res, typename Base, typename ... CtArgs>
+  Res *
+  manager::create_and_track_resource (std::vector<Base *> &tracker, size_t entries_count, CtArgs &&... args)
+  {
+    check_not_single_thread ();
+
+    std::lock_guard<std::mutex> lock (m_entries_mutex);
+
+    if (m_available_entries_count < entries_count)
+      {
+	return NULL;
+      }
+    m_available_entries_count -= entries_count;
+
+    Res *new_res = new Res (std::forward<CtArgs> (args)...);
+
+    tracker.push_back (new_res);
+
+    return new_res;
+  }
+
+  template<typename Res>
+  void
+  manager::destroy_and_untrack_resource (std::vector<Res *> &tracker, Res *&res, std::size_t entries_count)
+  {
+    check_not_single_thread ();
+
+    std::lock_guard<std::mutex> lock (m_entries_mutex);
+
+    for (auto iter = tracker.begin (); iter != tracker.end (); ++iter)
+      {
+	if (res == *iter)
+	  {
+	    // remove resource from tracker
+	    (void) tracker.erase (iter);
+
+	    // stop resource and delete
+	    res->stop_execution ();
+	    delete res;
+	    res = NULL;
+
+	    // update available entries
+	    m_available_entries_count += entries_count;
+
+	    return;
+	  }
+      }
+    // resource not found
+    assert (false);
+  }
+
+  template<typename Res>
+  void
+  manager::destroy_and_untrack_all_resources (std::vector<Res *> &tracker)
+  {
+    assert (tracker.empty ());
+
+#if defined (SERVER_MODE)
+    for (; !tracker.empty ();)
+      {
+	const auto iter = tracker.begin ();
+	(*iter)->stop_execution ();
+	delete *iter;
+	tracker.erase (iter);
+      }
+#endif // SERVER_MODE
+  }
+
 } // namespace cubthread
+
+//////////////////////////////////////////////////////////////////////////
+// macros to count the number of entries
+//////////////////////////////////////////////////////////////////////////
+
+#define REGISTER_CONNECTION(name, getter) static cubthread::manager::connection_registry_t _gl_reg_conn_##name (#name, getter)
+#define REGISTER_WORKERPOOL(name, getter) static cubthread::manager::workerpool_registry_t _gl_reg_wp_##name (#name, getter)
+#define REGISTER_DAEMON(name) static cubthread::manager::daemon_registry_t _gl_reg_daemon_##name (#name, 1)
 
 //////////////////////////////////////////////////////////////////////////
 // alias functions to be used in C legacy code
@@ -373,6 +507,29 @@ inline cubthread::manager *
 thread_get_manager (void)
 {
   return cubthread::get_manager ();
+}
+
+inline cubthread::entry_manager &
+thread_get_entry_manager (void)
+{
+  return cubthread::get_manager ()->get_entry_manager ();
+}
+
+inline cubthread::worker_pool_type *
+thread_create_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+			   cubthread::entry_manager &entry_mgr, bool pool_threads = false)
+{
+  return cubthread::get_manager ()->create_worker_pool<cubthread::worker_pool_type> (pool_size, core_count, name,
+	 entry_mgr, pool_threads);
+}
+
+inline cubthread::stats_worker_pool_type *
+thread_create_stats_worker_pool (std::size_t pool_size, std::size_t core_count, const char *name,
+				 cubthread::entry_manager &entry_mgr, bool pool_threads = false,
+				 cubthread::wait_seconds idle_timeout = std::chrono::seconds (5))
+{
+  return cubthread::get_manager ()->create_worker_pool<cubthread::stats_worker_pool_type> (pool_size, core_count, name,
+	 entry_mgr, pool_threads, idle_timeout);
 }
 
 inline std::size_t
@@ -443,6 +600,13 @@ thread_sleep (double millisec)
   // try to avoid this and use thread_sleep_for instead
   std::chrono::duration<double, std::milli> duration_millis (millisec);
   thread_sleep_for (duration_millis);
+}
+
+inline void
+thread_clear_all_holder_anchor (void)
+{
+  cubthread::get_entry ().m_holder_anchor = NULL;
+  return cubthread::get_manager ()->clear_all_holder_anchor ();
 }
 
 #endif  // _THREAD_MANAGER_HPP_

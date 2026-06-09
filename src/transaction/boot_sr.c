@@ -71,18 +71,20 @@
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "scan_manager.h"
 #include "slotted_page.h"
 #include "thread_manager.hpp"
-#include "double_write_buffer.h"
+#include "double_write_buffer.hpp"
 #include "xasl_cache.h"
 #include "log_volids.hpp"
 #include "vacuum.h"
 #include "tde.h"
 #include "porting.h"
 #include "log_manager.h"
+#include "catalog_class.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -100,6 +102,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif /* CCI_XA */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -108,6 +115,8 @@
 
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
+
+#define BOOT_LOB_TEMP_DIR_KEYWORD "ces"
 
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
@@ -134,14 +143,6 @@ struct boot_dbparm
 enum remove_temp_vol_action
 { REMOVE_TEMP_VOL_DEFAULT_ACTION, ONLY_PHYSICAL_REMOVE_TEMP_VOL_ACTION };
 typedef enum remove_temp_vol_action REMOVE_TEMP_VOL_ACTION;
-
-extern bool catcls_Enable;
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_finalize_class_oid_to_oid_hash_table (THREAD_ENTRY * thread_p);
-extern int catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_id_p, char *lang_buf,
-					  const int lang_buf_size, char *timezone_checksum);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
-extern int catcls_find_and_set_cached_class_oid (THREAD_ENTRY * thread_p);
 
 #if defined(SA_MODE)
 extern void boot_client_all_finalize (int final_level);
@@ -556,9 +557,9 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
 {
   VOLID volid;
 
-  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
-				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
-      != NO_ERROR)
+  if (disk_add_volume_extension
+      (thread_p, ext_info->purpose, ext_info->voltype, ext_info->max_npages, ext_info->path, ext_info->name,
+       ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL_VOLID;
@@ -880,8 +881,8 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	}
 
       error_code =
-	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
-				   &volid);
+	disk_add_volume_extension (thread_p, ext_purpose, DB_PERMANENT_VOLTYPE, ext_npages, ext_path, ext_name,
+				   ext_comments, 0, false, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2185,6 +2186,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_clear ();
 
   event_log_init (db_name);
+  trace_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
@@ -2411,6 +2413,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_init ();
+#endif
   pgbuf_daemons_init ();
   dwb_daemons_init ();
   parallel_query::worker_manager_global::get_manager ().init ();
@@ -2565,6 +2570,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
+
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -3062,6 +3076,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
+  /* remove lob ces temp dir */
+  (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
 
@@ -3071,6 +3088,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif /* CCI_XA */
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();
@@ -3354,13 +3374,15 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 	}
 #endif /* SERVER_MODE */
 
-      /* If the transaction is active abort it */
-      /* FIXME:
+      /*
+       * If the transaction is active only abort it.
        * Don't abort transactions in LOG_ISTRAN_2PC_PREPARE arbitrarily.
-       * Currently follows a temporary recovery policy (no coordinator).
-       * Must follow proper 2PC rules once coordinator is implemented.
        */
+#ifdef CCI_XA
+      if (LOG_ISTRAN_ACTIVE (tdes))
+#else
       if (LOG_ISTRAN_ACTIVE (tdes) || LOG_ISTRAN_2PC_PREPARE (tdes))	/* logtb_is_current_active (thread_p) */
+#endif
 	{
 	  (void) xtran_server_abort (thread_p);
 	}
@@ -3875,6 +3897,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 #if defined(SERVER_MODE)
   css_free_accessible_ip_info ();
   event_log_final ();
+  trace_log_final ();
 #endif
 }
 
@@ -5101,7 +5124,7 @@ boot_create_all_volumes (THREAD_ENTRY * thread_p, const BOOT_CLIENT_CREDENTIAL *
 
   logpb_force_flush_pages (thread_p);
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
 
   (void) logpb_checkpoint (thread_p);
   boot_server_status (BOOT_SERVER_UP);
@@ -5246,6 +5269,12 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
     }
 
   /* Now delete the database */
@@ -5939,8 +5968,10 @@ boot_client_type_to_string (BOOT_CLIENT_TYPE type)
       return "SKIP_VACUUM_ADMIN_CSQL";
     case DB_CLIENT_TYPE_ADMIN_COMPACTDB_WOS:
       return "ADMIN_COMPACTDB_WOS";
-    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT:
-      return "ADMIN_LOADDB_COMPAT";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2:
+      return "ADMIN_LOADDB_COMPAT_UNDER_11_2";
+    case DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4:
+      return "ADMIN_LOADDB_COMPAT_UNDER_11_4";
     case DB_CLIENT_TYPE_LOADDB_UTILITY:
       return "LOADDB_UTILITY";
     case DB_CLIENT_TYPE_UNKNOWN:
@@ -6060,7 +6091,7 @@ boot_dbparm_save_volume (THREAD_ENTRY * thread_p, DB_VOLTYPE voltype, VOLID voli
       /* flush the boot_Db_parm object. this is not necessary but it is recommended in order to mount every known volume
        * during restart. that may not be possible during media crash though. */
       heap_flush (thread_p, boot_Db_parm_oid);
-      fileio_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL, FILEIO_SYNC_ALSO_FLUSH_DWB);	/* label? */
+      dwb_synchronize (thread_p, fileio_get_volume_descriptor (boot_Db_parm_oid->volid), NULL);	/* label? */
     }
   else
     {

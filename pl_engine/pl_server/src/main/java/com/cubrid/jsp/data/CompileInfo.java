@@ -32,6 +32,8 @@
 package com.cubrid.jsp.data;
 
 import com.cubrid.jsp.protocol.PackableObject;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
+import java.util.Set;
 
 public class CompileInfo implements PackableObject {
     public int errCode = -1; // 0: no error, < 0: error
@@ -43,9 +45,12 @@ public class CompileInfo implements PackableObject {
     public String createStmt = null;
     public String className = null;
     public String signature = null;
+    public int sqlDataAccess = ServerConstants.SP_SQL_TYPE_UNKNOWN;
 
     public int compiledType = -1;
     public byte[] compiledCode = null;
+
+    private Set<Dependency> dependencies = null;
 
     public CompileInfo(int code, int line, int column, String msg) {
         assert code < 0;
@@ -56,12 +61,20 @@ public class CompileInfo implements PackableObject {
         errMsg = msg;
     }
 
-    public CompileInfo(String translated, String stmt, String name, String sig) {
+    public CompileInfo(
+            String translated,
+            String stmt,
+            String name,
+            String sig,
+            int sqlDataAccess,
+            Set<Dependency> dependencies) {
         errCode = 0;
         this.translated = translated;
         this.createStmt = stmt;
         this.className = name;
         this.signature = sig;
+        this.sqlDataAccess = sqlDataAccess;
+        this.dependencies = dependencies;
     }
 
     @Override
@@ -76,10 +89,16 @@ public class CompileInfo implements PackableObject {
             packer.packString(createStmt);
             packer.packString(className);
             packer.packString(signature);
+            packer.packInt(sqlDataAccess);
 
             packer.packInt(compiledType);
             if (compiledType >= 0) {
                 packer.packCString(compiledCode);
+            }
+
+            packer.packInt(dependencies.size());
+            for (Dependency d : dependencies) {
+                d.pack(packer);
             }
         }
     }

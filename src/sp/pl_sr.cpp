@@ -219,6 +219,8 @@ namespace cubpl
 // Definitions
 //////////////////////////////////////////////////////////////////////////
 
+  REGISTER_DAEMON (pl_monitor);
+
   /*********************************************************************
    * server_manager - definition
    *********************************************************************/
@@ -261,7 +263,7 @@ namespace cubpl
   {
 #if defined (SERVER_MODE)
     cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1000));
-    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl_monitor");
+    m_monitor_helper_daemon = cubthread::get_manager ()->create_daemon (looper, m_server_monitor_task, "pl-monitor");
 #else
     m_server_monitor_task->do_monitor ();
 #endif
@@ -592,7 +594,7 @@ namespace cubpl
 
     cubmem::block ping_response;
     connection_view cv = m_sys_conn_pool->claim ();
-    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING, 0);
+    cubmethod::header header (DB_EMPTY_SESSION, SP_CODE_UTIL_PING);
 
     auto ping = [&] ()
     {
@@ -655,7 +657,7 @@ exit:
   req_header, server_params
 
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
-    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP, 0)
+    : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP)
     , server_params ()
   {
     while (pl_ctx_values != nullptr)

@@ -46,18 +46,16 @@ namespace test_packing
     serializator.pack_short (sh1);
     serializator.pack_bigint (b1);
     serializator.pack_int_array (int_a, sizeof (int_a) / sizeof (int_a[0]));
-    serializator.pack_int_vector (int_v);
     for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	serializator.pack_db_value (values[i]);
       }
-    serializator.pack_small_string (small_str);
-    serializator.pack_large_string (large_str);
+    serializator.pack_c_string (small_str, strlen (small_str));
+    serializator.pack_string (large_str);
 
     serializator.pack_string (str1);
 
     serializator.pack_c_string (str2, sizeof (str2) - 1);
-    serializator.pack_to_int (color);
   }
 
   void po1::unpack (cubpacking::unpacker &deserializator)
@@ -70,18 +68,15 @@ namespace test_packing
     deserializator.unpack_int_array (int_a, cnt);
     assert (cnt == sizeof (int_a) / sizeof (int_a[0]));
 
-    deserializator.unpack_int_vector (int_v);
-
     for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	deserializator.unpack_db_value (values[i]);
       }
-    deserializator.unpack_small_string (small_str, sizeof (small_str));
-    deserializator.unpack_large_string (large_str);
+    deserializator.unpack_c_string (small_str, sizeof (small_str));
+    deserializator.unpack_string (large_str);
 
     deserializator.unpack_string (str1);
     deserializator.unpack_c_string (str2, sizeof (str2));
-    deserializator.unpack_from_int (color);
   }
 
   bool po1::is_equal (const cubpacking::packable_object *other)
@@ -135,11 +130,6 @@ namespace test_packing
 	return false;
       }
 
-    if (color != other_po1->color)
-      {
-	return false;
-      }
-
     return true;
   }
 
@@ -150,18 +140,16 @@ namespace test_packing
     entry_size += serializator.get_packed_int_size (entry_size);
     entry_size += serializator.get_packed_short_size (entry_size);
     entry_size += serializator.get_packed_bigint_size (entry_size);
-    entry_size += serializator.get_packed_int_vector_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
-    entry_size += serializator.get_packed_int_vector_size (entry_size, int_v.size ());
+    entry_size += serializator.get_packed_int_array_size (entry_size, sizeof (int_a) / sizeof (int_a[0]));
     for (size_t i = 0; i < sizeof (values) / sizeof (values[0]); i++)
       {
 	entry_size += serializator.get_packed_db_value_size (values[i], entry_size);
       }
-    entry_size += serializator.get_packed_small_string_size (small_str, entry_size);
-    entry_size += serializator.get_packed_large_string_size (large_str, entry_size);
+    entry_size += serializator.get_packed_c_string_size (small_str, sizeof (small_str), entry_size);
+    entry_size += serializator.get_packed_string_size (large_str, entry_size);
 
     entry_size += serializator.get_packed_string_size (str1, entry_size);
     entry_size += serializator.get_packed_c_string_size (str2, sizeof (str2), entry_size);
-    entry_size += serializator.get_packed_int_size (entry_size);
     return entry_size;
   }
 
@@ -215,8 +203,6 @@ namespace test_packing
     str1 = tmp_str;
 
     generate_str (str2, sizeof (str2) - 1);
-
-    color = static_cast<rgb> (std::rand () % rgb::MAX);
   }
 
 /////////////////////////////

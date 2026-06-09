@@ -36,7 +36,13 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#define CSQL_MAXNAME	256
+#define CSQL_MAXNAME	(256)
+#define NUMBER_LITERAL_MAX_LEN  (254)
+#define NUMBER_LITERAL_EXTRA_BYTE (1) /* extra byte for overflow/rounding check in numeric literals */
+#define INTEGER_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
+#define FLOAT_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
+#define FLOAT_LITERAL_BUFFER (FLOAT_MAX_LITERAL + 2) /* +2: +1 for trailing '0' (e.g., "3." -> "3.0"), +1 for null terminator */
+#define FLOAT_APPENDABLE_TRAILING_ZERO (NUMBER_LITERAL_MAX_LEN)
 
 int parser_yyinput_single_mode = 0;
 
@@ -140,7 +146,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return ADDDATE; }
 [aA][dD][dD]_[mM][oO][nN][tT][hH][sS]					{ begin_token(yytext);   return ADD_MONTHS; }
-[aA][eE][sS]                                                            { begin_token(yytext);   
+[aA][eE][sS]                                                            { begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return AES; }
 [aA][fF][tT][eE][rR]							{ begin_token(yytext);   return AFTER; }
@@ -156,7 +162,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return ARCHIVE; }
 [aA][rR][eE]								{ begin_token(yytext);   return ARE; }
-[aA][rR][iI][aA]							{ begin_token(yytext);   
+[aA][rR][iI][aA]							{ begin_token(yytext);
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ARIA; }
 [aA][sS]								{ begin_token(yytext);
@@ -175,7 +181,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return AUTO_INCREMENT; }
 [aA][vV][gG]								{ begin_token(yytext);   return AVG; }
-[aA][uU][tT][hH][iI][dD]						{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return AUTHID; }
+[aA][uU][tT][hH][iI][dD]						{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return AUTHID; }
 [bB][eE][fF][oO][rR][eE]						{ begin_token(yytext);   return BEFORE; }
 [bB][eE][gG][iI][nN]							{ begin_token(yytext);   return BEGIN_; }
 [bB][eE][nN][cC][hH][mM][aA][rR][kK]					{ begin_token(yytext);
@@ -200,12 +208,15 @@ IDL       [a-zA-Z0-9_]
 [bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
+[bB][uU][cC][kK][eE][tT][sS]						{ begin_token(yytext);   return BUCKETS; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
 [bB][uU][fF][fF][eE][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return BUFFER; }
 [cC][aA][lL][lL]							{ begin_token(yytext);   return CALL; }
-[cC][aA][lL][lL][eE][rR]						{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return CALLER; }
+[cC][aA][lL][lL][eE][rR]						{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return CALLER; }
 [cC][aA][cC][hH][eE]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return CACHE; }
@@ -316,7 +327,9 @@ IDL       [a-zA-Z0-9_]
 [dD][bB][nN][aA][mM][eE]					        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return DBNAME; }
-[dD][bB][tT][iI][mM][eE][zZ][oO][nN][eE]                                { begin_token(yytext);   return DB_TIMEZONE; }
+[dD][bB][tT][iI][mM][eE][zZ][oO][nN][eE]                                { begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return DB_TIMEZONE; }
 [dD][eE][aA][lL][lL][oO][cC][aA][tT][eE]				{ begin_token(yytext);   return DEALLOCATE; }
 [dD][eE][cC]								{ begin_token(yytext);   return NUMERIC; }
 [dD][eE][cC][iI][mM][aA][lL]						{ begin_token(yytext);   return NUMERIC; }
@@ -330,7 +343,9 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][fF][aA][uU][lL][tT]						{ begin_token(yytext);   return DEFAULT; }
 [dD][eE][fF][eE][rR][rR][aA][bB][lL][eE]				{ begin_token(yytext);   return DEFERRABLE; }
 [dD][eE][fF][eE][rR][rR][eE][dD]					{ begin_token(yytext);   return DEFERRED; }
-[dD][eE][fF][iI][nN][eE][rR]    					{ begin_token(yytext);   csql_yylval.cptr = pt_makename(yytext); return DEFINER; }
+[dD][eE][fF][iI][nN][eE][rR]    					{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return DEFINER; }
 [dD][eE][lL][eE][tT][eE]						{ begin_token(yytext);   return DELETE_; }
 [dD][eE][nN][sS][eE]_[rR][aA][nN][kK]					{ begin_token(yytext);
 									  csql_yylval.cptr = pt_makename(yytext);
@@ -392,7 +407,9 @@ IDL       [a-zA-Z0-9_]
 [fF][iI][rR][sS][tT]_[vV][aA][lL][uU][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return FIRST_VALUE; }
-[fF][oO][rR][cC][eE]							{ begin_token(yytext);   return FORCE; }
+[fF][oO][rR][cC][eE]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return FORCE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ begin_token(yytext);   return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ begin_token(yytext);   return FOUND; }
 [fF][rR][oO][mM]							{ begin_token(yytext);   return FROM; }
@@ -449,6 +466,7 @@ IDL       [a-zA-Z0-9_]
 [hH][eE][aA][pP]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HEAP; }                                                                            
+[hH][iI][sS][tT][oO][gG][rR][aA][mM]					{ begin_token(yytext);   return HISTOGRAM; }
 [hH][oO][sS][tT]					                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HOST; }
@@ -474,7 +492,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return INCREMENT; }
 [iI][nN][dD][eE][xX]							{ begin_token(yytext);   return INDEX; }
-[iI][nN][dD][eE][xX][_][pP][rR][eE][fF][iI][xX]				{ begin_token(yytext);   return INDEX_PREFIX; }
+[iI][nN][dD][eE][xX][_][pP][rR][eE][fF][iI][xX]				{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return INDEX_PREFIX; }
 [iI][nN][dD][eE][xX][eE][sS]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return INDEXES; }
@@ -611,14 +631,18 @@ IDL       [a-zA-Z0-9_]
 [kK][eE][yY][sS]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return KEYS; }
-[kK][iI][lL][lL]							{ begin_token(yytext);   return KILL; }
+[kK][iI][lL][lL]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return KILL; }
 [lL][aA][nN][gG][uU][aA][gG][eE]					{ begin_token(yytext);   return LANGUAGE; }
-[kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);	 return KEYLIMIT; }
+[kK][eE][yY][lL][iI][mM][iI][tT]					{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return KEYLIMIT; }
 [lL][aA][gG]								{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LAG; }
 [lL][aA][sS][tT]							{ begin_token(yytext);   return LAST; }
-[lL][aA][sS][tT]_[vV][aA][lL][uU][eE]		{ begin_token(yytext);
+[lL][aA][sS][tT]_[vV][aA][lL][uU][eE]		                        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return LAST_VALUE; }
 [lL][cC][aA][sS][eE]							{ begin_token(yytext);
@@ -648,15 +672,17 @@ IDL       [a-zA-Z0-9_]
 [lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
 [lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
 [mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }
-[mM][aA][tT][cC][hH][eE][dD]						{ begin_token(yytext);	 return MATCHED; }
+[mM][aA][tT][cC][hH][eE][dD]						{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return MATCHED; }
 [mM][aA][xX][iI][mM][uU][mM]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return MAXIMUM; }
 [mM][aA][xX][vV][aA][lL][uU][eE]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return MAXVALUE; }
-[mM][eE][dD][iI][uU][mM][iI][nN][tT]				{ begin_token(yytext);   return INTEGER; }
-[mM][eE][dD][iI][aA][nN]							{ begin_token(yytext);
+[mM][eE][dD][iI][uU][mM][iI][nN][tT]				        { begin_token(yytext);   return INTEGER; }
+[mM][eE][dD][iI][aA][nN]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return MEDIAN; }
 [mM][eE][mM][bB][eE][rR][sS]						{ begin_token(yytext);
@@ -746,7 +772,9 @@ IDL       [a-zA-Z0-9_]
 [oO][uU][tT]								{ begin_token(yytext);   return OUT_; }
 [oO][uU][tT][eE][rR]							{ begin_token(yytext);   return OUTER; }
 [oO][uU][tT][pP][uU][tT]						{ begin_token(yytext);   return OUTPUT; }
-[oO][vV][eE][rR]							{ begin_token(yytext);	 return OVER; }
+[oO][vV][eE][rR]							{ begin_token(yytext);	 
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return OVER; }
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ begin_token(yytext);   return OVERLAPS; }
 [oO][wW][nN][eE][rR]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
@@ -778,13 +806,13 @@ IDL       [a-zA-Z0-9_]
 [pP][eE][rR][cC][eE][nN][tT][_][rR][aA][nN][kK]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENT_RANK; }
-[pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[cC][oO][nN][tT]	{ begin_token(yytext);
+[pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[cC][oO][nN][tT]	        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENTILE_CONT; }
-[pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[dD][iI][sS][cC]	{ begin_token(yytext);
+[pP][eE][rR][cC][eE][nN][tT][iI][lL][eE]_[dD][iI][sS][cC]	        { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PERCENTILE_DISC; }
-[pP][lL][cC][sS][qQ][lL]				{ begin_token(yytext);
+[pP][lL][cC][sS][qQ][lL]				                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PLCSQL; }
 [pP][oO][rR][tT]        					        { begin_token(yytext);
@@ -807,7 +835,9 @@ IDL       [a-zA-Z0-9_]
 										return PRIVATE; }
 [pP][rR][iI][vV][iI][lL][eE][gG][eE][sS]				{ begin_token(yytext);   return PRIVILEGES; }
 [pP][rR][oO][cC][eE][dD][uU][rR][eE]					{ begin_token(yytext);   return PROCEDURE; }
-[pP][rR][oO][mM][oO][tT][eE]							{ begin_token(yytext);   return PROMOTE; }
+[pP][rR][oO][mM][oO][tT][eE]						{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return PROMOTE; }
 [pP][rR][oO][pP][eE][rR][tT][iI][eE][sS]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return PROPERTIES; }
@@ -836,7 +866,9 @@ IDL       [a-zA-Z0-9_]
 [rR][eE][fF]								{ begin_token(yytext);   return REF; }
 [rR][eE][fF][eE][rR][eE][nN][cC][eE][sS]				{ begin_token(yytext);   return REFERENCES; }
 [rR][eE][fF][eE][rR][eE][nN][cC][iI][nN][gG]				{ begin_token(yytext);   return REFERENCING; }
-[rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   return REGEXP; }
+[rR][eE][gG][eE][xX][pP]						{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return REGEXP; }
 [rR][eE][gG][eE][xX][pP][_][cC][oO][uU][nN][tT]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return REGEXP_COUNT; }
@@ -888,7 +920,9 @@ IDL       [a-zA-Z0-9_]
 										return DISK_SIZE; }
 [rR][eE][vV][oO][kK][eE]						{ begin_token(yytext);   return REVOKE; }
 [rR][iI][gG][hH][tT]							{ begin_token(yytext);   return RIGHT; }
-[rR][lL][iI][kK][eE]							{ begin_token(yytext);   return RLIKE; }
+[rR][lL][iI][kK][eE]							{ begin_token(yytext);   
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return RLIKE; }
 [rR][oO][lL][eE]							{ begin_token(yytext);   return ROLE; }
 [rR][oO][lL][lL][bB][aA][cC][kK]					{ begin_token(yytext);   return ROLLBACK; }
 [rR][oO][lL][lL][uU][pP]						{ begin_token(yytext);	 return ROLLUP; }
@@ -925,7 +959,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return SERVER; }
 [sS][eE][sS][sS][iI][oO][nN] 						{ begin_token(yytext);   return SESSION; }
-[sS][eE][sS][sS][iI][oO][nN][tT][iI][mM][eE][zZ][oO][nN][eE]            { begin_token(yytext);	 return SESSION_TIMEZONE; }
+[sS][eE][sS][sS][iI][oO][nN][tT][iI][mM][eE][zZ][oO][nN][eE]            { begin_token(yytext);	 
+										csql_yylval.cptr = pt_makename(yytext);
+                                                                                return SESSION_TIMEZONE; }
 [sS][eE][sS][sS][iI][oO][nN]_[uU][sS][eE][rR]				{ begin_token(yytext);   return SESSION_USER; }
 [sS][eE][tT]								{ begin_token(yytext);   return SET; }
 [sS][eE][tT][eE][qQ]							{ begin_token(yytext);   return SETEQ; }
@@ -1028,7 +1064,9 @@ IDL       [a-zA-Z0-9_]
 [tT][iI][mM][eE][zZ][oO][nN][eE]					{ begin_token(yytext);   
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return TIMEZONE; }
-[tT][iI][mM][eE][zZ][oO][nN][eE][sS]					{ begin_token(yytext);   return TIMEZONES; }
+[tT][iI][mM][eE][zZ][oO][nN][eE][sS]					{ begin_token(yytext);
+                                                                                csql_yylval.cptr = pt_makename(yytext);
+                                                                                return TIMEZONES; }
 [tT][iI][mM][eE][zZ][oO][nN][eE]_[hH][oO][uU][rR]			{ begin_token(yytext);   return TIMEZONE_HOUR; }
 [tT][iI][mM][eE][zZ][oO][nN][eE]_[mM][iI][nN][uU][tT][eE]		{ begin_token(yytext);   return TIMEZONE_MINUTE; }
 [tT][oO]								{ begin_token(yytext);   return TO; }
@@ -1165,8 +1203,8 @@ IDL       [a-zA-Z0-9_]
 
 										begin_token(yytext);
 										len = strlen(yytext);
-										if (len >= 254)
-											yytext[254] = 0;
+										if (len >= INTEGER_MAX_LITERAL)
+											yytext[INTEGER_MAX_LITERAL] = 0;
 
 										/* loop until len - 1, in case of 0000000000000000000000 */
 										for (i = 0; i < len - 1 && yytext[i] == '0'; i++)
@@ -1185,15 +1223,15 @@ IDL       [a-zA-Z0-9_]
                                                                         }
 
 ([0-9]+[Ee][\+\-]?[0-9]+[fF]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fF]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fF]?) 	{
-										char buff[256];
+										char buff[FLOAT_LITERAL_BUFFER];
 										int len;
 
 										begin_token(yytext);
 										len = strlen(yytext);
-										if (len >= 254)
-											yytext[254] = 0;
+										if (len >= FLOAT_MAX_LITERAL)
+											yytext[FLOAT_MAX_LITERAL] = 0;
 
-										if (len < 253 && yytext[len-1] == '.')
+										if (len < FLOAT_APPENDABLE_TRAILING_ZERO && yytext[len-1] == '.')
 										  {
 										    strncpy(buff, yytext, sizeof(buff));
 										    buff[len] = '0';
@@ -1237,7 +1275,6 @@ _[uU][tT][fF]8[']		{
 "."[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
 							    yybuffer_pos -= (csql_yyleng - 1);
 							    yyless(1);
-                                                            DBG_PRINT_TOKEN(yytext);
                                                             BEGIN(POST_DOT_OR_RIGHT_ARROW_STRING);
 							    return DOT;
 							}
@@ -1245,7 +1282,6 @@ _[uU][tT][fF]8[']		{
 "->"[ \t\r\n]*([a-zA-Z_#]|([\xc0-\xfe]))([a-zA-Z_#0-9]|([\x80-\xfe]))* {
                                                            yybuffer_pos -= (csql_yyleng - 2);
 							   yyless(2);
-                                                           DBG_PRINT_TOKEN(yytext);
                                                            BEGIN(POST_DOT_OR_RIGHT_ARROW_STRING);
 							   return RIGHT_ARROW;
 							}
@@ -1289,13 +1325,11 @@ _[uU][tT][fF]8[']		{
 
 0b[0-1]+			{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);
-                                        DBG_PRINT_TOKEN(yytext);
 					return BIT_STRING;
 				}
 
 0x[0-9a-fA-F]+			{
 					csql_yylval.cptr = pt_append_string(this_parser, NULL, yytext + 2);                                        
-                                        DBG_PRINT_TOKEN(yytext);
 					return HEX_STRING;
 				}
 
@@ -1343,43 +1377,36 @@ _[uU][tT][fF]8[']		{
 
 <QUOTED_EUCKR_STRING>[']	{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("_euckr'", csql_yylval.cptr, "'");
 					return EUCKR_STRING;
 				}
 
 <QUOTED_ISO_STRING>[']		{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("_iso88591'", csql_yylval.cptr, "'");
 					return ISO_STRING;
 				}
 
 <QUOTED_BINARY_STRING>[']	{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("_binary'", csql_yylval.cptr, "'");
 					return BINARY_STRING;
 				}
 
 <QUOTED_UTF8_STRING>[']		{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("_utf8'", csql_yylval.cptr, "'");
 					return UTF8_STRING;
 				}
 
 <QUOTED_NCHAR_STRING>[']	{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("n'", csql_yylval.cptr, "'");
 					return NCHAR_STRING;
 				}
 
 <QUOTED_BIT_STRING>[']		{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("b'", csql_yylval.cptr, "'");
 					return BIT_STRING;
 				}
 
 <QUOTED_HEX_STRING>[']		{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("x'", csql_yylval.cptr, "'");
 					return HEX_STRING;
 				}
 
@@ -1390,13 +1417,11 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-                                        DBG_PRINT_STRING("'", csql_yylval.cptr, "'");
 					return CHAR_STRING;
 				}
 
 <DOUBLY_QUOTED_CHAR_STRING>["]	{
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("\"", csql_yylval.cptr, "\"");
 					return CHAR_STRING;
 				}
 
@@ -1407,7 +1432,6 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-                                        DBG_PRINT_STRING("\"", csql_yylval.cptr, "\"");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1422,7 +1446,6 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-                                        DBG_PRINT_STRING("[", csql_yylval.cptr, "]");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1437,7 +1460,6 @@ _[uU][tT][fF]8[']		{
                                         } else {
                                                 BEGIN(INITIAL);
                                         }
-                                        DBG_PRINT_STRING("`", csql_yylval.cptr, "`");
 					if (strlen(csql_yylval.cptr) >= 254)
 					  {
 					    csql_yylval.cptr[254] = 0;
@@ -1454,7 +1476,6 @@ _[uU][tT][fF]8[']		{
 <QUOTED_NCHAR_STRING,QUOTED_BIT_STRING,QUOTED_HEX_STRING,QUOTED_CHAR_STRING,DOUBLY_QUOTED_CHAR_STRING,QUOTED_EUCKR_STRING,QUOTED_ISO_STRING,QUOTED_BINARY_STRING,QUOTED_UTF8_STRING><<EOF>>	{
                                         from_plcsql_text = 0;
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated string");
 					return UNTERMINATED_STRING;
 				}
@@ -1462,7 +1483,6 @@ _[uU][tT][fF]8[']		{
 <DELIMITED_ID_NAME,BRACKET_ID_NAME,BACKTICK_ID_NAME><<EOF>>	{
                                         from_plcsql_text = 0;
 					BEGIN(INITIAL);
-                                        DBG_PRINT_STRING("?", csql_yylval.cptr, "<EOF>");
 					csql_yyerror("unterminated identifier");
 					return UNTERMINATED_IDENTIFIER;
 				}
@@ -1639,10 +1659,12 @@ _[uU][tT][fF]8[']		{
 <PL_LANG_SPEC>[lL][aA][nN][gG][uU][aA][gG][eE]          { begin_token(yytext);   return LANGUAGE; }
 <PL_LANG_SPEC>[jJ][aA][vV][aA]                          { begin_token(yytext);
                                                                 BEGIN(INITIAL);
+							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return JAVA; }
 <PL_LANG_SPEC>[pP][lL][cC][sS][qQ][lL]                  { begin_token(yytext);
                                                                 BEGIN(PLCSQL_TEXT);
                                                                 init_plcsql_lexing();
+								csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL; }
 
 <PL_LANG_SPEC>[ \t\r]+					{ begin_token(yytext); }
@@ -2319,5 +2341,4 @@ begin_token (char *token)
   csql_yylloc.first_column = yycolumn;
   csql_yylloc.last_line = yylineno;
   csql_yylloc.last_column = yycolumn_end;
-  DBG_PRINT_TOKEN(token);
 }

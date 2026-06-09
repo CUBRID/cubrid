@@ -50,7 +50,7 @@
 #endif
 
 #include "connection_defs.h"
-#include "connection_cl.h"
+#include "client_support.h"
 
 #include "system_parameter.h"
 #include "databases_file.h"
@@ -77,10 +77,6 @@
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_EMPTY_SESSION        (0)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 
 #ifdef WIN_FW
 #if !defined(WINDOWS)
@@ -1567,21 +1563,14 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
       snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR, as_index);
       putenv (as_id_env_str);
 
-      if (shm_br->br_info[br_index].appl_server == APPL_SERVER_CAS_ORACLE)
+      if (br_shard_flag == ON)
 	{
-	  snprintf (argv0, sizeof (argv0) - 1, "%s", appl_name);
+	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
+		    as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
 	}
       else
 	{
-	  if (br_shard_flag == ON)
-	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
-			as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
-	    }
-	  else
-	    {
-	      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
-	    }
+	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
 	}
 
 #if defined(WINDOWS)
@@ -1960,7 +1949,7 @@ connect_to_master_for_server_monitor (const char *db_name, const char *db_host)
     }
 
   /* timeout : 5000 milliseconds */
-  return (css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
+  return (__gv_cvar.css_connect_to_master_timeout (db_host, port_id, 5000, &rid));
 }
 
 static int
@@ -1977,14 +1966,14 @@ get_server_state_from_master (CSS_CONN_ENTRY * conn, const char *db_name)
       return SERVER_STATE_DEAD;
     }
 
-  error = css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
+  error = __gv_cvar.css_send_request (conn, GET_SERVER_STATE, &request_id, db_name, (int) strlen (db_name) + 1);
   if (error != NO_ERRORS)
     {
       return SERVER_STATE_DEAD;
     }
 
   /* timeout : 5000 milliseconds */
-  error = css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
+  error = __gv_cvar.css_receive_data (conn, request_id, (char **) &buffer, &buffer_size, 5000);
   if (error == NO_ERRORS)
     {
       if (buffer_size == sizeof (int))
@@ -2122,7 +2111,7 @@ server_monitor_thr_f (void *arg)
 
 	  if (conn != NULL)
 	    {
-	      css_free_conn (conn);
+	      __gv_cvar.css_free_conn (conn);
 	      conn = NULL;
 	    }
 	}

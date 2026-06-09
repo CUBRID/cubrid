@@ -671,6 +671,100 @@ exit_on_error:
 
 #define INTERNAL_BUFFER_SIZE (400)	/* bigger than DBL_MAX_DIGITS */
 
+inline bool
+need_append_dot (const char *val)
+{
+  while (*val)
+    {
+      if (*val == '.' || *val == 'e' || *val == 'E')
+	{
+	  return false;
+	}
+      val++;
+    }
+  return true;
+}
+
+/*
+ * fprint_clob_value - print an internal CLOB DB_VALUE to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): output
+ *    value(in): DB_VALUE of type DB_TYPE_CLOB
+ * Note:
+ *    Internal CLOB is stored inline like a character string, so it is printed
+ *    as a quoted string. Kept separate from the CHAR/VARCHAR case so that
+ *    CLOB-specific formatting can diverge without touching that path.
+ */
+static int
+fprint_clob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  const char *str_ptr;
+  int len;
+
+  str_ptr = db_get_string (value);
+  len = db_get_string_size (value);
+  if (len < 0)
+    {
+      len = (int) strlen (str_ptr);
+    }
+
+  CHECK_PRINT_ERROR (print_quoted_str (tout, str_ptr, len, MAX_DISPLAY_COLUMN));
+
+exit_on_error:
+  return error;
+}
+
+/*
+ * fprint_blob_value - print an internal BLOB DB_VALUE to TEXT_OUTPUT
+ *    return: NO_ERROR if successful, error code otherwise
+ *    tout(out): output
+ *    value(in): DB_VALUE of type DB_TYPE_BLOB
+ * Note:
+ *    Internal BLOB is stored inline like a bit string, so it is printed as a
+ *    hex string. Kept separate from the BIT/VARBIT case so that BLOB-specific
+ *    formatting can diverge without touching that path.
+ */
+static int
+fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
+{
+  int error = NO_ERROR;
+  char buf[INTERNAL_BUFFER_SIZE];
+  char *ptr = NULL;
+  int max_size = ((db_get_string_length (value) + 3) / 4) + 1;
+
+  if (max_size > INTERNAL_BUFFER_SIZE)
+    {
+      ptr = (char *) malloc (max_size);
+      if (ptr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) max_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  else
+    {
+      ptr = buf;
+    }
+
+  if (bfmt_print (1 /* BIT_STRING_HEX */ , value, ptr, max_size) != NO_ERROR)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit_on_error;
+    }
+
+  CHECK_PRINT_ERROR (text_print (tout, "X", 1, NULL));
+  CHECK_PRINT_ERROR (print_quoted_str (tout, ptr, max_size - 1, MAX_DISPLAY_COLUMN));
+
+exit_on_error:
+  if (ptr != buf)
+    {
+      free_and_init (ptr);
+    }
+  return error;
+}
+
 /*
  * fprint_clob_value - print a CLOB DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
@@ -784,21 +878,25 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
     case DB_TYPE_FLOAT:
     case DB_TYPE_DOUBLE:
       {
-	char *pos;
+	char *pos = NULL;
+	TEXT_BUFFER_BLK *tail_ptr_bk = NULL;
 
-	if (tout->tail_ptr == NULL)
+	if (tout->tail_ptr)
 	  {
-	    assert (tout->head_ptr == NULL);
-	    CHECK_PRINT_ERROR (get_text_output_mem (tout, -1));
+	    tail_ptr_bk = tout->tail_ptr;
+	    pos = tout->tail_ptr->ptr;
 	  }
-
-	pos = tout->tail_ptr->ptr;
 	CHECK_PRINT_ERROR (text_print
 			   (tout, NULL, 0, "%.*g", (type == DB_TYPE_FLOAT) ? 10 : 17,
 			    (type == DB_TYPE_FLOAT) ? db_get_float (value) : db_get_double (value)));
 	/* if tout flushed, then this float/double should be the first content */
-	if ((pos < tout->tail_ptr->ptr && !strchr (pos, '.'))
-	    || (pos > tout->tail_ptr->ptr && !strchr (tout->tail_ptr->buffer, '.')))
+	if (pos == NULL || tail_ptr_bk != tout->tail_ptr)
+	  {
+	    assert (tout->tail_ptr != NULL);
+	    pos = tout->tail_ptr->buffer;
+	  }
+
+	if (need_append_dot (pos))
 	  {
 	    CHECK_PRINT_ERROR (text_print (tout, ".", 1, NULL));
 	  }
@@ -848,10 +946,7 @@ fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value)
 			 (tout, NULL, 0, "%s%.*f", intl_get_money_esc_ISO_symbol (db_get_monetary (value)->type), 2,
 			  db_get_monetary (value)->amount));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      CHECK_PRINT_ERROR (text_print (tout, "N", 1, NULL));
-      [[fallthrough]];
+
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
       str_ptr = db_get_string (value);
@@ -1024,22 +1119,24 @@ text_print (TEXT_OUTPUT * tout, const char *buf, int buflen, char const *fmt, ..
   size = tout->tail_ptr->iosize - tout->tail_ptr->count;	/* free space size */
   if (buflen > 0)
     {
+      int tlen = 0;
       assert (buf != NULL);
 
       while (buflen >= size)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, size);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, size);
 	  *(tout->tail_ptr->ptr + size) = '\0';	/* Null terminate */
 	  tout->tail_ptr->ptr += size;
 	  tout->tail_ptr->count += size;
 	  buflen -= size;
+	  tlen += size;
 	  CHECK_PRINT_ERROR (get_text_output_mem (tout, buflen));
 	  size = tout->tail_ptr->iosize;
 	}
 
       if (buflen > 0)
 	{
-	  memcpy (tout->tail_ptr->ptr, buf, buflen);
+	  memcpy (tout->tail_ptr->ptr, buf + tlen, buflen);
 	  *(tout->tail_ptr->ptr + buflen) = '\0';	/* Null terminate */
 
 	  tout->tail_ptr->ptr += buflen;

@@ -170,8 +170,6 @@ extern TP_DOMAIN tp_Vobj_domain;
 extern TP_DOMAIN tp_Oid_domain;
 extern TP_DOMAIN tp_Numeric_domain;
 extern TP_DOMAIN tp_Char_domain;
-extern TP_DOMAIN tp_NChar_domain;
-extern TP_DOMAIN tp_VarNChar_domain;
 extern TP_DOMAIN tp_Bit_domain;
 extern TP_DOMAIN tp_VarBit_domain;
 extern TP_DOMAIN tp_Midxkey_domain;
@@ -241,24 +239,18 @@ typedef enum tp_match
  *    Tests to see if a type is any one of the character types.
  */
 
-#define TP_IS_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_VARCHAR)  || ((typeid) == DB_TYPE_CHAR) || \
-   ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_NCHAR))
+#define TP_IS_CHAR_TYPE(typeid)           ((typeid) == DB_TYPE_VARCHAR || (typeid) == DB_TYPE_CHAR)
 
 #define TP_IS_LOBFILE_TYPE(typeid) \
   (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
 
-#define TP_IS_LOB_TYPE(typeid) \
-  (((typeid) == DB_TYPE_BLOB)  || ((typeid) == DB_TYPE_CLOB))
+#define TP_IS_LOB_TYPE(typeid)            ((typeid) == DB_TYPE_BLOB || (typeid) == DB_TYPE_CLOB)
 
 #define TP_IS_LOB_FAMILY_TYPE(typeid) \
   ((TP_IS_LOBFILE_TYPE(typeid)) || (TP_IS_LOB_TYPE(typeid)))
 
-#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) \
-  (((typeid) == DB_TYPE_CHAR) || ((typeid) == DB_TYPE_NCHAR))
-
-#define TP_IS_VAR_LEN_CHAR_TYPE(typeid) \
-    (((typeid) == DB_TYPE_VARCHAR) || ((typeid) == DB_TYPE_VARNCHAR) || ((typeid) == DB_TYPE_CLOB))
+#define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) ((typeid) == DB_TYPE_CHAR)
+#define TP_IS_VAR_LEN_CHAR_TYPE(typeid)   ((typeid) == DB_TYPE_VARCHAR || (typeid) == DB_TYPE_CLOB)
 
 /*
  * TP_IS_CHAR_BIT_TYPE
@@ -318,8 +310,26 @@ tp_is_string_implicit_target_allowed (DB_TYPE dest)
 static inline bool
 tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
 {
-  /* Block both LOBFILE (BFILE/CFILE) and LOB (BLOB/CLOB). */
-  if (TP_IS_LOB_FAMILY_TYPE (src) || TP_IS_LOB_FAMILY_TYPE (dest))
+  if (src == dest)
+    {
+      return false;
+    }
+
+  /* External LOBFILE values must be converted explicitly. */
+  if (TP_IS_LOBFILE_TYPE (src) || TP_IS_LOBFILE_TYPE (dest))
+    {
+      return true;
+    }
+
+  /* Internal LOB values keep only their natural implicit partners:
+   * CHAR/VARCHAR <-> CLOB and BIT/VARBIT <-> BLOB. */
+  if ((TP_IS_CHAR_TYPE (src) && dest == DB_TYPE_CLOB) || (src == DB_TYPE_CLOB && TP_IS_CHAR_TYPE (dest))
+      || (TP_IS_BIT_TYPE (src) && dest == DB_TYPE_BLOB) || (src == DB_TYPE_BLOB && TP_IS_BIT_TYPE (dest)))
+    {
+      return false;
+    }
+
+  if (TP_IS_LOB_TYPE (src) || TP_IS_LOB_TYPE (dest))
     {
       return true;
     }
@@ -405,7 +415,6 @@ tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
 #define TP_DATETIMETZ_AS_CHAR_LENGTH    64
 
 /* CHAR type and VARCHAR type are compatible with each other */
-/* NCHAR type and VARNCHAR type are compatible with each other */
 /* BIT type and VARBIT type are compatible with each other */
 /* OID type and OBJECT type are compatible with each other */
 /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain
@@ -415,8 +424,6 @@ tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
       (((key1_type) == (key2_type)) || \
       (((key1_type) == DB_TYPE_CHAR || (key1_type) == DB_TYPE_VARCHAR) && \
        ((key2_type) == DB_TYPE_CHAR || (key2_type) == DB_TYPE_VARCHAR)) || \
-      (((key1_type) == DB_TYPE_NCHAR || (key1_type) == DB_TYPE_VARNCHAR) && \
-       ((key2_type) == DB_TYPE_NCHAR || (key2_type) == DB_TYPE_VARNCHAR)) || \
       (((key1_type) == DB_TYPE_BIT || (key1_type) == DB_TYPE_VARBIT) && \
        ((key2_type) == DB_TYPE_BIT || (key2_type) == DB_TYPE_VARBIT)) || \
       (((key1_type) == DB_TYPE_OID || (key1_type) == DB_TYPE_OBJECT) && \

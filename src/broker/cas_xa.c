@@ -29,17 +29,11 @@
 #include "cas_network.h"
 #include "cas_log.h"
 #include "cas_function.h"
-
 #include "cas_execute.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "cas_db_inc.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-
 #include "xa.h"
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#define CAS_SUPPORT_XA
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+#define CAS_SUPPORT_XA
 #define MAX_GTRIDS	100
 
 #ifdef CAS_SUPPORT_XA

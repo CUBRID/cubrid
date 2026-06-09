@@ -541,7 +541,7 @@ enum btree_op_purpose
   BTREE_OP_INSERT_MARK_DELETED,	/* Mark object as deleted. This is used on a unique index of a non-MVCC class. It is
 				 * very similar to BTREE_OP_INSERT_MVCC_DELID. The differences are: 1. The context they
 				 * are used for. MVCC delete is used to delete from MVCC-enabled classes. Mark deleted
-				 * is used for unique indexes of MVCC-disabled classes like db_serial. 2. Mark deleted
+				 * is used for unique indexes of MVCC-disabled classes like _db_serial. 2. Mark deleted
 				 * is followed by a postpone operation which removes the object after commit. 3. Mark
 				 * deleted is not vacuumed. Object will be "cleaned" on commit/rollback. */
   BTREE_OP_INSERT_UNDO_PHYSICAL_DELETE,	/* Undo of physical delete. */
@@ -829,6 +829,21 @@ extern int xbtree_get_key_type (THREAD_ENTRY * thread_p, BTID btid, TP_DOMAIN **
 
 extern int btree_leaf_get_first_object (BTID_INT * btid, RECDES * recp, OID * oidp, OID * class_oid,
 					BTREE_MVCC_INFO * mvcc_info);
+extern bool btree_leaf_record_is_fence (RECDES * recp);
+
+/* Callback function type for btree_key_process_objects.
+ * Concrete callbacks: btree_record_satisfies_snapshot,
+ * btree_select_visible_object_for_range_scan, btree_fk_object_does_exist. */
+typedef int BTREE_PROCESS_OBJECT_FUNCTION (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
+					   char *object_ptr, OID * oid, OID * class_oid, BTREE_MVCC_INFO * mvcc_info,
+					   bool * stop, void *args);
+extern int btree_key_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
+				      int after_key_offset, LEAF_REC * leaf_info,
+				      BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
+/* [Reused by parallel index scan] streams one record (leaf or overflow). PRECONDITION: caller holds at least PGBUF_LATCH_READ on the page from which 'record' was peeked. */
+extern int btree_record_process_objects (THREAD_ENTRY * thread_p, BTID_INT * btid_int, BTREE_NODE_TYPE node_type,
+					 RECDES * record, int after_key_offset, bool * stop,
+					 BTREE_PROCESS_OBJECT_FUNCTION * func, void *args);
 extern void btree_leaf_change_first_object (THREAD_ENTRY * thread_p, RECDES * recp, BTID_INT * btid, OID * oidp,
 					    OID * class_oidp, BTREE_MVCC_INFO * mvcc_info, int *key_offset,
 					    char **rv_undo_data_ptr, char **rv_redo_data_ptr);
@@ -856,8 +871,10 @@ extern void btree_rv_read_keybuf_nocopy (THREAD_ENTRY * thread_p, char *datap, i
 extern void btree_rv_read_keybuf_two_objects (THREAD_ENTRY * thread_p, char *datap, int data_size, BTID_INT * btid_int,
 					      BTREE_OBJECT_INFO * first_version, BTREE_OBJECT_INFO * second_version,
 					      OR_BUF * key_buf);
+#if !defined (NDEBUG)
 extern int btree_check_valid_record (THREAD_ENTRY * thread_p, BTID_INT * btid, RECDES * recp, BTREE_NODE_TYPE node_type,
 				     DB_VALUE * key);
+#endif
 extern int btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OID * oid, DB_VALUE * keyval,
 				    int n_attrs, OID * pk_cls_oid, BTID * pk_btid, const char *fk_name);
 
@@ -889,6 +906,9 @@ extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, vo
 
 extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
 			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+/* exposed for parallel index scan key-comparison descent */
+extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
+				      INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
 						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);

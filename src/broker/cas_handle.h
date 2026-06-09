@@ -26,20 +26,20 @@
 
 #ident "$Id$"
 
-#if defined(CAS_FOR_ORACLE)
-#include "cas_oracle.h"
-#elif defined(CAS_FOR_MYSQL)
-#include "cas_mysql.h"
-#else /* CAS_FOR_MYSQL */
 #include "cas_db_inc.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
+/* ODBC SQL types - only needed for CGW (Gateway) mode */
+/* Note: These headers are conditionally included because they are only required
+ *       when building CGW. CAS (normal broker) does not need ODBC dependencies.
+ *       The T_CGW_HANDLE structure uses these types, but forward declaration
+ *       allows the structure to be defined without including these headers in CAS mode.
+ */
 #if defined(CAS_FOR_CGW)
-/* 
+/*
 * If SIZEOF_LONG_INT is not defined in sqltypes.h, build including unixodbc_conf.h.
 * When building including unixodbc_conf.h, "warning: "PACKAGE_STRING" is displayed.
 * So I added the following code before including sqltypes.h to remove of the build warning.
-*/
+ */
 #if !defined (SIZEOF_LONG_INT)
 #define SIZEOF_LONG_INT 8
 #endif
@@ -63,11 +63,6 @@ struct t_prepare_call_info
 {
   void *dbval_ret;
   void *dbval_args;
-#if defined(CAS_FOR_ORACLE)
-  void **bind;			/* OCIBind ** */
-#elif defined(CAS_FOR_MYSQL)
-  void *bind;			/* MYSQL_BIND * */
-#endif
   char *param_mode;
   int num_args;
   int is_first_out;
@@ -81,71 +76,9 @@ struct t_col_update_info
   char updatable;
 };
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-typedef union db_data DB_DATA;
-union db_data
-{
-  int i;
-  short sh;
-  int64_t bi;
-  float f;
-  double d;
-#if defined(CAS_FOR_ORACLE)
-  OCIDate date;
-  OCINumber number;
-  OCIStmt *cursor;
-#else				/* CAS_FOR_ORACLE */
-  MYSQL_TIME t;
-#endif				/* !CAS_FOR_ORACLE */
-  void *p;
-};
-
-#if defined(CAS_FOR_ORACLE)
-typedef struct locator_list LOCATOR_LIST;
-struct locator_list
-{
-  OCILobLocator *locp[MAX_LOCP_COUNT];
-  int locp_count;
-};
-#endif
-
-typedef struct db_value DB_VALUE;
-#if defined(CAS_FOR_ORACLE)
-struct db_value
-{
-  unsigned short db_type;
-  sb2 is_null;
-  void *define;
-  void *buf;			/* data pointer */
-  DB_DATA data;
-  unsigned int size;
-  unsigned short rlen;
-  bool need_clear;
-};
-#else
-struct db_value
-{
-  unsigned short db_type;
-  my_bool is_null;
-  void *buf;			/* data pointer */
-  DB_DATA data;
-  unsigned long size;
-  bool need_clear;
-};
-#endif /* CAS_FOR_ORACLE */
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
 typedef struct t_query_result T_QUERY_RESULT;
 struct t_query_result
 {
-#if defined(CAS_FOR_ORACLE)
-  int column_count;
-  DB_VALUE *columns;
-#elif defined(CAS_FOR_MYSQL)
-  int column_count;
-  DB_VALUE *columns;
-  MYSQL_BIND *defines;
-#else				/* CAS_FOR_MYSQL */
   void *result;
   char *null_type_column;
   T_COL_UPDATE_INFO *col_update_info;
@@ -158,11 +91,11 @@ struct t_query_result
   char col_updatable;
   char include_oid;
   bool is_holdable;
-#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 };
 
-#if defined (CAS_FOR_CGW)
 typedef struct t_cgw_handle T_CGW_HANDLE;
+
+#if defined (CAS_FOR_CGW)
 struct t_cgw_handle
 {
   SQLHENV henv;
@@ -171,34 +104,37 @@ struct t_cgw_handle
 };
 #endif /* CAS_FOR_CGW */
 
+typedef struct t_fk_info_result T_FK_INFO_RESULT;
+struct t_fk_info_result
+{
+  struct t_fk_info_result *prev;
+  struct t_fk_info_result *next;
+
+  char *pktable_name;
+  char *pkcolumn_name;
+  char *fktable_name;
+  char *fkcolumn_name;
+  short key_seq;
+  SM_FOREIGN_KEY_ACTION update_action;
+  SM_FOREIGN_KEY_ACTION delete_action;
+  char *fk_name;
+  char *pk_name;
+};
+
 typedef struct t_srv_handle T_SRV_HANDLE;
 struct t_srv_handle
 {
   int id;
   void *session;		/* query : DB_SESSION* schema : schema info table pointer */
-#if defined(CAS_FOR_ORACLE)
-  bool has_out_result;
-#endif
-  /* CAS4MySQL : MYSQL_STMT* */
   T_PREPARE_CALL_INFO *prepare_call_info;
   T_QUERY_RESULT *q_result;
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  int stmt_type;
-  int next_cursor_pos;
-  int tuple_count;
-  bool is_no_data;
-  bool send_metadata_before_execute;
-#else				/* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
   void *cur_result;		/* query : &(q_result[cur_result]) schema info : &(session[cursor_pos]) */
-#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   char *sql_stmt;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   void **classes;
   int *classes_chn;
   int cur_result_index;
   int num_q_result;
   bool has_result_set;
-#endif				/* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
   int num_markers;
   int max_col_size;
   int cursor_pos;
@@ -221,15 +157,11 @@ struct t_srv_handle
   bool is_holdable;
   bool is_from_current_transaction;
 
-#if defined(CAS_FOR_MYSQL)
-  bool has_mysql_last_insert_id;
-#endif				/* CAS_FOR_MYSQL */
-#if defined (CAS_FOR_CGW)
+  /* CGW fields */
   T_CGW_HANDLE *cgw_handle;
   int total_tuple_count;
   int stmt_type;
   bool is_cursor_open;
-#endif				/* CAS_FOR_CGW */
 };
 
 extern int hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num);
@@ -249,4 +181,13 @@ extern void hm_set_current_srv_handle (int h_id);
 
 extern int hm_srv_handle_get_current_count (void);
 extern void hm_srv_handle_unset_prepare_flag_all (void);
+extern void hm_free_result (void *res);
+extern void hm_prepare_call_info_free (T_PREPARE_CALL_INFO * call_info);
+extern void release_all_fk_info_results (T_FK_INFO_RESULT * fk_res);
+
+typedef void (*cgw_free_stmt_func_t) (T_SRV_HANDLE * srv_handle);
+
+extern void hm_set_cgw_mode (bool enabled);
+extern void hm_set_cgw_free_stmt_func (cgw_free_stmt_func_t func);
+
 #endif /* _CAS_HANDLE_H_ */

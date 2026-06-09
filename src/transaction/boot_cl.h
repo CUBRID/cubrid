@@ -54,11 +54,12 @@ extern VOLID boot_User_volid;
 /* Server host connected */
 extern char boot_Host_connected[CUB_MAXHOSTNAMELEN];
 #endif /* CS_MODE */
-
+#if defined(SA_MODE)
 extern int boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH_INFO * db_path_info,
 				   bool db_overwrite, const char *file_addmore_vols, DKNPAGES npages,
 				   PGLENGTH db_desired_pagesize, DKNPAGES log_npages, PGLENGTH db_desired_log_page_size,
 				   const char *lang_charset);
+#endif /* SA_MODE */
 extern int boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential);
 extern int boot_shutdown_client (bool is_er_final);
 extern void boot_donot_shutdown_client_at_exit (void);

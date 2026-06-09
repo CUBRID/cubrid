@@ -26,6 +26,10 @@
 
 #ident "$Id$"
 
+#ifdef __cplusplus
+#include <atomic>
+#endif
+
 #include "storage_common.h"
 #include "object_domain.h"
 
@@ -370,7 +374,6 @@ struct qfile_tuple_descriptor
   int tpl_size;			/* tuple size */
   int f_cnt;			/* number of field */
   DB_VALUE **f_valp;		/* pointer of field value pointer array */
-  bool *clear_f_val_at_clone_decache;	/* true, if need to clear value at clone decache */
 
   /* T_SORTKEY */
   void *sortkey_info;		/* casted pointer of (SORTKEY_INFO *) */
@@ -441,6 +444,7 @@ struct qfile_list_id
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
   bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
+  QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
 
 #define QFILE_CLEAR_LIST_ID(list_id) \
@@ -467,7 +471,6 @@ struct qfile_list_id
       (list_id)->tpl_descr.tpl_size = 0; \
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
-      (list_id)->tpl_descr.clear_f_val_at_clone_decache = NULL; \
       (list_id)->tpl_descr.sortkey_info = NULL; \
       (list_id)->tpl_descr.sort_rec = NULL; \
       (list_id)->tpl_descr.tplrec1 = NULL; \
@@ -475,6 +478,7 @@ struct qfile_list_id
       (list_id)->tpl_descr.merge_info = NULL; \
       (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
+      (list_id)->dependent_list_id = NULL; \
     } \
   while (0)
 
@@ -503,6 +507,7 @@ struct qfile_list_scan_id
   PAGE_PTR curr_pgptr;		/* current page pointer */
   QFILE_TUPLE curr_tpl;		/* current tuple pointer */
   bool keep_page_on_finish;	/* flag; when set, does not free page when scan ends */
+  bool is_read_only;		/* flag; when set, does not latch write */
   int curr_offset;		/* current page offset */
   int curr_tplno;		/* current tuple number */
   QFILE_TUPLE_RECORD tplrec;	/* used for overflow tuple peeking */
@@ -526,6 +531,54 @@ enum
 #define QFILE_CLEAR_FLAG(var, flag)        ((var) &= (flag))
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))
 #define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) (((var) & (flag1)) && ((var) & (flag2)))
+
+#ifdef __cplusplus
+/* Sector-based data page info for QFILE_LIST_ID.
+ * membuf_tfile: membuf exists only in the first list_id (not in dependent_list_id).
+ * sectors/tfiles: parallel arrays, one entry per disk sector across all dependent list_ids. */
+typedef struct qfile_list_sector_info QFILE_LIST_SECTOR_INFO;
+struct qfile_list_sector_info
+{
+  // *INDENT-OFF*
+  struct qmgr_temp_file *membuf_tfile;	/* tfile owning membuf pages (NULL = none) */
+  struct file_partial_sector *sectors;	/* data page sectors (FTAB excluded) */
+  void **tfiles;			/* parallel array: tfile per sector */
+  int sector_cnt;
+
+  qfile_list_sector_info ()
+    : membuf_tfile (NULL)
+    , sectors (NULL)
+    , tfiles (NULL)
+    , sector_cnt (0)
+  {
+    //
+  }
+
+  // *INDENT-ON*
+};
+#endif /*  __cplusplus */
+
+#ifdef __cplusplus
+/* Sector-based parallel page scan distribution state.
+ * Wraps QFILE_LIST_SECTOR_INFO with the atomic cursors workers use to coordinate. */
+typedef struct qfile_list_sector_scan_info QFILE_LIST_SECTOR_SCAN_INFO;
+struct qfile_list_sector_scan_info
+{
+  // *INDENT-OFF*
+  QFILE_LIST_SECTOR_INFO sector_info;	/* sector layout (from qfile_collect_list_sector_info) */
+  std::atomic<bool> membuf_claimed;	/* atomic flag: one worker claims all membuf pages */
+  std::atomic<int> next_sector_index;	/* atomic cursor for sector distribution */
+
+  qfile_list_sector_scan_info ()
+    : sector_info ()
+    , membuf_claimed (false)
+    , next_sector_index (0)
+  {
+    //
+  }
+  // *INDENT-ON*
+};
+#endif /*  __cplusplus */
 
 /* SORTING RELATED DEFINITIONS */
 
@@ -554,23 +607,24 @@ typedef enum
 
 enum
 {
-  NOT_FROM_RESULT_CACHE = 0x0001,
-  RESULT_CACHE_REQUIRED = 0x0002,
-  RESULT_CACHE_INHIBITED = 0x0004,
-  RESULT_HOLDABLE = 0x0008,
-  DONT_COLLECT_EXEC_STATS = 0x0010,
-  MRO_CANDIDATE = 0x0020,
-  MRO_IS_USED = 0x0040,
-  SORT_LIMIT_CANDIDATE = 0x0080,
-  SORT_LIMIT_USED = 0x0100,
-  XASL_TRACE_TEXT = 0x0200,
-  XASL_TRACE_JSON = 0x0400,
-  TRIGGER_IS_INVOLVED = 0x0800,
-  RETURN_GENERATED_KEYS = 0x1000,
-  XASL_CACHE_PINNED_REFERENCE = 0x2000,
-  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x4000,
-  EXECUTE_QUERY_WITH_COMMIT = 0x8000,
-  TRAN_AUTO_COMMIT = 0x000010000
+  NOT_FROM_RESULT_CACHE = 0x1 << 0,
+  RESULT_CACHE_REQUIRED = 0x1 << 1,
+  RESULT_CACHE_INHIBITED = 0x1 << 2,
+  RESULT_HOLDABLE = 0x1 << 3,
+  DONT_COLLECT_EXEC_STATS = 0x1 << 4,
+  MRO_CANDIDATE = 0x1 << 5,
+  MRO_IS_USED = 0x1 << 6,
+  SORT_LIMIT_CANDIDATE = 0x1 << 7,
+  SORT_LIMIT_USED = 0x1 << 8,
+  XASL_TRACE_TEXT = 0x1 << 9,
+  XASL_TRACE_JSON = 0x1 << 10,
+  TRIGGER_IS_INVOLVED = 0x1 << 11,
+  RETURN_GENERATED_KEYS = 0x1 << 12,
+  XASL_CACHE_PINNED_REFERENCE = 0x1 << 13,
+  EXECUTE_QUERY_WITHOUT_DATA_BUFFERS = 0x1 << 14,
+  EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
+  TRAN_AUTO_COMMIT = 0x1 << 16,
+  LIKE_RECOMPILE_CANDIDATE = 0x1 << 17
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)

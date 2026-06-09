@@ -67,15 +67,15 @@ struct log_2pc_coordinator
   int num_particps;		/* Number of participating sites */
   int particp_id_length;	/* Length of a participant identifier */
   void *block_particps_ids;	/* A block of participants identifiers */
-  int *ack_received;		/* Acknowledgment received vector */
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
+  bool *ack_received;		/* Acknowledgment received vector */
+#endif
 };
 
-char *log_2pc_sprintf_particp (void *particp_id);
 void log_2pc_dump_participants (FILE * fp, int block_length, void *block_particps_ids);
-bool log_2pc_send_prepare (int gtrid, int num_particps, void *block_particps_ids);
-bool log_2pc_send_commit_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids);
-bool log_2pc_send_abort_decision (int gtrid, int num_particps, int *particps_indices, void *block_particps_ids,
-				  bool collect);
+bool log_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
+void log_2pc_send_commit_decision (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
+void log_2pc_send_abort_decision (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids);
 TRAN_STATE log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execute_2pc_type, bool * decision);
 int log_2pc_set_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *info, int size);
 int log_2pc_get_global_tran_info (THREAD_ENTRY * thread_p, int gtrid, void *buffer, int size);

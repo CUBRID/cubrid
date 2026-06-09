@@ -63,9 +63,7 @@
 #define DB_IS_NULL(value)               db_value_is_null(value)
 
 #define DB_IS_STRING(value)       (db_value_type(value) == DB_TYPE_VARCHAR  || \
-                                   db_value_type(value) == DB_TYPE_CHAR     || \
-                                   db_value_type(value) == DB_TYPE_VARNCHAR || \
-                                   db_value_type(value) == DB_TYPE_NCHAR)
+                                   db_value_type(value) == DB_TYPE_CHAR)
 
 #define DB_VALUE_DOMAIN_TYPE(value)     db_value_domain_type(value)
 
@@ -80,21 +78,15 @@
 
   /* Macros from dbval.h */
 
-#define DB_NEED_CLEAR(v)                                                   \
-  ( !DB_IS_NULL(v)                                                         \
-    && ( (v)->need_clear == true                                           \
-         || ( ( (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR)               \
-                || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR)           \
-                || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB) )             \
-              && (v)->data.ch.info.compressed_need_clear != 0 ) ) )
+#define DB_NEED_CLEAR(v) \
+      ((!DB_IS_NULL(v) \
+	&& ((v)->need_clear == true \
+	    || (((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR) || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB)) \
+		&& (v)->data.ch.info.compressed_need_clear != 0))))
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARNCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_CLOB)\
+      (((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_CLOB)) \
 	? NULL : (v)->data.ch.medium.compressed_buf)
-
-
-#define DB_GET_STRING_PRECISION(v) \
-    ((v)->domain.char_info.length)
 
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
@@ -126,17 +118,20 @@
 	|| DB_VALUE_DOMAIN_TYPE (v) == DB_TYPE_ERROR) ? "" \
        : ((assert (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARNCHAR \
-		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_NCHAR \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARBIT \
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
 	  (v)->data.ch.medium.buf))
 
-#define DB_GET_NUMERIC_PRECISION(val) \
-    ((val)->domain.numeric_info.precision)
+#define DB_VALUE_NUMERIC_HEADER_PRECISION(value)       ((value)->data.num.header.precision)
+#define DB_VALUE_NUMERIC_HEADER_SCALE(value)           ((value)->data.num.header.scale)
+#define DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE(value)      ((value)->domain.numeric_info.is_value_negative)
 
-#define DB_GET_NUMERIC_SCALE(val) \
-    ((val)->domain.numeric_info.scale)
+#define DB_GET_NUMERIC_PRECISION(value, is_float_numeric) \
+  db_get_numeric_precision(value, is_float_numeric)
+#define DB_GET_NUMERIC_SCALE(value, is_float_numeric) \
+  db_get_numeric_scale(value, is_float_numeric)
+#define DB_GET_NUMERIC_PRECISION_AND_SCALE(value, precision, scale, is_float_numeric) \
+  db_get_numeric_precision_and_scale(value, precision, scale, is_float_numeric)
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
@@ -239,7 +234,8 @@ extern "C"
       }
 
     DB_TYPE type = db_value_domain_type (src);
-    if (TP_IS_VAR_LEN_CHAR_TYPE (type))
+
+    if (type == DB_TYPE_STRING || type == DB_TYPE_CLOB)
       {
 	dst->data.ch.info.compressed_need_clear = false;
       }

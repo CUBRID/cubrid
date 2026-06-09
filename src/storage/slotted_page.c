@@ -4551,18 +4551,49 @@ spage_check_slot_owner (THREAD_ENTRY * thread_p, PAGE_PTR page_p, PGSLOTID slot_
 STATIC_INLINE bool
 spage_is_unknown_slot (PGSLOTID slot_id, SPAGE_HEADER * page_header_p, SPAGE_SLOT * slot_p)
 {
-  unsigned int max_offset;
-
   assert (slot_p != NULL);
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  max_offset = SPAGE_DB_PAGESIZE - page_header_p->num_slots * sizeof (SPAGE_SLOT);
+  const int offset = slot_p->offset_to_record;
+  const int num_slots = page_header_p->num_slots;
 
-  assert_release (slot_p->offset_to_record >= sizeof (SPAGE_HEADER) || slot_p->offset_to_record == SPAGE_EMPTY_OFFSET);
-  assert_release (slot_p->offset_to_record <= max_offset);
+  if (unlikely (slot_id < 0 || slot_id >= num_slots))
+    {
+#if defined (NDEBUG)
+      assert_release (slot_id >= 0 && slot_id < num_slots);
+#else
+      er_log_debug (ARG_FILE_LINE, "Invalid ID : id=%d, num_slots=%d\n", slot_id, num_slots);
+#endif
+      return true;
+    }
 
-  return (slot_id < 0 || slot_id >= page_header_p->num_slots || slot_p->offset_to_record == SPAGE_EMPTY_OFFSET
-	  || slot_p->offset_to_record < sizeof (SPAGE_HEADER) || slot_p->offset_to_record > max_offset);
+  if (unlikely (offset == SPAGE_EMPTY_OFFSET || offset < (int) sizeof (SPAGE_HEADER)))
+    {
+#if defined (NDEBUG)
+      assert_release (offset != SPAGE_EMPTY_OFFSET && offset >= (int) sizeof (SPAGE_HEADER));
+#else
+      er_log_debug (ARG_FILE_LINE, "Offset violates header boundary : offset=%d, size of SPAGE_HEADER=%zu\n", offset,
+		    sizeof (SPAGE_HEADER));
+#endif
+      return true;
+    }
+
+  const unsigned int total_slots_size = (unsigned int) num_slots * sizeof (SPAGE_SLOT);
+  if (unlikely
+      (total_slots_size > (unsigned int) SPAGE_DB_PAGESIZE || offset > (int) (SPAGE_DB_PAGESIZE - total_slots_size)))
+    {
+#if defined (NDEBUG)
+      assert_release (total_slots_size <= (unsigned int) SPAGE_DB_PAGESIZE
+		      && offset <= (int) (SPAGE_DB_PAGESIZE - total_slots_size));
+#else
+      er_log_debug (ARG_FILE_LINE,
+		    "Offset violates slot array boundary : offset=%d, total_slots_size=%u, SPAGE_DB_PAGESIZE=%d\n",
+		    offset, total_slots_size, SPAGE_DB_PAGESIZE);
+#endif
+      return true;
+    }
+
+  return false;
 }
 
 /*

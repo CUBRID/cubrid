@@ -570,8 +570,6 @@ static int ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, 
 static int ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_xstr_db_varbit (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
-static int ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
-static int ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
 static int ldr_numeric_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att);
 static int ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val);
@@ -857,7 +855,6 @@ error_exit:
 	  case LDR_DATETIMELTZ:
 	  case LDR_DATETIMETZ:
 	  case LDR_STR:
-	  case LDR_NSTR:
 	  {
 	    string_type *str = (string_type *) c->val;
 
@@ -1098,7 +1095,7 @@ ldr_clear_err_total (LDR_CONTEXT *context)
 static const char *
 ldr_class_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context)
     {
@@ -1122,7 +1119,7 @@ ldr_class_name (LDR_CONTEXT *context)
 static const char *
 ldr_attr_name (LDR_CONTEXT *context)
 {
-  static const char *name = NULL;
+  const char *name = NULL;
 
   if (context && context->attrs && context->valid)
     {
@@ -1451,8 +1448,11 @@ ldr_find_class (const char *class_name)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type() == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
+      /* Called by ldr_sa_load or ldr_server_load to load an object file; DDL must not be executed. */
+      assert (db_get_client_statement_type () == CUBRID_STMT_NONE);
+
       char other_class_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
       ldr_find_class_by_query (realname, other_class_name, DB_MAX_IDENTIFIER_LENGTH);
@@ -1489,6 +1489,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -1504,6 +1505,18 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
   assert (buf != NULL);
 
   current_schema_name = sc_current_schema_name ();
+
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
+	}
+    }
 
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
@@ -1523,7 +1536,7 @@ ldr_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       if (error == DB_CURSOR_END)
 	{
-	  error = NO_ERROR;
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
 	}
       else
 	{
@@ -2356,7 +2369,7 @@ ldr_sys_user_db_generic (LDR_CONTEXT *context, const char *str, size_t len, SM_A
 {
   display_error_line (0);
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_UNAUTHORIZED_CLASS),
-	   "db_user");
+	   CT_USER_NAME);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
   ldr_increment_err_count (context, 1);
   return (ER_GENERIC_ERROR);
@@ -2441,12 +2454,18 @@ ldr_int_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
     {
       DB_NUMERIC num;
       DB_BIGINT tmp_bigint;
+      bool is_value_negative = false;
 
-      numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+      numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	{
+	  int precision = (int) len - (str[0] == '+' || str[0] == '-');
+	  if (precision > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      precision = DB_MAX_NUMERIC_PRECISION;
+	    }
 
-	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, (int) len, 0), context, DB_TYPE_BIGINT, str);
+	  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0), context, DB_TYPE_BIGINT, str);
 	  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_BIGINT, str);
 	}
       else
@@ -2515,9 +2534,10 @@ ldr_int_db_bigint (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBU
     {
       DB_NUMERIC num;
       DB_BIGINT tmp_bigint;
+      bool is_value_negative = false;
 
-      numeric_coerce_dec_str_to_num (str, num.d.buf);
-      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+      numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+      if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BIGINT));
 	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BIGINT, str);
@@ -2654,7 +2674,7 @@ error_exit:
  *
  *  These functions (ldr_str_db_*) are called when quoted strings are
  *  processed by the lexer.  They probably only make sense for char, varchar,
- *  nchar, varnchar, bit, and varbit domains.
+ *  bit, and varbit domains.
  *
  *  WARNING:  these functions cheat and assume a char-is-a-byte model, which
  *  won't work when dealing with non-ASCII (or non-Latin, at least) charsets.
@@ -2695,56 +2715,59 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   int precision;
   int err;
   DB_VALUE val;
-  int char_count = 0;
 
   precision = att->domain->precision;
 
-  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
-
-  if (char_count > precision)
+  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+  if ((int) len > precision)
     {
-      /*
-       * May be a violation, but first we have to check for trailing pad
-       * characters that might allow us to successfully truncate the
-       * thing.
-       */
-      int safe;
-      const char *p;
-      int truncate_size;
-
-      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
-
-      for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
-	{
-	  if (*p != ' ')
-	    {
-	      safe = 0;
-	      break;
-	    }
-	}
-      if (safe)
-	{
-	  len = truncate_size;
-	}
-      else
+      int char_count = 0;
+      intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+      if (char_count > precision)
 	{
 	  /*
-	   * It's a genuine violation; raise an error.
+	   * May be a violation, but first we have to check for trailing pad
+	   * characters that might allow us to successfully truncate the
+	   * thing.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
+	  int safe;
+	  const char *p;
+	  int truncate_size;
+
+	  intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
+
+	  for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
+	    {
+	      if (*p != ' ')
+		{
+		  safe = 0;
+		  break;
+		}
+	    }
+	  if (safe)
+	    {
+	      len = truncate_size;
+	    }
+	  else
+	    {
+	      /*
+	       * It's a genuine violation; raise an error.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CHAR));
+	      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CHAR, str);
+	    }
 	}
     }
 
   val.domain = ldr_char_tmpl.domain;
-  val.domain.char_info.length = char_count;
+  val.domain.char_info.length = precision;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
   OBJ_SET_BOUND_BIT (context->mobj, att->storage_order);
@@ -2768,54 +2791,57 @@ ldr_str_db_varchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIB
   int precision;
   int err;
   DB_VALUE val;
-  int char_count = 0;
 
   precision = att->domain->precision;
-  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
-
-  if (char_count > precision)
+  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+  if ((int) len > precision)
     {
-      /*
-       * May be a violation, but first we have to check for trailing pad
-       * characters that might allow us to successfully truncate the
-       * thing.
-       */
-      int safe;
-      const char *p;
-      int truncate_size;
-
-      intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
-      for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
-	{
-	  if (*p != ' ')
-	    {
-	      safe = 0;
-	      break;
-	    }
-	}
-      if (safe)
-	{
-	  len = truncate_size;
-	}
-      else
+      int char_count = 0;
+      intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
+      if (char_count > precision)
 	{
 	  /*
-	   * It's a genuine violation; raise an error.
+	   * May be a violation, but first we have to check for trailing pad
+	   * characters that might allow us to successfully truncate the
+	   * thing.
 	   */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_VARCHAR));
-	  CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_VARCHAR, str);
+	  int safe;
+	  const char *p;
+	  int truncate_size;
+
+	  intl_char_size ((unsigned char *) str, precision, (INTL_CODESET) att->domain->codeset, &truncate_size);
+	  for (p = &str[truncate_size], safe = 1; p < &str[len]; p++)
+	    {
+	      if (*p != ' ')
+		{
+		  safe = 0;
+		  break;
+		}
+	    }
+	  if (safe)
+	    {
+	      len = truncate_size;
+	    }
+	  else
+	    {
+	      /*
+	       * It's a genuine violation; raise an error.
+	       */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_VARCHAR));
+	      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_VARCHAR, str);
+	    }
 	}
     }
 
   val.domain = ldr_varchar_tmpl.domain;
-  val.domain.char_info.length = char_count;
+  val.domain.char_info.length = precision;
   val.data.ch.medium.size = (int) len;
   val.data.ch.medium.buf = (char *) str;
   val.data.ch.info.style = MEDIUM_STRING;
   val.data.ch.info.is_max_string = false;
   val.data.ch.info.compressed_need_clear = false;
   val.data.ch.medium.compressed_buf = NULL;
-  val.data.ch.medium.compressed_size = 0;
+  val.data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
 
   mem = context->mobj + att->offset;
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
@@ -2857,8 +2883,8 @@ static int
 ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
 {
   int err = NO_ERROR;
-  int char_count = 0;
   DB_VALUE val;
+  int max_char_length = att->domain->precision;
 
   db_make_null (&val);
 
@@ -2869,15 +2895,18 @@ ldr_str_db_clob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
    * absolute LOB size limit (att->domain->precision == DB_MAX_LOB_PRECISION),
    * so apply a plain bound check.
    */
-  intl_char_count ((unsigned char *) str, (int) len, (INTL_CODESET) att->domain->codeset, &char_count);
-  if (char_count > att->domain->precision)
+  if (max_char_length <= 0 || max_char_length > DB_MAX_LOB_PRECISION)
+    {
+      max_char_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_char_length)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_CLOB));
       CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_CLOB, str);
     }
 
-  CHECK_ERR (err, db_make_clob (&val, att->domain->precision, str, (int) len, att->domain->codeset,
-				att->domain->collation_id));
+  CHECK_ERR (err, db_make_clob (&val, max_char_length, str, (int) len));
   CHECK_ERR (err, ldr_generic (context, &val));
 
 error_exit:
@@ -2987,8 +3016,20 @@ ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
   size_t dest_size;
   char *bstring = NULL;
   DB_VALUE val;
+  int max_bit_length = att->domain->precision;
 
   db_make_null (&val);
+
+  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+    {
+      max_bit_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_bit_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
+    }
 
   dest_size = (len + 7) / 8;
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
@@ -2999,7 +3040,7 @@ ldr_bstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
     }
 
-  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len));
+  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len));
 
   /* val takes ownership of this piece of memory */
   val.need_clear = true;
@@ -3126,8 +3167,20 @@ ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
   size_t dest_size;
   char *bstring = NULL;
   DB_VALUE val;
+  int max_bit_length = att->domain->precision;
 
   db_make_null (&val);
+
+  if (max_bit_length <= 0 || max_bit_length > DB_MAX_LOB_PRECISION)
+    {
+      max_bit_length = DB_MAX_LOB_PRECISION;
+    }
+
+  if (len > (size_t) max_bit_length / 4)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (DB_TYPE_BLOB));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, DB_TYPE_BLOB, str);
+    }
 
   dest_size = (len + 1) / 2;
   CHECK_PTR (err, bstring = (char *) db_private_alloc (NULL, dest_size + 1));
@@ -3138,7 +3191,7 @@ ldr_xstr_db_blob (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUT
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BLOB, str);
     }
 
-  CHECK_ERR (err, db_make_blob (&val, DB_MAX_LOB_PRECISION, bstring, (int) len * 4));
+  CHECK_ERR (err, db_make_blob (&val, max_bit_length, bstring, (int) len * 4));
 
   /* val takes ownership of this piece of memory */
   val.need_clear = true;
@@ -3152,44 +3205,6 @@ error_exit:
       db_private_free_and_init (NULL, bstring);
     }
   db_value_clear (&val);
-  return err;
-}
-
-/*
- * ldr_nstr_elem -
- *    return:
- *    context():
- *    str():
- *    len():
- *    val():
- */
-static int
-ldr_nstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
-{
-
-  db_make_varnchar (val, TP_FLOATING_PRECISION_VALUE, str, (int) len, LANG_SYS_CODESET,
-		    LANG_SYS_COLLATION);
-  return NO_ERROR;
-}
-
-/*
- * ldr_nstr_db_varnchar -
- *    return:
- *    context():
- *    str():
- *    len():
- *    att():
- */
-static int
-ldr_nstr_db_varnchar (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE *att)
-{
-  int err = NO_ERROR;
-  DB_VALUE val;
-
-  CHECK_ERR (err, ldr_nstr_elem (context, str, len, &val));
-  CHECK_ERR (err, ldr_generic (context, &val));
-
-error_exit:
   return err;
 }
 
@@ -3220,7 +3235,17 @@ ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *v
   precision = (int) len - 1 - (str[0] == '+' || str[0] == '-');
   scale = (int) len - (int) strcspn (str, ".") - 1;
 
+  if (precision > DB_MAX_NUMERIC_PRECISION)
+    {
+      scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
+      precision = DB_MAX_NUMERIC_PRECISION;
+    }
+
   CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
+  if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+    {
+      FIXED_TO_FLOAT_NUMERIC (val);
+    }
   CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_NUMERIC, str);
 
 error_exit:
@@ -5087,6 +5112,10 @@ ldr_act_init_context (LDR_CONTEXT *context, const char *class_name, size_t len)
       if (dot)
 	{
 	  /* user specified name */
+	  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	    }
 
 	  /* user name of user specified name */
 	  sub_len = STATIC_CAST (int, dot - class_name);
@@ -5536,11 +5565,6 @@ ldr_act_add_attr (LDR_CONTEXT *context, const char *attr_name, size_t len)
 
     case DB_TYPE_CLOB:
       attdesc->setter[LDR_STR] = &ldr_str_db_clob;
-      break;
-
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      attdesc->setter[LDR_NSTR] = &ldr_nstr_db_varnchar;
       break;
 
     case DB_TYPE_BFILE:
@@ -6327,7 +6351,6 @@ ldr_init_loader (LDR_CONTEXT *context)
   elem_converter[LDR_COLLECTION] = &ldr_collection_elem;
   elem_converter[LDR_BSTR] = &ldr_bstr_elem;
   elem_converter[LDR_XSTR] = &ldr_xstr_elem;
-  elem_converter[LDR_NSTR] = &ldr_nstr_elem;
   elem_converter[LDR_MONETARY] = &ldr_monetary_elem;
   elem_converter[LDR_ELO_EXT] = &ldr_elo_ext_elem;
   elem_converter[LDR_ELO_INT] = &ldr_elo_int_elem;
@@ -6507,7 +6530,7 @@ ldr_init_driver ()
 }
 
 void
-ldr_sa_load (load_args *args, int *status, bool *interrupted)
+ldr_sa_load (load_args *args, int *status, volatile bool *interrupted)
 {
   int errors = 0;
   int64_t objects = 0;
@@ -6516,6 +6539,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
   int64_t lastcommit = 0;
   volatile  bool is_emptyfile = false;
   int ldr_init_ret = NO_ERROR;
+  int client_type = DB_CLIENT_TYPE_LOADDB_UTILITY;
 
   std::ifstream object_file (args->object_file);
 
@@ -6553,6 +6577,8 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
     }
   object_file.seekg (0, std::ios::beg);
 
+  client_type = db_get_client_type ();
+
   /* Check if we need to perform syntax checking. */
   if (!args->load_only)
     {
@@ -6587,6 +6613,24 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 
       if (object_file.is_open ())
 	{
+	  if (client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
+	    {
+	      if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+		{
+		  if (args->verbose)
+		    {
+		      print_log_msg (1, "\n");
+		      print_log_msg (1,
+				     msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
+						     LOADDB_MSG_COMPAT_UNDER_11_4));
+		    }
+		}
+	      else
+		{
+		  assert (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2);
+		}
+	    }
+
 	  print_log_msg ((int) args->verbose,
 			 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INSERTING));
 
@@ -6613,6 +6657,7 @@ ldr_sa_load (load_args *args, int *status, bool *interrupted)
 				 msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB,
 						 LOADDB_MSG_LAST_COMMITTED_LINE), lastcommit);
 		}
+
 	      *interrupted = true;
 	    }
 	  else
