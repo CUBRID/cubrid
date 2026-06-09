@@ -7107,7 +7107,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       names[names_count] = (char *) malloc (buf_size);
       if (names[names_count] == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (PARTITION_VARCHAR_LEN));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
 	  error = ER_FAILED;
 	  goto error_return;
 	}
@@ -16202,7 +16202,7 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
       SM_FUNCTION_INFO *part_expr = NULL;
 
       p = (char *) node->info.partition.keycol->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, DB_MAX_IDENTIFIER_LENGTH, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &val);
       if (node->info.partition.type == PT_PARTITION_HASH)
 	{
