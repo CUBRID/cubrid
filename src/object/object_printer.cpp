@@ -292,7 +292,14 @@ void object_printer::describe_domain (/*const*/tp_domain &domain, class_descript
 
 	case DB_TYPE_NUMERIC:
 	  strcpy (temp_buffer, temp_domain->type->name);
-	  m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+	  if (temp_domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      m_buf ("%s", ustr_upper (temp_buffer));
+	    }
+	  else
+	    {
+	      m_buf ("%s(%d,%d)", ustr_upper (temp_buffer), temp_domain->precision, temp_domain->scale);
+	    }
 	  break;
 
 	case DB_TYPE_SET:
@@ -524,7 +531,7 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	  if (prt_type == class_description::SHOW_CREATE_TABLE)
 	    {
 	      DB_VALUE min_val, inc_val;
-	      char buff[DB_MAX_NUMERIC_PRECISION * 2 + 4];
+	      char buff[DB_MAX_FIXED_NUMERIC_PRECISION * 2 + 4];
 	      int offset;
 
 	      assert (attribute.auto_increment != NULL);
@@ -543,9 +550,9 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 		  return;
 		}
 
-	      offset = snprintf (buff, DB_MAX_NUMERIC_PRECISION + 3, "(%s, ",
+	      offset = snprintf (buff, DB_MAX_FIXED_NUMERIC_PRECISION + 3, "(%s, ",
 				 numeric_db_value_print (&min_val, str_buf));
-	      snprintf (buff + offset, DB_MAX_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
+	      snprintf (buff + offset, DB_MAX_FIXED_NUMERIC_PRECISION + 1, "%s)", numeric_db_value_print (&inc_val, str_buf));
 	      m_buf (buff);
 
 	      pr_clear_value (&min_val);

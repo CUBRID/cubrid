@@ -17,19 +17,19 @@
  */
 
 /*
- * px_heap_scan_checker.hpp - module that checks whether parallel heap scan is possible.
+ * px_scan_checker.hpp
  */
 
-#ifndef _PX_HEAP_SCAN_CHECKER_HPP_
-#define _PX_HEAP_SCAN_CHECKER_HPP_
+#ifndef _PX_SCAN_CHECKER_HPP_
+#define _PX_SCAN_CHECKER_HPP_
 #include "xasl.h"
 
-extern "C" int scan_check_parallel_heap_scan_possible (XASL_NODE *xasl);
+extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
 
-namespace parallel_heap_scan
+namespace parallel_scan
 {
   /* Exposed for unit testing. Returns true if function can run in BUILDVALUE_OPT mode. */
   bool is_buildvalue_opt_supported_function (FUNC_CODE function);
 }
 
-#endif /*_PX_HEAP_SCAN_CHECKER_HPP_ */
+#endif /*_PX_SCAN_CHECKER_HPP_ */

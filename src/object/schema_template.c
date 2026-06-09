@@ -1971,6 +1971,176 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
   return error;
 }
 
+
+int
+smt_check_histogram_exist (MOP classop, const char *attr_name)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  if (histogram_obj != NULL)
+    {
+      /* not error, just return ER_LC_CLASSNAME_EXIST */
+      error = ER_LC_CLASSNAME_EXIST;
+      goto end;
+    }
+end:
+  return error;
+}
+
+int
+smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
+  if (histogram_obj == NULL)
+    {
+      if (!no_error_if_not_found)
+	{
+	  error = ER_LC_UNKNOWN_CLASSNAME;
+	  // ---- query buffer ---- (error_length + table_name_length + attr_name_length)
+	  char error_histogram[100 + 222 + 254];
+	  snprintf (error_histogram, sizeof (error_histogram), "histogram of %s(%s)", sm_get_ch_name (classop),
+		    attr_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_histogram);
+	  goto end;
+	}
+    }
+  else
+    {
+      error = db_drop (histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+end:
+  return error;
+}
+
+int
+smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool with_fullscan)
+{
+  int au_save, error = NO_ERROR;
+  DB_OBJECT *ret_obj = NULL, *histogram_class = NULL;
+  DB_VALUE value;
+  DB_OTMPL *obj_tmpl = NULL;
+  double null_frequency = 0;
+  db_make_null (&value);
+
+  /* temporarily disable authorization to access db_serial class */
+  AU_DISABLE (au_save);
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object_internal ((MOP) histogram_class, false);
+
+  if (obj_tmpl == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  db_make_object (&value, classop);
+
+  error = dbt_put_internal (obj_tmpl, "class_of", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+  /* key_attr */
+  db_make_string (&value, attr_name);
+  error = dbt_put_internal (obj_tmpl, "key_attr", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+
+  /* with_fullscan */
+  db_make_int (&value, with_fullscan);
+  error = dbt_put_internal (obj_tmpl, "with_fullscan", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+
+  db_make_double (&value, null_frequency);
+  error = dbt_put_internal (obj_tmpl, "null_frequency", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* histogram_values */
+  db_make_null (&value);
+  error = dbt_put_internal (obj_tmpl, "histogram_values", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  ret_obj = dbt_finish_object (obj_tmpl);
+  if (ret_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+  AU_ENABLE (au_save);
+  return error;
+}
+
 /*
  * smt_add_constraint() - Adds the integrity constraint flags for an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR

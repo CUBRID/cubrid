@@ -53,6 +53,7 @@ namespace cubconn
       receiver ();
       ~receiver ();
 
+      bool prepare ();
       void reset ();
 
       result drain (int fd, size_t limit = 0);

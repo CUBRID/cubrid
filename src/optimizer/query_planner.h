@@ -110,6 +110,27 @@ typedef enum
   QO_PLAN_SKIP_ORDERBY_CAN_USE = -2,
 } QO_PLAN_SKIP_ORDERBY_OPT;
 
+#define DEFAULT_NULL_SELECTIVITY (double) 0.01
+#define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
+#define DEFAULT_SELECTIVITY (double) 0.1
+#define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
+#define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
+#define DEFAULT_COMP_SELECTIVITY (double) 0.1
+#define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01
+#define DEFAULT_IN_SELECTIVITY (double) 0.01
+#define DEFAULT_RANGE_SELECTIVITY (double) 0.1
+
+typedef enum PRED_CLASS
+{
+  PC_ATTR,
+  PC_CONST,
+  PC_HOST_VAR,
+  PC_SUBQUERY,
+  PC_SET,
+  PC_OTHER,
+  PC_MULTI_ATTR
+} PRED_CLASS;
+
 struct qo_plan
 {
   QO_INFO *info;
@@ -437,6 +458,8 @@ extern bool qo_has_sort_limit_subplan (QO_PLAN * plan);
 extern int qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg);
 extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
 						 bool for_min_max_optimize);
+
+extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
 

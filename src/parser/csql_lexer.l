@@ -36,7 +36,13 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
-#define CSQL_MAXNAME	256
+#define CSQL_MAXNAME	(256)
+#define NUMBER_LITERAL_MAX_LEN  (254)
+#define NUMBER_LITERAL_EXTRA_BYTE (1) /* extra byte for overflow/rounding check in numeric literals */
+#define INTEGER_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
+#define FLOAT_MAX_LITERAL (NUMBER_LITERAL_MAX_LEN + NUMBER_LITERAL_EXTRA_BYTE)
+#define FLOAT_LITERAL_BUFFER (FLOAT_MAX_LITERAL + 2) /* +2: +1 for trailing '0' (e.g., "3." -> "3.0"), +1 for null terminator */
+#define FLOAT_APPENDABLE_TRAILING_ZERO (NUMBER_LITERAL_MAX_LEN)
 
 int parser_yyinput_single_mode = 0;
 
@@ -201,6 +207,7 @@ IDL       [a-zA-Z0-9_]
 [bB][oO][oO][lL][eE][aA][nN]						{ begin_token(yytext);   return BOOLEAN_; }
 [bB][oO][tT][hH]							{ begin_token(yytext);   return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ begin_token(yytext);   return BREADTH; }
+[bB][uU][cC][kK][eE][tT][sS]						{ begin_token(yytext);   return BUCKETS; }
 [bB][yY]								{ begin_token(yytext);   return BY; }
 [bB][uU][fF][fF][eE][rR]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
@@ -454,6 +461,7 @@ IDL       [a-zA-Z0-9_]
 [hH][eE][aA][pP]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HEAP; }                                                                            
+[hH][iI][sS][tT][oO][gG][rR][aA][mM]					{ begin_token(yytext);   return HISTOGRAM; }
 [hH][oO][sS][tT]					                { begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return HOST; }
@@ -1190,8 +1198,8 @@ IDL       [a-zA-Z0-9_]
 
 										begin_token(yytext);
 										len = strlen(yytext);
-										if (len >= 254)
-											yytext[254] = 0;
+										if (len >= INTEGER_MAX_LITERAL)
+											yytext[INTEGER_MAX_LITERAL] = 0;
 
 										/* loop until len - 1, in case of 0000000000000000000000 */
 										for (i = 0; i < len - 1 && yytext[i] == '0'; i++)
@@ -1210,15 +1218,15 @@ IDL       [a-zA-Z0-9_]
                                                                         }
 
 ([0-9]+[Ee][\+\-]?[0-9]+[fF]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fF]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fF]?) 	{
-										char buff[256];
+										char buff[FLOAT_LITERAL_BUFFER];
 										int len;
 
 										begin_token(yytext);
 										len = strlen(yytext);
-										if (len >= 254)
-											yytext[254] = 0;
+										if (len >= FLOAT_MAX_LITERAL)
+											yytext[FLOAT_MAX_LITERAL] = 0;
 
-										if (len < 253 && yytext[len-1] == '.')
+										if (len < FLOAT_APPENDABLE_TRAILING_ZERO && yytext[len-1] == '.')
 										  {
 										    strncpy(buff, yytext, sizeof(buff));
 										    buff[len] = '0';

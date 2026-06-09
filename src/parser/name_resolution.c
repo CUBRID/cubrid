@@ -2043,11 +2043,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
-      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SCAN)
 	{
 	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
 	    {
-	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
 	    }
 	}
 
@@ -3294,6 +3294,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
+    case PT_SHOW_HISTOGRAM:
+      scopestack.specs = node->info.histogram.target_table_spec;
+      bind_arg->scopes = &scopestack;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+      bind_arg->spec_frames = &spec_frame;
+      pt_bind_scope (parser, bind_arg);
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+      bind_arg->spec_frames = bind_arg->spec_frames->next;
+      bind_arg->scopes = bind_arg->scopes->next;
+
+      *continue_walk = PT_LIST_WALK;
+      break;
     case PT_METHOD_CALL:
       /*
        * We accept two different method call syntax:
@@ -6924,7 +6941,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       result->info.name.spec_id = id;
       result->info.name.meta_class = meta_class;
       result->info.name.partition = NULL;
-
+      result->info.name.histogram = NULL;
       if ((au_fetch_class_force (db, &smclass, AU_FETCH_READ) == NO_ERROR))
 	{
 	  if (smclass->partition != NULL && smclass->partition->pname == NULL)
