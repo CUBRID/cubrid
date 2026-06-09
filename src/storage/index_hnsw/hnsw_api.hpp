@@ -27,6 +27,7 @@
 #include <memory>
 #include <filesystem>
 #include <cassert>
+#include <shared_mutex>
 
 #include "storage_common.h"
 #include "dbtype_def.h"
@@ -209,6 +210,13 @@ class hnsw_index
       return NO_ERROR;
     }
 
+    /* coarse per-index reader/writer lock: DML/UNDO/REDO exclusive, search shared.
+     * Acquired before any page is fixed, so it is outermost vs HNSW page latches. */
+    std::shared_mutex &index_latch ()
+    {
+      return m_latch;
+    }
+
   protected:
     hnsw_index (hnsw_index_backend &backend, const BTID &btid, const std::string &name,
 		const hnsw_build_params &build_params);
@@ -217,6 +225,7 @@ class hnsw_index
     const BTID m_btid;
     const std::string m_name;
     const hnsw_build_params m_build_params;
+    std::shared_mutex m_latch;
 };
 
 namespace hnsw_backend_registry

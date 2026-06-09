@@ -26,6 +26,8 @@
 #include <cstring>
 #include <cstdlib>
 #include <vector>
+#include <mutex>
+#include <shared_mutex>
 
 #include "error_manager.h"
 #include "system_parameter.h"
@@ -133,11 +135,17 @@ class hnsw_index_manager
 
     std::unordered_map<BTID, std::unique_ptr<hnsw_index>> m_index_map;
     std::unique_ptr<hnsw_index_backend> m_backend;
+
+    /* guards m_index_map; never held while acquiring an index_latch() */
+    mutable std::mutex m_map_mutex;
 };
 
 // singleton instances
 // TODO: dynamically load backend implementations
 static hnsw_index_manager *index_manager = nullptr;
+
+/* serializes the load-on-first-access path in hnsw_get_index */
+static std::mutex hnsw_load_mutex;
 
 // =====================================================================
 // high-level APIs
@@ -467,31 +475,28 @@ hnsw_get_index (THREAD_ENTRY *thread_p, BTID *btid, hnsw_index *&index)
   index = index_manager->get_index (btid);
   if (index == nullptr)
     {
-      int error = index_manager->load_index (thread_p, btid, index);
-      if (error != NO_ERROR || index == nullptr)
+      /* double-checked load: concurrent misses must not load the same index twice */
+      std::lock_guard<std::mutex> load_guard (hnsw_load_mutex);
+      index = index_manager->get_index (btid);
+      if (index == nullptr)
 	{
-	  assert (false);
-	  return error == NO_ERROR ? ER_FAILED : error;
+	  int error = index_manager->load_index (thread_p, btid, index);
+	  if (error != NO_ERROR || index == nullptr)
+	    {
+	      assert (false);
+	      return error == NO_ERROR ? ER_FAILED : error;
+	    }
 	}
     }
 
   return NO_ERROR;
 }
 
-int
-hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
+/* body of hnsw_add_element; caller must hold index->index_latch() exclusively */
+static int
+hnsw_add_element_locked (THREAD_ENTRY *thread_p, BTID *btid, hnsw_index *index, OID *oid, float *vector,
+			 int n_vectors)
 {
-  assert (oid);
-  assert (vector);
-  assert (n_vectors > 0);
-
-  hnsw_index *index = NULL;
-  int error = hnsw_get_index (thread_p, btid, index);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
   if (index->prepare_to_add (thread_p, n_vectors, oid, vector) != NO_ERROR)
     {
       assert (false);
@@ -527,18 +532,10 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   return index->add (thread_p, n_vectors, oid, vector);
 }
 
-int
-hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
+/* body of hnsw_delete_element; caller must hold index->index_latch() exclusively */
+static int
+hnsw_delete_element_locked (THREAD_ENTRY *thread_p, BTID *btid, hnsw_index *index, OID *oid)
 {
-  assert (oid);
-
-  hnsw_index *index = NULL;
-  int error = hnsw_get_index (thread_p, btid, index);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
   if (!log_is_in_crash_recovery ())
     {
       const hnsw_build_params &params = index->get_build_params ();
@@ -578,21 +575,64 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
 }
 
 int
-hnsw_update_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector)
+hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, int n_vectors)
 {
   assert (oid);
   assert (vector);
+  assert (n_vectors > 0);
 
-  /* UPDATE = logged DELETE of the old vector + logged INSERT of the new vector. This composes for
-   * rollback and crash recovery: the per-op UNDO/REDO records run in the correct reverse order
-   * automatically (insert UNDO tombstones the new node, delete UNDO revives the old node). */
-  int error = hnsw_delete_element (thread_p, btid, oid);
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return hnsw_add_element (thread_p, btid, oid, vector, 1);
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+  return hnsw_add_element_locked (thread_p, btid, index, oid, vector, n_vectors);
+}
+
+int
+hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
+{
+  assert (oid);
+
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+  return hnsw_delete_element_locked (thread_p, btid, index, oid);
+}
+
+int
+hnsw_update_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector)
+{
+  assert (oid);
+  assert (vector);
+
+  hnsw_index *index = NULL;
+  int error = hnsw_get_index (thread_p, btid, index);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  /* UPDATE = logged DELETE of the old vector + logged INSERT of the new vector. This composes for
+   * rollback and crash recovery: the per-op UNDO/REDO records run in the correct reverse order
+   * automatically (insert UNDO tombstones the new node, delete UNDO revives the old node).
+   * Both sub-ops run under a single exclusive latch so the UPDATE is atomic on this index. */
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+  error = hnsw_delete_element_locked (thread_p, btid, index, oid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return hnsw_add_element_locked (thread_p, btid, index, oid, vector, 1);
 }
 
 /*
@@ -662,6 +702,8 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     {
       return error == NO_ERROR ? ER_FAILED : error;
     }
+
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
 
   /* Idempotent replay: when recovery reuses the disk-flushed graph, a windowed insert whose row
    * was already flushed is present as a live node — re-adding it would duplicate. Skip in that
@@ -748,6 +790,8 @@ hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+
   error = index->remove (thread_p, oid);
   if (error != NO_ERROR)
     {
@@ -811,6 +855,8 @@ hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+
   /* Compensation: log the tombstone as a delete REDO before applying it, so a crash during or
    * after rollback replays it. */
   char wal_data[sizeof (HNSW_RV_LOG_HEADER)];
@@ -868,6 +914,8 @@ hnsw_rv_undo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+
   /* Compensation: log the revive before applying it, so a crash during/after rollback replays it. */
   log_append_dboutside_redo (thread_p, RVHNSW_REVIVE_ELEMENT, rcv->length, rcv->data);
 
@@ -912,6 +960,8 @@ hnsw_rv_redo_revive_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  std::unique_lock<std::shared_mutex> wlock (index->index_latch ());
+
   error = index->revive (thread_p, oid, vector);
   if (error != NO_ERROR)
     {
@@ -952,6 +1002,8 @@ hnsw_search_element (THREAD_ENTRY *thread_p, BTID *btid, DB_VALUE *key_dbvalue, 
   assert (vf != NULL && vf->dim == index->get_dimension());
 
   int ef_search = prm_get_integer_value (PRM_ID_VECTOR_INDEX_EF_SEARCH);
+
+  std::shared_lock<std::shared_mutex> rlock (index->index_latch ());
   return index->search (thread_p, vf->float_array, k, ef_search, rec_oids, distances);
 }
 
@@ -1037,6 +1089,7 @@ hnsw_index_manager::is_index_loaded (const BTID *btid) const
 int
 hnsw_index_manager::add_index (const BTID *btid, hnsw_index *index)
 {
+  std::lock_guard<std::mutex> map_guard (m_map_mutex);
   if (is_index_loaded (btid))
     {
       assert (false);
@@ -1051,6 +1104,7 @@ hnsw_index_manager::add_index (const BTID *btid, hnsw_index *index)
 hnsw_index *
 hnsw_index_manager::get_index (const BTID *btid) const
 {
+  std::lock_guard<std::mutex> map_guard (m_map_mutex);
   if (is_index_loaded (btid))
     {
       return m_index_map.at (*btid).get();
@@ -1061,6 +1115,7 @@ hnsw_index_manager::get_index (const BTID *btid) const
 int
 hnsw_index_manager::delete_index (const BTID *btid)
 {
+  std::lock_guard<std::mutex> map_guard (m_map_mutex);
   m_index_map.erase (*btid);
   return NO_ERROR;
 }
