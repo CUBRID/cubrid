@@ -771,12 +771,7 @@ valid options:\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                set the display unit (page, mega, giga, tera, human readable); default: H\n\
   -s, --summarize              display only a summary for each volume purpose\n\
-  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n\
-  -n, --class-name=NAME        display per-class space usage;\n\
-                               NAME formats:\n\
-                                 <class>     a specific class\n\
-                                 *           all user classes\n\
-                                 prefix*     classes matching the prefix\n
+  -p, --purpose                display the used size of each purpose(data/index/temp) of each volume\n
 61 View classes are not applicable to spacedb.\n
 62 WARNING: class "%1$s" is being modified, skipped.\n
 

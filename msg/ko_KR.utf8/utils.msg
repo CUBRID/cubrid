@@ -762,12 +762,7 @@ spacedb: 데이터베이스 디스크 공간 정보 출력\n\
       --size-unit={PAGE|M|G|T|H}\n\
                                출력 단위(page, mega, giga, tera, human readable) 설정; 기본값: H\n\
   -s, --summarize              볼륨 용도별 합계 결과 출력\n\
-  -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n\
-  -n, --class-name=NAME        클래스별 공간 사용량 출력;\n\
-                               NAME 형식:\n\
-                                 <클래스명>   특정 클래스\n\
-                                 *           모든 사용자 클래스\n\
-                                 prefix*     해당 접두사로 시작하는 클래스\n
+  -p, --purpose                각 볼륨의 목적별 (데이터/인덱스/임시) 사용량을 출력\n
 61 View 클래스는 spacedb 대상이 아닙니다.\n
 62 경고: 클래스 "%1$s"가 변경 중이므로 건너뛰었습니다.\n
 
