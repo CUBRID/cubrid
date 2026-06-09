@@ -17310,15 +17310,9 @@ error_serial_name:
     {
       heap_scancache_end (thread_p, scan_cache);
     }
-  if (ret != NO_ERROR)
-    {
-      return ret;
-    }
 
-  return NO_ERROR;
+  return ret;
 }
-
-
 
 /*
  * heap_set_autoincrement_value () -
@@ -17326,12 +17320,14 @@ error_serial_name:
  *   attr_info(in):
  *   scan_cache(in):
  *   is_set(out): 1 if at least one autoincrement value has been set
+ *   auto_incr_pos(in): Position of autoincrement attribute in cache
+ *   serial_name(in/out): Buffer to store the generated serial name if needed
  */
 int
 heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
 			      int *is_set, int auto_incr_pos, char *serial_name)
 {
-  int i, idx_in_cache;
+  int idx_in_cache;
   HEAP_ATTRVALUE *value;
   DB_VALUE dbvalue_numeric, *dbvalue, key_val;
   OR_ATTRIBUTE *att;

@@ -666,7 +666,7 @@ set_auto_increment_serial_partial_name (char *serial_name, int copy_length, cons
 int
 set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name)
 {
-  // class_name and attr_name must be in lowercase      
+  // class_name and attr_name must be in lowercase
   int attr_length, class_only_length;
   const char *dot = strchr (class_name, '.');
 
@@ -684,9 +684,10 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
   else
     {
       const int md5_str_len = 33;	// 1 + 32,  '_' + <md5(32)>
-      char md5_str[33 + 1] = { '_', '\0', };
-      char name_buf[DB_MAX_IDENTIFIER_LENGTH + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + DB_MAX_IDENTIFIER_LENGTH] =
+      char md5_str[md5_str_len + 1] = { '_', '\0', };
+      char name_buf[DB_MAX_CLASS_LENGTH + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + DB_MAX_IDENTIFIER_LENGTH] =
 	{ '\0' };
+      char *buf_ptr = NULL;
       int pos, copy_length = 0;
       const int name_space = DB_MAX_SERIAL_NAME_LENGTH - (AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + md5_str_len);
 
@@ -702,16 +703,20 @@ set_auto_increment_serial_name (char *serial_name, const char *class_name, const
 	  return pos;
 	}
 
+      // make <user_name>.<serail_name>  
       pos = (dot - class_name) + 1;
       memcpy (serial_name, class_name, pos);	// <user_name>.
+      buf_ptr = serial_name + pos;
 
-      pos = set_auto_increment_serial_partial_name (serial_name, (name_space / 2), class_name, "_ai_");
+      // The string written to buf_ptr is the serial name and should not exceed DB_MAX_SERIAL_NAME_LENGTH
+      // <class_name> + "_ai_" + <attr_name> + "_" + <md5_str>
+      pos = set_auto_increment_serial_partial_name (buf_ptr, (name_space / 2), dot + 1, "_ai_");
       if (pos < 0)
 	{
 	  return pos;
 	}
 
-      pos = set_auto_increment_serial_partial_name (serial_name + pos, (name_space - pos), attr_name, md5_str);
+      pos = set_auto_increment_serial_partial_name (buf_ptr + pos, (name_space - pos), attr_name, md5_str);
       if (pos < 0)
 	{
 	  return pos;

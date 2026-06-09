@@ -4804,7 +4804,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  if (buf_size > PARTITION_VARCHAR_LEN)
 	    {
 	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (PARTITION_VARCHAR_LEN - 1));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	      goto end_create;
 	    }
 
@@ -4941,7 +4941,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  if (buf_size > PARTITION_VARCHAR_LEN)
 	    {
 	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (PARTITION_VARCHAR_LEN - 1));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	      goto end_create;
 	    }
 
@@ -5592,7 +5592,7 @@ do_rename_partition (MOP old_class, const char *newname)
 	  if ((new_len + strlen (subclass->partition->pname)) >= PARTITION_VARCHAR_LEN)
 	    {
 	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (PARTITION_VARCHAR_LEN - 1));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	      goto end_rename;
 	    }
 	  sprintf (new_subname, "%s" PARTITIONED_SUB_CLASS_TAG "%s", newname, subclass->partition->pname);
@@ -7100,7 +7100,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       if (buf_size > PARTITION_VARCHAR_LEN)
 	{
 	  error = ER_PARTITION_TABLE_NAME_OVERFLOW;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (PARTITION_VARCHAR_LEN - 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	  goto error_return;
 	}
 

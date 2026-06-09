@@ -213,7 +213,7 @@ typedef enum
 // TODO: create CT_ATTR_*_INDEX of other CT_CLASSes
 #endif /* !CS_MODE */
 
-extern int set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_namec);
+extern int set_auto_increment_serial_name (char *serial_name, const char *class_name, const char *attr_name);
 
 /* This fills in misc information missing from the static definitions */
 extern void tf_compile_meta_classes (void);

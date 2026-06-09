@@ -78,7 +78,7 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   const char *classname_only = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool has_savepoint = true;
-  int save = 0;
+  int save = 0, alloc_sz;
   int error = NO_ERROR;
 
   if (class_mop == NULL || owner_mop == NULL)
@@ -159,10 +159,11 @@ au_change_class_owner_including_partitions (MOP class_mop, MOP owner_mop)
   db_ws_free_and_init (owner_name);
 
   classname_only = sm_remove_qualifier_name (class_old_name);
-  class_new_name = (char *) db_private_alloc (NULL, snprintf (NULL, 0, "%s.%s", downcase_owner_name, classname_only) + 1);
+  alloc_sz = snprintf (NULL, 0, "%s.%s", downcase_owner_name, classname_only) + 1;
+  class_new_name = (char *) db_private_alloc (NULL, alloc_sz);
   if (class_new_name == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) alloc_sz);
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto end;
     }
