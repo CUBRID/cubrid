@@ -73,7 +73,7 @@ namespace cubstorage
     public:
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
-      static constexpr std::size_t L3_FANOUT = 7;
+      static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t SHARD_COUNT = 8;
 
@@ -139,6 +139,16 @@ namespace cubstorage
       struct alignas (64) atomic_wrapper
       {
 	std::atomic<T> value;
+
+	atomic_wrapper ()
+	  : value ()
+	{
+	}
+
+	atomic_wrapper (T val)
+	  : value (val)
+	{
+	}
 
 	T load () const noexcept
 	{
@@ -206,27 +216,15 @@ namespace cubstorage
 	  L3 () noexcept;
 	  ~L3 () = default;
 
-	  static constexpr std::uint64_t FLAG_MASK = 0x8080808080808080;
-	  static constexpr std::uint64_t FLAG_ALLOCATING = 0x8000000000000000;
-
 	  std::size_t find (tier minimum, std::array<std::size_t, BITS_PER_BYTE> &pos);
 
 	  void clear ();
 	  void clear (std::size_t index);
 	  void set (tier fs, std::size_t index);
 
-	  bool is_allocating ();
-	  void clear_allocating ();
-	  void set_allocating ();
-
 	  friend bool operator== (const L3 &lhs, const L3 &rhs)
 	  {
-	    uint64_t lhs_value, rhs_value;
-
-	    std::memcpy (&lhs_value, lhs.m_freespace.data (), sizeof (uint64_t));
-	    std::memcpy (&rhs_value, rhs.m_freespace.data (), sizeof (uint64_t));
-
-	    return (lhs_value & ~FLAG_MASK) == (rhs_value & ~FLAG_MASK);
+	    return std::memcmp (lhs.m_freespace.data (), rhs.m_freespace.data (), 8) == 0;
 	  }
 
 	private:
@@ -245,9 +243,14 @@ namespace cubstorage
 
 	  void initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT]);
 
-	  status find (HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  status find (OID *class_oid, HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+
+	  void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
+			  std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
 
 	private:
+	  atomic_wrapper<bool> m_allocating;
+
 	  atomic_wrapper<L3> m_L3;
 	  atomic_wrapper<L2> m_L2[L3_FANOUT];
 	  atomic_wrapper<L1> m_L1[L3_FANOUT * L2_FANOUT];
@@ -255,13 +258,25 @@ namespace cubstorage
 	  std::atomic<std::uint64_t> m_recs_num;
 	  std::atomic<float> m_recs_sumlen;
 
-	  status L3_find (tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  std::atomic<std::uint32_t> m_request;
+	  std::atomic<std::uint32_t> m_advance_shard;
+
+	  std::atomic<std::uint32_t> m_fetch_L3;
+	  std::atomic<std::uint32_t> m_fetch_L2;
+	  std::atomic<std::uint32_t> m_fetch_L1;
+
+	  std::atomic<std::uint32_t> m_found;
+	  std::atomic<std::uint32_t> m_allocated;
+
+	  status L3_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L3_update (std::size_t l2_index);
 
-	  status L2_find (tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  status L2_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
+			  PGBUF_WATCHER &page_watcher);
 	  void L2_update (std::size_t l2_index, std::size_t l1_index);
 
-	  status L1_find (std::uint16_t size, std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher);
+	  status L1_find (OID *class_oid, std::uint16_t size, std::size_t l2_index, std::size_t l1_index,
+			  PGBUF_WATCHER &page_watcher);
 	  status L1_fix (std::size_t l2_index, std::size_t l1_index, L1 l1, VPID vpid, PGBUF_WATCHER &page_watcher);
 	  void L1_remove (std::size_t l2_index, std::size_t l1_index, L1 l1);
 
@@ -278,9 +293,11 @@ namespace cubstorage
 
       void initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT]);
 
-      int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
+      int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
+
+      void show_stats ();
 
     private:
       std::array<shard, SHARD_COUNT> m_shard;
@@ -301,7 +318,7 @@ namespace cubstorage
       static_assert (alignof (atomic_wrapper<L2>) == 64, "bestspace::atomic_wrapper<L2> must be aligned as 64 bytes");
       static_assert (alignof (atomic_wrapper<L3>) == 64, "bestspace::atomic_wrapper<L3> must be aligned as 64 bytes");
 
-      static_assert (sizeof (shard) == 4160, "bestspace::shard must be 4160 bytes");
+      static_assert (sizeof (shard) == 4800, "bestspace::shard must be 4800 bytes");
       static_assert (alignof (shard) == 64, "bestspace::shard must be aligned as 64 bytes");
   };
 
@@ -317,7 +334,18 @@ namespace cubstorage
 	OID class_oid;
 	HFID hfid;
 	bestspace *entry;
+
 	registry_entry *next;
+      };
+
+      struct registry_cache
+      {
+	registry_entry *head;
+	std::size_t size;
+	std::size_t generation;
+
+	registry_cache ();
+	~registry_cache ();
       };
 
     public:
@@ -334,13 +362,16 @@ namespace cubstorage
       int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
+      void show_stats ();
+
     private:
       registry_entry *m_head;
       std::mutex m_mutex;
 
+      alignas (64) std::atomic<uint64_t> m_generation;
+
       static constexpr std::size_t TLS_MAX_SIZE = 20;
-      inline static thread_local registry_entry *TLS_head = nullptr;
-      inline static thread_local std::size_t TLS_size = 0;
+      inline static thread_local registry_cache TLS_cache;
 
       int find_from_cache (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
 			   PGBUF_WATCHER &page_watcher);
@@ -353,6 +384,8 @@ namespace cubstorage
 	  VFID *vfid);
       std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, OID *class_oid,
 	  HFID *hfid);
+
+      void invalidate_entries (registry_entry *head);
 
       registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, VFID *vfid);
       registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, HFID *hfid);
