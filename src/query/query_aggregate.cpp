@@ -226,9 +226,8 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
-    // for these two situations we just need to merge
+    // JSON_ARRAYAGG: append the partial arrays by preserving every element.
     case PT_JSON_ARRAYAGG:
-    case PT_JSON_OBJECTAGG:
       if (!DB_IS_NULL (new_acc->value))
 	{
 	  if (DB_IS_NULL (acc->value))
@@ -250,6 +249,26 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 		{
 		  pr_clear_value (&merge_result);
 		}
+	    }
+	}
+      break;
+
+    // JSON_OBJECTAGG: merge the partial objects keeping the FIRST value for each duplicate key, to
+    // match the serial result (db_accumulate_json_objectagg ignores ER_JSON_DUPLICATE_KEY, so the
+    // first value wins). JSON_MERGE_PRESERVE must not be used here: it wraps duplicate-key values
+    // into an array, which would diverge from the serial single-value-per-key result.
+    case PT_JSON_OBJECTAGG:
+      if (!DB_IS_NULL (new_acc->value))
+	{
+	  if (DB_IS_NULL (acc->value))
+	    {
+	      error = pr_clone_value (new_acc->value, acc->value);
+	    }
+	  else
+	    {
+	      JSON_DOC *acc_doc = db_get_json_document (acc->value);
+	      const JSON_DOC *new_doc = db_get_json_document (new_acc->value);
+	      error = db_json_object_merge_ignore_duplicates_func (new_doc, acc_doc);
 	    }
 	}
       break;
