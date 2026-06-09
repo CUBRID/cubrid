@@ -46,7 +46,7 @@ static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE *
 				       BITSET * left_exprs, PT_NODE * left_elist, XASL_NODE * rght, PT_NODE * rght_list,
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-				      PROJECTION_INFO * projection_info, BITSET * residual_terms);
+				      PROJECTION_INFO * projection_info);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -121,8 +121,7 @@ static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_E
 static QO_PLAN *qo_find_driving_scan_plan (QO_PLAN * plan);
 static void qo_apply_parallel_index_scan_threshold (QO_PLAN * plan);
 
-static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * residual_terms,
-				    PROJECTION_INFO * info);
+static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info);
 static void qo_clear_projection_info (QO_ENV * env, PROJECTION_INFO * info);
 static void qo_clear_projection_part_info (PARSER_CONTEXT * parser, PROJECTION_PART_INFO * part_info);
 static void qo_clear_projection_final_info (PARSER_CONTEXT * parser, PROJECTION_FINAL_INFO * final_info);
@@ -553,14 +552,13 @@ exit_on_error:
  *   outer_xasl(in): XASL node for outer input of the hash join.
  *   inner_xasl(in): XASL node for inner input of the hash join.
  *   projection_info(in): Projection information used in the hash join execution plan.
- *   residual_terms(in): Two-input residual terms to push into the probe loop (may be empty).
  */
 static XASL_NODE *
 make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
-		    PROJECTION_INFO * projection_info, BITSET * residual_terms)
+		    PROJECTION_INFO * projection_info)
 {
   PARSER_CONTEXT *parser = NULL;
-  PT_NODE *during_join_pred = NULL, *pred;
+  PT_NODE *during_join_pred = NULL, *after_join_pred = NULL, *pred;
 
   PROJECTION_PART_INFO *outer_info, *inner_info;
 
@@ -696,25 +694,16 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       parser_free_tree (parser, during_join_pred);
     }
 
-  /* residual predicate: two-input residual conditions (incl. non-equi joins) pushed into the probe loop.
-   * The referenced columns are fetched into val_descr through proc->outer/inner.regu_list_pred,
-   * whose coverage was extended for these terms in qo_init_projection_info ().
-   *
-   * The residual is stored on the HASHJOIN node's own after_join_pred slot:
-   * the node sits on the parent's aptr_list, has no spec_list, and never runs the generic scan loop,
-   * so this xasl-level slot is otherwise unused and is consumed exclusively by the probe-loop evaluation
-   * (hjoin_init_manager copies it into HASHJOIN_MANAGER.after_join_pred).
-   * Invariant: a HASHJOIN node must never gain a spec_list / scan-loop execution,
-   * or the generic scan loop would double-evaluate after_join_pred alongside the probe
-   * (asserted in hjoin_init_manager). */
-  if (!bitset_is_empty (residual_terms))
+  /* after join predicate */
+  if (!bitset_is_empty (&projection_info->after_join_pred_set))
     {
-      PT_NODE *probe_pred_pt = make_pred_from_bitset (env, residual_terms, is_always_true);
-      if (probe_pred_pt != NULL)
+      after_join_pred = make_pred_from_bitset (env, &projection_info->after_join_pred_set, is_always_true);
+      if (after_join_pred == NULL)
 	{
-	  xasl = add_after_join_predicate (env, xasl, probe_pred_pt);
-	  parser_free_tree (parser, probe_pred_pt);
+	  goto error_exit;
 	}
+      xasl = add_after_join_predicate (env, xasl, after_join_pred);
+      parser_free_tree (parser, after_join_pred);
     }
 
   /* merge_info */
@@ -2643,8 +2632,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   XASL_NODE *hashjoin_xasl = NULL;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
 
-  BITSET residual_terms;
-
   int parallelism;
 
   int error = NO_ERROR;
@@ -2661,13 +2648,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
-
-  /* Residual terms (incl. non-equi joins) that can be evaluated inside the probe loop
-   * are classified out of pred_set and returned here by qo_init_projection_info () below,
-   * which also prunes them from the LOCAL pred_set copy
-   * so that the parent list scan's if_pred / after_join_pred (built from pred_set in
-   * init_list_scan_proc below) skip them, giving exactly one evaluation site. */
-  bitset_init (&residual_terms, env);
 
   switch (plan->parallel_opt_use)
     {
@@ -2692,7 +2672,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
     }
 
   /* projection_info */
-  error = qo_init_projection_info (env, plan, pred_set, &residual_terms, &projection_info);
+  error = qo_init_projection_info (env, plan, pred_set, &projection_info);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -2733,7 +2713,7 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   inner_xasl->orderby_list = NULL;
 
   /* hashjoin_xasl */
-  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info, &residual_terms);
+  hashjoin_xasl = make_hashjoin_proc (env, plan, outer_xasl, inner_xasl, &projection_info);
   if (hashjoin_xasl == NULL)
     {
       goto error_exit;
@@ -2761,7 +2741,6 @@ gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueri
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-  bitset_delset (&residual_terms);
   qo_clear_projection_info (env, &projection_info);
 
   return xasl;
@@ -5697,17 +5676,10 @@ qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_ENTRY * inde
  *   env(in): Optimization environment.
  *   plan(in): Execution plan for hash join.
  *   pred_set(in/out): Bitset of predicates (join, during-join, after-join, sarg).
- *		       On return the terms evaluated inside the hash join itself
- *		       (join terms, during-join terms, pushed residual terms) are pruned out,
- *		       leaving only the terms the parent list scan must evaluate.
- *   residual_terms(out): Two-input residual terms (incl. non-equi / range join conditions)
- *			  classified out of pred_set for evaluation inside the probe loop
- *			  (the HASHJOIN node's after_join_pred).
  *   info(in/out): Projection information used in the hash join execution plan.
  */
 static int
-qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * residual_terms,
-			 PROJECTION_INFO * info)
+qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *term_expr, *pred_node;
@@ -5715,11 +5687,11 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   PT_NODE *name_list;
   PT_NODE *hash_key = NULL;
 
+  JOIN_TYPE join_type;
+
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
-  JOIN_TYPE join_type;
-  BITSET plan_segs_set, pred_segs_set, temp_segs_set;
-  BITSET join_nodes_set, proj_segs_set;
+  BITSET required_segs_set, final_segs_set, input_segs_set, pred_segs_set, temp_segs_set;
   BITSET_ITERATOR term_iter, seg_iter;
   int term_index, seg_index;
 
@@ -5735,49 +5707,46 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   assert (plan->plan_type == QO_PLANTYPE_JOIN);
   assert (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN);
 
-  /* For a hash join plan, qo_join_new() receives the same hash_join_terms bitset as both
-   * join_terms and hash_terms; the classification loop below relies on this to treat the
-   * join_terms branch as covering the hash keys. */
+  /* For a hash join, join_terms == hash_terms, so handling join_terms in the loop below also covers the hash keys. */
   assert (bitset_is_equivalent (&plan->plan_un.join.join_terms, &plan->plan_un.join.hash_terms));
 
   parser = QO_ENV_PARSER (env);
   assert (parser != NULL);
 
-  bitset_init (&plan_segs_set, env);
+  join_type = plan->plan_un.join.join_type;
+  assert (join_type != JOIN_OUTER);
+
+  bitset_init (&required_segs_set, env);
+  bitset_init (&final_segs_set, env);
+  bitset_init (&input_segs_set, env);
   bitset_init (&pred_segs_set, env);
   bitset_init (&temp_segs_set, env);
-  bitset_init (&join_nodes_set, env);
-  bitset_init (&proj_segs_set, env);
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
-  join_type = plan->plan_un.join.join_type;
-  bitset_union (&join_nodes_set, &outer_plan->info->nodes);
-  bitset_union (&join_nodes_set, &inner_plan->info->nodes);
-  bitset_union (&proj_segs_set, &outer_plan->info->projected_segs);
-  bitset_union (&proj_segs_set, &inner_plan->info->projected_segs);
+  bitset_union (&input_segs_set, &outer_plan->info->projected_segs);
+  bitset_union (&input_segs_set, &inner_plan->info->projected_segs);
 
   memset (info, 0, sizeof (PROJECTION_INFO));
   bitset_init (&info->outer.exprs_set, env);
   bitset_init (&info->inner.exprs_set, env);
+  bitset_init (&info->after_join_pred_set, env);
   outer_info = &info->outer;
   inner_info = &info->inner;
   final_info = &info->final;
 
-  bitset_assign (&plan_segs_set, &plan->info->projected_segs);
+  bitset_assign (&required_segs_set, &plan->info->projected_segs);
 
   for (term_index = bitset_iterate (pred_set, &term_iter); term_index != -1;
        term_index = bitset_next_member (&term_iter))
     {
       term = QO_ENV_TERM (env, term_index);
+      assert (bitset_subset (&plan->info->nodes, &(QO_TERM_NODES (term))));
 
-      /* Collect every segment this join level actually needs (upper-level columns + all predicate columns).
-       * Intersecting it with each side's projected_segs later splits the ownership per input
-       * and filters each input's projection down to needed-only. */
-      bitset_union (&plan_segs_set, &QO_TERM_SEGS (term));
+      bitset_union (&required_segs_set, &QO_TERM_SEGS (term));
 
       if (BITSET_MEMBER (plan->plan_un.join.join_terms, term_index))
 	{
@@ -5825,18 +5794,12 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 	}
       else if (BITSET_MEMBER (plan->plan_un.join.during_join_terms, term_index))
 	{
-	  /* The parser rejects subqueries in ON clauses ("Cannot use a subquery in join condition clause"),
-	   * so a during-join term can never carry one. */
+	  /* A during-join term has no subquery because the parser does not allow subqueries in ON clauses. */
 	  assert (bitset_is_empty (&(QO_TERM_SUBQUERIES (term))));
 
-	  /* Collect the term's columns for the per-side pred_list.
-	   * A segment that is not a plain column (PT_NAME) cannot be fetched through regu_list_pred directly;
-	   * decompose it with qo_expr_segs () into its base column segments instead,
-	   * so the predicate recomputes the expression from the fetched base columns at probe time.
-	   * A single pass against the merged projection set is enough:
-	   * the per-side split is re-derived at the pred_list emit step below. */
+	  /* collect the columns used by the during-join pred into pred_segs_set */
 	  bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
-	  bitset_intersect (&temp_segs_set, &proj_segs_set);
+	  bitset_intersect (&temp_segs_set, &input_segs_set);
 
 	  for (seg_index = bitset_iterate (&temp_segs_set, &seg_iter);
 	       seg_index != -1; seg_index = bitset_next_member (&seg_iter))
@@ -5847,48 +5810,29 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 		  qo_expr_segs (env, pred_node, &temp_segs_set);
 		}
 	    }
-
-	  /* INVARIANT: every segment the term needs - including decomposed base columns,
-	   * the only members that bypass the projection intersection above -
-	   * must be projected by one of the two join inputs;
-	   * otherwise the pred_list emit below would silently drop it
-	   * and the predicate would evaluate against a stale/NULL value. */
-	  assert (bitset_subset (&proj_segs_set, &temp_segs_set));
-
+	  assert (bitset_subset (&input_segs_set, &temp_segs_set));
 	  bitset_union (&pred_segs_set, &temp_segs_set);
 	}
       else
 	{
-	  /* Residual candidate: everything in pred_set not classified as a join edge or a during-join term above
-	   * - the two-input WHERE leftovers (sarged terms for INNER joins, after-join terms for LEFT/RIGHT OUTER).
-	   * Eligible ones are pushed into the probe loop (the HASHJOIN node's after_join_pred);
-	   * the rest stay in pred_set and are evaluated by the parent list scan as before. */
-	  if (join_type == JOIN_OUTER)
-	    {
-	      /* unreachable: FULL OUTER JOIN syntax is not supported. */
-	      assert (false);
-	      continue;
-	    }
 	  if (QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
 	    {
-	      /* inst_num()/rownum: output-position dependent, must stay above the join. */
-	      continue;
-	    }
-	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
-	    {
-	      /* correlated subquery: evaluated through dptr in the row context. */
-	      continue;
-	    }
-	  if (!bitset_subset (&join_nodes_set, &(QO_TERM_NODES (term))))
-	    {
-	      /* references something other than these two inputs. */
+	      /* inst_num()/rownum depends on the output position, so it cannot be evaluated in the probe loop. */
 	      continue;
 	    }
 
-	  /* Collect the term's columns the same way as the during-join branch above
-	   * (non-PT_NAME segments decomposed into their base columns; same INVARIANT). */
+	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
+	    {
+	      /* correlated subquery: must run per-row via dptr in the parent scan, not the probe loop. */
+	      continue;
+	    }
+
+	  /* add residual pred */
+	  bitset_add (&info->after_join_pred_set, term_index);
+
+	  /* collect the columns used by the residual pred into pred_segs_set */
 	  bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
-	  bitset_intersect (&temp_segs_set, &proj_segs_set);
+	  bitset_intersect (&temp_segs_set, &input_segs_set);
 
 	  for (seg_index = bitset_iterate (&temp_segs_set, &seg_iter);
 	       seg_index != -1; seg_index = bitset_next_member (&seg_iter))
@@ -5899,20 +5843,12 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 		  qo_expr_segs (env, pred_node, &temp_segs_set);
 		}
 	    }
-
-	  assert (bitset_subset (&proj_segs_set, &temp_segs_set));
-
+	  assert (bitset_subset (&input_segs_set, &temp_segs_set));
 	  bitset_union (&pred_segs_set, &temp_segs_set);
-
-	  bitset_add (residual_terms, term_index);
 	}
     }				/* for (bitset_iterate (pred_set, &term_iter)) */
 
-  /* pred_list: the columns the during-join / pushed residual predicates read from val_descr
-   * through the per-side regu_list_pred.
-   * Emitting each side in one pass over the merged pred_segs_set, in ascending segment order
-   * (= name_list order), keeps the generated regu_list_pred positions strictly increasing and
-   * duplicate-free, as required by the single forward tuple walk of fetch_peek_dbval_pos (). */
+  /* split the segments used by the during/after-join preds per side */
   if (!bitset_is_empty (&pred_segs_set))
     {
       /* outer columns */
@@ -5956,7 +5892,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   outer_info->expr_count = pt_length_of_list (outer_info->expr_list);
 
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
-  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  bitset_intersect (&temp_segs_set, &required_segs_set);
   outer_info->name_list = make_namelist_from_bitset (env, &temp_segs_set);
   outer_info->name_count = pt_length_of_list (outer_info->name_list);
 
@@ -5983,7 +5919,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   inner_info->expr_count = pt_length_of_list (inner_info->expr_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
-  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  bitset_intersect (&temp_segs_set, &required_segs_set);
   inner_info->name_list = make_namelist_from_bitset (env, &temp_segs_set);
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
 
@@ -5998,37 +5934,34 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
 
   inner_info->pred_count = pt_length_of_list (inner_info->pred_list);
 
-  /* final_info */
+  /* Remove join_terms, during_join_terms, and after_join_pred_set from pred_set in place.
+   * The terms remaining in pred_set are evaluated by the parent list scan.
+   * Each removed term is evaluated exactly once in the probe, and never by the parent. */
   bitset_difference (pred_set, &plan->plan_un.join.join_terms);
   if (IS_OUTER_JOIN_TYPE (join_type))
     {
       bitset_difference (pred_set, &plan->plan_un.join.during_join_terms);
     }
+  bitset_difference (pred_set, &info->after_join_pred_set);
 
-  /* The pushed residual terms are evaluated inside the probe loop like the terms above,
-   * so prune them from pred_set as well:
-   * the parent's if_pred / after_join_pred built from pred_set skip them (exactly one evaluation site),
-   * and their columns - unless required higher up - drop out of the final projection rebuilt below.
-   * Only this LOCAL pred_set copy is pruned; the plan's own sarged_terms / after_join_terms stay untouched,
-   * so the plan dump keeps these terms in their original sargs: / after: sections
-   * (the probe-time evaluation site is observable through the PROBE row counts in the server trace). */
-  bitset_difference (pred_set, residual_terms);
-
-  bitset_assign (&plan_segs_set, &plan->info->projected_segs);
+  /* final_segs_set is the join's projected_segs
+   * and the input segments required to evaluate the terms remaining in pred_set */
+  bitset_assign (&final_segs_set, &plan->info->projected_segs);
   for (term_index = bitset_iterate (pred_set, &term_iter); term_index != -1;
        term_index = bitset_next_member (&term_iter))
     {
       term = QO_ENV_TERM (env, term_index);
-      bitset_union (&plan_segs_set, &QO_TERM_SEGS (term));
+      bitset_union (&final_segs_set, &QO_TERM_SEGS (term));
     }
 
+  /* final_info */
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
-  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  bitset_intersect (&temp_segs_set, &final_segs_set);
   name_list = make_namelist_from_bitset (env, &temp_segs_set);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
-  bitset_intersect (&temp_segs_set, &plan_segs_set);
+  bitset_intersect (&temp_segs_set, &final_segs_set);
   name_list = make_namelist_from_bitset (env, &temp_segs_set);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
@@ -6038,11 +5971,11 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET
   assert (!pt_has_error (parser));
 
 cleanup:
-  bitset_delset (&plan_segs_set);
+  bitset_delset (&required_segs_set);
+  bitset_delset (&final_segs_set);
+  bitset_delset (&input_segs_set);
   bitset_delset (&pred_segs_set);
   bitset_delset (&temp_segs_set);
-  bitset_delset (&join_nodes_set);
-  bitset_delset (&proj_segs_set);
 
   return error;
 
@@ -6082,6 +6015,7 @@ qo_clear_projection_info (QO_ENV * env, PROJECTION_INFO * info)
       qo_clear_projection_part_info (parser, &info->outer);
       qo_clear_projection_part_info (parser, &info->inner);
       qo_clear_projection_final_info (parser, &info->final);
+      bitset_delset (&info->after_join_pred_set);
     }
 }
 
