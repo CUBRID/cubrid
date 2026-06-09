@@ -39,27 +39,45 @@
 
 namespace cubstorage
 {
-#if defined (UNIT_TEST_BESTSPACE)
-  struct bestspace_test_probe;
-#endif
+  //////////////////////////////////////////////////////////////////////////
+  // export class
+  //////////////////////////////////////////////////////////////////////////
+
+  typedef struct bestspace_entry BESTSPACE_ENTRY;
+  struct bestspace_entry
+  {
+    std::uint16_t freespace;
+    short volid;
+    int32_t pageid;
+  };
+
+  static_assert (sizeof (bestspace_entry) == 8, "bestspace_entry must be 8 bytes");
+  static_assert (offsetof (bestspace_entry, freespace) == 0, "freespace must be placed at first");
+  static_assert (offsetof (bestspace_entry, volid) == 2, "volid must be placed at second");
+  static_assert (offsetof (bestspace_entry, pageid) == 4, "pageid must be placed at last");
 
   //////////////////////////////////////////////////////////////////////////
   // base class
   //////////////////////////////////////////////////////////////////////////
 
+#if defined (UNIT_TEST_BESTSPACE)
+  struct bestspace_test_probe;
+#endif
+
   class bestspace
   {
-    private:
 #if defined (UNIT_TEST_BESTSPACE)
       friend struct bestspace_test_probe;
 #endif
 
+    public:
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       static constexpr std::size_t L3_FANOUT = 7;
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t SHARD_COUNT = 8;
 
+    private:
       enum class status
       {
 	NOT_FOUND,
@@ -169,6 +187,7 @@ namespace cubstorage
 
 	  bool empty (tier fs);
 
+	  void clear ();
 	  void clear (std::size_t index);
 	  void set (tier fs, std::size_t index);
 
@@ -192,6 +211,7 @@ namespace cubstorage
 
 	  std::size_t find (tier minimum, std::array<std::size_t, BITS_PER_BYTE> &pos);
 
+	  void clear ();
 	  void clear (std::size_t index);
 	  void set (tier fs, std::size_t index);
 
@@ -215,9 +235,15 @@ namespace cubstorage
 
       class alignas (64) shard
       {
+#if defined (UNIT_TEST_BESTSPACE)
+	  friend struct bestspace_test_probe;
+#endif
+
 	public:
 	  shard () noexcept;
 	  ~shard () = default;
+
+	  void initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT]);
 
 	  status find (HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
 
@@ -249,6 +275,8 @@ namespace cubstorage
     public:
       bestspace () noexcept;
       ~bestspace () = default;
+
+      void initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT]);
 
       int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
@@ -284,12 +312,12 @@ namespace cubstorage
   class bestspace_registry
   {
     private:
-      struct bestspace_entry
+      struct registry_entry
       {
 	OID class_oid;
 	HFID hfid;
 	bestspace *entry;
-	bestspace_entry *next;
+	registry_entry *next;
       };
 
     public:
@@ -297,28 +325,38 @@ namespace cubstorage
       ~bestspace_registry ();
 
       void create (OID *class_oid, HFID *hfid);
+      void create (OID *class_oid, HFID *hfid,
+		   bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT]);
+
       void destroy (OID *class_oid, VFID *vfid);
       void destroy (OID *class_oid, HFID *hfid);
+
+      int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
     private:
-      bestspace_entry *m_head;
+      registry_entry *m_head;
       std::mutex m_mutex;
 
       static constexpr std::size_t TLS_MAX_SIZE = 20;
-      inline static thread_local bestspace_entry *TLS_head = nullptr;
+      inline static thread_local registry_entry *TLS_head = nullptr;
       inline static thread_local std::size_t TLS_size = 0;
 
-      void insert_entry (bestspace_entry *&head, bestspace_entry *entry);
-      void destroy_entry (bestspace_entry *entry);
-      std::optional<std::pair<bestspace_entry *, bestspace_entry *>> find_entry (bestspace_entry *head, OID *class_oid,
+      int find_from_cache (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+			   PGBUF_WATCHER &page_watcher);
+      int find_from_global (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+			    PGBUF_WATCHER &page_watcher);
+
+      void insert_entry (registry_entry *&head, registry_entry *entry);
+      void destroy_entry (registry_entry *entry);
+      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, OID *class_oid,
 	  VFID *vfid);
-      std::optional<std::pair<bestspace_entry *, bestspace_entry *>> find_entry (bestspace_entry *head, OID *class_oid,
+      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, OID *class_oid,
 	  HFID *hfid);
 
-      bestspace_entry *get_node_from_list (bestspace_entry *&head, OID *class_oid, VFID *vfid);
-      bestspace_entry *get_node_from_list (bestspace_entry *&head, OID *class_oid, HFID *hfid);
-      bestspace_entry *get_tail_from_list (bestspace_entry *&head);
+      registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, VFID *vfid);
+      registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, HFID *hfid);
+      registry_entry *get_tail_from_list (registry_entry *&head);
   };
 
   extern bestspace_registry bestspaces;

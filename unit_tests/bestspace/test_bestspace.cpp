@@ -290,6 +290,90 @@ namespace cubstorage
       return lhs == rhs;
     }
 
+    static bool initialized_l1_matches_entry (std::size_t shard_index, std::size_t l1_index, bestspace_entry entry)
+    {
+      bestspace space;
+      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT] {};
+      bestspace::L1 l1;
+      VPID actual_vpid;
+      VPID expected_vpid;
+
+      entries[shard_index][l1_index] = entry;
+      space.initialize_by_entries (entries);
+
+      l1 = space.m_shard[shard_index].m_L1[l1_index].load ();
+      actual_vpid = l1.get_vpid ();
+      expected_vpid = { entry.pageid, entry.volid };
+
+      return l1.get_freespace () == entry.freespace && VPID_EQ (&actual_vpid, &expected_vpid);
+    }
+
+    static std::vector<std::size_t> initialized_l2_positions_for_entry (std::size_t shard_index,
+									std::size_t l1_index,
+									bestspace_entry entry)
+    {
+      bestspace space;
+      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT] {};
+      bestspace::L2 l2;
+
+      entries[shard_index][l1_index] = entry;
+      space.initialize_by_entries (entries);
+
+      l2 = space.m_shard[shard_index].m_L2[l1_index / bestspace::L2_FANOUT].load ();
+      return l2_find_positions (l2, size_to_tier_value (entry.freespace));
+    }
+
+    static std::vector<std::size_t> initialized_l3_positions_for_entry (std::size_t shard_index,
+									std::size_t l1_index,
+									bestspace_entry entry)
+    {
+      bestspace space;
+      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT] {};
+      bestspace::L3 l3;
+
+      entries[shard_index][l1_index] = entry;
+      space.initialize_by_entries (entries);
+
+      l3 = space.m_shard[shard_index].m_L3.load ();
+      return l3_find_positions (l3, size_to_tier_value (entry.freespace));
+    }
+
+    static bool initialized_zero_entries_have_no_indexes ()
+    {
+      bestspace space;
+      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT] {};
+      bestspace::L2 l2;
+      bestspace::L3 l3;
+
+      space.initialize_by_entries (entries);
+
+      for (std::size_t shard_index = 0; shard_index < bestspace::SHARD_COUNT; shard_index++)
+	{
+	  l3 = space.m_shard[shard_index].m_L3.load ();
+	  for (int fs = fs1 (); fs <= fs8 (); fs++)
+	    {
+	      if (!l3_find_positions (l3, fs).empty ())
+		{
+		  return false;
+		}
+	    }
+
+	  for (std::size_t l2_index = 0; l2_index < bestspace::L3_FANOUT; l2_index++)
+	    {
+	      l2 = space.m_shard[shard_index].m_L2[l2_index].load ();
+	      for (int fs = fs1 (); fs <= fs8 (); fs++)
+		{
+		  if (!l2_find_positions (l2, fs).empty ())
+		    {
+		      return false;
+		    }
+		}
+	    }
+	}
+
+      return true;
+    }
+
     private:
       static bestspace::tier tier_from_value (int value)
       {
@@ -536,5 +620,36 @@ TEST_CASE ("bestspace L3 covers shard index and allocation flag operations", "[b
   SECTION ("BS-029: L3 comparison ignores allocation flag")
     {
       CHECK (probe::l3_compare_ignores_allocating_flag ());
+    }
+}
+
+TEST_CASE ("bestspace initializes in-memory indexes from serialized entries", "[bestspace]")
+{
+  using probe = cubstorage::bestspace_test_probe;
+
+  SECTION ("BS-030: initialization copies entry into L1")
+    {
+      cubstorage::bestspace_entry entry = { size_for_percentage (46), 7, 12345 };
+
+      CHECK (probe::initialized_l1_matches_entry (2, 29, entry));
+    }
+
+  SECTION ("BS-031: initialization indexes entry in L2 by free-space tier")
+    {
+      cubstorage::bestspace_entry entry = { size_for_percentage (58), 8, 23456 };
+
+      CHECK (probe::initialized_l2_positions_for_entry (3, 4 * 8 + 6, entry) == std::vector<std::size_t> { 6 });
+    }
+
+  SECTION ("BS-032: initialization indexes entry in L3 by L2 bucket")
+    {
+      cubstorage::bestspace_entry entry = { size_for_percentage (71), 9, 34567 };
+
+      CHECK (probe::initialized_l3_positions_for_entry (4, 5 * 8 + 1, entry) == std::vector<std::size_t> { 5 });
+    }
+
+  SECTION ("BS-033: zero entries are not published to L2 or L3")
+    {
+      CHECK (probe::initialized_zero_entries_have_no_indexes ());
     }
 }
