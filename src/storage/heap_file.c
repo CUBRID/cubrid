@@ -26369,8 +26369,9 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
 					       context->scan_cache, context->old_chn);
-	  if (scan == S_SUCCESS)
+	  if (scan == S_SUCCESS && context->recdes_p != NULL)
 	    {
+	      /* recdes_p is NULL for existence-only checks (e.g. compactdb); there is no record to expand. */
 	      scan = heap_record_replace_oos_oids (thread_p, context);
 	    }
 	  goto exit;
