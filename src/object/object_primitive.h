@@ -336,17 +336,17 @@ extern int pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain);
 extern int pr_get_compression_length (const char *string, int str_length);
 extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size,
 					       int expected_decompressed_size);
-extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
-						   int align);
-
 extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
 				    int compress_buffer_size, int *compressed_length);
 
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
+extern int pr_pad_char_to_precision (DB_VALUE * value, int precision);
 
+#if defined(ENABLE_UNUSED_FUNCTION)	// Unused macro — temporarily preserved to minimize review diff; will be removed in a follow-up PR
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 extern int pr_Enable_string_compression;
 
@@ -402,12 +402,12 @@ STATIC_INLINE int
 pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain)
 {
   /*
-   * variable types except VARCHAR, VARBIT, and NUMERIC
+   * variable types except VARCHAR, VARBIT, CHAR, and NUMERIC
    * cannot be a member of midxkey
    */
   assert (!domain->type->variable_p
 	  || (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARBIT
-	      || TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC));
+	      || TP_DOMAIN_TYPE (domain) == DB_TYPE_CHAR || TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC));
 
   return domain->type->get_index_size_of_mem (mem, domain);
 }
