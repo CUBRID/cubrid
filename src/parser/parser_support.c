@@ -12541,7 +12541,7 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 		  {
 		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
 		      {
-			if (uuid_arg->info.value.data_value.i == 4)
+			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
 			  {
 			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
 			  }
