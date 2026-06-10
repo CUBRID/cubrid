@@ -5188,12 +5188,10 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
       dt->info.data_type.units = attr->charset;
-      /* The remote column metadata from CCI carries a codeset (units) but no collation.
-       * Leaving collation_id at its default (0 == LANG_COLL_ISO_BINARY) breaks the
-       * invariant in pt_check_expr_collation that an equal collation id implies an equal
-       * codeset: a remote UTF8 column would keep an ISO88591 collation, which asserts in
-       * debug builds and silently yields wrong results in release. Assign the binary
-       * collation that matches the codeset so the id and codeset stay consistent. */
+      /* CCI remote-column metadata carries a codeset (units) but no collation;
+       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
+       * pt_check_expr_collation invariant that equal collation_id implies equal
+       * codeset. Assign the codeset's binary collation to keep them consistent. */
       dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
     }
 
