@@ -2496,7 +2496,7 @@ vacuum_heap_oos_delete (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     }
 
   // *INDENT-OFF*
-  for (const OID & oos_oid : oos_oids)
+  for (const OID& oos_oid : oos_oids)
     {
       error_code = oos_delete (thread_p, helper->oos_vfid, oos_oid);
       if (error_code != NO_ERROR)
