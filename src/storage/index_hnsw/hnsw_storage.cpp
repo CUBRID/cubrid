@@ -22,6 +22,7 @@
 #include "file_manager.h" // FILE_DESCRIPTORS
 #include "oid.h"
 #include "slotted_page.h"
+#include "log_manager.h" // log_sysop_* (permanent page allocation)
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -79,14 +80,23 @@ namespace cubhnsw
   {
     PAGE_PTR page_ptr = NULL;
 
-    (void) file_alloc (thread_p, &vfid, &storage::initialize_new_block, NULL, &vpid, &page_ptr);
-    assert (page_ptr != NULL);
-
-    if (page_ptr == NULL)
+    /* Allocate the new graph block page inside a committed system operation so the page allocation
+     * is permanent and not part of the user transaction's undo scope. A bare file_alloc logs a
+     * deallocation undo against the user transaction; on ROLLBACK the file manager then frees a
+     * page the HNSW graph still references, producing a later "fetching deallocated page" fatal
+     * error (reproducible even single-threaded with insert + rollback). This mirrors the root-page
+     * allocation and the btree/heap model: structural page allocation is not user-undoable, while
+     * the node content inserted on the page is removed logically (tombstoned) on rollback. */
+    log_sysop_start (thread_p);
+    int error_code = file_alloc (thread_p, &vfid, &storage::initialize_new_block, NULL, &vpid, &page_ptr);
+    if (error_code != NO_ERROR || page_ptr == NULL)
       {
+	ASSERT_ERROR ();
+	log_sysop_abort (thread_p);
 	assert (false);
-	return page_ptr;
+	return NULL;
       }
+    log_sysop_commit (thread_p);
 
 #if !defined (NDEBUG)
     pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_HNSW);
@@ -275,11 +285,10 @@ exit:
 	  }
 
 	node_t node { reinterpret_cast<byte_t *> (recdes.data) };
-	if (node.is_tombstoned ())
-	  {
-	    continue;
-	  }
 
+	/* All-slots cache: cache both live and tombstoned nodes. Tombstoned slots are
+	 * needed so a transaction UNDO can relocate the exact node to revive (CUBVEC-186).
+	 * Liveness is always read from the node record, never inferred from cache membership. */
 	slot_id_t node_slot = { vpid->pageid, slot_id, vpid->volid };
 
 	set_node_slot_cached_id (node.get_key (), node_slot);

@@ -399,7 +399,7 @@ xhnsw_load_index (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, int n_classes, i
 // HNSW WAL Logging Structures and Functions
 // =====================================================================
 
-typedef struct hnsw_insert_log_header
+typedef struct hnsw_rv_log_header
 {
   OID oid;
   BTID btid;
@@ -407,10 +407,10 @@ typedef struct hnsw_insert_log_header
   int hnsw_M;
   int hnsw_efConstruction;
   int metric;
-} HNSW_INSERT_LOG_HEADER;
+} HNSW_RV_LOG_HEADER;
 
 /*
- * hnsw_pack_insert_data() - Pack vector insertion data into WAL log.
+ * hnsw_pack_rv_log_data() - Pack an HNSW recovery-log record (header [+ vector]) into a WAL buffer.
  *
  * return      : Total packed size
  * buffer(out) : Output buffer (must be pre-allocated)
@@ -420,17 +420,17 @@ typedef struct hnsw_insert_log_header
  * vector      : Vector values
  */
 static int
-hnsw_get_insert_log_data_size (int dimension)
+hnsw_get_rv_log_data_size (int dimension)
 {
-  return (int) sizeof (HNSW_INSERT_LOG_HEADER) + dimension * (int) sizeof (float);
+  return (int) sizeof (HNSW_RV_LOG_HEADER) + dimension * (int) sizeof (float);
 }
 
 static int
-hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
+hnsw_pack_rv_log_data (char *buffer, int buffer_size, const BTID *btid, const OID *oid,
 		       const hnsw_build_params &params, const float *vector)
 {
-  HNSW_INSERT_LOG_HEADER *log_data = (HNSW_INSERT_LOG_HEADER *) buffer;
-  int total_size = hnsw_get_insert_log_data_size (params.dimension);
+  HNSW_RV_LOG_HEADER *log_data = (HNSW_RV_LOG_HEADER *) buffer;
+  int total_size = hnsw_get_rv_log_data_size (params.dimension);
 
   if (params.dimension <= 0 || params.m <= 0 || params.ef_construction <= 0 || vector == NULL
       || total_size > buffer_size)
@@ -444,7 +444,7 @@ hnsw_pack_insert_data (char *buffer, int buffer_size, const BTID *btid, const OI
   log_data->hnsw_M = params.m;
   log_data->hnsw_efConstruction = params.ef_construction;
   log_data->metric = static_cast<int> (params.metric);
-  memcpy (buffer + sizeof (HNSW_INSERT_LOG_HEADER), vector, params.dimension * sizeof (float));
+  memcpy (buffer + sizeof (HNSW_RV_LOG_HEADER), vector, params.dimension * sizeof (float));
 
   return total_size;
 }
@@ -501,19 +501,25 @@ hnsw_add_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector, i
   if (!log_is_in_crash_recovery ())
     {
       const hnsw_build_params &params = index->get_build_params ();
-      int wal_data_size = hnsw_get_insert_log_data_size (params.dimension);
+      int wal_data_size = hnsw_get_rv_log_data_size (params.dimension);
       std::vector<char> wal_data (wal_data_size);
 
       for (int idx = 0; idx < n_vectors; idx++)
 	{
 	  const OID *cur_oid = &oid[idx];
 	  const float *cur_vector = vector + idx * params.dimension;
-	  int packed_size = hnsw_pack_insert_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
+	  int packed_size = hnsw_pack_rv_log_data (wal_data.data (), wal_data_size, btid, cur_oid, params, cur_vector);
 	  if (packed_size != wal_data_size)
 	    {
 	      return ER_FAILED;
 	    }
 
+	  /* INSERT UNDO (logical, null-page addr): on rollback / recovery-undo the undofun
+	   * tombstones the inserted node. Undo must be appended before redo. Only the header
+	   * (OID/BTID/params) is needed for undo; the vector is only needed for redo. */
+	  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+	  log_append_undo_data (thread_p, RVHNSW_INSERT_ELEMENT, &addr,
+				(int) sizeof (HNSW_RV_LOG_HEADER), wal_data.data ());
 	  log_append_dboutside_redo (thread_p, RVHNSW_INSERT_ELEMENT, wal_data_size, wal_data.data ());
 	}
     }
@@ -533,6 +539,41 @@ hnsw_delete_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid)
       return error;
     }
 
+  if (!log_is_in_crash_recovery ())
+    {
+      const hnsw_build_params &params = index->get_build_params ();
+
+      /* Capture the live node's vector (v_old) so the UNDO can revive exactly that node on
+       * rollback; the vector also disambiguates among multiple dead nodes for the same OID
+       * (e.g. after an UPDATE = delete + insert). */
+      std::vector<float> old_vector (params.dimension);
+      bool found = false;
+      int peek_error = index->peek_live_vector (thread_p, oid, old_vector.data (), &found);
+      if (peek_error != NO_ERROR)
+	{
+	  /* Could not read the live node (e.g. page access failure). Fail the DELETE rather than
+	   * tombstone the node with no UNDO/REDO record, which would leave heap and index diverging
+	   * (rollback could not revive it, recovery could not re-apply the committed delete). */
+	  return peek_error;
+	}
+
+      if (found)
+	{
+	  int data_size = hnsw_get_rv_log_data_size (params.dimension);   /* header + vector */
+	  std::vector<char> wal_data (data_size);
+	  if (hnsw_pack_rv_log_data (wal_data.data (), data_size, btid, oid, params, old_vector.data ()) != data_size)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* UNDO (revive, needs the vector) must be appended before REDO (tombstone, header only). */
+	  LOG_DATA_ADDR addr = { NULL, NULL, NULL_OFFSET };
+	  log_append_undo_data (thread_p, RVHNSW_DELETE_ELEMENT, &addr, data_size, wal_data.data ());
+	  log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (HNSW_RV_LOG_HEADER),
+				     wal_data.data ());
+	}
+    }
+
   return index->remove (thread_p, oid);
 }
 
@@ -542,14 +583,16 @@ hnsw_update_element (THREAD_ENTRY *thread_p, BTID *btid, OID *oid, float *vector
   assert (oid);
   assert (vector);
 
-  hnsw_index *index = NULL;
-  int error = hnsw_get_index (thread_p, btid, index);
+  /* UPDATE = logged DELETE of the old vector + logged INSERT of the new vector. This composes for
+   * rollback and crash recovery: the per-op UNDO/REDO records run in the correct reverse order
+   * automatically (insert UNDO tombstones the new node, delete UNDO revives the old node). */
+  int error = hnsw_delete_element (thread_p, btid, oid);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  return index->update (thread_p, oid, vector);
+  return hnsw_add_element (thread_p, btid, oid, vector, 1);
 }
 
 /*
@@ -578,14 +621,14 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
   hnsw_build_params params;
   std::vector<float> vector_data;
 
-  if (rcv->length >= (int) sizeof (HNSW_INSERT_LOG_HEADER))
+  if (rcv->length >= (int) sizeof (HNSW_RV_LOG_HEADER))
     {
-      const HNSW_INSERT_LOG_HEADER *log_data = (const HNSW_INSERT_LOG_HEADER *) rcv->data;
+      const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
       btid = &log_data->btid;
       oid = &log_data->oid;
 
       if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
-	  || rcv->length != hnsw_get_insert_log_data_size (log_data->dimension))
+	  || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
 	{
 	  return ER_FAILED;
 	}
@@ -593,7 +636,7 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       params = hnsw_build_params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
 				  static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
       vector_data.resize (log_data->dimension);
-      memcpy (vector_data.data (), rcv->data + sizeof (HNSW_INSERT_LOG_HEADER),
+      memcpy (vector_data.data (), rcv->data + sizeof (HNSW_RV_LOG_HEADER),
 	      log_data->dimension * sizeof (float));
     }
 
@@ -620,6 +663,23 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
       return error == NO_ERROR ? ER_FAILED : error;
     }
 
+  /* Idempotent replay: when recovery reuses the disk-flushed graph, a windowed insert whose row
+   * was already flushed is present as a live node — re-adding it would duplicate. Skip in that
+   * case. (Matches on OID + vector so an update's new entry is still added.) */
+  {
+    std::vector<float> existing (params.dimension);
+    bool found = false;
+    error = index->peek_live_vector (thread_p, oid, existing.data (), &found);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (found && memcmp (existing.data (), vector_data.data (), params.dimension * sizeof (float)) == 0)
+      {
+	return NO_ERROR;
+      }
+  }
+
   if (index->prepare_to_add (thread_p, 1, oid, vector_data.data ()) != NO_ERROR)
     {
       assert (false);
@@ -627,6 +687,232 @@ hnsw_rv_redo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
     }
 
   error = index->add (thread_p, 1, oid, vector_data.data ());
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_rv_redo_delete_element() - Recovery REDO function for HNSW tombstone delete.
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)      : Recovery data containing BTID, OID and build parameters.
+ *
+ * Re-applies a committed DELETE by tombstoning the live node(s) for the OID, mirroring runtime
+ * hnsw_delete_element. Logical / OID-based: the target node is relocated by OID at replay time.
+ * The graph is rebuilt non-deterministically during recovery, so no physical slot from the log
+ * is trusted. The insert REDO records that precede this one rebuild the graph (and the OID->slot
+ * cache) so the live node for the OID is present when this runs.
+ */
+int
+hnsw_rv_redo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  /* DELETE REDO is a header-only record; require the exact length so a malformed/mismatched
+   * record is rejected at the recovery boundary instead of tombstoning by OID on bad input. */
+  if (rcv == NULL || rcv->data == NULL || rcv->length != (int) sizeof (HNSW_RV_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  error = index->remove (thread_p, oid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (rcv->pgptr != NULL)
+    {
+      pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_rv_undo_insert_element() - Transaction UNDO for HNSW insert.
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)      : Recovery data containing BTID, OID and build parameters (insert log header).
+ *
+ * Reverses an inserted entry by tombstoning the live node for the OID (the inverse of insert),
+ * logical / OID-based. Invoked under the logical-compensate system op by the rollback driver, for
+ * both normal abort and the crash-recovery undo phase. A RVHNSW_DELETE_ELEMENT compensation redo
+ * is logged (unconditionally) so the tombstone is replayed should a crash occur during/after the
+ * rollback: repeat-history re-adds the node via the insert REDO, then the compensation re-applies
+ * the tombstone.
+ */
+int
+hnsw_rv_undo_insert_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  /* INSERT UNDO is a header-only record; require the exact length (same rationale as the
+   * header-only DELETE REDO record). */
+  if (rcv == NULL || rcv->data == NULL || rcv->length != (int) sizeof (HNSW_RV_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0)
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  /* Compensation: log the tombstone as a delete REDO before applying it, so a crash during or
+   * after rollback replays it. */
+  char wal_data[sizeof (HNSW_RV_LOG_HEADER)];
+  memcpy (wal_data, rcv->data, sizeof (HNSW_RV_LOG_HEADER));
+  log_append_dboutside_redo (thread_p, RVHNSW_DELETE_ELEMENT, (int) sizeof (wal_data), wal_data);
+
+  return index->remove (thread_p, oid);
+}
+
+/*
+ * hnsw_rv_undo_delete_element() - Transaction UNDO for HNSW delete (in-place revive).
+ *
+ * return       : Error code.
+ * thread_p(in) : Thread entry.
+ * rcv(in)      : Recovery data containing BTID, OID, build params and the old vector.
+ *
+ * Reverses a tombstone delete by reviving the exact node (clearing its tombstone), located by OID
+ * and matched on the logged old vector. Runs under the rollback driver's logical-compensate sysop
+ * (normal abort + recovery undo). Logs a RVHNSW_REVIVE_ELEMENT compensation redo so the revive is
+ * replayed on a crash during/after rollback (repeat-history re-applies the delete tombstone, the
+ * compensation re-revives the node).
+ */
+int
+hnsw_rv_undo_delete_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
+      || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+  const float *vector = (const float *) (rcv->data + sizeof (HNSW_RV_LOG_HEADER));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  /* Compensation: log the revive before applying it, so a crash during/after rollback replays it. */
+  log_append_dboutside_redo (thread_p, RVHNSW_REVIVE_ELEMENT, rcv->length, rcv->data);
+
+  return index->revive (thread_p, oid, vector);
+}
+
+/*
+ * hnsw_rv_redo_revive_element() - REDO replay of an in-place revive (compensation of a delete UNDO).
+ */
+int
+hnsw_rv_redo_revive_element (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  if (rcv == NULL || rcv->data == NULL || rcv->length < (int) sizeof (HNSW_RV_LOG_HEADER))
+    {
+      return ER_FAILED;
+    }
+
+  const HNSW_RV_LOG_HEADER *log_data = (const HNSW_RV_LOG_HEADER *) rcv->data;
+  const BTID *btid = &log_data->btid;
+  const OID *oid = &log_data->oid;
+
+  if (log_data->dimension <= 0 || log_data->hnsw_M <= 0 || log_data->hnsw_efConstruction <= 0
+      || rcv->length != hnsw_get_rv_log_data_size (log_data->dimension))
+    {
+      return ER_FAILED;
+    }
+
+  hnsw_build_params params (log_data->dimension, log_data->hnsw_M, log_data->hnsw_efConstruction,
+			    static_cast<DB_VECTOR_DISTANCE_METRIC> (log_data->metric));
+  const float *vector = (const float *) (rcv->data + sizeof (HNSW_RV_LOG_HEADER));
+
+  if (index_manager == nullptr)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  hnsw_index *index = NULL;
+  int error = index_manager->load_or_create_index_for_recovery (thread_p, btid, params, index);
+  if (error != NO_ERROR || index == NULL)
+    {
+      return error == NO_ERROR ? ER_FAILED : error;
+    }
+
+  error = index->revive (thread_p, oid, vector);
   if (error != NO_ERROR)
     {
       return error;
@@ -979,12 +1265,17 @@ hnsw_index_manager::load_or_create_index_for_recovery (THREAD_ENTRY *thread_p, c
   std::string backend_id = backend->get_id ();
   if (log_is_in_crash_recovery ())
     {
+      int load_error = load_index (thread_p, btid, index_out);
+      if (load_error == NO_ERROR && index_out != NULL)
+	{
+	  return NO_ERROR;
+	}
+
       index_out = backend->create_index (thread_p, btid, backend_id, params);
       if (index_out == NULL)
 	{
 	  return ER_FAILED;
 	}
-
       return add_index (btid, index_out);
     }
 

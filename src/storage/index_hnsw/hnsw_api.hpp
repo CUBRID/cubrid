@@ -176,6 +176,20 @@ class hnsw_index
     virtual int remove (cubthread::entry *thread_p, const OID *oid)=0;
     virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector)=0;
 
+    /* CUBVEC-186 transaction UNDO helpers (default no-op; overridden by hnsw_impl). */
+    virtual int revive (cubthread::entry *thread_p, const OID *oid, const float *vector)
+    {
+      return NO_ERROR;
+    }
+    virtual int peek_live_vector (cubthread::entry *thread_p, const OID *oid, float *out_vector, bool *found)
+    {
+      if (found != NULL)
+	{
+	  *found = false;
+	}
+      return NO_ERROR;
+    }
+
     // SCAN_PRED from query_evaluator.h
     virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k, const SCAN_PRED &filter,
 				 OID *rec_oids,

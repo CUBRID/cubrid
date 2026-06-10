@@ -143,6 +143,9 @@ class hnsw_impl final:public hnsw_index
 
     virtual int remove (cubthread::entry *thread_p, const OID *oid) override;
     virtual int update (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
+    virtual int revive (cubthread::entry *thread_p, const OID *oid, const float *vector) override;
+    virtual int peek_live_vector (cubthread::entry *thread_p, const OID *oid, float *out_vector,
+				  bool *found) override;
 
     // SCAN_PRED from query_evaluator.h
     virtual int filtered_search (cubthread::entry *thread_p, const float *query, const int k,
@@ -844,13 +847,115 @@ hnsw_impl::remove (cubthread::entry *thread_p, const OID *oid)
 
       if (node.is_tombstoned ())
 	{
-	  m_storage->remove_node_slot_cached_id (*oid, node_slot);
+	  /* Already tombstoned: keep the slot in the all-slots cache so a later UNDO can
+	   * relocate and revive it. Liveness is read from the node, not the cache. */
 	  continue;
 	}
 
       node.set_tombstoned (true);
       node_blk.reset ();
-      m_storage->remove_node_slot_cached_id (*oid, node_slot);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_impl::peek_live_vector() - copy the vector of the live node for `oid` into `out_vector`.
+ *
+ * Used by the delete path to capture the old vector for the UNDO (revive) record, so a rolled-back
+ * delete can relocate and revive the exact node. *found is set false if there is no live node.
+ */
+int
+hnsw_impl::peek_live_vector (cubthread::entry *thread_p, const OID *oid, float *out_vector, bool *found)
+{
+  assert (oid != nullptr);
+  assert (out_vector != nullptr);
+
+  if (found != nullptr)
+    {
+      *found = false;
+    }
+
+  cubhnsw::algo_context_t context;
+  context.m_thread_p = thread_p;
+
+  const std::vector<cubhnsw::slot_id_t> *cached_slots = m_storage->get_node_slots_cached_ids (context, *oid);
+  if (cached_slots == nullptr)
+    {
+      return NO_ERROR;
+    }
+
+  std::vector<cubhnsw::slot_id_t> node_slots = *cached_slots;
+  for (const cubhnsw::slot_id_t &node_slot : node_slots)
+    {
+      cubhnsw::pinned_t node_blk = m_storage->get_node_by_slot_id (context, node_slot, cubhnsw::lock_mode::shared);
+      if (!node_blk || node_blk->data == nullptr)
+	{
+	  return ER_FAILED;
+	}
+
+      cubhnsw::node_t node { reinterpret_cast<cubhnsw::byte_t *> (node_blk->data) };
+      OID node_key = node.get_key ();
+      if (!OID_EQ (&node_key, oid) || node.is_tombstoned ())
+	{
+	  continue;
+	}
+
+      memcpy (out_vector, node.get_vector (), m_build_params.dimension * sizeof (float));
+      if (found != nullptr)
+	{
+	  *found = true;
+	}
+      return NO_ERROR;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * hnsw_impl::revive() - clear the tombstone of the dead node for `oid` whose vector matches `vector`.
+ *
+ * In-place inverse of delete (transaction UNDO). The all-slots cache retains tombstoned slots, so
+ * the node is relocated by OID without a disk scan; the vector disambiguates among multiple dead
+ * nodes for the same OID (e.g. after an UPDATE rollback). Idempotent if no match is found.
+ */
+int
+hnsw_impl::revive (cubthread::entry *thread_p, const OID *oid, const float *vector)
+{
+  assert (oid != nullptr);
+  assert (vector != nullptr);
+
+  cubhnsw::algo_context_t context;
+  context.m_thread_p = thread_p;
+
+  const std::vector<cubhnsw::slot_id_t> *cached_slots = m_storage->get_node_slots_cached_ids (context, *oid);
+  if (cached_slots == nullptr)
+    {
+      return NO_ERROR;
+    }
+
+  std::vector<cubhnsw::slot_id_t> node_slots = *cached_slots;
+  for (const cubhnsw::slot_id_t &node_slot : node_slots)
+    {
+      cubhnsw::pinned_t node_blk = m_storage->get_node_by_slot_id (context, node_slot, cubhnsw::lock_mode::exclusive);
+      if (!node_blk || node_blk->data == nullptr)
+	{
+	  return ER_FAILED;
+	}
+
+      cubhnsw::node_t node { reinterpret_cast<cubhnsw::byte_t *> (node_blk->data) };
+      OID node_key = node.get_key ();
+      if (!OID_EQ (&node_key, oid) || !node.is_tombstoned ())
+	{
+	  continue;
+	}
+
+      if (memcmp (node.get_vector (), vector, m_build_params.dimension * sizeof (float)) == 0)
+	{
+	  node.set_tombstoned (false);
+	  node_blk.reset ();   // releases the exclusive page with pgbuf_set_dirty
+	  return NO_ERROR;
+	}
     }
 
   return NO_ERROR;
