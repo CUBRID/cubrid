@@ -16907,3 +16907,18 @@ sm_domain_copy (SM_DOMAIN * ptr)
 
   return new_ptr;
 }
+
+/*
+ * sm_is_catcls_disabled () - check whether catalog class updates are disabled
+ *   return: true in SA_MODE when catcls_Enable is false
+ */
+bool
+sm_is_catcls_disabled (void)
+{
+#if defined(SA_MODE)
+  extern bool catcls_Enable;
+  return !catcls_Enable;
+#else
+  return false;
+#endif
+}

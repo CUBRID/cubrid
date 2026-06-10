@@ -4747,6 +4747,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   HEAP_SCANCACHE scan;
   int alloced_string = 0;
   int error = NO_ERROR;
+  OR_CLASSREP *rep = NULL;
+  bool is_scan_inited = false;
 
   if (thread_p == NULL)
     {
@@ -4773,7 +4775,8 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
       if (catcls_find_class_oid_by_class_name (thread_p, class_name_p, class_oid_p) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto error;
 	}
 
       atts = ct_Classes[c]->cc_atts;
@@ -4781,50 +4784,81 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 
       if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto error;
 	}
+      is_scan_inited = true;
+
       if (heap_get_class_record (thread_p, class_oid_p, &class_record, &scan, PEEK) != S_SUCCESS)
 	{
-	  (void) heap_scancache_end (thread_p, &scan);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto error;
 	}
 
-      for (i = 0; i < n_atts; i++)
+      rep = or_get_classrep (&class_record, NULL_REPRID);
+      if (rep == NULL)
 	{
-	  alloced_string = 0;
+	  error = ER_FAILED;
+	  goto error;
+	}
 
-	  error = or_get_attrname (&class_record, i, &attr_name_p, &alloced_string);
-	  if (error != NO_ERROR || attr_name_p == NULL)
+      for (a = 0; a < n_atts; a++)
+	{
+	  atts[a].ca_id = NULL_ATTRID;
+	}
+
+      for (i = 0; i < rep->n_attributes; i++)
+	{
+	  int attrid = rep->attributes[i].id;
+
+	  alloced_string = 0;
+	  attr_name_p = NULL;
+
+	  error = or_get_attrname (&class_record, attrid, &attr_name_p, &alloced_string);
+	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
-	      (void) heap_scancache_end (thread_p, &scan);
-	      return ER_FAILED;
+	      goto error;
+	    }
+	  if (attr_name_p == NULL)
+	    {
+	      error = ER_FAILED;
+	      goto error;
 	    }
 
 	  for (a = 0; a < n_atts; a++)
 	    {
 	      if (strcmp (atts[a].ca_name, attr_name_p) == 0)
 		{
-		  atts[a].ca_id = i;
+		  atts[a].ca_id = attrid;
 		  break;
 		}
 	    }
 
-	  if (attr_name_p != NULL && alloced_string == 1)
+	  if (alloced_string == 1)
 	    {
 	      db_private_free_and_init (thread_p, attr_name_p);
 	    }
+	}
 
-	  if (a == n_atts)
+      or_free_classrep (rep);
+      rep = NULL;
+
+      for (a = 0; a < n_atts; a++)
+	{
+	  if (atts[a].ca_id == NULL_ATTRID)
 	    {
 	      assert (false);
-	      (void) heap_scancache_end (thread_p, &scan);
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto error;
 	    }
 	}
+
+      is_scan_inited = false;
       if (heap_scancache_end (thread_p, &scan) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto error;
 	}
     }
 
@@ -4847,6 +4881,17 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
     }
 
   return NO_ERROR;
+
+error:
+  if (rep != NULL)
+    {
+      or_free_classrep (rep);
+    }
+  if (is_scan_inited)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+  return error;
 }
 
 /*
