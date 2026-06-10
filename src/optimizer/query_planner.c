@@ -3431,7 +3431,7 @@ qo_get_nljoin_term_cpu_overhead (QO_PLAN * planp, double guessed_result_cardinal
 
 static void
 qo_accumulate_memoize_outer_distinct_keys (QO_PLAN * planp, BITSET * terms, double guessed_outer_cardinality,
-					  double *best_ndvp)
+					   double *best_ndvp)
 {
   QO_PLAN *inner;
   BITSET_ITERATOR iter;
@@ -3499,8 +3499,7 @@ qo_accumulate_memoize_outer_distinct_keys (QO_PLAN * planp, BITSET * terms, doub
       if (ndv > 0)
 	{
 	  double clamped_ndv = MIN (guessed_outer_cardinality, (double) ndv);
-	  *best_ndvp =
-	    (*best_ndvp <= 0.0) ? clamped_ndv : MIN (guessed_outer_cardinality, *best_ndvp * clamped_ndv);
+	  *best_ndvp = (*best_ndvp <= 0.0) ? clamped_ndv : MIN (guessed_outer_cardinality, *best_ndvp * clamped_ndv);
 	}
     }
 }
@@ -3516,9 +3515,9 @@ qo_estimate_memoize_outer_distinct_keys (QO_PLAN * planp, double guessed_outer_c
     }
 
   qo_accumulate_memoize_outer_distinct_keys (planp, &(planp->plan_un.join.join_terms), guessed_outer_cardinality,
-					    &best_ndv);
+					     &best_ndv);
   qo_accumulate_memoize_outer_distinct_keys (planp, &(planp->plan_un.join.during_join_terms),
-					    guessed_outer_cardinality, &best_ndv);
+					     guessed_outer_cardinality, &best_ndv);
 
   return (best_ndv > 0.0) ? MAX (1.0, best_ndv) : guessed_outer_cardinality;
 }
@@ -3580,8 +3579,7 @@ qo_is_memoize_favorable_plan (QO_PLAN * planp, double guessed_outer_cardinality,
 }
 
 static void
-qo_get_non_unique_residual_lookup_costs (QO_PLAN * planp, double outer_cardinality, double *cpu_costp,
-					 double *io_costp)
+qo_get_non_unique_residual_lookup_costs (QO_PLAN * planp, double outer_cardinality, double *cpu_costp, double *io_costp)
 {
   QO_PLAN *inner;
   QO_INDEX_ENTRY *index_entryp;
@@ -3735,9 +3733,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
     {
-      inner_io_cost =
-	inner_cost_cardinality
-	* inner->variable_io_cost * (1 - ISCAN_IO_HIT_RATIO);
+      inner_io_cost = inner_cost_cardinality * inner->variable_io_cost * (1 - ISCAN_IO_HIT_RATIO);
       inner_io_cost += non_unique_residual_lookup_io_cost;
     }
   else
