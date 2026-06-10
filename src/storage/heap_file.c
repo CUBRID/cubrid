@@ -12205,8 +12205,13 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       /* re-calculate the payload size */
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  /* only variable value can be oos column */
-	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512 /* 512 B */ ;
+	  /* only variable value can be oos column.
+	   * TODO (CBRD-26783): internal BLOB/CLOB stays inline for now; online backup
+	   * (file_tracker_get_and_protect) and the utility round-trip do not support
+	   * OOS-stored LOB values yet. The generic trigger will be re-enabled for LOB
+	   * types together with that verification. */
+	  (*oos_columns)[i] = !attr_info->values[i].last_attrepr->is_fixed && column_size[i] > 512	/* 512 B */
+	    && !TP_IS_LOB_TYPE (attr_info->values[i].last_attrepr->type);
 	  if ((*oos_columns)[i])
 	    {
 	      payload_size -= column_size[i];
