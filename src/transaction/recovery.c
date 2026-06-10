@@ -33,6 +33,7 @@
 #include "file_manager.h"
 #include "locator_sr.h"
 #include "log_manager.h"
+#include "oos_file.hpp"
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
@@ -841,6 +842,41 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVOOS_INSERT,
+   "RVOOS_INSERT",
+   oos_rv_redo_delete,
+   oos_rv_redo_insert,
+   NULL,
+   NULL},
+  {RVOOS_DELETE,
+   "RVOOS_DELETE",
+   oos_rv_redo_insert,
+   oos_rv_redo_delete,
+   NULL,
+   NULL},
+  {RVREPL_OOS_INSERT,
+   "RVREPL_OOS_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVREPL_OOS_DELETE,
+   "RVREPL_OOS_DELETE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVOOS_NOTIFY_VACUUM,
+   "RVOOS_NOTIFY_VACUUM",
+   vacuum_rv_es_nop,
+   vacuum_rv_es_nop,
+   NULL, NULL},
+  {RVREPL_DUMMY_OOS_RECORD,
+   "RVREPL_DUMMY_OOS_RECORD",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

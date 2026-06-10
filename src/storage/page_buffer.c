@@ -16755,6 +16755,7 @@ pgbuf_scan_bcb_table ()
 	      break;
 	    case PAGE_OVERFLOW:
 	    case PAGE_HEAP:
+	    case PAGE_OOS:
 	      show_status_snapshot->num_data_pages++;
 	      break;
 	    case PAGE_CATALOG:

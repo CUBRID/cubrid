@@ -1473,7 +1473,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
-1374 Last Error
+1374 Vacuum master daemon is not running; the server may be still booting or already shut down.
+
+1375 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

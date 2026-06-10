@@ -1110,6 +1110,27 @@ xvacuum (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * vacuum_wakeup_master_daemon () - Wake the vacuum master daemon to force
+ *   an immediate vacuum pass (dev/debug helper for csql ;vacuum).
+ *   Returns NO_ERROR on success, ER_FAILED if the master daemon is not
+ *   currently running (boot transition or after shutdown). Always
+ *   returns NO_ERROR in SA_MODE (no daemon to wake).
+ */
+int
+vacuum_wakeup_master_daemon (void)
+{
+#if defined(SERVER_MODE)
+  if (vacuum_Master_daemon == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE, 0);
+      return ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE;
+    }
+  vacuum_Master_daemon->wakeup ();
+#endif /* SERVER_MODE */
+  return NO_ERROR;
+}
+
+/*
  * xvacuum_dump - Dump the contents of vacuum
  *
  * return: nothing
@@ -2223,7 +2244,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
       /* Skip bytes up to insid_offset. */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2301,7 +2322,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
       /* Skip bytes up to insid_offset */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2806,12 +2827,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;

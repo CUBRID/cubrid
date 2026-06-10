@@ -400,6 +400,9 @@ OR_PUT_DOUBLE (char *ptr, double val)
 #define OR_PUT_OFFSET(ptr, val) \
   OR_PUT_BIG_VAR_OFFSET ((ptr), (val))
 
+#define OR_PUT_LAST_VAR_OFFSET(ptr, val) \
+  OR_PUT_OFFSET ((ptr), OR_SET_VAR_LAST_ELEMENT (val))
+
 #define OR_GET_OFFSET(ptr) \
   OR_GET_BIG_VAR_OFFSET ((ptr))
 
@@ -421,15 +424,37 @@ OR_PUT_DOUBLE (char *ptr, double val)
   } while (0)
 
 #define OR_GET_OFFSET_INTERNAL(ptr, offset_size) \
-  ((offset_size) == OR_BYTE_SIZE) \
-   ? OR_GET_BYTE ((ptr)) \
-   : (((offset_size) == OR_SHORT_SIZE) \
-      ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr)))
+  OR_GET_VAR_OFFSET ( \
+    ((offset_size) == OR_BYTE_SIZE) \
+     ? OR_GET_BYTE ((ptr)) \
+     : (((offset_size) == OR_SHORT_SIZE) \
+        ? OR_GET_SHORT ((ptr)) : OR_GET_INT ((ptr))))
 
 /*
  * VARIABLE OFFSET TABLE ACCESSORS
  * The variable offset table is present in the headers of objects and sets.
  */
+
+
+/* flag for variable length */
+
+#define OR_VAR_BIT_OOS 0x1
+#define OR_VAR_BIT_LAST_ELEMENT 0x2
+#define OR_VAR_FLAG_MASK 0x3
+
+#define OR_SET_VAR_OOS(length) ((int) (length) | OR_VAR_BIT_OOS)
+#define OR_SET_VAR_LAST_ELEMENT(length) ((int) (length) | OR_VAR_BIT_LAST_ELEMENT)
+
+#define OR_GET_VAR_FLAG(length) ((int) (length) & OR_VAR_FLAG_MASK)
+#define OR_GET_VAR_OFFSET(length) ((int) (length) & (~OR_VAR_FLAG_MASK))
+
+#define OR_IS_OOS(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_OOS)
+#define OR_IS_LAST_ELEMENT(length) (OR_GET_VAR_FLAG (length) & OR_VAR_BIT_LAST_ELEMENT)
+
+/* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
+#define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
+
+/* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \
   (OR_VAR_TABLE_SIZE_INTERNAL (vars, BIG_VAR_OFFSET_SIZE))
@@ -446,10 +471,10 @@ OR_PUT_DOUBLE (char *ptr, double val)
 
 #define OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL(table, index, offset_size) \
   ((offset_size == OR_BYTE_SIZE) \
-   ? (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
+   ? (OR_GET_VAR_OFFSET (OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
    : ((offset_size == OR_SHORT_SIZE) \
-      ? (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))) \
-      : (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))))
+      ? (OR_GET_VAR_OFFSET (OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size)))) \
+      : (OR_GET_VAR_OFFSET (OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (table, index, offset_size))))))
 
 #define OR_VAR_TABLE_ELEMENT_LENGTH_INTERNAL(table, index, offset_size) \
   (OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (table, (index) + 1, offset_size) \
@@ -1302,8 +1327,6 @@ STATIC_INLINE int or_put_big_var_offset (OR_BUF * buf, int num) __attribute__ ((
 STATIC_INLINE int or_put_offset (OR_BUF * buf, int num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_put_offset_internal (OR_BUF * buf, int num, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
-STATIC_INLINE int or_get_big_var_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int or_get_offset (OR_BUF * buf, int *error) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int or_get_offset_internal (OR_BUF * buf, int *error, int offset_size) __attribute__ ((ALWAYS_INLINE));
 
 /* Data unpacking functions */
@@ -2530,21 +2553,15 @@ or_put_big_var_offset (OR_BUF * buf, int num)
 }
 
 STATIC_INLINE int
-or_get_big_var_offset (OR_BUF * buf, int *error)
-{
-  return or_get_int (buf, error);
-}
-
-STATIC_INLINE int
 or_put_offset (OR_BUF * buf, int num)
 {
   return or_put_big_var_offset (buf, num);
 }
 
 STATIC_INLINE int
-or_get_offset (OR_BUF * buf, int *error)
+or_put_last_var_offset (OR_BUF * buf, int num)
 {
-  return or_get_big_var_offset (buf, error);
+  return or_put_offset (buf, OR_SET_VAR_LAST_ELEMENT (num));
 }
 
 STATIC_INLINE int
@@ -2568,19 +2585,23 @@ or_put_offset_internal (OR_BUF * buf, int num, int offset_size)
 STATIC_INLINE int
 or_get_offset_internal (OR_BUF * buf, int *error, int offset_size)
 {
+  int val;
+
   if (offset_size == OR_BYTE_SIZE)
     {
-      return or_get_byte (buf, error);
+      val = or_get_byte (buf, error);
     }
   else if (offset_size == OR_SHORT_SIZE)
     {
-      return or_get_short (buf, error);
+      val = or_get_short (buf, error);
     }
   else
     {
       assert (offset_size == OR_INT_SIZE);
-      return or_get_int (buf, error);
+      val = or_get_int (buf, error);
     }
+
+  return OR_GET_VAR_OFFSET (val);
 }
 
 /*
