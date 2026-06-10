@@ -21827,7 +21827,11 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
   mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   update_mvcc_flags = OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION;
 
-  bool has_oos = heap_recdes_compute_oos_flag (update_context->recdes_p);
+  /* Trust the OOS flag already set on the incoming recdes by the record transformer
+   * (heap_attrinfo_transform_to_disk). Do NOT re-derive it via heap_recdes_compute_oos_flag
+   * (VOT scan): records without an OOS-aware VOT (e.g. fixed-only rows) read fixed-attribute
+   * bytes as VOT entries and false-positive on OR_VAR_BIT_OOS (CBRD-26668). */
+  bool has_oos = heap_recdes_contains_oos (update_context->recdes_p);
 
   if (has_oos)
     {
@@ -24277,8 +24281,9 @@ for (const OID & candidate:oids)
  * abort the transaction on error so oos_delete's per-chunk undo records replay any partial deletes
  * during rollback; otherwise the home recdes will reference already-deleted OOS chunks.
  *
- * Strict failure handling: heap_recdes_compute_oos_flag is robust, so a missing OOS file or a failed
- * OID extraction at this point indicates real corruption — log and propagate.
+ * Strict failure handling: the OOS header flag is set by the record transformer and read via
+ * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
+ * indicates real corruption — log and propagate.
  */
 static int
 heap_update_home_delete_replaced_oos (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
@@ -28524,18 +28529,13 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
  *    recdes(in): heap record being written
  *
  * Note:
- *    Counterpart of heap_recdes_contains_oos (). The two functions look alike
- *    but serve opposite ends of the OOS-flag lifecycle:
- *
- *      compute  (this fn):  scan the VOT once at update time, derive the flag,
- *                           and store it in the MVCC header. Called by
- *                           heap_update_adjust_recdes_header ().
- *      contains:            on read, do an O(1) bit test on the cached header
- *                           flag. Hot path; called from locator_sr.c and from
- *                           heap_recdes_get_oos_oids ().
- *
- *    "compute" is the source of truth that produces the value "contains"
- *    later reads back.
+ *    Counterpart of heap_recdes_contains_oos (), which does the O(1) bit test
+ *    on the cached header flag. This function re-derives the flag from the VOT
+ *    and is used only as the debug cross-check inside heap_recdes_contains_oos ().
+ *    It must NOT be the flag source on the write path: records without an
+ *    OOS-aware VOT (fixed-only or old-format) false-positive on OR_VAR_BIT_OOS
+ *    (CBRD-26668). The MVCC header flag set by the record transformer
+ *    (heap_attrinfo_transform_to_disk) is the source of truth.
  *
  *    Defense against non-object-instance records: the heap can hold records
  *    with layouts other than the object-instance VOT format (class records,
