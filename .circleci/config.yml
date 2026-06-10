@@ -227,7 +227,7 @@ jobs:
                         rm /tmp/CUBRID.tar.gz
                         
                         echo "Build extracted to /home/CUBRID"
-                        ls -la /home/CUBRID | head -10
+                        ls -la /home/CUBRID
 
               download-build-to-glusterfs:
                 description: "Download CUBRID build to GlusterFS shared storage (for shell tests)"
@@ -248,7 +248,7 @@ jobs:
                         # Check if build already exists (same commit = same build)
                         if [ -d "\${BUILD_DIR}/CUBRID" ]; then
                           echo "Build already exists for this commit, skipping download"
-                          ls -la "\${BUILD_DIR}/CUBRID" | head -10
+                          ls -la "\${BUILD_DIR}/CUBRID"
                           exit 0
                         fi
                         
@@ -277,7 +277,7 @@ jobs:
                         rm "\${BUILD_DIR}/CUBRID.tar.gz"
                         
                         echo "Build extracted to \${BUILD_DIR}/CUBRID"
-                        ls -la "\${BUILD_DIR}/CUBRID" | head -10
+                        ls -la "\${BUILD_DIR}/CUBRID"
                         df -h /home/build-cache
                       
             # --------------------------------------------------

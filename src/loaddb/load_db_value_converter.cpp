@@ -335,9 +335,10 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
 	    return ER_IT_DATA_OVERFLOW;
@@ -359,37 +360,35 @@ namespace cubload
     const tp_domain &domain = attr->get_domain ();
     int precision = domain.precision;
     INTL_CODESET codeset = (INTL_CODESET) domain.codeset;
+    int char_count = 0;
 
-    /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
-    if (str_len > precision)
+    intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
+
+    if (char_count > precision)
       {
-	int char_count = 0;
-	intl_char_count ((unsigned char *) str, str_len, codeset, &char_count);
-	if (char_count > precision)
+	/*
+	 * May be a violation, but first we have to check for trailing pad
+	 * characters that might allow us to successfully truncate the
+	 * thing.
+	 */
+	const char *p;
+	int truncate_size;
+
+	intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+
+	p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
+	if (p >= &str[str_len])
+	  {
+	    str_len = truncate_size;
+	    char_count = precision;
+	  }
+	else
 	  {
 	    /*
-	     * May be a violation, but first we have to check for trailing pad
-	     * characters that might allow us to successfully truncate the
-	     * thing.
+	     * It's a genuine violation; raise an error.
 	     */
-	    const char *p;
-	    int truncate_size;
-
-	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
-
-	    p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
-	    if (p >= &str[str_len])
-	      {
-		str_len = truncate_size;
-	      }
-	    else
-	      {
-		/*
-		 * It's a genuine violation; raise an error.
-		 */
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
-		return ER_IT_DATA_OVERFLOW;
-	      }
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
+	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
 
@@ -397,6 +396,15 @@ namespace cubload
     if (error == NO_ERROR)
       {
 	error = db_make_db_char (val, codeset, domain.collation_id, str, str_len);
+	if (error == NO_ERROR)
+	  {
+	    /* cache char_count (db_make_db_char resets to -1) */
+	    val->data.ch.medium.length = char_count;
+	    if (type == DB_TYPE_CHAR && char_count < precision)
+	      {
+		error = pr_pad_char_to_precision (val, precision);
+	      }
+	  }
       }
 
     return error;
@@ -472,10 +480,21 @@ namespace cubload
     int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
     int scale = (int) str_size - (int) strcspn (str, ".") - 1;
 
+    if (precision > DB_MAX_NUMERIC_PRECISION)
+      {
+	scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
+	precision = DB_MAX_NUMERIC_PRECISION;
+      }
+
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
     if (error_code != NO_ERROR)
       {
 	return error_code;
+      }
+
+    if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+      {
+	FIXED_TO_FLOAT_NUMERIC (val);
       }
 
     return db_value_put (val, DB_TYPE_C_CHAR, (void *) str, (int) str_size);
@@ -919,11 +938,18 @@ namespace cubload
       {
 	DB_NUMERIC num;
 	DB_BIGINT tmp_bigint;
+	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf);
-	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint) != NO_ERROR)
+	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
-	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, (int) str_size, 0);
+	    int precision = (int) str_size - (str[0] == '+' || str[0] == '-');
+	    if (precision > DB_MAX_NUMERIC_PRECISION)
+	      {
+		precision = DB_MAX_NUMERIC_PRECISION;
+	      }
+
+	    error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, 0);
 	    if (error_code != NO_ERROR)
 	      {
 		ASSERT_ERROR ();
