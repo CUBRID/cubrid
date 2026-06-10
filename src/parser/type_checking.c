@@ -5839,6 +5839,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_CONCAT:
     case PT_CONCAT_WS:
     case PT_TO_CHAR:
+    case PT_UUID:
       return true;
     case PT_REPLACE:
     case PT_STRCAT:
@@ -5919,6 +5920,13 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     {
       expr->type_enum = PT_TYPE_NULL;
       return NO_ERROR;
+    }
+
+  /* UUID does not accept a NULL version argument */
+  if (op == PT_UUID && arg1 != NULL && arg1_type == PT_TYPE_NULL)
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+      return ER_FAILED;
     }
 
   best_match = 0;
@@ -17326,8 +17334,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	UINT64 epoch_ms = 0;
 	UUID_STATE uuid_state;
 
-	if (arg1 != NULL && DB_VALUE_TYPE (arg1) != DB_TYPE_NULL)
+	if (o1 != NULL)
 	  {
+	    if (DB_VALUE_TYPE (arg1) == DB_TYPE_NULL)
+	      {
+		/* NULL version argument is not allowed; UUID() with no argument has no arg1 node */
+		PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+		return 0;
+	      }
 	    version = db_get_int (arg1);
 	  }
 

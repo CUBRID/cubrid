@@ -2907,12 +2907,14 @@ exit:
     {
       db_private_free_and_init (NULL, hex_buf);
       db_make_null (result);
+#if 0				// 'return_null_on_function_errors' not support on UUID related functions
       if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  /* we must not return an error code */
 	  er_clear ();
 	  error_status = NO_ERROR;
 	}
+#endif
     }
 
   return error_status;
@@ -26311,12 +26313,13 @@ db_uuidv4 (DB_VALUE * result)
   return NO_ERROR;
 
 error:
+#if 0				// 'return_null_on_function_errors' not support on UUID related functions
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
       error_code = NO_ERROR;
     }
-
+#endif
   return error_code;
 }
 
@@ -26383,12 +26386,13 @@ error:
     {
       db_private_free (NULL, guid_bytes);
     }
+#if 0				// 'return_null_on_function_errors' not support on UUID related functions
   if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
     {
       er_clear ();
       error_code = NO_ERROR;
     }
-
+#endif
   return error_code;
 }
 

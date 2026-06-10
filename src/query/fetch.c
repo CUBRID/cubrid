@@ -3543,7 +3543,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	int version;
 	if (DB_IS_NULL (peek_right))
 	  {
-	    version = 4;
+	    /* NULL version argument is not allowed; UUID() with no argument arrives as the constant 4 */
+	    version = -1;
 	  }
 	else
 	  {

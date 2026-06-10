@@ -1985,7 +1985,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 
-337 DEFAULT UUID는 UUID(), UUID(4), 또는 UUID(7)만 지원합니다.
+337 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 
 
 

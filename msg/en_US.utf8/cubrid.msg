@@ -1986,7 +1986,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
 
-337 DEFAULT UUID only supports UUID(), UUID(4), or UUID(7).
+337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
 
 

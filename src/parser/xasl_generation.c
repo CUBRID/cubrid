@@ -9178,6 +9178,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_UUID:
+		  if (node->info.expr.arg1 == NULL)
+		    {
+		      /* UUID() with no argument defaults to version 4; use an integer constant so that the server can
+		       * distinguish it from an actual NULL argument, which is an error */
+		      regu_alloc (val);
+		      db_make_int (val, 4);
+		      r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
+		    }
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
