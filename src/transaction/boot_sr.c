@@ -85,6 +85,7 @@
 #include "porting.h"
 #include "log_manager.h"
 #include "catalog_class.h"
+#include "system_metadata_version.h"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -2606,6 +2607,14 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 
   if (skip_to_check_ct_classes_for_rebuild == false)
     {
+      if (log_Gl.hdr.sysmeta_version != SYSTEM_METADATA_VERSION)
+	{
+	  error_code = (log_Gl.hdr.sysmeta_version > SYSTEM_METADATA_VERSION)
+	    ? ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED : ER_SYSMETA_UPGRADE_REQUIRED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	  goto error;
+	}
+
       if (catcls_Enable != true)
 	{
 	  error_code = catcls_compile_catalog_classes (thread_p);

@@ -1473,7 +1473,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
-1374 Last Error
+1374 System metadata upgrade is required. Run 'cubrid upgradedb' to upgrade.
+1375 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1376 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
