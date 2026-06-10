@@ -5013,16 +5013,11 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 
   million_sec = (long) (db_get_double (value) * 1000L);
 
-  /* NOTE: Casting a very large input to long may overflow into a negative
-   * value. In debug builds this triggers an assert in msleep(); release
-   * builds return 1 immediately via select(EINVAL).
-   *
-   * A previous attempt clamped overflow to LONG_MAX, but that effectively
-   * caused the call to sleep indefinitely. It is removed here.
-   *
-   * TODO: Revisit once the valid input range for sleep is formally
-   * defined, and handle overflow accordingly.
-   */
+  /* clamp to LONG_MAX when the cast above overflows into a negative value */
+  if (million_sec < 0)
+    {
+      million_sec = LONG_MAX;
+    }
 
   error = msleep (million_sec);
   if (error == NO_ERROR)
