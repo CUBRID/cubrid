@@ -8789,21 +8789,9 @@ mr_data_readval_numeric (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int
 	  rc = or_advance (buf, size);
 	}
     }
-  else if (domain->type->id == DB_TYPE_NUMERIC && domain->precision == 0)
+  else if (size == 0 || (domain->type->id == DB_TYPE_NUMERIC && domain->precision == 0))
     {
-      /* 1. reason for checking domain->type
-       *   - when the type is DB_TYPE_VARIABLE, domain->precision is set to 0.
-       *   - in this case, the numeric precision condition below should be skipped
-       *     and handled by the else branch, so the type check is required.
-       *   - tc : _14_mysql_compatibility_2/_15_host_variable/_12_common/union.sql
-       *
-       * 2. reason for checking domain->precision == 0
-       *   - in normal definitions, a numeric type cannot have precision 0.
-       *   - however, for historical compatibility (about 10 years),
-       *     numeric(0,0) used in view definitions or CAST expressions
-       *     does not raise an error and is treated as NULL.
-       *   - tc : _01_object/_01_type/_003_numeric/1004.sql
-       */
+      /* its NULL */
       rc = or_advance (buf, 0);
     }
   else
