@@ -9150,6 +9150,28 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       break;
 
+    case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+      if (PT_IS_VALUE_NODE (arg1) && PT_IS_CHAR_STRING_TYPE (arg1->type_enum)
+	  && arg1->info.value.data_value.str != NULL && arg1->info.value.data_value.str->length < DB_MAX_CLASS_LENGTH)
+	{
+	  const char *name = (const char *) PT_VALUE_GET_BYTES (arg1);
+	  char realname[DB_MAX_IDENTIFIER_LENGTH];
+
+	  if (strchr (name, '.') == NULL && sm_user_specified_name (name, realname, DB_MAX_IDENTIFIER_LENGTH) != NULL)
+	    {
+	      arg1->info.value.data_value.str = pt_append_bytes (parser, NULL, realname, strlen (realname));
+	      /* text and db_value still hold the old name; clear so both are refreshed from the qualified one */
+	      arg1->info.value.text = NULL;
+	      arg1->info.value.db_value_is_initialized = false;
+	      (void) pt_value_to_db (parser, arg1);
+	    }
+	}
+      break;
+
     default:
       break;
     }
