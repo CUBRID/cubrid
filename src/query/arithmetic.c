@@ -4997,6 +4997,7 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 {
   int error = NO_ERROR;
   long million_sec = 0;
+  double msec_d;
 
   assert (result != NULL && value != NULL);
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
@@ -5011,13 +5012,10 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
       goto end;
     }
 
-  million_sec = (long) (db_get_double (value) * 1000L);
+  msec_d = db_get_double (value) * 1000.0;
 
-  /* clamp to LONG_MAX when the cast above overflows into a negative value */
-  if (million_sec < 0)
-    {
-      million_sec = LONG_MAX;
-    }
+  /* clamp to LONG_MAX when the value is out of the long range */
+  million_sec = !(msec_d < (double) LONG_MAX) ? LONG_MAX : (long) msec_d;
 
   error = msleep (million_sec);
   if (error == NO_ERROR)
