@@ -16921,9 +16921,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
-	      && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan))
 	    {
+	      /*
+	       * When need_final_sort is true,
+	       * qo_top_plan_new appends a SORT_ORDERBY plan on top even in the orderby_skip case
+	       * (without orderby_skip, one is appended regardless of need_final_sort),
+	       * so the top plan's plan_type becomes QO_PLANTYPE_SORT and qo_plan_skip_orderby () returns false.
+	       * Therefore a plan with need_final_sort can never enter this block.
+	       */
+	      assert (!qo_plan->need_final_sort);
+
 	      orderby_skip = true;
 
 	      /* move orderby_num() to inst_num() */

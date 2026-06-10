@@ -1204,8 +1204,7 @@ qo_top_plan_new (QO_PLAN * plan)
 			  /* at here, we can not merge orderby_num pred with inst_num pred */
 			  ;	/* give up; DO NOT DELETE ME - need future work */
 			}
-		      else if (!plan->need_final_sort
-			       && !is_index_w_prefix && !tree->info.query.q.select.connect_by
+		      else if (!is_index_w_prefix && !tree->info.query.q.select.connect_by
 			       && !pt_has_analytic (parser, tree))
 			{
 			  orderby_skip = pt_sort_spec_cover (plan->iscan_sort_list, order_by);
@@ -1252,6 +1251,31 @@ qo_top_plan_new (QO_PLAN * plan)
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
 	      }
+
+	      if (plan->need_final_sort)
+		{
+		  /*
+		   * orderby_skip was accepted because the outermost index scan returns rows in ORDER BY order.
+		   * However, the hash/merge join above it (for which qo_join_new sets need_final_sort)
+		   * breaks that order, since a hash join may not preserve the order of its probe input
+		   * when partitioned or run in parallel and a merge join re-sorts both inputs by the join column
+		   * in S_ASC order regardless of direction. Therefore, append a SORT_ORDERBY plan on top
+		   * to guarantee the final order, which allows the subplans to keep the order by skip
+		   * such as the key-limited index scan under a SORT-LIMIT plan.
+		   */
+		  bool save_use_iscan_descending = plan->use_iscan_descending;
+
+		  plan = qo_sort_new (plan, QO_UNORDERED, SORT_ORDERBY);
+		  if (plan != NULL)
+		    {
+		      /*
+		       * Since qo_sort_new does not propagate it,
+		       * keep the descending scan direction visible at the top
+		       * so that qo_optimize applies qo_set_use_desc to the subplan index scans.
+		       */
+		      plan->use_iscan_descending = save_use_iscan_descending;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -4374,7 +4398,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   /* prefer order by skip plan over sort plan */
   if (a->plan_type == QO_PLANTYPE_JOIN && b->plan_type == QO_PLANTYPE_SORT)
     {
-      if (!a->need_final_sort && qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (a->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
 	  return PLAN_COMP_LT;
@@ -4382,7 +4406,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
     }
   else if (b->plan_type == QO_PLANTYPE_JOIN && a->plan_type == QO_PLANTYPE_SORT)
     {
-      if (!b->need_final_sort && qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
+      if (qo_plan_is_orderby_skip_candidate (b->plan_un.join.outer))
 	{
 	  QO_PLAN_CMP_CHECK_COST (bf + ba, af + aa);
 	  return PLAN_COMP_GT;
@@ -12362,11 +12386,6 @@ qo_plan_is_orderby_skip_candidate (QO_PLAN * plan)
   if (plan == NULL || plan->info == NULL)
     {
       assert (false);
-      return false;
-    }
-
-  if (plan->need_final_sort)
-    {
       return false;
     }
 
