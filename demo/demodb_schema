@@ -1,21 +1,21 @@
-call find_user('public') on class db_user to g_public;
-call find_user('PUBLIC') on class db_user to auser;
+call find_user('public') on class _db_user to g_public;
+call find_user('PUBLIC') on class _db_user to auser;
 create serial event_no
 	 start with 20422
 	 increment by 1
 	 minvalue 20422
 	 maxvalue 10000000000000000000000000000000000000
 	 nocycle;
-call change_serial_owner ('event_no', 'PUBLIC') on class db_serial;
+call change_serial_owner ('event_no', 'PUBLIC') on class _db_serial;
 
-call find_user('PUBLIC') on class db_user to auser;
+call find_user('PUBLIC') on class _db_user to auser;
 create serial stadium_no
 	 start with 30141
 	 increment by 1
 	 minvalue 30141
 	 maxvalue 10000000000000000000000000000000000000
 	 nocycle;
-call change_serial_owner ('stadium_no', 'PUBLIC') on class db_serial;
+call change_serial_owner ('stadium_no', 'PUBLIC') on class _db_serial;
 
 CREATE CLASS stadium; 
 call change_owner('stadium', 'PUBLIC') on class db_root;

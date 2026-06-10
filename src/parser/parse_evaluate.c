@@ -599,6 +599,26 @@ pt_associate_label_with_value_check_reference (const char *label, DB_VALUE * val
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED, 0);
       return ER_REFERENCE_TO_NON_REFERABLE_NOT_ALLOWED;
     }
+
+  if (val->domain.general_info.type == DB_TYPE_STRING)
+    {
+      if (pr_Enable_string_compression)
+	{
+	  if (val->data.ch.medium.compressed_size == DB_UNCOMPRESSABLE)
+	    {
+	      assert (val->data.ch.medium.compressed_buf == NULL);
+	      val->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+	    }
+	}
+      else if (val->data.ch.medium.compressed_size > 0)
+	{
+	  assert (val->data.ch.medium.compressed_buf != NULL);
+	  db_private_free_and_init (NULL, val->data.ch.medium.compressed_buf);
+	  val->data.ch.medium.compressed_buf = NULL;
+	  val->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
+	}
+    }
+
   return pt_associate_label_with_value (label, val);
 }
 
@@ -1175,16 +1195,8 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		case PT_TRIM:
 		case PT_LTRIM:
 		case PT_RTRIM:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd2, 1, " ", 1, opd1_cs, opd1_coll);
+		  type2 = PT_TYPE_VARCHAR;
 		  break;
 		case PT_FROM_UNIXTIME:
 		  db_make_null (&opd2);
@@ -1209,29 +1221,13 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 		{
 		case PT_REPLACE:
 		case PT_TRANSLATE:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
-		      type3 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
-		      type3 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd3, 1, "", 0, opd1_cs, opd1_coll);
+		  type3 = PT_TYPE_VARCHAR;
 		  break;
 		case PT_LPAD:
 		case PT_RPAD:
-		  if (type1 == PT_TYPE_NCHAR || type1 == PT_TYPE_VARNCHAR)
-		    {
-		      db_make_varnchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARNCHAR;
-		    }
-		  else
-		    {
-		      db_make_varchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
-		      type2 = PT_TYPE_VARCHAR;
-		    }
+		  db_make_varchar (&opd3, 1, " ", 1, opd1_cs, opd1_coll);
+		  type2 = PT_TYPE_VARCHAR;
 		  break;
 		default:
 		  db_make_null (&opd3);
@@ -1254,9 +1250,14 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  domain = pt_node_to_db_domain (parser, tree, NULL);
 	  domain = tp_domain_cache (domain);
 
+	  int type_arg[2];
+	  type_arg[0] = PT_HOST_VAR;
+	  type_arg[1] = 0;
+
+	  (void) parser_walk_tree (parser, tree, pt_find_node_type_pre, type_arg, NULL, NULL);
+
 	  /* recheck type of expr for host_var */
-	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL
-	      && (pt_is_hostvar (arg1) || pt_is_hostvar (arg2) || pt_is_hostvar (arg3)))
+	  if (domain && domain->type && domain->type->id == DB_TYPE_NULL && (type_arg[1] != 0))
 	    {
 	      common_type = pt_common_type (type1, type2);
 	      if (type3 != PT_TYPE_NONE)

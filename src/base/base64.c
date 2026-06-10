@@ -55,7 +55,7 @@ struct base64_chunk
 /*
  *   Helper table for encoding
  */
-const char *base64_map = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz" "0123456789+/";
+const char *const base64_map = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" "abcdefghijklmnopqrstuvwxyz" "0123456789+/";
 
 /*
  *  Helper table for decoding.

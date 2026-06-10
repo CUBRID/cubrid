@@ -125,13 +125,7 @@
 #define FLAG_EXCHANGE(e0,e1)       EXCHANGE_BUILDER(int,e0,e1)
 #define INT_PTR_EXCHANGE(e0,e1)    EXCHANGE_BUILDER(int *,e0,e1)
 
-#define BISET_EXCHANGE(s0,s1) \
-    do { \
-	BITSET tmp; \
-	BITSET_MOVE(tmp, s0); \
-	BITSET_MOVE(s0, s1); \
-	BITSET_MOVE(s1, tmp); \
-    } while (0)
+#define BITSET_EXCHANGE(s0,s1)     bitset_exchange(&(s0), &(s1))
 
 #define PUT_FLAG(cond, flag) \
     do { \
@@ -155,6 +149,13 @@ struct walk_info
 {
   QO_ENV *env;
   QO_TERM *term;
+};
+
+typedef struct qo_implied_join_pair QO_IMPLIED_JOIN_PAIR;
+struct qo_implied_join_pair
+{
+  QO_SEGMENT *head_seg;
+  QO_SEGMENT *tail_seg;
 };
 
 double QO_INFINITY = 0.0;
@@ -186,6 +187,7 @@ static void get_term_rank (QO_ENV * env, QO_TERM * term);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
+static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void get_rank (QO_ENV * env);
 static PT_NODE *get_referenced_attrs (PT_NODE * entity);
 static bool expr_is_mergable (PT_NODE * pt_expr);
@@ -235,6 +237,10 @@ static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
 static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
+static void qo_generate_implied_join_terms (QO_ENV *);
+static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
+static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -448,6 +454,9 @@ qo_optimize_helper (QO_ENV * env)
   (void) add_hint (env, tree);
   add_using_index (env, tree->info.query.q.select.using_index);
 
+  /* adjust correlation level before analyzing term. TO_DO: add routines to adjust in mq_translate() */
+  parser_walk_leaves (parser, tree, get_local_subqueries_pre, env, NULL, NULL);
+
   /* add dep term */
   {
     BITSET dependencies;
@@ -587,6 +596,12 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
+  /* Generate implied join terms from the union-find segment groups before
+   * qo_discover_edges() rearranges the term array.  New terms are appended at
+   * the end; qo_discover_edges() will fold them into the edge zone and sort.
+   */
+  qo_generate_implied_join_terms (env);
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -636,6 +651,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
   int i;
+  int extra_term_cap;
   size_t size;
 
   if (query == NULL)
@@ -678,10 +694,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
+  /* Pre-allocate room for implied join terms (at most C(nnodes,2) extras per eqclass in
+   * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
+   * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
+  extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
   env->terms = NULL;
-  if (env->nterms > 0)
+  if (env->nterms + extra_term_cap > 0)
     {
-      size = sizeof (QO_TERM) * env->nterms;
+      size = sizeof (QO_TERM) * (env->nterms + extra_term_cap);
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -724,14 +744,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       qo_node_clear (env, i);
     }
 
-  for (i = 0; i < env->nterms; ++i)
+  for (i = 0; i < env->nterms + extra_term_cap; ++i)
     {
       qo_term_clear (env, i);
     }
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = env->nterms;
+  env->Nterms = env->nterms + extra_term_cap;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -2915,6 +2935,11 @@ set_seg_node (PT_NODE * attr, QO_ENV * env, BITSET * bitset)
        * for shared variables, and it doesn't really hurt anyone just
        * to ignore failures here.
        */
+      if (attr->node_type == PT_NAME)
+	{
+	  attr->info.name.histogram = seg->pt_node->info.name.histogram;
+	  attr->info.name.null_frequency = seg->pt_node->info.name.null_frequency;
+	}
       bitset_add (bitset, QO_SEG_IDX (seg));
     }
 
@@ -3374,6 +3399,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
     case PT_CONV_TZ:
+    case PT_COLLECTION_TO_STRING:
       return RANK_EXPR_MEDIUM;
 
       /* Group 3 -- heavy */
@@ -3392,6 +3418,10 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_ENCRYPT:
     case PT_DECRYPT:
     case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
@@ -4092,9 +4122,7 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   /*
    * Be careful here: the previously allocated QO_SUBQUERY terms
    * contain bitsets that may have self-relative internal pointers, and
-   * those pointers have to be maintained in the new array.  The proper
-   * way to make sure that they are consistent is to use the bitset_assign()
-   * macro, not just to do the bitcopy that memcpy() will do.
+   * those pointers have to be maintained in the new array.
    */
   tmp = NULL;
   if ((n + 1) > 0)
@@ -4103,25 +4131,38 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
       if (tmp == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QO_SUBQUERY) * (n + 1));
+	  env->nsubqueries--;
 	  return;
 	}
     }
   else
     {
+      env->nsubqueries--;
       return;
     }
 
-  memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
-  for (i = 0; i < n; i++)
-    {
-      QO_SUBQUERY *subq;
-      subq = &env->subqueries[i];
-      BITSET_MOVE (tmp[i].segs, subq->segs);
-      BITSET_MOVE (tmp[i].nodes, subq->nodes);
-      BITSET_MOVE (tmp[i].terms, subq->terms);
-    }
   if (env->subqueries)
     {
+      memcpy (tmp, env->subqueries, n * sizeof (QO_SUBQUERY));
+      for (i = 0; i < n; i++)
+	{
+	  QO_SUBQUERY *src, *dst;
+	  src = &env->subqueries[i];
+	  dst = &tmp[i];
+
+	  if (src->segs.setp == src->segs.set.word)
+	    {
+	      dst->segs.setp = dst->segs.set.word;
+	    }
+	  if (src->nodes.setp == src->nodes.set.word)
+	    {
+	      dst->nodes.setp = dst->nodes.set.word;
+	    }
+	  if (src->terms.setp == src->terms.set.word)
+	    {
+	      dst->terms.setp = dst->terms.set.word;
+	    }
+	}
       free_and_init (env->subqueries);
     }
   env->subqueries = tmp;
@@ -4135,7 +4176,6 @@ add_local_subquery (QO_ENV * env, PT_NODE * node)
   qo_seg_nodes (env, &tmp->segs, &tmp->nodes);
   tmp->idx = n;
 }
-
 
 /*
  * get_local_subqueries_pre () - Builds vector of locally correlated
@@ -4393,6 +4433,7 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 	      spec = QO_NODE_ENTITY_SPEC (node);
 	      if (spec->info.spec.id == arg->info.name.spec_id)
 		{
+		  p_node = QO_ENV_NODE (env, i);
 		  break;
 		}
 	    }
@@ -4406,60 +4447,53 @@ add_hint (QO_ENV * env, PT_NODE * tree)
 
       if (found && tree->info.query.q.select.leading)
 	{
-	  /* find last leading node */
-	  for (arg = tree->info.query.q.select.leading; arg->next; arg = arg->next)
+	  if (!tree->info.query.q.select.leading->next)
 	    {
-	      ;			/* nop */
-	    }
-	  for (i = 0; i < env->nnodes; i++)
-	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      if (spec->info.spec.id == arg->info.name.spec_id)
+	      /* If arg is one, it is the root node */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  last_ordered_idx = QO_NODE_IDX (node);
-		  break;
+		  node = QO_ENV_NODE (env, i);
+		  if (node != p_node)
+		    {		/* skip out the first ordered node */
+		      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+		    }
 		}
 	    }
-
-	  /* iterate over all nodes */
-	  for (i = 0; i < env->nnodes; i++)
+	  else
 	    {
-	      node = QO_ENV_NODE (env, i);
-	      spec = QO_NODE_ENTITY_SPEC (node);
-	      /* check for arg list */
-	      p_arg = NULL;
-	      for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
+	      /* If there are two or more args, it only depends on the previous arg. */
+	      for (i = 0; i < env->nnodes; i++)
 		{
-		  if (spec->info.spec.id == arg->info.name.spec_id)
+		  node = QO_ENV_NODE (env, i);
+		  spec = QO_NODE_ENTITY_SPEC (node);
+		  /* check for arg list */
+		  p_arg = NULL;
+		  for (arg = tree->info.query.q.select.leading, j = 0; arg; arg = arg->next, j++)
 		    {
-		      if (p_arg)
-			{	/* skip out the first leading spec */
-			  /* find prev node */
-			  for (k = 0; k < env->nnodes; k++)
-			    {
-			      p_node = QO_ENV_NODE (env, k);
-			      p_spec = QO_NODE_ENTITY_SPEC (p_node);
-			      if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+		      if (spec->info.spec.id == arg->info.name.spec_id)
+			{
+			  if (p_arg)
+			    {	/* skip out the first leading spec */
+			      /* find prev node */
+			      for (k = 0; k < env->nnodes; k++)
 				{
-				  bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node)));
-				  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
-				  break;
+				  p_node = QO_ENV_NODE (env, k);
+				  p_spec = QO_NODE_ENTITY_SPEC (p_node);
+				  if (p_spec->info.spec.id == p_arg->info.name.spec_id)
+				    {
+				      bitset_assign (&(QO_NODE_OUTER_DEP_SET (node)),
+						     &(QO_NODE_OUTER_DEP_SET (p_node)));
+				      bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), QO_NODE_IDX (p_node));
+				      break;
+				    }
 				}
 			    }
+			  break;	/* exit loop for arg traverse */
 			}
-		      break;	/* exit loop for arg traverse */
+		      p_arg = arg;	/* save previous arg */
 		    }
-		  p_arg = arg;	/* save previous arg */
-		}
-
-	      /* not found in arg list */
-	      if (!arg)
-		{
-		  bitset_add (&(QO_NODE_OUTER_DEP_SET (node)), last_ordered_idx);
-		}
-
-	    }			/* for (i = ... ) */
+		}		/* for (i = ... ) */
+	    }
 	}
     }
 
@@ -5171,6 +5205,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int attr_id;
   QO_ATTR_CUM_STATS *cum_statsp;
   ATTR_STATS *attr_statsp;
+  int attr_hist_statsp_index = 0;
   BTREE_STATS *bt_statsp;
   int n_attrs;
   const char *name;
@@ -5179,6 +5214,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
   int n_unavail_indexes;
   SM_CLASS_CONSTRAINT *consp;
   CLASS_STATS *stats;
+  HIST_STATS *hist_stats;
   bool is_reserved_name = false;
 
   if ((QO_SEG_PT_NODE (seg))->info.name.meta_class == PT_RESERVED)
@@ -5247,6 +5283,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* pointer to ATTR_STATS of CLASS_STATS of QO_CLASS_INFO_ENTRY */
       stats = QO_GET_CLASS_STATS (class_info_entryp);
+      hist_stats = QO_GET_HIST_STATS (class_info_entryp);
       QO_ASSERT (env, stats != NULL);
       if (stats->attr_stats == NULL)
 	{
@@ -5268,8 +5305,9 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* search the attribute from the class information */
       attr_statsp = stats->attr_stats;
+      attr_hist_statsp_index = 0;
       n_attrs = stats->n_attrs;
-      for (j = 0; j < n_attrs; j++, attr_statsp++)
+      for (j = 0; j < n_attrs; j++, attr_statsp++, attr_hist_statsp_index++)
 	{
 	  if (attr_statsp->id == attr_id)
 	    {
@@ -5285,6 +5323,18 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
+
+      /* set histogram */
+      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
+	}
+      else
+	{
+	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	}
 
       if (cum_statsp->valid_limits == false)
 	{
@@ -5863,6 +5913,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
+  env->implied_pairs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -5982,6 +6033,12 @@ qo_env_free (QO_ENV * env)
 	  free_and_init (env->terms);
 	}
 
+      /* Scratch pairs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
+      if (env->implied_pairs)
+	{
+	  free_and_init (env->implied_pairs);
+	}
+
       if (env->partitions)
 	{
 	  for (i = 0; i < env->npartitions; ++i)
@@ -6028,13 +6085,13 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
    * 'env' attribute is the same in both, don't bother with it.
    */
   TERMCLASS_EXCHANGE (t0->term_class, t1->term_class);
-  BISET_EXCHANGE (t0->nodes, t1->nodes);
-  BISET_EXCHANGE (t0->segments, t1->segments);
+  BITSET_EXCHANGE (t0->nodes, t1->nodes);
+  BITSET_EXCHANGE (t0->segments, t1->segments);
   DOUBLE_EXCHANGE (t0->selectivity, t1->selectivity);
   INT_EXCHANGE (t0->rank, t1->rank);
   PT_NODE_EXCHANGE (t0->pt_expr, t1->pt_expr);
   INT_EXCHANGE (t0->location, t1->location);
-  BISET_EXCHANGE (t0->subqueries, t1->subqueries);
+  BITSET_EXCHANGE (t0->subqueries, t1->subqueries);
   JOIN_TYPE_EXCHANGE (t0->join_type, t1->join_type);
   INT_EXCHANGE (t0->can_use_index, t1->can_use_index);
   SEGMENTPTR_EXCHANGE (t0->index_seg[0], t1->index_seg[0]);
@@ -6785,7 +6842,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
   /* for each attribute of this constraint */
   for (i = 0; *nseg_idxp < seg_idx_num; i++)
     {
-
       if (consp->func_index_info && i == consp->func_index_info->col_id)
 	{
 	  matched = false;
@@ -6802,7 +6858,6 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 		  /* If we're handling with a multi-column index, then only equality expressions are allowed except for
 		   * the last matching segment.
 		   */
-		  bitset_delset (&working);
 		  matched = true;
 		  count_matched_index_attributes++;
 		  break;
@@ -6813,19 +6868,19 @@ qo_find_index_segs (QO_ENV * env, SM_CLASS_CONSTRAINT * consp, QO_NODE * nodep, 
 	      seg_idx[*nseg_idxp] = -1;	/* not found matched segment */
 	      (*nseg_idxp)++;	/* number of index segments, 'seg_idx[]' */
 	    }			/* if (!matched) */
+
+	  if (*nseg_idxp == seg_idx_num)
+	    {
+	      break;
+	    }
 	}
 
-      if (*nseg_idxp == seg_idx_num)
-	{
-	  break;
-	}
       attrp = consp->attributes[i];
 
       matched = false;
       /* for each indexed segments of this node, compare the name of the segment with the one of the attribute */
       for (iseg = bitset_iterate (&working, &iter); iseg != -1; iseg = bitset_next_member (&iter))
 	{
-
 	  segp = QO_ENV_SEG (env, iseg);
 
 	  if (!intl_identifier_casecmp (QO_SEG_NAME (segp), attrp->header.name))
@@ -7289,8 +7344,8 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 
       if (qo_is_non_mvcc_class_with_index (class_entryp))
 	{
-	  /* Do not use index of db_serial/db_has_apply_info for scanning. Current index scanning is optimized for
-	   * MVCC, while db_serial and db_ha_apply_info have MVCC disabled.
+	  /* Do not use index of _db_serial/_db_ha_apply_info for scanning. Current index scanning is optimized for
+	   * MVCC, while _db_serial and _db_ha_apply_info have MVCC disabled.
 	   */
 	  constraints = NULL;
 	}
@@ -8078,6 +8133,341 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_generate_implied_join_terms () - Generate implied join terms from
+ *   segment equivalence groups using transitive closure.
+ *   env(in):
+ *
+ * Note: Builds a segment union-find from unconditional inner-join equi-join edge terms
+ *   only, then appends join terms for every missing node pair of each group at the end
+ *   of env->terms; qo_discover_edges() — called right after — folds them into the edge zone.
+ */
+static void
+qo_generate_implied_join_terms (QO_ENV * env)
+{
+  int i;
+  QO_IMPLIED_JOIN_PAIR *pairs = NULL;
+  int pair_count = 0, pair_cap = 0;
+  PARSER_CONTEXT *parser;
+  int *root_arr = NULL;
+  int *segs_arr = NULL;
+
+  if (env->nsegs == 0)
+    {
+      return;
+    }
+
+  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (root_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      return;
+    }
+
+  segs_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (segs_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      free_and_init (root_arr);
+      return;
+    }
+
+  qo_build_implied_seg_roots (env, root_arr);
+
+  if (qo_collect_implied_join_pairs (env, root_arr, segs_arr, &pairs, &pair_count, &pair_cap) != 0 || pair_count == 0)
+    {
+      if (pairs)
+	{
+	  free_and_init (pairs);
+	}
+      free_and_init (root_arr);
+      free_and_init (segs_arr);
+      return;
+    }
+
+  /* No longer needed below; free before the qo_add_term() loop so that a longjmp
+   * from qo_abort() cannot bypass their cleanup. */
+  free_and_init (root_arr);
+  free_and_init (segs_arr);
+
+  /* Hand pairs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
+  env->implied_pairs = pairs;
+
+  parser = QO_ENV_PARSER (env);
+
+  for (i = 0; i < pair_count; i++)
+    {
+      QO_SEGMENT *head_seg = pairs[i].head_seg;
+      QO_SEGMENT *tail_seg = pairs[i].tail_seg;
+      PT_NODE *pt_expr;
+      QO_TERM *term;
+
+      /* Pre-allocated capacity (C(nnodes,2)) may be exhausted when the same node pair
+       * appears across multiple independent eqclasses.  Stop gracefully rather than overflow. */
+      if (env->nterms >= env->Nterms)
+	{
+	  break;
+	}
+
+      if (parser == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr = parser_new_node (parser, PT_EXPR);
+      if (pt_expr == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr->info.expr.op = PT_EQ;
+      pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
+      pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
+
+      if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+	{
+	  parser_free_tree (parser, pt_expr);
+	  continue;
+	}
+      pt_expr->type_enum = PT_TYPE_LOGICAL;
+
+      term = qo_add_term (pt_expr, PREDICATE_TERM, env);
+      QO_TERM_SET_FLAG (term, QO_TERM_IMPLIED);
+      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+    }
+
+  env->implied_pairs = NULL;
+  free_and_init (pairs);
+}
+
+/*
+ * qo_build_implied_seg_roots () - Build the segment union-find used for
+ *   implied join term generation.
+ *   env(in):
+ *   root_arr(out): caller-allocated array of env->nsegs entries; on return,
+ *	  root_arr[i] is the canonical root of segment i.
+ *
+ * Note: Unions only unconditional inner-join equi-join edge terms.  Conditional
+ *   equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must not
+ *   seed the closure: an inner term derived across an outer-join boundary changes results.
+ */
+static void
+qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
+{
+  int ti, t;
+
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      root_arr[ti] = ti;
+    }
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      QO_TERM *jterm = QO_ENV_TERM (env, t);
+      QO_SEGMENT *s1, *s2;
+      PT_NODE *tpe;
+      int r1, r2;
+
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+	{
+	  continue;
+	}
+      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
+       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      tpe = QO_TERM_PT_EXPR (jterm);
+      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	{
+	  continue;
+	}
+      s1 = QO_TERM_SEG (jterm);
+      s2 = QO_TERM_OID_SEG (jterm);
+      if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+      r1 = QO_SEG_IDX (s1);
+      while (root_arr[r1] != r1)
+	{
+	  root_arr[r1] = root_arr[root_arr[r1]];
+	  r1 = root_arr[r1];
+	}
+      r2 = QO_SEG_IDX (s2);
+      while (root_arr[r2] != r2)
+	{
+	  root_arr[r2] = root_arr[root_arr[r2]];
+	  r2 = root_arr[r2];
+	}
+      if (r1 != r2)
+	{
+	  root_arr[r1] = r2;
+	}
+    }
+
+  /* Flatten so root_arr[i] is the canonical root of segment i. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      int r = ti;
+      while (root_arr[r] != r)
+	{
+	  r = root_arr[r];
+	}
+      root_arr[ti] = r;
+    }
+}
+
+/*
+ * qo_collect_implied_join_pairs () - Collect candidate implied join
+ *   segment pairs using the caller-built segment union-find (root_arr).
+ *   return: 0 on success, -1 on memory allocation failure
+ *   env(in):
+ *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
+ *   segs_arr(in): Scratch buffer of size env->nsegs for collecting group segments; caller owns.
+ *   pairs_p(in/out): Pointer to the dynamically growing pairs array
+ *   count_p(in/out): Pointer to the current number of collected pairs
+ *   cap_p(in/out): Pointer to the current capacity of the pairs array
+ *
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one pair per
+ *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
+ */
+static int
+qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+			       QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p)
+{
+  int i, j, k, t;
+  int nsegs;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
+  QO_TERM *term;
+  bool already_has_term;
+
+  /* Process each segment that is its own root (i.e., the canonical root of a group). */
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (root_arr[i] != i)
+	{
+	  continue;
+	}
+
+      /* Collect all segments belonging to this group into the caller-provided scratch buffer. */
+      nsegs = 0;
+      for (j = 0; j < env->nsegs; j++)
+	{
+	  if (root_arr[j] != i)
+	    {
+	      continue;
+	    }
+	  segs_arr[nsegs++] = j;
+	}
+
+      /* A two-segment group is always united by the direct edge term that merged it,
+       * so no new implied pair can come out of it; require at least three segments. */
+      if (nsegs < 3)
+	{
+	  continue;
+	}
+
+      /* Emit one pair per (head_node, tail_node); also check already-collected pairs
+       * to avoid duplicates when the same node has multiple segments in the eqclass. */
+      int group_start_count = *count_p;
+      for (j = 0; j < nsegs; j++)
+	{
+	  for (k = j + 1; k < nsegs; k++)
+	    {
+	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
+	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
+	      node1 = QO_SEG_HEAD (seg1);
+	      node2 = QO_SEG_HEAD (seg2);
+
+	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
+		{
+		  continue;
+		}
+
+	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
+		{
+		  head_seg = seg1;
+		  tail_seg = seg2;
+		  head_node = node1;
+		  tail_node = node2;
+		}
+	      else
+		{
+		  head_seg = seg2;
+		  tail_seg = seg1;
+		  head_node = node2;
+		  tail_node = node1;
+		}
+
+	      already_has_term = false;
+	      for (t = 0; t < env->nterms; t++)
+		{
+		  term = QO_ENV_TERM (env, t);
+		  /* Also check AFTER/DURING_JOIN: QO_TC_JOIN terms reclassified by
+		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
+		  if (!QO_IS_EDGE_TERM (term)
+		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
+		    {
+		      continue;
+		    }
+		  /* DUMMY_JOIN carries no column equality; skip it. */
+		  if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+		    {
+		      continue;
+		    }
+		  nom = QO_TERM_NOMINAL_SEG (term);
+		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
+		    {
+		      continue;
+		    }
+		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
+		    {
+		      already_has_term = true;
+		      break;
+		    }
+		}
+
+	      if (!already_has_term)
+		{
+		  for (t = group_start_count; t < *count_p; t++)
+		    {
+		      if (QO_SEG_HEAD ((*pairs_p)[t].head_seg) == head_node
+			  && QO_SEG_HEAD ((*pairs_p)[t].tail_seg) == tail_node)
+			{
+			  already_has_term = true;
+			  break;
+			}
+		    }
+		}
+
+	      if (already_has_term)
+		{
+		  continue;
+		}
+
+	      if (*count_p >= *cap_p)
+		{
+		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
+		  QO_IMPLIED_JOIN_PAIR *np =
+		    (QO_IMPLIED_JOIN_PAIR *) realloc (*pairs_p, sizeof (QO_IMPLIED_JOIN_PAIR) * new_cap);
+		  if (np == NULL)
+		    {
+		      return -1;
+		    }
+		  *pairs_p = np;
+		  *cap_p = new_cap;
+		}
+
+	      (*pairs_p)[*count_p].head_seg = head_seg;
+	      (*pairs_p)[*count_p].tail_seg = tail_seg;
+	      (*count_p)++;
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
  * qo_env_dump () -
  *   return:
  *   env(in):
@@ -8458,7 +8848,6 @@ qo_seg_width (QO_SEGMENT * seg)
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
       /* do guessing for variable character type */
       size = size * (2 / 3);
       break;
@@ -8753,8 +9142,6 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
       goto abandon_stop_limit;
     }
 
-  bitset_delset (&order_nodes);
-
   /* In order to create a SORT-LIMIT plan, the query must have a valid limit. All other conditions for creating the
    * plan have been met.
    */
@@ -8789,10 +9176,12 @@ qo_discover_sort_limit_nodes (QO_ENV * env)
     }
 
   env->use_sort_limit = QO_SL_USE;
+  bitset_delset (&order_nodes);
   return;
 
 sort_limit_possible:
   env->use_sort_limit = QO_SL_POSSIBLE;
+  bitset_delset (&order_nodes);
   bitset_delset (&QO_ENV_SORT_LIMIT_NODES (env));
   return;
 
@@ -9655,6 +10044,13 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
       if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
 	{
 	  /* skip always true dummy join terms */
+	  continue;
+	}
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
+	{
+	  /* skip implied join terms; they add no independent constraints and must not
+	   * falsely invalidate the PK-FK full-join */
 	  continue;
 	}
 

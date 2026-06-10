@@ -32,14 +32,22 @@
 #else
 #include <arpa/inet.h>
 #endif
-
 #include "cas_protocol.h"
-#include "cas_network.h"
-#include "cas.h"
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 #include "dbtype_def.h"
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
+#include "cas_common_vars.h"
+
+#define NET_SIZE_BYTE           ((int) sizeof(char))
+#define NET_SIZE_SHORT          ((int) sizeof(short))
+#define NET_SIZE_INT            ((int) sizeof(int))
+#define NET_SIZE_FLOAT          ((int) sizeof(float))
+#define NET_SIZE_DOUBLE         ((int) sizeof(double))
+#define NET_SIZE_INT64          ((int) sizeof(INT64))
+#define NET_SIZE_BIGINT         NET_SIZE_INT64
+#define NET_SIZE_DATE           (NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIME           (NET_SIZE_SHORT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_OBJECT         (NET_SIZE_INT + NET_SIZE_SHORT + NET_SIZE_SHORT)
+#define NET_SIZE_TIMESTAMP      (NET_SIZE_SHORT * 6)
+#define NET_SIZE_DATETIME       (NET_SIZE_SHORT * 7)
 
 #if (defined(SOLARIS) && !defined(SOLARIS_X86)) || defined(HPUX) || defined(AIX) || defined(PPC_LINUX)
 #define BYTE_ORDER_BIG_ENDIAN
@@ -90,6 +98,8 @@
 
 #define INT_DEFAULE_NET_BUF_SIZE        (16 * NET_BUF_KBYTE)
 
+#define MAX_SHARD_INFO_LENGTH           (30)
+
 typedef struct t_net_buf T_NET_BUF;
 struct t_net_buf
 {
@@ -102,9 +112,6 @@ struct t_net_buf
   T_BROKER_VERSION client_version;
 };
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#define DB_BIGINT 	int64_t
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 extern void net_buf_init (T_NET_BUF * net_buf, T_BROKER_VERSION client_version);
 extern void net_buf_clear (T_NET_BUF * net_buf);
 extern void net_buf_destroy (T_NET_BUF * net_buf);
@@ -136,11 +143,7 @@ extern void net_buf_column_info_set (T_NET_BUF * net_buf, char ut, short scale, 
 				     const char *name);
 
 extern void net_arg_get_size (int *size, void *arg);
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-extern void net_arg_get_bigint (int64_t * value, void *arg);
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 extern void net_arg_get_bigint (DB_BIGINT * value, void *arg);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 extern void net_arg_get_int (int *value, void *arg);
 extern void net_arg_get_short (short *value, void *arg);
 extern void net_arg_get_float (float *value, void *arg);
@@ -159,17 +162,14 @@ extern void net_arg_get_datetimetz (short *yr, short *mon, short *day, short *hh
 				    char **tz, int *tz_size, void *arg);
 extern void net_arg_get_object (T_OBJECT * obj, void *arg);
 extern void net_arg_get_cache_time (void *ct, void *arg);
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 extern void net_arg_get_dbobject (DB_OBJECT ** obj, void *arg);
 extern void net_arg_get_cci_object (int *pageid, short *slotid, short *volid, void *arg);
 extern void net_arg_get_lobfile_handle (T_LOB_HANDLE * lobfile, void *arg);
 extern void net_arg_get_lobfile_value (DB_VALUE * db_lobfile, void *arg);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 extern void net_arg_put_int (void *arg, int *value);
 extern size_t net_error_append_shard_info (char *err_buf, const char *err_msg, int buf_size);
 extern int net_buf_cp_cas_type_and_charset (T_NET_BUF * net_buf, unsigned char cas_type, unsigned char charset);
-extern T_SHM_APPL_SERVER *shm_appl;
 extern int get_net_buf_size (void);
 extern void set_net_buf_size (void);
 #endif /* _CAS_NET_BUF_H_ */

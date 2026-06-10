@@ -28,6 +28,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+
 #if !defined(WINDOWS)
 #include <unistd.h>
 #endif
@@ -44,6 +48,7 @@
 #include "log_top_string.h"
 #include "broker_log_top.h"
 #include "broker_log_util.h"
+#include "broker_config.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -65,7 +70,7 @@ struct t_work_msg
 static int log_top_query (int argc, char *argv[], int arg_start);
 static int log_top (FILE * fp, char *filename, long start_offset, long end_offset);
 static int log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p);
-static int get_args (int argc, char *argv[]);
+static int get_args (int *argc, char **argv[]);
 #if defined(WINDOWS)
 static int get_file_count (int argc, char *argv[], int arg_start);
 static int get_file_list (char *list[], int size, int argc, char *argv[], int arg_start);
@@ -81,8 +86,17 @@ static int read_execute_end_msg (char *msg_p, int *res_code, int *runtime_msec);
 static int read_bind_value (FILE * fp, T_STRING * t_str, char **linebuf, int *lineno, T_STRING * cas_log_buf);
 static int search_offset (FILE * fp, char *string, long *offset, bool start);
 static char *organize_query_string (const char *sql);
+static void free_conf_allocated_argv ();
+static int compare_by_brokername (const void *a, const void *b);
+static int collect_log_files_from_conf (char ***out_argv);
 
 T_LOG_TOP_MODE log_top_mode = MODE_PROC_TIME;
+T_OUTPUT_MODE output_mode = OUTPUT_MERGE;
+char from_conf_flag = 0;
+
+char **conf_argv_allocated = NULL;
+int conf_argc_allocated = 0;
+char **virtual_new_argv = NULL;
 
 static char *sql_info_file = NULL;
 static int mode_max_handle_lower_bound;
@@ -105,9 +119,10 @@ main (int argc, char *argv[])
   int get_cnt = 0;
   char **file_list = NULL;
 #endif
+  int total_files = 0;
+  char **target_files = NULL;
 
-
-  arg_start = get_args (argc, argv);
+  arg_start = get_args (&argc, &argv);
   if (arg_start < 0)
     {
       return -1;
@@ -132,26 +147,38 @@ main (int argc, char *argv[])
       get_cnt = file_cnt;
     }
 
-  if (mode_tran)
+  total_files = (get_cnt > file_cnt) ? file_cnt : get_cnt;
+  target_files = file_list;
+#else
+  total_files = argc - arg_start;
+  target_files = &argv[arg_start];
+#endif
+
+  if (total_files <= 0)
     {
-      error = log_top_tran (get_cnt, file_list, 0);
-    }
-  else
-    {
-      error = log_top_query (get_cnt, file_list, 0);
+      goto main_finalize;
     }
 
-  free_file_list (file_list, file_cnt);
-#else
+  qsort (target_files, total_files, sizeof (char *), compare_by_brokername);
+
   if (mode_tran)
     {
-      error = log_top_tran (argc, argv, arg_start);
+      error = log_top_tran (total_files, target_files, 0);
     }
   else
     {
-      error = log_top_query (argc, argv, arg_start);
+      error = log_top_query (total_files, target_files, 0);
+    }
+
+main_finalize:
+#if defined(WINDOWS)
+  if (file_list)
+    {
+      free_file_list (file_list, file_cnt);
     }
 #endif
+
+  free_conf_allocated_argv ();
 
   return error;
 }
@@ -351,16 +378,34 @@ log_top_query (int argc, char *argv[], int arg_start)
   int i;
   int error = 0;
   long start_offset, end_offset;
+  char splitdir[512] = "";
+  char prev_prefix[256] = "";
+  char curr_prefix[256] = "";
+  char org_cwd[PATH_MAX];
+  bool is_found_files = false;
 #ifdef MT_MODE
   T_THREAD thrid;
   int j;
 #endif
 
-#ifdef MT_MODE
-  query_info_mutex_init ();
-#endif
+  if (getcwd (org_cwd, sizeof (org_cwd)) == NULL)
+    {
+      return -1;
+    }
+
+  if (output_mode == OUTPUT_SPLIT && make_splitdir (splitdir) < 0)
+    {
+      fprintf (stderr, "cannot make dir (%s).\n", splitdir);
+      return -1;
+    }
 
 #ifdef MT_MODE
+  if (output_mode == OUTPUT_SPLIT)
+    {
+      num_thread = 1;
+    }
+  query_info_mutex_init ();
+
   work_msg = MALLOC (sizeof (T_WORK_MSG) * num_thread);
   if (work_msg == NULL)
     {
@@ -376,7 +421,38 @@ log_top_query (int argc, char *argv[], int arg_start)
   for (i = arg_start; i < argc; i++)
     {
       filename = argv[i];
-      fprintf (stdout, "%s\n", filename);
+
+      struct stat st;
+#if defined(WINDOWS)
+      if (stat (filename, &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR)
+#else
+      if (stat (filename, &st) == 0 && S_ISDIR (st.st_mode))
+#endif
+	{
+	  /* skip if filename is directory */
+	  continue;
+	}
+
+      if (output_mode == OUTPUT_SPLIT)
+	{
+#ifdef MT_MODE
+	  process_flag = 0;
+#endif
+	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
+	  if (strlen (prev_prefix) > 0 && strcmp (curr_prefix, prev_prefix) != 0)
+	    {
+	      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+		{
+		  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+		  return -1;
+		}
+	      fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
+	      query_info_print ();
+	      query_info_clear_array ();
+	      chdir (org_cwd);
+	    }
+	  strcpy (prev_prefix, curr_prefix);
+	}
 
 #if defined(WINDOWS)
       fp = fopen (filename, "rb");
@@ -390,6 +466,11 @@ log_top_query (int argc, char *argv[], int arg_start)
 	  process_flag = 0;
 #endif
 	  return -1;
+	}
+      else
+	{
+	  fprintf (stdout, "%s\n", get_basename (filename));
+	  is_found_files = true;
 	}
 
       if (get_file_offset (filename, &start_offset, &end_offset) < 0)
@@ -437,8 +518,31 @@ log_top_query (int argc, char *argv[], int arg_start)
 	}
     }
 
-  fprintf (stdout, "print results...\n");
-  query_info_print ();
+  if (!is_found_files)
+    {
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
+    }
+  else if (output_mode == OUTPUT_SPLIT)
+    {
+      if (strlen (prev_prefix) > 0)
+	{
+	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+	    {
+	      fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+	      return -1;
+	    }
+	  fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
+	  query_info_print ();
+	  query_info_clear_array ();
+	  chdir (org_cwd);
+	}
+    }
+  else
+    {
+      fprintf (stdout, "Report files created: ./log_top.{q,res}\n");
+      query_info_print ();
+      query_info_clear_array ();
+    }
 
   return 0;
 }
@@ -741,11 +845,25 @@ log_execute (T_QUERY_INFO * qi, char *linebuf, char **query_p)
 }
 
 static int
-get_args (int argc, char *argv[])
+get_args (int *argc, char **argv[])
 {
   int c;
+  int option_index = 0;
+  int org_argc = *argc;
+  char **org_argv = *argv;
 
-  while ((c = getopt (argc, argv, "tq:h:F:T:")) != EOF)
+  static struct option long_options[] = {
+    {"from-conf", no_argument, 0, 'C'},
+    {"split", no_argument, 0, 'S'},
+    {0, 0, 0, 0}
+  };
+
+  if (org_argc < 2)
+    {
+      goto getargs_err;
+    }
+
+  while ((c = getopt_long (org_argc, org_argv, "tq:h:F:T:S", long_options, &option_index)) != EOF)
     {
       switch (c)
 	{
@@ -757,6 +875,10 @@ get_args (int argc, char *argv[])
 	  break;
 	case 'h':
 	  mode_max_handle_lower_bound = atoi (optarg);
+	  if (mode_max_handle_lower_bound > 0)
+	    {
+	      log_top_mode = MODE_MAX_HANDLE;
+	    }
 	  break;
 	case 'F':
 	  if (str_to_log_date_format (optarg, from_date) < 0)
@@ -770,20 +892,85 @@ get_args (int argc, char *argv[])
 	      goto date_format_err;
 	    }
 	  break;
+	case 'C':
+	  if (strcmp (org_argv[optind - 1], "--from-conf") == 0)
+	    {
+	      from_conf_flag = 1;
+	    }
+	  else
+	    {
+	      goto getargs_err;
+	    }
+	  break;
+	case 'S':
+	  if (strcmp (org_argv[optind - 1], "--split") == 0 || strcmp (org_argv[optind - 1], "-S") == 0)
+	    {
+	      output_mode = OUTPUT_SPLIT;
+	    }
+	  else
+	    {
+	      goto getargs_err;
+	    }
+	  break;
 	default:
 	  goto getargs_err;
 	}
     }
 
-  if (mode_max_handle_lower_bound > 0)
-    log_top_mode = MODE_MAX_HANDLE;
+  if (!from_conf_flag)
+    {
+      if (optind < org_argc)
+	{
+	  return optind;
+	}
+    }
+  else if (optind == org_argc)
+    {
+      int captured_cnt = collect_log_files_from_conf (&conf_argv_allocated);
+      if (captured_cnt < 0)
+	{
+	  fprintf (stderr, "Unable to fetch log files via conf.");
+	  return -1;
+	}
+      if (captured_cnt == 0)
+	{
+	  fprintf (stderr, "No log files found.");
+	  return -1;
+	}
 
-  if (optind < argc)
-    return optind;
+      conf_argc_allocated = captured_cnt;
+      int new_argc = optind + captured_cnt;
+      char **new_argv = (char **) malloc (sizeof (char *) * (new_argc + 1));
+      if (new_argv == NULL)
+	{
+	  fprintf (stderr, "Failed to allocate memory.");
+	  return -1;
+	}
+
+      for (int i = 0; i < optind; i++)
+	{
+	  new_argv[i] = org_argv[i];
+	}
+
+      for (int i = 0; i < captured_cnt; i++)
+	{
+	  new_argv[optind + i] = conf_argv_allocated[i];
+	}
+      new_argv[new_argc] = NULL;
+
+      virtual_new_argv = new_argv;
+      *argc = new_argc;
+      *argv = new_argv;
+
+      return optind;
+    }
 
 getargs_err:
-  fprintf (stderr, "%s [-t] [-F <from date>] [-T <to date>] <log_file> ...\n", argv[0]);
+  fprintf (stderr, "Usage)\n"
+	   "%s [-t] [-F <from date>] [-T <to date>] [-S|--split] <log_file> ... \n"
+	   "   or\n" "%s [-t] [-F <from date>] [-T <to date>] [-S|--split] --from-conf \n", org_argv[0], org_argv[0]);
   return -1;
+
 date_format_err:
   fprintf (stderr, "invalid date. valid date format is yy-mm-dd hh:mm:ss.\n");
   return -1;
@@ -1146,4 +1333,253 @@ organize_query_string (const char *sql)
   *p = '\0';
 
   return organized_sql;
+}
+
+static void
+free_conf_allocated_argv ()
+{
+  if (conf_argv_allocated)
+    {
+      for (int i = 0; i < conf_argc_allocated; i++)
+	{
+	  if (conf_argv_allocated[i])
+	    {
+	      free (conf_argv_allocated[i]);
+	    }
+	}
+      free (conf_argv_allocated);
+      conf_argv_allocated = NULL;
+    }
+  if (virtual_new_argv)
+    {
+      free (virtual_new_argv);
+      virtual_new_argv = NULL;
+    }
+}
+
+void
+get_brokername_from_filename (const char *filename, char *prefix, int max_len)
+{
+  const char *basename = get_basename (filename);
+
+  strncpy (prefix, basename, max_len - 1);
+  prefix[max_len - 1] = '\0';
+
+  int name_len = strlen (prefix);
+
+  const char *suffixes[] = {
+    SUFFIX_SLOW_LOG_BAK,
+    SUFFIX_SQL_LOG_BAK,
+    SUFFIX_SLOW_LOG,
+    SUFFIX_SQL_LOG
+  };
+  int suffix_cnt = sizeof (suffixes) / sizeof (suffixes[0]);
+  int matched_suffix_len = 0;
+
+  for (int i = 0; i < suffix_cnt; i++)
+    {
+      int s_len = strlen (suffixes[i]);
+      if (name_len >= s_len)
+	{
+	  if (strcmp (&prefix[name_len - s_len], suffixes[i]) == 0)
+	    {
+	      matched_suffix_len = s_len;
+	      break;
+	    }
+	}
+    }
+
+  if (matched_suffix_len > 0 && name_len > matched_suffix_len)
+    {
+      int search_idx = name_len - matched_suffix_len - 1;
+      while (search_idx >= 0 && prefix[search_idx] >= '0' && prefix[search_idx] <= '9')
+	{
+	  search_idx--;
+	}
+
+      if (search_idx >= 0 && prefix[search_idx] == '_')
+	{
+	  prefix[search_idx] = '\0';
+	  return;
+	}
+    }
+
+  strncpy (prefix, PREFIX_UNKNOWN, max_len - 1);
+  prefix[max_len - 1] = '\0';
+}
+
+const char *
+get_basename (const char *path)
+{
+  const char *basename = strrchr (path, '/');
+#if defined(WINDOWS)
+  const char *basename_win = strrchr (path, '\\');
+
+  if (basename == NULL || (basename_win != NULL && basename_win > basename))
+    {
+      basename = basename_win;
+    }
+#endif
+  return (basename) ? basename + 1 : path;
+}
+
+int
+make_splitdir (char *splitdir)
+{
+  time_t now = time (NULL);
+  struct tm *t = localtime (&now);
+
+  sprintf (splitdir, "broker_log_top_%02d%02d%02d_%02d%02d",
+	   (t->tm_year % 100), t->tm_mon + 1, t->tm_mday, t->tm_hour, t->tm_min);
+
+  if (mkdir (splitdir, 0755) != 0 && errno != EEXIST)
+    {
+      return -1;
+    }
+
+  return 0;
+}
+
+int
+make_change_split_brokerdir (char *splitdir, char *broker)
+{
+  char tmpdir[PATH_MAX];
+
+  snprintf (tmpdir, sizeof (tmpdir), "%s/%s", splitdir, broker);
+
+  if (mkdir (tmpdir, 0755) != 0 && errno != EEXIST)
+    {
+      return -1;
+    }
+
+  if (chdir (tmpdir) != 0)
+    {
+      return -1;
+    }
+
+  return 0;
+}
+
+static int
+compare_by_brokername (const void *a, const void *b)
+{
+  const char *path_a = *(const char **) a;
+  const char *path_b = *(const char **) b;
+  char prefix_a[256], prefix_b[256];
+
+  get_brokername_from_filename (path_a, prefix_a, sizeof (prefix_a));
+  get_brokername_from_filename (path_b, prefix_b, sizeof (prefix_b));
+
+  bool is_a_unknown = (strcmp (prefix_a, PREFIX_UNKNOWN) == 0);
+  bool is_b_unknown = (strcmp (prefix_b, PREFIX_UNKNOWN) == 0);
+
+  if (is_a_unknown && is_b_unknown)
+    {
+      return 0;
+    }
+  else if (is_a_unknown)
+    {
+      return 1;
+    }
+  else if (is_b_unknown)
+    {
+      return -1;
+    }
+
+  return strcmp (prefix_a, prefix_b);
+}
+
+static int
+collect_log_files_from_conf (char ***out_argv)
+{
+  T_BROKER_INFO br_info[MAX_BROKER_NUM];
+  int num_broker, master_shm_id;
+  int max_log_files = 0;
+  int total_captured = 0;
+
+  if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL, NULL) < 0)
+    {
+      return -1;
+    }
+
+  for (int i = 0; i < num_broker; i++)
+    {
+      max_log_files += br_info[i].appl_server_max_num;
+    }
+  max_log_files = (max_log_files * 2) * 2;
+
+  char **allocated_files = (char **) malloc (sizeof (char *) * max_log_files);
+  if (allocated_files == NULL)
+    {
+      return -1;
+    }
+  memset (allocated_files, 0, sizeof (char *) * max_log_files);
+
+  int s1_len = strlen (SUFFIX_SQL_LOG);
+  int s2_len = strlen (SUFFIX_SQL_LOG_BAK);
+
+  for (int i = 0; i < num_broker && total_captured < max_log_files; i++)
+    {
+      char strict_prefix[256];
+
+      snprintf (strict_prefix, sizeof (strict_prefix), "%s_", br_info[i].name);
+      int prefix_len = strlen (strict_prefix);
+
+      const char *target_dir = br_info[i].log_dir;
+      if (target_dir == NULL || target_dir[0] == '\0')
+	{
+	  continue;
+	}
+
+      DIR *dir = opendir (target_dir);
+      if (dir == NULL)
+	{
+	  continue;
+	}
+
+      struct dirent *entry;
+      while ((entry = readdir (dir)) != NULL)
+	{
+	  if (strncmp (entry->d_name, strict_prefix, prefix_len) != 0)
+	    {
+	      continue;
+	    }
+
+	  if (total_captured >= max_log_files)
+	    {
+	      fprintf (stderr, "Log file collection has stopped : exceeded %d\n", max_log_files);
+	      break;
+	    }
+
+	  int name_len = strlen (entry->d_name);
+
+	  bool is_matched = false;
+	  if ((name_len >= s1_len && strcmp (&entry->d_name[name_len - s1_len], SUFFIX_SQL_LOG) == 0)
+	      || (name_len >= s2_len && strcmp (&entry->d_name[name_len - s2_len], SUFFIX_SQL_LOG_BAK) == 0))
+	    {
+	      is_matched = true;
+	    }
+
+	  if (is_matched)
+	    {
+	      char full_path[PATH_MAX];
+	      snprintf (full_path, sizeof (full_path), "%s/%s", target_dir, entry->d_name);
+	      allocated_files[total_captured] = strdup (full_path);
+	      if (allocated_files[total_captured])
+		{
+		  total_captured++;
+		}
+	    }
+	}
+      closedir (dir);
+    }
+
+  if (total_captured == 0)
+    {
+      free (allocated_files);
+      return 0;
+    }
+  *out_argv = allocated_files;
+
+  return total_captured;
 }

@@ -20,6 +20,7 @@
  * semantic_check.c - semantic checking functions
  */
 
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -47,6 +48,7 @@
 #include "object_primitive.h"
 #include "db_client_type.hpp"
 #include "msgcat_glossary.hpp"
+#include "network_interface_cl.h"
 
 #include "dbtype.h"
 #define PT_CHAIN_LENGTH 10
@@ -164,7 +166,7 @@ static PT_NODE *pt_find_aggregate_analytic_pre (PARSER_CONTEXT * parser, PT_NODE
 static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 						 int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
-static PT_NODE *pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC_TYPE class_type,
 				       const char *self, const bool reuse_oid, PT_NODE * stmt);
 static void pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs);
@@ -337,8 +339,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
     {
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
     case PT_TYPE_BIT:
     case PT_TYPE_VARBIT:
       is_compatible = true;
@@ -346,10 +346,6 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
       if (common_type == PT_TYPE_CHAR || common_type == PT_TYPE_VARCHAR)
 	{
 	  cinfo->type_enum = PT_TYPE_VARCHAR;
-	}
-      else if (common_type == PT_TYPE_NCHAR || common_type == PT_TYPE_VARNCHAR)
-	{
-	  cinfo->type_enum = PT_TYPE_VARNCHAR;
 	}
       else
 	{
@@ -375,18 +371,8 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
 
       cinfo->type_enum = common_type;
 
-      cinfo->scale = MAX (att1_info->scale, att2_info->scale);
-      cinfo->prec = MAX ((att1_info->prec - att1_info->scale), (att2_info->prec - att2_info->scale)) + cinfo->scale;
-
-      if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
-	{			/* overflow */
-	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
-	  if (cinfo->scale < 0)
-	    {
-	      cinfo->scale = 0;
-	    }
-	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
-	}
+      cinfo->scale = DB_DEFAULT_NUMERIC_SCALE;
+      cinfo->prec = DB_DEFAULT_NUMERIC_PRECISION;
       break;
 
     case PT_TYPE_SET:
@@ -1067,6 +1053,22 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
       arg_type = arg1->type_enum;
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_CAST_WRAP) && arg_type != cast_type)
+    {
+      bool implicit_lob_cast_allowed =
+	((PT_IS_CHAR_STRING_TYPE (arg_type) && cast_type == PT_TYPE_CLOB)
+	 || (arg_type == PT_TYPE_CLOB && PT_IS_CHAR_STRING_TYPE (cast_type))
+	 || (PT_IS_BIT_STRING_TYPE (arg_type) && cast_type == PT_TYPE_BLOB)
+	 || (arg_type == PT_TYPE_BLOB && PT_IS_BIT_STRING_TYPE (cast_type)));
+
+      if ((PT_IS_LOBFILE_TYPE (arg_type) || PT_IS_LOBFILE_TYPE (cast_type)
+	   || PT_IS_LOB_TYPE (arg_type) || PT_IS_LOB_TYPE (cast_type))
+	  && !implicit_lob_cast_allowed)
+	{
+	  cast_is_valid = PT_CAST_INVALID;
+	}
+    }
+
   switch (arg_type)
     {
     case PT_TYPE_INTEGER:
@@ -1214,17 +1216,24 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
     case PT_TYPE_CLOB:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
-      if ((PT_IS_NATIONAL_CHAR_STRING_TYPE (arg_type) && PT_IS_SIMPLE_CHAR_STRING_TYPE (cast_type))
-	  || (PT_IS_SIMPLE_CHAR_STRING_TYPE (arg_type) && PT_IS_NATIONAL_CHAR_STRING_TYPE (cast_type)))
-	{
-	  cast_is_valid = PT_CAST_INVALID;
-	  break;
-	}
-
       switch (cast_type)
 	{
+	case PT_TYPE_BLOB:
+	case PT_TYPE_BIT:
+	case PT_TYPE_VARBIT:
+	case PT_TYPE_DATE:
+	case PT_TYPE_TIME:
+	case PT_TYPE_TIMESTAMP:
+	case PT_TYPE_TIMESTAMPTZ:
+	case PT_TYPE_TIMESTAMPLTZ:
+	case PT_TYPE_DATETIME:
+	case PT_TYPE_DATETIMETZ:
+	case PT_TYPE_DATETIMELTZ:
+	  if (arg_type == PT_TYPE_CLOB)
+	    {
+	      cast_is_valid = PT_CAST_INVALID;
+	    }
+	  break;
 	case PT_TYPE_SET:
 	case PT_TYPE_MULTISET:
 	case PT_TYPE_SEQUENCE:
@@ -1264,6 +1273,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	  cast_is_valid = PT_CAST_INVALID;
 	  break;
 	case PT_TYPE_CFILE:
+	case PT_TYPE_CLOB:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1308,8 +1318,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	case PT_TYPE_CLOB:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  cast_is_valid = PT_CAST_UNSUPPORTED;
 	  break;
 	default:
@@ -1338,8 +1346,6 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	case PT_TYPE_CLOB:
 	case PT_TYPE_CFILE:
 	case PT_TYPE_ENUMERATION:
@@ -1375,7 +1381,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 
 /*
  * pt_check_user_exists () -  given 'user.class', check that 'user' exists
- *   return:  db_user instance if user exists, NULL otherwise.
+ *   return:  _db_user instance if user exists, NULL otherwise.
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  *
@@ -1409,7 +1415,7 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
 /*
  * pt_check_user_owns_class () - given user.class, check that user owns class
- *   return:  db_user instance if 'user' exists & owns 'class', NULL otherwise
+ *   return:  _db_user instance if 'user' exists & owns 'class', NULL otherwise
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  */
@@ -1424,7 +1430,7 @@ pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       return result;
     }
@@ -2013,17 +2019,26 @@ pt_vclass_compatible (PARSER_CONTEXT * parser, const PT_NODE * att, const PT_NOD
     }
 
   /* return true iff att is a vclass & qcol is in att's query_spec list */
+  bool bret = false;
+  PARSER_CONTEXT *tmp_parser = parser_create_parser ();
+  if (tmp_parser == NULL)
+    {
+      return false;
+    }
+
   for (specs = db_get_query_specs (vcls); specs && (spec = db_query_spec_string (specs));
        specs = db_query_spec_next (specs))
     {
-      qs_clsnam = pt_get_proxy_spec_name (spec);
+      qs_clsnam = pt_get_proxy_spec_name (tmp_parser, spec);
       if (qs_clsnam && intl_identifier_casecmp (qs_clsnam, qcol_typnam) == 0)
 	{
-	  return true;		/* att is vclass_compatible with qcol */
+	  bret = true;		/* att is vclass_compatible with qcol */
+	  break;
 	}
     }
 
-  return false;			/* att is not vclass_compatible with qcol */
+  parser_free_parser (tmp_parser);
+  return bret;			/* att is not vclass_compatible with qcol */
 }
 
 /*
@@ -2295,20 +2310,8 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	    {
 	      return PT_UNION_ERROR;
 	    }
-	  data_type->info.data_type.precision =
-	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
-	  data_type->info.data_type.dec_precision = MAX (ci1.scale, ci2.scale);
-
-	  if (data_type->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      data_type->info.data_type.dec_precision =
-		(DB_MAX_NUMERIC_PRECISION - data_type->info.data_type.dec_precision);
-	      if (data_type->info.data_type.dec_precision < 0)
-		{
-		  data_type->info.data_type.dec_precision = 0;
-		}
-	      data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-	    }
+	  data_type->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	}
 
       if (item1->type_enum == common_type && item2->type_enum == common_type)
@@ -2620,8 +2623,6 @@ pt_get_compatible_info_from_node (const PT_NODE * att, SEMAN_COMPATIBLE_INFO * c
       break;
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-    case PT_TYPE_NCHAR:
-    case PT_TYPE_VARNCHAR:
       cinfo->prec = (att->data_type) ? att->data_type->info.data_type.precision : 0;
       cinfo->scale = 0;
       break;
@@ -4154,7 +4155,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	}
 
       node_ptr = NULL;
-      parser_walk_tree (parser, default_value, pt_find_stored_procedure, &node_ptr, NULL, NULL);
+      parser_walk_tree (parser, default_value, pt_find_method_call, &node_ptr, NULL, NULL);
       if (node_ptr != NULL)
 	{
 	  PT_ERRORmf (parser,
@@ -4285,7 +4286,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
 }
 
 /*
- * pt_find_stored_procedure () - search for a stored procedure
+ * pt_find_method_call () - search for a method call
  *
  * result	  : parser tree node
  * parser(in)	  : parser
@@ -4294,7 +4295,7 @@ pt_attr_check_default_cs_coll (PARSER_CONTEXT * parser, PT_NODE * attr, int defa
  * continue_walk  : Continue walk.
  */
 static PT_NODE *
-pt_find_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   PT_NODE **sp = (PT_NODE **) arg;
 
@@ -4966,6 +4967,13 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (attr->info.attr_def.auto_increment != NULL)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
+		  return;
+		}
+	      if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+		{
+		  /* attempt to set visibility in vclass */
+		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
+		  return;
 		}
 	    }
 	}
@@ -5198,9 +5206,8 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  MOP me = NULL;
 	  MOP owner = NULL;
 	  bool change_owner_flag = false;
-	  int client_type = db_get_client_type ();
 
-	  if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+	  if (db_client_type_is_loaddb ())
 	    {
 	      const char *user_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
 	      if (user_name != NULL)
@@ -5668,18 +5675,8 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_ADD_MONTHS:
     case PT_LAST_DAY:
     case PT_MONTHS_BETWEEN:
-    case PT_SYS_DATE:
     case PT_TO_DATE:
     case PT_TO_NUMBER:
-    case PT_SYS_TIME:
-    case PT_CURRENT_DATE:
-    case PT_CURRENT_TIME:
-    case PT_SYS_TIMESTAMP:
-    case PT_CURRENT_TIMESTAMP:
-    case PT_SYS_DATETIME:
-    case PT_CURRENT_DATETIME:
-    case PT_UTC_TIME:
-    case PT_UTC_DATE:
     case PT_TO_TIME:
     case PT_TO_TIMESTAMP:
     case PT_TO_DATETIME:
@@ -5749,25 +5746,12 @@ pt_find_partition_column_count (PT_NODE * expr, PT_NODE ** name_node)
     case PT_INET_NTOA:
     case PT_DBTIMEZONE:
     case PT_SESSIONTIMEZONE:
-    case PT_TZ_OFFSET:
     case PT_FROM_TZ:
     case PT_NEW_TIME:
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
-    case PT_UTC_TIMESTAMP:
     case PT_CONV_TZ:
       break;
-
-      /* PT_DRAND and PT_DRANDOM are not supported regardless of whether a seed is given or not. because they produce
-       * random numbers of DOUBLE type. DOUBLE type is not allowed on partition expression. */
-    case PT_RAND:
-    case PT_RANDOM:
-      if (expr->info.expr.arg1 == NULL)
-	{
-	  return -1;
-	}
-      break;
-
     default:
       return -1;		/* unsupported expression */
     }
@@ -6217,8 +6201,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -6274,8 +6256,6 @@ pt_check_partitions (PARSER_CONTEXT * parser, PT_NODE * stmt, MOP dbobj)
 	case PT_TYPE_DATETIMELTZ:
 	case PT_TYPE_CHAR:
 	case PT_TYPE_VARCHAR:
-	case PT_TYPE_NCHAR:
-	case PT_TYPE_VARNCHAR:
 	  break;
 	default:
 	  PT_ERRORm (parser, stmt, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_COLUMN_TYPE);
@@ -7436,18 +7416,6 @@ pt_is_compatible_type (const PT_TYPE_ENUM arg1_type, const PT_TYPE_ENUM arg2_typ
 	  {
 	  case PT_TYPE_CHAR:
 	  case PT_TYPE_VARCHAR:
-	    is_compatible = true;
-	    break;
-	  default:
-	    break;
-	  }
-	break;
-      case PT_TYPE_NCHAR:
-      case PT_TYPE_VARNCHAR:
-	switch (arg2_type)
-	  {
-	  case PT_TYPE_NCHAR:
-	  case PT_TYPE_VARNCHAR:
 	    is_compatible = true;
 	    break;
 	  default:
@@ -8842,6 +8810,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
 	      return;
 	    }
+	  if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+	    {
+	      /* attempt to set visibility in vclass */
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
+	      return;
+	    }
 	}
     }
 
@@ -8914,9 +8888,8 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
       MOP me = NULL;
       MOP owner = NULL;
       bool change_owner_flag = false;
-      int client_type = db_get_client_type ();
 
-      if (client_type == DB_CLIENT_TYPE_LOADDB_UTILITY || client_type == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+      if (db_client_type_is_loaddb ())
 	{
 	  const char *user_name = pt_get_qualifier_name (parser, node->info.create_entity.entity_name);
 	  if (user_name != NULL)
@@ -9167,6 +9140,75 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* if this is a filter index, check that the filter is a valid filter expression. */
   pt_check_filter_index_expr (parser, node->info.index.column_names, node->info.index.where, db_obj);
+}
+
+static void
+pt_check_update_histogram (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *name;
+  DB_OBJECT *db_obj;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
+
+  /* check that there trying to create an histogram on a class */
+  name = node->info.histogram.target_table_spec->info.spec.entity_name;
+
+  /* We cannot create histogram of a class by using synonym names. */
+  if (db_find_synonym (name->info.name.original) != NULL)
+    {
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      return;
+    }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  return;
+	}
+    }
+
+  db_obj = db_find_class (name->info.name.original);
+  if (db_obj == NULL)
+    {
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      return;
+    }
+
+  /* make sure it's not a virtual class */
+  if (db_is_class (db_obj) <= 0)
+    {
+      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_INDEX_ON_VCLASS);
+      return;
+    }
+
+  /* check if this is a sub_ partition class */
+  if (sm_partitioned_class_type (db_obj, &is_partition, NULL, NULL) != NO_ERROR)
+    {
+      PT_ERROR (parser, node, er_msg ());
+      return;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+      return;
+    }
+
+  name->info.name.db_object = db_obj;
+
+  /* auth check */
+  pt_check_user_owns_class (parser, name);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
 }
 
 static void
@@ -9901,6 +9943,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_NODE *temp;
   PT_NODE *name;
+  const char *entity_name;
   DB_OBJECT *db_obj;
   DB_ATTRIBUTE *attributes;
   PT_FLAT_SPEC_INFO info;
@@ -9916,13 +9959,12 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-	  const char *cls_name;
 	  /* check if class name exists. if not, we remove the corresponding node from spec_list. */
 	  if ((name = free_node->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_name = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_name) == NULL)
+	      if (db_find_synonym (entity_name) == NULL)
 		{
 		  ASSERT_ERROR ();
 
@@ -9935,7 +9977,7 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 
-		  if ((db_obj = db_find_class_with_purpose (cls_name, true)) != NULL)
+		  if ((db_obj = db_find_class_with_purpose (entity_name, true)) != NULL)
 		    {
 		      prev_node = free_node;
 		      free_node = free_node->next;
@@ -10013,7 +10055,6 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 
       while ((free_node != NULL) && (free_node->node_type == PT_SPEC))
 	{
-
 	  if ((name = free_node->info.spec.entity_name) == NULL)
 	    {
 	      if (free_node == node->info.drop.spec_list)
@@ -10036,29 +10077,19 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 	      free_node = free_node->next;
 	    }
 	}
-
     }
-
-  info.spec_parent = NULL;
-  info.for_update = true;
-  /* Replace each Entity Spec with an Equivalent flat list */
-  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
-
-  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+  else
     {
-      const char *cls_nam;
-      PT_MISC_TYPE typ = node->info.drop.entity_type;
-
-      /* verify declared class type is correct */
       for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
 	{
 	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	      && (cls_nam = name->info.name.original) != NULL)
+	      && (entity_name = name->info.name.original) != NULL)
 	    {
 	      /* We cannot change the schema of a class by using synonym names. */
-	      if (db_find_synonym (cls_nam) != NULL)
+	      if (db_find_synonym (entity_name) != NULL)
 		{
-		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST, cls_nam);
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLASS_DOES_NOT_EXIST,
+			      entity_name);
 		  return;
 		}
 	      else
@@ -10075,26 +10106,41 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
 		      return;
 		    }
 		}
+	    }
+	}
+    }
 
-	      if ((db_obj = db_find_class (cls_nam)) != NULL)
+  info.spec_parent = NULL;
+  info.for_update = true;
+  /* Replace each Entity Spec with an Equivalent flat list */
+  parser_walk_tree (parser, node, pt_flat_spec_pre, &info, pt_continue_walk, NULL);
+
+  if (node->info.drop.entity_type != PT_MISC_DUMMY || node->info.drop.is_cascade_constraints)
+    {
+      PT_MISC_TYPE typ = node->info.drop.entity_type;
+
+      /* verify declared class type is correct */
+      for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
+	{
+	  if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
+	      && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
+	    {
+	      if (typ != PT_MISC_DUMMY)
 		{
-		  if (typ != PT_MISC_DUMMY)
+		  name->info.name.db_object = db_obj;
+		  pt_check_user_owns_class (parser, name);
+		  if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
+		      || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
 		    {
-		      name->info.name.db_object = db_obj;
-		      pt_check_user_owns_class (parser, name);
-		      if ((typ == PT_CLASS && db_is_class (db_obj) <= 0)
-			  || (typ == PT_VCLASS && db_is_vclass (db_obj) <= 0))
-			{
-			  PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, cls_nam,
-				       pt_show_misc_type (typ));
-			}
+		      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A, entity_name,
+				   pt_show_misc_type (typ));
 		    }
+		}
 
-		  if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
-		    {
-		      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				  MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, cls_nam);
-		    }
+	      if (node->info.drop.is_cascade_constraints && db_is_vclass (db_obj) > 0)
+		{
+		  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_VIEW_CASCADE_CONSTRAINTS_NOT_ALLOWED, entity_name);
 		}
 	    }
 	}
@@ -10104,10 +10150,8 @@ pt_check_drop (PARSER_CONTEXT * parser, PT_NODE * node)
    * for the attr */
   for (temp = node->info.drop.spec_list; temp && temp->node_type == PT_SPEC; temp = temp->next)
     {
-      const char *cls_nam;
-
       if ((name = temp->info.spec.entity_name) != NULL && name->node_type == PT_NAME
-	  && (cls_nam = name->info.name.original) != NULL && (db_obj = db_find_class (cls_nam)) != NULL)
+	  && (entity_name = name->info.name.original) != NULL && (db_obj = db_find_class (entity_name)) != NULL)
 	{
 	  attributes = db_get_attributes_force (db_obj);
 	  while (attributes)
@@ -10186,7 +10230,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
       /* check grant option */
       if (node->info.grant.grant_option == PT_GRANT_OPTION)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMATNIC_AU_GRANT_OPTION_NOT_ALLOWED,
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_AU_GRANT_OPTION_NOT_ALLOWED,
 		      MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
 	}
 
@@ -10446,7 +10490,7 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 
   assert (node->node_type == PT_ALTER_SERIAL);
 
-  /* find db_serial_class */
+  /* find _db_serial class */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
@@ -11118,6 +11162,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
+	  if (node->info.method_call.method_type == PT_SP_PROCEDURE && node->info.method_call.to_return_var != NULL)
+	    {
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_CALL_WITH_INTO_CLAUSE);
+	      break;
+	    }
+
 	  /* Expressions in method calls from a CALL statement need to be typed explicitly since they are not wrapped
 	   * in a query and are not explicitly type-checked via pt_check_method().  This is due to a bad decision which
 	   * allowed users to refrain from fully typing methods before the advent of methods in queries. */
@@ -11279,6 +11329,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
 	  (void) parser_append_node (hidden_list, select_list);
 	  node->info.query.q.select.with_increment = NULL;
+
+	  /* Click count functions (e.g., INCR, DECR) can be used only in a top-level SELECT statement.
+	   * Setting the is_click_counter flag on both top_node and node may seem redundant,
+	   * but it is necessary in UPDATE statements where top_node and node are not the same. */
+	  top_node->flag.is_click_counter = 1;
+	  node->flag.is_click_counter = 1;
 	}
 
       /* check the group by */
@@ -12204,6 +12260,11 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
   next = node->next;
   node->next = NULL;
 
+  if (pt_is_ddl_statement (node))
+    {
+      tdes_set_query_start_info (node->sql_user_text);
+    }
+
   switch (node->node_type)
     {
     case PT_UPDATE:
@@ -12398,6 +12459,58 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
       break;
 
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
+      if (parser->host_var_count)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	}
+      else
+	{
+	  sc_info_ptr->system_class = false;
+	  node = pt_resolve_names (parser, node, sc_info_ptr);
+	  if (!pt_has_error (parser))
+	    {
+	      pt_check_update_histogram (parser, node);
+	    }
+
+	  if (!pt_has_error (parser))
+	    {
+	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+	    }
+	}
+      break;
+    case PT_SHOW_HISTOGRAM:
+      if (parser->host_var_count)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_NOT_ALLOWED_ON_QUERY_SPEC);
+	}
+      else
+	{
+	  sc_info_ptr->system_class = false;
+	  node = pt_resolve_names (parser, node, sc_info_ptr);
+	  if (!pt_has_error (parser))
+	    {
+	      pt_check_update_histogram (parser, node);
+	    }
+
+	  if (!pt_has_error (parser))
+	    {
+	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+	    }
+	}
+      break;
+
     case PT_SAVEPOINT:
       if ((node->info.savepoint.save_name) && (node->info.savepoint.save_name->info.name.meta_class == PT_PARAMETER))
 	{
@@ -12574,6 +12687,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
   if (pt_has_error (parser))
     {
+      tdes_reset_query_start_info (node);
       pt_register_orphan (parser, node);
       return NULL;
     }
@@ -14656,6 +14770,12 @@ pt_check_group_by (PARSER_CONTEXT * parser, PT_NODE * node)
       };
       parser_walk_tree (parser, node->info.query.q.select.list, pt_expr_disallow_op_except_agg, disallow_ops,
 			NULL, NULL);
+
+      if (node->info.query.order_by != NULL)
+	{
+	  parser_walk_tree (parser, node->info.query.order_by, pt_expr_disallow_op_except_agg, disallow_ops,
+			    NULL, NULL);
+	}
     }
 
   return error;

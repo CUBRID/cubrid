@@ -62,7 +62,7 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
 
   log_zip->data_length = 0;
 
-  buf_size = LOG_ZIP_BUF_SIZE (length);
+  buf_size = LOG_ZIP_BUF_SIZE (LZ4, length);
 
   if (!log_zip_realloc_if_needed (*log_zip, buf_size))
     {
@@ -78,9 +78,12 @@ log_zip (LOG_ZIP * log_zip, LOG_ZIP_SIZE_T length, const void *data)
   /* save original data length */
   memcpy (log_zip->log_data, &length, sizeof (LOG_ZIP_SIZE_T));
 
+  // *INDENT-OFF*
   zip_len =
-    LZ4_compress_default ((const char *) data, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T), length,
-			  buf_size - sizeof (LOG_ZIP_SIZE_T));
+    cubcompress::compress<cubcompress::LZ4> (data, length, log_zip->log_data + sizeof (LOG_ZIP_SIZE_T),
+					     buf_size - sizeof (LOG_ZIP_SIZE_T));
+  // *INDENT-ON*
+
   if (zip_len > 0)
     {
       log_zip->data_length = (LOG_ZIP_SIZE_T) zip_len + sizeof (LOG_ZIP_SIZE_T);
@@ -139,8 +142,11 @@ log_unzip (LOG_ZIP * log_unzip, LOG_ZIP_SIZE_T length, const void *data)
 
   decompressed = false;
 
+  // *INDENT-OFF*
   unzip_len =
-    LZ4_decompress_safe ((const char *) data + sizeof (LOG_ZIP_SIZE_T), (char *) log_unzip->log_data, length, buf_size);
+    cubcompress::decompress<cubcompress::LZ4> ((const char *) data + sizeof (LOG_ZIP_SIZE_T), length,
+					       (char *) log_unzip->log_data, buf_size);
+  // *INDENT-ON*
   if (unzip_len >= 0)
     {
       log_unzip->data_length = (LOG_ZIP_SIZE_T) unzip_len;
@@ -200,7 +206,7 @@ log_zip_realloc_if_needed (LOG_ZIP & log_zip, LOG_ZIP_SIZE_T new_size)
 
   if (new_size > 0 && new_size > log_zip.buf_size)
     {
-      const LOG_ZIP_SIZE_T buf_size = LOG_ZIP_BUF_SIZE (new_size);
+      const LOG_ZIP_SIZE_T buf_size = LOG_ZIP_BUF_SIZE (LZ4, new_size);
       assert (buf_size <= LZ4_MAX_INPUT_SIZE);
 
       log_zip.log_data = (char *) realloc (log_zip.log_data, buf_size);

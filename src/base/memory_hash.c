@@ -48,6 +48,7 @@
 #include "chartype.h"
 #include "misc_string.h"
 #include "error_manager.h"
+#include "numeric_opfunc.h"
 #include "memory_alloc.h"
 #include "message_catalog.h"
 #include "environment_variable.h"
@@ -598,12 +599,35 @@ mht_valhash (const void *key, const unsigned int ht_size)
 	  hash = (unsigned int) db_get_double (val);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	  {
+	    bool is_float_numeric = false;
+	    int precision = 0, scale = 0;
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+
+	    /*
+	     * calculate hash without normalization if:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
+	     *     * scale is 0, or
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for float numeric with positive scale, trailing zero check is required
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     */
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	      {
+		hash = mht_1str_pseudo_key (db_get_numeric (val), -1);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+		hash = mht_1str_pseudo_key (calc_buf, -1);
+	      }
+	  }
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  hash = mht_1str_pseudo_key (db_get_string (val), db_get_string_size (val));
 	  break;
 	case DB_TYPE_BIT:
@@ -839,6 +863,40 @@ static const unsigned int mht_Primes[NPRIMES] = {
   20507, 21313, 22123, 23131, 24133, 25147, 26153, 27179, 28181, 29123
 };
 
+#define NPRIMES_POW2 30
+static const unsigned int mht_prime_for_pow2[] = {
+  5,				/* 2^2  = 4 */
+  11,				/* 2^3  = 8 */
+  17,				/* 2^4  = 16 */
+  37,				/* 2^5  = 32 */
+  67,				/* 2^6  = 64 */
+  131,				/* 2^7  = 128 */
+  263,				/* 2^8  = 256 */
+  521,				/* 2^9  = 512 */
+  1031,				/* 2^10 = 1024 */
+  2053,				/* 2^11 = 2048 */
+  4099,				/* 2^12 = 4096 */
+  8209,				/* 2^13 = 8192 */
+  16411,			/* 2^14 = 16384 */
+  32771,			/* 2^15 = 32768 */
+  65537,			/* 2^16 = 65536 */
+  131101,			/* 2^17 = 131072 */
+  262147,			/* 2^18 = 262144 */
+  524309,			/* 2^19 = 524288 */
+  1048583,			/* 2^20 = 1048576 */
+  2097169,			/* 2^21 = 2097152 */
+  4194319,			/* 2^22 = 4194304 */
+  8388617,			/* 2^23 = 8388608 */
+  16777259,			/* 2^24 = 16777216 */
+  33554467,			/* 2^25 = 33554432 */
+  67108879,			/* 2^26 = 67108864 */
+  134217757,			/* 2^27 = 134217728 */
+  268435459,			/* 2^28 = 268435456 */
+  536870923,			/* 2^29 = 536870912 */
+  1073741833,			/* 2^30 = 1073741824 */
+  2147483659			/* 2^31 = 2147483648 */
+};
+
 unsigned int
 mht_calculate_htsize (unsigned int ht_size)
 {
@@ -885,6 +943,27 @@ mht_calculate_htsize (unsigned int ht_size)
     }
 
   return ht_size;
+}
+
+unsigned int
+mht_calculate_htsize_for_pow2 (unsigned int ht_size)
+{
+  int i = 0;
+
+  assert (ht_size > 0);
+
+  /* Too large: fallback to UINT_MAX */
+  if (ht_size > mht_prime_for_pow2[NPRIMES_POW2 - 1])
+    {
+      return UINT_MAX;
+    }
+
+  while (i < NPRIMES_POW2 && (1U << (i + 2)) < ht_size)
+    {
+      ++i;
+    }
+
+  return mht_prime_for_pow2[i];
 }
 
 /*
@@ -1006,7 +1085,8 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
       est_size = 2;
     }
 
-  ht_estsize = mht_calculate_htsize ((unsigned int) est_size);
+  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
+  ht_estsize = mht_calculate_htsize_for_pow2 ((unsigned int) ht_estsize);
 
   /* Allocate the header information for hash table */
   ht = (MHT_HLS_TABLE *) malloc (DB_SIZEOF (MHT_HLS_TABLE));
@@ -1409,6 +1489,7 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	      /* Go over the linked list */
 	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
 		{
+		  fprintf (out_fp, "  KEY %10u, ", hentry->key);
 		  cont = (*print_func) (thread_p, out_fp, hentry->data, type_list, func_args);
 		}
 
@@ -2373,8 +2454,39 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	  break;
 	case DB_TYPE_NUMERIC:
 	  {
-	    unsigned int *buf = (unsigned int *) val->data.num.d.buf;
-	    hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3], ht_size);
+	    bool is_float_numeric = false;
+	    unsigned int tmp = 0;
+	    unsigned int *buf;
+	    int precision = 0, scale = 0;
+	    db_get_numeric_precision_and_scale (val, &precision, &scale, &is_float_numeric);
+
+	    /*
+	     * calculate hash without normalization if:
+	     *   - fixed numeric (is_float_numeric == false), or
+	     *   - float numeric (is_float_numeric == true) with:
+	     *     * scale is 0, or
+	     *     * precision is DB_MAX_NUMERIC_PRECISION(40) and scale is negative
+	     *   for float numeric with positive scale, trailing zero check is required
+	     *   even when precision is DB_MAX_NUMERIC_PRECISION(40), so normalization is needed.
+	     */
+	    if (!is_float_numeric || scale == 0 || (precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
+	      {
+		buf = (unsigned int *) db_locate_numeric (val);
+		memcpy (&tmp, db_locate_numeric (val) + 16, 1);
+
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+	      }
+	    else
+	      {
+		uint8_t calc_buf[DB_NUMERIC_BUF_SIZE];
+		(void) float_numeric_normalize_for_hash ((DB_C_NUMERIC) val->data.num.d.buf, calc_buf, precision,
+							 scale);
+
+		buf = (unsigned int *) calc_buf;
+		memcpy (&tmp, (char *) calc_buf + 16, 1);
+
+		hashcode = mht_get_shiftmult32 (buf[0] ^ buf[1] ^ buf[2] ^ buf[3] ^ tmp, ht_size);
+	      }
 	  }
 	  break;
 	case DB_TYPE_DATE:
@@ -2410,8 +2522,6 @@ mht_get_hash_number (const unsigned int ht_size, const DB_VALUE * val)
 	case DB_TYPE_VARBIT:
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_NCHAR:
-	case DB_TYPE_VARNCHAR:
 	  ptr = db_get_string (val);
 	  if (ptr)
 	    {

@@ -58,6 +58,7 @@
 #include "msgcat_set_log.hpp"
 #include "environment_variable.h"
 #if defined(SERVER_MODE)
+#include "catalog_class.h"
 #include "server_support.h"
 #endif /* SERVER_MODE */
 #include "log_append.hpp"
@@ -78,15 +79,18 @@
 #include "db_date.h"
 #include "fault_injection.h"
 #if defined (SA_MODE)
-#include "connection_support.h"
+#include "connection_support.hpp"
 #endif /* defined (SA_MODE) */
 #include "db_value_printer.hpp"
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 #include "boot_sr.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "vacuum.h"
@@ -365,8 +369,6 @@ static cubthread::daemon *cdc_Loginfo_producer_daemon = NULL;
 static void log_daemons_init ();
 static void log_daemons_destroy ();
 
-// used by log_Check_ha_delay_info_daemon
-extern int catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_record_time);
 #endif /* SERVER_MODE */
 
 /*
@@ -1793,7 +1795,7 @@ log_final (THREAD_ENTRY * thread_p)
   error_code = pgbuf_flush_all (thread_p, NULL_VOLID);
   if (error_code == NO_ERROR)
     {
-      error_code = fileio_synchronize_all (thread_p, false);
+      error_code = fileio_synchronize_all (thread_p);
     }
 
   logpb_decache_archive_info (thread_p);
@@ -5771,6 +5773,7 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 
   state = tdes->state;
 
+#ifdef LOG_2PC_ACK_RECV_REQUIRED
   if (tdes->coord != NULL && tdes->coord->ack_received != NULL)
     {
       /*
@@ -5906,12 +5909,12 @@ log_complete_for_2pc (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_RECTYPE isco
 	      return state;
 	    }
 	}
-
       /*
        * All acknowledgments of participants have been received, declare the
        * the transaction as completed
        */
     }
+#endif
 
   /*
    * DECLARE THE TRANSACTION AS COMPLETED
@@ -8928,7 +8931,7 @@ log_recreate (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logp
     }
 
   (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-  (void) fileio_synchronize_all (thread_p, false);
+  (void) fileio_synchronize_all (thread_p);
   (void) log_commit (thread_p, NULL_TRAN_INDEX, false);
 
   return ret;
@@ -9177,7 +9180,7 @@ log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages
   if (flush_data_pages)
     {
       (void) pgbuf_flush_all (thread_p, NULL_VOLID);
-      (void) fileio_synchronize_all (thread_p, false);
+      (void) fileio_synchronize_all (thread_p);
     }
 
   /* Undefine log buffer pool and transaction table */
@@ -10398,6 +10401,8 @@ log_flush_execute (cubthread::entry & thread_ref)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon
  */
+REGISTER_DAEMON (log_checkpoint);
+
 void
 log_checkpoint_daemon_init ()
 {
@@ -10407,7 +10412,7 @@ log_checkpoint_daemon_init ()
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_checkpoint_execute);
 
   // create checkpoint daemon thread
-  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_checkpoint");
+  log_Checkpoint_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-checkpoint");
 }
 #endif /* SERVER_MODE */
 
@@ -10415,6 +10420,8 @@ log_checkpoint_daemon_init ()
 /*
  * log_remove_log_archive_daemon_init () - initialize remove log archive daemon
  */
+REGISTER_DAEMON (log_remove_log_archive);
+
 void
 log_remove_log_archive_daemon_init ()
 {
@@ -10430,8 +10437,7 @@ log_remove_log_archive_daemon_init ()
   cubthread::looper looper = cubthread::looper (setup_period_function);
 
   // create log archive remover daemon thread
-  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                            "log_remove_log_archive");
+  log_Remove_log_archive_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-rm-archive");
 }
 #endif /* SERVER_MODE */
 
@@ -10439,6 +10445,8 @@ log_remove_log_archive_daemon_init ()
 /*
  * log_clock_daemon_init () - initialize log clock daemon
  */
+REGISTER_DAEMON (log_clock);
+
 void
 log_clock_daemon_init ()
 {
@@ -10446,8 +10454,7 @@ log_clock_daemon_init ()
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
-    cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log_clock");
+    cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute), "log-clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10455,6 +10462,8 @@ log_clock_daemon_init ()
 /*
  * log_check_ha_delay_info_daemon_init () - initialize check ha delay info daemon
  */
+REGISTER_DAEMON (ha_delay_check);
+
 void
 log_check_ha_delay_info_daemon_init ()
 {
@@ -10470,8 +10479,7 @@ log_check_ha_delay_info_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::seconds (1));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_check_ha_delay_info_execute);
 
-  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task,
-                                                                             "log_check_ha_delay_info");
+  log_Check_ha_delay_info_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "ha-delay-check");
 }
 #endif /* SERVER_MODE */
 
@@ -10479,6 +10487,8 @@ log_check_ha_delay_info_daemon_init ()
 /*
  * log_flush_daemon_init () - initialize log flush daemon
  */
+REGISTER_DAEMON (log_flush);
+
 void
 log_flush_daemon_init ()
 {
@@ -10487,7 +10497,7 @@ log_flush_daemon_init ()
   cubthread::looper looper = cubthread::looper (log_get_log_group_commit_interval);
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (log_flush_execute);
 
-  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log_flush");
+  log_Flush_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "log-flush");
 }
 #endif /* SERVER_MODE */
 
@@ -11063,7 +11073,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
   thread_p->is_cdc_daemon = true;
 
   int error = NO_ERROR;
-  int count = 0;
 
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
@@ -11111,10 +11120,14 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
       nxio_lsa = log_Gl.append.get_nxio_lsa ();
 
-      if (LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
+      pthread_mutex_lock (&cdc_Gl.producer.lock);
+
+      if (LSA_ISNULL (&cdc_Gl.producer.next_extraction_lsa) || LSA_GE (&cdc_Gl.producer.next_extraction_lsa, &nxio_lsa))
 	{
 	  /* LOG_HA_DUMMY_SERVER_STATUS is appended every 1 seconds and flushed.
 	   * So it is expected to be woken up by looper within period of looper */
+
+	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  cdc_log
 	    ("cdc_loginfo_producer_execute : next_extraction_lsa (%lld | %d)  is greater or equal than nxio_lsa (%lld | %d)",
@@ -11129,30 +11142,19 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
-      LSA_COPY (&cur_log_rec_lsa, &cdc_Gl.producer.next_extraction_lsa);
-      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
-
-      /*
-       * Prevent the producer thread from attempting to extract CDC logs using a NULL cdc_Gl.producer.next_extraction_lsa.
-       * The race occurs when the cdc_cleanup process overlaps in timing with the log extraction process.
-       *
-       * TODO: Investigate and fix the root cause of process_lsa being NULL
-       */
       if (LSA_ISNULL (&process_lsa))
 	{
-	  count++;
-
-	  if ((count % 10) == 0)
-	    {
-	      _er_log_debug (ARG_FILE_LINE,
-			     "cdc_loginfo_producer_execute : process_lsa is NULL_LSA (producer.request : %d, producer.state : %d)",
-			     cdc_Gl.producer.request, cdc_Gl.producer.state);
-
-	      assert (false);
-	    }
-
-	  continue;
+	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
 	}
+      else
+	{
+	  LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
+	}
+
+      assert (!LSA_ISNULL (&process_lsa));
+      LSA_COPY (&cur_log_rec_lsa, &process_lsa);
+
+      pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
       error = cdc_log_extract (thread_p, &process_lsa, &log_info_entry);
       if (!(error == NO_ERROR || error == ER_CDC_LOGINFO_ENTRY_GENERATED))
@@ -11208,8 +11210,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  cdc_log ("cdc_loginfo_producer_execute : log info is produced on LOG_LSA (%lld | %d)",
 		   LSA_AS_ARGS (&process_lsa));
 	}
-
-      LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, &process_lsa);
     }
 
   cdc_Gl.producer.state = CDC_PRODUCER_STATE_DEAD;
@@ -12736,12 +12736,6 @@ cdc_get_attribute_size (DB_VALUE * value)
       /* internal CLOB is stored inline like a character string; see cdc_put_value_to_loginfo */
       size = db_get_string_size (value);
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      /* size of string "N''" is 4
-       * e.g. N'string' */
-      size = db_get_string_size (value) + 3;
-      break;
     case DB_TYPE_TIME:
       /* precision in data types related to DATE/TIME means the size the string converted from the date/time data */
       size = DB_TIME_PRECISION;
@@ -13808,42 +13802,6 @@ cdc_put_value_to_loginfo (db_value * new_value, char **data_ptr)
       ptr = or_pack_int (ptr, func_type);
       ptr = or_pack_string (ptr, db_get_string (new_value));
       break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      {
-	int size = 0;
-	int length = 0;
-	char *result = NULL;
-	const char *temp_string = NULL;
-
-	temp_string = db_get_nchar (new_value, &length);
-	size = db_get_string_size (new_value);
-
-	if (temp_string != NULL)
-	  {
-	    result = (char *) malloc (size + 4);
-	    if (result == NULL)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size + 4);
-		return ER_OUT_OF_VIRTUAL_MEMORY;
-	      }
-
-	    snprintf (result, size + 3, "N'%s", temp_string);
-	    result[size + 2] = '\'';
-	    result[size + 3] = '\0';
-	  }
-
-	func_type = 7;
-	ptr = or_pack_int (ptr, func_type);
-	ptr = or_pack_string (ptr, result);
-
-	if (result != NULL)
-	  {
-	    free_and_init (result);
-	  }
-
-	break;
-      }
 #define TOO_BIG_TO_MATTER       1024
     case DB_TYPE_TIME:
       db_make_char (&format, strlen (time_format), time_format,
@@ -14108,6 +14066,8 @@ cdc_min_log_pageid_to_keep ()
 }
 
 #if defined (SERVER_MODE)
+REGISTER_DAEMON (cdc_loginfo_producer);
+
 void
 cdc_loginfo_producer_daemon_init ()
 {
@@ -14125,7 +14085,7 @@ cdc_loginfo_producer_daemon_init ()
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10)); /* 주석 처리  */
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (cdc_loginfo_producer_execute);
 
-  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc_loginfo_producer"); 
+  cdc_Loginfo_producer_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "cdc-loginfo-producer"); 
   /* *INDENT-ON* */
 }
 
@@ -14546,7 +14506,10 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 int
 cdc_set_extraction_lsa (LOG_LSA * lsa)
 {
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_COPY (&cdc_Gl.producer.next_extraction_lsa, lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
   LSA_COPY (&cdc_Gl.consumer.next_lsa, lsa);
 
   cdc_log ("cdc_set_extraction_lsa : set LOG_LSA (%lld | %d) to produce ", LSA_AS_ARGS (lsa));
@@ -15133,7 +15096,9 @@ cdc_cleanup ()
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
 
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
   /*communication buffer from server to client initialization */
   cdc_cleanup_consumer ();
@@ -15205,7 +15170,10 @@ cdc_finalize ()
   cdc_Gl.consumer.consumed_queue_size = 0;
   cdc_Gl.producer.produced_queue_size = 0;
 
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
   LSA_SET_NULL (&cdc_Gl.first_loginfo_queue_lsa);
 

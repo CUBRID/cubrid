@@ -37,139 +37,48 @@
 #endif
 #include <assert.h>
 
-#include "error_manager.h"
-
-#include "cas_common.h"
-#include "cas.h"
-#include "cas_function.h"
-#include "cas_network.h"
+#include "cas_common_main.h"
+#include "cas_common_vars.h"
 #include "cas_net_buf.h"
 #include "cas_log.h"
+#include "cas.h"
 #include "cas_handle.h"
 #include "cas_util.h"
-#include "cas_execute.h"
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-#include "cas_error_log.h"
-#else
+#include "cas_common_function.h"
 #include "perf_monitor.h"
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
-#include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "dbtype.h"
 #include "parse_tree.h"
-#include "db_session.h"
-
-#include "object_primitive.h"
 #include "ddl_log.h"
+#include "error_manager.h"
 
-#if defined (CAS_FOR_CGW)
-#include "cas_cgw.h"
-#endif
+#include "cas_function.h"
+#include "cas_execute.h"
+#include "broker_filename.h"
+#include "dbtype.h"
+#include "db_session.h"
+#include "object_primitive.h"
 
+/* ========================================================================
+ * Forward Function Declarations
+ * ======================================================================== */
 static FN_RETURN fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *ret_srv_h_id);
 static FN_RETURN fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 				      int *prepared_srv_h_id);
-static const char *get_schema_type_str (int schema_type);
-static const char *get_tran_type_str (int tran_type);
-static void bind_value_print (char type, void *net_value, bool slow_log);
-static char *get_error_log_eids (int err);
 
-static void bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size,
-			    char *param_mode, unsigned int query_seq_num, bool slow_log);
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-#if !defined(CAS_FOR_CGW)
 void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
-#endif /* CAS_FOR_CGW */
 
-/* functions implemented in transaction_cl.c */
 extern void tran_set_query_timeout (int);
 extern bool tran_is_in_libcas (void);
-#endif
-
-static void update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * err_info_p);
-
-static const char *tran_type_str[] = { "COMMIT", "ROLLBACK" };
-
-#if !defined (CAS_FOR_CGW)
-static void logddl_check_have_ddl_stmt (T_SRV_HANDLE * srv_handle);
-#endif
-
-static const char *schema_type_str[] = {
-  "CLASS",
-  "VCLASS",
-  "QUERY_SPEC",
-  "ATTRIBUTE",
-  "CLASS_ATTRIBUTE",
-  "METHOD",
-  "CLASS_METHOD",
-  "METHOD_FILE",
-  "SUPERCLASS",
-  "SUBCLASS",
-  "CONSTRAINT",
-  "TRIGGER",
-  "CLASS_PRIVILEGE",
-  "ATTR_PRIVILEGE",
-  "DIRECT_SUPER_CLASS",
-  "PRIMARY_KEY",
-  "IMPORTED_KEYS",
-  "EXPORTED_KEYS",
-  "CROSS_REFERENCE"
-};
-
-static const char *type_str_tbl[] = {
-  "NULL",			/* CCI_U_TYPE_NULL */
-  "CHAR",			/* CCI_U_TYPE_CHAR */
-  "VARCHAR",			/* CCI_U_TYPE_STRING */
-  "NCHAR",			/* CCI_U_TYPE_NCHAR */
-  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR */
-  "BIT",			/* CCI_U_TYPE_BIT */
-  "VARBIT",			/* CCI_U_TYPE_VARBIT */
-  "NUMERIC",			/* CCI_U_TYPE_NUMERIC */
-  "INT",			/* CCI_U_TYPE_INT */
-  "SHORT",			/* CCI_U_TYPE_SHORT */
-  "MONETARY",			/* CCI_U_TYPE_MONETARY */
-  "FLOAT",			/* CCI_U_TYPE_FLOAT */
-  "DOUBLE",			/* CCI_U_TYPE_DOUBLE */
-  "DATE",			/* CCI_U_TYPE_DATE */
-  "TIME",			/* CCI_U_TYPE_TIME */
-  "TIMESTAMP",			/* CCI_U_TYPE_TIMESTAMP */
-  "SET",			/* CCI_U_TYPE_SET */
-  "MULTISET",			/* CCI_U_TYPE_MULTISET */
-  "SEQUENCE",			/* CCI_U_TYPE_SEQUENCE */
-  "OBJECT",			/* CCI_U_TYPE_OBJECT */
-  "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
-  "BIGINT",			/* CCI_U_TYPE_BIGINT */
-  "DATETIME",			/* CCI_U_TYPE_DATETIME */
-  "BFILE",			/* CCI_U_TYPE_BFILE */
-  "CFILE",			/* CCI_U_TYPE_CFILE */
-  "BLOB",			/* CCI_U_TYPE_BLOB */
-  "CLOB",			/* CCI_U_TYPE_CLOB */
-  "ENUM",			/* CCI_U_TYPE_ENUM */
-  "USHORT",			/* CCI_U_TYPE_USHORT */
-  "UINT",			/* CCI_U_TYPE_UINT */
-  "UBIGINT",			/* CCI_U_TYPE_UBIGINT */
-  "TIMESTAMPTZ",		/* CCI_U_TYPE_TIMESTAMPTZ */
-  "TIMESTAMPLTZ",		/* CCI_U_TYPE_TIMESTAMPLTZ */
-  "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
-  "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
-  "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
-  "JSON",			/* CCI_U_TYPE_JSON */
-};
 
 FN_RETURN
 fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int tran_type;
-  int err_code;
+  int err_code = 0;
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval end_tran_begin, end_tran_end;
-
   int timeout;
-
 
   if (argc < 1)
     {
@@ -190,7 +99,22 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-  err_code = ux_end_tran ((char) tran_type, false, false);
+#ifdef CCI_XA
+  if (is_xa_prepared ())
+    {
+      /*
+       * In the 2PC Prepare state, end_tran (commit or rollback) must not be processed.
+       * In this state, commit and rollback must be processed
+       * through the commit decision or abort decision from the coordinator.
+       * In other words, it must be processed with fn_xa_end_tran.
+       */
+      ;
+    }
+  else
+#endif
+    {
+      err_code = ux_end_tran ((char) tran_type, false, false);
+    }
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {
@@ -217,7 +141,6 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       net_buf_cp_int (net_buf, 0, NULL);
       req_info->need_rollback = FALSE;
     }
-
 
   timeout =
     ut_check_timeout (&tran_start_time, &end_tran_end, shm_appl->long_transaction_time, &elapsed_sec, &elapsed_msec);
@@ -266,19 +189,11 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       sql_log2_init (broker_name, shm_as_index, as_info->cur_sql_log2, true);
     }
 
-#if defined(CAS_FOR_CGW)
-  if (cgw_is_database_connected () < 0)
-    {
-      cas_log_debug (ARG_FILE_LINE, "fn_end_tran: cgw_is_database_connected()");
-      return FN_CLOSE_CONN;
-    }
-#else
   if (!ux_is_database_connected ())
     {
       cas_log_debug (ARG_FILE_LINE, "fn_end_tran: !ux_is_database_connected()");
       return FN_CLOSE_CONN;
     }
-#endif /* CAS_FOR_CGW */
   else if (restart_is_needed () || as_info->reset_flag == TRUE)
     {
       cas_log_debug (ARG_FILE_LINE, "fn_end_tran: restart_is_needed() || reset_flag");
@@ -286,12 +201,8 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
       return FN_KEEP_SESS;
     }
   return FN_KEEP_CONN;
-
-
-  return FN_CLOSE_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_end_session (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -314,7 +225,7 @@ fn_get_last_insert_id (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
   ux_get_last_insert_id (net_buf);
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
+
 
 FN_RETURN
 fn_prepare (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -366,14 +277,8 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   logddl_set_commit_mode (auto_commit_mode);
 
-#if 0
-  ut_trim (sql_stmt);
-#endif
-
-
   gettimeofday (&query_start_time, NULL);
   query_timeout = 0;
-
 
   cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
   cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
@@ -399,11 +304,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       *s = '\0';
     }
 
-#if defined(CAS_FOR_CGW)
-  srv_h_id = ux_cgw_prepare (sql_stmt, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value ());
-#else
   srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value ());
-#endif /* CAS_FOR_CGW */
 
   if (ret_srv_h_id != NULL)
     {
@@ -476,14 +377,8 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   char *eid_string;
   int err_number_execute;
   int arg_idx = 0;
-#if !defined (CAS_FOR_CGW)
   char stmt_type = -1;
-#endif
-
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   char *plan = NULL;
-#endif
 
   bind_value_index = 9;
   /*
@@ -515,11 +410,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
   srv_handle = hm_find_srv_handle (srv_h_id);
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_CGW)
-  if (srv_handle == NULL)
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL || CAS_FOR_CGW */
   if (srv_handle == NULL || srv_handle->schema_type >= CCI_SCH_FIRST)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL || CAS_FOR_CGW */
     {
       ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
 
@@ -530,21 +421,13 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       return FN_KEEP_CONN;
     }
 
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  srv_handle->next_cursor_pos = 1;
-#endif
-
   net_arg_get_char (flag, argv[arg_idx++]);
   net_arg_get_int (&max_col_size, argv[arg_idx++]);
   net_arg_get_int (&max_row, argv[arg_idx++]);
   net_arg_get_str (&param_mode, &param_mode_size, argv[arg_idx++]);
   if (prepared_srv_h_id != NULL)
     {
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL) || defined(CAS_FOR_CGW)
-      if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
-#else
       if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL || CAS_FOR_CGW */
 	{
 	  fetch_flag = 1;
 	}
@@ -569,13 +452,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       /* PROTOCOL_V2 is used only 9.0.0 */
       if (DOES_CLIENT_MATCH_THE_PROTOCOL (req_info->client_version, PROTOCOL_V2))
 	{
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_CGW)
-	  if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
-#elif defined(CAS_FOR_MYSQL)
-	  if (srv_handle->stmt_type == CUBRID_STMT_SELECT || srv_handle->stmt_type == CUBRID_STMT_CALL_SP)
-#else
 	  if (srv_handle->q_result->stmt_type == CUBRID_STMT_SELECT)
-#endif
 	    {
 	      fetch_flag = 1;
 	    }
@@ -613,33 +490,28 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       app_query_timeout = 0;
     }
 
-
   if (shm_appl->max_string_length >= 0)
     {
       if (max_col_size <= 0 || max_col_size > shm_appl->max_string_length)
 	max_col_size = shm_appl->max_string_length;
     }
 
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   set_query_timeout (srv_handle, app_query_timeout);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
   srv_handle->auto_commit_mode = auto_commit_mode;
   srv_handle->forward_only_cursor = forward_only_cursor;
   logddl_set_commit_mode (auto_commit_mode);
 
-#if !defined(CAS_FOR_CGW)
   if (srv_handle->prepare_flag & CCI_PREPARE_CALL)
     {
       exec_func_name = "execute_call";
       ux_exec_func = ux_execute_call;
-#if !defined(CAS_FOR_MYSQL)
+
       if (param_mode)
 	{
 	  ux_call_info_cp_param_mode (srv_handle, param_mode, param_mode_size);
 	}
-#endif /* !CAS_FOR_MYSQL */
+
     }
   else if (flag & CCI_EXEC_QUERY_ALL)
     {
@@ -647,24 +519,16 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       ux_exec_func = ux_execute_all;
     }
   else
-#endif /* !CAS_FOR_CGW */
     {
-#if defined(CAS_FOR_CGW)
-      exec_func_name = "execute";
-      ux_exec_func = ux_cgw_execute;
-#else
       exec_func_name = "execute";
       ux_exec_func = ux_execute;
-#endif /* CAS_FOR_CGW */
     }
-
 
   if (srv_handle->is_pooled)
     {
       gettimeofday (&query_start_time, NULL);
       query_timeout = 0;
     }
-
 
   cas_log_write_nonl (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s srv_h_id %d ", exec_func_name, srv_h_id);
   if (srv_handle->sql_stmt != NULL)
@@ -675,28 +539,19 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       else
 	{
-#if defined(CAS_FOR_CGW)
-	  HIDE_PWD_INFO t_pwd_info;
-	  INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
-	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
-#else
 	  assert (((DB_SESSION *) srv_handle->session)->parser);
 	  PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 	  cas_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &psr->hide_pwd_info);
-#endif
 	}
     }
   cas_log_debug (ARG_FILE_LINE, "%s%s", auto_commit_mode ? "auto_commit_mode " : "",
 		 forward_only_cursor ? "forward_only_cursor " : "");
 
-
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      bind_value_log (NULL, bind_value_index, argc, argv, param_mode_size, param_mode,
-		      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
+      cas_common_bind_value_log (NULL, bind_value_index, argc, argv, param_mode_size, param_mode,
+				 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, CAS_SCHEMA_DEFAULT_CHARSET);
     }
-
-
 
   /* append query string to as_info->log_msg */
   if (srv_handle->sql_stmt)
@@ -717,7 +572,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       *s = '\0';
     }
 
-
   gettimeofday (&exec_begin, NULL);
 
   ret_code =
@@ -731,30 +585,15 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
-#if defined(CAS_FOR_MYSQL) || defined(CAS_FOR_CGW)
-      if (srv_handle->stmt_type == CUBRID_STMT_SELECT)
-#endif /* CAS_FOR_MYSQL || CAS_FOR_CGW */
-	{
-	  ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
-	}
+      ux_fetch (srv_handle, 1, 50, 0, 0, net_buf, req_info);
     }
 
-#if defined(CAS_FOR_CGW)
-  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
-		 (ret_code < 0) ? "error:" : "", err_number_execute,
-		 (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle), elapsed_sec,
-		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-#else
   cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "%s %s%d tuple %d time %d.%03d%s%s%s", exec_func_name,
 		 (ret_code < 0) ? "error:" : "", err_number_execute, get_tuple_count (srv_handle), elapsed_sec,
 		 elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
 		 (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-#endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   plan = db_get_execution_plan ();
-#endif
 
   query_timeout =
     ut_check_timeout (&query_start_time, &exec_end, shm_appl->long_query_time, &elapsed_sec, &elapsed_msec);
@@ -777,47 +616,29 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-#if defined(CAS_FOR_CGW)
-	      HIDE_PWD_INFO t_pwd_info;
-	      INIT_HIDE_PASSWORD_INFO (&t_pwd_info);
-	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt), &t_pwd_info);
-#else
 	      assert (srv_handle->session);
 	      assert (((DB_SESSION *) srv_handle->session)->parser);
 	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
 					       &psr->hide_pwd_info);
-#endif
-	      bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
-			      SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true);
+	      cas_common_bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
+					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
-#if defined(CAS_FOR_CGW)
-	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
-			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
-			      err_number_execute,
-			      (get_tuple_count (srv_handle) == INT_MAX) ? -1 : get_tuple_count (srv_handle),
-			      elapsed_sec, elapsed_msec, (client_cache_reusable == TRUE) ? " (CC)" : "",
-			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-#else
+
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "%s %s%d tuple %d time %d.%03d%s%s%s\n", exec_func_name, (ret_code < 0) ? "error:" : "",
 			      err_number_execute, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec,
 			      (client_cache_reusable == TRUE) ? " (CC)" : "",
 			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
-#endif
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
 	  if (plan != NULL && plan[0] != '\0')
 	    {
 	      cas_slow_log_write (NULL, 0, false, "slow query plan\n%s", plan);
 	    }
-#endif
 	  cas_slow_log_end ();
 	}
     }
-
-
 
   /* set is_pooled */
   if (as_info->cur_statement_pooling)
@@ -825,7 +646,6 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       srv_handle->is_pooled = TRUE;
     }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
   if (plan != NULL && plan[0] != '\0')
     {
       cas_log_write (0, true, "slow query plan\n%s", plan);
@@ -833,14 +653,10 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
       /* reset global plan buffer */
       db_set_execution_plan (NULL, 0);
     }
-#endif
-
-
 
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_prepare_and_execute (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1078,7 +894,6 @@ fn_set_cas_change_mode (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_b
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
 FN_RETURN
 fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1117,7 +932,6 @@ fn_close_req_handle (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1140,7 +954,6 @@ fn_cursor (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INF
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
 FN_RETURN
 fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1189,7 +1002,6 @@ fn_fetch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_schema_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1268,8 +1080,6 @@ fn_oid_put (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_IN
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
-
 
 FN_RETURN
 fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -1288,17 +1098,14 @@ fn_get_db_version (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   ux_get_db_version (net_buf, req_info);
 
-
   if (auto_commit_mode == TRUE)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
-
   return FN_KEEP_CONN;
 }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_get_class_num_objs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1646,7 +1453,6 @@ fn_col_finale:
   return FN_KEEP_CONN;
 }
 
-/* MYSQL : NOT SUPPORT MULTIPLE STATEMENT */
 FN_RETURN
 fn_next_result (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1709,10 +1515,8 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
     {
       query_timeout = 0;
     }
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   /* does not support query timeout for execute_batch yet */
   set_query_timeout (NULL, query_timeout);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   cas_log_write (0, true, "execute_batch %d", argc - arg_index);
   ux_execute_batch (argc - arg_index, argv + arg_index, net_buf, req_info, auto_commit_mode);
@@ -1721,9 +1525,7 @@ fn_execute_batch (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
 
-#if !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1733,9 +1535,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
   int elapsed_sec = 0, elapsed_msec = 0;
   struct timeval exec_begin, exec_end;
   char *eid_string;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
   char *plan = NULL;
-#endif /* !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) */
   int driver_query_timeout;
   int arg_index = 0;
   char auto_commit_mode;
@@ -1782,10 +1582,8 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
       driver_query_timeout = 0;
     }
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
   /* does not support query timeout for execute_array yet */
   set_query_timeout (srv_handle, driver_query_timeout);
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
   net_arg_get_char (auto_commit_mode, argv[arg_index]);
   arg_index++;
@@ -1814,7 +1612,8 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   if (as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
     {
-      bind_value_log (NULL, arg_index, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false);
+      cas_common_bind_value_log (NULL, arg_index, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+				 CAS_SCHEMA_DEFAULT_CHARSET);
     }
 
 
@@ -1859,15 +1658,14 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
 					       &psr->hide_pwd_info);
-	      bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle),
-			      true);
+	      cas_common_bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL,
+					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
 	  cas_slow_log_write (NULL, SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
 			      "execute_array %s%d tuple %d time %d.%03d%s%s%s\n", (ret_code < 0) ? "error:" : "",
 			      err_info.err_number, get_tuple_count (srv_handle), elapsed_sec, elapsed_msec, "",
 			      (srv_handle->use_query_cache == true) ? " (QC)" : "", eid_string);
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 	  plan = db_get_execution_plan ();
 
 	  if (plan != NULL && plan[0] != '\0')
@@ -1877,7 +1675,6 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 	      /* reset global plan buffer */
 	      db_set_execution_plan (NULL, 0);
 	    }
-#endif
 	  cas_slow_log_end ();
 	}
     }
@@ -1885,9 +1682,7 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_CGW */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
 FN_RETURN
 fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -1909,9 +1704,7 @@ fn_cursor_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_cursor_update (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2117,8 +1910,6 @@ fn_parameter_info (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
   return FN_KEEP_CONN;
 }
 
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && CAS_FOR_CGW */
-
 FN_RETURN
 fn_con_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2159,7 +1950,6 @@ fn_check_cas (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_
     }
 }
 
-#if !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2183,15 +1973,7 @@ fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_RE
 
   return FN_KEEP_CONN;
 }
-#else /* !defined(CAS_FOR_MYSQL) */
-FN_RETURN
-fn_make_out_rs (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  return fn_not_supported (sock_fd, argc, argv, net_buf, req_info);
-}
-#endif /* !defined(CAS_FOR_MYSQL) */
 
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) || !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2225,421 +2007,7 @@ fn_get_generated_keys (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_bu
 
   return FN_KEEP_CONN;
 }
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
 
-static const char *
-get_schema_type_str (int schema_type)
-{
-  if (schema_type < 1 || schema_type > CCI_SCH_LAST)
-    {
-      return "";
-    }
-
-  return (schema_type_str[schema_type - 1]);
-}
-
-static const char *
-get_tran_type_str (int tran_type)
-{
-  if (tran_type < 1 || tran_type > 2)
-    {
-      return "";
-    }
-
-  return (tran_type_str[tran_type - 1]);
-}
-
-
-static void
-bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size, char *param_mode,
-		unsigned int query_seq_num, bool slow_log)
-{
-  int idx;
-  char type;
-  int num_bind;
-  void *net_value;
-  const char *param_mode_str;
-  void (*write2_func) (const char *, ...);
-
-  if (slow_log)
-    {
-      write2_func = cas_slow_log_write2;
-    }
-  else
-    {
-      write2_func = cas_log_write2_nonl;
-    }
-
-  num_bind = 1;
-  idx = start;
-
-  while (idx < argc)
-    {
-      net_arg_get_char (type, argv[idx++]);
-      net_value = argv[idx++];
-
-      param_mode_str = "";
-      if (param_mode != NULL && param_size >= num_bind)
-	{
-	  if (param_mode[num_bind - 1] == CCI_PARAM_MODE_IN)
-	    param_mode_str = "(IN) ";
-	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_OUT)
-	    param_mode_str = "(OUT) ";
-	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_INOUT)
-	    param_mode_str = "(INOUT) ";
-	}
-
-      if (slow_log)
-	{
-	  cas_slow_log_write (log_time, query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
-	}
-      else
-	{
-	  cas_log_write_nonl (query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
-	}
-
-      if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
-	{
-	  write2_func ("%s ", type_str_tbl[(int) type]);
-	  bind_value_print (type, net_value, slow_log);
-	}
-      else
-	{
-	  write2_func ("NULL");
-	}
-      write2_func ("\n");
-    }
-}
-
-
-static void
-bind_value_print (char type, void *net_value, bool slow_log)
-{
-  int data_size;
-  void (*write2_func) (const char *, ...);
-  void (*fwrite_func) (char *value, int size);
-
-  if (slow_log)
-    {
-      write2_func = cas_slow_log_write2;
-      fwrite_func = cas_slow_log_write_value_string;
-    }
-  else
-    {
-      write2_func = cas_log_write2_nonl;
-      fwrite_func = cas_log_write_value_string;
-    }
-
-  net_arg_get_size (&data_size, net_value);
-  if (data_size <= 0)
-    {
-      type = CCI_U_TYPE_NULL;
-      data_size = 0;
-    }
-
-  switch (type)
-    {
-    case CCI_U_TYPE_CHAR:
-    case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_NCHAR:
-    case CCI_U_TYPE_VARNCHAR:
-    case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_JSON:
-      {
-#if defined(CAS_FOR_CGW)
-	INTL_CODESET charset = INTL_CODESET_UTF8;
-#else
-	INTL_CODESET charset = CAS_SCHEMA_DEFAULT_CHARSET;
-#endif /* CAS_FOR_CGW */
-	char *str_val;
-	int val_size;
-	int num_chars = 0;
-
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (val_size > 0)
-	  {
-	    num_chars = intl_char_count ((const unsigned char *) str_val, val_size, charset, &num_chars) - 1;
-	  }
-	write2_func ("(%d)", num_chars);
-	fwrite_func (str_val, val_size - 1);
-      }
-      break;
-    case CCI_U_TYPE_BIT:
-    case CCI_U_TYPE_VARBIT:
-    case CCI_U_TYPE_NUMERIC:
-      {
-	char *str_val;
-	int val_size;
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (type != CCI_U_TYPE_NUMERIC)
-	  {
-	    write2_func ("(%d)", val_size);
-	    fwrite_func (str_val, val_size);
-	  }
-	else
-	  {
-	    fwrite_func (str_val, val_size - 1);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_BIGINT:
-      {
-	INT64 bi_val;
-	net_arg_get_bigint (&bi_val, net_value);
-	write2_func ("%lld", (long long) bi_val);
-      }
-      break;
-    case CCI_U_TYPE_UBIGINT:
-      {
-	UINT64 ubi_val;
-	net_arg_get_bigint ((INT64 *) (&ubi_val), net_value);
-	write2_func ("%llu", (unsigned long long) ubi_val);
-      }
-      break;
-    case CCI_U_TYPE_INT:
-      {
-	int i_val;
-	net_arg_get_int (&i_val, net_value);
-	write2_func ("%d", i_val);
-      }
-      break;
-    case CCI_U_TYPE_UINT:
-      {
-	unsigned int ui_val;
-	net_arg_get_int ((int *) &ui_val, net_value);
-	write2_func ("%u", ui_val);
-      }
-      break;
-    case CCI_U_TYPE_SHORT:
-      {
-	short s_val;
-	net_arg_get_short (&s_val, net_value);
-	write2_func ("%d", s_val);
-      }
-      break;
-    case CCI_U_TYPE_USHORT:
-      {
-	unsigned short us_val;
-	net_arg_get_short ((short *) &us_val, net_value);
-	write2_func ("%u", us_val);
-      }
-      break;
-    case CCI_U_TYPE_MONETARY:
-    case CCI_U_TYPE_DOUBLE:
-      {
-	double d_val;
-	net_arg_get_double (&d_val, net_value);
-	write2_func ("%.15e", d_val);
-      }
-      break;
-    case CCI_U_TYPE_FLOAT:
-      {
-	float f_val;
-	net_arg_get_float (&f_val, net_value);
-	write2_func ("%.6e", f_val);
-      }
-      break;
-    case CCI_U_TYPE_DATE:
-    case CCI_U_TYPE_TIME:
-    case CCI_U_TYPE_TIMESTAMP:
-    case CCI_U_TYPE_DATETIME:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
-	if (type == CCI_U_TYPE_DATE)
-	  write2_func ("%d-%d-%d", yr, mon, day);
-	else if (type == CCI_U_TYPE_TIME)
-	  write2_func ("%d:%d:%d", hh, mm, ss);
-	else if (type == CCI_U_TYPE_TIMESTAMP)
-	  write2_func ("%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
-	else
-	  write2_func ("%d-%d-%d %d:%d:%d.%03d", yr, mon, day, hh, mm, ss, ms);
-      }
-      break;
-    case CCI_U_TYPE_TIMESTAMPTZ:
-    case CCI_U_TYPE_DATETIMETZ:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	char *tz_str_p;
-	int tz_size;
-	char tz_str[CCI_TZ_SIZE + 1];
-
-	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms, &tz_str_p, &tz_size, net_value);
-	tz_size = MIN (CCI_TZ_SIZE, tz_size);
-	strncpy (tz_str, tz_str_p, tz_size);
-	tz_str[tz_size] = '\0';
-
-	if (type == CCI_U_TYPE_TIMESTAMPTZ)
-	  {
-	    write2_func ("%d-%d-%d %d:%d:%d %s", yr, mon, day, hh, mm, ss, tz_str);
-	  }
-	else
-	  {
-	    write2_func ("%d-%d-%d %d:%d:%d.%03d %s", yr, mon, day, hh, mm, ss, ms, tz_str);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_SET:
-    case CCI_U_TYPE_MULTISET:
-    case CCI_U_TYPE_SEQUENCE:
-      {
-	int remain_size = data_size;
-	int ele_size;
-	char ele_type;
-	char *cur_p = (char *) net_value;
-	char print_comma = 0;
-
-	cur_p += 4;
-	ele_type = *cur_p;
-	cur_p++;
-	remain_size--;
-
-	if (ele_type <= CCI_U_TYPE_FIRST || ele_type > CCI_U_TYPE_LAST)
-	  break;
-
-	write2_func ("(%s) {", type_str_tbl[(int) ele_type]);
-
-	while (remain_size > 0)
-	  {
-	    net_arg_get_size (&ele_size, cur_p);
-	    if (ele_size + 4 > remain_size)
-	      break;
-	    if (print_comma)
-	      write2_func (", ");
-	    else
-	      print_comma = 1;
-	    bind_value_print (ele_type, cur_p, slow_log);
-	    ele_size += 4;
-	    cur_p += ele_size;
-	    remain_size -= ele_size;
-	  }
-
-	write2_func ("}");
-      }
-      break;
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
-    case CCI_U_TYPE_OBJECT:
-      {
-	int pageid;
-	short slotid, volid;
-
-	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
-	write2_func ("%d|%d|%d", pageid, slotid, volid);
-      }
-      break;
-    case CCI_U_TYPE_BFILE:
-    case CCI_U_TYPE_CFILE:
-      {
-	DB_VALUE db_val;
-	DB_ELO *db_elo;
-	net_arg_get_lobfile_value (&db_val, net_value);
-	db_elo = db_get_elo (&db_val);
-	if (db_elo)
-	  {
-	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BFILE) ? "BFILE" : "CFILE", db_elo->size,
-			 db_elo->locator, db_elo->meta_data, db_elo->type);
-	  }
-	else
-	  {
-	    write2_func ("invalid LOBFILE");
-	  }
-
-	db_value_clear (&db_val);
-      }
-      break;
-    case CCI_U_TYPE_BLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      {
-	char *str_val;
-	int val_size;
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (type != CCI_U_TYPE_NUMERIC)
-	  {
-	    write2_func ("(%d)", val_size);
-	    fwrite_func (str_val, val_size);
-	  }
-	else
-	  {
-	    fwrite_func (str_val, val_size - 1);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_CLOB:
-      // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      {
-#if defined(CAS_FOR_CGW)
-	INTL_CODESET charset = INTL_CODESET_UTF8;
-#else
-	INTL_CODESET charset = CAS_SCHEMA_DEFAULT_CHARSET;
-#endif /* CAS_FOR_CGW */
-	char *str_val;
-	int val_size;
-	int num_chars = 0;
-
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (val_size > 0)
-	  {
-	    num_chars = intl_char_count ((const unsigned char *) str_val, val_size, charset, &num_chars) - 1;
-	  }
-	write2_func ("(%d)", num_chars);
-	fwrite_func (str_val, val_size - 1);
-      }
-      break;
-
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL */
-    default:
-      write2_func ("NULL");
-      break;
-    }
-}
-
-/*
- * get_error_log_eids - get error identifier string
- *    return: pointer to internal buffer
- * NOTE:
- * this function is not MT safe. Rreturned address is guaranteed to be valid
- * until next get_error_log_eids() call.
- *
- */
-static char *
-get_error_log_eids (int err)
-{
-  static char *pending_alloc = NULL;
-  static char buffer[512];
-  char *buf;
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  if (err == 0)
-    {
-      return (char *) "";
-    }
-#else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  if (err >= 0)
-    {
-      return (char *) "";
-    }
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-
-  if (pending_alloc != NULL)
-    {
-      free (pending_alloc);
-      pending_alloc = NULL;
-    }
-
-#if defined(CAS_FOR_ORACLE) || defined(CAS_FOR_MYSQL)
-  buf = cas_error_log_get_eid (buffer, sizeof (buffer));
-#else
-  buf = cas_log_error_handler_asprint (buffer, sizeof (buffer), true);
-#endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
-  if (buf != buffer)
-    {
-      pending_alloc = buf;
-    }
-
-  return buf;
-}
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 FN_RETURN
 fn_lobfile_new (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
@@ -2768,28 +2136,7 @@ fn_lobfile_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_R
   return FN_KEEP_CONN;
 }
 
-FN_RETURN
-fn_deprecated (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-#if defined(CAS_FOR_DBMS)
-  ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
-#else /* CAS_FOR_DBMS */
-  net_buf_cp_int (net_buf, CAS_ER_NOT_IMPLEMENTED, NULL);
-#endif /* CAS_FOR_DBMS */
-  return FN_KEEP_CONN;
-}
-#endif
 
-FN_RETURN
-fn_not_supported (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
-{
-  ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
-  NET_BUF_ERR_SET (net_buf);
-  return FN_KEEP_CONN;
-}
-
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL) && !defined(CAS_FOR_CGW)
 void
 set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 {
@@ -2822,29 +2169,6 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	  tran_set_query_timeout (query_timeout);
 	  cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false, "set query timeout to %d ms (from app)",
 			 query_timeout);
-	}
-    }
-}
-#endif /* !CAS_FOR_ORACLE && !CAS_FOR_MYSQL && !CAS_FOR_CGW */
-
-static void
-update_error_query_count (T_APPL_SERVER_INFO * as_info_p, const T_ERROR_INFO * err_info_p)
-{
-  assert (as_info_p != NULL);
-  assert (err_info_p != NULL);
-
-  if (err_info_p->err_number != ER_QPROC_INVALID_XASLNODE)
-    {
-      as_info_p->num_error_queries %= MAX_DIAG_DATA_VALUE;
-      as_info_p->num_error_queries++;
-    }
-
-  if (err_info_p->err_indicator == DBMS_ERROR_INDICATOR)
-    {
-      if (err_info_p->err_number == ER_BTREE_UNIQUE_FAILED || err_info_p->err_number == ER_UNIQUE_VIOLATION_WITHKEY)
-	{
-	  as_info_p->num_unique_error_queries %= MAX_DIAG_DATA_VALUE;
-	  as_info_p->num_unique_error_queries++;
 	}
     }
 }

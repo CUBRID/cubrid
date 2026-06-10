@@ -226,6 +226,15 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
       goto end;
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      is_abort = true;
+      goto end;
+    }
+
   serial_obj = dbt_finish_object (obj_tmpl);
   if (!serial_obj)
     {
@@ -545,7 +554,7 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
   AU_DISABLE (save);
 
   /* change _db_stored_procedure */
-  error = obj_get (sp, SP_ATTR_NAME, &name_value);
+  error = obj_get (sp, SP_ATTR_SP_NAME, &name_value);
   if (error != NO_ERROR)
     {
       goto end;
@@ -601,6 +610,12 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 	{
 	  goto end;
 	}
+    }
+
+  error = db_update_obj_timestamp (sp);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
 end:

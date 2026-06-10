@@ -70,6 +70,7 @@
 #include "thread_manager.hpp"
 #include "log_volids.hpp"
 #include "schema_system_catalog.hpp"
+#include "catalog_class.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -92,11 +93,7 @@ typedef int pid_t;
 
 static char bo_Dbfullname[PATH_MAX];
 
-extern bool catcls_Enable;
 extern int log_default_input_for_archive_log_location;
-
-extern int catcls_compile_catalog_classes (THREAD_ENTRY * thread_p);
-extern int catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collations, int *coll_cnt);
 
 static int parse_user_define_line (char *line, FILE * output_file);
 static int parse_user_define_file (FILE * user_define_file, FILE * output_file);
@@ -648,7 +645,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	  if (snprintf (abs_lobfile_path, PATH_MAX, "%s/%s", cwd, lobfile_path) >= PATH_MAX)
 	    {
 	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
-	       * Additional review will be required.        
+	       * Additional review will be required.
 	       */
 	      goto error_exit;
 	    }
@@ -672,8 +669,6 @@ createdb (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
-
-  sm_mark_system_classes ();
 
   (void) lang_db_put_charset ();
 
@@ -1470,7 +1465,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	}
 
       if ((class_mop = db_find_class (class_name_p)) == NULL
-	  || sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR)
+	  || (db_is_class (class_mop) && sm_update_statistics (class_mop, STATS_WITH_SAMPLING) != NO_ERROR))
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
@@ -1982,8 +1977,6 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 		    case DB_TYPE_VARBIT:
 		    case DB_TYPE_CHAR:
 		    case DB_TYPE_VARCHAR:
-		    case DB_TYPE_NCHAR:
-		    case DB_TYPE_VARNCHAR:
 		      /* Do not override any information in Avg_key_size with precision information. Just make sure the
 		       * input makes sense for these cases.  */
 		      if (avg_key_size > domain->precision)
@@ -2621,14 +2614,13 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 			    err_status, true);
 	  goto error;
 	}
-      lf->locale_name = (char *) malloc (strlen (locale_str) + 1);
+      lf->locale_name = strdup (locale_str);
       if (lf->locale_name == NULL)
 	{
 	  err_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
 	  goto error;
 	}
-      strcpy (lf->locale_name, locale_str);
       err_status = locale_check_and_set_default_files (lf, true);
     }
   else
@@ -2931,9 +2923,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
   assert (db_collations != NULL);
 
-  strcpy (f_stmt_name, FILE_STMT_NAME);
-  strcat (f_stmt_name, db_name);
-  strcat (f_stmt_name, ".sql");
+  snprintf (f_stmt_name, PATH_MAX, FILE_STMT_NAME "%s.sql", db_name);
 
   f_stmt = fopen (f_stmt_name, "wt");
   if (f_stmt == NULL)
@@ -3267,7 +3257,7 @@ synccoll_check_tables (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * n
       assert (DB_VALUE_TYPE (&owner_name_val) == DB_TYPE_STRING);
       owner_name = db_get_string (&owner_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s\n", class_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] COLLATE utf8_bin;\n", class_name);
@@ -3441,7 +3431,7 @@ synccoll_check_foreign_keys (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bo
       assert (DB_VALUE_TYPE (&index_name_val) == DB_TYPE_STRING);
       index_name = db_get_string (&index_name_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s\n", class_name, index_name);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP FOREIGN KEY [%s];\n", class_name, index_name);
@@ -3546,10 +3536,6 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    "WHEN 4 THEN IF ([d].[prec] < 0, 'VARCHAR', CONCAT ('VARCHAR(', [d].[prec], ')')) "
 	    /* CHAR */
 	    "WHEN 25 THEN CONCAT ('CHAR(', [d].[prec], ')') "
-	    /* NCHAR */
-	    "WHEN 26 THEN CONCAT ('NCHAR(', [d].[prec], ')') "
-	    /* NCHAR VARYING */
-	    "WHEN 27 THEN IF ([d].[prec] < 0, 'NCHAR VARYING', CONCAT ('NCHAR VARYING(', [d].[prec], ')')) "
 	    /* ENUM */
 	    "WHEN 35 THEN ("
 		"SELECT "
@@ -3716,7 +3702,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 		  goto exit_on_error;
 		}
 
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (is_system_class)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] REMOVE PARTITIONING;\n", class_name);
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
@@ -3731,7 +3717,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	    }
 	  else
 	    {
-	      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	      if (is_system_class)
 		{
 		  fprintf (f_stmt, "ALTER TABLE [%s] MODIFY [%s] %s COLLATE utf8_bin;\n", class_name, attr_name,
 			   attr_data_type);
@@ -3747,7 +3733,7 @@ synccoll_check_attrs (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
 	{
 	  assert (class_type == SM_VCLASS_CT);
 
-	  if (is_system_class & SM_CLASSFLAG_SYSTEM)
+	  if (is_system_class)
 	    {
 	      fprintf (f_stmt, "DROP VIEW [%s];\n", class_name);
 	    }
@@ -3969,7 +3955,7 @@ synccoll_check_views (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool * ne
       need_check = db_get_int (&value);
       db_value_clear (&value);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s\n", view_name, query_spec);
 
@@ -4057,7 +4043,7 @@ synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool *
 	  "LOWER ([t].[owner].[name]) AS [owner_name], "
 	  "[t].[condition] AS [condition] "
 	"FROM "
-	  "[db_trigger] AS [t] "
+	  "[_db_trigger] AS [t] "
 	"WHERE "
 	  "LOCATE ('collate %s', [t].[condition]) > 0",
 	db_coll->coll_name);
@@ -4090,7 +4076,6 @@ synccoll_check_triggers (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt, bool *
 
   do
     {
-      int is_system_class = 0;
       const char *trigger_name = NULL;
       const char *owner_name = NULL;
       const char *trigger_cond = NULL;
@@ -4302,7 +4287,7 @@ synccoll_check_function_indexes (const LANG_COLL_COMPAT * db_coll, FILE * f_stmt
       assert (DB_VALUE_TYPE (&index_func_expr_val) == DB_TYPE_STRING);
       index_func_expr = db_get_string (&index_func_expr_val);
 
-      if (is_system_class & SM_CLASSFLAG_SYSTEM)
+      if (is_system_class)
 	{
 	  fprintf (stdout, "%s | %s | %s\n", class_name, index_name, index_func_expr);
 	  fprintf (f_stmt, "ALTER TABLE [%s] DROP INDEX [%s];\n", class_name, index_name);

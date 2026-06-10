@@ -48,6 +48,23 @@ extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *resul
 
 using namespace cubpl;
 
+static PT_NODE *
+pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
+{
+  bool *has_table_access;
+
+  has_table_access = (bool *) arg;
+  assert (has_table_access != NULL);
+
+  if (tree && tree->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (tree))
+    {
+      *has_table_access = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
 namespace cubmethod
 {
   callback_handler::callback_handler (int max_query_handler)
@@ -471,8 +488,6 @@ namespace cubmethod
       case DB_TYPE_MONETARY:
       case DB_TYPE_NUMERIC:
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       case DB_TYPE_DATE:
       case DB_TYPE_TIME:
@@ -529,7 +544,7 @@ namespace cubmethod
     int error = NO_ERROR;
 
     std::vector<sql_semantics> semantics_vec;
-    for (const std::string s : request.sqls)
+    for (const std::string &s : request.sqls)
       {
 	i++;
 	query_handler *handler = new_query_handler ();
@@ -547,6 +562,7 @@ namespace cubmethod
 	error = handler->prepare_compile (s);
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
+	    bool has_table_access;
 	    DB_SESSION *db_session = handler->get_db_session ();
 	    const prepare_info &info = handler->get_prepare_info ();
 
@@ -557,6 +573,10 @@ namespace cubmethod
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+
+	    has_table_access = false;
+	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
+	    semantics.has_table_access = has_table_access ? 1 : 0;
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)
@@ -765,17 +785,17 @@ namespace cubmethod
 	      DB_OBJECT *arg_mop_p = db_get_object (&temp);
 	      if (arg_mop_p)
 		{
-		  if (db_get (arg_mop_p, SP_ATTR_MODE, &mode) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_MODE, &mode) == NO_ERROR)
 		    {
 		      param_info.mode = db_get_int (&mode);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_DATA_TYPE, &arg_type) == NO_ERROR)
 		    {
 		      param_info.type = db_get_int (&arg_type);
 		    }
 
-		  if (db_get (arg_mop_p, SP_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
+		  if (db_get (arg_mop_p, SP_ARG_ATTR_DEFAULT_VALUE, &has_default) == NO_ERROR)
 		    {
 		      param_info.has_default = DB_IS_NULL (&has_default) ? 0 : 1;
 		    }
@@ -1133,6 +1153,30 @@ exit:
     m_deferred_query_free_handler.clear();
   }
 
+  void
+  callback_handler::clear_all_query_handlers ()
+  {
+    /* must run before ws_final(); query_handler dtor walks ws_heap-allocated host_variables */
+    for (auto it = m_deferred_query_free_handler.begin (); it != m_deferred_query_free_handler.end (); it++)
+      {
+	delete *it;
+      }
+    m_deferred_query_free_handler.clear ();
+
+    for (size_t i = 0; i < m_query_handlers.size (); i++)
+      {
+	if (m_query_handlers[i] != nullptr)
+	  {
+	    delete m_query_handlers[i];
+	    m_query_handlers[i] = nullptr;
+	  }
+      }
+    m_query_handlers.clear ();
+
+    m_sql_handler_map.clear ();
+    m_qid_handler_map.clear ();
+  }
+
   query_handler *
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
@@ -1179,4 +1223,15 @@ exit:
   {
     return &handler;
   }
+}
+
+/* called from boot_client_all_finalize() before ws_final() */
+void
+method_callback_final (void)
+{
+  cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+  if (h != NULL)
+    {
+      h->clear_all_query_handlers ();
+    }
 }

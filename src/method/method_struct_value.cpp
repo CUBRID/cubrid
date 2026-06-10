@@ -112,8 +112,6 @@ namespace cubmethod
       break;
 
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
 	// TODO: support unicode decomposed string
       {
@@ -327,8 +325,6 @@ namespace cubmethod
       break;
 
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
 	size += serializator.get_packed_int_size (size); /* codeset */
@@ -517,8 +513,6 @@ namespace cubmethod
       break;
 
       case DB_TYPE_CHAR:
-      case DB_TYPE_NCHAR:
-      case DB_TYPE_VARNCHAR:
       case DB_TYPE_STRING:
       {
 	int codeset;

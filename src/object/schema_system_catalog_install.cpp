@@ -24,24 +24,60 @@
 #include "schema_system_catalog_install.hpp"
 
 #include "schema_system_catalog.hpp"
-#include "cnv.h"
 #include "db.h"
 #include "dbtype_function.h"
 #include "schema_system_catalog_constants.h"
+#include "sp_constants.hpp"
+#include "trigger_manager.h"
 #include "work_space.h"
-#include "schema_manager.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
 #include "authenticate.h"
-#include "locator_cl.h"
+
+#define CT_DUAL_DUMMY   "dummy"
 
 using namespace std::literals;
+
+static std::function<int (DB_VALUE *)>
+make_int_value_fn (int num)
+{
+  return [num] (DB_VALUE* val)
+  {
+    return db_make_int (val, num);
+  };
+}
+
+static std::function<int (DB_VALUE *)>
+make_double_value_fn (double num)
+{
+  return [num] (DB_VALUE* val)
+  {
+    return db_make_double (val, num);
+  };
+}
+
+static std::function<int (DB_VALUE *)>
+make_numeric_value_fn (const char *str)
+{
+  return [str] (DB_VALUE *val)
+  {
+    int error_code = NO_ERROR;
+    error_code = numeric_coerce_string_to_num (str, strlen (str), LANG_SYS_CODESET, val);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    FLOAT_TO_FIXED_NUMERIC (val);
+    return error_code;
+  };
+}
 
 /* ========================================================================== */
 /* NEW DEFINITION (initializers for CLASS) */
 /* ========================================================================== */
 int
-catcls_add_data_type (struct db_object *class_mop)
+catcls_add_data_type (DB_OBJECT *class_mop)
 {
   DB_OBJECT *obj;
   DB_VALUE val;
@@ -55,7 +91,14 @@ catcls_add_data_type (struct db_object *class_mop)
     NULL /* POINTER */, NULL /* ERROR */, "SHORT", NULL /* VOBJ */,
     NULL /* OID */,
     NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
-    "NCHAR", "VARNCHAR", NULL /* RESULTSET */, NULL /* MIDXKEY */,
+
+    /* TODO:
+     * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
+     * However, to maintain compatibility with previous versions, the enum list will be preserved.
+     */
+    NULL /* NCHAR */, NULL /* VARNCHAR */,
+
+    NULL /* RESULTSET */, NULL /* MIDXKEY */,
     NULL /* TABLE */,
     "BIGINT", "DATETIME",
     "BFILE", "CFILE", "BLOB", "CLOB",
@@ -86,7 +129,7 @@ catcls_add_data_type (struct db_object *class_mop)
 }
 
 int
-catcls_add_collations (struct db_object *class_mop)
+catcls_add_collations (DB_OBJECT *class_mop)
 {
   int i;
   int count_collations;
@@ -150,13 +193,31 @@ catcls_add_collations (struct db_object *class_mop)
   return NO_ERROR;
 }
 
+static int
+catcls_add_dual (DB_OBJECT *class_mop)
+{
+  DB_VALUE val;
+  int error_code = NO_ERROR;
+  DB_OBJECT *obj = db_create_internal (class_mop);
+  const char *dummy = "X";
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error_code == NO_ERROR)
+    {
+      error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
+    }
+
+  return error_code;
+}
+
 int
 catcls_add_charsets (struct db_object *class_mop)
 {
   int i;
-  int count_collations;
-
-  count_collations = lang_collation_count ();
 
   for (i = INTL_CODESET_BINARY; i <= INTL_CODESET_LAST; i++)
     {
@@ -213,53 +274,60 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_ATTRIBUTE_NAME, system_catalog_initializer::get_attribute ());
   ADD_TABLE_DEFINITION (CT_DOMAIN_NAME, system_catalog_initializer::get_domain ());
   ADD_TABLE_DEFINITION (CT_METHOD_NAME, system_catalog_initializer::get_method ());
-  ADD_TABLE_DEFINITION (CT_METHSIG_NAME, system_catalog_initializer::get_method_sig ());
-  ADD_TABLE_DEFINITION (CT_METHARG_NAME, system_catalog_initializer::get_meth_argument ());
+  ADD_TABLE_DEFINITION (CT_METHSIG_NAME, system_catalog_initializer::get_meth_sig ());
+  ADD_TABLE_DEFINITION (CT_METHARG_NAME, system_catalog_initializer::get_meth_arg ());
   ADD_TABLE_DEFINITION (CT_METHFILE_NAME, system_catalog_initializer::get_meth_file ());
   ADD_TABLE_DEFINITION (CT_QUERYSPEC_NAME, system_catalog_initializer::get_query_spec ());
   ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
   ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
-  ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_class_authorization ());
-  ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition());
-  ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_arguments());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code());
-  ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial());
-  ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info());
-  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collations());
-  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charsets());
-  ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual());
-  ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym());
-  ADD_TABLE_DEFINITION (CT_DB_SERVER_NAME, system_catalog_initializer::get_db_server());
+  ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_auth ());
+  ADD_TABLE_DEFINITION (CT_TRIGGER_NAME, system_catalog_initializer::get_trigger ());
+  ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition ());
+  ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_args ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code ());
+  ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial ());
+  ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info ());
+  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collation ());
+  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charset ());
+  ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
+  ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
+  ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
+  ADD_TABLE_DEFINITION (CT_HISTOGRAM_NAME, system_catalog_initializer::get_histogram());
+  ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
 
   ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
-  ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_super_class ());
+  ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
   ADD_VIEW_DEFINITION (CTV_VCLASS_NAME, system_catalog_initializer::get_view_vclass ());
   ADD_VIEW_DEFINITION (CTV_ATTRIBUTE_NAME, system_catalog_initializer::get_view_attribute ());
-  ADD_VIEW_DEFINITION (CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attribute_set_domain ());
+  ADD_VIEW_DEFINITION (CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attr_setdomain_elm ());
   ADD_VIEW_DEFINITION (CTV_METHOD_NAME, system_catalog_initializer::get_view_method ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_NAME, system_catalog_initializer::get_view_method_argument ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_method_argument_set_domain ());
-  ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_method_file ());
+  ADD_VIEW_DEFINITION (CTV_METHARG_NAME, system_catalog_initializer::get_view_meth_arg ());
+  ADD_VIEW_DEFINITION (CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_meth_arg_setdomain_elm ());
+  ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_meth_file ());
   ADD_VIEW_DEFINITION (CTV_INDEX_NAME, system_catalog_initializer::get_view_index ());
   ADD_VIEW_DEFINITION (CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ());
-  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_authorization ());
+  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_auth ());
   ADD_VIEW_DEFINITION (CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ());
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
-  ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_arguments ());
-  ADD_VIEW_DEFINITION (CTV_DB_COLLATION_NAME, system_catalog_initializer::get_view_db_collation ());
-  ADD_VIEW_DEFINITION (CTV_DB_CHARSET_NAME, system_catalog_initializer::get_view_db_charset ());
-  ADD_VIEW_DEFINITION (CTV_DB_SERVER_NAME, system_catalog_initializer::get_view_db_server ());
+  ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_args ());
+  ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
+  ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
+  ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
+  ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
+  ADD_VIEW_DEFINITION (CTV_AUTHORIZATION_NAME, system_catalog_initializer::get_view_authorization ());
+  ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
+  ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
   ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
+  ADD_VIEW_DEFINITION (CTV_HISTOGRAM_NAME, system_catalog_initializer::get_view_db_histogram ());
 }
 
 int
 catcls_install (void)
 {
   int error_code = NO_ERROR;
-
   const size_t num_classes = clist.size ();
   const size_t num_vclasses = vclist.size ();
   std::vector<MOP> class_mop (num_classes, nullptr);
@@ -290,7 +358,6 @@ catcls_install (void)
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
-	  error_code = er_errid ();
 	  goto end;
 	}
     }
@@ -304,12 +371,7 @@ catcls_install (void)
 	  error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
 	}
 
-      if (er_errid () != NO_ERROR)
-	{
-	  error_code = er_errid ();
-	}
-
-
+      error_code = er_errid();
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -330,38 +392,6 @@ namespace cubschema
   /* ========================================================================== */
   /* NEW DEFINITION (CLASS) */
   /* ========================================================================== */
-
-
-// TODO: find right place
-// TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
-  {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_numeric (const int prec, const int scale)
-  {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_sequence (const std::string_view type)
-  {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
 
   system_catalog_definition
   system_catalog_initializer::get_class ()
@@ -384,6 +414,8 @@ namespace cubschema
       {"class_meth_count", "integer"},
       {"collation_id", "integer"},
       {"tde_algorithm", "integer"},
+      {"statistics_strategy", "integer"},
+      {"flags", "integer"},
       {"sub_classes", format_sequence (CT_CLASS_NAME)},
       {"super_classes", format_sequence (CT_CLASS_NAME)},
       {"inst_attrs", format_sequence (CT_ATTRIBUTE_NAME)},
@@ -395,7 +427,10 @@ namespace cubschema
       {"query_specs", format_sequence (CT_QUERYSPEC_NAME)},
       {"indexes", format_sequence (CT_INDEX_NAME)},
       {"comment", format_varchar (2048)},
-      {"partition", format_sequence (CT_PARTITION_NAME)}
+      {"partition", format_sequence (CT_PARTITION_NAME)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"checked_time", "datetime"}
     },
 // constraints
     {
@@ -420,24 +455,22 @@ namespace cubschema
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
       {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false}
     },
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_attribute ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_ATTRIBUTE_NAME,
@@ -450,9 +483,10 @@ namespace cubschema
       {"from_attr_name", format_varchar (255)},
       {"def_order", "integer"},
       {"data_type", "integer"},
-      {"default_value", format_varchar (255)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {"domains", format_sequence (CT_DOMAIN_NAME)},
       {"is_nullable", "integer"},
+      {"flags", "integer"},
       {"comment", format_varchar (2048)}
     },
 // constraints
@@ -462,19 +496,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_domain ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_DOMAIN_NAME,
@@ -499,19 +530,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_method ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_METHOD_NAME,
@@ -531,19 +559,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_method_sig ()
+  system_catalog_initializer::get_meth_sig ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_METHSIG_NAME,
@@ -562,19 +587,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_meth_argument ()
+  system_catalog_initializer::get_meth_arg ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_METHARG_NAME,
@@ -592,19 +614,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_meth_file ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_METHFILE_NAME,
@@ -621,26 +640,24 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_query_spec ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_QUERYSPEC_NAME,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
-      {"spec", format_varchar (1073741823)}
+      {"spec", format_varchar (1073741823)},
+      {"invalidated_time", "datetime"}
     },
 // constraints
     {
@@ -649,22 +666,19 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_index ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_INDEX_NAME,
 		   // columns
     {
       {"class_of", CT_CLASS_NAME},
@@ -677,44 +691,45 @@ namespace cubschema
       {"is_foreign_key", "integer"},
       {"filter_expression", format_varchar (1073741823)},
       {"have_function", "integer"},
+      {"status", "integer"},
+      {"referential_index", CT_INDEX_NAME},
+      {"delete_rule", "integer"},
+      {"update_rule", "integer"},
+      {"referential_match_option", "integer"},
+      {"index_type", "integer"},
+      {"options", "integer"},
       {"comment", format_varchar (1024)},
-      {"status", "integer"}
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
     },
 // constraints
     {
       {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"index_name", nullptr}, false},
     },
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_index_key ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_QUERYSPEC_NAME,
+		   CT_INDEXKEY_NAME,
 		   // columns
     {
       {"index_of", CT_INDEX_NAME},
       {"key_attr_name", format_varchar (255)},
       {"key_order", "integer"},
       {"asc_desc", "integer"},
-      {
-	"key_prefix_length", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, -1);
-	}
-      },
+      {"key_prefix_length", "integer", make_int_value_fn (-1)},
       {"func", format_varchar (1023)}
     },
 // constraints
@@ -724,19 +739,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_class_authorization ()
+  system_catalog_initializer::get_auth ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_CLASSAUTH_NAME,
@@ -747,7 +759,9 @@ namespace cubschema
       {"object_type", "integer"},
       {"object_of", "object"},
       {"auth_type", format_varchar (7)},
-      {"is_grantable", "integer"}
+      {"is_grantable", "integer"},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -757,19 +771,55 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializers
     nullptr
 	   );
+  }
 
-
+  system_catalog_definition
+  system_catalog_initializer::get_trigger ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_TRIGGER_NAME,
+		   // columns
+    {
+      {TR_ATT_UNIQUE_NAME, "string"},
+      {TR_ATT_OWNER, AU_USER_CLASS_NAME},
+      {TR_ATT_NAME, "string"},
+      {TR_ATT_STATUS, "integer", make_int_value_fn (TR_STATUS_ACTIVE)},
+      {TR_ATT_PRIORITY, "double", make_double_value_fn (TR_LOWEST_PRIORITY)},
+      {TR_ATT_EVENT, "integer", make_int_value_fn (TR_EVENT_NULL)},
+      {TR_ATT_CLASS, "object"},
+      {TR_ATT_ATTRIBUTE, "string"},
+      {TR_ATT_CLASS_ATTRIBUTE, "integer", make_int_value_fn (0)},
+      {TR_ATT_CONDITION_TYPE, "integer"},
+      {TR_ATT_CONDITION, "string"},
+      {TR_ATT_CONDITION_TIME, "integer"},
+      {TR_ATT_ACTION_TYPE, "integer"},
+      {TR_ATT_ACTION, "string"},
+      {TR_ATT_ACTION_TIME, "integer"},
+      {TR_ATT_COMMENT, format_varchar (1024)},
+      {TR_ATT_CREATED_TIME, "datetime"},
+      {TR_ATT_UPDATED_TIME, "datetime"}
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializers
+    nullptr
+	   );
   }
 
   system_catalog_definition
   system_catalog_initializer::get_partition ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_PARTITION_NAME,
@@ -780,6 +830,7 @@ namespace cubschema
       {"ptype", "integer"},
       {"pexpr", format_varchar (2048)},
       {"pvalues", format_sequence ("")},
+      {"class_partition_type", "integer"},
       {"comment", format_varchar (1024)},
     },
 // constraints
@@ -789,65 +840,63 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_data_type ()
   {
-
     return system_catalog_definition (
 		   // name
-		   CT_PARTITION_NAME,
+		   CT_DATATYPE_NAME,
 		   // columns
     {
       {"type_id", "integer"},
       {"type_name", format_varchar (16)}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"type_id", "type_name", nullptr}, false}
+    },
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_data_type
 	   );
-
-
   }
-
 
   system_catalog_definition
   system_catalog_initializer::get_stored_procedure ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_STORED_PROC_NAME,
 		   // columns
     {
-      {"unique_name", format_varchar (255)},
-      {"sp_name", format_varchar (255)},
-      {"sp_type", "integer"},
-      {"return_type", "integer"},
-      {"arg_count", "integer"},
-      {"args", format_sequence (CT_STORED_PROC_ARGS_NAME)},
-      {"lang", "integer"},
-      {"pkg_name", format_varchar (255)},
-      {"is_system_generated", "integer"},
-      {"directive", "integer"},
-      {"target_class", format_varchar (1024)},
-      {"target_method", format_varchar (1024)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)}
+      {SP_ATTR_UNIQUE_NAME, format_varchar (255)},
+      {SP_ATTR_SP_NAME, format_varchar (255)},
+      {SP_ATTR_SP_TYPE, "integer"},
+      {SP_ATTR_RETURN_TYPE, "integer"},
+      {SP_ATTR_ARG_COUNT, "integer"},
+      {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
+      {SP_ATTR_LANG, "integer"},
+      {SP_ATTR_PKG_NAME, format_varchar (255)},
+      {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_ATTR_DIRECTIVE, "integer"},
+      {SP_ATTR_TARGET_CLASS, format_varchar (1024)},
+      {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
+      {SP_ATTR_OWNER, AU_USER_CLASS_NAME},
+      {SP_ATTR_SQL_DATA_ACCESS, "integer"},
+      {SP_ATTR_COMMENT, format_varchar (1024)},
+      {SP_ATTR_CREATED_TIME, "datetime"},
+      {SP_ATTR_UPDATED_TIME, "datetime"},
     },
 // constraints
     {
@@ -856,7 +905,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -864,23 +913,22 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_stored_procedure_arguments ()
+  system_catalog_initializer::get_stored_procedure_args ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_of", CT_STORED_PROC_NAME},
-      {"index_of", "integer"},
-      {"is_system_generated", "integer"},
-      {"arg_name", format_varchar (255)},
-      {"data_type", "integer"},
-      {"mode", "integer"},
-      {"default_value", format_varchar (255)}, // TODO: CBRD-25261
-      {"is_optional", "integer"}, // default_value is used only when is_optional is 1
-      {"comment", format_varchar (1024)},
+      {SP_ARG_ATTR_SP_OF, CT_STORED_PROC_NAME},
+      {SP_ARG_ATTR_INDEX_OF, "integer"},
+      {SP_ARG_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_ARG_ATTR_ARG_NAME, format_varchar (255)},
+      {SP_ARG_ATTR_DATA_TYPE, "integer"},
+      {SP_ARG_ATTR_MODE, "integer"},
+      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)}, // TODO: CBRD-25261
+      {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
+      {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
     },
 // constraints
     {
@@ -889,32 +937,30 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
   }
 
-
   system_catalog_definition
   system_catalog_initializer::get_stored_procedure_code ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {"name", format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
-      {"created_time", format_varchar (16)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"is_static", "integer"},
-      {"is_system_generated", "integer"},
-      {"stype", "integer"},
-      {"scode", format_varchar (1073741823)},
-      {"otype", "integer"},
-      {"ocode", format_varchar (1073741823)}
+      {SP_CODE_ATTR_NAME, format_varchar (1024)}, // same with [_db_stored_procedure].[target_class]
+      {SP_CODE_ATTR_CREATED_TIME, format_varchar (16)},
+      {SP_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
+      {SP_CODE_ATTR_IS_STATIC, "integer"},
+      {SP_CODE_ATTR_IS_SYSTEM_GENERATED, "integer"},
+      {SP_CODE_ATTR_STYPE, "integer"},
+      {SP_CODE_ATTR_SCODE, format_varchar (1073741823)},
+      {SP_CODE_ATTR_OTYPE, "integer"},
+      {SP_CODE_ATTR_OCODE, format_varchar (1073741823)}
     },
 // constraints
     {
@@ -923,7 +969,7 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -941,42 +987,20 @@ namespace cubschema
       {"unique_name", "string"},
       {"name", "string"},
       {"owner", AU_USER_CLASS_NAME},
-      {
-	"current_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	}
-      },
-      {
-	"increment_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0), [] (DB_VALUE* val)
-	{
-	  return numeric_coerce_string_to_num ("1", 1, LANG_SYS_CODESET, val);
-	}
-      },
-      {"max_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {"min_val", format_numeric (DB_MAX_NUMERIC_PRECISION, 0)},
-      {
-	"cyclic", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
-      {
-	"started", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0), make_numeric_value_fn ("1")},
+      {"cyclic", "integer", make_int_value_fn (0)},
+      {"started", "integer", make_int_value_fn (0)},
       {"class_name", "string"},
       {"attr_name", "string"},
       {attribute_kind::CLASS_METHOD, "change_serial_owner", "au_change_serial_owner_method"},
-      {
-	"cached_num", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"cached_num", "integer",	make_int_value_fn (0)},
       {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -989,24 +1013,17 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_ha_apply_info ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_HA_APPLY_INFO_NAME,
@@ -1051,24 +1068,17 @@ namespace cubschema
     },
 // authorization
     {
-      // owner
-      Au_dba_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_collations ()
+  system_catalog_initializer::get_collation ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_COLLATION_NAME,
@@ -1084,23 +1094,22 @@ namespace cubschema
       {CT_DBCOLL_CHECKSUM_COLUMN, format_varchar (32)}
     },
 // constraints
-    {},
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {CT_DBCOLL_COLL_ID_COLUMN, nullptr}, false},
+    },
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_collations
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_charsets ()
+  system_catalog_initializer::get_charset ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_CHARSET_NAME,
@@ -1116,19 +1125,16 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     catcls_add_charsets
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_dual ()
   {
-#define CT_DUAL_DUMMY   "dummy"
     return system_catalog_definition (
 		   // name
 		   CT_DUAL_NAME,
@@ -1143,43 +1149,18 @@ namespace cubschema
       // owner, grants
       Au_dba_user,
       {
-	{Au_public_user, AU_SELECT, false}
+	{Au_public_user, AU_SELECT, false},
+	{Au_information_schema_user, AU_SELECT, false}
       }
     },
 // initializer
-    [] (MOP class_mop)
-    {
-      DB_VALUE val;
-      int error_code = NO_ERROR;
-      DB_OBJECT *obj = db_create_internal (class_mop);
-      const char *dummy = "X";
-      if (obj == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  return er_errid ();
-	}
-      error_code = db_make_varchar (&val, 1, dummy, strlen (dummy), LANG_SYS_CODESET, LANG_SYS_COLLATION);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-
-      error_code = db_put_internal (obj, CT_DUAL_DUMMY, &val);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-      return error_code;
-    }
+    catcls_add_dual
 	   );
-
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_synonym ()
   {
-
     return system_catalog_definition (
 		   // name
 		   CT_SYNONYM_NAME,
@@ -1188,16 +1169,13 @@ namespace cubschema
       {"unique_name", format_varchar (255)},
       {"name", format_varchar (255)},
       {"owner", AU_USER_CLASS_NAME},
-      {
-	"is_public", "integer", [] (DB_VALUE* val)
-	{
-	  return db_make_int (val, 0);
-	}
-      },
+      {"is_public", "integer", make_int_value_fn (0)},
       {"target_unique_name", format_varchar (255)},
       {"target_name", format_varchar (255)},
       {"target_owner", AU_USER_CLASS_NAME},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
     },
 // constraints
     {
@@ -1213,7 +1191,43 @@ namespace cubschema
 // authorization
     {
       // owner, grants
-      Au_dba_user, {}
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_server ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_SERVER_NAME,
+		   // columns
+    {
+      {"link_name", format_varchar (255)},
+      {"host", format_varchar (255)},
+      {"port", "integer"},
+      {"db_name", format_varchar (255)},
+      /* dblink remote user_name; kept 255 for external DBMS compatibility */
+      {"user_name", format_varchar (255)},
+      {"password", "string"},
+      {"properties", format_varchar (2048)},
+      {"owner", AU_USER_CLASS_NAME},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"}
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
     },
 // initializer
     nullptr
@@ -1223,38 +1237,61 @@ namespace cubschema
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_db_server ()
+  system_catalog_initializer::get_histogram ()
   {
-
+// db_class
     return system_catalog_definition (
 		   // name
-		   CT_DB_SERVER_NAME,
+		   CT_HISTOGRAM_NAME,
 		   // columns
     {
-      {"link_name", format_varchar (255)},
-      {"host", format_varchar (255)},
-      {"port", "integer"},
-      {"db_name", format_varchar (255)},
-      {"user_name", format_varchar (255)},
-      {"password", "string"},
-      {"properties", format_varchar (2048)},
-      {"owner", AU_USER_CLASS_NAME},
-      {"comment", format_varchar (1024)}
+      {"class_of", "object"},
+      {"key_attr", format_varchar (255)},
+      {"with_fullscan","integer"},
+      {"null_frequency", "double"},
+      {"histogram_values", format_varbit (1073741823) }
     },
-// constraints
+// constraint
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_UNIQUE, "", {"class_of", "key_attr", nullptr}, false}
     },
 // authorization
     {
-      // owner, grants
+      // owner
       Au_dba_user, {}
     },
 // initializer
     nullptr
 	   );
 
+  }
 
+  system_catalog_definition
+  system_catalog_initializer::get_global_tran ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_GLOBAL_TRAN_NAME,
+		   // columns
+    {
+      {"gtrid", "integer"},
+      {"bqual", "integer"},
+      {"conn_url", format_varchar (512)},
+      {"user_name", format_varchar (32)},
+      {"password", format_varchar (256)},
+      {"state", format_varchar (1)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"}
+    },
+// constraints
+    {},
+// authorization
+    {
+      Au_dba_user, {}
+    },
+// initializer
+    nullptr
+	   );
   }
 
   /* ========================================================================== */
@@ -1264,21 +1301,24 @@ namespace cubschema
   system_catalog_definition
   system_catalog_initializer::get_view_class ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_CLASS_NAME,
 		   // columns
     {
       {"class_name", format_varchar (255)},
-      {"owner_name", format_varchar (255)},
-      {"class_type", "varchar(6)"},
-      {"is_system_class", "varchar(3)"},
-      {"tde_algorithm", "varchar(32)"},
-      {"partitioned", "varchar(3)"},
-      {"is_reuse_oid_class", "varchar(3)"},
-      {"collation", "varchar(32)"},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"class_type", format_varchar (6)},
+      {"is_system_class", format_varchar (3)},
+      {"tde_algorithm", format_varchar (32)},
+      {"statistics_strategy", format_varchar (8)},
+      {"partitioned", format_varchar (3)},
+      {"is_reuse_oid_class", format_varchar (3)},
+      {"collation", format_varchar (32)},
       {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"checked_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
     },
@@ -1296,24 +1336,22 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_super_class ()
+  system_catalog_initializer::get_view_direct_super_class ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_SUPER_CLASS_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"super_class_name", "varchar(255)"},
-      {"super_owner_name", "varchar(255)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"super_class_name", format_varchar (255)},
+      {"super_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_super_class_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_direct_super_class_spec ()}
     },
 // constraint
     {},
@@ -1329,22 +1367,23 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_vclass ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_VCLASS_NAME,
 		   // columns
     {
-      {"vclass_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"vclass_def", "varchar(1073741823)"},
-      {"comment", "varchar(2048)"},
+      {"vclass_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"vclass_def", format_varchar (1073741823)},
+      {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
@@ -1362,36 +1401,36 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_attribute ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_ATTRIBUTE_NAME,
 		   // columns
     {
-      {"attr_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"attr_type", "varchar(8)"},
+      {"attr_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"attr_type", format_varchar (8)},
       {"def_order", "integer"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
-      {"from_attr_name", "varchar(255)"},
-      {"data_type", "varchar(9)"},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"from_attr_name", format_varchar (255)},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
-      {"charset", "varchar(32)"},
-      {"collation", "varchar(32)"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
-      {"default_value", "varchar(255)"},
-      {"is_nullable", "varchar(3)"},
-      {"comment", "varchar(1024)"},
+      {"charset", format_varchar (32)},
+      {"collation", format_varchar (32)},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
+      {"is_partition_key", format_varchar (3)},
+      {"is_nullable", format_varchar (3)},
+      {"is_invisible", format_varchar (3)},
+      {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec ()}
     },
@@ -1409,30 +1448,28 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_attribute_set_domain ()
+  system_catalog_initializer::get_view_attr_setdomain_elm ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_ATTR_SD_NAME,
 		   // columns
     {
-      {"attr_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"attr_type", "varchar(8)"},
-      {"data_type", "varchar(9)"},
+      {"attr_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"attr_type", format_varchar (8)},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_attribute_set_domain_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_attr_setdomain_elm_spec ()}
     },
 // constraint
     {},
@@ -1448,26 +1485,24 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_method ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_METHOD_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
-      {"from_meth_name", "varchar(255)"},
-      {"func_name", "varchar(255)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"meth_type", format_varchar (8)},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"from_meth_name", format_varchar (255)},
+      {"func_name", format_varchar (255)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_spec ()}
     },
@@ -1485,31 +1520,29 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_argument ()
+  system_catalog_initializer::get_view_meth_arg ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_METHARG_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
-      {"data_type", "varchar(9)"},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_method_arg_spec ()}
     },
 // constraint
     {},
@@ -1525,31 +1558,29 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_argument_set_domain ()
+  system_catalog_initializer::get_view_meth_arg_setdomain_elm ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_METHARG_SD_NAME,
 		   // columns
     {
-      {"meth_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"meth_type", "varchar(8)"},
+      {"meth_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"meth_type", format_varchar (8)},
       {"index_of", "integer"},
-      {"data_type", "varchar(9)"},
+      {"data_type", format_varchar (9)},
       {"prec", "integer"},
       {"scale", "integer"},
       {"code_set", "integer"},
-      {"domain_class_name", "varchar(255)"},
-      {"domain_owner_name", "varchar(255)"},
+      {"domain_class_name", format_varchar (255)},
+      {"domain_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_argument_set_domain_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_meth_arg_setdomain_elm_spec ()}
     },
 // constraint
     {},
@@ -1565,25 +1596,23 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_method_file ()
+  system_catalog_initializer::get_view_meth_file ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_METHFILE_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"path_name", "varchar(255)"},
-      {"from_class_name", "varchar(255)"},
-      {"from_owner_name", "varchar(255)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"path_name", format_varchar (255)},
+      {"from_class_name", format_varchar (255)},
+      {"from_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_method_file_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_meth_file_spec ()}
     },
 // constraint
     {},
@@ -1599,34 +1628,38 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_index ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_INDEX_NAME,
 		   // columns
     {
-      {"index_name", "varchar(255)"},
-      {"is_unique", "varchar(3)"},
-      {"is_reverse", "varchar(3)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
+      {"index_name", format_varchar (255)},
+      {"is_unique", format_varchar (3)},
+      {"is_reverse", format_varchar (3)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"key_count", "integer"},
-      {"is_primary_key", "varchar(3)"},
-      {"is_foreign_key", "varchar(3)"},
-#if 0				// Not yet, Disabled for QA verification convenience
-      {"is_deduplicate", "varchar(3)"},
-      {"deduplicate_key_level", "smallint"},
-#endif
-      {"filter_expression", "varchar(1073741823)"},
-      {"have_function", "varchar(3)"},
-      {"comment", "varchar(1024)"},
-      {"status", "varchar(255)"},
+      {"is_primary_key", format_varchar (3)},
+      {"is_foreign_key", format_varchar (3)},
+      {"filter_expression", format_varchar (1073741823)},
+      {"have_function", format_varchar (3)},
+      {"status", format_varchar (255)},
+      {"referential_index_class_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"referential_index_class_name", format_varchar (255)},
+      {"referential_index_name", format_varchar (255)},
+      {"delete_rule", format_varchar (32)},
+      {"update_rule", format_varchar (32)},
+      {"referential_match_option", format_varchar (7)},
+      {"index_type", format_varchar (32)},
+      {"deduplicate_key_level", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_spec ()}
     },
@@ -1644,26 +1677,24 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_index_key ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_INDEXKEY_NAME,
 		   // columns
     {
-      {"index_name", "varchar(255)"},
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"key_attr_name", "varchar(255)"},
+      {"index_name", format_varchar (255)},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"key_attr_name", format_varchar (255)},
       {"key_order", "integer"},
-      {"asc_desc", "varchar(4)"},
+      {"asc_desc", format_varchar (4)},
       {"key_prefix_length", "integer"},
-      {"func", "varchar(1023)"},
+      {"func", format_varchar (1023)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_key_spec ()}
     },
@@ -1681,7 +1712,6 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   /* When a user is granted SELECT privilege,
@@ -1689,23 +1719,24 @@ namespace cubschema
    * Is this no problem? */
 
   system_catalog_definition
-  system_catalog_initializer::get_view_authorization ()
+  system_catalog_initializer::get_view_auth ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_AUTH_NAME,
 		   // columns
     {
-      {"grantor_name", "varchar(255)"},
-      {"grantee_name", "varchar(255)"},
-      {"object_type", "varchar(16)"},
-      {"object_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"auth_type", "varchar(7)"},
-      {"is_grantable", "varchar(3)"},
+      {"grantor_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grantee_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"object_type", format_varchar (16)},
+      {"object_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"auth_type", format_varchar (7)},
+      {"is_grantable", format_varchar (3)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },
 // constraint
     {},
@@ -1721,27 +1752,27 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_trigger ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_TRIGGER_NAME,
 		   // columns
     {
-      {"trigger_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"target_class_name", "varchar(255)"},
-      {"target_owner_name", "varchar(255)"},
-      {"target_attr_name", "varchar(255)"},
-      {"target_attr_type", "varchar(8)"},
+      {"trigger_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"target_class_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"target_attr_name", format_varchar (255)},
+      {"target_attr_type", format_varchar (8)},
       {"action_type", "integer"},
       {"action_time", "integer"},
-      {"comment", "varchar(1024)"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec ()}
     },
@@ -1759,26 +1790,27 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_partition ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_PARTITION_NAME,
 		   // columns
     {
-      {"class_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"partition_name", "varchar(255)"},
-      {"partition_class_name", "varchar(255)"},
-      {"partition_type", "varchar(32)"},
-      {"partition_expr", "varchar(2048)"},
+      {"class_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"partition_name", format_varchar (255)},
+      {"partition_class_name", format_varchar (255)},
+      {"partition_type", format_varchar (32)},
+      {"partition_expr", format_varchar (2048)},
       {"partition_values", "sequence of"},
-      {"comment", "varchar(1024)"},
+      {"class_partition_type", format_varchar (32)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
@@ -1796,30 +1828,31 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_stored_procedure ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_STORED_PROC_NAME,
 		   // columns
     {
-      {"sp_name", "varchar(255)"},
-      {"pkg_name", "varchar (255)"},
-      {"sp_type", "varchar(16)"},
-      {"return_type", "varchar(16)"},
+      {"sp_name", format_varchar (255)},
+      {"pkg_name", format_varchar (255)},
+      {"sp_type", format_varchar (16)},
+      {"return_type", format_varchar (16)},
       {"arg_count", "integer"},
-      {"lang", "varchar(16)"},
-      {"authid", "varchar(16)"},
-      {"is_deterministic", "varchar(3)"},
-      {"target", "varchar(4096)"},
-      {"owner", "varchar(256)"},
+      {"lang", format_varchar (16)},
+      {"authid", format_varchar (16)},
+      {"is_deterministic", format_varchar (3)},
+      {"target", format_varchar (4096)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},
-      {"comment", "varchar(1024)"},
+      {"sql_data_access", format_varchar (17)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
     },
@@ -1837,30 +1870,28 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_stored_procedure_arguments ()
+  system_catalog_initializer::get_view_stored_procedure_args ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_STORED_PROC_ARGS_NAME,
 		   // columns
     {
-      {"sp_name", "varchar(255)"},
-      {"owner_name", "varchar(255)"},
-      {"pkg_name", "varchar (255)"},
+      {"sp_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"pkg_name", format_varchar (255)},
       {"index_of", "integer"},
-      {"arg_name", "varchar(255)"},
-      {"data_type", "varchar(16)"},
-      {"mode", "varchar(6)"},
-      {"is_optional", "varchar(3)"},
-      {"default_value", "varchar(255)"},
-      {"comment", "varchar(1024)"},
+      {"arg_name", format_varchar (255)},
+      {"data_type", format_varchar (16)},
+      {"mode", format_varchar (6)},
+      {"is_optional", format_varchar (3)},
+      {"default_value", format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
+      {"comment", format_varchar (1024)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_arguments_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
     },
 // constraint
     {},
@@ -1876,27 +1907,120 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_collation ()
+  system_catalog_initializer::get_view_serial ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
-		   CTV_DB_COLLATION_NAME,
+		   CTV_SERIAL_NAME,
+		   // columns
+    {
+      /* kept for compatibility */
+      {"unique_name", format_varchar (255)},
+      {"name", format_varchar (255)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"current_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"increment_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"max_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"min_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"start_val", format_numeric (DB_MAX_FIXED_NUMERIC_PRECISION, 0)},
+      {"cyclic", "integer"},
+      {"started", "integer"},
+      {"class_name", format_varchar (255)},
+      {"attr_name", format_varchar (255)},
+      {"cached_num", "integer"},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()},
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_ha_apply_info ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_HA_APPLY_INFO_NAME,
+		   // columns
+    {
+      {"db_name", format_varchar (255)},
+      {"db_creation_time", "datetime"},
+      {"copied_log_path", format_varchar (4096)},
+      {"committed_lsa_pageid", "bigint"},
+      {"committed_lsa_offset", "integer"},
+      {"committed_rep_pageid", "bigint"},
+      {"committed_rep_offset", "integer"},
+      {"append_lsa_pageid", "bigint"},
+      {"append_lsa_offset", "integer"},
+      {"eof_lsa_pageid", "bigint"},
+      {"eof_lsa_offset", "integer"},
+      {"final_lsa_pageid", "bigint"},
+      {"final_lsa_offset", "integer"},
+      {"required_lsa_pageid", "bigint"},
+      {"required_lsa_offset", "integer"},
+      {"log_record_time", "datetime"},
+      {"log_commit_time", "datetime"},
+      {"last_access_time", "datetime"},
+      {"status", "integer"},
+      {"insert_counter", "bigint"},
+      {"update_counter", "bigint"},
+      {"delete_counter", "bigint"},
+      {"schema_counter", "bigint"},
+      {"commit_counter", "bigint"},
+      {"fail_counter", "bigint"},
+      {"start_time", "datetime"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_ha_apply_info_spec ()},
+    },
+// constraints
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_collation ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_COLLATION_NAME,
 		   // columns
     {
       {"coll_id", "integer"},
-      {"coll_name", "varchar(32)"},
-      {"charset_name", "varchar(32)"},
-      {"is_builtin", "varchar(3)"},
-      {"has_expansions", "varchar(3)"},
+      {"coll_name", format_varchar (32)},
+      {"charset_name", format_varchar (32)},
+      {"is_builtin", format_varchar (3)},
+      {"has_expansions", format_varchar (3)},
       {"contractions", "integer"},
-      {"uca_strength", "varchar(255)"},
+      {"uca_strength", format_varchar (255)},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_collation_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_collation_spec ()}
     },
 // constraint
     {},
@@ -1912,25 +2036,65 @@ namespace cubschema
 // initializer
     nullptr
 	   );
-
-
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_charset ()
+  system_catalog_initializer::get_view_user ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
-		   CTV_DB_CHARSET_NAME,
+		   CTV_USER_NAME,
 		   // columns
     {
-      {CT_DBCHARSET_CHARSET_ID, "integer"},
-      {CT_DBCHARSET_CHARSET_NAME, "varchar(32)"},
-      {CT_DBCHARSET_DEFAULT_COLLATION, "varchar(32)"},
-      {CT_DBCHARSET_CHAR_SIZE, "int"},
+      {"name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"id", "integer"},
+      /* kept for compatibility; always NULL in view */
+      {"password", AU_PASSWORD_CLASS_NAME},
+      {"direct_groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
+      {"groups", format_set (format_varchar (DB_MAX_USER_LENGTH))},
+      /* kept for compatibility; always NULL in view */
+      {"authorization", AU_AUTH_CLASS_NAME},
+      {"triggers", format_sequence ("object")},
+      {"is_loginable", format_varchar (3)},
+      {"is_system_created", format_varchar (3)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      // class methods (only find_user and login are exposed in view)
+      {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method"},
+      {attribute_kind::CLASS_METHOD, "login", "au_login_method"},
       // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_charset_spec ()}
+      {attribute_kind::QUERY_SPEC, sm_define_view_user_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, (DB_AUTH) (AU_SELECT | AU_EXECUTE), false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_authorization ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_AUTHORIZATION_NAME,
+		   // columns
+    {
+      /* "owner_name" by convention, but "owner" for compatibility */
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"grants", "sequence of"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
     },
 // constraint
     {},
@@ -1946,24 +2110,55 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
 
+  system_catalog_definition
+  system_catalog_initializer::get_view_charset ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_CHARSET_NAME,
+		   // columns
+    {
+      {CT_DBCHARSET_CHARSET_ID, "integer"},
+      {CT_DBCHARSET_CHARSET_NAME, format_varchar (32)},
+      {CT_DBCHARSET_DEFAULT_COLLATION, format_varchar (32)},
+      {CT_DBCHARSET_CHAR_SIZE, "int"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_charset_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
   }
 
   system_catalog_definition
   system_catalog_initializer::get_view_synonym ()
   {
-// db_class
     return system_catalog_definition (
 		   // name
 		   CTV_SYNONYM_NAME,
 		   // columns
     {
-      {"synonym_name", "varchar(255)"},
-      {"synonym_owner_name", "varchar(255)"},
-      {"is_public_synonym", "varchar(3)"},	/* access_modifier */
-      {"target_name", "varchar(255)"},
-      {"target_owner_name", "varchar(255)"},
-      {"comment", "varchar(2048)"},
+      {"synonym_name", format_varchar (255)},
+      {"synonym_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"is_public_synonym", format_varchar (3)},	/* access_modifier */
+      {"target_name", format_varchar (255)},
+      {"target_owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"comment", format_varchar (2048)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec ()}
     },
@@ -1981,29 +2176,63 @@ namespace cubschema
 // initializer
     nullptr
 	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_server ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_SERVER_NAME,
+		   // columns
+    {
+      {"link_name", format_varchar (255)},
+      {"host", format_varchar (255)},
+      {"port", "integer"},
+      {"db_name", format_varchar (255)},
+      /* dblink remote user_name; kept 255 for external DBMS compatibility */
+      {"user_name", format_varchar (255)},
+      // {"password", format_varchar(256)}
+      {"properties", format_varchar (2048)},
+      {"owner", format_varchar (DB_MAX_USER_LENGTH)},
+      {"comment", format_varchar (1024)},
+      {"created_time", "datetime"},
+      {"updated_time", "datetime"},
+      {"invalidated_time", "datetime"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
 
   }
 
   system_catalog_definition
-  system_catalog_initializer::get_view_db_server ()
+  system_catalog_initializer::get_view_db_histogram ()
   {
 // db_class
     return system_catalog_definition (
 		   // name
-		   CTV_DB_SERVER_NAME,
+		   CTV_HISTOGRAM_NAME,
 		   // columns
     {
-      {"link_name", "varchar(255)"},
-      {"host", "varchar(255)"},
-      {"port", "integer"},
-      {"db_name", "varchar(255)"},
-      {"user_name", "varchar(255)"},
-      // {"password", "varchar(256)"}
-      {"properties", "varchar(2048)"},
-      {"owner", "varchar(255)"},
-      {"comment", "varchar(1024)"},
-      // query specs
-      {attribute_kind::QUERY_SPEC, sm_define_view_db_server_spec ()}
+      {"class_name", "object"},
+      {"key_attr", format_varchar (255)},
+      {"with_fullscan", format_varchar (32)},
+      {"null_frequency", "double"},
+      {attribute_kind::QUERY_SPEC, sm_define_view_histogram_spec ()}
     },
 // constraint
     {},

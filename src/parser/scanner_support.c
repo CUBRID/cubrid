@@ -287,54 +287,51 @@ hint_token_cmp (const void *a, const void *b)
 void
 pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
 {
-  static int was_initialized = 0;
 
 #if defined(ENABLE_WRITE_HINT_LOG)
   s_hint_msg.stmt_no = -1;
 #endif
 
-  if (was_initialized)
-    {
-      return;
-    }
+  static bool was_initialized =[](PT_HINT hint_table[]){
+    int i;
 
-  int i;
-
-  memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
-  for (i = 0; hint_table[i].tokens; i++)
-    {
+    memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
+    for (i = 0; hint_table[i].tokens; i++)
+      {
 #ifndef NDEBUG
-      char *p;
-      for (p = (char *) hint_table[i].tokens; *p; p++)
-	{
-	  assert (toupper (*p) == *p);
-	}
+	char *p;
+	for (p = (char *) hint_table[i].tokens; *p; p++)
+	  {
+	    assert (toupper (*p) == *p);
+	  }
 #endif
-      hint_table[i].is_hit = false;
-      hint_table[i].length = (int) strlen (hint_table[i].tokens);
-      hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
-    }
+	hint_table[i].is_hit = false;
+	hint_table[i].length = (int) strlen (hint_table[i].tokens);
+	hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
+      }
 
-  // ordering by asc 
-  qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
+    // ordering by asc 
+    qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
 
-  // Cumulative Distribution Counting
-  int sum = 0;
-  int tCnt = hint_table_lead_offset[0];
-  for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
-    {
-      tCnt = hint_table_lead_offset[i];
-      hint_table_lead_offset[i] = sum;
-      sum += tCnt;
-    }
+    // Cumulative Distribution Counting
+    int sum = 0;
+    int tCnt = hint_table_lead_offset[0];
+    for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
+      {
+	tCnt = hint_table_lead_offset[i];
+	hint_table_lead_offset[i] = sum;
+	sum += tCnt;
+      }
 
-  // Copy for lower character
-  for (i = 'A'; i <= 'Z'; i++)
-    {
-      hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
-    }
+    // Copy for lower character
+    for (i = 'A'; i <= 'Z'; i++)
+      {
+	hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
+      }
 
-  was_initialized = 1;
+    return true;
+  }
+  (hint_table);
 }
 
 /*
@@ -533,6 +530,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.update.no_use_hash_hint = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
 	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.no_use_hash = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
 	  break;
 	case PT_HINT_USE_HASH:	/* force hash-join */
 	  if (node->node_type == PT_SELECT)
@@ -551,6 +554,12 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	    {
 	      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
 	      node->info.update.use_hash_hint = hint_table[i].arg_list;
+	      hint_table[i].arg_list = NULL;
+	    }
+	  else if (node->node_type == PT_MERGE)
+	    {
+	      node->info.merge.hint = (PT_HINT_ENUM) (node->info.merge.hint | hint_table[i].hint);
+	      node->info.merge.use_hash = hint_table[i].arg_list;
 	      hint_table[i].arg_list = NULL;
 	    }
 	  break;
@@ -659,6 +668,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	case PT_HINT_USE_IDX_DESC:	/* descending index scan */
 	case PT_HINT_NO_COVERING_IDX:	/* do not use covering index scan */
 	case PT_HINT_NO_IDX_DESC:	/* do not use descending index scan */
+	case PT_HINT_NO_PARALLEL_HASH_JOIN:	/* disable parallel hash join */
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -741,7 +751,7 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
-	case PT_HINT_NO_PARALLEL_HEAP_SCAN:
+	case PT_HINT_NO_PARALLEL_SCAN:
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
@@ -764,18 +774,68 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 		    {
 		      node->info.query.q.select.hint =
 			(PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
-		      if (num_parallel_threads < PT_MIN_PARALLEL_THREADS)
+		      if (num_parallel_threads < 0)
 			{
-			  num_parallel_threads = PT_MIN_PARALLEL_THREADS;
+			  num_parallel_threads = 0;
 			}
-		      else if (num_parallel_threads > PT_MAX_PARALLEL_THREADS)
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
 			{
-			  num_parallel_threads = PT_MAX_PARALLEL_THREADS;
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
 			}
 		      node->info.query.q.select.num_parallel_threads = num_parallel_threads;
 		      hint_table[i].arg_list = NULL;
 		    }
 		}
+	    }
+	  else if (node->node_type == PT_DELETE)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.delete_.hint = (PT_HINT_ENUM) (node->info.delete_.hint | hint_table[i].hint);
+		      if (num_parallel_threads < 0)
+			{
+			  num_parallel_threads = 0;
+			}
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
+			{
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
+			}
+		      node->info.delete_.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  else if (node->node_type == PT_UPDATE)
+	    {
+	      if (hint_table[i].arg_list != NULL)
+		{
+		  char *p;
+		  num_parallel_threads = (int) strtol (hint_table[i].arg_list->info.name.original, &p, 10);
+		  if (*p == '\0')
+		    {
+		      node->info.update.hint = (PT_HINT_ENUM) (node->info.update.hint | hint_table[i].hint);
+		      if (num_parallel_threads < 0)
+			{
+			  num_parallel_threads = 0;
+			}
+		      else if (num_parallel_threads > PRM_MAX_PARALLELISM)
+			{
+			  num_parallel_threads = PRM_MAX_PARALLELISM;
+			}
+		      node->info.update.num_parallel_threads = num_parallel_threads;
+		      hint_table[i].arg_list = NULL;
+		    }
+		}
+	    }
+	  break;
+	case PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED:
+	  if (node->node_type == PT_SELECT)
+	    {
+	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
 	case PT_HINT_NO_ELIMINATE_JOIN:

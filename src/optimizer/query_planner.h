@@ -88,11 +88,48 @@ typedef enum
 
 typedef enum
 {
+  PLAN_PARALLEL_OPT_USE = 1,
+  PLAN_PARALLEL_OPT_NO = 0,
+  PLAN_PARALLEL_OPT_CANNOT_USE = -1,
+  PLAN_PARALLEL_OPT_CAN_USE = -2,
+} QO_PLAN_PARALLEL_OPT_USE;
+
+typedef enum
+{
   PLAN_MULTI_RANGE_OPT_USE = 1,
   PLAN_MULTI_RANGE_OPT_NO = 0,
   PLAN_MULTI_RANGE_OPT_CANNOT_USE = -1,
   PLAN_MULTI_RANGE_OPT_CAN_USE = -2
-} QO_PLAN_ULTI_RANGE_OPT_USE;
+} QO_PLAN_MULTI_RANGE_OPT_USE;
+
+typedef enum
+{
+  QO_PLAN_SKIP_ORDERBY_USE = 1,
+  QO_PLAN_SKIP_ORDERBY_NO = 0,
+  QO_PLAN_SKIP_ORDERBY_CANNOT_USE = -1,
+  QO_PLAN_SKIP_ORDERBY_CAN_USE = -2,
+} QO_PLAN_SKIP_ORDERBY_OPT;
+
+#define DEFAULT_NULL_SELECTIVITY (double) 0.01
+#define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
+#define DEFAULT_SELECTIVITY (double) 0.1
+#define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
+#define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
+#define DEFAULT_COMP_SELECTIVITY (double) 0.1
+#define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01
+#define DEFAULT_IN_SELECTIVITY (double) 0.01
+#define DEFAULT_RANGE_SELECTIVITY (double) 0.1
+
+typedef enum PRED_CLASS
+{
+  PC_ATTR,
+  PC_CONST,
+  PC_HOST_VAR,
+  PC_SUBQUERY,
+  PC_SET,
+  PC_OTHER,
+  PC_MULTI_ATTR
+} PRED_CLASS;
 
 struct qo_plan
 {
@@ -195,12 +232,18 @@ struct qo_plan
 
   } plan_un;
 
-  QO_PLAN_ULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
+  QO_PLAN_PARALLEL_OPT_USE parallel_opt_use;	/* used to determine if this plan uses parallel opt */
+  QO_PLAN_MULTI_RANGE_OPT_USE multi_range_opt_use;	/* used to determine if this plan uses multi range opt */
+  QO_PLAN_SKIP_ORDERBY_OPT skip_orderby_opt;	/* used to determine if this plan uses skip orderby opt */
   // *INDENT-OFF*
   cubxasl::analytic_eval_type *analytic_eval_list;	/* analytic evaluation list */
   // *INDENT-ON*
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
+  bool need_final_sort;
+
+  /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
+  double limit_nljoin_guessed_card;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -217,6 +260,9 @@ struct qo_plan
 
 #define NPLANS		4	/* Maximum number of plans to keep in a PlanVec */
 #define QO_PLAN_HAS_LIMIT(plan) (plan && plan->info && plan->info->env && \
+        PT_IS_SELECT (plan->info->env->pt_tree) && \
+        ( plan->info->env->pt_tree->info.query.limit != NULL || plan->info->env->pt_tree->info.query.orderby_for != NULL))
+#define QO_PLAN_HAS_CONSTANT_LIMIT(plan) (plan && plan->info && plan->info->env && \
 				  !DB_IS_NULL (&QO_ENV_LIMIT_VALUE (plan->info->env)) && \
                                   db_get_bigint (&QO_ENV_LIMIT_VALUE (plan->info->env)) > 0)
 
@@ -280,7 +326,11 @@ struct qo_info
    * by plans at this node.
    */
   BITSET projected_segs;
-  double cardinality;
+  double cardinality;		/* Number of rows expected after scanning */
+  double scan_rows;		/* Number of rows required for scanning */
+  double total_rows;		/* Number of rows excluding search conditions */
+  double group_rows;		/* Number of rows expected after grouping */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -388,6 +438,9 @@ struct qo_planner
    * control flow takes an unexpected longjmp.
    */
   int cleanup_needed;
+
+  /* Cached result of qo_can_apply_limit_card(env); set once in qo_alloc_planner */
+  bool can_apply_limit_card;
 };
 
 extern QO_PLAN *qo_planner_search (QO_ENV *);
@@ -402,6 +455,12 @@ extern bool qo_is_iscan_from_orderby (QO_PLAN *);
 extern bool qo_is_interesting_order_scan (QO_PLAN *);
 extern bool qo_is_all_unique_index_columns_are_equi_terms (QO_PLAN * plan);
 extern bool qo_has_sort_limit_subplan (QO_PLAN * plan);
+extern int qo_has_like_recompile_candidate (QO_PLAN * plan, void *arg);
 extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group_by, bool * is_index_w_prefix,
 						 bool for_min_max_optimize);
+
+extern PRED_CLASS qo_classify (PT_NODE * node);
+
+extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+
 #endif /* _QUERY_PLANNER_H_ */

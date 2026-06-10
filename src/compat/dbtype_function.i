@@ -47,8 +47,8 @@ STATIC_INLINE int db_get_error (const DB_VALUE * value) __attribute__ ((ALWAYS_I
 STATIC_INLINE DB_ELO *db_get_elo (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_C_NUMERIC db_get_numeric (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_BIT db_get_bit (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE DB_CONST_C_NCHAR db_get_nchar (const DB_VALUE * value, int *length) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE DB_CONST_C_CHAR db_get_char (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_get_string_size (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE unsigned short db_get_enum_short (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE DB_CONST_C_CHAR db_get_enum_string (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
@@ -64,6 +64,12 @@ STATIC_INLINE DB_TYPE db_value_type (const DB_VALUE * value) __attribute__ ((ALW
 STATIC_INLINE int db_value_precision (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_value_scale (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE JSON_DOC *db_get_json_document (const DB_VALUE * value) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
+  __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
+						       bool * is_float_numeric_ptr) __attribute__ ((ALWAYS_INLINE));
 
 STATIC_INLINE int db_make_db_char (DB_VALUE * value, INTL_CODESET codeset, const int collation_id, DB_CONST_C_CHAR str,
 				   const int size) __attribute__ ((ALWAYS_INLINE));
@@ -90,7 +96,8 @@ STATIC_INLINE int db_make_method_error (DB_VALUE * value, const int errcode, con
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_short (DB_VALUE * value, const DB_C_SHORT num) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bigint (DB_VALUE * value, const DB_BIGINT num) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+STATIC_INLINE int db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale,
+				   const int byte_size, const bool is_value_negative, const bool is_float_numeric)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_bit (DB_VALUE * value, const int bit_length, DB_CONST_C_BIT bit_str,
 			       const int bit_str_bit_size) __attribute__ ((ALWAYS_INLINE));
@@ -102,12 +109,7 @@ STATIC_INLINE int db_make_char (DB_VALUE * value, const int char_length, DB_CONS
 STATIC_INLINE int db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str,
 				   const int char_str_byte_size, const int codeset, const int collation_id)
   __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str,
-				 const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str,
-				    const int nchar_str_byte_size, const int codeset, const int collation_id)
-  __attribute__ ((ALWAYS_INLINE));
+
 STATIC_INLINE int db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str, int size,
 				       unsigned char codeset, const int collation_id) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int db_make_resultset (DB_VALUE * value, const DB_RESULTSET handle) __attribute__ ((ALWAYS_INLINE));
@@ -597,16 +599,14 @@ db_get_bit (const DB_VALUE * value, int *length)
  * db_get_char() -
  * return :
  * value(in):
- * length(out):
  */
 DB_CONST_C_CHAR
-db_get_char (const DB_VALUE * value, int *length)
+db_get_char (const DB_VALUE * value)
 {
   const char *str = NULL;
 
 #if defined (API_ACTIVE_CHECKS)
   CHECK_1ARG_NULL (value);
-  CHECK_1ARG_NULL (length);
 #endif
 
   if (value->domain.general_info.is_null || value->domain.general_info.type == DB_TYPE_ERROR)
@@ -617,41 +617,18 @@ db_get_char (const DB_VALUE * value, int *length)
   switch (value->data.ch.info.style)
     {
     case SMALL_STRING:
-      {
-	str = value->data.ch.sm.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.sm.size,
-			 (INTL_CODESET) value->data.ch.info.codeset, length);
-      }
+      str = value->data.ch.sm.buf;
       break;
     case MEDIUM_STRING:
-      {
-	str = value->data.ch.medium.buf;
-	intl_char_count ((unsigned char *) str, value->data.ch.medium.size,
-			 (INTL_CODESET) value->data.ch.info.codeset, length);
-      }
+      str = value->data.ch.medium.buf;
       break;
     case LARGE_STRING:
-      {
-	/* Currently not implemented */
-	str = NULL;
-	*length = 0;
-      }
+      /* Currently not implemented */
+      str = NULL;
       break;
     }
 
   return str;
-}
-
-/*
- * db_get_nchar() -
- * return :
- * value(in):
- * length(out):
- */
-DB_CONST_C_NCHAR
-db_get_nchar (const DB_VALUE * value, int *length)
-{
-  return db_get_char (value, length);
 }
 
 /*
@@ -923,8 +900,6 @@ db_value_precision (const DB_VALUE * value)
     case DB_TYPE_VARBIT:
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_BLOB:
     case DB_TYPE_CLOB:
       return value->domain.char_info.length;
@@ -989,6 +964,129 @@ db_get_json_document (const DB_VALUE * value)
   return value->data.json.document;
 }
 
+/*
+ * db_get_numeric_precision() - get the precision of a NUMERIC type DB_VALUE.
+ *
+ * return                  : precision value
+ * value(in)               : pointer to a NUMERIC type DB_VALUE
+ * is_float_numeric(out)  : true if floating point numeric, false otherwise
+ *
+ * Note: use this function to get the precision from a DB_VALUE,
+ *       or to compare precision values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_precision() instead.
+ */
+int
+db_get_numeric_precision (const DB_VALUE * value, bool * is_float_numeric)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ZERO (value);
+#endif
+  int precision = 0;
+
+  assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      precision = value->data.num.header.precision;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
+    }
+  else
+    {
+      precision = value->domain.numeric_info.precision;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
+    }
+
+  return precision;
+}
+
+/*
+ * db_get_numeric_scale() - get the scale of a NUMERIC type DB_VALUE.
+ *
+ * return                  : scale value
+ * value(in)               : pointer to a NUMERIC type DB_VALUE
+ * is_float_numeric(out)  : true if floating point numeric, false otherwise
+ *
+ * Note: use this function to get the scale from a DB_VALUE,
+ *       or to compare scale values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_scale() instead.
+ */
+int
+db_get_numeric_scale (const DB_VALUE * value, bool * is_float_numeric)
+{
+#if defined (API_ACTIVE_CHECKS)
+  CHECK_1ARG_ZERO (value);
+#endif
+  int scale = 0;
+
+  assert (value->domain.general_info.type == DB_TYPE_NUMERIC);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      scale = value->data.num.header.scale;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = true;
+	}
+    }
+  else
+    {
+      scale = value->domain.numeric_info.scale;
+      if (is_float_numeric != NULL)
+	{
+	  *is_float_numeric = false;
+	}
+    }
+
+  return scale;
+}
+
+/*
+ * db_get_numeric_precision_and_scale() - get both precision and scale of a NUMERIC type DB_VALUE.
+ *
+ * return                     : void
+ * value(in)                  : pointer to a NUMERIC type DB_VALUE
+ * precision_ptr(out)         : pointer to store the precision value
+ * scale_ptr(out)             : pointer to store the scale value
+ * is_float_numeric_ptr(out) : pointer to store the flag indicating whether the numeric is floating point
+ *
+ * Note: use this function to get precision and scale from a DB_VALUE at once,
+ *       or to compare precision and scale values between DB_VALUE.
+ *       when comparing with TP_DOMAIN, use db_value_precision() and db_value_scale() instead.
+ */
+void
+db_get_numeric_precision_and_scale (const DB_VALUE * value, int *precision_ptr, int *scale_ptr,
+				    bool * is_float_numeric_ptr)
+{
+  assert (value && value->domain.general_info.type == DB_TYPE_NUMERIC);
+  assert (precision_ptr);
+  assert (scale_ptr);
+
+  if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      *precision_ptr = value->data.num.header.precision;
+      *scale_ptr = value->data.num.header.scale;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = true;
+	}
+    }
+  else
+    {
+      *precision_ptr = value->domain.numeric_info.precision;
+      *scale_ptr = value->domain.numeric_info.scale;
+      if (is_float_numeric_ptr != NULL)
+	{
+	  *is_float_numeric_ptr = false;
+	}
+    }
+}
+
 /***********************************************************/
 /* db_make family of functions. */
 
@@ -1016,7 +1114,7 @@ db_make_db_char (DB_VALUE * value, const INTL_CODESET codeset, const int collati
   value->data.ch.medium.size = size;
   value->data.ch.medium.buf = str;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->domain.general_info.is_null = ((void *) str != NULL) ? 0 : 1;
   value->domain.general_info.is_null = ((size == 0 && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING))
 					? 1 : DB_IS_NULL (value));
@@ -1535,9 +1633,12 @@ db_make_bigint (DB_VALUE * value, const DB_BIGINT num)
  * num(in):
  * precision(in):
  * scale(in):
+ * byte_size(in):
+ * is_float_numeric(in):
  */
 int
-db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale)
+db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, const int scale, const int byte_size,
+		 const bool is_value_negative, const bool is_float_numeric)
 {
   int error = NO_ERROR;
 
@@ -1554,7 +1655,49 @@ db_make_numeric (DB_VALUE * value, const DB_C_NUMERIC num, const int precision, 
   if (num)
     {
       value->domain.general_info.is_null = 0;
-      memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+      value->domain.numeric_info.is_value_negative = is_value_negative;
+      if (is_float_numeric)
+	{
+	  value->data.num.header.precision = precision;
+	  value->data.num.header.scale = scale;
+	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+
+      switch (byte_size)
+	{
+	case 4:
+	  /* value_size (1) = byte_size(4) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 16);
+	  memcpy (value->data.num.d.buf + 16, num, 1);
+	  break;
+	case 8:
+	  /* value_size (5) = byte_size(8) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 12);
+	  memcpy (value->data.num.d.buf + 12, num, 5);
+	  break;
+	case 12:
+	  /* value_size (9) = byte_size(12) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 8);
+	  memcpy (value->data.num.d.buf + 8, num, 9);
+	  break;
+	case 16:
+	  /* value_size (13) = byte_size(16) - header_size(3) */
+	  memset (value->data.num.d.buf, 0, 4);
+	  memcpy (value->data.num.d.buf + 4, num, 13);
+	  break;
+	case DB_NUMERIC_BUF_SIZE:
+	  /* reached via call paths other than mr_data_*val_numeric() or mr_data_*mem_numeric(). */
+	case 20:
+	  /* value_size (17) = byte_size(20) - header_size(3) */
+	  memcpy (value->data.num.d.buf, num, DB_NUMERIC_BUF_SIZE);
+	  break;
+	default:
+	  /* unreachable: byte_size must be one of {4,8,12,16,DB_NUMERIC_BUF_SIZE(17),20} */
+	  assert_release_error (false);
+	  error = ER_FAILED;
+	  break;
+	}
     }
   else
     {
@@ -1673,60 +1816,6 @@ db_make_varchar (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR st
 }
 
 /*
- * db_make_nchar() -
- * return :
- * value(out) :
- * nchar_length(in):
- * str(in):
- * nchar_str_byte_size(in):
- */
-int
-db_make_nchar (DB_VALUE * value, const int nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
-	       const int codeset, const int collation_id)
-{
-  int error;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_NCHAR, nchar_length, 0);
-  if (error == NO_ERROR)
-    {
-      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
-    }
-
-  return error;
-}
-
-/*
- * db_make_varnchar() -
- * return :
- * value(out) :
- * max_nchar_length(in):
- * str(in):
- * nchar_str_byte_size(in):
- */
-int
-db_make_varnchar (DB_VALUE * value, const int max_nchar_length, DB_CONST_C_NCHAR str, const int nchar_str_byte_size,
-		  const int codeset, const int collation_id)
-{
-  int error;
-
-#if defined (API_ACTIVE_CHECKS)
-  CHECK_1ARG_ERROR (value);
-#endif
-
-  error = db_value_domain_init (value, DB_TYPE_VARNCHAR, max_nchar_length, 0);
-  if (error == NO_ERROR)
-    {
-      error = db_make_db_char (value, (INTL_CODESET) codeset, collation_id, str, nchar_str_byte_size);
-    }
-
-  return error;
-}
-
-/*
  * db_make_enumeration() -
  * return :
  * value(out):
@@ -1752,7 +1841,7 @@ db_make_enumeration (DB_VALUE * value, unsigned short index, DB_CONST_C_CHAR str
   value->data.ch.info.is_max_string = false;
   value->data.ch.info.compressed_need_clear = false;
   value->data.ch.medium.compressed_buf = NULL;
-  value->data.ch.medium.compressed_size = 0;
+  value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
   value->data.enumeration.str_val.medium.size = size;
   value->data.enumeration.str_val.medium.buf = str;
   value->domain.general_info.is_null = 0;
@@ -2157,9 +2246,10 @@ db_make_clob (DB_VALUE * value, const int max_char_length, DB_CONST_C_CHAR str, 
   error = db_value_domain_init (value, DB_TYPE_CLOB, max_char_length, 0);
   if (error == NO_ERROR)
     {
-      /* CLOB has no per-value codeset/collation — server uses LANG_SYS_CODESET
-       * (createdb codeset). Mirrors BFILE/CFILE which carry no codeset slot. */
-      error = db_make_db_char (value, (INTL_CODESET) LANG_SYS_CODESET, 0, str, char_str_byte_size);
+      /* CLOB callers do not choose per-value codeset/collation. Build the
+       * value with the server codeset and its binary collation so CLOB values
+       * remain compatible with ordinary character values in the same database. */
+      error = db_make_db_char (value, (INTL_CODESET) LANG_SYS_CODESET, LANG_SYS_COLLATION, str, char_str_byte_size);
     }
 
   return error;
@@ -2206,7 +2296,7 @@ db_get_compressed_size (DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CLOB);
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CLOB);
 
   return value->data.ch.medium.compressed_size;
 }
@@ -2231,7 +2321,7 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_VARNCHAR || type == DB_TYPE_CLOB);
+  assert (type == DB_TYPE_VARCHAR || type == DB_TYPE_CLOB);
 
   value->data.ch.medium.compressed_buf = compressed_string;
   value->data.ch.medium.compressed_size = compressed_size;

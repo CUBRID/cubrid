@@ -231,7 +231,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
     return token::END_PAREN;
 }
 
-[\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
+[\+\-]?(([0-9]+[Ee][\+\-]?[0-9]+[.fFlL]?)|([0-9]*\.[0-9]+([Ee][\+\-]?[0-9]+)?[fFlL]?)|([0-9]+\.[0-9]*([Ee][\+\-]?[0-9]+)?[fFlL]?)) {
     PRINT ("REAL_LIT %s\n", yytext);
     yylval->string = m_semantic_helper.make_string_by_yytext (yytext, yyleng);
     return token::REAL_LIT;

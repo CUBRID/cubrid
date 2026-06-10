@@ -251,7 +251,7 @@ sql_statement
     ;
 
 static_sql
-    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR)+
+    : static_sql_begin (SS_STR | SS_WS | SS_NON_STR | SS_BIND_PARAM)+
     ;
 
 static_sql_begin
@@ -496,6 +496,10 @@ case_expression
     | simple_case_expression
     ;
 
+signed_integer
+    : MINUS_SIGN? UNSIGNED_INTEGER
+    ;
+
 simple_case_expression
     : CASE expression simple_case_expression_when_part+ case_expression_else_part? END
     ;
@@ -628,7 +632,7 @@ percent_rowtype
     ;
 
 numeric_type
-    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=UNSIGNED_INTEGER)? RPAREN)?
+    : (NUMERIC | DECIMAL | DEC) (LPAREN precision=UNSIGNED_INTEGER (',' scale=signed_integer)? RPAREN)?
     ;
 
 char_type

@@ -45,6 +45,7 @@
 #include "object_representation_constants.h"
 #include "porting_inline.hpp"
 #include "storage_common.h"
+#include "lock_table.h"		// LOCK, lock_conv
 
 // forward declarations
 struct log_lsa;
@@ -983,15 +984,6 @@ typedef struct db_set SETREF;
 #if defined (__cplusplus)
 class JSON_VALIDATOR;
 #endif
-/*
- * OR_TYPE_SIZE
- *    Returns the byte size of the disk representation of a particular
- *    type.  Returns -1 if the type is variable and the size cannot
- *    be known from just the type id.
- */
-extern int or_Type_sizes[];	/* map of type id to fixed value size */
-
-#define OR_TYPE_SIZE(type) or_Type_sizes[(int)(type)]
 
 /*
  * OR_VARINFO
@@ -1060,6 +1052,7 @@ extern "C"
   extern int db_enum_put_cs_and_collation (DB_VALUE * value, const int codeset, const int collation_id);
 
   extern int valcnv_convert_value_to_string (DB_VALUE * value);
+  extern int valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value);
 
 #if defined __cplusplus
 }
@@ -1116,11 +1109,11 @@ extern char *or_pack_listid (char *ptr, void *listid);
 extern char *or_pack_lock (char *ptr, LOCK lock);
 extern char *or_pack_set_header (char *buf, DB_TYPE stype, DB_TYPE etype, int bound_bits, int size);
 extern char *or_pack_set_node (char *ptr, void *set_node);
+extern char *or_pack_int_array (char *buffer, int count, const int *int_array);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern char *or_pack_elo (char *ptr, void *elo);
 extern char *or_pack_string_array (char *buffer, int count, const char **string_array);
 extern char *or_pack_db_value_array (char *buffer, int count, DB_VALUE * val);
-extern char *or_pack_int_array (char *buffer, int count, int *int_array);
 #endif
 
 /* should be using the or_pack_value family instead ! */
@@ -1391,7 +1384,7 @@ extern int or_get_json_schema (OR_BUF * buf, REFPTR (char, schema));
 extern int or_put_json_schema (OR_BUF * buf, const char *schema);
 #endif
 
-/* Because of the VARNCHAR and STRING encoding, this one could not be changed for over 255, just lower. */
+/* Because of the STRING encoding, this one could not be changed for over 255, just lower. */
 #define OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION 255
 
 #define OR_IS_STRING_LENGTH_COMPRESSABLE(str_length) \
@@ -2329,7 +2322,7 @@ or_varchar_length_internal (int charlen, int align)
   else
     {
       /*
-       * Regarding the new encoding for VARCHAR and VARNCHAR, the strings stored in buffers have this representation:
+       * Regarding the new encoding for VARCHAR, the strings stored in buffers have this representation:
        * OR_BYTE_SIZE    : First byte in encoding. If it's 0xFF, the string's length is greater than 255.
        *                 : Otherwise, the first byte states the length of the string.
        * 1st OR_INT_SIZE : string's compressed length

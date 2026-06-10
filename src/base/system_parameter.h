@@ -463,7 +463,7 @@ enum param_id
   PRM_ID_CDC_LOGGING_DEBUG,
   PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
   PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
-  PRM_ID_THREAD_CORE_COUNT,
+  PRM_ID_TASK_GROUP,
   PRM_ID_FLASHBACK_TIMEOUT,
   PRM_ID_FLASHBACK_MAX_TRANSACTION,	/* Hidden parameter For QA test */
   PRM_ID_FLASHBACK_WIN_SIZE,	/* Hidden parameter For QA test */
@@ -502,9 +502,41 @@ enum param_id
 
   PRM_ID_PARALLELISM,
   PRM_ID_MAX_PARALLEL_WORKERS,
+  PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD,
+  PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
+
+  PRM_ID_TCP_KEEPALIVE_IDLE,
+  PRM_ID_TCP_KEEPALIVE_INTERVAL,
+  PRM_ID_TCP_KEEPALIVE_COUNT,
+
+  PRM_ID_TASK_WORKER,
+
+  PRM_ID_CSS_MAX_CONNECTION_WORKER,
+  PRM_ID_CSS_MIN_CONNECTION_WORKER,
+
+  PRM_ID_CSS_AUTO_SCALING_WINDOW_SIZE,
+
+  PRM_ID_CSS_RECV_BUDGET_PER_CONNECTION,
+  PRM_ID_CSS_SEND_BUDGET_PER_CONNECTION,
+
+  PRM_ID_PAGE_LATCH_TIMEOUT,
+
+  PRM_ID_MEMOIZE_MEMORY_LIMIT,
+
+  PRM_ID_HOSTVAR_PEEKING,
+
+  PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT,
+
+  PRM_ID_LOG_POSTPONE_CACHE_SIZE,
+
+  PRM_ID_ENABLE_HEAP_FIXED_SCAN,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_MAX_PARALLEL_WORKERS
+  PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
+
+  PRM_LAST_ID = PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM
 };
 typedef enum param_id PARAM_ID;
 
@@ -613,6 +645,7 @@ extern "C"
 /*
  * Dynamic flags
  */
+#define PRM_CLEAR_DYNAMIC_FLAG 0x00000000
 #define PRM_SET             0x00000001	/* has been set */
 #define PRM_ALLOCATED       0x00000002	/* storage has been malloc'd */
 #define PRM_DEFAULT_USED    0x00000004	/* Default value has been used */
@@ -623,12 +656,19 @@ extern "C"
  * Macros to get values
  */
 
-#define PRM_GET_INT(x)      (*((int *) (x)))
-#define PRM_GET_FLOAT(x)    (*((float *) (x)))
-#define PRM_GET_STRING(x)   (*((char **) (x)))
-#define PRM_GET_BOOL(x)     (*((bool *) (x)))
-#define PRM_GET_INTEGER_LIST(x) (*((int **) (x)))
-#define PRM_GET_BIGINT(x)     (*((UINT64 *) (x)))
+#define PRM_GET_INT(x)          ((x).v.i)
+#define PRM_GET_FLOAT(x)        ((x).v.f)
+#define PRM_GET_STRING(x)       ((x).v.str)
+#define PRM_GET_BOOL(x)         ((x).v.b)
+#define PRM_GET_INTEGER_LIST(x) ((x).v.integer_list)
+#define PRM_GET_BIGINT(x)       ((x).v.bi)
+
+#define PRM_GET_INT_P(v)          ((v)->i)
+#define PRM_GET_FLOAT_P(v)        ((v)->f)
+#define PRM_GET_STRING_P(v)       ((v)->str)
+#define PRM_GET_BOOL_P(v)         ((v)->b)
+#define PRM_GET_INTEGER_LIST_P(v) ((v)->integer_list)
+#define PRM_GET_BIGINT_P(v)       ((v)->bi)
 
 /*
  * Macros to get data type
@@ -649,15 +689,18 @@ extern "C"
 #define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
 #define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
 
-
-/* 
- * for PRM_STORE_PROCEDURE_RETURN_NUMERIC_SIZE
- * PARAM type integer list, first is precision second is scale
+/*
+ * for PRM_ID_PARALLELISM
  */
-#define PRM_PRECISION	1
-#define PRM_SCALE	2
+#define PRM_MAX_PARALLELISM	32	/* Limit set to 32 for flexibility; efficiency is low beyond 16. */
 
   typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
+
+  typedef struct
+  {
+    bool is_null;
+    SYSPRM_VALUE v;
+  } SYSPRM_PARAM_VALUE;
 
   struct sysprm_param
   {
@@ -665,11 +708,11 @@ extern "C"
     const char *name;		/* the keyword expected */
     unsigned int static_flag;	/* bitmask flag representing status words */
     SYSPRM_DATATYPE datatype;	/* value data type */
-    unsigned int *dynamic_flag;	/* shared by both original and duplicated */
-    void *default_value;	/* address of (pointer to) default value */
-    void *value;		/* address of (pointer to) current value */
-    void *upper_limit;		/* highest allowable value */
-    void *lower_limit;		/* lowest allowable value */
+    unsigned int dynamic_flag;	/* shared by both original and duplicated */
+    const SYSPRM_PARAM_VALUE default_value;	/* default value */
+    SYSPRM_PARAM_VALUE value;	/* current value */
+    const SYSPRM_PARAM_VALUE upper_limit;	/* highest allowable value */
+    const SYSPRM_PARAM_VALUE lower_limit;	/* lowest allowable value */
     char *force_value;		/* address of (pointer to) force value string */
     DUP_PRM_FUNC set_dup;	/* set duplicated value to original value */
     DUP_PRM_FUNC get_dup;	/* get duplicated value from original value */
@@ -689,7 +732,7 @@ extern "C"
 
   extern const char *prm_get_name (PARAM_ID prm_id);
 
-  extern void *prm_get_value (PARAM_ID prm_id);
+  extern SYSPRM_VALUE *prm_get_value (PARAM_ID prm_id);
 
   extern void prm_set_integer_value (PARAM_ID prm_id, int value);
   extern void prm_set_float_value (PARAM_ID prm_id, float value);
@@ -795,7 +838,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INT (prm_get_value (prm_id));
+	return PRM_GET_INT_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_INT (GET_PRM (prm_id)->value);
@@ -815,7 +858,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BOOL (prm_get_value (prm_id));
+	return PRM_GET_BOOL_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_BOOL (GET_PRM (prm_id)->value);
@@ -835,7 +878,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_FLOAT (prm_get_value (prm_id));
+	return PRM_GET_FLOAT_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_FLOAT (GET_PRM (prm_id)->value);
@@ -855,7 +898,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_STRING (prm_get_value (prm_id));
+	return PRM_GET_STRING_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_STRING (GET_PRM (prm_id)->value);
@@ -876,7 +919,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_INTEGER_LIST (prm_get_value (prm_id));
+	return PRM_GET_INTEGER_LIST_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value);
@@ -896,7 +939,7 @@ extern "C"
 #if defined (SERVER_MODE)
     if (PRM_SERVER_SESSION (prm_id))
       {
-	return PRM_GET_BIGINT (prm_get_value (prm_id));
+	return PRM_GET_BIGINT_P (prm_get_value (prm_id));
       }
 #endif
     return PRM_GET_BIGINT (GET_PRM (prm_id)->value);

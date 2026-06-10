@@ -36,6 +36,8 @@ import java.util.List;
 
 public class TypeRecord extends Type {
 
+    public final boolean ofTable;
+    public final String rowName;
     public final List<Misc.Pair<String, Type>> selectList;
 
     public boolean generateEq; // whether to generate a opEq method for this record type
@@ -49,7 +51,7 @@ public class TypeRecord extends Type {
         TypeRecord ret = iStore.typeRecord.get(selectList);
         if (ret == null) {
             int seq = iStore.typeRecord.size();
-            ret = new TypeRecord(ofTable, rowName + seq, selectList);
+            ret = new TypeRecord(ofTable, rowName, seq, selectList);
             iStore.typeRecord.put(selectList, ret);
         }
 
@@ -75,8 +77,11 @@ public class TypeRecord extends Type {
         return String.format("$Record_%s_%s", (ofTable ? "T" : "C"), rowName.replace('.', '_'));
     }
 
-    private TypeRecord(boolean ofTable, String rowName, List<Misc.Pair<String, Type>> selectList) {
-        super(IDX_RECORD, getPlcName(rowName), getJavaName(ofTable, rowName), null);
+    private TypeRecord(
+            boolean ofTable, String rowName, int seq, List<Misc.Pair<String, Type>> selectList) {
+        super(IDX_RECORD, getPlcName(rowName + seq), getJavaName(ofTable, rowName + seq), null);
+        this.ofTable = ofTable;
+        this.rowName = rowName;
         this.selectList = selectList;
     }
 }

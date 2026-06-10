@@ -1542,10 +1542,11 @@ static int
 smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type, const char *constraint_name,
 				SM_ATTRIBUTE ** atts, const int *asc_desc, const int *attr_prefix_length,
 				SM_FOREIGN_KEY_INFO * fk_info, char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
-				SM_FUNCTION_INFO * function_index, const char *comment, SM_INDEX_STATUS index_status)
+				SM_FUNCTION_INFO * function_index, int options, const char *comment,
+				SM_INDEX_STATUS index_status)
 {
   int error = NO_ERROR;
-  DB_VALUE cnstr_val;
+  DB_VALUE cnstr_val, current_datetime;
   const char *constraint = classobj_map_constraint_to_property (type);
 
   db_make_null (&cnstr_val);
@@ -1554,6 +1555,12 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
    *  Check if the constraint already exists. Skip it if we have an online index building done.
    */
   if (classobj_find_prop_constraint (template_->properties, constraint, constraint_name, &cnstr_val))
+    {
+      ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
+      goto end;
+    }
+
+  if (db_sys_datetime (&current_datetime) != NO_ERROR)
     {
       ERROR1 (error, ER_SM_CONSTRAINT_EXISTS, constraint_name);
       goto end;
@@ -1574,6 +1581,8 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
   con.index_btid = BTID_INITIALIZER;
   con.fk_info = NULL;
   con.shared_cons_name = NULL;
+  con.index_type = SM_BTREE_TYPE;
+  con.options = options;
 
   if (classobj_put_index (&template_->properties, &con, NULL, fk_info, shared_cons_name, true) != NO_ERROR)
     {
@@ -1582,6 +1591,7 @@ smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAINT_TYPE type
 
 end:
   pr_clear_value (&cnstr_val);
+  pr_clear_value (&current_datetime);
 
   return error;
 }
@@ -1639,7 +1649,7 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
   SM_ATTRIBUTE *tmp_attr, *ref_attr;
   int n_ref_atts, i, j;
   bool found;
-  const char *tmp, *ref_cls_name = NULL;
+  const char *tmp = NULL;
 
   if (template_->op == NULL && intl_identifier_casecmp (template_->name, fk_info->ref_class) == 0)
     {
@@ -1658,7 +1668,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       OID_SET_NULL (&fk_info->ref_class_oid);
       BTID_SET_NULL (&fk_info->ref_class_pk_btid);
-      ref_cls_name = template_->name;
     }
   else
     {
@@ -1685,7 +1694,6 @@ smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_
 
       fk_info->ref_class_oid = *(ws_oid (ref_clsop));
       fk_info->ref_class_pk_btid = pk->index_btid;
-      ref_cls_name = sm_ch_name ((MOBJ) ref_cls);
     }
 
   /* check pk'size and fk's size */
@@ -1962,6 +1970,176 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
   return error;
 }
 
+
+int
+smt_check_histogram_exist (MOP classop, const char *attr_name)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  if (histogram_obj != NULL)
+    {
+      /* not error, just return ER_LC_CLASSNAME_EXIST */
+      error = ER_LC_CLASSNAME_EXIST;
+      goto end;
+    }
+end:
+  return error;
+}
+
+int
+smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found)
+{
+  int error = NO_ERROR;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
+  if (histogram_obj == NULL)
+    {
+      if (!no_error_if_not_found)
+	{
+	  error = ER_LC_UNKNOWN_CLASSNAME;
+	  // ---- query buffer ---- (error_length + table_name_length + attr_name_length)
+	  char error_histogram[100 + 222 + 254];
+	  snprintf (error_histogram, sizeof (error_histogram), "histogram of %s(%s)", sm_get_ch_name (classop),
+		    attr_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_histogram);
+	  goto end;
+	}
+    }
+  else
+    {
+      error = db_drop (histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+end:
+  return error;
+}
+
+int
+smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool with_fullscan)
+{
+  int au_save, error = NO_ERROR;
+  DB_OBJECT *ret_obj = NULL, *histogram_class = NULL;
+  DB_VALUE value;
+  DB_OTMPL *obj_tmpl = NULL;
+  double null_frequency = 0;
+  db_make_null (&value);
+
+  /* temporarily disable authorization to access db_serial class */
+  AU_DISABLE (au_save);
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object_internal ((MOP) histogram_class, false);
+
+  if (obj_tmpl == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  db_make_object (&value, classop);
+
+  error = dbt_put_internal (obj_tmpl, "class_of", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+  /* key_attr */
+  db_make_string (&value, attr_name);
+  error = dbt_put_internal (obj_tmpl, "key_attr", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+
+  /* with_fullscan */
+  db_make_int (&value, with_fullscan);
+  error = dbt_put_internal (obj_tmpl, "with_fullscan", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+
+  db_make_double (&value, null_frequency);
+  error = dbt_put_internal (obj_tmpl, "null_frequency", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* histogram_values */
+  db_make_null (&value);
+  error = dbt_put_internal (obj_tmpl, "histogram_values", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  ret_obj = dbt_finish_object (obj_tmpl);
+  if (ret_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+  AU_ENABLE (au_save);
+  return error;
+}
+
 /*
  * smt_add_constraint() - Adds the integrity constraint flags for an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -1992,6 +2170,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   bool has_nulls = false;
   bool is_secondary_index = false;
   int deduplicate_key_col_pos = -1;
+  int options = 0;
+  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2013,6 +2193,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
 	    {
 	      deduplicate_key_col_pos = n_atts;
+	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
+	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
 	    }
 	  n_atts++;
 	}
@@ -2219,7 +2401,8 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, comment, index_status);
+					      shared_cons_name, filter_index, function_index, options, comment,
+					      index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -3117,21 +3300,16 @@ smt_change_constraint_comment (SM_TEMPLATE * ctemplate, const char *index_name, 
   error = change_constraints_comment_partitioned_class (ctemplate->op, index_name, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
   error = classobj_change_constraint_comment (ctemplate->properties, cons, comment);
   if (error != NO_ERROR)
     {
-      goto error_exit;
+      return error;
     }
 
-end:
-  return error;
-
-  /* in order to show explicitly the error */
-error_exit:
-  goto end;
+  return NO_ERROR;
 }
 
 /* TEMPLATE DELETION FUNCTIONS */
@@ -4708,6 +4886,41 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
     }
 
   return ctemplate->op;
+}
+
+/*
+ * smt_check_attribute_all_invisible() - Check whether all attributes of template are invisible
+ *
+ *   return: NO_ERROR if at least one attribute is VISIBLE, or if there are no attributes.
+ *           Non‑zero on error.
+ *   ctemplate(in): class template
+ *   class_name(in) : class name for error message
+ *
+ *   Note: This function only check attributes, not class attributes or shared attributes.
+ *         if there are no attributes, return NO_ERROR since CUBRID allows empty class.
+ */
+int
+smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name)
+{
+  SM_ATTRIBUTE *attr;
+
+  assert (ctemplate != NULL);
+  attr = ctemplate->attributes;
+
+  if (attr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (!db_attribute_is_invisible_column ((DB_ATTRIBUTE *) attr))
+	{
+	  return NO_ERROR;
+	}
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, class_name);
+  return ER_SM_ATT_AT_LEAST_ONE_VISIBLE;
 }
 
 static int

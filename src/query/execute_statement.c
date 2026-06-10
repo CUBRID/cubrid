@@ -20,6 +20,8 @@
  * execute_statement.c - functions to do execute
  */
 
+#include "error_code.h"
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -91,6 +93,7 @@
 #include "dbtype.h"
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
+#include "network.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -202,7 +205,7 @@ static void init_compile_context (PARSER_CONTEXT * parser);
 
 static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
 
-static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external);
+static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
@@ -669,7 +672,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
  * Note:
  */
 static int
-do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * current_val, DB_VALUE * inc_val,
+do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALUE * start_val, DB_VALUE * inc_val,
 			   DB_VALUE * min_val, DB_VALUE * max_val, const int cyclic, const int cached_num,
 			   const int started, const char *comment, const char *class_name, const char *att_name)
 {
@@ -683,7 +686,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   db_make_null (&value);
 
-  /* temporarily disable authorization to access db_serial class */
+  /* temporarily disable authorization to access _db_serial class */
   AU_DISABLE (au_save);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
@@ -694,7 +697,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
       goto end;
     }
 
-  obj_tmpl = dbt_create_object_internal ((MOP) serial_class);
+  obj_tmpl = dbt_create_object_internal ((MOP) serial_class, false);
   if (obj_tmpl == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -739,7 +742,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
     }
 
   /* current_val */
-  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, current_val);
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_CURRENT_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
@@ -761,6 +764,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 
   /* max_val */
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_MAX_VAL, max_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* start_val */
+  error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_START_VAL, start_val);
   if (error != NO_ERROR)
     {
       goto end;
@@ -827,6 +837,13 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
 	{
 	  goto end;
 	}
+    }
+
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   ret_obj = dbt_finish_object (obj_tmpl);
@@ -952,6 +969,13 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   db_make_string (&value, att_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_ATTR_NAME, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto update_auto_increment_error;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto update_auto_increment_error;
@@ -1123,13 +1147,26 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 
 
   /* create a NUMERIC value in new_val */
-  db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   pval = pt_value_to_db (parser, node_new_val);
   if (pval == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error_code = er_errid ();
       goto error_exit;
+    }
+
+  if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+    {
+      FLOAT_TO_FIXED_NUMERIC (pval);
+      if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  PT_ERRORmf (parser, node_new_val, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+		      node_new_val->info.value.data_value.str->bytes);
+	  error_code = ER_IT_DATA_OVERFLOW;
+	  db_make_null (pval);
+	  goto error_exit;
+	}
     }
 
   error_code = numeric_db_value_coerce_to_num (pval, &new_val, &data_status);
@@ -1187,6 +1224,13 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
 
   db_make_int (&started, 0);
   error_code = dbt_put_internal (obj_tmpl, SERIAL_ATTR_STARTED, &started);
+  if (error_code != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* updated_time */
+  error_code = db_update_otmpl_timestamp (obj_tmpl);
   if (error_code != NO_ERROR)
     {
       goto error_exit;
@@ -1313,13 +1357,20 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
     }
 
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
-  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT)
+  if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
       char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
 
       do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
       if (other_serial_name[0] != '\0')
 	{
+	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
+	    {
+	      /* maybe unloaded from version 11.2+ or later */
+	      db_set_client_type (DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4);
+	      return NULL;
+	    }
+
 	  serial_mop = do_get_obj_id (serial_obj_id, serial_class_mop, other_serial_name, SERIAL_ATTR_UNIQUE_NAME);
 	  if (serial_mop)
 	    {
@@ -1418,7 +1469,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
 
   /*
-   * find db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -1444,8 +1495,11 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* get all values as string */
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
+  FLOAT_TO_FIXED_NUMERIC (&zero);
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  FLOAT_TO_FIXED_NUMERIC (&e38);
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
+  FLOAT_TO_FIXED_NUMERIC (&negative_e38);
   db_make_int (&cmp_result, 0);
 
   start_val_node = PT_NODE_SR_START_VAL (statement);
@@ -1454,7 +1508,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
 
   /* increment_val */
-  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (inc_val_node != NULL)
     {
       pval = pt_value_to_db (parser, inc_val_node);
@@ -1463,6 +1517,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &inc_val, &data_stat);
@@ -1502,7 +1569,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* start_val 1 */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
       pval = pt_value_to_db (parser, start_val_node);
@@ -1512,6 +1579,20 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  error = er_errid ();
 	  goto end;
 	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
+
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -1521,7 +1602,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       start_val_msgid = MSGCAT_SEMANTIC_SERIAL_START_VAL_INVALID;
     }
 
-  db_value_domain_init (&min_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&min_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   /*
    * min_val comes from several sources, it can be one of them:
    * 1. user input
@@ -1545,6 +1626,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, min_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  min_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &min_val, &data_stat);
@@ -1583,7 +1677,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* max_val */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   if (max_val_node != NULL)
     {
@@ -1593,6 +1687,19 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, max_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  max_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &max_val, &data_stat);
@@ -1724,6 +1831,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE, inc_val_msgid,
@@ -1741,7 +1849,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
-      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -1754,6 +1862,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -1796,7 +1905,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* now create serial object which is insert into db_serial */
+  /* now create serial object which is insert into _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -1847,7 +1956,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE cmp_result;
   int i;
   DB_VALUE e38;
-  char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
+  char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
 
@@ -1861,7 +1970,9 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_make_null (&min_val);
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
-  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+  FLOAT_TO_FIXED_NUMERIC (&zero);
+  numeric_coerce_string_to_num (DB_SERIAL_MAX, DB_MAX_FIXED_NUMERIC_PRECISION, INTL_CODESET_ISO88591, &e38);
+  FLOAT_TO_FIXED_NUMERIC (&e38);
 
   assert_release (att->info.attr_def.auto_increment != NULL);
   auto_increment_node = att->info.attr_def.auto_increment;
@@ -1871,7 +1982,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
     }
 
   /*
-   * find db_serial
+   * find _db_serial
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -1917,7 +2028,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   inc_val_node = auto_increment_node->info.auto_increment.increment_val;
 
   /* increment_val */
-  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   if (inc_val_node != NULL)
     {
@@ -1926,6 +2037,19 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 	{
 	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &inc_val, &data_stat);
@@ -1962,7 +2086,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
     }
 
   /* start_val */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   if (start_val_node != NULL)
     {
       pval = pt_value_to_db (parser, start_val_node);
@@ -1971,6 +2095,20 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
 	  error = ER_INVALID_SERIAL_VALUE;
 	  goto end;
 	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
+	}
+
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -1993,7 +2131,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   db_value_clone (&start_val, &min_val);
 
   /* max value - depends on att's domain */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   dtyp = att->data_type;
   switch (att->type_enum)
@@ -2008,7 +2146,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       db_make_int (&value, DB_INT16_MAX);
       break;
     case PT_TYPE_NUMERIC:
-      memset (num, '\0', DB_MAX_NUMERIC_PRECISION + 1);
+      memset (num, '\0', DB_MAX_FIXED_NUMERIC_PRECISION + 1);
       for (i = 0, p = num; i < dtyp->info.data_type.precision; i++, p++)
 	{
 	  *p = '9';
@@ -2017,6 +2155,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
+      FLOAT_TO_FIXED_NUMERIC (&value);
       break;
     default:
       /* max numeric */
@@ -2101,7 +2240,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   char *att_name = NULL, *serial_name = NULL;
   DB_VALUE e38, current_val, max_val, value;
   int i, compare_result, save;
-  char *p, num[DB_MAX_NUMERIC_PRECISION + 1];
+  char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
   size_t name_len;
   bool au_disable_flag = false;
@@ -2113,10 +2252,11 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   OID_SET_NULL (&serial_obj_id);
 
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  FLOAT_TO_FIXED_NUMERIC (&e38);
 
   assert (serial_object != NULL);
 
-  /* find db_serial */
+  /* find _db_serial */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
     {
@@ -2176,7 +2316,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* max value - depends on att's domain */
-  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
 
   dtyp = att->data_type;
   switch (att->type_enum)
@@ -2191,7 +2331,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       db_make_int (&value, DB_INT16_MAX);
       break;
     case PT_TYPE_NUMERIC:
-      memset (num, '\0', DB_MAX_NUMERIC_PRECISION + 1);
+      memset (num, '\0', DB_MAX_FIXED_NUMERIC_PRECISION + 1);
       for (i = 0, p = num; i < dtyp->info.data_type.precision; i++, p++)
 	{
 	  *p = '9';
@@ -2200,6 +2340,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       *p = '\0';
 
       (void) numeric_coerce_string_to_num (num, dtyp->info.data_type.precision, INTL_CODESET_ISO88591, &value);
+      FLOAT_TO_FIXED_NUMERIC (&value);
       break;
     default:
       /* max numeric */
@@ -2221,7 +2362,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       goto end;
     }
 
-  /* update serial object in db_serial */
+  /* update serial object in _db_serial */
   AU_DISABLE (save);
   au_disable_flag = true;
 
@@ -2329,7 +2470,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   int error = NO_ERROR;
   int save;
-  bool au_disable_flag = false;
 
   SERIAL_INVARIANT invariants[MAX_SERIAL_INVARIANT];
   int ninvars = 0;
@@ -2353,8 +2493,9 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
 
+  AU_DISABLE (save);
   /*
-   * find db_serial_class
+   * find _db_serial class
    */
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -2452,11 +2593,14 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* Now, get new values from node */
 
   numeric_coerce_string_to_num ("0", 1, INTL_CODESET_ISO88591, &zero);
+  FLOAT_TO_FIXED_NUMERIC (&zero);
   numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &e38);
+  FLOAT_TO_FIXED_NUMERIC (&e38);
   numeric_coerce_string_to_num (DB_SERIAL_MIN, strlen (DB_SERIAL_MIN), INTL_CODESET_ISO88591, &negative_e38);
+  FLOAT_TO_FIXED_NUMERIC (&negative_e38);
   db_make_int (&cmp_result, 0);
 
-  db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_inc_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   inc_val_node = PT_NODE_SR_INCREMENT_VAL (statement);
   if (inc_val_node != NULL)
     {
@@ -2467,6 +2611,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, inc_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  inc_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_inc_val, &data_stat);
       if (error != NO_ERROR)
@@ -2505,7 +2661,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* start_val */
-  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&start_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   start_val_node = PT_NODE_SR_START_VAL (statement);
   if (start_val_node != NULL)
     {
@@ -2516,6 +2672,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, start_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  start_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &start_val, &data_stat);
       if (error != NO_ERROR)
@@ -2531,7 +2699,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* max_val */
-  db_value_domain_init (&new_max_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_max_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   max_val_node = PT_NODE_SR_MAX_VAL (statement);
   if (max_val_node != NULL)
     {
@@ -2542,6 +2710,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, max_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  max_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_max_val, &data_stat);
       if (error != NO_ERROR)
@@ -2580,7 +2760,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* min_val */
-  db_value_domain_init (&new_min_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&new_min_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   min_val_node = PT_NODE_SR_MIN_VAL (statement);
   if (min_val_node != NULL)
     {
@@ -2591,6 +2771,18 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, min_val_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  min_val_node->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
       error = numeric_db_value_coerce_to_num (pval, &new_min_val, &data_stat);
       if (error != NO_ERROR)
@@ -2684,6 +2876,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       numeric_coerce_string_to_num (DB_SERIAL_MAX, strlen (DB_SERIAL_MAX), INTL_CODESET_ISO88591, &range_val);
       er_clear ();
     }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
 
   db_abs_dbval (&abs_inc_val, &new_inc_val);
   initialize_serial_invariant (&invariants[ninvars++], abs_inc_val, range_val, PT_LE,
@@ -2704,7 +2897,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* ABS (cache_num * inc_val) <= range_val */
 
       db_make_int (&cached_num_int_val, cached_num);
-      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
       if (error != NO_ERROR)
 	{
@@ -2717,6 +2910,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
 
       error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
       if (error != NO_ERROR)
@@ -2754,9 +2948,6 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-  /* now update serial object in db_serial */
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   obj_tmpl = dbt_edit_object (serial_object);
   if (obj_tmpl == NULL)
@@ -2904,6 +3095,13 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   serial_object = dbt_finish_object (obj_tmpl);
   if (serial_object == NULL)
     {
@@ -2921,10 +3119,7 @@ end:
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
 
-  if (au_disable_flag == true)
-    {
-      AU_ENABLE (save);
-    }
+  AU_ENABLE (save);
 
   if (obj_tmpl != NULL)
     {
@@ -2981,6 +3176,9 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
+  AU_DISABLE (save);
+  au_disable_flag = true;
+
   error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
   if (error < 0)
     {
@@ -3007,9 +3205,6 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       goto end;
     }
-
-  AU_DISABLE (save);
-  au_disable_flag = true;
 
   error = db_drop (serial_object);
   if (error < 0)
@@ -3157,6 +3352,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3233,6 +3430,15 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
 	  break;
+
+	case PT_UPDATE_HISTOGRAM:
+	  error = do_update_histogram (parser, statement);
+	  break;
+
+	case PT_DROP_HISTOGRAM:
+	  error = do_drop_histogram (parser, statement);
+	  break;
+
 
 	case PT_EVALUATE:
 	  error = do_evaluate (parser, statement);
@@ -3844,6 +4050,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
+    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -3854,6 +4061,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -3926,6 +4135,15 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
+      break;
+    case PT_UPDATE_HISTOGRAM:
+      err = do_update_histogram (parser, statement);
+      break;
+    case PT_DROP_HISTOGRAM:
+      err = do_drop_histogram (parser, statement);
+      break;
+    case PT_SHOW_HISTOGRAM:
+      err = do_show_histogram (parser, statement);
       break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
@@ -4126,6 +4344,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_UNKNOWN_STATEMENT, 1, statement->node_type);
       break;
     }
+
+  tdes_reset_query_start_info (statement);
 
   /* enable data replication log */
   if (need_stmt_based_repl)
@@ -4412,9 +4632,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
   else
     {
       // CLASS LISTS
-
       PT_NODE *cls = NULL;
       DB_OBJECT *class_mop;
+      int class_type;
 
       // fetch classes and check authorization
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
@@ -4444,9 +4664,38 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
 	  class_mop = cls->info.name.db_object;
+	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
 
-	  error = sm_update_statistics (class_mop, (statement->info.update_stats.with_fullscan
-						    ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING));
+	  if (class_type == SM_CLASS_CT)
+	    {
+	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
+	      if (error == NO_ERROR && prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_ENABLE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = false;
+		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+		  if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+		    {
+		      AU_ENABLE (save);
+		      return error;
+		    }
+		  AU_ENABLE (save);
+		}
+	    }
 	}
 
       return error;
@@ -5264,9 +5513,7 @@ do_set_optimization_param (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, db_get_int (&val2));
 	  break;
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	  cost = db_get_string (&val2);
 	  qo_set_optimization_param (NULL, QO_PARAM_COST, plan, (int) cost[0]);
 	  break;
@@ -5505,8 +5752,7 @@ check_timeout_value (PARSER_CONTEXT * parser, PT_NODE * statement, DB_VALUE * va
 const static char *
 get_savepoint_name_from_db_value (DB_VALUE * val)
 {
-  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR
-      && DB_VALUE_TYPE (val) != DB_TYPE_NCHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARNCHAR)
+  if (DB_VALUE_TYPE (val) != DB_TYPE_CHAR && DB_VALUE_TYPE (val) != DB_TYPE_VARCHAR)
     {
       if (tp_value_cast (val, val, tp_domain_resolve_default (DB_TYPE_VARCHAR), false) != DOMAIN_COMPATIBLE)
 	{
@@ -6222,8 +6468,8 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
     }
 
   /* lock splitted classes with X_LOCK */
-  if (locator_lockhint_classes (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK)
-      != LC_CLASSNAME_EXIST)
+  if (locator_lockhint_classes
+      (num_classes, (const char **) classes_names, locks, need_subclasses, flags, 1, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -6953,6 +7199,13 @@ do_alter_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		}
 
+	      error = tr_update_trigger_timestamp (t->op);
+	      if (error != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  break;
+		}
+
 	      error = locator_flush_instance (t->op);
 	      if (error != NO_ERROR)
 		{
@@ -7298,9 +7551,10 @@ unlink_list (PT_NODE * list)
  * Note:
  */
 static QFILE_LIST_ID *
-get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names, PT_NODE * column_values,
-			   PT_NODE * with, PT_NODE * where, PT_NODE * order_by, PT_NODE * orderby_for,
-			   PT_NODE * using_index, PT_NODE * class_specs, PT_NODE * update_stmt)
+get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * column_names,
+			   PT_NODE * column_values, PT_NODE * with, PT_NODE * where,
+			   PT_NODE * order_by, PT_NODE * orderby_for, PT_NODE * using_index,
+			   PT_NODE * class_specs, PT_NODE * update_stmt)
 {
   PT_NODE *statement = NULL;
   QFILE_LIST_ID *result = NULL;
@@ -7873,9 +8127,9 @@ do_set_pruning_type (PARSER_CONTEXT * parser, PT_NODE * spec, CLIENT_UPDATE_CLAS
  * Note:
  */
 int
-init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data, int *assigns_count,
-		  CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values, int *values_cnt,
-		  bool has_delete)
+init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
+		  int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count, DB_VALUE ** values,
+		  int *values_cnt, bool has_delete)
 {
   int error = NO_ERROR;
   int assign_cnt = 0, upd_cls_cnt = 0, vals_cnt = 0, idx, idx2, idx3, i;
@@ -8592,8 +8846,8 @@ update_at_server (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * statement, 
 
       error =
 	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   query_flag);
+				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -9695,8 +9949,9 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      qo_auto_parameterize (parser, statement->info.update.orderby_for);
 	    }
 
-	  err = execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
-			       parser->host_variables, &list_id, query_flag, NULL, NULL);
+	  err =
+	    execute_query (statement->xasl_id, &parser->query_id, parser->host_var_count + parser->auto_param_count,
+			   parser->host_variables, &list_id, query_flag, NULL, NULL);
 
 	  AU_RESTORE (au_save);
 	  if (err != NO_ERROR)
@@ -10261,8 +10516,8 @@ build_xasl_for_server_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       error =
 	prepare_and_execute_query (stream.buffer, stream.buffer_size, &parser->query_id,
-				   parser->host_var_count + parser->auto_param_count, parser->host_variables, &list_id,
-				   query_flag);
+				   parser->host_var_count + parser->auto_param_count, parser->host_variables,
+				   &list_id, query_flag);
       AU_RESTORE (au_save);
     }
 
@@ -11217,7 +11472,6 @@ static PT_NODE *test_check_option (PARSER_CONTEXT * parser, PT_NODE * node, void
 static int insert_local (PARSER_CONTEXT * parser, PT_NODE * statement);
 static PT_NODE *do_create_odku_stmt (PARSER_CONTEXT * parser, PT_NODE * insert);
 static int do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** oids, int *oids_count);
-static int do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key);
 static int do_on_duplicate_key_update (PARSER_CONTEXT * parser, DB_OTMPL * tpl, PT_NODE * update_stmt);
 static int do_replace_into (PARSER_CONTEXT * parser, DB_OTMPL * tmpl, PT_NODE * spec, PT_NODE * class_specs);
 static int is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed);
@@ -11911,16 +12165,17 @@ do_set_insert_server_not_allowed (PARSER_CONTEXT * parser, PT_NODE * node, void 
 }
 
 /*
- * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
- *					 specified constraint using the values
- *					 assigned in an object template
+ * do_create_midxkey_from_values () - create a MIDX_KEY db_value for the
+ *				      specified constraint using DB_VALUE array
  * return : error code or NO_ERROR;
- * tmpl (in)	   : object template
- * constraint (in) : constraint
- * key (in/out)	   : the MIDX key
+ * values (in)      : values to compose the MIDX key
+ * value_count (in) : number of values
+ * constraint (in)  : constraint
+ * key (in/out)	    : the MIDX key
  */
-static int
-do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+int
+do_create_midxkey_from_values (const DB_VALUE * values[], int value_count, SM_CLASS_CONSTRAINT * constraint,
+			       DB_VALUE * key)
 {
   DB_MIDXKEY midxkey;
   SM_ATTRIBUTE **attr = NULL;
@@ -11939,11 +12194,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
   /* compute key size */
   for (attr_count = 0, attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
+      if (attr_count >= value_count)
 	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
+	  error = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error_return;
 	}
+      val = (DB_VALUE *) values[attr_count];
 
       attr_dom = tp_domain_copy ((*attr)->domain, false);
       if (attr_dom == NULL)
@@ -11952,6 +12208,7 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 	  goto error_return;
 	}
 
+      assert (attr_dom->type->id <= DB_TYPE_LAST);
       if (asc_desc != NULL && asc_desc[attr_count] == 1)
 	{
 	  attr_dom->is_desc = 1;
@@ -11991,16 +12248,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
 
   for (i = 0, attr = constraint->attributes; *attr != NULL; attr++, i++)
     {
-      val = NULL;
-      if (tmpl->assignments[(*attr)->order] != NULL)
-	{
-	  val = tmpl->assignments[(*attr)->order]->variable;
-	}
+      val = (DB_VALUE *) values[i];
       dom = (*attr)->domain;
 
       or_multi_put_element_offset (nullmap_ptr, attr_count, CAST_BUFLEN (buf.ptr - buf.buffer), i);
 
-      if (!DB_IS_NULL (val))
+      if (val != NULL && !DB_IS_NULL (val))
 	{
 	  dom->type->index_writeval (&buf, val);
 	  or_multi_set_not_null (nullmap_ptr, i);
@@ -12022,10 +12275,12 @@ do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constra
       goto error_return;
     }
   midxkey.domain = tp_domain_cache (midxkey.domain);
+  assert (midxkey.domain->type->id <= DB_TYPE_LAST);
   midxkey.min_max_val.position = -1;
   midxkey.min_max_val.type = MIN_COLUMN;
 
   error = db_make_midxkey (key, &midxkey);
+  assert (key->domain.general_info.type <= DB_TYPE_LAST);
   if (error != NO_ERROR)
     {
       goto error_return;
@@ -12048,6 +12303,57 @@ error_return:
     }
   return error;
 }
+
+/*
+ * do_create_midxkey_for_constraint () - create a MIDX_KEY db_value for the
+ *					 specified constraint using the values
+ *					 assigned in an object template
+ * return : error code or NO_ERROR;
+ * tmpl (in)	   : object template
+ * constraint (in) : constraint
+ * key (in/out)	   : the MIDX key
+ */
+int
+do_create_midxkey_for_constraint (DB_OTMPL * tmpl, SM_CLASS_CONSTRAINT * constraint, DB_VALUE * key)
+{
+  const DB_VALUE **values = NULL;
+  SM_ATTRIBUTE **attr = NULL;
+  int attr_count = 0, i = 0, error = NO_ERROR;
+
+  for (attr = constraint->attributes; *attr != NULL; attr_count++, attr++)
+    {
+      /* count attributes */
+    }
+
+  if (attr_count <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  values = (const DB_VALUE **) malloc (sizeof (DB_VALUE *) * attr_count);
+  if (values == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (attr = constraint->attributes; *attr != NULL; i++, attr++)
+    {
+      if (tmpl->assignments[(*attr)->order] != NULL)
+	{
+	  values[i] = tmpl->assignments[(*attr)->order]->variable;
+	}
+      else
+	{
+	  values[i] = NULL;
+	}
+    }
+
+  error = do_create_midxkey_from_values (values, attr_count, constraint, key);
+  free_and_init (values);
+
+  return error;
+}
+
 
 /*
  * do_create_odku_stmt () - create an UPDATE statement for ON DUPLICATE KEY
@@ -12253,8 +12559,8 @@ do_find_unique_constraint_violations (DB_OTMPL * tmpl, bool for_update, OID ** o
     }
 
   result =
-    btree_find_multi_uniques (ws_oid (tmpl->classobj), tmpl->pruning_type, unique_btids, unique_keys, key_cnt, op_type,
-			      oids, oids_count);
+    btree_find_multi_uniques (ws_oid (tmpl->classobj), tmpl->pruning_type, unique_btids, unique_keys, key_cnt,
+			      op_type, oids, oids_count);
   if (result == BTREE_ERROR_OCCURRED)
     {
       error = ER_FAILED;
@@ -12461,8 +12767,8 @@ is_replace_or_odku_allowed (DB_OBJECT * obj, int *allowed)
  * row_count_ptr (in/out)  : Pointer to row counter.
  */
 int
-do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement, const char **savepoint_name,
-		    int *row_count_ptr)
+do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement,
+		    const char **savepoint_name, int *row_count_ptr)
 {
   const char *into_label = NULL;
   DB_VALUE *ins_val = NULL, *val = NULL, db_value;
@@ -12622,7 +12928,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	  /* now create the object using templates, and then dbt_put each value for each corresponding attribute. Of
 	   * course, it is presumed that the order in which attributes are defined in the class as well as in the
 	   * actual insert statement is preserved. */
-	  *otemplate = dbt_create_object_internal (class_->info.name.db_object);
+	  *otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 	  if (*otemplate == NULL)
 	    {
 	      assert (er_errid () != NO_ERROR);
@@ -13181,7 +13487,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 		    }
 
 		  /* create an instance of the target class using templates */
-		  otemplate = dbt_create_object_internal (class_->info.name.db_object);
+		  otemplate = dbt_create_object_internal (class_->info.name.db_object, false);
 		  if (otemplate == NULL)
 		    {
 		      break;
@@ -13214,8 +13520,8 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			      if (!is_vclass)
 				{
 				  error =
-				    db_get_attribute_descriptor (class_->info.name.db_object, attr->info.name.original,
-								 0, 1, &attr_descs[k]);
+				    db_get_attribute_descriptor (class_->info.name.db_object,
+								 attr->info.name.original, 0, 1, &attr_descs[k]);
 				}
 			    }
 			}
@@ -14314,6 +14620,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
+  int prev_parser_au_save;
   QUERY_FLAG query_flag;
   XASL_STREAM stream;
   bool query_trace = false;
@@ -14331,6 +14638,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
     }
 
   AU_DISABLE (save);
+  prev_parser_au_save = parser->au_save;
   parser->au_save = save;
 
   /* mark the beginning of another level of xasl packing */
@@ -14470,6 +14778,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
 
+  parser->au_save = prev_parser_au_save;
   AU_ENABLE (save);
   return error;
 }
@@ -14520,6 +14829,7 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   COMPILE_CONTEXT *contextp;
   XASL_STREAM stream;
+  XASL_NODE_HEADER xasl_header = { 0, 0 };
 
   contextp = &parser->context;
 
@@ -14582,7 +14892,6 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)
     {
-      XASL_NODE_HEADER xasl_header;
       stream.xasl_header = &xasl_header;
 
       err = prepare_query (contextp, &stream);
@@ -14600,6 +14909,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
       else if (stream.xasl_id != NULL)
 	{
+	  if (pt_recompile_for_like_optimizations (parser, statement, stream.xasl_header->xasl_flag))
+	    {
+	      contextp->recompile_xasl = true;
+	      if (stream.xasl_id != NULL)
+		{
+		  free_and_init (stream.xasl_id);
+		}
+	    }
 	  /* check xasl header */
 	  /* TODO: we can treat the different cases of MRO by hacking query string. */
 	  if (pt_recompile_for_limit_optimizations (parser, statement, stream.xasl_header->xasl_flag))
@@ -14969,8 +15286,8 @@ do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
     }
 
   err =
-    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag, &clt_cache_time,
-		   &stmt->cache_time);
+    execute_query (stmt->xasl_id, &query_id, stmt->sub_host_var_count, host_variables, &list_id, flag,
+		   &clt_cache_time, &stmt->cache_time);
 
   if (host_variables)
     {
@@ -16141,6 +16458,18 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
+      break;
+
+    case PT_UPDATE_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
+      break;
+
+    case PT_DROP_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
+      break;
+
+    case PT_SHOW_HISTOGRAM:
+      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:
@@ -18428,6 +18757,13 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
 	}
     }
 
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
   instance_obj = dbt_finish_object (obj_tmpl);
   if (instance_obj == NULL)
     {
@@ -18723,6 +19059,12 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
 	  ASSERT_ERROR ();
 	  goto end;
 	}
+    }
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
   /* flush template */
@@ -19043,6 +19385,13 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
+      goto end;
+    }
+
+  /* updated_time */
+  error = db_update_otmpl_timestamp (obj_tmpl);
+  if (error != NO_ERROR)
+    {
       goto end;
     }
 
@@ -19902,6 +20251,7 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *class_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -19918,10 +20268,23 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
+	  return error;
+	}
+    }
+
   class_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [class_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_CLASS_NAME, class_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_CLASS_NAME, class_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -19970,6 +20333,8 @@ do_find_class_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, name);
     }
 
 end:
@@ -19994,6 +20359,7 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *serial_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20010,10 +20376,21 @@ do_find_serial_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   serial_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_SERIAL_NAME, serial_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_SERIAL_NAME, serial_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20093,6 +20470,7 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *trigger_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20109,10 +20487,22 @@ do_find_trigger_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0
+	  && strcmp (qualifier_name, Au_user_name) != 0 /* when AU_SET_USER() has been called */ )
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  return NO_ERROR;
+	}
+    }
+
   trigger_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_TRIGGER_NAME, trigger_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_TRIGGER_NAME, trigger_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20246,6 +20636,8 @@ do_find_synonym_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SYNONYM_NOT_EXIST, name);
     }
 
 end:
@@ -20270,6 +20662,7 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
   char query_buf[QUERY_BUF_SIZE] = { '\0' };
   const char *current_schema_name = NULL;
   const char *sp_name = NULL;
+  char qualifier_name[DB_MAX_USER_LENGTH] = { '\0' };
   int error = NO_ERROR;
 
   db_make_null (&value);
@@ -20286,10 +20679,22 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
 
   current_schema_name = sc_current_schema_name ();
 
+  if (sm_qualifier_name (name, qualifier_name, DB_MAX_USER_LENGTH) != NULL)
+    {
+      if (strcmp (qualifier_name, current_schema_name) != 0)
+	{
+	  /* Additional cross-schema object lookups during an ongoing cross-schema lookup
+	   * are beyond the scope of the compatibility option */
+	  assert (intl_identifier_casecmp (name, qualifier_name) != 0);
+	  ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
+	  return error;
+	}
+    }
+
   sp_name = sm_remove_qualifier_name (name);
   query = "SELECT [unique_name] FROM [%s] WHERE [sp_name] = '%s' AND [owner].[name] != UPPER ('%s')";
-  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, current_schema_name));
-  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, current_schema_name);
+  assert (QUERY_BUF_SIZE > snprintf (NULL, 0, query, CT_STORED_PROC_NAME, sp_name, qualifier_name));
+  snprintf (query_buf, QUERY_BUF_SIZE, query, CT_STORED_PROC_NAME, sp_name, qualifier_name);
   assert (query_buf[0] != '\0');
 
   error = db_compile_and_execute_local (query_buf, &query_result, &query_error);
@@ -20338,6 +20743,8 @@ do_find_stored_procedure_by_query (const char *name, char *buf, int buf_size)
     {
       /* No result can be returned because unique_name is not unique. */
       buf[0] = '\0';
+
+      ERROR_SET_WARNING_1ARG (error, ER_SP_NOT_EXIST, name);
     }
 
 end:
@@ -20643,7 +21050,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   /* temporarily disable authorization to access _db_server class */
   AU_DISABLE (au_save);
 
-  server_class = sm_find_class (CT_DB_SERVER_NAME);
+  server_class = sm_find_class (CT_SERVER_NAME);
   if (server_class == NULL)
     {
       error = ER_DBLINK_CATALOG_DB_SERVER_NOT_FOUND;
@@ -20651,7 +21058,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
       goto end;
     }
 
-  obj_tmpl = dbt_create_object_internal ((MOP) server_class);
+  obj_tmpl = dbt_create_object_internal ((MOP) server_class, false);
   if (obj_tmpl == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -20696,6 +21103,13 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   db_make_object (&value, owner);
   error = dbt_put_internal (obj_tmpl, SERVER_ATTR_OWNER, &value);
   pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* created_time && updated_time */
+  error = db_set_otmpl_timestamps (obj_tmpl);
   if (error != NO_ERROR)
     {
       goto end;
@@ -20796,13 +21210,26 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* PORT */
-  db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+  db_value_domain_init (&port_no, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
   pval = pt_value_to_db (parser, create_server->port);
   if (pval == NULL)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
       goto end;
+    }
+
+  if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+    {
+      FLOAT_TO_FIXED_NUMERIC (pval);
+      if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  PT_ERRORmf (parser, create_server->port, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+		      create_server->port->info.value.data_value.str->bytes);
+	  error = ER_IT_DATA_OVERFLOW;
+	  db_make_null (pval);
+	  goto end;
+	}
     }
 
   error = numeric_db_value_coerce_to_num (pval, &port_no, &data_stat);
@@ -20840,27 +21267,15 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   assert (create_server->pwd);
   assert (create_server->pwd->node_type == PT_VALUE);
   pwd = (char *) PT_VALUE_GET_BYTES (create_server->pwd);
-  if (pwd == NULL)
+  if (pwd == NULL || *pwd == '\0')
     {
       error = ER_FAILED;
       goto end;
     }
 
-  error = pt_remake_dblink_password (pwd, &passwd, false);
+  error = db_make_string_copy (&passwd, pwd);
   if (error != NO_ERROR)
-    {				// TODO: error handling
-      if (!pt_has_error (parser))
-	{
-	  if (er_errid_if_has_error () != NO_ERROR)
-	    {
-	      PT_ERROR (parser, statement, (char *) er_msg ());
-	    }
-	  else
-	    {
-	      PT_ERRORf2 (parser, statement, "Failed to re-encryption passwordfor %s. error=%d", attr_val[0], error);
-	    }
-	}
-
+    {
       goto end;
     }
 
@@ -21008,6 +21423,14 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   AU_ENABLE (save);
 
   pr_clear_value (&value);
+
+  if (error == NO_ERROR)
+    {
+      AU_DISABLE (save);
+      error = db_update_obj_timestamp (server_object);
+      AU_ENABLE (save);
+    }
+
   return error;
 }
 
@@ -21042,22 +21465,10 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       pt = (char *) PT_VALUE_GET_BYTES (alter->pwd);
       assert (pt && *pt);
 
-      error = pt_remake_dblink_password (pt, &passwd, false);
+      db_make_null (&passwd);
+      error = db_make_string_copy (&passwd, pt);
       if (error != NO_ERROR)
 	{
-	  if (!pt_has_error (parser))
-	    {			// TODO: error handling
-	      if (er_errid_if_has_error () != NO_ERROR)
-		{
-		  PT_ERROR (parser, statement, (char *) er_msg ());
-		}
-	      else
-		{
-		  PT_ERRORf2 (parser, statement, "Failed to re-encryption password for %s. error=%d",
-			      (char *) server_name, error);
-		}
-	    }
-
 	  goto end;
 	}
       error = db_put (server_object, SERVER_ATTR_PASSWORD, &passwd);
@@ -21088,13 +21499,26 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       DB_VALUE *pval = NULL;
       DB_DATA_STATUS data_stat;
 
-      db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_NUMERIC_PRECISION, 0);
+      db_value_domain_init (&value, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
       pval = pt_value_to_db (parser, alter->port);
       if (pval == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  error = er_errid ();
 	  goto end;
+	}
+
+      if (DB_VALUE_TYPE (pval) == DB_TYPE_NUMERIC)
+	{
+	  FLOAT_TO_FIXED_NUMERIC (pval);
+	  if (DB_VALUE_PRECISION (pval) > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      PT_ERRORmf (parser, alter->port, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_BAD_NUMERIC,
+			  alter->port->info.value.data_value.str->bytes);
+	      error = ER_IT_DATA_OVERFLOW;
+	      db_make_null (pval);
+	      goto end;
+	    }
 	}
 
       error = numeric_db_value_coerce_to_num (pval, &value, &data_stat);
@@ -21258,6 +21682,12 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  goto end;
 	}
+    }
+
+  error = db_update_obj_timestamp (server_object);
+  if (error != NO_ERROR)
+    {
+      goto end;
     }
 
 end:
@@ -21447,6 +21877,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
   max_len >>= 2;
   max_len <<= 2;
 
+  db_make_null (&val);
+
   if (ciper_buf_size <= max_len)
     {
       err = ER_TF_BUFFER_OVERFLOW;
@@ -21461,9 +21893,8 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 
   if (length <= DBLINK_PASSWORD_MAX_LENGTH)
     {
-      // The raw password entered by the user.
-      db_make_null (&val);
-      err = get_dblink_password_encrypt (passwd, &val, true);
+      // The raw password entered by the user.  
+      err = get_dblink_password_encrypt (passwd, &val);
       if (err == NO_ERROR)
 	{
 	  str = (char *) db_get_string (&val);
@@ -21489,16 +21920,31 @@ pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cip
 	      err = ER_DBLINK_PASSWORD_ENCRYPT;
 	    }
 	}
-      pr_clear_value (&val);
     }
   else if (length == max_len)
     {
-      // A encrypted password from the raw password.      
-      strcpy (cipher_buf, passwd);
-      err = NO_ERROR;
+      err = get_dblink_password_decrypt (passwd, &val);
+      if (err == NO_ERROR)
+	{
+	  // A encrypted password from the raw password.      
+	  strcpy (cipher_buf, passwd);
+	}
+      else
+	{
+	  if (err == ER_DBLINK_PASSWORD_CHECKSUM || err == ER_DBLINK_PASSWORD_INVALID_LENGTH)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	    }
+	  else
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, err);
+	      err = ER_DBLINK_PASSWORD_DECRYPT;
+	    }
+	}
     }
 
 ret_pos:
+  pr_clear_value (&val);
   if (err != NO_ERROR)
     {
       if (er_errid_if_has_error () != NO_ERROR)
@@ -21514,67 +21960,23 @@ ret_pos:
   return err;
 }
 
-int
-pt_remake_dblink_password (const char *passwd, DB_VALUE * outval, bool is_external)
-{
-  int error;
-  DB_VALUE tmp_passwd;
-
-  db_make_null (&tmp_passwd);
-  error = get_dblink_password_decrypt (passwd, &tmp_passwd);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_CHECKSUM || error == ER_DBLINK_PASSWORD_INVALID_LENGTH)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_DECRYPT, 1, error);
-	  error = ER_DBLINK_PASSWORD_DECRYPT;
-	}
-
-      pr_clear_value (&tmp_passwd);
-      return error;
-    }
-
-  error = get_dblink_password_encrypt ((char *) db_get_string (&tmp_passwd), outval, is_external);
-  if (error != NO_ERROR)
-    {
-      if (error == ER_DBLINK_PASSWORD_OVER_MAX_LENGTH)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_PASSWORD_ENCRYPT, 1, error);
-	  error = ER_DBLINK_PASSWORD_ENCRYPT;
-	}
-    }
-
-  pr_clear_value (&tmp_passwd);
-  return error;
-}
-
 /*
  * get_dblink_password_encrypt ()  : Generates an encrypted password.
  *
  * return		  : NO_ERROR or error code.
  * passwd(in)             : Raw password
  * encrypt_val(out)	  : Encrypted password
- * is_external(in)	  : If true, generate a key for the external interface,
- *                          Otherwise, it generates a key to be stored internally.
  * 
  * Remark: 
  *      
  */
 static int
-get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is_external)
+get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 {
   int err, length, buf_size;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
   char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   struct timeval check_time = { 0, 0 };
   struct tm *lt;
   char empty_str[4] = { 0x00, };
@@ -21595,25 +21997,18 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val, bool is
   length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
   passwd = confused;
 
-  if (is_external == false)
+  if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
     {
-      private_key[0] = 0x00;
+      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
     }
   else
     {
-      if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
+      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
+		    check_time.tv_usec) >= (int) sizeof (private_key))
 	{
-	  sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
-	}
-      else
-	{
-	  if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-			lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-			check_time.tv_usec) >= (int) sizeof (private_key))
-	    {
-	      assert_release (0);
-	      private_key[sizeof (private_key) - 1] = '\0';
-	    }
+	  assert_release (0);
+	  private_key[sizeof (private_key) - 1] = '\0';
 	}
     }
 
@@ -21649,7 +22044,7 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
   int err, length, new_length;
   char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
@@ -21708,11 +22103,10 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   char *upper_case_name = NULL;
   size_t name_size;
   char *owner_name = NULL;
-  char *server_name = NULL;
   char query[2048];
-  char name_buf[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
+  char server_name_lwr[SERVER_ATTR_LINK_NAME_BUF_SIZE + 1];	// link_name varchar(255)
 
-  sm_downcase_name ((char *) node_server->info.name.original, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
+  sm_downcase_name ((char *) node_server->info.name.original, server_name_lwr, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   if (node_owner)
     {
       owner_name = (char *) node_owner->info.name.original;
@@ -21738,16 +22132,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   assert (owner_name);
   sprintf (query,
 	   "SELECT [_db_server], [owner] FROM [_db_server] WHERE [link_name] = '%s' AND [owner].[name] = '%s'",
-	   name_buf, owner_name);
-
-  if (owner_name == upper_case_name)
-    {
-      free (upper_case_name);
-    }
-  else
-    {
-      db_string_free ((char *) owner_name);
-    }
+	   server_name_lwr, owner_name);
 
   DB_QUERY_RESULT *query_result;
   DB_QUERY_ERROR query_error;
@@ -21756,13 +22141,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   int rec_cnt = 0;
   int saved_opt_level;
 
-  server_name = (char *) node_server->info.name.original;
-  owner_name = (char *) (node_owner ? node_owner->info.name.original : NULL);
-
   PARSER_CONTEXT *parser = parser_create_parser ();
   if (parser == NULL)
     {
-      return NULL;
+      // return NULL;
+      goto clear_and_return;
     }
 
   db_make_null (&values[0]);
@@ -21830,15 +22213,11 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
 
   if (rec_cnt != 1)
     {
+      char owner_name_lwr[DB_MAX_USER_LENGTH + 1];
       server_obj = NULL;
-      if (owner_name)
-	{
-	  sprintf (query, "[%s].[%s]", owner_name, server_name);
-	}
-      else
-	{
-	  sprintf (query, "[%s]", server_name);
-	}
+
+      sm_downcase_name (owner_name, owner_name_lwr, sizeof (owner_name_lwr));
+      sprintf (query, "[%s].[%s]", owner_name_lwr, server_name_lwr);
 
       if (rec_cnt == 0)
 	{
@@ -21861,6 +22240,16 @@ err:
     {
       db_value_clear (&values[0]);
       db_value_clear (&values[1]);
+    }
+
+clear_and_return:
+  if (owner_name == upper_case_name)
+    {
+      free (upper_case_name);
+    }
+  else
+    {
+      db_string_free ((char *) owner_name);
     }
 
   return server_obj;

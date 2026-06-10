@@ -32,6 +32,11 @@
 #if defined(WINDOWS)
 #include <direct.h>
 #else
+#include <fcntl.h>
+#include <sys/sendfile.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 #include <unistd.h>
 #endif
 
@@ -60,13 +65,12 @@ static T_CUBRID_FILE_INFO cubrid_file[NUM_CUBRID_FILE] = {
   {FID_MONITORD_LOG, ""},
   {FID_ER_HTML, ""},
   {FID_CUBRID_ERR_DIR, ""},
-  {FID_CAS_FOR_ORACLE_DBINFO, ""},
-  {FID_CAS_FOR_MYSQL_DBINFO, ""},
   {FID_ACCESS_CONTROL_FILE, ""},
   {FID_SLOW_LOG_DIR, ""},
   {FID_SHARD_DBINFO, ""},
   {FID_SHARD_PROXY_LOG_DIR, ""},
-  {FID_CUBRID_GATEWAY_CONF, ""}
+  {FID_CUBRID_GATEWAY_CONF, ""},
+  {FID_COPIED_CUBRID_CONF, ""}
 };
 
 void
@@ -155,7 +159,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
       break;
 
     case FID_ACCESS_CONTROL_FILE:
-#if !defined(CAS_FOR_ORACLE) && !defined(CAS_FOR_MYSQL)
       if (repath)
 	{
 	  envvar_confdir_file (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
@@ -164,9 +167,6 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	{
 	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
-#else
-      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
-#endif
       break;
     default:
       if (repath)
@@ -300,12 +300,6 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
     case FID_ER_HTML:
       envvar_confdir_file (buf, len, "uw_er.html");
       break;
-    case FID_CAS_FOR_ORACLE_DBINFO:
-      envvar_confdir_file (buf, len, "databases_oracle.txt");
-      break;
-    case FID_CAS_FOR_MYSQL_DBINFO:
-      envvar_confdir_file (buf, len, "databases_mysql.txt");
-      break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
       if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
@@ -321,6 +315,9 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
 	  assert (false);
 	  buf[0] = '\0';
 	}
+      break;
+    case FID_COPIED_CUBRID_CONF:
+      envvar_vardir_file (buf, len, "as_pid/.cubrid.conf");
       break;
     default:
       break;
@@ -404,3 +401,124 @@ make_abs_path (char *dest, const char *subdir, const char *path, size_t dest_len
 
   return ret;
 }
+
+#if !defined(WINDOWS)
+int
+copy_cubrid_conf (const char *dest)
+{
+  const char *conf_file = NULL;
+  const char *file_path_ptr = NULL;
+  char file_being_dealt_with[PATH_MAX];
+  int src_fd = -1, dest_fd = -1;
+  struct stat stat_buf;
+  int error_code = 0;
+
+  conf_file = envvar_get ("CONF_FILE");
+  if (conf_file != NULL && *conf_file == '\0')
+    {
+      conf_file = NULL;
+    }
+
+  if (conf_file != NULL)
+    {
+      file_path_ptr = conf_file;
+    }
+  else
+    {
+      envvar_confdir_file (file_being_dealt_with, PATH_MAX, "cubrid.conf");
+      file_path_ptr = file_being_dealt_with;
+    }
+
+  src_fd = open (file_path_ptr, O_RDONLY);
+  if (src_fd < 0)
+    {
+      error_code = -1;
+      goto error;
+    }
+
+  if (fstat (src_fd, &stat_buf) < 0)
+    {
+      error_code = -2;
+      goto error;
+    }
+
+  dest_fd = open (dest, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  if (dest_fd < 0)
+    {
+      error_code = -3;
+      goto error;
+    }
+
+  if (sendfile (dest_fd, src_fd, NULL, stat_buf.st_size) != (ssize_t) stat_buf.st_size)
+    {
+      error_code = -4;
+      goto error;
+    }
+
+  if (fchmod (dest_fd, 0400) < 0)
+    {
+      error_code = -5;
+      goto error;
+    }
+
+  close (src_fd);
+  close (dest_fd);
+
+  return 0;
+
+error:
+  if (src_fd >= 0)
+    {
+      close (src_fd);
+    }
+
+  if (dest_fd >= 0)
+    {
+      close (dest_fd);
+      unlink (dest);
+    }
+
+  return error_code;
+}
+
+void
+manage_cubrid_conf (T_CMD_CUBRID_CONF command)
+{
+  char cubrid_conf[BROKER_PATH_MAX];
+  int error_code = 0;
+
+  get_cubrid_file (FID_COPIED_CUBRID_CONF, cubrid_conf, BROKER_PATH_MAX);
+
+  switch (command)
+    {
+    case CMD_START:
+      if ((error_code = copy_cubrid_conf (cubrid_conf)) == 0)
+	{
+	  setenv (CUBRID_CONF_FOR_BROKER, cubrid_conf, 1);
+	}
+      else
+	{
+	  _er_log_debug (ARG_FILE_LINE, "fail of copy_cubrid_conf : %d\n", error_code);
+	}
+      break;
+    case CMD_STOP:
+      if (access (cubrid_conf, F_OK) == 0)
+	{
+	  unlink (cubrid_conf);
+	}
+      unsetenv (CUBRID_CONF_FOR_BROKER);
+      break;
+    case CMD_ON:
+      if (access (cubrid_conf, F_OK) == 0)
+	{
+	  setenv (CUBRID_CONF_FOR_BROKER, cubrid_conf, 1);
+	}
+      break;
+    case CMD_OFF:
+      unsetenv (CUBRID_CONF_FOR_BROKER);
+      break;
+    default:
+      break;
+    }
+}
+#endif

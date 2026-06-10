@@ -115,7 +115,7 @@ qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_l
   qfile_close_list (thread_p, agg_p->list_id);
   qfile_destroy_list (thread_p, agg_p->list_id);
 
-  if (qfile_copy_list_id (agg_p->list_id, list_id_p, true) != NO_ERROR)
+  if (qfile_copy_list_id (agg_p->list_id, list_id_p, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
       return ER_FAILED;
@@ -691,6 +691,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      pr_clone_value (&db_values[0], accumulator->value);
 		    }
 		  agg_p->is_ended = true;
+		  pr_clear_value_vector (db_values);
 		  continue;
 		}
 
@@ -716,6 +717,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      pr_clone_value (&db_values[0], accumulator->value);
 		    }
 		  agg_p->is_ended = true;
+		  pr_clear_value_vector (db_values);
 		  continue;
 		}
 	      break;

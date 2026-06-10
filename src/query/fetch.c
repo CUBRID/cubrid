@@ -59,6 +59,7 @@
 #include "dbtype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE tpl, DB_VALUE ** peek_dbval);
 static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE tpl);
@@ -508,6 +509,11 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_SLEEP:
     case T_CRC32:
     case T_CONV_TZ:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+    case T_COLLECTION_TO_STRING:
       /* fetch rhs value */
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tpl, &peek_right) != NO_ERROR)
 	{
@@ -3872,6 +3878,23 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       break;
 
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+      if (qdata_get_estimated_heap_stat (thread_p, peek_right, arithptr->value, arithptr->opcode) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_COLLECTION_TO_STRING:
+      if (db_collection_to_string_dbval (arithptr->value, peek_right) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
     default:
       break;
     }
@@ -4905,7 +4928,11 @@ fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, va
 	}
       for (regup = regu_list; regup != NULL; regup = regup->next)
 	{
-	  if (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to)))
+	  if (regup->value.vfetch_to && unlikely (pr_is_set_type (DB_VALUE_DOMAIN_TYPE (regup->value.vfetch_to))))
+	    {
+	      pr_clear_value (regup->value.vfetch_to);
+	    }
+	  if (DB_NEED_CLEAR (regup->value.vfetch_to))
 	    {
 	      pr_clear_value (regup->value.vfetch_to);
 	    }
@@ -5218,3 +5245,121 @@ fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
   reguvar.map_regu (map_func);
 }
 // *INDENT-ON*
+
+/*
+ * fetch_peek_leftmost_numeric_regu () - Recursively search leftptr of an arith tree for the first NUMERIC-typed node.
+ *
+ *   return       : peeked DB_VALUE of the NUMERIC node, or NULL if not found
+ *   thread_p(in) : thread entry
+ *   regu_var(in) : root of the regu variable arith tree to search
+ *   vd(in)       : value descriptor
+ */
+DB_VALUE *
+fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
+{
+  ARITH_TYPE *arithptr;
+  DB_VALUE *dbvalp;
+
+  if (regu_var == NULL)
+    {
+      return NULL;
+    }
+
+  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
+    {
+      dbvalp = NULL;
+      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
+	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  return dbvalp;
+	}
+      return NULL;
+    }
+
+  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
+    {
+      arithptr = regu_var->value.arithptr;
+      return fetch_peek_leftmost_numeric_regu (thread_p, arithptr->leftptr, vd);
+    }
+
+  return NULL;
+}
+
+/*
+ * fetch_and_coerce_key_limit_lower () - fetch regu variable and coerce to BIGINT,
+ *                                       handling NUMERIC-to-BIGINT overflow for a lower key limit.
+ *
+ *   return          : NO_ERROR or error code
+ *   thread_p (in)   : thread entry
+ *   key_limit_l(in) : regu variable for lower key limit
+ *   vd (in)         : value descriptor
+ *   out_val (out)   : always set to a valid BIGINT on success;
+ *                     DB_BIGINT_MAX on positive overflow (no rows), 0 on negative overflow (all rows)
+ */
+int
+fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l,
+				  VAL_DESCR * vd, DB_VALUE * out_val)
+{
+  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  TP_DOMAIN_STATUS dom_status;
+  DB_VALUE *tmp_dbvalp;
+  int error_code;
+
+  assert (key_limit_l != NULL);
+  assert (vd != NULL);
+  assert (out_val != NULL);
+
+  if (key_limit_l->type == TYPE_INARITH)
+    {
+      error_code = fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, &tmp_dbvalp);
+      if (error_code != NO_ERROR)
+	{
+	  if (er_errid () != ER_IT_DATA_OVERFLOW && er_errid () != ER_QPROC_OVERFLOW_SUBTRACTION)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
+	  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_l, vd);
+	  if (tmp_dbvalp == NULL)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
+	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
+	  er_clear ();
+	  return NO_ERROR;
+	}
+    }
+  else
+    {
+      if (fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  /* coerce fetched value to BIGINT */
+  dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
+	{
+	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
+	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
+	  er_clear ();
+	  return NO_ERROR;
+	}
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, tmp_dbvalp, domainp);
+      return ER_FAILED;
+    }
+
+  if (DB_VALUE_DOMAIN_TYPE (out_val) != DB_TYPE_BIGINT)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}

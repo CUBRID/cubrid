@@ -46,7 +46,7 @@
 #include "slotted_page.h"
 #include "heap_file.h"
 #include "btree.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "critical_section.h"
 #include "tz_support.h"
 #include "db_date.h"
@@ -714,9 +714,8 @@ thread_scan_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, THREAD_ENTRY
   if (lockwait != NULL)
     {
       /* lockwait_blocked_mode */
-      strncpy (buffer, LOCK_TO_LOCKMODE_STRING (lockwait->blocked_mode), buf_len);
-      buffer[buf_len - 1] = '\0';
-      trim (buffer);
+      snprintf (buffer, buf_len, "%*s", LOCK_MODE_STR_MAX_LENGTH,
+		lock_to_lockmode_string ((LOCK) lockwait->blocked_mode));
       error = db_make_string_copy (&vals[idx], buffer);
       if (error != NO_ERROR)
 	{

@@ -45,13 +45,15 @@
 
 #include "porting.h"
 #include "cas_common.h"
+#include "cas_common_vars.h"
 #include "cas_network.h"
-#include "cas.h"
-#include "broker_env_def.h"
-#include "cas_execute.h"
+#include "cas_error.h"
+#include "cas_protocol.h"
+#include "broker_config.h"
+#include "broker_shm.h"
 #include "error_code.h"
 #include "broker_util.h"
-#include "host_lookup.h"
+#include "cas_ssl.h"
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
@@ -73,11 +75,6 @@ static bool net_timeout_flag = false;
 
 static char net_error_flag;
 static int net_timeout = NET_DEFAULT_TIMEOUT;
-
-extern bool ssl_client;
-extern int cas_ssl_write (int sock_fd, const char *buf, int size);
-extern int cas_ssl_read (int sock_fd, char *buf, int size);
-extern bool is_ssl_data_ready (int sock_fd);
 
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)
@@ -521,8 +518,6 @@ net_timeout_set (int timeout_sec)
 {
   net_timeout = timeout_sec;
 }
-
-extern SOCKET new_req_sock_fd;
 
 static int
 read_buffer (SOCKET sock_fd, char *buf, int size)

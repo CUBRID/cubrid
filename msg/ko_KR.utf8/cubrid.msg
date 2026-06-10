@@ -915,18 +915,18 @@ $ LOADDB
 842 오브젝트(%1$d|%2$d|%3$d)의 락을 캐쉬할 수 없습니다.
 843 %1$s 함수의 잘못된 인자로 %2$s가 넘어왔습니다.
 844 알 수 없는 격리도(%1$d)가 발견되었습니다. 해당 트랜잭션 인덱스는 %2$d입니다.
-845 잘못된 객체 유형(%1$d)이 발견되었습니다. 해당 로크 객체는 %2$d|%3$d|%4$d입니다..
+845 잘못된 객체 유형(%1$d)이 발견되었습니다. 해당 락 객체는 %2$d|%3$d|%4$d입니다..
 846 %1$s을 획득한 트랜잭션(%2$d)은 해당 객체(%3$d|%4$d|%5$d)의 holder list에 없습니다.
 847 %1$s이 획득된 %2$s(%3$d|%4$d|%5$d)는 해당 트랜잭션(%6$d)의 hold list(cnt=%7$d)에 없습니다.
 848 %1$s이 획득된 객체(%2$d|%3$d|%4$d)는 해당 트랜잭션(%5$d)의 non2pl list에 없습니다.
 849 트랜잭션(%1$d)을 두 번 이상 취소(abort)시키려고 합니다.
-850 트랜잭션(%1$d)은 로크 객체(%2$d|%3$d|%4$d)의 holder도 아니고 waiter도 아닙니다.
-851 로크 자원 (%1$s) 할당 실패.
+850 트랜잭션(%1$d)은 락 객체(%2$d|%3$d|%4$d)의 holder도 아니고 waiter도 아닙니다.
+851 락 자원 (%1$s) 할당 실패.
 852 빈 lock holder list의 total holders mode(%1$d)가 NULL_LOCK이 아닙니다.
-853 객체(%1$d|%2$d|%3$d)에 대해 Uncommitted Read 트랜잭션(%4$d)이 잘못된 로크(%5$s)를 잡았습니다.
+853 객체(%1$d|%2$d|%3$d)에 대해 Uncommitted Read 트랜잭션(%4$d)이 잘못된 락(%5$s)를 잡았습니다.
 854 경고: lock holder는 없지만 lock waiter는 존재하는 상태. %1$s를 참조하세요.
 855 경고: 둘 이상의 스레드가 하나의 트랜잭션(%1$d)를 위해 lock-waiting 중입니다.
-856 경고: 이상한 로크 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$lld), 트랜잭션은 (%5$d).
+856 경고: 이상한 락 대기 상태(%1$d|%2$d), 스레드는 (%3$d|%4$lld), 트랜잭션은 (%5$d).
 857 볼륨 "%2$s"의 %1$d 페이지를 잘라내는 도중에 I/O 에러 발생.
 858 서버 재수행시 볼륨 "%1$s"는 알 수 없는 볼륨입니다. 
 859 페이지(%1$d|%2$d)에 대한 래치 획득 요청이 취소되었습니다.
@@ -1456,10 +1456,23 @@ $ LOADDB
 
 1365 DBA 및 소유자만 %1$s 권한을 부여할 수 있습니다.
 
-1366 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
+1366 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 %1$d자를 넘을 수 없습니다.
 
 1367 DBLINK 트랜잭션 취소: %1$s
-1367 마지막 에러
+
+1368 유효하지 않은 커서
+
+1369 사용자 "%1$s"는 로그인할 수 없습니다.
+
+1370 테이블은 한 개의 AUTO_INCREMENT만 가질 수 있습니다.
+
+1371 클래스 "%1$s"의 모든 속성을 invisible로 정의할 수 없습니다. 클래스 구성 요소에는 한 개 이상의 visible 속성이 필요합니다.
+
+1372 콜백 처리 중에 에러가 발생했습니다. code(%1$d), msg(%2$s)
+
+1373 주어진 scale %1$d는 유효하지 않습니다; %2$d 이상 %3$d 이하의 값이어야 합니다.
+
+1374 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1961,10 +1974,14 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 328 오직 후행 기본 인수만 허용합니다: '%1$s' 에서 유효하지 않음.
 329 %1$s에 대해 GRANT 옵션을 부여할 수 없습니다.
 
-330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 255자를 넘을 수 없습니다.
+330 저장 프로시저/함수 인자 디폴트 값의 문자열 표현은 %1$d자를 넘을 수 없습니다.
 331 Static SQL에 사용된 호스트 표현식은 변수나 레코드 필드이어야 합니다: '%1$s'.
+332 Stored Procedure는 CALL 문에서만 호출할 수 있습니다.
+333 Stored Procedure를 호출하는 CALL 문은 INTO 절을 가질 수 없습니다.
 
-
+334 가상 클래스 속성은 visibility를 정의할 수 없습니다.
+335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
+336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
@@ -2115,18 +2132,18 @@ $set 14 MSGCAT_SET_LOCK
 16 락 대상: Class = %1$s.\n
 17 락 대상: Instance of class (%1$2d|%2$6d|%3$4d) = %4$s.\n
 18 락 대상: Unknown.\n
-19 Total mode of holders = %1$8s, Total mode of waiters = %2$8s.\n
+19 Total mode of holders = %1$10s, Total mode of waiters = %2$10s.\n
 20 Num holders=%1$3d, Num blocked-holders=%2$3d, Num waiters=%3$3d\n
 21 LOCK HOLDERS:\n
 22 BLOCKED LOCK HOLDERS:\n
 23 LOCK WAITERS:\n
 24 NON_2PL_RELEASED:\n
-25 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n
-26 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n
-27 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$8s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
-28 %1$4sTran_index = %2$3d, Granted_mode =%3$8s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode =%7$8s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
-29 %1$4sTran_index = %2$3d, Blocked_mode =%3$8s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
-30 %1$4sTran_index = %2$3d, Non_2_phase_lock =%3$8s\n
+25 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d\n
+26 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d, Nsubgranules = %5$2d\n
+27 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d\n\t%5$13s Blocked_mode = %6$10s\n\t%7$17s Start_waiting_at = %8$-30s\n\t%9$17s Wait_for_secs = %10$.2f\n
+28 %1$4sTran_index = %2$3d, Granted_mode = %3$10s, Count = %4$3d, Nsubgranules = %5$2d\n\t%6$13s Blocked_mode = %7$10s\n\t%8$13s Start_waiting_at = %9$-30s\n\t%10$13s Wait_for_secs = %11$.2f\n
+29 %1$4sTran_index = %2$3d, Blocked_mode = %3$10s \n\t%4$13s Start_waiting_at = %5$-30s \n\t%6$13s Wait_for_secs = %7$.2f\n
+30 %1$4sTran_index = %2$3d, Non_2_phase_lock = %3$10s\n
 31 VPID (volid|pageid) = %1$3d|%2$6d.\n
 32 *** 락 테이블 덤프  ***\n 락 상승    = %1$d, Run Deadlock interval = %2$5.2f\n
 33 트랜잭션 (인덱스 %1$2d, %2$s, %3$s@%4$s|%5$d)\n

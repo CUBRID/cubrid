@@ -46,6 +46,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "db_set_function.h"
+#include "dbtype_def.h"
 #include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -83,7 +84,8 @@ bool db_Keep_session = false;
 
 int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
-static int valcnv_Max_set_elements = 10;
+static thread_local int valcnv_Max_set_elements = 10;
+static thread_local bool valcnv_Quote_strings = false;
 
 #if defined(SERVER_MODE)
 int db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
@@ -127,10 +129,16 @@ db_value_put_null (DB_VALUE * value)
  * the new interface for db_make_* functions will set the value to null, which is wrong.
  * We need to investigate if this set to 0 will work or not.
  */
-inline bool
+static inline bool
 IS_INVALID_PRECISION (int p, int m)
 {
   return (p != DB_DEFAULT_PRECISION) && ((p < 0) || (p > m));
+}
+
+static inline bool
+IS_INVALID_NUMERIC_SCALE (int s, int min, int max)
+{
+  return (s != DB_DEFAULT_SCALE) && ((s < min) || (s > max));
 }
 
 /*
@@ -157,6 +165,9 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
   value->domain.general_info.type = type;
   value->domain.numeric_info.precision = precision;
   value->domain.numeric_info.scale = scale;
+  value->domain.numeric_info.is_value_negative = false;
+  value->data.num.header.precision = 0;
+  value->data.num.header.scale = 0;
   value->need_clear = false;
   value->domain.general_info.is_null = 1;
 
@@ -167,22 +178,24 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
 	{
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	}
-      else
-	{
-	  value->domain.numeric_info.precision = precision;
-	}
+
       if (scale == DB_DEFAULT_SCALE)
 	{
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
-      else
-	{
-	  value->domain.numeric_info.scale = scale;
-	}
+
       if (IS_INVALID_PRECISION (precision, DB_MAX_NUMERIC_PRECISION) || precision == 0)
 	{
 	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, precision, 0, DB_MAX_NUMERIC_PRECISION);
+	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+      else if (IS_INVALID_NUMERIC_SCALE (scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
+	{
+	  error = ER_INVALID_SCALE;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 3, scale, DB_MIN_FIXED_NUMERIC_SCALE,
+		  DB_MAX_FIXED_NUMERIC_SCALE);
 	  value->domain.numeric_info.precision = DB_DEFAULT_NUMERIC_PRECISION;
 	  value->domain.numeric_info.scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
@@ -258,30 +271,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
       break;
 
-    case DB_TYPE_NCHAR:
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-      else
-	{
-	  value->domain.char_info.length = precision;
-	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_NCHAR_PRECISION))
-	{
-	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_NCHAR_PRECISION);
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-
-      if (precision == 0)
-	{
-	  value->domain.char_info.length = TP_FLOATING_PRECISION_VALUE;
-	}
-      value->data.ch.info.codeset = LANG_SYS_CODESET;
-      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
-      break;
-
     case DB_TYPE_VARCHAR:
       if (precision == DB_DEFAULT_PRECISION)
 	{
@@ -301,30 +290,6 @@ db_value_domain_init (DB_VALUE * value, const DB_TYPE type, const int precision,
       if (precision == 0)
 	{
 	  value->domain.char_info.length = DB_MAX_VARCHAR_PRECISION;
-	}
-      value->data.ch.info.codeset = LANG_SYS_CODESET;
-      value->domain.char_info.collation_id = LANG_SYS_COLLATION;
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      if (precision == DB_DEFAULT_PRECISION)
-	{
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
-	}
-      else
-	{
-	  value->domain.char_info.length = precision;
-	}
-      if (IS_INVALID_PRECISION (precision, DB_MAX_VARNCHAR_PRECISION))
-	{
-	  error = ER_INVALID_PRECISION;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_INVALID_PRECISION, 3, precision, 0, DB_MAX_VARNCHAR_PRECISION);
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
-	}
-
-      if (precision == 0)
-	{
-	  value->domain.char_info.length = DB_MAX_VARNCHAR_PRECISION;
 	}
       value->data.ch.info.codeset = LANG_SYS_CODESET;
       value->domain.char_info.collation_id = LANG_SYS_COLLATION;
@@ -587,8 +552,29 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
 
 	memset (str, 0, DB_MAX_NUMERIC_PRECISION + 2);
 	str[0] = '-';
-	memset (str + 1, '9', value->domain.numeric_info.precision);
-	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf);
+
+	if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    memset (str + 1, '9', DB_MAX_NUMERIC_PRECISION);
+	    /* why the scale is always set to DB_MIN_NUMERIC_SCALE for float numeric:
+	     * if a decimal value exceeding the maximum precision (40) is given
+	     * (e.g., -0.00...999...9 (41,252))
+	     * the engine's precision rules will automatically round it up at the 41st decimal place,
+	     * resulting internally in -1.000... (40,39)
+	     *
+	     * since the engine handles these decimal edge cases gracefully via rounding,
+	     * this function only needs to consider the maximum integer magnitude case
+	     * by setting the scale to its minimum value.
+	     */
+	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
+	    FIXED_TO_FLOAT_NUMERIC (value);
+	  }
+	else
+	  {
+	    memset (str + 1, '9', value->domain.numeric_info.precision);
+	  }
+	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
+	value->domain.numeric_info.is_value_negative = true;
 	value->domain.general_info.is_null = 0;
       }
       break;
@@ -602,15 +588,13 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\0";	/* zero; 0 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
       /* space is the min value, matching the comparison in qstr_compare */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
       value->data.ch.info.is_max_string = false;
@@ -619,7 +603,7 @@ db_value_domain_min (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "\40";	/* space; 32 */
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -781,8 +765,29 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
 	char str[DB_MAX_NUMERIC_PRECISION + 1];
 
 	memset (str, 0, DB_MAX_NUMERIC_PRECISION + 1);
-	memset (str, '9', value->domain.numeric_info.precision);
-	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf);
+
+	if (value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	  {
+	    memset (str, '9', DB_MAX_NUMERIC_PRECISION);
+	    /* why the scale is always set to DB_MIN_NUMERIC_SCALE for float numeric:
+	     * if a decimal value exceeding the maximum precision (40) is given
+	     * (e.g., 0.00...999...9 (41,252))
+	     * the engine's precision rules will automatically round it up at the 41st decimal place,
+	     * resulting internally in 1.000... (40,39)
+	     *
+	     * since the engine handles these decimal edge cases gracefully via rounding,
+	     * this function only needs to consider the maximum integer magnitude case
+	     * by setting the scale to its minimum value.
+	     */
+	    value->domain.numeric_info.scale = DB_MIN_NUMERIC_SCALE;
+	    FIXED_TO_FLOAT_NUMERIC (value);
+	  }
+	else
+	  {
+	    memset (str, '9', value->domain.numeric_info.precision);
+	  }
+	numeric_coerce_dec_str_to_num (str, value->data.num.d.buf, NULL);
+	value->domain.numeric_info.is_value_negative = false;
 	value->domain.general_info.is_null = 0;
       }
       break;
@@ -796,14 +801,12 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       break;
       /* case DB_TYPE_STRING: internally DB_TYPE_VARCHAR */
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
       /* Case for the maximum String type. Just set the is_max_string flag to TRUE. */
       value->data.ch.info.style = MEDIUM_STRING;
       value->data.ch.info.codeset = codeset;
@@ -813,7 +816,7 @@ db_value_domain_max (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = NULL;
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -951,21 +954,7 @@ db_value_domain_default (DB_VALUE * value, const DB_TYPE type,
       value->data.ch.medium.length = -1;
       value->data.ch.medium.buf = (char *) "";
       value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
-      value->domain.general_info.is_null = 0;
-      value->domain.char_info.collation_id = collation_id;
-      break;
-    case DB_TYPE_NCHAR:
-    case DB_TYPE_VARNCHAR:
-      value->data.ch.info.style = MEDIUM_STRING;
-      value->data.ch.info.codeset = codeset;
-      value->data.ch.info.compressed_need_clear = false;
-      value->data.ch.info.is_max_string = false;
-      value->data.ch.medium.size = 1;
-      value->data.ch.medium.length = -1;
-      value->data.ch.medium.buf = (char *) "";
-      value->data.ch.medium.compressed_buf = NULL;
-      value->data.ch.medium.compressed_size = 0;
+      value->data.ch.medium.compressed_size = DB_NOT_YET_COMPRESSED;
       value->domain.general_info.is_null = 0;
       value->domain.char_info.collation_id = collation_id;
       break;
@@ -1066,7 +1055,8 @@ db_value_domain_zero (DB_VALUE * value, const DB_TYPE type, const int precision,
       value->domain.general_info.is_null = 0;
       break;
     case DB_TYPE_NUMERIC:
-      numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf);
+      numeric_coerce_dec_str_to_num ("0", value->data.num.d.buf, NULL);
+      value->domain.numeric_info.is_value_negative = false;
       value->domain.general_info.is_null = 0;
       break;
     default:
@@ -1122,79 +1112,33 @@ db_string_truncate (DB_VALUE * value, const int precision)
       break;
 
     case DB_TYPE_CHAR:
-      val_str = db_get_char (value, &length);
-      if (val_str != NULL && length > precision)
+      val_str = db_get_char (value);
+      if (val_str != NULL && db_get_string_size (value) > precision)
 	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
+	  /* char_count <= byte_count in every codeset, so byte_size <= precision guarantees no truncation */
+	  intl_char_count ((unsigned char *) val_str, db_get_string_size (value),
+			   db_get_string_codeset (value), &length);
+	  if (length > precision)
 	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
-	    }
+	      intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
+	      string = (char *) db_private_alloc (NULL, byte_size + 1);
+	      if (string == NULL)
+		{
+		  error = ER_OUT_OF_VIRTUAL_MEMORY;
+		  break;
+		}
 
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_char (&src_value, precision, string, byte_size,
-			db_get_string_codeset (value), db_get_string_collation (value));
-
-	  pr_clear_value (value);
-	  tp_Char.setval (value, &src_value, true);
-
-	  pr_clear_value (&src_value);
-
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      val_str = db_get_nchar (value, &length);
-      if (val_str != NULL && length > precision)
-	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
-	    }
-
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_varnchar (&src_value, precision, string, byte_size,
+	      assert (byte_size < db_get_string_size (value));
+	      strncpy (string, val_str, byte_size);
+	      string[byte_size] = '\0';
+	      db_make_char (&src_value, precision, string, byte_size,
 			    db_get_string_codeset (value), db_get_string_collation (value));
 
-	  pr_clear_value (value);
-	  tp_VarNChar.setval (value, &src_value, true);
+	      pr_clear_value (value);
+	      tp_Char.setval (value, &src_value, true);
 
-	  pr_clear_value (&src_value);
-	}
-      break;
-
-    case DB_TYPE_NCHAR:
-      val_str = db_get_nchar (value, &length);
-      if (val_str != NULL && length > precision)
-	{
-	  intl_char_size ((unsigned char *) val_str, precision, db_get_string_codeset (value), &byte_size);
-	  string = (char *) db_private_alloc (NULL, byte_size + 1);
-	  if (string == NULL)
-	    {
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      break;
+	      pr_clear_value (&src_value);
 	    }
-
-	  assert (byte_size < db_get_string_size (value));
-	  strncpy (string, val_str, byte_size);
-	  string[byte_size] = '\0';
-	  db_make_nchar (&src_value, precision, string, byte_size,
-			 db_get_string_codeset (value), db_get_string_collation (value));
-
-	  pr_clear_value (value);
-	  tp_NChar.setval (value, &src_value, true);
-
-	  pr_clear_value (&src_value);
-
 	}
       break;
 
@@ -1399,8 +1343,6 @@ db_value_put (DB_VALUE * value, const DB_TYPE_C c_type, void *input, const int i
     {
     case DB_TYPE_C_CHAR:
     case DB_TYPE_C_VARCHAR:
-    case DB_TYPE_C_NCHAR:
-    case DB_TYPE_C_VARNCHAR:
       status = coerce_char_to_dbvalue (value, (char *) input, input_length);
       break;
 
@@ -1806,10 +1748,8 @@ db_type_to_db_domain (const DB_TYPE type)
     case DB_TYPE_BIGINT:
     case DB_TYPE_NUMERIC:
     case DB_TYPE_CHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARCHAR:
-    case DB_TYPE_VARNCHAR:
     case DB_TYPE_VARBIT:
     case DB_TYPE_SET:
     case DB_TYPE_MULTISET:
@@ -1998,6 +1938,7 @@ db_init_db_json_pointers (DB_JSON * val)
 static int
 coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
 {
+  int error = NO_ERROR;
   int status = C_TO_VALUE_NOERROR;
   DB_TYPE db_type = DB_VALUE_DOMAIN_TYPE (value);
 
@@ -2006,30 +1947,44 @@ coerce_char_to_dbvalue (DB_VALUE * value, char *buf, const int buflen)
     case DB_TYPE_NUMERIC:
       {
 	DB_VALUE tmp_value;
-	unsigned char new_num[DB_NUMERIC_BUF_SIZE];
-	int desired_precision = DB_VALUE_PRECISION (value);
-	int desired_scale = DB_VALUE_SCALE (value);
 
-	/* string_to_num will coerce the string to a numeric, but will set the precision and scale based on the value
-	 * passed. Then we call num_to_num to coerce to the desired precision and scale. */
+	bool is_float_numeric = false;
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (value, &precision, &scale, &is_float_numeric);
 
-	if (numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value) != NO_ERROR)
+	error = numeric_coerce_string_to_num (buf, buflen, LANG_SYS_CODESET, &tmp_value);
+	if (error != NO_ERROR)
 	  {
 	    status = C_TO_VALUE_CONVERSION_ERROR;
+	    db_value_clear (&tmp_value);
+	    break;
 	  }
-	else if (numeric_coerce_num_to_num
-		 (db_get_numeric (&tmp_value), DB_VALUE_PRECISION (&tmp_value),
-		  DB_VALUE_SCALE (&tmp_value), desired_precision, desired_scale, new_num) != NO_ERROR)
+
+	if (is_float_numeric)
 	  {
-	    status = C_TO_VALUE_CONVERSION_ERROR;
+	    db_make_numeric (value, db_locate_numeric (&tmp_value), DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+			     DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), DB_NUMERIC_BUF_SIZE,
+			     DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value), true);
 	  }
 	else
 	  {
-	    /* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
-	     * value. */
-	    db_make_numeric (value, new_num, desired_precision, desired_scale);
-	  }
+	    unsigned char new_num[DB_NUMERIC_BUF_SIZE];
+	    bool tmp_value_is_negative = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (&tmp_value);
 
+	    if (numeric_coerce_num_to_num
+		(&tmp_value, DB_VALUE_NUMERIC_HEADER_PRECISION (&tmp_value),
+		 DB_VALUE_NUMERIC_HEADER_SCALE (&tmp_value), precision, scale, new_num,
+		 &tmp_value_is_negative) != NO_ERROR)
+	      {
+		status = C_TO_VALUE_CONVERSION_ERROR;
+	      }
+	    else
+	      {
+		/* Yes, I know that the precision and scale are already set, but this is neater than just assigning the
+		 * value. */
+		db_make_numeric (value, new_num, precision, scale, DB_NUMERIC_BUF_SIZE, tmp_value_is_negative, false);
+	      }
+	  }
 	db_value_clear (&tmp_value);
       }
       break;
@@ -2617,9 +2572,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	  break;
 
 	case DB_TYPE_CHAR:
-	case DB_TYPE_NCHAR:
 	case DB_TYPE_VARCHAR:
-	case DB_TYPE_VARNCHAR:
 	case DB_TYPE_CLOB:
 	  src_p = db_get_string (value_p);
 
@@ -2966,6 +2919,30 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	  buffer_p = valcnv_append_string (buffer_p, "'");
 	  break;
 
+	case DB_TYPE_CHAR:
+	case DB_TYPE_VARCHAR:
+	  if (valcnv_Quote_strings)
+	    {
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	      if (buffer_p == NULL)
+		{
+		  return NULL;
+		}
+
+	      buffer_p = valcnv_append_string (buffer_p, "'");
+	    }
+	  else
+	    {
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	    }
+	  break;
+
 	default:
 	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
 	  break;
@@ -3013,6 +2990,27 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 }
 
 int
+valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
+{
+  int save_max = valcnv_Max_set_elements;
+  bool save_quote = valcnv_Quote_strings;
+  int error = NO_ERROR;
+
+  assert (db_value_type_is_collection (value_p));
+
+  valcnv_Max_set_elements = 0;
+  valcnv_Quote_strings = true;
+
+  error = valcnv_convert_value_to_string (value_p);
+
+  valcnv_Max_set_elements = save_max;
+  valcnv_Quote_strings = save_quote;
+
+  return error;
+}
+
+#if !defined(SERVER_MODE)
+int
 db_get_connect_status (void)
 {
   return db_Connect_status;
@@ -3023,6 +3021,7 @@ db_set_connect_status (int status)
 {
   db_Connect_status = status;
 }
+#endif
 
 /*
  * db_default_expression_string() -
@@ -3131,8 +3130,6 @@ db_is_json_value_type (DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_NULL:
     case DB_TYPE_SHORT:
@@ -3154,8 +3151,6 @@ db_is_json_doc_type (DB_TYPE type)
   switch (type)
     {
     case DB_TYPE_CHAR:
-    case DB_TYPE_VARNCHAR:
-    case DB_TYPE_NCHAR:
     case DB_TYPE_VARCHAR:
     case DB_TYPE_JSON:
       return true;
@@ -3187,7 +3182,8 @@ db_value_is_corrupted (const DB_VALUE * value)
   switch (value->domain.general_info.type)
     {
     case DB_TYPE_NUMERIC:
-      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION))
+      if (IS_INVALID_PRECISION (value->domain.numeric_info.precision, DB_MAX_NUMERIC_PRECISION)
+	  || IS_INVALID_NUMERIC_SCALE (value->domain.numeric_info.scale, DB_MIN_NUMERIC_SCALE, DB_MAX_NUMERIC_SCALE))
 	{
 	  return true;
 	}
@@ -3215,23 +3211,9 @@ db_value_is_corrupted (const DB_VALUE * value)
 	}
       break;
 
-    case DB_TYPE_NCHAR:
-      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_NCHAR_PRECISION))
-	{
-	  return true;
-	}
-      break;
-
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CLOB:
       if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARCHAR_PRECISION))
-	{
-	  return true;
-	}
-      break;
-
-    case DB_TYPE_VARNCHAR:
-      if (IS_INVALID_PRECISION (value->domain.char_info.length, DB_MAX_VARNCHAR_PRECISION))
 	{
 	  return true;
 	}

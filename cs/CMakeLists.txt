@@ -134,9 +134,14 @@ set(BASE_SOURCES
   ${BASE_DIR}/variable_string.c
   ${BASE_DIR}/xml_parser.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 
 set(BASE_HEADERS
+  ${BASE_DIR}/compressor.hpp
   ${BASE_DIR}/error_code.h
   ${BASE_DIR}/error_context.hpp
   ${BASE_DIR}/error_manager.h
@@ -165,6 +170,10 @@ set(BASE_HEADERS
   ${BASE_DIR}/string_buffer.hpp
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/ddl_log.h
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
   )
 
 set(HEAPLAYER_SOURCES
@@ -173,13 +182,17 @@ set(HEAPLAYER_SOURCES
   )
 
 set(CONNECTION_SOURCES
-  ${CONNECTION_DIR}/connection_less.c
-  ${CONNECTION_DIR}/connection_cl.c
+  ${CONNECTION_DIR}/connection_less.cpp
+  ${CONNECTION_DIR}/connection_cl.cpp
   ${CONNECTION_DIR}/connection_globals.c
-  ${CONNECTION_DIR}/connection_list_cl.c
-  ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_list_cl.cpp
+  ${CONNECTION_DIR}/client_support.cpp
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -306,6 +319,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
@@ -410,12 +428,12 @@ set(API_HEADERS
   ${API_DIR}/cubrid_log.h
   )
 
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -424,6 +442,18 @@ set(PARALLEL_QUERY_EXECUTE_SOURCES
 
 set(PARALLEL_QUERY_EXECUTE_HEADERS
   ${PARALLEL_QUERY_EXECUTE_DIR}/px_query_checker.hpp
+  )
+
+set (HISTOGRAM_SOURCES
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  )
+
+set (HISTOGRAM_HEADERS
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
@@ -509,8 +539,9 @@ SET_SOURCE_FILES_PROPERTIES(
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${API_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
+  ${HISTOGRAM_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 SET_SOURCE_FILES_PROPERTIES(
@@ -531,6 +562,7 @@ add_library(cubridcs SHARED
   ${ES_SOURCES}
   ${COMMUNICATION_SOURCES}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${HEAPLAYER_SOURCES}
   ${OBJECT_HEADERS}
@@ -553,17 +585,16 @@ add_library(cubridcs SHARED
   ${LOADDB_HEADERS}
   ${API_SOURCES}
   ${API_HEADERS}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_SCAN_SOURCES}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
+  ${HISTOGRAM_SOURCES}
+  ${HISTOGRAM_HEADERS}
   )
 set_target_properties(cubridcs PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 
 target_compile_definitions(cubridcs PRIVATE CS_MODE CUBRID_EXPORTING ${COMMON_DEFS})
-if(NOT USE_CUBRID_ENV)
-  target_compile_definitions(cubridcs PRIVATE ${DIR_DEFS})
-endif(NOT USE_CUBRID_ENV)
 if(WIN32)
   set_source_files_properties(${HEAPLAYERS_DIR}/customheaps.cpp PROPERTIES COMPILE_FLAGS -Od)
   SET_SOURCE_FILES_PROPERTIES(
