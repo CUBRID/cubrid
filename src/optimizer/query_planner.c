@@ -9156,6 +9156,12 @@ qo_search_planner (QO_PLANNER * planner)
 					       qo_index_scan_new (info, node, ni_entry,
 								  QO_SCANMETHOD_INDEX_ORDERBY_SCAN, &seg_terms, NULL));
 		    }
+
+		  /* CBRD-26906: an interesting-order (group-by / order-by skip) index
+		   * scan also means the hinted index is usable, so a positive index
+		   * hint that only provides ordering (no key-range) still suppresses
+		   * the sequential scan below. */
+		  normal_index_plan_n += n;
 		}
 	    }
 
@@ -9165,8 +9171,9 @@ qo_search_planner (QO_PLANNER * planner)
       /* Create a sequential scan plan for each node.
        *
        * CBRD-26906: When the user explicitly directs an index with USE/FORCE
-       * INDEX and a normal index scan plan was generated for this node, skip the
-       * sequential scan so the cost model cannot override the hint. (Before
+       * INDEX and an index scan plan was generated for this node (a normal,
+       * filter, loose, or interesting-order group-by/order-by skip scan), skip
+       * the sequential scan so the cost model cannot override the hint. (Before
        * CBRD-24044 the sequential scan was skipped whenever any normal index plan
        * existed; here that skip is restricted to the explicitly hinted case.)
        */
