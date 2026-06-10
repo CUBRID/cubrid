@@ -660,6 +660,7 @@ net_server_init (void)
   req_p->processing_function = slogin_user;
 
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
+  req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_find_multi_uniques;
 
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];

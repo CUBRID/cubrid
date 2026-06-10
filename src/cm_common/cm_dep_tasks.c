@@ -2259,7 +2259,14 @@ _op_get_type_name (DB_DOMAIN * domain)
       int s;
       p = db_domain_precision (domain);
       s = db_domain_scale (domain);
-      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+      if (p == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (result, result_size, "%s", db_get_type_name (type_id));
+	}
+      else
+	{
+	  snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+	}
     }
   else if ((p = db_domain_precision (domain)) != 0)
     {
@@ -2310,7 +2317,7 @@ static char *
 _op_get_value_string (DB_VALUE * value)
 {
 #if !defined (NUMERIC_MAX_STRING_SIZE)
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 #endif
   const char *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
