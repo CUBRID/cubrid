@@ -1378,3 +1378,20 @@ valid options:\n\
     -o, --output-file=FILE        redirect output message to FILE; default: none.\n\
     -l, --list                    list all files\n\
     -c, --clean-invalid-file      clean invalid files\n
+
+$set 61 MSGCAT_UTIL_SET_UPGRADEDB
+1 Database system metadata is not upgradable; recreate the database with the current CUBRID version.\n
+2 Database system metadata is newer than the current CUBRID version; downgrade is not supported.\n
+3 Apply system metadata upgrade scripts? (y/n)\n
+4 options --check and --force are mutually exclusive.\n
+5 System metadata upgrade script decoding failed: %1$s\n
+6 System metadata upgrade script validation failed: %1$s\n
+7 Failed to read system metadata upgrade script: %1$s\n
+60 \
+upgradedb: upgrade system metadata to match the current CUBRID version.\n\
+usage: %1$s upgradedb [OPTION] database-name\n\
+\n\
+valid options:\n\
+      --check                  exit 1 if upgrade is required, 0 otherwise\n\
+  -f, --force                  apply the upgrade without prompting for confirmation\n\
+  -v, --verbose                print upgrade scripts before applying them\n
