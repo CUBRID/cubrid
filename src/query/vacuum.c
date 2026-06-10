@@ -2435,7 +2435,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
  *   record carries the OOS flag but the helper has not cached oos_vfid yet. A missing OOS file
  *   at this point is unexpected (false-positive flag / dropped file / recovery-ordering edge);
  *   it must not abort vacuum, so log it, clear the error, leave oos_vfid NULL, and skip OOS
- *   cleanup for this record (bounded leak per ADR-0002).
+ *   cleanup for this record (bounded leak per ADR-0002). Debug builds assert instead, so a
+ *   future flag-planting bug is caught in debug runs rather than leaking silently.
  */
 static int
 vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
@@ -2466,6 +2467,10 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPE
 			 VFID_AS_ARGS (&helper->hfid.vfid), (int) helper->crt_slotid, (int) helper->record_type,
 			 helper->record.length, repid_and_flags, mvcc_flags, offset_size);
   }
+  /* Debug: abort so the flag-planting bug is caught at its first vacuum sighting.
+   * Release: assert_release only er_set()s a notification, which the er_clear() below
+   * wipes before the skip — vacuum keeps going. */
+  assert_release (false);
   er_clear ();
   VFID_SET_NULL (&helper->oos_vfid);
   return NO_ERROR;
