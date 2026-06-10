@@ -3795,6 +3795,7 @@ obj_find_multi_attr (MOP op, int size, const char *attr_names[], const DB_VALUE 
       /* btree_find_unique already set a proper error; ER_FAILED is not a settable error id
        * and would trip the er_message::set_error assert. Just let the existing error
        * propagate (e.g. ER_LK_UNILATERALLY_ABORTED on server failure). (CBRD-26894) */
+      ASSERT_ERROR ();
     }
   else if (result == BTREE_KEY_NOTFOUND)
     {

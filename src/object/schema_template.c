@@ -2049,7 +2049,10 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
     }
   else
     {
+      /* Dropping the instance in the internal _db_histogram catalog also needs authorization bypass. (CBRD-26667) */
+      AU_DISABLE (au_save);
       error = db_drop (histogram_obj);
+      AU_ENABLE (au_save);
       if (error != NO_ERROR)
 	{
 	  goto end;
