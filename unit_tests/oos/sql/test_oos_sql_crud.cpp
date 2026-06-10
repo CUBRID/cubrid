@@ -53,7 +53,7 @@ TEST_F (OosSqlCrud, BasicInsertSelect)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  // 1024-byte BIT VARYING value (above 512B threshold)
+  // 1024-byte BIT VARYING value
   rc = exec_sql ("INSERT INTO t_oos_crud VALUES (1, 'row1', REPEAT(X'AB', 1024))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
@@ -76,7 +76,7 @@ TEST_F (OosSqlCrud, SmallRecordNoOos)
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
-  // 200 bytes: record < 2KB, column < 512B => no OOS
+  // 200-byte record: below the DB_PAGESIZE/4 record trigger => no OOS
   rc = exec_sql ("INSERT INTO t_oos_crud VALUES (1, REPEAT(X'CD', 200))");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
