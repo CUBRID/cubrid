@@ -1590,6 +1590,15 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const al
   assert (alter_code == PT_RENAME_ENTITY);
   assert (alter->info.alter.super.resolution_list == NULL);
 
+  const char *old_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+  const char *new_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.alter_clause.rename.new_name);
+
+  if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error_code, ER_SM_RENAME_CANT_ALTER_OWNER);
+      goto error_exit;
+    }
+
   error_code = do_rename_internal (old_name, new_name);
   if (error_code != NO_ERROR)
     {
