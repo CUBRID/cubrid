@@ -2446,13 +2446,13 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
 
 	      /* reset accumulator values. */
 	      value->accumulators[i].value->need_clear = false;
-	      if (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value) == DB_TYPE_VARCHAR)
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value)))
 		{
 		  value->accumulators[i].value->data.ch.info.compressed_need_clear = false;
 		}
 
 	      value->accumulators[i].value2->need_clear = false;
-	      if (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2) == DB_TYPE_VARCHAR)
+	      if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value->accumulators[i].value2)))
 		{
 		  value->accumulators[i].value2->data.ch.info.compressed_need_clear = false;
 		}

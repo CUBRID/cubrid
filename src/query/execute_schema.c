@@ -1590,6 +1590,15 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const al
   assert (alter_code == PT_RENAME_ENTITY);
   assert (alter->info.alter.super.resolution_list == NULL);
 
+  const char *old_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+  const char *new_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.alter_clause.rename.new_name);
+
+  if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error_code, ER_SM_RENAME_CANT_ALTER_OWNER);
+      goto error_exit;
+    }
+
   error_code = do_rename_internal (old_name, new_name);
   if (error_code != NO_ERROR)
     {
@@ -12393,7 +12402,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  assert (attr_db_domain->precision < att->domain->precision
 			  || (TP_DOMAIN_COLLATION (attr_db_domain) != TP_DOMAIN_COLLATION (att->domain)));
 
-		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
+		  if (QSTR_IS_PADDED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
 		      && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
 		    {
 		      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
