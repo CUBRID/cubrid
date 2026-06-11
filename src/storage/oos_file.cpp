@@ -1762,6 +1762,62 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 }
 
 /*
+ * oos_chunk_exists () - Probe whether the OOS chunk at oid still exists. Read-only companion to
+ *   oos_delete for idempotent callers (e.g. vacuum forward-walk block retry, which must skip OIDs
+ *   whose chunks a previously committed sysop already removed instead of tripping the
+ *   S_DOESNT_EXIST hard error inside oos_delete_chain).
+ *
+ *   "Already gone" is narrowly defined:
+ *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
+ *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
+ *
+ *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
+ *   spage_get_record returning S_ERROR) is propagated as the probe's return value; callers must
+ *   treat that as a failure rather than a successful "gone".
+ */
+int
+oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
+{
+  *out_exists = false;
+
+  VPID vpid;
+  vpid.volid = oid.volid;
+  vpid.pageid = oid.pageid;
+
+  PAGE_PTR page_ptr = NULL;
+  int error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+		   &page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (page_ptr == NULL)
+    {
+      /* Page legitimately deallocated; chunk is gone. */
+      return NO_ERROR;
+    }
+
+  RECDES probe = RECDES_INITIALIZER;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &probe, PEEK);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+
+  if (code == S_SUCCESS)
+    {
+      *out_exists = true;
+      return NO_ERROR;
+    }
+  if (code == S_DOESNT_EXIST)
+    {
+      /* Slot already removed; chunk is gone. */
+      return NO_ERROR;
+    }
+  ASSERT_ERROR ();
+  int errid = er_errid ();
+  return errid != NO_ERROR ? errid : ER_FAILED;
+}
+
+/*
  * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
  *
  *   return: NO_ERROR or error code

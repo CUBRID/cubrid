@@ -28,12 +28,9 @@
 
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
 
-/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. */
-extern int heap_delete_home_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
-extern int heap_delete_relocation_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
-    const RECDES *forward_recdes);
-extern int heap_update_home_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
-extern int heap_update_relocation_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
-    const RECDES *old_forward_recdes);
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
+ * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
+extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
 
 #endif /* _HEAP_OOS_HPP_ */

@@ -25,8 +25,6 @@
 #include <inttypes.h>
 #endif
 
-#include <algorithm>
-
 #include "system.h"
 #include "vacuum.h"
 
@@ -3554,15 +3552,9 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   *   - RVHF_MVCC_INSERT, RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_NO_MODIFY_HOME, and
 	   *     RVHF_MVCC_REDISTRIBUTE log no pre-image recdes in undo, so undo_data_size > 0 below
 	   *     filters them naturally; no rcvindex check needed for those. */
-	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM && undo_data != NULL
-	      && undo_data_size > (int) sizeof (INT16))
+	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
-	      RECDES undo_recdes;
-	      undo_recdes.type = *(INT16 *) undo_data;
-	      undo_recdes.data = undo_data + sizeof (INT16);
-	      undo_recdes.length = undo_data_size - sizeof (INT16);
-
-	      vacuum_forward_walk_reclaim_oos (thread_p, &undo_recdes, &log_vacuum.vfid, &oos_vfid_cache);
+	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_cache);
 	    }
 	}
       else if (LOG_IS_MVCC_BTREE_OPERATION (log_record_data.rcvindex))
@@ -3701,15 +3693,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
 	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
 	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
-	  if (undo_data != NULL && undo_data_size > (int) sizeof (INT16))
-	    {
-	      RECDES undo_recdes;
-	      undo_recdes.type = *(INT16 *) undo_data;
-	      undo_recdes.data = undo_data + sizeof (INT16);
-	      undo_recdes.length = undo_data_size - sizeof (INT16);
-
-	      vacuum_forward_walk_reclaim_oos (thread_p, &undo_recdes, &log_vacuum.vfid, &oos_vfid_cache);
-	    }
+	  vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_cache);
 	}
       else
 	{

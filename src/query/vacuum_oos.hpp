@@ -27,7 +27,6 @@
 #ifndef _VACUUM_OOS_HPP_
 #define _VACUUM_OOS_HPP_
 
-#include "log_lsa.hpp"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -53,15 +52,10 @@ struct vacuum_oos_vfid_cache
   int evict_idx = 0;		/* round-robin eviction cursor used once the cache is full */
 };
 
-extern void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recdes,
+extern void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
     const VFID *heap_vfid, VACUUM_OOS_VFID_CACHE *oos_vfid_cache);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
 extern int vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record);
-
-/* Test bridge below is unconditionally built (not NDEBUG-gated) so unit_tests/oos can link in any
- * build mode — gating on NDEBUG breaks `./build.sh -m release -c -DUNIT_TESTS=ON`. */
-extern void bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY *thread_p, const VFID *vfid,
-    const RECDES *old_recdes, LOG_LSA *out_lsa);
 
 #endif /* _VACUUM_OOS_HPP_ */

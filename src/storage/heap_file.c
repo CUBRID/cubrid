@@ -22747,7 +22747,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * reclaimed by vacuum. */
       if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
 	{
-	  rc = heap_delete_relocation_delete_oos (thread_p, context, &forward_recdes);
+	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
 	  if (rc != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -23093,7 +23093,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
        * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
       if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
 	{
-	  error_code = heap_delete_home_delete_oos (thread_p, context);
+	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -23527,7 +23527,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    * gate is extended to admit physical-delete log records — separate follow-up. */
   if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
     {
-      rc = heap_update_relocation_delete_replaced_oos (thread_p, context, &forward_recdes);
+      rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -24012,7 +24012,8 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
    * by vacuum via a forward walk of the log block (vacuum_process_log_block). */
   if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
     {
-      error_code = heap_update_home_delete_replaced_oos (thread_p, context);
+      error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
+						 "update home");
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();

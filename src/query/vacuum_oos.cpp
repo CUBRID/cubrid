@@ -25,21 +25,17 @@
 #include "error_manager.h"
 #include "file_manager.h"
 #include "heap_file.h"
-#include "log_impl.h"
-#include "log_lsa.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
 #include "object_representation.h"
 #include "oid.h"
 #include "oos_file.hpp"
-#include "page_buffer.h"
-#include "recovery.h"
-#include "slotted_page.h"
 #include "storage_common.h"
 #include "vacuum.h"
 
 #include <algorithm>
 #include <cstring>
+#include <utility>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -57,9 +53,8 @@ typedef enum
 
 static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p,
     VACUUM_OOS_VFID_CACHE *cache, const VFID *heap_vfid, VFID *out_oos_vfid);
-static int vacuum_oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
 static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
-    const OID_VECTOR &oos_oids);
+    OID_VECTOR oos_oids);
 
 /*
  * vacuum_oos_vfid_cache_lookup () - Look up (and populate on miss) the OOS VFID for a given heap VFID.
@@ -149,97 +144,37 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_CACHE *cac
 }
 
 /*
- * vacuum_oos_chunk_exists () - Idempotency probe for block retry. Sets *out_exists to true iff
- *   the OOS chunk's slot is still present. vacuum_forward_walk_delete_old_oos calls this before
- *   each oos_delete so an OID whose chunk was already removed by a sibling forward-walk's
- *   committed sysop on a prior attempt at this block can be skipped, rather than tripping the
- *   S_DOESNT_EXIST hard error inside oos_delete_chain.
- *
- *   "Already gone" is narrowly defined:
- *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
- *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
- *
- *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
- *   spage_get_record returning S_ERROR) is propagated as the probe's return value. The caller
- *   must treat that as a forward-walk failure rather than a successful skip — otherwise a
- *   transient access error would be misread as "already deleted" and the OOS chain would
- *   leak with no further reclamation path (UPDATE pre-image OIDs are not reachable from the
- *   live post-image, so heap REMOVE will not retry them).
- */
-static int
-vacuum_oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
-{
-  *out_exists = false;
-
-  VPID vpid;
-  vpid.volid = oid.volid;
-  vpid.pageid = oid.pageid;
-
-  PAGE_PTR page_ptr = NULL;
-  int error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
-		   &page_ptr);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  if (page_ptr == NULL)
-    {
-      /* Page legitimately deallocated; chunk is gone. */
-      return NO_ERROR;
-    }
-
-  RECDES probe = RECDES_INITIALIZER;
-  SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &probe, PEEK);
-  pgbuf_unfix_and_init (thread_p, page_ptr);
-
-  if (code == S_SUCCESS)
-    {
-      *out_exists = true;
-      return NO_ERROR;
-    }
-  if (code == S_DOESNT_EXIST)
-    {
-      /* Slot already removed by a prior committed sysop; chunk is gone. */
-      return NO_ERROR;
-    }
-  ASSERT_ERROR ();
-  int errid = er_errid ();
-  return errid != NO_ERROR ? errid : ER_FAILED;
-}
-
-/*
  * vacuum_forward_walk_delete_old_oos () - Delete OOS records referenced by an UPDATE pre-image
- *   discovered during forward-walk log replay. The caller must extract the OIDs into a self-owned
- *   vector before invoking this helper, since oos_delete may rotate the log page that the original
+ *   discovered during forward-walk log replay. The caller must move the OIDs into a self-owned
+ *   vector (passed by value) before invoking this helper, since oos_delete may rotate the log page that the original
  *   undo_data points into. The sysop opened here makes the multi-chunk oos_delete sequence atomic
  *   under recovery. Caller restricts invocation to RVHF_UPDATE_NOTIFY_VACUUM (see commit
  *   fc0e35ced for why other rcvindexes must be excluded).
  */
 static int
-vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const OID_VECTOR &oos_oids)
+vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid, OID_VECTOR oos_oids)
 {
   int error_code = NO_ERROR;
 
   /* Sort OIDs by (volid, pageid, slotid) so successive oos_delete calls hit the OOS file's
    * pages in page-locality order; mirrors the heap's VFID+OID-sorted access pattern that
-   * keeps the buffer pool warm. Caller passes a const reference, so copy locally. */
-  OID_VECTOR sorted_oos_oids (oos_oids);
-  std::sort (sorted_oos_oids.begin (), sorted_oos_oids.end (),
+   * keeps the buffer pool warm. The vector is taken by value: the caller moves its self-owned
+   * copy in, so the sort works in place. */
+  std::sort (oos_oids.begin (), oos_oids.end (),
 	     [] (const OID &a, const OID &b)
   {
     return oid_compare (&a, &b) < 0;
   });
 
   log_sysop_start (thread_p);
-  for (const OID &oid : sorted_oos_oids)
+  for (const OID &oid : oos_oids)
     {
       /* Idempotency for block retry: a sibling forward-walk earlier in this block may have
        * committed its sysop before a later one failed. On retry, the earlier OID's chunk is
        * already physically gone — skip rather than fail at oos_delete_chain's S_DOESNT_EXIST.
        * Real probe failures (I/O, interrupt, etc.) propagate as forward-walk errors. */
       bool exists;
-      error_code = vacuum_oos_chunk_exists (thread_p, oid, &exists);
+      error_code = oos_chunk_exists (thread_p, oid, &exists);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -271,7 +206,9 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  *   (update_old_home) and RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (remove_old_forward) paths.
  *
  * thread_p (in)           : Thread entry.
- * undo_recdes (in)        : Undo (pre-image) heap recdes reconstructed from the log undo data.
+ * undo_data (in)          : Raw log undo data: an INT16 record type followed by the pre-image heap
+ *                           recdes body. NULL or too-short data carries no pre-image and is ignored.
+ * undo_data_size (in)     : Size of undo_data in bytes.
  * heap_vfid (in)          : VFID of the heap file the record lives in (the log_vacuum vfid).
  * oos_vfid_cache (in/out) : Per-block heap-VFID -> OOS-VFID cache.
  *
@@ -280,9 +217,20 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  * vacuum_finished_block_vacuum and risk wedging vacuum.
  */
 void
-vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recdes, const VFID *heap_vfid,
-				 VACUUM_OOS_VFID_CACHE *oos_vfid_cache)
+vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
+				 const VFID *heap_vfid, VACUUM_OOS_VFID_CACHE *oos_vfid_cache)
 {
+  if (undo_data == NULL || undo_data_size <= (int) sizeof (INT16))
+    {
+      /* No pre-image recdes in the undo data. */
+      return;
+    }
+
+  RECDES undo_recdes;
+  undo_recdes.type = * (INT16 *) undo_data;
+  undo_recdes.data = undo_data + sizeof (INT16);
+  undo_recdes.length = undo_data_size - (int) sizeof (INT16);
+
   /* Only object-instance records (REC_HOME / REC_NEWHOME) carry an OOS-bearing VOT. Other undo
    * images are forwarding pointers: heap_update_bigone and heap_update_relocation's update_old_home
    * log the old REC_BIGONE / REC_RELOCATION home slot, which is just an 8-byte OID. Feeding such a
@@ -290,7 +238,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
    * with bit 27 set spuriously trips OR_MVCC_FLAG_HAS_OOS, after which heap_recdes_get_oos_oids walks
    * a bogus VOT and hits assert_release. Mirror the record-type guard the eager-delete paths apply
    * (forward_recdes.type == REC_NEWHOME / home_recdes.type == REC_HOME). */
-  if (! ((undo_recdes->type == REC_HOME || undo_recdes->type == REC_NEWHOME) && heap_recdes_contains_oos (undo_recdes)))
+  if (! ((undo_recdes.type == REC_HOME || undo_recdes.type == REC_NEWHOME) && heap_recdes_contains_oos (&undo_recdes)))
     {
       return;
     }
@@ -303,18 +251,18 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
    * word at the same address flipped from 0x69 to 0x00 across the lookup). The copy also fixes
    * alignment: the image starts at undo_data + sizeof (INT16), so the OR_BUF readers in
    * heap_recdes_get_oos_oids (or_get_oid) would assert on the raw pointer in debug builds. */
-  RECDES parse_recdes = *undo_recdes;
-  char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes->length);
+  RECDES parse_recdes = undo_recdes;
+  char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes.length);
   if (stable_copy == NULL)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			   "forward-walk oos cleanup: failed to allocate %d bytes for undo image snapshot; "
 			   "leaving OOS unreclaimed (bounded leak) heap_vfid=%d|%d",
-			   undo_recdes->length, VFID_AS_ARGS (heap_vfid));
+			   undo_recdes.length, VFID_AS_ARGS (heap_vfid));
       er_clear ();
       return;
     }
-  memcpy (stable_copy, undo_recdes->data, undo_recdes->length);
+  memcpy (stable_copy, undo_recdes.data, undo_recdes.length);
   parse_recdes.data = stable_copy;
 
   VFID oos_vfid;
@@ -335,7 +283,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
 
       if (oos_err == NO_ERROR)
 	{
-	  oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, oos_oids);
+	  oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, std::move (oos_oids));
 	}
 
       if (oos_err != NO_ERROR)
@@ -442,40 +390,4 @@ vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECD
     }
 
   return NO_ERROR;
-}
-
-/*
- * bridge_log_append_undo_for_prev_version_test () - Test helper: append an undo log record carrying
- *   a heap recdes and return its LSA (usable as a prev_version_lsa to simulate an old OOS version).
- *
- * Uses RVES_NOTIFY_VACUUM: it is an MVCC op (so the record is LOG_MVCC_UNDO_DATA), its undo handler
- * vacuum_rv_es_nop is a no-op (so test rollback won't reverse-apply the hand-crafted recdes), and it
- * accepts a NULL vfid at append time.
- *
- * thread_p(in)   : Thread entry.
- * old_recdes(in) : Old heap recdes to log (treated as undo data).
- * out_lsa(out)   : LSA of the appended record.
- */
-void
-bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY *thread_p, const VFID *, const RECDES *old_recdes,
-    LOG_LSA *out_lsa)
-{
-  LOG_DATA_ADDR addr;
-  LOG_TDES *tdes;
-
-  addr.vfid = NULL;
-  addr.pgptr = NULL;
-  addr.offset = -1;
-
-  log_append_undo_recdes (thread_p, RVES_NOTIFY_VACUUM, &addr, old_recdes);
-
-  /* Flush the prior list so the just-appended record becomes fetchable by log_get_undo_record
-   * (which asserts process_lsa < append_lsa). */
-  LOG_CS_ENTER (thread_p);
-  logpb_prior_lsa_append_all_list (thread_p);
-  LOG_CS_EXIT (thread_p);
-
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  assert (tdes != NULL);
-  LSA_COPY (out_lsa, &tdes->tail_lsa);
 }
