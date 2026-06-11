@@ -5386,7 +5386,9 @@ la_get_recdes (LOG_LSA * lsa, LOG_PAGE * pgptr, RECDES * recdes, unsigned int *r
 	char mvcc_flag;
 
 	mvcc_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
-	assert (mvcc_flag == 0);
+	/* OOS records may already carry OR_MVCC_FLAG_HAS_OOS; only MVCC lifecycle flags must be absent here. */
+	assert ((mvcc_flag & (OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID
+			      | OR_MVCC_FLAG_VALID_PREV_VERSION)) == 0);
       }
 #endif
 
