@@ -3963,6 +3963,84 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 }
 
 /*
+ * pt_default_expr_normalized_text () - source text of a DEFAULT expression,
+ *	wrapped in exactly one outer pair of parentheses
+ *   return: parser-allocated normalized text (NULL on failure)
+ *   parser(in): parser context
+ *   node(in): the DEFAULT expression (pre-fold)
+ *
+ * The parser printer parenthesizes binary operators ("1+1" prints as "(1+1)")
+ * but not function calls or unary expressions, so normalize to a single
+ * canonical "(expr)" form for display / DDL round-trip.  Parentheses inside
+ * single-quoted string literals are ignored when deciding whether the printed
+ * text is already a single fully-parenthesized group.
+ */
+static char *
+pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  const char *printed;
+  size_t len, i;
+  int depth;
+  bool in_string, fully_wrapped;
+  char c;
+  char *result;
+
+  printed = parser_print_tree (parser, node);
+  if (printed == NULL)
+    {
+      return NULL;
+    }
+
+  len = strlen (printed);
+  fully_wrapped = false;
+  if (len >= 2 && printed[0] == '(' && printed[len - 1] == ')')
+    {
+      depth = 0;
+      in_string = false;
+      fully_wrapped = true;
+      for (i = 0; i < len; i++)
+	{
+	  c = printed[i];
+	  if (in_string)
+	    {
+	      if (c == '\'')
+		{
+		  in_string = false;
+		}
+	    }
+	  else if (c == '\'')
+	    {
+	      in_string = true;
+	    }
+	  else if (c == '(')
+	    {
+	      depth++;
+	    }
+	  else if (c == ')')
+	    {
+	      depth--;
+	      if (depth == 0 && i != len - 1)
+		{
+		  /* the first '(' closes before the end: not a single group */
+		  fully_wrapped = false;
+		  break;
+		}
+	    }
+	}
+    }
+
+  if (fully_wrapped)
+    {
+      return pt_append_string (parser, NULL, printed);
+    }
+
+  result = pt_append_string (parser, NULL, "(");
+  result = pt_append_string (parser, result, printed);
+  result = pt_append_string (parser, result, ")");
+  return result;
+}
+
+/*
  * pt_check_data_default () - checks data_default for semantic errors
  *
  * result	    	 : modified data_default
@@ -3979,6 +4057,8 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
   PT_NODE *data_default;
   PT_NODE *prev;
   bool has_query;
+  bool is_expr_derived;
+  char *edl_text;
 
   if (pt_has_error (parser))
     {
@@ -4010,6 +4090,25 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+      /* Detect an Expression-Derived Literal: a DEFAULT whose value is a compound
+       * expression -- not a plain literal, and not a legacy pseudo-column
+       * (default_expr_type stays DB_DEFAULT_NONE).  Only the new DEFAULT path is
+       * eligible (shared == PT_DEFAULT keeps SHARED on the legacy enum path).
+       * Capture the normalized source text and effective volatility BEFORE
+       * folding, because pt_semantic_type folds an Immutable expression down to a
+       * single literal value. */
+      is_expr_derived = false;
+      edl_text = NULL;
+      if (data_default->info.data_default.shared == PT_DEFAULT
+	  && data_default->info.data_default.default_expr_type == DB_DEFAULT_NONE
+	  && default_value != NULL
+	  && (PT_IS_EXPR_NODE (default_value) || default_value->node_type == PT_FUNCTION)
+	  && pt_get_expr_tree_volatility (parser, default_value) == PT_VOLATILITY_IMMUTABLE)
+	{
+	  is_expr_derived = true;
+	  edl_text = pt_default_expr_normalized_text (parser, default_value);
+	}
+
       result = pt_semantic_type (parser, data_default, NULL);
       if (result != NULL)
 	{
@@ -4023,6 +4122,19 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	      data_default_list = result;
 	    }
 	  data_default = result;
+
+	  /* If the Immutable expression folded to a single literal, record it as
+	   * an Expression-Derived Literal so it is stored/displayed as the
+	   * original expression rather than the folded value. */
+	  if (is_expr_derived)
+	    {
+	      PT_NODE *folded = data_default->info.data_default.default_value;
+
+	      if (folded != NULL && folded->node_type == PT_VALUE)
+		{
+		  data_default->info.data_default.expr_text = edl_text;
+		}
+	    }
 	}
       else
 	{

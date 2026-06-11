@@ -3092,7 +3092,8 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   default_value = db_attribute_default (attribute);
   if ((default_value != NULL && !DB_IS_NULL (default_value))
-      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      || attribute->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE
+      || attribute->default_value.default_expr.default_expr_text != NULL)
     {
       const char *default_expr_type_str;
 
@@ -3110,6 +3111,12 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
       if (default_expr_type_str != NULL)
 	{
 	  output_ctx ("%s", default_expr_type_str);
+	}
+      else if (attribute->default_value.default_expr.default_expr_text != NULL)
+	{
+	  /* Expression-Derived Literal: emit the original expression.  The stored text
+	   * is already the parser's parenthesized normal form, e.g. "(1+1)". */
+	  output_ctx ("%s", attribute->default_value.default_expr.default_expr_text);
 	}
       else
 	{

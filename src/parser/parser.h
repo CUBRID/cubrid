@@ -153,6 +153,8 @@ extern "C"
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
 
+  extern PT_VOLATILITY pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node);
+
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);
 
   extern void pt_record_error (PARSER_CONTEXT * parser, int stmt_no, int line_no, int col_no, const char *msg,

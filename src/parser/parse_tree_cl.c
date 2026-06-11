@@ -10250,7 +10250,8 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     {
     case PT_FUNCTION_HOLDER:
       /* FUNCTION_HOLDER has a PT_FUNCTION on arg1 */
-      q = pt_print_function (parser, p->info.expr.arg1);
+      r1 = pt_print_function (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
       break;
     case PT_UNARY_MINUS:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);

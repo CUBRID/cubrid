@@ -43,6 +43,7 @@
 #include "system_parameter.h"
 #include "hide_password.h"
 #include "misctype_def.h"
+#include "pt_volatility.h"
 
 // forward definitions
 struct json_t;
@@ -2100,6 +2101,7 @@ struct pt_data_default_info
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
   DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
+  char *expr_text;		/* normalized source text of an Expression-Derived Literal DEFAULT; NULL otherwise */
 };
 
 /* Info for the AUTO_INCREMENT node */

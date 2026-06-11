@@ -27,6 +27,7 @@
 #include "parse_tree.h"
 #include "parser.h"
 #include "parser_message.h"
+#include "pt_volatility.h"
 
 #include <algorithm>
 
@@ -193,8 +194,8 @@ func_all_signatures sig_of_lead_lag =
 
 func_all_signatures sig_of_elt =
 {
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}}, //get_current_result() expects args to be VCHAR, not just equivalent
-  {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {PT_TYPE_VARCHAR}, PT_VOLATILITY_IMMUTABLE}, //get_current_result() expects args to be VCHAR, not just equivalent
+  {PT_TYPE_NULL, {PT_GENERIC_TYPE_DISCRETE_NUMBER}, {}, PT_VOLATILITY_IMMUTABLE},
 };
 
 func_all_signatures sig_of_insert_substring =
@@ -357,10 +358,10 @@ func_all_signatures sig_of_regexp_like =
 func_all_signatures sig_of_regexp_replace =
 {
 // all signatures: src, pattern, replacement [,position [,occurrence [, match_type]]] -> STRING
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}},
-  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING}, {}, PT_VOLATILITY_IMMUTABLE},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER}, {}, PT_VOLATILITY_IMMUTABLE},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER}, {}, PT_VOLATILITY_IMMUTABLE},
+  {PT_TYPE_VARCHAR, {PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_GENERIC_TYPE_STRING, PT_TYPE_INTEGER, PT_TYPE_INTEGER, PT_GENERIC_TYPE_STRING}, {}, PT_VOLATILITY_IMMUTABLE},
 };
 
 func_all_signatures sig_of_regexp_substr =
@@ -515,6 +516,27 @@ get_signatures (FUNC_CODE ft)
       assert (false);
       return nullptr;
     }
+}
+
+/*
+ * pt_get_func_volatility () - volatility declared for a function's signature
+ *   return: the function's volatility, or PT_VOLATILITY_UNSET if unclassified
+ *   fcode(in): function code
+ *
+ * Symmetric to pt_get_op_volatility for operators: reads a representative
+ * (overload 0) from the function's signatures -- exact for functions whose
+ * volatility does not vary across overloads (the only ones classified so far).
+ */
+PT_VOLATILITY
+pt_get_func_volatility (FUNC_CODE fcode)
+{
+  func_all_signatures *sigs = get_signatures (fcode);
+
+  if (sigs == NULL || sigs->empty ())
+    {
+      return PT_VOLATILITY_UNSET;
+    }
+  return (*sigs)[0].volatility;
 }
 
 void

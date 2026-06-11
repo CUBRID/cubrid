@@ -3164,6 +3164,18 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 
 	      pr_clear_value (&value);
 	    }
+
+	  /* Expression-Derived Literal: restore the original expression text. */
+	  if (classobj_get_prop (att->properties, "default_expr_literal", &value) > 0)
+	    {
+	      const char *edl_text = db_get_string (&value);
+
+	      if (edl_text != NULL)
+		{
+		  att->default_value.default_expr.default_expr_text = ws_copy_string (edl_text);
+		}
+	      pr_clear_value (&value);
+	    }
 	}
 
       /* variable attribute 6: comment */
@@ -4719,6 +4731,31 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	{
 	  /* make sure property is unset for existing attributes */
 	  classobj_drop_prop (attr->properties, "default_expr");
+	}
+
+      /* Expression-Derived Literal: persist the original expression text under a
+       * dedicated property, alongside the folded literal value (stored as an
+       * ordinary default value).  The legacy "default_expr" property is left
+       * untouched -- an EDL has default_expr_type == DB_DEFAULT_NONE. */
+      if (default_expr->default_expr_text != NULL)
+	{
+	  if (attr->properties == NULL)
+	    {
+	      attr->properties = classobj_make_prop ();
+	      if (attr->properties == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  return er_errid ();
+		}
+	    }
+
+	  db_make_string (&default_expr_value, default_expr->default_expr_text);
+	  classobj_put_prop (attr->properties, "default_expr_literal", &default_expr_value);
+	}
+      else if (attr->properties != NULL)
+	{
+	  /* make sure property is unset for existing attributes */
+	  classobj_drop_prop (attr->properties, "default_expr_literal");
 	}
 
       DB_DEFAULT_EXPR_TYPE update_default = attr->on_update_default_expr;
