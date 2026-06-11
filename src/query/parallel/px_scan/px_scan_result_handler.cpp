@@ -1178,8 +1178,19 @@ namespace parallel_scan
 	    if (agg_node->function == PT_JSON_ARRAYAGG)
 	      {
 		/* JSON_ARRAYAGG includes NULL as JSON_NULL */
+		JSON_DOC *json_null_doc = db_json_allocate_doc ();
+		if (json_null_doc == nullptr)
+		  {
+		    /* db_json_allocate_doc goes through the noexcept allocator and returns NULL
+		     * on OOM without setting an error; db_make_json would otherwise wrap the
+		     * NULL document into a non-NULL DB_VALUE and crash the accumulate call. */
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    return false;
+		  }
 		DB_VALUE json_null;
-		db_make_json (&json_null, db_json_allocate_doc (), true);
+		db_make_json (&json_null, json_null_doc, true);
 		if (db_accumulate_json_arrayagg (&json_null, acc->value) != NO_ERROR)
 		  {
 		    pr_clear_value (&json_null);
@@ -1627,8 +1638,19 @@ namespace parallel_scan
 		  }
 		if (DB_IS_NULL (db_value2_p))
 		  {
+		    JSON_DOC *json_null_doc = db_json_allocate_doc ();
+		    if (json_null_doc == nullptr)
+		      {
+			/* db_json_allocate_doc goes through the noexcept allocator and returns NULL
+			 * on OOM without setting an error; db_make_json would otherwise wrap the
+			 * NULL document into a non-NULL DB_VALUE and crash the accumulate call. */
+			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+			m_err_messages_p->move_top_error_message_to_this ();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
 		    DB_VALUE json_null;
-		    db_make_json (&json_null, db_json_allocate_doc (), true);
+		    db_make_json (&json_null, json_null_doc, true);
 		    if (db_accumulate_json_objectagg (db_value_p, &json_null, acc->value) != NO_ERROR)
 		      {
 			pr_clear_value (&json_null);
