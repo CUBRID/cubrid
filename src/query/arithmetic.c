@@ -5038,7 +5038,7 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
     bool dummy_continue = true;	/* out-arg of logtb_is_interrupted (), unused here */
     struct timeval now;
     struct timespec deadline;
-    int wait_result;
+    int wait_result = NO_ERROR;
 
     gettimeofday (&now, NULL);
     deadline.tv_sec = now.tv_sec + msec / 1000L;
@@ -5058,12 +5058,13 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 	    goto end;
 	  }
 
-	wait_result = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &deadline, THREAD_SLEEP_FUNC_SUSPENDED);
 	if (wait_result == ER_CSS_PTHREAD_COND_TIMEDOUT)
 	  {
-	    /* deadline reached; suspend already released the entry lock, so no unlock needed */
+	    thread_unlock_entry (thread_p);
 	    break;
 	  }
+
+	wait_result = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &deadline, THREAD_SLEEP_FUNC_SUSPENDED);
       }
 
     db_make_int (result, 0);

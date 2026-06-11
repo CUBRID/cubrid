@@ -2721,53 +2721,52 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
 
 #if defined (SERVER_MODE)
 /*
- * logtb_interrupt_session_sleeper_mapfunc () - per-worker visitor for logtb_interrupt_session_sleepers ().
- *   If the visited worker is suspended inside SLEEP() and belongs to the given session, set its transaction
- *   interrupt flag and wake it; otherwise it is a no-op.
+ * logtb_interrupt_session_sleeper_mapfunc () - For a worker thread belonging to the given session, set its
+ *   transaction interrupt flag. If the worker is currently suspended inside SLEEP (), wake it as well.
+ *   Workers that do not belong to the given session are ignored.
  */
 static void
 logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
 					 THREAD_ENTRY * caller_thread, SESSION_ID session_id)
 {
-  (void) stop_mapper;
+  (void) stop_mapper;		// suppress unused parameter warning
 
   if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
     {
+      // not what we need
       return;
     }
 
   bool match = false;
-  int tran_index = NULL_TRAN_INDEX;
-
   (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
-  if (thread_ref.m_status != cubthread::entry::status::TS_DEAD
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
       && thread_ref.m_status != cubthread::entry::status::TS_FREE
-      && thread_ref.resume_status == THREAD_SLEEP_FUNC_SUSPENDED
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
       && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
     {
       match = true;
-      tran_index = thread_ref.tran_index;
+      if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (thread_ref.tran_index);
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->interrupt != (int) true)
+	    {
+	      tdes->interrupt = (int) true;
+#if defined (HAVE_ATOMIC_BUILTINS)
+	      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
+#else
+	      log_Gl.trantable.num_interrupts++;
+#endif
+	    }
+	}
     }
+
   pthread_mutex_unlock (&thread_ref.tran_index_lock);
 
   if (!match)
     {
       return;
-    }
-
-  /* set this transaction's interrupt flag so the woken db_sleep() observes it and returns ER_INTERRUPTED */
-  if (tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
-    {
-      LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
-      if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->interrupt != (int) true)
-	{
-	  tdes->interrupt = (int) true;
-#if defined (HAVE_ATOMIC_BUILTINS)
-	  ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
-#else
-	  log_Gl.trantable.num_interrupts++;
-#endif
-	}
     }
 
   thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_SLEEP_FUNC_SUSPENDED);
