@@ -9811,7 +9811,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		err = db_clob_to_char (src, &cs, &tmpval);
 		if (err == NO_ERROR)
 		  {
-		    err = tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
+		    err =
+		      tp_value_cast_internal (&tmpval, dest, desired_domain, coercion_mode, do_domain_select, false);
 		  }
 
 		pr_clear_value (&tmpval);
