@@ -66,19 +66,34 @@ public class TypeChecker extends AstVisitor<Type> {
     public TypeChecker(
             InstanceStore iStore,
             SymbolStack symbolStack,
-            Set<Dependency> dependenciesOfStaticSql,
+            Set<Dependency> dependencies,
             String spOwner,
             Set<SqlUse> sqlUsesInRecursiveCalls) {
         this.iStore = iStore;
         this.symbolStack = symbolStack;
-        dependencies.addAll(dependenciesOfStaticSql);
+        this.dependencies.addAll(dependencies);
         this.spOwner = spOwner;
         this.sqlUsesInRecursiveCalls = sqlUsesInRecursiveCalls;
     }
 
     @Override
-    public Type visitUnit(Unit node) {
+    public Type visitUnitSp(UnitSp node) {
         visit(node.routine);
+        return null;
+    }
+
+    @Override
+    public Type visitUnitPkg(UnitPkg node) {
+        visit(node.pkg);
+        return null;
+    }
+
+    @Override
+    public Type visitDeclPackage(DeclPackage node) {
+        visitNodeList(node.pkgItems);
+        if (node.initializer != null) {
+            visitBody(node.initializer);
+        }
         return null;
     }
 
@@ -97,12 +112,6 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitTypeSpec(TypeSpec node) {
-        if (node.type instanceof TypeRecord) {
-            TypeRecord tyRec = (TypeRecord) node.type;
-            if (tyRec.ofTable) {
-                dependencies.add(new Dependency(Dependency.OBJ_TYPE_TABLE, tyRec.rowName, spOwner));
-            }
-        }
         return node.type;
     }
 
@@ -239,10 +248,11 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitDeclCursor(DeclCursor node) {
 
-        assert node.staticSql.intoTargetList == null; // by earlier check
-
         visitNodeList(node.paramList);
-        typeCheckHostExprs(node.staticSql); // s400
+        if (node.staticSql != null) {
+            assert node.staticSql.intoTargetList == null; // by earlier check
+            typeCheckHostExprs(node.staticSql); // s400
+        }
         return null;
     }
 
@@ -558,8 +568,8 @@ public class TypeChecker extends AstVisitor<Type> {
 
     @Override
     public Type visitExprId(ExprId node) {
-        if (node.decl instanceof DeclIdTypeSpeced) {
-            return ((DeclIdTypeSpeced) node.decl).typeSpec().type;
+        if (node.decl instanceof DeclIdTypeDeclared) {
+            return ((DeclIdTypeDeclared) node.decl).typeSpec().type;
         } else if (node.decl instanceof DeclCursor) {
             return Type.CURSOR;
         } else if (node.decl instanceof DeclForIter) {
@@ -1375,8 +1385,10 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.decls != null) {
             visitNodeList(node.decls);
         }
-        assert node.body != null; // syntactically guaranteed
-        visitBody(node.body);
+
+        if (node.body != null) {
+            visitBody(node.body);
+        }
 
         routineDefNestLevel--;
 

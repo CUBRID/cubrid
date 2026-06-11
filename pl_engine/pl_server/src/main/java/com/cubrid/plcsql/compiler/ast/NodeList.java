@@ -52,4 +52,14 @@ public class NodeList<N extends AstNode> extends AstNode {
     public <R> R accept(AstVisitor<R> visitor) {
         return visitor.visitNodeList(this);
     }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || o.getClass() != NodeList.class) {
+            return false;
+        }
+
+        NodeList other = (NodeList) o;
+        return this.nodes.equals(other.nodes);
+    }
 }

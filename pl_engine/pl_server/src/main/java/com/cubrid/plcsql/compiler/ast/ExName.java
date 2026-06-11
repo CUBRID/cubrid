@@ -52,7 +52,7 @@ public class ExName extends AstNode {
         this.name = name;
         this.scope = scope;
         this.decl = decl;
-        prefixDeclBlock = (decl == null) ? false : decl.scope().declDone;
+        prefixDeclBlock = (decl == null) ? false : decl.scope.declDone;
     }
 
     public ExName(ParserRuleContext ctx, String name) {

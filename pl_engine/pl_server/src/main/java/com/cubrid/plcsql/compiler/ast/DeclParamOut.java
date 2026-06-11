@@ -30,6 +30,7 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
@@ -46,8 +47,9 @@ public class DeclParamOut extends DeclParam {
         return visitor.visitDeclParamOut(this);
     }
 
-    public DeclParamOut(ParserRuleContext ctx, String name, TypeSpec typeSpec, boolean alsoIn) {
-        super(ctx, name, typeSpec);
+    public DeclParamOut(
+            ParserRuleContext ctx, String name, String comment, TypeSpec typeSpec, boolean alsoIn) {
+        super(ctx, name, comment, typeSpec);
         this.alsoIn = alsoIn;
     }
 
@@ -56,7 +58,30 @@ public class DeclParamOut extends DeclParam {
         return "out-parameter";
     }
 
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || o.getClass() != DeclParamOut.class) {
+            return false;
+        }
+
+        DeclParamOut other = (DeclParamOut) o;
+        return this.name.equals(other.name)
+                && this.typeSpec.type == other.typeSpec.type
+                && this.alsoIn == other.alsoIn;
+    }
+
+    @Override
     public String toJavaSignature() {
         return String.format("%s[]", typeSpec.type.fullJavaType);
+    }
+
+    @Override
+    public int getMode() {
+        return alsoIn ? ServerConstants.SP_PARAM_MODE_INOUT : ServerConstants.SP_PARAM_MODE_OUT;
+    }
+
+    @Override
+    public String getDefaultValStr() {
+        return null; // out/inout parameters cannot have a default value
     }
 }

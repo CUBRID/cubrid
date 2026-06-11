@@ -60,7 +60,6 @@ public class CompileResponse implements PackableObject {
     public List<PkgRecType> recType;
 
     // only for sp
-    public String createStmt = null;
     public String javaSignature = null;
     public int sqlDataAccess = ServerConstants.SP_SQL_TYPE_UNKNOWN;
 
@@ -81,18 +80,11 @@ public class CompileResponse implements PackableObject {
         sp.add(p);
     }
 
-    public void addPkgVar(
-            int dataType,
-            int prec,
-            int scale,
-            int flags,
-            String name,
-            String initValue,
-            String comment) {
+    public void addPkgVar(int dbType, int prec, int scale, int flags, String name, String comment) {
         if (var == null) {
             var = new LinkedList<>();
         }
-        var.add(new PkgVar(dataType, prec, scale, flags, name, initValue, comment));
+        var.add(new PkgVar(dbType, prec, scale, flags, name, comment));
     }
 
     public void addPkgException(String name, String comment) {
@@ -119,17 +111,18 @@ public class CompileResponse implements PackableObject {
 
     // for Stored Procedure
     public CompileResponse(
+            int type,
             String translated,
-            String stmt,
             String className,
             String javaSignature,
             int sqlDataAccess,
             Set<Dependency> dependencies) {
 
+        assert type == CompileRequest.PLCSQL_COMPILE_TYPE_SP;
+
         this.errCode = 0;
-        this.type = CompileRequest.PLCSQL_COMPILE_TYPE_SP;
+        this.type = type;
         this.translated = translated;
-        this.createStmt = stmt;
         this.className = className;
         this.javaSignature = javaSignature;
         this.sqlDataAccess = sqlDataAccess;
@@ -137,19 +130,25 @@ public class CompileResponse implements PackableObject {
     }
 
     // for Package Spec
-    public CompileResponse(String translated, String className, Set<Dependency> dependencies) {
+    public CompileResponse(
+            int type, String translated, String className, Set<Dependency> dependencies) {
+
+        assert type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC;
 
         this.errCode = 0;
-        this.type = CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC;
+        this.type = type;
         this.translated = translated;
         this.className = className;
         this.dependencies = dependencies;
     }
 
     // for Package Body
-    public CompileResponse() {
+    public CompileResponse(int type) {
+
+        assert type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY;
+
         errCode = 0;
-        this.type = CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY;
+        this.type = type;
     }
 
     @Override
@@ -168,7 +167,6 @@ public class CompileResponse implements PackableObject {
                     packer.packString(translated);
                     packer.packString(className);
                     packer.packCString(compiledCode);
-                    packer.packString(createStmt);
                     packer.packString(javaSignature);
                     packer.packInt(sqlDataAccess);
 
@@ -245,8 +243,11 @@ public class CompileResponse implements PackableObject {
                     break;
 
                 case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY:
-                    // nothing to pack
+                    // nothing more to pack
                     break;
+
+                default:
+                    assert false;
             }
         }
     }
@@ -254,23 +255,23 @@ public class CompileResponse implements PackableObject {
     static class PkgSpArg implements PackableObject {
 
         public String name;
-        public int dataType;
+        public int dbType;
         public int mode;
         public String defaultValue;
         public String comment;
 
-        PkgSpArg(String name, int dataType, int mode, String defaultValue, String comment) {
+        PkgSpArg(String name, int dbType, int mode, String defaultValue, String comment) {
             this.name = name;
-            this.dataType = dataType;
+            this.dbType = dbType;
             this.mode = mode;
-            this.defaultValue = defaultValue;
-            this.comment = comment;
+            this.defaultValue = defaultValue == null ? "" : defaultValue;
+            this.comment = comment == null ? "" : comment;
         }
 
         @Override
         public void pack(CUBRIDPacker packer) {
             packer.packString(name);
-            packer.packInt(dataType);
+            packer.packInt(dbType);
             packer.packInt(mode);
             packer.packString(defaultValue);
             packer.packString(comment);
@@ -303,15 +304,14 @@ public class CompileResponse implements PackableObject {
             this.returnType = returnType;
             this.directive = directive;
             this.sqlDataAccess = sqlDataAccess;
-            this.comment = comment;
+            this.comment = comment == null ? "" : comment;
         }
 
-        public void addArg(
-                String name, int dataType, int mode, String defaultValue, String comment) {
+        public void addArg(String name, int dbType, int mode, String defaultValue, String comment) {
             if (args == null) {
                 args = new LinkedList<>();
             }
-            args.add(new PkgSpArg(name, dataType, mode, defaultValue, comment));
+            args.add(new PkgSpArg(name, dbType, mode, defaultValue, comment));
         }
 
         @Override
@@ -338,39 +338,29 @@ public class CompileResponse implements PackableObject {
 
     static class PkgVar implements PackableObject {
 
-        public int dataType;
+        public int dbType;
         public int prec;
         public int scale;
         public int flags;
         public String name;
-        public String initValue;
         public String comment;
 
-        PkgVar(
-                int dataType,
-                int prec,
-                int scale,
-                int flags,
-                String name,
-                String initValue,
-                String comment) {
-            this.dataType = dataType;
+        PkgVar(int dbType, int prec, int scale, int flags, String name, String comment) {
+            this.dbType = dbType;
             this.prec = prec;
             this.scale = scale;
             this.flags = flags;
             this.name = name;
-            this.initValue = initValue;
-            this.comment = comment;
+            this.comment = comment == null ? "" : comment;
         }
 
         @Override
         public void pack(CUBRIDPacker packer) {
-            packer.packInt(dataType);
+            packer.packInt(dbType);
             packer.packInt(prec);
             packer.packInt(scale);
             packer.packInt(flags);
             packer.packString(name);
-            packer.packString(initValue);
             packer.packString(comment);
         }
     }
@@ -382,7 +372,7 @@ public class CompileResponse implements PackableObject {
 
         PkgException(String name, String comment) {
             this.name = name;
-            this.comment = comment;
+            this.comment = comment == null ? "" : comment;
         }
 
         @Override
@@ -402,7 +392,7 @@ public class CompileResponse implements PackableObject {
         PkgCursor(String name, String recordType, String comment, List<String> parameters) {
             this.name = name;
             this.recordType = recordType;
-            this.comment = comment;
+            this.comment = comment == null ? "" : comment;
             this.parameters = parameters;
         }
 
@@ -430,7 +420,7 @@ public class CompileResponse implements PackableObject {
 
         PkgRecType(String name, String comment, List<String> fields) {
             this.name = name;
-            this.comment = comment;
+            this.comment = comment == null ? "" : comment;
             this.fields = fields;
         }
 

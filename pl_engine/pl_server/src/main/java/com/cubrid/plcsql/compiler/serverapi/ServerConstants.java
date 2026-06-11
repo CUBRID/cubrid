@@ -32,6 +32,18 @@ package com.cubrid.plcsql.compiler.serverapi;
 
 public class ServerConstants {
 
+    // package variable flags - see sp/sp_constants.hpp
+    public static final int PKG_VAR_CONSTANT = 1;
+    public static final int PKG_VAR_NOT_NULL = (1 << 1);
+
+    // see compat/dbtype_def.h
+    public static final int DB_DEFAULT_PRECISION = -1;
+    public static final short DB_DEFAULT_SCALE = -9999;
+
+    // sp type - see sp/sp_constants.hpp
+    public static final int SP_TYPE_PROCEDURE = 1;
+    public static final int SP_TYPE_FUNCTION = 2;
+
     // kinds of SQL statements that are supported in Static SQL
     public static final int CUBRID_STMT_INSERT = 20; // REPLACE too
     public static final int CUBRID_STMT_SELECT = 21;
@@ -40,10 +52,11 @@ public class ServerConstants {
     public static final int CUBRID_STMT_TRUNCATE = 52;
     public static final int CUBRID_STMT_MERGE = 57;
 
-    // parameter mode flags - got from com.cubrid.jsp.impl.SUBindParameter
-    public static final byte PARAM_MODE_UNKNOWN = 0;
-    public static final byte PARAM_MODE_IN = 1;
-    public static final byte PARAM_MODE_OUT = 2;
+    // parameter mode flags - see sp/sp_constants.hpp
+    public static final byte SP_PARAM_MODE_UNKNOWN = 0;
+    public static final byte SP_PARAM_MODE_IN = 1;
+    public static final byte SP_PARAM_MODE_OUT = 2;
+    public static final byte SP_PARAM_MODE_INOUT = 3;
 
     // CUBRID charset = got from got from com.cubrid.jsp.data.ColumnInfo::getJavaCharsetName()
     public static final byte CUBRID_CHARSET_ASCII = 0;

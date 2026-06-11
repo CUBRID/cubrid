@@ -44,6 +44,14 @@ public class Body extends AstNode {
     public final NodeList<ExHandler> exHandlers;
     public final String label;
 
+    Body() {
+        super(null); // dummy body created in previsits and abandoned later
+
+        this.stmts = null;
+        this.exHandlers = null;
+        this.label = null;
+    }
+
     public Body(
             ParserRuleContext ctx,
             NodeList<Stmt> stmts,

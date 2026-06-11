@@ -30,24 +30,69 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.plcsql.compiler.Scope;
 import org.antlr.v4.runtime.ParserRuleContext;
 
+/*
+Decl
+   - DeclLabel
+   - DeclException
+   - DeclPacakge
+   - DeclRoutine
+       - DeclFunc
+       - DedlProc
+   - DeclId
+       - DeclDynamicRecord
+       - DeclForIter
+       - DeclIdTypeDeclared
+           - DeclParam
+               - DeclParamIn
+               - DeclParamOut
+           - DeclConst
+           - DeclVar
+       - DeclCursor
+
+*/
+
 public abstract class Decl extends AstNode {
 
+    public final String name;
+    public final String comment;
     public Scope scope;
+    public Decl bodyDecl;
 
     public abstract String kind();
 
-    public Decl(ParserRuleContext ctx) {
+    public Decl(ParserRuleContext ctx, String name, String comment) {
         super(ctx);
+        this.name = name;
+        this.comment = comment;
     }
 
     public void setScope(Scope scope) {
         this.scope = scope;
     }
 
-    public Scope scope() {
-        return scope;
+    public void setBodyDecl(Decl bodyDecl) {
+        this.bodyDecl = bodyDecl;
+    }
+
+    public boolean givesBodyOf(Decl other) {
+        // by default false
+        // DeclCursor, DeclFunc, DeclProc will override this default
+        return false;
+    }
+
+    public boolean lackOfBody() {
+        // by default false
+        // DeclCursor, DeclRoutine will override this default
+        return false;
+    }
+
+    public void addAsPkgItem(CompileResponse resp) {
+        // by default, unreachable
+        // declarations which can be a package item will properly override this method
+        assert false;
     }
 }

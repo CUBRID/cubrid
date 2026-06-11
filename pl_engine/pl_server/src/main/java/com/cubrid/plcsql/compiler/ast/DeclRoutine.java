@@ -30,14 +30,19 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
+import com.cubrid.jsp.data.CompileResponse;
 import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class DeclRoutine extends Decl {
+
+    public static final int DIRECTIVE_AUTHID_CALLER = 1;
+    public static final int DIRECTIVE_DETERMINISTIC = (1 << 1);
 
     // not contained in a loop but reachable from it including the case of (mutually) recursive
     // calls
@@ -131,29 +136,64 @@ public abstract class DeclRoutine extends Decl {
         return (loopOptimizables != null);
     }
 
-    public final String name;
     public StmtLoop.LoopOptimizables loopOptimizables;
     public final NodeList<DeclParam> paramList;
+    public final int directive;
     public final TypeSpec retTypeSpec;
     public NodeList<Decl> decls;
     public Body body;
+    public int sqlDataAccess;
 
     public DeclRoutine(
             ParserRuleContext ctx,
             String name,
+            String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
             NodeList<DeclParam> paramList,
+            int directive,
             TypeSpec retTypeSpec,
             NodeList<Decl> decls,
             Body body) {
-        super(ctx);
+        super(ctx, name, comment);
 
-        this.name = name;
         this.loopOptimizables = loopOptimizables;
         this.paramList = paramList;
+        this.directive = directive;
         this.retTypeSpec = retTypeSpec;
         this.decls = decls;
         this.body = body;
+    }
+
+    public String getJavaSignature() {
+        String ret;
+        if (paramList == null) {
+            ret = String.format("%s()", name);
+        } else {
+            boolean first = true;
+            StringBuffer sbuf = new StringBuffer();
+            for (DeclParam dp : paramList.nodes) {
+                if (first) {
+                    first = false;
+                } else {
+                    sbuf.append(",");
+                }
+
+                sbuf.append(dp.toJavaSignature());
+            }
+
+            ret = String.format("%s(%s)", name, sbuf.toString());
+        }
+
+        if (retTypeSpec == null) {
+            return ret;
+        } else {
+            return (ret + " return " + retTypeSpec.type.fullJavaType);
+        }
+    }
+
+    @Override
+    public boolean lackOfBody() {
+        return body == null && bodyDecl == null;
     }
 
     public boolean hasTimestampParam() {
@@ -175,5 +215,32 @@ public abstract class DeclRoutine extends Decl {
 
     public boolean isProcedure() {
         return (retTypeSpec == null);
+    }
+
+    @Override
+    public void addAsPkgItem(CompileResponse resp) {
+
+        CompileResponse.PkgSp pkgSp =
+                new CompileResponse.PkgSp(
+                        getJavaSignature(),
+                        name,
+                        isProcedure()
+                                ? ServerConstants.SP_TYPE_PROCEDURE
+                                : ServerConstants.SP_TYPE_FUNCTION,
+                        isProcedure() ? 0 : retTypeSpec.type.dbType,
+                        directive,
+                        sqlDataAccess,
+                        comment);
+
+        for (DeclParam dp : paramList.nodes) {
+            pkgSp.addArg(
+                    dp.name,
+                    dp.typeSpec.type.dbType,
+                    dp.getMode(),
+                    dp.getDefaultValStr(),
+                    dp.comment);
+        }
+
+        resp.addPkgSp(pkgSp);
     }
 }

@@ -38,11 +38,15 @@ public abstract class AstVisitor<R> {
         return node.accept(this);
     }
 
-    public abstract R visitUnit(Unit node);
+    public abstract R visitUnitSp(UnitSp node);
+
+    public abstract R visitUnitPkg(UnitPkg node);
 
     public abstract R visitDeclFunc(DeclFunc node);
 
     public abstract R visitDeclProc(DeclProc node);
+
+    public abstract R visitDeclPackage(DeclPackage node);
 
     public abstract R visitDeclParamIn(DeclParamIn node);
 
@@ -211,7 +215,7 @@ public abstract class AstVisitor<R> {
     DeclId
     DeclParam
     DeclRoutine
-    DeclIdTypeSpeced
+    DeclIdTypeDeclared
     Expr
     Stmt
 
