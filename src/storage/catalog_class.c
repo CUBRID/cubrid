@@ -4010,7 +4010,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   is_lock_inited = true;
 #endif /* SERVER_MODE */
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4175,7 +4175,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   int i, j, k;
   int error = NO_ERROR;
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) !=
+      S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4498,7 +4499,8 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) !=
+      S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;
