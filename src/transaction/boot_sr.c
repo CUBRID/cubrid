@@ -3195,8 +3195,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
     }
   if (!adm_prg_file_name.empty ())
     {
-      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0
-	  || strncasecmp (adm_prg_file_name.c_str (), "migrate_", strlen ("migrate_")) == 0)
+      if (strncasecmp (adm_prg_file_name.c_str (), "synccolldb", strlen ("synccolldb")) == 0)
 	{
 	  check_coll_and_timezone.check_db_coll = false;
 	}
