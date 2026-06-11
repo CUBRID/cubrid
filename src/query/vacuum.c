@@ -3701,6 +3701,28 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY * thread_p, const RECDES * undo_re
       return;
     }
 
+  /* Snapshot the undo image into a private buffer BEFORE any page fix below. The image usually
+   * points straight into the worker's current log page buffer, and the page fixes inside
+   * vacuum_oos_vfid_cache_lookup can trigger log activity that rotates that buffer — the same
+   * hazard vacuum_forward_walk_delete_old_oos documents for oos_delete. Parsing the rotated
+   * buffer reads zeroed/foreign bytes and silently extracts nothing (verified live: the flags
+   * word at the same address flipped from 0x69 to 0x00 across the lookup). The copy also fixes
+   * alignment: the image starts at undo_data + sizeof (INT16), so the OR_BUF readers in
+   * heap_recdes_get_oos_oids (or_get_oid) would assert on the raw pointer in debug builds. */
+  RECDES parse_recdes = *undo_recdes;
+  char *stable_copy = (char *) db_private_alloc (thread_p, undo_recdes->length);
+  if (stable_copy == NULL)
+    {
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
+			   "forward-walk oos cleanup: failed to allocate %d bytes for undo image snapshot; "
+			   "leaving OOS unreclaimed (bounded leak per ADR-0002) heap_vfid=%d|%d",
+			   undo_recdes->length, VFID_AS_ARGS (heap_vfid));
+      er_clear ();
+      return;
+    }
+  memcpy (stable_copy, undo_recdes->data, undo_recdes->length);
+  parse_recdes.data = stable_copy;
+
   VFID oos_vfid;
   VACUUM_OOS_VFID_LOOKUP_RESULT lookup_result =
     vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, oos_vfid_cache_size, oos_vfid_cache_evict_idx, heap_vfid,
@@ -3716,7 +3738,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY * thread_p, const RECDES * undo_re
   else if (lookup_result == VACUUM_OOS_VFID_FOUND)
     {
       OID_VECTOR oos_oids;
-      int oos_err = heap_recdes_get_oos_oids (undo_recdes, oos_oids);
+      int oos_err = heap_recdes_get_oos_oids (&parse_recdes, oos_oids);
 
       if (oos_err == NO_ERROR)
 	{
@@ -3736,6 +3758,8 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY * thread_p, const RECDES * undo_re
 	}
     }
   /* VACUUM_OOS_VFID_NONE: heap legitimately has no OOS file — nothing to do. */
+
+  db_private_free_and_init (thread_p, stable_copy);
 }
 
 /*
