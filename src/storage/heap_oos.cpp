@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -596,7 +597,7 @@ heap_update_relocation_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATI
  *
  * Unlike the UPDATE siblings there is no new image on DELETE, and OOS OIDs are freshly allocated per
  * heap record (never shared across rows), so EVERY OOS OID referenced by the home record is deleted
- * unconditionally — no overlap / still-referenced check is needed (see ADR-0001 "delete-all-safe").
+ * unconditionally — no overlap / still-referenced check is needed.
  *
  * Despite the historical "SA_MODE" naming on the siblings, the !is_mvcc_op gate also fires for
  * SERVER_MODE deletes of MVCC-disabled classes (catalog tables), so this code can execute server-side
@@ -668,8 +669,7 @@ heap_delete_home_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *con
  * holds only an 8-byte forwarding OID.
  *
  * As with the REC_HOME case there is no new image on DELETE and OOS OIDs are never shared across rows,
- * so EVERY OOS OID referenced by the forward record is deleted unconditionally (ADR-0001
- * "delete-all-safe").
+ * so EVERY OOS OID referenced by the forward record is deleted unconditionally.
  *
  * Despite the historical "SA_MODE" naming, the !is_mvcc_op gate also fires for SERVER_MODE deletes of
  * MVCC-disabled classes (catalog tables), so this code can execute server-side too. Caller MUST abort

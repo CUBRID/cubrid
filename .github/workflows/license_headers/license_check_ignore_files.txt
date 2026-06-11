@@ -52,11 +52,3 @@ src/win_tools/cubridtray/TEXTPROGRESSCTRL.H
 timezones/make_tz.sh
 timezones/make_tz_Win32.bat
 timezones/make_tz_x64.bat
-unit_tests/oos/test_oos_delete_server.cpp
-unit_tests/oos/test_oos_server.cpp
-unit_tests/oos/test_oos_vacuum_server.cpp
-unit_tests/oos/test_oos_mock_vacuum_server.cpp
-unit_tests/oos/test_oos_remove_file_server.cpp
-unit_tests/oos/test_oos_server_common.hpp
-unit_tests/oos/sql/test_oos_sql_eager_cleanup.cpp
-unit_tests/oos/sql/test_oos_sql_common.hpp

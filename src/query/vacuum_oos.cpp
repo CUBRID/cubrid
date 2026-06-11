@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -46,7 +47,7 @@
 /* Tri-state result of vacuum_oos_vfid_cache_lookup so the caller can distinguish a legitimate
  * "this heap has no OOS file" (NONE) from a transient lookup failure (ERROR). On ERROR the error
  * is left set for the caller to log; the caller er_clear()s and leaves the OOS unreclaimed (a
- * bounded, logged leak per ADR-0002) rather than failing the vacuum block. */
+ * bounded, logged leak) rather than failing the vacuum block. */
 typedef enum
 {
   VACUUM_OOS_VFID_FOUND,	/* resolved a non-null OOS VFID into out_oos_vfid */
@@ -106,7 +107,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_CACHE *cac
   if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
     {
       /* Transient failure — do NOT cache and do NOT er_clear: leave the error set for the caller
-       * to log, then the caller clears it (bounded, logged leak per ADR-0002). */
+       * to log, then the caller clears it (bounded, logged leak). */
       return VACUUM_OOS_VFID_ERROR;
     }
 
@@ -276,7 +277,7 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  *
  * NOTE: Any OOS reclaim failure degrades to a bounded, logged leak (log loudly, er_clear, return).
  * It never propagates an error or fails the block — that would trip the shutdown-only assert in
- * vacuum_finished_block_vacuum and risk wedging vacuum. See ADR-0002.
+ * vacuum_finished_block_vacuum and risk wedging vacuum.
  */
 void
 vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recdes, const VFID *heap_vfid,
@@ -308,7 +309,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
     {
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			   "forward-walk oos cleanup: failed to allocate %d bytes for undo image snapshot; "
-			   "leaving OOS unreclaimed (bounded leak per ADR-0002) heap_vfid=%d|%d",
+			   "leaving OOS unreclaimed (bounded leak) heap_vfid=%d|%d",
 			   undo_recdes->length, VFID_AS_ARGS (heap_vfid));
       er_clear ();
       return;
@@ -323,7 +324,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
     {
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			   "transient OOS vfid lookup failure; leaving OOS unreclaimed "
-			   "(bounded leak per ADR-0002) heap_vfid=%d|%d", VFID_AS_ARGS (heap_vfid));
+			   "(bounded leak) heap_vfid=%d|%d", VFID_AS_ARGS (heap_vfid));
       er_clear ();
       /* DO NOT propagate; the block must complete. */
     }
@@ -343,7 +344,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
 	   * back; the leak is just the un-deleted OOS records. */
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "forward-walk oos cleanup failed; leaving OOS unreclaimed "
-			       "(bounded leak per ADR-0002) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
+			       "(bounded leak) heap_vfid=%d|%d oos_vfid=%d|%d err=%d",
 			       VFID_AS_ARGS (heap_vfid), VFID_AS_ARGS (&oos_vfid), oos_err);
 	  er_clear ();
 	  /* DO NOT propagate; the block must complete. */
@@ -359,7 +360,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, const RECDES *undo_recd
  *   record carries the OOS flag but the caller has not cached oos_vfid yet. A missing OOS file
  *   at this point is unexpected (false-positive flag / dropped file / recovery-ordering edge);
  *   it must not abort vacuum, so log it, clear the error, leave oos_vfid NULL, and skip OOS
- *   cleanup for this record (bounded leak per ADR-0002). Debug builds assert instead, so a
+ *   cleanup for this record (bounded leak). Debug builds assert instead, so a
  *   future flag-planting bug is caught in debug runs rather than leaking silently.
  *
  * thread_p (in)     : Thread entry.
@@ -388,7 +389,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
    * dropped OOS file, or a recovery-ordering edge. None of these may fail/abort vacuum:
    * returning ER_FAILED here re-arms the release-only spin in the vacuum_heap_page loop
    * (it er_clear()+continues without advancing page_ptr). Log, clear, and skip OOS cleanup
-   * for this record - bounded, logged leak per ADR-0002. See commit 1bf7dda05. */
+   * for this record - bounded, logged leak. See commit 1bf7dda05. */
   {
     int repid_and_flags = OR_GET_INT (record->data + OR_REP_OFFSET);
     int mvcc_flags = OR_GET_MVCC_FLAG (record->data);
@@ -396,7 +397,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
     vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			 "OOS flag set but no OOS VFID for hfid %d|%d slotid=%d rectype=%d rec_len=%d "
 			 "repid_and_flags=0x%08x mvcc_flags=0x%02x offset_size=%d - skipping OOS cleanup "
-			 "(bounded leak per ADR-0002)",
+			 "(bounded leak)",
 			 VFID_AS_ARGS (&hfid->vfid), (int) slotid, (int) record_type,
 			 record->length, repid_and_flags, mvcc_flags, offset_size);
   }

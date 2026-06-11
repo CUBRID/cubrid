@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,7 +21,7 @@
  *
  *   Reclaims OOS records that became unreachable from the heap: the REMOVE path deletes the OOS
  *   referenced by a vacuumed record, and the forward-walk path deletes the OOS referenced only by
- *   UPDATE/DELETE_NEWHOME pre-images found in the undo log. See ADR-0001 and ADR-0002.
+ *   UPDATE/DELETE_NEWHOME pre-images found in the undo log.
  */
 
 #ifndef _VACUUM_OOS_HPP_

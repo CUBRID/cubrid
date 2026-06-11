@@ -3700,7 +3700,7 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 	  /* MVCC remove_old_forward forward REC_NEWHOME delete (heap_update_relocation). The old forward
 	   * record survives only in this delete's undo image; its OOS records are reclaimed here. This is
 	   * deliberately OUTSIDE the LOG_IS_MVCC_HEAP_OPERATION block (no slot to collect — the slot was
-	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. See ADR-0001. */
+	   * physically deleted). The undo image is always the forward REC_NEWHOME pre-image. */
 	  if (undo_data != NULL && undo_data_size > (int) sizeof (INT16))
 	    {
 	      RECDES undo_recdes;

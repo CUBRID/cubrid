@@ -23685,7 +23685,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
        * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
        * from the undo image; otherwise (non-OOS, or SA mode handled by the eager-delete path above)
-       * use the plain RVHF_DELETE — no behavior change. See ADR-0001. */
+       * use the plain RVHF_DELETE — no behavior change. */
       LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
       if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
 	{
