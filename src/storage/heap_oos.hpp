@@ -16,7 +16,7 @@
  */
 
 /*
- * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion
+ * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion and eager cleanup
  */
 
 #ifndef _HEAP_OOS_HPP_
@@ -26,5 +26,13 @@
 #include "storage_common.h"
 
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
+
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. */
+extern int heap_delete_home_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
+extern int heap_delete_relocation_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *forward_recdes);
+extern int heap_update_home_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context);
+extern int heap_update_relocation_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *old_forward_recdes);
 
 #endif /* _HEAP_OOS_HPP_ */

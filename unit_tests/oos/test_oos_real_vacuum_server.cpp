@@ -21,7 +21,7 @@
  * OOS reclaim through the REAL vacuum pipeline.
  *
  * Unlike test_oos_vacuum_server.cpp (which calls the vacuum leaf function
- * bridge_vacuum_heap_oos_delete on crafted RECDES), these tests drive the
+ * vacuum_heap_oos_delete on crafted RECDES), these tests drive the
  * whole chain:
  *
  *   MVCC heap DML (heap_insert_logical / heap_delete_logical / heap_update_logical)

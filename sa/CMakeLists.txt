@@ -310,6 +310,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/string_regex_std.cpp
   ${QUERY_DIR}/string_regex_re2.cpp
   ${QUERY_DIR}/vacuum.c
+  ${QUERY_DIR}/vacuum_oos.cpp
   ${QUERY_DIR}/xasl_cache.c
   ${QUERY_DIR}/xasl_to_stream.c
   )
@@ -527,6 +528,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/heap_oos.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
+  ${STORAGE_DIR}/oos_util.cpp
   ${STORAGE_DIR}/overflow_file.c
   ${STORAGE_DIR}/page_buffer.c
   ${STORAGE_DIR}/record_descriptor.cpp

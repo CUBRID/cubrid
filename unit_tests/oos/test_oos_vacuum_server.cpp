@@ -3,7 +3,7 @@
  *
  * Exercises the real vacuum_heap_oos_delete() -> heap_recdes_get_oos_oids() ->
  * oos_delete() code path by crafting minimal heap RECDES with OOS inline data
- * and calling the vacuum bridge function.
+ * and calling vacuum_heap_oos_delete() directly.
  *
  * Also tests heap_recdes_get_oos_oids() and heap_recdes_contains_oos()
  * directly for OOS OID extraction from crafted heap records.
@@ -11,12 +11,10 @@
 
 #include "object_representation.h"
 #include "test_oos_server_common.hpp"
+#include "vacuum_oos.hpp"
 
 /* bridge functions */
-int bridge_vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, RECDES *record);
 int bridge_oos_get_max_chunk_size_within_page ();
-void bridge_log_append_undo_for_prev_version_test (THREAD_ENTRY *thread_p, const VFID *vfid,
-    const RECDES *old_recdes, LOG_LSA *out_lsa);
 
 // ============================================================================
 // Helper: Build heap RECDES with OOS inline data
@@ -252,7 +250,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteSingle)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* OOS record must be gone */
@@ -299,7 +297,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultipleColumns)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All 3 OOS records must be gone */
@@ -354,7 +352,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteMultiChunk)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* Multi-chunk OOS must be fully gone */
@@ -392,7 +390,7 @@ TEST_F (OosVacuumCodePathServer, VacuumHeapOosDeleteLarge160KB)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   RECDES after {};
@@ -476,7 +474,7 @@ TEST_F (OosVacuumCodePathServer, MultiUpdateVacuumReclaimFreeSpace)
 	  err = build_heap_recdes_with_oos ({old_oid}, {oos_len}, heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
-	  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+	  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
 	  ASSERT_EQ (err, NO_ERROR);
 
 	  recdes_free_data_area (&heap_rec);
@@ -580,7 +578,7 @@ TEST_F (OosVacuumCodePathServer, BulkVacuumReclaimAndReuse)
   ASSERT_EQ (err, NO_ERROR);
   test_oos_utils::auto_freed_recdes_ptr defer_heap (&heap_rec, recdes_free_data_area);
 
-  err = bridge_vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
+  err = vacuum_heap_oos_delete (thread_p, &oos_vfid, &heap_rec);
   ASSERT_EQ (err, NO_ERROR);
 
   /* All N OOS records must be gone */

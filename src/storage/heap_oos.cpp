@@ -30,6 +30,7 @@
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
+#include "oos_util.hpp"
 #include "storage_common.h"
 
 #include <cassert>
@@ -391,4 +392,342 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) rec->length);
       return S_ERROR;
     }
+}
+
+/*
+ * heap_update_home_delete_replaced_oos () - Eagerly delete old OOS records replaced by an UPDATE.
+ *
+ * Called from heap_update_home on the SA_MODE (non-MVCC) branch after the in-place overwrite has
+ * succeeded. MVCC mode keeps the old OOS alive for concurrent readers and lets vacuum reclaim it
+ * later; SA_MODE has no readers and no vacuum, so deletion happens here or not at all.
+ *
+ * Compares the OOS OID lists from the pre-update (home) recdes and the new recdes. OIDs present
+ * only in the old list are deleted; OIDs that appear in both (same physical OOS referenced before
+ * and after) are preserved. Caller guards on home_recdes.type == REC_HOME and OOS flag set.
+ *
+ * Despite historical naming ("SA_MODE"), the !is_mvcc_op gate also fires for SERVER_MODE updates
+ * to MVCC-disabled classes (catalog tables), so this code can execute server-side too. Caller MUST
+ * abort the transaction on error so oos_delete's per-chunk undo records replay any partial deletes
+ * during rollback; otherwise the home recdes will reference already-deleted OOS chunks.
+ *
+ * Strict failure handling: the OOS header flag is set by the record transformer and read via
+ * heap_recdes_contains_oos, so a missing OOS file or a failed OID extraction at this point
+ * indicates real corruption — log and propagate.
+ */
+int
+heap_update_home_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  OID_VECTOR old_oos_oids, new_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(old) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, context->home_recdes.length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_recdes_contains_oos (context->recdes_p))
+    {
+      error_code = heap_recdes_get_oos_oids (context->recdes_p, new_oos_oids);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup: heap_recdes_get_oos_oids(new) failed"
+			" (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid, context->recdes_p->length);
+	  return error_code;
+	}
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup: OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  for (const OID &old_oid : old_oos_oids)
+    {
+      if (oos_oid_in_vector (new_oos_oids, &old_oid))
+	{
+	  /* Same physical OOS referenced by both old and new recdes; keep it. */
+	  continue;
+	}
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup: oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_update_relocation_delete_replaced_oos () - Eager OOS cleanup for relocation update.
+ *
+ * Called from heap_update_relocation on the non-MVCC branch (is_mvcc_op == false) after the old
+ * forward record (REC_NEWHOME) has been read and before any physical operation. Mirrors
+ * heap_update_home_delete_replaced_oos but operates on the forward record because for
+ * REC_RELOCATION the actual data (and OOS attributes) live on the forward page; the home slot
+ * holds only an 8-byte forwarding OID.
+ *
+ * Despite historical naming (the sibling is labeled "SA_MODE"), the !is_mvcc_op gate also fires
+ * for SERVER_MODE updates to MVCC-disabled classes (catalog tables), so this code can execute
+ * server-side too. Caller MUST abort the transaction on error so oos_delete's per-chunk undo
+ * records replay any partial deletes during rollback; otherwise the heap recdes will reference
+ * already-deleted OOS chunks.
+ *
+ * Covers all 4 sub-paths of heap_update_relocation (remove_old_forward x 3,
+ * update_old_forward x 1). Each sub-path either overwrites or removes the old forward record;
+ * any OOS referenced only by the old forward (and not by the new record) becomes unreachable
+ * and must be freed here.
+ *
+ * MVCC mode (concurrent-reader path) keeps the old OOS alive for snapshot reads. Vacuum reclaims
+ * the update_old_forward sub-path through RVHF_UPDATE_NOTIFY_VACUUM forward-walk; the
+ * remove_old_forward MVCC sub-paths still leak OOS until the forward-walk gate is extended to
+ * admit physical-delete log records -- separate follow-up.
+ *
+ * Strict failure handling: a missing OOS file or a failed OID extraction at this point indicates
+ * real corruption -- log and propagate.
+ */
+int
+heap_update_relocation_delete_replaced_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *old_forward_recdes)
+{
+  OID_VECTOR old_oos_oids, new_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (old_forward_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (relocation): heap_recdes_get_oos_oids(old forward) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, fwd_rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, old_forward_recdes->length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  /* heap_recdes_get_oos_oids internally checks heap_recdes_contains_oos and returns NO_ERROR
+   * with an empty vector if the new record has no OOS — no outer guard needed. */
+  error_code = heap_recdes_get_oos_oids (context->recdes_p, new_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (relocation): heap_recdes_get_oos_oids(new) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, new_rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, context->recdes_p->length);
+      return error_code;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (relocation): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  for (const OID &old_oid : old_oos_oids)
+    {
+      if (oos_oid_in_vector (new_oos_oids, &old_oid))
+	{
+	  /* Same physical OOS referenced by both old and new recdes; keep it. */
+	  continue;
+	}
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup (relocation): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_delete_home_delete_oos () - Eagerly delete the OOS records of a DELETEd REC_HOME row.
+ *
+ * Called from heap_delete_home on the non-MVCC branch (is_mvcc_op == false) before the destructive
+ * heap_log_delete_physical / heap_delete_physical. MVCC mode keeps the old OOS alive for concurrent
+ * readers and lets vacuum reclaim it later; SA_MODE has no readers and no vacuum, so deletion happens
+ * here or not at all.
+ *
+ * Unlike the UPDATE siblings there is no new image on DELETE, and OOS OIDs are freshly allocated per
+ * heap record (never shared across rows), so EVERY OOS OID referenced by the home record is deleted
+ * unconditionally — no overlap / still-referenced check is needed (see ADR-0001 "delete-all-safe").
+ *
+ * Despite the historical "SA_MODE" naming on the siblings, the !is_mvcc_op gate also fires for
+ * SERVER_MODE deletes of MVCC-disabled classes (catalog tables), so this code can execute server-side
+ * too. Caller MUST abort the transaction on error so oos_delete's per-chunk undo records replay any
+ * partial deletes during rollback; otherwise the home recdes will reference already-deleted OOS chunks.
+ *
+ * Strict failure handling: a missing OOS file or a failed OID extraction at this point indicates real
+ * corruption — log and propagate.
+ */
+int
+heap_delete_home_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context)
+{
+  OID_VECTOR old_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (&context->home_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete): heap_recdes_get_oos_oids(home) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, context->home_recdes.length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  for (const OID &old_oid : old_oos_oids)
+    {
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup (delete): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_delete_relocation_delete_oos () - Eager OOS cleanup for a DELETEd relocated (REC_RELOCATION) row.
+ *
+ * Called from heap_delete_relocation on the non-MVCC branch (is_mvcc_op == false) before the
+ * destructive forward heap_log_delete_physical / heap_delete_physical. Mirrors
+ * heap_delete_home_delete_oos but extracts the OOS OIDs from the forward REC_NEWHOME record, because
+ * for REC_RELOCATION the actual data (and OOS attributes) live on the forward page; the home slot
+ * holds only an 8-byte forwarding OID.
+ *
+ * As with the REC_HOME case there is no new image on DELETE and OOS OIDs are never shared across rows,
+ * so EVERY OOS OID referenced by the forward record is deleted unconditionally (ADR-0001
+ * "delete-all-safe").
+ *
+ * Despite the historical "SA_MODE" naming, the !is_mvcc_op gate also fires for SERVER_MODE deletes of
+ * MVCC-disabled classes (catalog tables), so this code can execute server-side too. Caller MUST abort
+ * the transaction on error so oos_delete's per-chunk undo records replay any partial deletes during
+ * rollback; otherwise the forward recdes will reference already-deleted OOS chunks.
+ *
+ * Strict failure handling: a missing OOS file or a failed OID extraction at this point indicates real
+ * corruption — log and propagate.
+ */
+int
+heap_delete_relocation_delete_oos (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+				   const RECDES *forward_recdes)
+{
+  OID_VECTOR old_oos_oids;
+  VFID oos_vfid;
+  int error_code;
+
+  error_code = heap_recdes_get_oos_oids (forward_recdes, old_oos_oids);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete relocation): heap_recdes_get_oos_oids(forward) failed"
+		    " (hfid=%d|%d, oid=%d|%d|%d, fwd_rec_len=%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid),
+		    context->oid.volid, context->oid.pageid, context->oid.slotid, forward_recdes->length);
+      return error_code;
+    }
+  if (old_oos_oids.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "SA_MODE eager OOS cleanup (delete relocation): OOS flag set but no OOS VFID found for hfid %d|%d"
+		    " (oid=%d|%d|%d).",
+		    VFID_AS_ARGS (&context->hfid.vfid), context->oid.volid, context->oid.pageid, context->oid.slotid);
+      assert_release (false);
+      return ER_FAILED;
+    }
+
+  for (const OID &old_oid : old_oos_oids)
+    {
+      error_code = oos_delete (thread_p, oos_vfid, old_oid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  er_log_debug (ARG_FILE_LINE,
+			"SA_MODE eager OOS cleanup (delete relocation): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
+			VFID_AS_ARGS (&oos_vfid), old_oid.volid, old_oid.pageid, old_oid.slotid,
+			VFID_AS_ARGS (&context->hfid.vfid),
+			context->oid.volid, context->oid.pageid, context->oid.slotid);
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
 }
