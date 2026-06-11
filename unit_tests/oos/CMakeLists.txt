@@ -44,6 +44,7 @@ set(SERVER_MODE_TESTS
   test_oos_remove_file_server
   test_oos_mock_vacuum_server
   test_oos_vacuum_server
+  test_oos_real_vacuum_server
 )
 
 foreach(test_name ${SERVER_MODE_TESTS})
@@ -62,6 +63,13 @@ add_test(NAME oos_setup_db
     "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
     "PATH=$ENV{PATH}"
     bash -c "
+      # Small vacuum log blocks (min 4; default 31) so real-vacuum tests can close a
+      # block quickly. vacuum_log_block_pages is frozen into the database at createdb,
+      # so the [@unittestdb] section must exist BEFORE createdb runs. Idempotent append;
+      # scoped to unittestdb only, so other databases are unaffected.
+      if [ -f \"$ENV{CUBRID}/conf/cubrid.conf\" ] && ! grep -qF '[@unittestdb]' \"$ENV{CUBRID}/conf/cubrid.conf\"; then
+        printf '\\n[@unittestdb]\\nvacuum_log_block_pages=4\\n' >> \"$ENV{CUBRID}/conf/cubrid.conf\"
+      fi
       if [ ! -f \"$ENV{CUBRID_DATABASES}/databases.txt\" ] || ! grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
         mkdir -p \"$ENV{CUBRID_DATABASES}/unittestdb\" && \
         cubrid createdb --db-volume-size=20M --log-volume-size=20M unittestdb en_US.utf8 \
@@ -108,11 +116,18 @@ add_test(NAME test_oos_delete_server COMMAND test_oos_delete_server)
 add_test(NAME test_oos_remove_file_server COMMAND test_oos_remove_file_server)
 add_test(NAME test_oos_mock_vacuum_server COMMAND test_oos_mock_vacuum_server)
 add_test(NAME test_oos_vacuum_server COMMAND test_oos_vacuum_server)
+add_test(NAME test_oos_real_vacuum_server COMMAND test_oos_real_vacuum_server)
 
 set_tests_properties(
   test_oos_server test_oos_delete_server test_oos_remove_file_server
   test_oos_mock_vacuum_server test_oos_vacuum_server
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+)
+
+# Real-vacuum E2E test polls the vacuum master daemon — needs extra headroom.
+set_tests_properties(
+  test_oos_real_vacuum_server
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 120
 )
 
 # Note: add_test vs. gtest_discover_tests

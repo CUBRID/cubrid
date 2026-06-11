@@ -111,7 +111,10 @@ class ServerModeEnv : public ::testing::Environment
 	}
 
       /* 8. Boot the server.
-       *    skip_vacuum = true: we control vacuum manually in tests. */
+       *    Note: the skip_vacuum argument only suppresses the SA_MODE boot-time
+       *    xvacuum() (boot_sr.c). In SERVER_MODE, vacuum_boot() runs
+       *    unconditionally, so the vacuum master daemon and worker pool ARE live
+       *    during these tests (unless vacuum_disable=yes). */
       CHECK_ARGS check_args = { true, true };
       err = boot_restart_server (thread_p, false, "unittestdb", false, &check_args, NULL, true);
       if (err != NO_ERROR)
