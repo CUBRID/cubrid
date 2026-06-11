@@ -12393,7 +12393,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  assert (attr_db_domain->precision < att->domain->precision
 			  || (TP_DOMAIN_COLLATION (attr_db_domain) != TP_DOMAIN_COLLATION (att->domain)));
 
-		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
+		  if (QSTR_IS_PADDED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
 		      && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
 		    {
 		      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;

@@ -1763,7 +1763,9 @@
 
 #define ER_INVALID_SCALE                            -1373
 
-#define ER_LAST_ERROR                               -1374
+#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1374
+
+#define ER_LAST_ERROR                               -1375
 
 
 

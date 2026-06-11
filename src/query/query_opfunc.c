@@ -395,7 +395,7 @@ qdata_copy_db_value_to_tuple_value (DB_VALUE * dbval_p, bool clear_compressed_st
       /* Good moment to clear the compressed_string that might have been stored in the DB_VALUE */
       if (clear_compressed_string)
 	{
-	  if (TP_IS_VAR_LEN_CHAR_TYPE (dbval_type))
+	  if (TP_IS_CHAR_TYPE (dbval_type) || dbval_type == DB_TYPE_CLOB)
 	    {
 	      rc = pr_clear_compressed_string (dbval_p);
 	      if (rc != NO_ERROR)
