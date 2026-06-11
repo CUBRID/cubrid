@@ -47,10 +47,8 @@ namespace cubpl
 	serializator.pack_all (code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-	serializator.pack_all (code, body_code, owner, mode);
-	break;
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
-	serializator.pack_all (body_code, owner, mode);
+	serializator.pack_all (code, body_code, owner, mode);
 	break;
       default:
 	assert (false);
@@ -69,10 +67,8 @@ namespace cubpl
 	size += serializator.get_all_packed_size_starting_offset (size, code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-	size += serializator.get_all_packed_size_starting_offset (size, code, body_code, owner, mode);
-	break;
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
-	size += serializator.get_all_packed_size_starting_offset (size, body_code, owner, mode);
+	size += serializator.get_all_packed_size_starting_offset (size, code, body_code, owner, mode);
 	break;
       default:
 	assert (false);
@@ -93,10 +89,8 @@ namespace cubpl
 	deserializator.unpack_all (code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-	deserializator.unpack_all (code, body_code, owner, mode);
-	break;
       case PLCSQL_COMPILE_TYPE_PKG_BODY:
-	deserializator.unpack_all (body_code, owner, mode);
+	deserializator.unpack_all (code, body_code, owner, mode);
 	break;
       default:
 	assert (false);
@@ -158,7 +152,7 @@ namespace cubpl
 	  {
 	  case PLCSQL_COMPILE_TYPE_SP:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code, create_stmt, java_signature, sql_data_access);
+	    deserializator.unpack_all (translated_code, class_name, compiled_code, java_signature, sql_data_access);
 
 	    int dependencies_size = 0;
 	    deserializator.unpack_int (dependencies_size);
@@ -253,8 +247,9 @@ namespace cubpl
 	  break;
 
 	  case PLCSQL_COMPILE_TYPE_PKG_BODY:
-	    // no values to unpack: error_code = 0 is the only relevant information in this case
+	    // nothing more to unpack
 	    break;
+
 	  default:
 	    assert (false);
 	  }
@@ -866,7 +861,7 @@ namespace cubpl
   void
   pkg_var::unpack (cubpacking::unpacker &deserializator)
   {
-    deserializator.unpack_all (data_type, prec, scale, flags, name, init_value, comment);
+    deserializator.unpack_all (data_type, prec, scale, flags, name, comment);
   }
 
   pkg_exception::pkg_exception()

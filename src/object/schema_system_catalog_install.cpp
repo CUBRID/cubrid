@@ -1384,7 +1384,6 @@ namespace cubschema
       {PKG_VAR_ATTR_DATA_TYPE, "integer"},
       {PKG_VAR_ATTR_PREC, "integer"},
       {PKG_VAR_ATTR_SCALE, "integer"},
-      {PKG_VAR_ATTR_INIT_VALUE, "string"},
       {PKG_VAR_ATTR_FLAGS, "integer"},     // bit0: constant or not, bit1: not null or nullable, bit2~: reserved
       {PKG_VAR_ATTR_COMMENT, format_varchar (1024)}
     },
