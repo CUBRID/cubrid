@@ -19063,8 +19063,14 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NULL;
 	}
 
-      /* remote INSERT SELECT takes its own XASL path */
-      if (pt_get_subquery_of_insert_select (statement) != NULL)
+      /* Remote INSERT SELECT with a local source (CCI streaming sink) takes its own XASL path.
+       * It is identified by the absence of a remote DML text (qstr): the sink path only carries
+       * connection info. The same-server case (target and source on one remote server) instead
+       * carries a qstr -- the whole statement is pushed down to that server -- and goes through
+       * pt_to_xasl_for_dblink. */
+      PT_NODE *remote_spec = statement->info.insert.spec->info.spec.remote_server_name;
+      if (pt_get_subquery_of_insert_select (statement) != NULL
+	  && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
 	{
 	  return pt_to_insert_xasl_remote_select (parser, statement);
 	}

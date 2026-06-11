@@ -11994,15 +11994,19 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
+  /* A remote SELECT source means this is not the remote<-local sink (CCI streaming) case.
+   * Drop the flag and defer to the serialized pushdown path below (qstr is set, then
+   * pt_to_xasl_for_dblink): a single shared remote server pushes the whole INSERT ... SELECT
+   * down to that server, while local-mixed and multi-remote sources fall through to their
+   * existing rejections. */
+  if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
+    {
+      snl->is_remote_insert_select = false;
+    }
+
   if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
-      return;
-    }
-
-  if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
-    {
-      PT_ERROR (parser, into_spec, "dblink: INSERT SELECT from remote source is not allowed");
       return;
     }
 

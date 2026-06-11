@@ -4001,7 +4001,9 @@ typedef struct
   char *server_full_name[2];
   PT_NODE *server[2];
   bool has_dblink_query;
-  bool is_remote_insert_select;	/* INSERT INTO remote SELECT ... FROM local */
+  bool is_remote_insert_select;	/* remote-target INSERT SELECT with a local source -> CCI streaming sink.
+				 * Cleared when the source is itself remote: same-server (@A<-@A) then falls
+				 * back to the full-pushdown path, and multi-remote/local-mixed are rejected. */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
