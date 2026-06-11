@@ -25,6 +25,7 @@ set(SA_MODE_TESTS
   test_oos_delete
   test_oos_remove_file
   test_oos_bestspace
+  test_byte_span_writer
 )
 
 foreach(test_name ${SA_MODE_TESTS})
