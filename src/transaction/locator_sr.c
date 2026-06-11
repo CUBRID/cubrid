@@ -1174,7 +1174,9 @@ start:
 
 /*
   * locator_is_user_class_entry () - Returns true if entry is a permanent
-  *                                  user class (not a system table).
+  *                                  user class (neither a system class nor a
+  *                                  system view).
+  *                                  User-created views are not filtered here.
   */
 static bool
 locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
@@ -1184,8 +1186,8 @@ locator_is_user_class_entry (const LOCATOR_CLASSNAME_ENTRY * entry)
       return false;
     }
 
-  /* Name-based filter for system classes. */
-  if (sm_is_system_class (entry->e_name))
+  /* Name-based filter for system classes and system views (vclasses). */
+  if (sm_is_system_class (entry->e_name) || sm_is_system_vclass (entry->e_name))
     {
       return false;
     }
