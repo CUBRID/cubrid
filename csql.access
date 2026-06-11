@@ -1,0 +1,126 @@
+
+Time: 09/15/25 13:17:02.559 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3276  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 546088) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 12/10/25 17:37:44.286 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3276  CODE = -972, Tran = -1, EID = 17
+Program 'csql' (pid 1572916) was connected from the host 'bwkim193'. (transaction index 2)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/21/26 09:35:50.385 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 16
+Program 'csql' (pid 1696800) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/21/26 09:40:33.798 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 1696904) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/21/26 10:30:42.262 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 1697069) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/21/26 14:13:39.464 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 1736402) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/21/26 14:15:34.249 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 1738306) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/22/26 13:57:52.192 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2110214) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/22/26 14:09:20.580 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2112418) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/22/26 14:09:36.358 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2112550) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 14:38:57.659 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2249411) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 15:03:06.554 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2254125) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 15:04:16.557 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2254424) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 15:37:03.267 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2270731) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 15:37:59.836 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2270993) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/26/26 17:46:25.478 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2316583) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/27/26 10:37:39.683 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2332110) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/27/26 13:01:17.003 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2357674) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/28/26 10:18:27.663 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2450373) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/28/26 11:23:52.189 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2483858) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 05/28/26 13:46:40.672 - NOTIFICATION *** file /home/cubrid/work/cubrid/src/transaction/boot_sr.c, line 3296  CODE = -972, Tran = -1, EID = 4
+Program 'csql' (pid 2523301) was connected from the host 'bwkim193'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+

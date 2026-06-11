@@ -13497,7 +13497,15 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	{
 	  if (!pt_has_error (parser))
 	    {
-	      PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      int errid = er_errid ();
+	      if (errid == ER_OUT_OF_VIRTUAL_MEMORY || errid == ER_REGU_NO_SPACE)
+		{
+		  PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "connect by ORDER SIBLINGS BY sort-key generation");
+		}
 	    }
 	  return NULL;
 	}
@@ -24110,8 +24118,7 @@ pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * s
   TP_DOMAIN *new_dom;
   int base_user_cnt, user_cnt, idx, base_pos;
 
-  if (parser == NULL || select_xasl == NULL || connect_by_xasl == NULL || select_node == NULL
-      || select_node->node_type != PT_SELECT || select_xasl->orderby_list == NULL
+  if (select_node->node_type != PT_SELECT || select_xasl->orderby_list == NULL
       || connect_by_xasl->outptr_list == NULL || connect_by_xasl->val_list == NULL)
     {
       return NO_ERROR;
