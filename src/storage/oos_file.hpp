@@ -117,6 +117,7 @@ struct oos_stats_info
 using OOS_STATS_INFO = struct oos_stats_info;
 
 extern int xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out);
+extern int oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out);
 
 #ifdef __cplusplus
 extern "C"

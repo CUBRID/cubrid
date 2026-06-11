@@ -1975,6 +1975,24 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
       return NO_ERROR;
     }
 
+  return oos_get_stats_by_vfid (thread_p, oos_vfid, out);
+}
+
+/*
+ * oos_get_stats_by_vfid () - Collect live-record statistics for an OOS file.
+ *   Core of xoos_get_stats_by_class_oid; also usable for OOS files that are
+ *   not attached to a catalogued class (e.g. unit-test heaps).
+ */
+int
+oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out)
+{
+  if (out == NULL || VFID_ISNULL (&oos_vfid))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  memset (out, 0, sizeof (*out));
+  out->page_size = DB_PAGESIZE;
   out->has_oos_file = 1;
   out->oos_vfid = oos_vfid;
 
@@ -2020,14 +2038,17 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
 	  continue;		/* page busy — accept a slight undercount */
 	}
 
-      int page_npages = 0;
-      int page_nrecs = 0;
-      int page_recs_len = 0;
-      spage_collect_statistics (page_ptr, &page_npages, &page_nrecs, &page_recs_len);
+      /* Walk slots explicitly: spage_collect_statistics skips slot 0 (a heap-page
+       * assumption where slot 0 holds the header record), but OOS data pages keep
+       * records starting at slot 0, so it undercounts by one record per page. */
+      PGSLOTID slotid = -1;
+      RECDES slot_recdes;
+      while (spage_next_record (page_ptr, &slotid, &slot_recdes, PEEK) == S_SUCCESS)
+	{
+	  total_recs++;
+	  total_sumlen += slot_recdes.length;
+	}
       pgbuf_unfix_and_init (thread_p, page_ptr);
-
-      total_recs += page_nrecs;
-      total_sumlen += page_recs_len;
     }
 
   out->num_recs = (int) total_recs;
