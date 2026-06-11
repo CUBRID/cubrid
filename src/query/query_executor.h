@@ -140,6 +140,5 @@ extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL
 extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
 extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
-					 bool is_final, QFILE_LIST_ID * override_list_id, bool set_trace_flag,
-					 bool close_list);
+					 bool is_final, QFILE_LIST_ID * merged_results);
 #endif /* _QUERY_EXECUTOR_H_ */

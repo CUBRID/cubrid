@@ -1227,7 +1227,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL, true, true) != NO_ERROR)
+	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -1288,7 +1288,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       if (xasl->topn_items != NULL && tpldescr_status != QPROC_TPLDESCR_SUCCESS)
 	{
 	  /* abandon top-n processing */
-	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL, true, true) != NO_ERROR)
+	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -4049,7 +4049,7 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
   if (xasl->topn_items != NULL)
     {
       /* already sorted, just dump tuples to list */
-      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true, NULL, true, true);
+      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true, NULL);
     }
   else
     {
@@ -26593,10 +26593,15 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
  *				   output listfile
  * return : error code or NO_ERROR
  * xasl (in) : xasl node
+ * is_final (in) : true on the main final flush; closes the output list and drops tuples rejected by orderby_num.
+ *		   false only resets ordbynum_val (used by overflow/abandon and by parallel workers).
+ * merged_results (in) : when non-NULL, a parallel worker's result list to write into instead of xasl->list_id
+ *		   (this list is later merged across workers). NULL means the main thread writing to xasl->list_id,
+ *		   which is also the only case that records the orderby_topnsort trace stat.
  */
 int
 qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool is_final,
-			      QFILE_LIST_ID * override_list_id, bool set_trace_flag, bool close_list)
+			      QFILE_LIST_ID * merged_results)
 {
   QFILE_LIST_ID *list_id = NULL;
   QFILE_TUPLE_DESCRIPTOR *tpl_descr = NULL;
@@ -26607,6 +26612,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   int row = 0, i, value_size, values_count, error = NO_ERROR;
   ORDBYNUM_INFO ordby_info;
   DB_LOGICAL res = V_FALSE;
+  bool use_xasl_list = (merged_results == NULL);
 
   /* setup ordby_info so that we can evaluate the orderby_num() predicate */
   ordby_info.xasl_state = xasl_state;
@@ -26616,13 +26622,14 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   ordby_info.ordbynum_val = xasl->ordbynum_val;
   db_make_bigint (ordby_info.ordbynum_val, 0);
 
-  list_id = (override_list_id != NULL) ? override_list_id : xasl->list_id;
+  list_id = use_xasl_list ? xasl->list_id : merged_results;
   topn = xasl->topn_items;
   heap = topn->heap;
   tpl_descr = &list_id->tpl_descr;
   values_count = topn->values_count;
-  if (set_trace_flag)
+  if (use_xasl_list)
     {
+      /* orderby_topnsort trace stat is recorded only when finalizing into xasl->list_id, not a redirected list. */
       xasl->orderby_stats.orderby_topnsort = true;
     }
 
@@ -26740,10 +26747,7 @@ cleanup:
 
   if (is_final)
     {
-      if (close_list)
-	{
-	  qfile_close_list (thread_p, list_id);
-	}
+      qfile_close_list (thread_p, list_id);
     }
   else
     {
