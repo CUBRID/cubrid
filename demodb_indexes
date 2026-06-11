@@ -1,3 +1,0 @@
-CREATE INDEX [idx] ON [dba].[t] ([i], [j], [k]) WITH DEDUPLICATE=0;
-
-COMMIT WORK;

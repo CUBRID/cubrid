@@ -1,6 +1,0 @@
-%id [afb510t_20200204] 40
-%id [tb_comm_orgn] 44
-%class [afb510t_20200204] ([comp_code] [pay_draft_no] [pay_date] [slip_date] [drafter] [pay_user] [dept_code])
-%class [tb_comm_orgn] ([oucode] [parentoucode] [orgname] [regdt] [useyn] [ouorder])
-'10000001' '10000000' 'ë¶?ì??1' datetime '01:25:57.870 PM 05/22/2026' 'Y' 1
-'10000002' '10000001' 'ë¶?ì??2' datetime '01:25:57.871 PM 05/22/2026' 'Y' 2

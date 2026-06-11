@@ -1,22 +1,0 @@
-
-Start schema loading.
-Total        1 statements executed.Total        2 statements executed.Total        3 statements executed.Total        4 statements executed.Total        5 statements executed.Total        6 statements executed.Total        7 statements executed.Total        8 statements executed.Total        9 statements executed.Total       10 statements executed.Total       11 statements executed.Total       12 statements executed.Total       13 statements executed.Total       14 statements executed.      15 statements executed. Commit transaction at line 49
-Total       15 statements executed.Total       15 statements executed.
-Schema loading from sdb9_schema finished.
-Statistics for Catalog classes have been updated.
-
-
-Start object loading.
-
-*** Checking syntax ***
-
-
-*** Inserting objects ***
-
-Total 2 object(s) inserted, 0 object(s) failed.
-
-*** Committing the transaction ***
-
-*** Committing the transaction ***
-
-*** Closing the database ***
