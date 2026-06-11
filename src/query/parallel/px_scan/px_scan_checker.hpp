@@ -26,10 +26,4 @@
 
 extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
 
-namespace parallel_scan
-{
-  /* Exposed for unit testing. Returns true if function can run in BUILDVALUE_OPT mode. */
-  bool is_buildvalue_opt_supported_function (FUNC_CODE function);
-}
-
 #endif /*_PX_SCAN_CHECKER_HPP_ */

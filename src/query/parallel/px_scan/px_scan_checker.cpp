@@ -46,7 +46,7 @@ namespace parallel_scan
   const possible_flags CANNOT_LIST_MERGE = 0x1 << 1;
   const possible_flags CANNOT_BUILDVALUE_OPT = 0x1 << 2;
 
-  bool
+  static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
   {
     switch (function)
