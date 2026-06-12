@@ -14083,7 +14083,7 @@ cdc_daemons_destroy ()
 #define CDC_PAUSE_PRODUCER_WAIT_MSECS 5000
 #define CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS 100
 
-void
+int
 cdc_pause_producer ()
 {
   cdc_log ("cdc_pause_producer : consumer request the producer to pause");
@@ -14092,7 +14092,8 @@ cdc_pause_producer ()
 
   /* bounded wait: this function can be called while holding cdc_Session_lock (session cleanup paths),
    * so waiting forever here would block every CDC session transition if the producer cannot reach the
-   * WAIT state for any reason. The producer honors the request at its next loop iteration anyway. */
+   * WAIT state for any reason. The producer checks the request at every loop iteration (one log record
+   * per iteration), so the timeout fires only when a single record extraction is stuck. */
   for (int i = 0; cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT
        && i < CDC_PAUSE_PRODUCER_WAIT_MSECS / CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS; i++)
     {
@@ -14102,12 +14103,14 @@ cdc_pause_producer ()
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
       _er_log_debug (ARG_FILE_LINE,
-		     "cdc_pause_producer : producer did not reach the WAIT state in %d msec; proceed without it",
+		     "cdc_pause_producer : producer did not reach the WAIT state in %d msec",
 		     CDC_PAUSE_PRODUCER_WAIT_MSECS);
-      return;
+      return ER_FAILED;
     }
 
   cdc_log ("cdc_pause_producer : producer is paused");
+
+  return NO_ERROR;
 }
 
 void
@@ -15005,10 +15008,17 @@ cdc_cleanup_disconnected_connection (SOCKET fd)
     {
       cdc_log ("cdc_cleanup_disconnected_connection : clean up disconnected CDC connection (fd %d)", fd);
 
-      (void) cdc_cleanup ();
-
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
+      if (cdc_cleanup () == NO_ERROR)
+	{
+	  cdc_Gl.conn.fd = -1;
+	  cdc_Gl.conn.status = CONN_CLOSED;
+	}
+      else
+	{
+	  /* the producer could not be paused in time; keep the session state so that the next
+	   * scdc_start_session retries the cleanup instead of racing with the running producer */
+	  cdc_log ("cdc_cleanup_disconnected_connection : cleanup is deferred (fd %d)", fd);
+	}
     }
 
   cdc_session_unlock ();
@@ -15086,7 +15096,13 @@ cdc_cleanup ()
 
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
-      cdc_pause_producer ();
+      if (cdc_pause_producer () != NO_ERROR)
+	{
+	  /* the producer is still extracting; freeing the extraction filter or draining the queue here
+	   * would race with the running producer (use-after-free). Keep the session state untouched and
+	   * let the caller retry or fail the request. */
+	  return ER_FAILED;
+	}
     }
 
   cdc_free_extraction_filter ();

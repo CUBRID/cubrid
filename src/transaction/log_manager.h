@@ -254,7 +254,7 @@ extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
 extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
-extern void cdc_pause_producer ();
+extern int cdc_pause_producer ();
 extern void cdc_wakeup_producer ();
 extern void cdc_kill_producer ();
 

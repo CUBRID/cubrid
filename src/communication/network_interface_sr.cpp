@@ -11189,7 +11189,10 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       /* the same connection starts a session again without scdc_end_session; discard the previous session
        * state entirely so that a log info cache built under the previous configuration cannot be served
        * again through the send-again branch of scdc_get_loginfo_metadata */
-      (void) cdc_cleanup ();
+      if (cdc_cleanup () != NO_ERROR)
+	{
+	  goto cleanup_error;
+	}
 
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
@@ -11198,7 +11201,10 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   /* A new client is requesting a session while another connection still holds it. Forcibly shut down the
    * owner connection instead of rejecting the new client. The owner may change while the lock is released
    * during the wait (e.g. yet another client registers); in that case take over the new owner again instead
-   * of clearing a session that does not belong to the awaited connection. */
+   * of clearing a session that does not belong to the awaited connection. With concurrent start_session
+   * requests the session goes to the last request that completes the registration; to each client this is
+   * indistinguishable from a later connection taking the session over right after its own success, so the
+   * last-connection-wins contract is preserved. */
   for (int retry = 0; cdc_Gl.conn.fd != -1 && retry < CDC_TAKEOVER_MAX_RETRY; retry++)
     {
       int prev_fd = cdc_Gl.conn.fd;
@@ -11231,7 +11237,10 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 	  cdc_log ("%s : previous CDC connection (fd %d) not cleared in %d msec; clean up the stale session",
 		   __func__, prev_fd, CDC_TAKEOVER_WAIT_MSECS);
 
-	  (void) cdc_cleanup ();
+	  if (cdc_cleanup () != NO_ERROR)
+	    {
+	      goto cleanup_error;
+	    }
 
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
@@ -11244,7 +11253,10 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       cdc_log ("%s : the session is still owned (fd %d) after %d takeover retries; clean up for the new client",
 	       __func__, cdc_Gl.conn.fd, CDC_TAKEOVER_MAX_RETRY);
 
-      (void) cdc_cleanup ();
+      if (cdc_cleanup () != NO_ERROR)
+	{
+	  goto cleanup_error;
+	}
 
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
@@ -11274,6 +11286,15 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+
+cleanup_error:
+
+  /* the producer could not be paused in time; establishing a session over a half-torn state would race
+   * with the running producer, so fail this request and let the client retry */
+  cdc_session_unlock ();
+
+  error_code = ER_CDC_NOT_AVAILABLE;
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
 
 error:
 
@@ -11324,9 +11345,12 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       // make producer sleep, and producer request consumer to be sleep
       // if request is set to consumer to be sleep, go into spinlock
       // checks request is set to none, then if it is none,
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT && cdc_pause_producer () != NO_ERROR)
 	{
-	  cdc_pause_producer ();
+	  /* reinitializing the queue while the producer is still extracting would race with it */
+	  error_code = ER_CDC_NOT_AVAILABLE;
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+	  goto error;
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
@@ -11472,10 +11496,19 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
     {
       error_code = cdc_cleanup ();
 
-      cdc_log ("%s : clean up for cdc thread has done.", __func__);
+      if (error_code == NO_ERROR)
+	{
+	  cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
+	  cdc_Gl.conn.fd = -1;
+	  cdc_Gl.conn.status = CONN_CLOSED;
+	}
+      else
+	{
+	  /* the producer could not be paused in time; keep the session state so that the connection
+	   * teardown hook or the next scdc_start_session retries the cleanup */
+	  cdc_log ("%s : clean up is deferred (fd %d)", __func__, cdc_Gl.conn.fd);
+	}
     }
   else
     {
