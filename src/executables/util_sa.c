@@ -5577,6 +5577,7 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
     }
 
   error = upgradedb_process_upgrade_scripts (UPGRADEDB_OP_EXECUTE);
+
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5652,6 +5653,8 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       return EXIT_FAILURE;
     }
+
+  prm_set_bool_value (PRM_ID_TB_DEFAULT_REUSE_OID, false);
 
   AU_DISABLE (save);
   error = upgradedb_run (&opts);
