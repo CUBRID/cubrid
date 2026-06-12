@@ -14080,6 +14080,9 @@ cdc_daemons_destroy ()
   cdc_finalize ();
 }
 #endif
+#define CDC_PAUSE_PRODUCER_WAIT_MSECS 5000
+#define CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS 100
+
 void
 cdc_pause_producer ()
 {
@@ -14087,9 +14090,21 @@ cdc_pause_producer ()
 
   cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
 
-  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+  /* bounded wait: this function can be called while holding cdc_Session_lock (session cleanup paths),
+   * so waiting forever here would block every CDC session transition if the producer cannot reach the
+   * WAIT state for any reason. The producer honors the request at its next loop iteration anyway. */
+  for (int i = 0; cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT
+       && i < CDC_PAUSE_PRODUCER_WAIT_MSECS / CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS; i++)
     {
-      sleep (1);
+      thread_sleep (CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS);
+    }
+
+  if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "cdc_pause_producer : producer did not reach the WAIT state in %d msec; proceed without it",
+		     CDC_PAUSE_PRODUCER_WAIT_MSECS);
+      return;
     }
 
   cdc_log ("cdc_pause_producer : producer is paused");
