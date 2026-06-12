@@ -185,6 +185,7 @@ struct archive_log_header_scan_context
 
 CDC_GLOBAL cdc_Gl;
 bool cdc_Logging = false;
+static pthread_mutex_t cdc_Session_lock = PTHREAD_MUTEX_INITIALIZER;
 /* CDC end */
 
 /*
@@ -14951,6 +14952,51 @@ end:
      cdc_Gl.consumer.num_log_info, cdc_Gl.consumer.log_info_size, LSA_AS_ARGS (&cdc_Gl.consumer.next_lsa));
 
   return NO_ERROR;
+}
+
+void
+cdc_session_lock (void)
+{
+  pthread_mutex_lock (&cdc_Session_lock);
+}
+
+void
+cdc_session_unlock (void)
+{
+  pthread_mutex_unlock (&cdc_Session_lock);
+}
+
+/*
+ * cdc_cleanup_disconnected_connection - clear the CDC session when its owner connection is torn down
+ *
+ *   fd(in): socket fd of the connection being closed
+ *
+ * NOTE: called from the connection close path before the socket is closed, so the fd cannot have been
+ *       reused by another connection yet. This guarantees that a stale CDC session never outlives its
+ *       connection, and a partially built log info cache left by an aborted request is never served to
+ *       the next session.
+ */
+void
+cdc_cleanup_disconnected_connection (SOCKET fd)
+{
+  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
+    {
+      return;
+    }
+
+  cdc_session_lock ();
+
+  if (fd != INVALID_SOCKET && cdc_Gl.conn.fd == fd)
+    {
+      cdc_log ("cdc_cleanup_disconnected_connection : clean up disconnected CDC connection (fd %d)", fd);
+
+      (void) cdc_cleanup ();
+
+      cdc_Gl.conn.fd = -1;
+      cdc_Gl.conn.status = CONN_CLOSED;
+    }
+
+  cdc_session_unlock ();
 }
 
 int
