@@ -1203,9 +1203,11 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   int err;
   MOP pkg_code_mop;
   DB_VALUE scode_body_value, scode_spec_value;
+  DB_OTMPL *obt;
   int save;
 
   err = NO_ERROR;
+  obt = NULL;
   pkg_code_mop = NULL;
 
   AU_DISABLE (save);    // side effect 0
@@ -1254,7 +1256,6 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   assert (pkg_code_mop);
 
   //
-  DB_OTMPL *obt;
   DB_VALUE ocode_value;
   {
     err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &scode_spec_value);
@@ -1278,7 +1279,7 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
     else
       {
 	// scode_spec has been set (CREATE PACKAGE has been executed.)
-	// recompile and get the ocode with the spec
+	// recompile and get the ocode with only the spec
 
 	PLCSQL_COMPILE_REQUEST pkg_compile_request;
 	PLCSQL_COMPILE_RESPONSE pkg_compile_response;
@@ -1602,7 +1603,6 @@ cleanup0:
   return err;
 }
 
-// it only adds a record, but not updates an existing one, in _db_package_code table
 static int
 sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_name,
 		 const char *scode_spec, const char *scode_body, const char *ocode)

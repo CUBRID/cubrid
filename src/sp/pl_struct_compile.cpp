@@ -47,8 +47,10 @@ namespace cubpl
 	serializator.pack_all (code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-      case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	serializator.pack_all (code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	serializator.pack_all (body_code, owner, mode);
 	break;
       default:
 	assert (false);
@@ -67,8 +69,10 @@ namespace cubpl
 	size += serializator.get_all_packed_size_starting_offset (size, code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-      case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	size += serializator.get_all_packed_size_starting_offset (size, code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	size += serializator.get_all_packed_size_starting_offset (size, body_code, owner, mode);
 	break;
       default:
 	assert (false);
@@ -89,8 +93,10 @@ namespace cubpl
 	deserializator.unpack_all (code, owner, mode);
 	break;
       case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-      case PLCSQL_COMPILE_TYPE_PKG_BODY:
 	deserializator.unpack_all (code, body_code, owner, mode);
+	break;
+      case PLCSQL_COMPILE_TYPE_PKG_BODY:
+	deserializator.unpack_all (body_code, owner, mode);
 	break;
       default:
 	assert (false);
