@@ -1204,9 +1204,11 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   MOP pkg_code_mop;
   DB_VALUE scode_body_value, scode_spec_value;
   int save;
+  DB_OTMPL *obt;
 
   err = NO_ERROR;
   pkg_code_mop = NULL;
+  obt = NULL;
 
   AU_DISABLE (save);    // side effect 0
 
@@ -1254,7 +1256,6 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   assert (pkg_code_mop);
 
   //
-  DB_OTMPL *obt;
   DB_VALUE ocode_value;
   {
     err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &scode_spec_value);
