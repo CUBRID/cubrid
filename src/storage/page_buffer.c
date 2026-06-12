@@ -482,12 +482,8 @@ struct pgbuf_holder_anchor
   int num_hold_cnt;		/* # of used BCB holder entries */
   PGBUF_HOLDER *thrd_free_list;	/* free BCB holder list */
   PGBUF_HOLDER *thrd_hold_list;	/* used(or hold) BCB holder list */
-  /* Pad each entry to a full cache line. Each thread touches only its own thrd_holder_info[index]
-   * entry, but every fix/unfix updates num_hold_cnt/thrd_hold_list; without padding, adjacent
-   * threads' entries share a cache line and those writes bounce the line between cores (false
-   * sharing) on the buffer fix hot path (pgbuf_find_thrd_holder / pgbuf_allocate_thrd_holder_entry).
-   * The 64-byte stride lands each entry's live fields in its own cache line; the pad bytes are never
-   * accessed. alignof stays 8, so the plain malloc in pgbuf_initialize remains valid. */
+  /* Pad to a full cache line: num_hold_cnt/thrd_hold_list are written on every fix/unfix, so an
+   * unpadded entry false-shares with adjacent threads'. alignof stays 8 -> plain malloc still valid. */
   char m_pad[64 - 2 * sizeof (int) - 2 * sizeof (PGBUF_HOLDER *)];
 };
 
@@ -691,12 +687,8 @@ struct pgbuf_seq_flusher
   bool burst_mode;		/* config : flush in burst or flush one page and wait */
 };
 
-/* pgbuf_monitor_thread_counter - per-thread sharded fix/unfix counters. fix_req/pg_unfix are bumped
- * on every page fix/unfix by every worker; a single shared atomic was a top cache-line contention
- * point (true sharing) on the buffer fix hot path. Each thread bumps only its own cache-line-isolated
- * shard; the periodic LRU-quota consumers sum (and reset) across all shards. The values feed only
- * coarse quota heuristics (miss-rate ratio / activity threshold), so per-shard relaxed bumps suffice.
- * Indexed by thread_entry::index (0 reserved for the no-thread case). */
+/* Per-thread sharded fix/unfix counters (indexed by thread_entry::index, 0 = no-thread): replaces a
+ * shared atomic that true-shared the fix hot path. Feed only coarse quota heuristics -> relaxed bumps. */
 typedef struct pgbuf_monitor_thread_counter PGBUF_MONITOR_THREAD_COUNTER;
 struct pgbuf_monitor_thread_counter
 {
@@ -2069,8 +2061,7 @@ pgbuf_monitor_inc_pg_unfix (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_monitor_sum_fix_req () - sum the per-thread fix-request shards; reset them when reset==true.
- *   The sum of per-shard exchange(0) is exact (no lost counts).
+ * pgbuf_monitor_sum_fix_req () - sum per-thread fix-request shards (reset: exchange-to-0, exact).
  */
 STATIC_INLINE int
 pgbuf_monitor_sum_fix_req (bool reset)
