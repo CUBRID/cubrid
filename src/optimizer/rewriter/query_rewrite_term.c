@@ -473,21 +473,12 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
     {
       /* anti inner: reducing a term located in an ANTI ON condition can substitute the inner attr with a
        * constant, turning the ON predicate into an outer-only sarg that drops the non-matching rows the
-       * anti-join must emit; leave ANTI ON terms as join predicates (SEMI is unaffected: first-match) */
-      if (expr->node_type == PT_EXPR && node->node_type == PT_SELECT)
+       * anti-join must emit; leave ANTI ON terms as join predicates (SEMI is unaffected: first-match).
+       * the term is flagged at ON binding time in pt_bind_names() (PT_SPEC, PT_JOIN_ANTI). */
+      if (expr->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_ANTI_JOIN_ON))
 	{
-	  PT_NODE *anti_spec;
-	  for (anti_spec = node->info.query.q.select.from; anti_spec; anti_spec = anti_spec->next)
-	    {
-	      if (anti_spec->info.spec.location == expr->info.expr.location
-		  && anti_spec->info.spec.join_type == PT_JOIN_ANTI)
-		break;
-	    }
-	  if (anti_spec != NULL)
-	    {
-	      wherep = &(*wherep)->next;
-	      continue;
-	    }
+	  wherep = &(*wherep)->next;
+	  continue;
 	}
 
       col = NULL;		/* init - reserve for constant column of derived-table */
