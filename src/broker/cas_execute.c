@@ -92,6 +92,13 @@
 #define FK_INFO_SORT_BY_FKTABLE_NAME	2
 #define DBLINK_HINT                     "DBLINK"
 
+#define CLASS_UNIQUE_NAME_EXPR(is_system_class_expr, owner_name_expr, class_name_expr) \
+  "CASE " \
+    "WHEN (" is_system_class_expr ") = 'NO' OR " owner_name_expr " = '" AU_INFORMATION_SCHEMA_USER_NAME "' " \
+      "THEN LOWER (" owner_name_expr ") || '.' || " class_name_expr " " \
+    "ELSE " class_name_expr " " \
+  "END"
+
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
   do {                                                          \
@@ -3547,17 +3554,16 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
       if (default_value_expr_op_string != NULL)
 	{
-	  strcpy (default_value_string, default_value_expr_op_string);
-	  strcat (default_value_string, "(");
-	  strcat (default_value_string, default_value_expr_type_string);
 	  if (default_expr_format)
 	    {
-	      strcat (default_value_string, ", \'");
-	      strcat (default_value_string, default_expr_format);
-	      strcat (default_value_string, "\'");
+	      snprintf (default_value_string, len + 1, "%s(%s, \'%s\')",
+			default_value_expr_op_string, default_value_expr_type_string, default_expr_format);
 	    }
-
-	  strcat (default_value_string, ")");
+	  else
+	    {
+	      snprintf (default_value_string, len + 1, "%s(%s)",
+			default_value_expr_op_string, default_value_expr_type_string);
+	    }
 	}
       else
 	{
@@ -7141,10 +7147,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
-	    "ELSE class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR ("is_system_class", "owner_name", "class_name")
+	  " AS unique_name, "
 	  "CAST ( "
 	      "CASE "
 		"WHEN is_system_class = 'YES' THEN 0 "
@@ -7234,14 +7238,11 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -7484,14 +7485,11 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -8396,22 +8394,16 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
-	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
-	    "ELSE a.super_class_name "
-	    "END AS super_unique_name "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name",
+	      "a.super_owner_name", "a.super_class_name")
+	  " AS super_unique_name "
 	"FROM "
 	  "db_direct_super_class a "
 	"WHERE 1 = 1 ");
@@ -8495,14 +8487,11 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT c.is_system_class "
-		"FROM db_class c "
-		"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT c.is_system_class FROM db_class c "
+	      "WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "b.key_attr_name, "
 	  "b.key_order + 1, "
 	  "a.index_name "

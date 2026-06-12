@@ -941,10 +941,6 @@ qmgr_initialize (THREAD_ENTRY * thread_p)
 
   qfile_initialize ();
 
-#if defined (SERVER_MODE)
-  numeric_init_power_value_string ();
-#endif
-
   srand48 ((long) time (NULL));
 
 #if !defined(SERVER_MODE)

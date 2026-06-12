@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "object_print.h"
@@ -5187,6 +5188,11 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
       dt->info.data_type.units = attr->charset;
+      /* CCI remote-column metadata carries a codeset (units) but no collation;
+       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
+       * pt_check_expr_collation invariant that equal collation_id implies equal
+       * codeset. Assign the codeset's binary collation to keep them consistent. */
+      dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
     }
 
   attr_def_node->data_type = dt;
