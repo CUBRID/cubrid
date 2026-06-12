@@ -682,6 +682,7 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
+    /*
     DeclCursor getDeclCursor(String name) {
         Decl d = getDecl(name);
         if (d instanceof DeclCursor) {
@@ -696,6 +697,7 @@ public class SymbolStack {
             }
         }
     }
+     */
 
     DeclProc getDeclProc(String name) {
         Decl d = getDecl(name);

@@ -197,9 +197,9 @@ public class ServerAPI {
         public String name; // function name
 
         // output
-        public PlParamInfo[] params; // 1 for out/in-out parameters, otherwise 0
-        public int directive; // TODO package
+        public PlParamInfo[] params;
         public PlParamInfo retType; // SQL type
+        public int directive; // TODO package
 
         public void setAnswer(int seqNo, PlParamInfo[] params, PlParamInfo retType) {
             this.seqNo = seqNo;

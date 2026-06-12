@@ -108,6 +108,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     public CodeToResolve visitUnitPkg(UnitPkg node) {
         // TODO package
+        assert false;
         return null;
     }
 
@@ -367,6 +368,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclPackage(DeclPackage node) {
         // TODO package
+        assert false;
         return null;
     }
 

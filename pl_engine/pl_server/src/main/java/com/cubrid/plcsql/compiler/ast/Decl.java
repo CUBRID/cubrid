@@ -60,6 +60,10 @@ public abstract class Decl extends AstNode {
     public final String name;
     public final String comment;
     public Scope scope;
+    // some kinds of declarations (currently, procedure, function, and cursor) can be declared
+    // without a body (forward decl)
+    // and other declarations can give them a body (body decl).
+    // the following field links the former to the latter in such cases.
     public Decl bodyDecl;
 
     public abstract String kind();
@@ -78,18 +82,21 @@ public abstract class Decl extends AstNode {
         this.bodyDecl = bodyDecl;
     }
 
+    // whether this decl provides a body to the other decl or not
     public boolean givesBodyOf(Decl other) {
         // by default false
         // DeclCursor, DeclFunc, DeclProc will override this default
         return false;
     }
 
+    // whether this decl has a body or a body decl or not
     public boolean lackOfBody() {
         // by default false
         // DeclCursor, DeclRoutine will override this default
         return false;
     }
 
+    // add package item information to the compile response message
     public void addAsPkgItem(CompileResponse resp) {
         // by default, unreachable
         // declarations which can be a package item will properly override this method

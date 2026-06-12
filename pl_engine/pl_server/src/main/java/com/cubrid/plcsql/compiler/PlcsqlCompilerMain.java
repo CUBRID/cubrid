@@ -180,8 +180,8 @@ public class PlcsqlCompilerMain {
                         && Misc.isEmptyStr(bodyCode))
                 || (type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC && !Misc.isEmptyStr(code))
                 || (type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY
+                        && Misc.isEmptyStr(code)
                         && !Misc.isEmptyStr(bodyCode));
-        assert !(Misc.isEmptyStr(code) && Misc.isEmptyStr(bodyCode));
 
         boolean verbose = request.mode.contains("v");
         boolean printParseTree = request.mode.contains("p");
@@ -219,8 +219,8 @@ public class PlcsqlCompilerMain {
 
             if (Misc.isEmptyStr(code)) {
                 assert type == CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY;
-                // just return: semantic check and further processes are not possible without a spec
-                // code
+                // just return:
+                // semantic check and further processes are not possible without a spec code
                 return new CompileResponse(type);
             } else {
                 CharStream input = CharStreams.fromString(code);

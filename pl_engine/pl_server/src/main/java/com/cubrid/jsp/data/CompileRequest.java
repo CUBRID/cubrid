@@ -53,8 +53,13 @@ public class CompileRequest {
                 break;
 
             case PLCSQL_COMPILE_TYPE_PKG_SPEC:
-            case PLCSQL_COMPILE_TYPE_PKG_BODY:
                 code = unpacker.unpackCString();
+                bodyCode = unpacker.unpackCString();
+                owner = unpacker.unpackCString();
+                mode = unpacker.unpackCString();
+                break;
+
+            case PLCSQL_COMPILE_TYPE_PKG_BODY:
                 bodyCode = unpacker.unpackCString();
                 owner = unpacker.unpackCString();
                 mode = unpacker.unpackCString();

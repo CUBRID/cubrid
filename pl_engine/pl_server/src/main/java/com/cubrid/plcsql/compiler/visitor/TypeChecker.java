@@ -1386,6 +1386,7 @@ public class TypeChecker extends AstVisitor<Type> {
             visitNodeList(node.decls);
         }
 
+        // forward declarations do not have a body
         if (node.body != null) {
             visitBody(node.body);
         }

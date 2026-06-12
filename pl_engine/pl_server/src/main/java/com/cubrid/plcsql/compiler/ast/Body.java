@@ -45,7 +45,8 @@ public class Body extends AstNode {
     public final String label;
 
     Body() {
-        super(null); // dummy body created in previsits and abandoned later
+        super(null); // placeholder bodies are created in previsits and later replaced by real
+        // ones in visits
 
         this.stmts = null;
         this.exHandlers = null;
