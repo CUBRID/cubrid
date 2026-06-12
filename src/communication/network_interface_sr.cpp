@@ -11122,6 +11122,58 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
+  ptr = or_unpack_int (request, &max_log_item);
+  ptr = or_unpack_int (ptr, &extraction_timeout);
+  ptr = or_unpack_int (ptr, &all_in_cond);
+  ptr = or_unpack_int (ptr, &num_extraction_user);
+
+  if (num_extraction_user > 0)
+    {
+      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
+      if (extraction_user == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_user; i++)
+	{
+	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
+
+	  extraction_user[i] = strdup (dummy_user);
+	  if (extraction_user[i] == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &num_extraction_class);
+
+  if (num_extraction_class > 0)
+    {
+      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
+      if (extraction_classoids == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (UINT64) * num_extraction_class);
+	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error;
+	}
+
+      for (int i = 0; i < num_extraction_class; i++)
+	{
+	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
+	}
+    }
+
+  cdc_log
+  ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+   __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
+
   /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
    * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
    * Policy: the last client requesting a session always takes it over and the previous connection is forcibly
@@ -11182,70 +11234,24 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 	}
     }
 
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-
-  cdc_session_unlock ();
-
-  ptr = or_unpack_int (request, &max_log_item);
-  ptr = or_unpack_int (ptr, &extraction_timeout);
-  ptr = or_unpack_int (ptr, &all_in_cond);
-  ptr = or_unpack_int (ptr, &num_extraction_user);
-
-  if (num_extraction_user > 0)
-    {
-      extraction_user = (char **) malloc (sizeof (char *) * num_extraction_user);
-      if (extraction_user == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * num_extraction_user);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      for (int i = 0; i < num_extraction_user; i++)
-	{
-	  ptr = or_unpack_string_nocopy (ptr, &dummy_user);
-
-	  extraction_user[i] = strdup (dummy_user);
-	  if (extraction_user[i] == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (dummy_user));
-	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto error;
-	    }
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &num_extraction_class);
-
-  if (num_extraction_class > 0)
-    {
-      extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
-      if (extraction_classoids == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  sizeof (UINT64) * num_extraction_class);
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto error;
-	}
-
-      for (int i = 0; i < num_extraction_class; i++)
-	{
-	  ptr = or_unpack_int64 (ptr, (INT64 *) & extraction_classoids[i]);
-	}
-    }
-
-  cdc_log
-  ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
-   __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
-
   error_code =
 	  cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
 				 extraction_classoids, num_extraction_class);
   if (error_code != NO_ERROR)
     {
+      cdc_session_unlock ();
       goto error;
     }
+
+  /* the arrays are owned by the cdc configuration from now on; prevent the error path from freeing them */
+  extraction_user = NULL;
+  extraction_classoids = NULL;
+
+  /* register the new owner only after the configuration is set successfully */
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
+
+  cdc_session_unlock ();
 
   or_pack_int (reply, error_code);
 
