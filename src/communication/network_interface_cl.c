@@ -10529,6 +10529,11 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
   ptr = or_pack_int (ptr, spacefiles != NULL ? 1 : 0);
   ptr = or_pack_string_array (ptr, table_array_length, (const char **) table_array);
 
+  /* send only the packed bytes; request_size so far is the buffer capacity,
+     and transmitting it would leak uninitialized stack/heap bytes */
+  assert (CAST_BUFLEN (ptr - request) <= request_size);
+  request_size = CAST_BUFLEN (ptr - request);
+
   error_code = net_client_request2 (NET_SERVER_SPACEDB, request, request_size, reply,
 				    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_reply_size);
   if (error_code != NO_ERROR)
