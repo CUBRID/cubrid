@@ -4048,6 +4048,11 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	}
 
       arg_list = parser_copy_tree_list (parser, tree->info.function.arg_list);
+      if (arg_list == NULL)
+	{
+	  PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return NULL;
+	}
 
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
 	{
