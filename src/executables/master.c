@@ -412,10 +412,6 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 		      server_name += strlen (entry->version_string) + 1;
 
 		      entry->env_var = strdup (server_name);
-		      if (entry->env_var != NULL)
-			{
-			  /* empty */
-			}
 
 		      server_name += strlen (server_name) + 1;
 
@@ -629,10 +625,6 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 			    {
 			      recv_data += strlen (entry->version_string) + 1;
 			      entry->env_var = strdup (recv_data);
-			      if (entry->env_var != NULL)
-				{
-				  /* empty */
-				}
 			      recv_data += strlen (recv_data) + 1;
 			      entry->pid = atoi (recv_data);
 			    }
