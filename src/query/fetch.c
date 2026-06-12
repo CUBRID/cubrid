@@ -4537,6 +4537,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
        || regu_var->type == TYPE_DBVAL || regu_var->type == TYPE_POS_VALUE
        || (regu_var->type == TYPE_CONSTANT && regu_var->xasl == NULL && regu_var->value.dbvalptr != NULL))
       && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION)
+      && regu_var->domain != NULL
       && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE
       && TP_DOMAIN_COLLATION_FLAG (regu_var->domain) == TP_DOMAIN_COLL_NORMAL)
     {
