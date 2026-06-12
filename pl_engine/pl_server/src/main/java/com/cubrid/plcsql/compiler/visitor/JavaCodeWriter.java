@@ -37,6 +37,7 @@ import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.ast.loopOpt.*;
 import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeNumeric;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -116,6 +117,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    ) throws Exception {",
                 "    Long[] sql_rowcount = new Long[] { null };",
                 "    %'+NULLIFY-OUT-PARAMETERS'%",
+                "    %'+CHECK-INOUT-PARAMETERS'%",
                 "    %'+DECL-CLASS'%",
                 "    %'+BODY'%",
                 "  }",
@@ -204,6 +206,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // nullify OUT parameters
         String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
+        // range-check incoming IN OUT NUMERIC parameters
+        String[] strCheckInoutParam = getCheckInoutParamCode(node.routine.paramList);
 
         // body
         CodeToResolve bodyCode = visit(node.routine.body);
@@ -220,6 +224,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         objParamArr,
                         "%'+NULLIFY-OUT-PARAMETERS'%",
                         strNullifyOutParam,
+                        "%'+CHECK-INOUT-PARAMETERS'%",
+                        strCheckInoutParam,
                         "%'+DECL-CLASS'%",
                         codeDeclClass,
                         "%'+BODY'%",
@@ -2973,6 +2979,26 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 } else {
                     ret.add(String.format("%s[0] = null;", ((DeclParamOut) dp).name));
                 }
+            }
+        }
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
+    }
+
+    private static String[] getCheckInoutParamCode(NodeList<DeclParam> paramList) {
+
+        List<String> ret = new LinkedList<>();
+
+        for (DeclParam dp : paramList.nodes) {
+            if (dp instanceof DeclParamOut
+                    && ((DeclParamOut) dp).alsoIn
+                    && dp.typeSpec.type instanceof TypeNumeric) {
+                String name = ((DeclParamOut) dp).name;
+                TypeNumeric tn = (TypeNumeric) dp.typeSpec.type;
+                ret.add(
+                        String.format(
+                                "%s[0] = checkPrecision(%d, (short) %d, %s[0]);",
+                                name, tn.precision, tn.scale, name));
             }
         }
 
