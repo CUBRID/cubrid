@@ -651,6 +651,7 @@ static void pt_mark_produced_groupby_refs (AGGREGATE_INFO * info, PT_NODE * arg_
 static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						 int *continue_walk);
 static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 
 static void
 pt_init_xasl_supp_info ()
@@ -28634,6 +28635,116 @@ pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
   return only_allowed;
 }
 
+/*
+ * pt_aggregate_arg_eq () - structural equality test used for aggregate-argument sharing
+ *   return: true if the two expressions compute the exact same value, false otherwise
+ *   parser(in):
+ *   p(in):
+ *   q(in):
+ */
+static bool
+pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
+{
+  if (p == NULL && q == NULL)
+    {
+      return true;
+    }
+  if (p == NULL || q == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
+
+  if (p == NULL || q == NULL)
+    {
+      return (p == q);
+    }
+
+  if (p->node_type != q->node_type)
+    {
+      return false;
+    }
+
+  switch (p->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+      /* identifiers are case-insensitive; reuse the existing path comparison */
+      return (pt_check_path_eq (parser, p, q) == 0);
+
+    case PT_VALUE:
+      {
+	char *p_str, *q_str;
+	unsigned int save_custom = parser->custom_print;
+
+	parser->custom_print |= PT_CONVERT_RANGE;
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+	parser->custom_print = save_custom;
+
+	if (p_str == NULL || q_str == NULL)
+	  {
+	    return false;
+	  }
+	/* literal values must match exactly, including letter case */
+	return (pt_str_compare (p_str, q_str, CASE_SENSITIVE) == 0);
+      }
+
+    case PT_EXPR:
+      if (p->info.expr.op != q->info.expr.op)
+	{
+	  return false;
+	}
+      return (pt_aggregate_arg_eq (parser, p->info.expr.arg1, q->info.expr.arg1)
+	      && pt_aggregate_arg_eq (parser, p->info.expr.arg2, q->info.expr.arg2)
+	      && pt_aggregate_arg_eq (parser, p->info.expr.arg3, q->info.expr.arg3));
+
+    case PT_FUNCTION:
+      {
+	PT_NODE *a1, *a2;
+
+	if (p->info.function.function_type != q->info.function.function_type
+	    || p->info.function.all_or_distinct != q->info.function.all_or_distinct)
+	  {
+	    return false;
+	  }
+
+	/* generic (user-defined / named) functions must have the same name */
+	if (p->info.function.function_type == PT_GENERIC
+	    && pt_str_compare (p->info.function.generic_name, q->info.function.generic_name, CASE_INSENSITIVE) != 0)
+	  {
+	    return false;
+	  }
+
+	/* order_by (GROUP_CONCAT) and percentile (PERCENTILE_*) make the result depend on more
+	 * than the plain argument list; be conservative and do not share those. */
+	if (p->info.function.order_by != NULL || q->info.function.order_by != NULL
+	    || p->info.function.percentile != NULL || q->info.function.percentile != NULL)
+	  {
+	    return false;
+	  }
+
+	/* compare the argument lists element by element */
+	for (a1 = p->info.function.arg_list, a2 = q->info.function.arg_list;
+	     a1 != NULL && a2 != NULL; a1 = a1->next, a2 = a2->next)
+	  {
+	    if (!pt_aggregate_arg_eq (parser, a1, a2))
+	      {
+		return false;
+	      }
+	  }
+	/* a leftover element on either side means different argument counts */
+	return (a1 == NULL && a2 == NULL);
+      }
+
+    default:
+      /* unknown / unsupported node: conservatively treat as different */
+      return false;
+    }
+}
+
 static PT_NODE *
 pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -28678,7 +28789,7 @@ pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  out_name = out_name->info.pointer.node;
 	}
 
-      if (pt_compare_sort_spec_expr (parser, node, out_name))
+      if (pt_aggregate_arg_eq (parser, node, out_name))
 	{
 	  already_exist = true;
 	  break;
@@ -28765,7 +28876,7 @@ pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *a
 	  out_name = out_name->info.pointer.node;
 	}
 
-      if (pt_compare_sort_spec_expr (parser, node, out_name))
+      if (pt_aggregate_arg_eq (parser, node, out_name))
 	{
 	  new_node = parser_copy_tree (parser, node);
 	  if (new_node == NULL)
