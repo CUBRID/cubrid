@@ -5253,12 +5253,15 @@ upgradedb_truncate_catalog_classes (void)
 static int
 upgradedb_rebuild_catalog (void)
 {
-  if (catcls_compile_catalog_classes (NULL) != NO_ERROR
+  int error = NO_ERROR;
+
+  if (sm_mark_system_classes () != NO_ERROR
+      || catcls_compile_catalog_classes (NULL) != NO_ERROR
       || sm_force_write_all_classes () != NO_ERROR
       || au_force_write_new_auth () != NO_ERROR || sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN) != NO_ERROR)
     {
-      ASSERT_ERROR ();
-      return er_errid ();
+      ASSERT_ERROR_AND_SET (error);
+      return error;
     }
 
   return NO_ERROR;

@@ -44,4 +44,8 @@ extern EXPORT_IMPORT int catcls_add_charsets (struct db_object *class_mop);
 extern EXPORT_IMPORT int catcls_add_collations (struct db_object *class_mop);
 #endif
 
+#if defined (SA_MODE)
+extern EXPORT_IMPORT int sm_mark_system_classes (void);
+#endif
+
 #endif /* _SCHEMA_SYSTEM_CATALOG_HPP_ */
