@@ -1814,6 +1814,10 @@ typedef struct _ha_config
 #define UPGRADE_FORCE_L                         "force"
 #define UPGRADE_VERBOSE_S                       'v'
 #define UPGRADE_VERBOSE_L                       "verbose"
+#if !defined(NDEBUG)
+#define UPGRADE_APPLY_SCRIPT_LIST_S             14201
+#define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
+#endif
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
