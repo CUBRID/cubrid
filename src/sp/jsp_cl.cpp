@@ -1202,7 +1202,7 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 {
   int err;
   MOP pkg_code_mop;
-  DB_VALUE scode_body_value, scode_spec_value;
+  DB_VALUE scode_body_value, scode_spec_value, ocode_value;
   DB_OTMPL *obt;
   int save;
 
@@ -1256,7 +1256,6 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
   assert (pkg_code_mop);
 
   //
-  DB_VALUE ocode_value;
   {
     err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &scode_spec_value);
     if (err != NO_ERROR)
@@ -1337,7 +1336,8 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	  {
 	    ASSERT_ERROR_AND_SET (err);
 	    goto cleanup2;
-	  }     // side effect 2 cleaned
+	  } // side effect 2 cleaned
+	pr_clear_value (&ocode_value);  // side effect 1 cleaned
 
 	err = locator_flush_instance (object);
 	if (err != NO_ERROR)
@@ -1348,11 +1348,12 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
       }
   }
 
+  AU_ENABLE (save); // side effect 0 cleaned
+  return NO_ERROR;
+
 cleanup2:
-  if (obt)
-    {
-      dbt_abort_object (obt);
-    }
+  assert (obt);
+  dbt_abort_object (obt);
 
 cleanup1:
   pr_clear_value (&ocode_value);
