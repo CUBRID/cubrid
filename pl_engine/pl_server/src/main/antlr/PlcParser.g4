@@ -42,7 +42,7 @@ create_package_spec
 
 create_package_body
     : CREATE (OR_REPLACE)? PACKAGE BODY uniq_name (IS | AS) seq_of_declare_specs END label_name? (SEMICOLON)?
-    | CREATE (OR_REPLACE)? PACKAGE BODY uniq_name (IS | AS) seq_of_declare_specs body
+    | CREATE (OR_REPLACE)? PACKAGE BODY uniq_name (IS | AS) (seq_of_declare_specs)? body
     ;
 
 /*

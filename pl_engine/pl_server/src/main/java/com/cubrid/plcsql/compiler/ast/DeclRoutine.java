@@ -220,6 +220,17 @@ public abstract class DeclRoutine extends Decl {
     @Override
     public void addAsPkgItem(CompileResponse resp) {
 
+        int sda = ServerConstants.SP_SQL_TYPE_NO_SQL;
+        if (body != null) {
+            sda = sqlDataAccess;
+        } else if (bodyDecl != null) {
+            sda = ((DeclRoutine) bodyDecl).sqlDataAccess;
+        } else {
+            // NOTE: a forward decl of routine in a package without a body decl is allowed to
+            // create.
+            // but, invoking it results in an error at runtime.
+        }
+
         CompileResponse.PkgSp pkgSp =
                 new CompileResponse.PkgSp(
                         getJavaSignature(),
@@ -229,7 +240,7 @@ public abstract class DeclRoutine extends Decl {
                                 : ServerConstants.SP_TYPE_FUNCTION,
                         isProcedure() ? 0 : retTypeSpec.type.dbType,
                         directive,
-                        sqlDataAccess,
+                        sda,
                         comment);
 
         for (DeclParam dp : paramList.nodes) {

@@ -122,6 +122,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             Create_package_bodyContext bodyContext =
                     ((Sql_scriptContext) bodyTree).create_package_body();
             assert bodyContext != null;
+            // one of declarations and body can be null, but not both.
+            assert bodyContext.seq_of_declare_specs() != null || bodyContext.body() != null;
 
             // check name and label
             String nameInBody = Misc.getNormalizedText(bodyContext.uniq_name().name);
@@ -132,7 +134,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // visit package body items
             topLevelStmt = CREATE_PKG_BODY;
-            pkgBodyItems = visitSeq_of_declare_specs(bodyContext.seq_of_declare_specs());
+            if (bodyContext.seq_of_declare_specs() != null) {
+                pkgBodyItems = visitSeq_of_declare_specs(bodyContext.seq_of_declare_specs());
+            }
 
             if (bodyContext.body() != null) {
                 initializer = visitBody(bodyContext.body());
@@ -337,6 +341,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public DeclRoutine visitCreate_routine(Create_routineContext ctx) {
+
+        if (ctx.routine_decl().body() == null) {
+            // syntax allows this for the routine forward decl in a package. but
+            // it is an error in CREATE PROCEDURE/FUNCTION statements
+            String kind = ctx.routine_decl().PROCEDURE() != null ? "PROCEDURE" : "FUNCTION";
+            throw new SemanticError( // s109
+                    Misc.getLineColumnOf(ctx),
+                    "CREATE " + kind + " must have a body of statements");
+        }
+
         previsitRoutine_decl(ctx.routine_decl(), null);
         return visitRoutine_decl(ctx.routine_decl());
     }
@@ -3074,7 +3088,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         if (topLevelStmt == CREATE_PKG_SPEC && ctx.body() != null) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.LANGUAGE()), // s104
+                    Misc.getLineColumnOf(ctx.body()), // s104
                     "procedure/function body cannot be given in package declarations");
         }
 
