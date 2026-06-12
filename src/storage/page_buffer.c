@@ -2119,7 +2119,11 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 try_again:
 
   /* interrupt check */
-  if (logtb_get_check_interrupt (thread_p) == true)
+  /* Fast-path guard: only resolve this thread's interrupt state when some transaction actually has a
+   * pending interrupt. log_Gl.trantable.num_interrupts is a single cheap (sig_atomic_t) read that becomes
+   * > 0 the instant an interrupt is set, so cancellation latency is unchanged; this avoids two function
+   * calls on every page fix (per-row on the scan hot path). */
+  if (log_Gl.trantable.num_interrupts > 0 && logtb_get_check_interrupt (thread_p) == true)
     {
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
@@ -4479,7 +4483,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
 
-  if (logtb_get_check_interrupt (thread_p) == true)
+  if (log_Gl.trantable.num_interrupts > 0 && logtb_get_check_interrupt (thread_p) == true)
     {
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
