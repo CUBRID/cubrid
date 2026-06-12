@@ -169,6 +169,11 @@ const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable 
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
+const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* simple peek: a TYPE_ATTR_ID (cached) or TYPE_DBVAL regu_var with
+						 * domain resolved & non-VARIABLE, normal collation, no APPLY_COLLATION.
+						 * Set by fetch_peek_dbval_slow () after the first fetch so the
+						 * fetch_peek_dbval () inline wrapper can return the value pointer
+						 * directly (skips the type switch and the generic post-fetch checks). */
 
 class regu_variable_node
 {
