@@ -6503,14 +6503,25 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
 	    }
+	  else if (sp_scan == S_DOESNT_EXIST)
+	    {
+	      /* Unlike b-tree range scan, HNSW search returns OIDs without MVCC snapshot filtering. A row
+	       * inserted after this snapshot was taken has no visible prior version, so the visibility check
+	       * returns S_DOESNT_EXIST and recdes is left unfilled; skip it. */
+	      er_clear ();
+	      return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	    }
 	  else if (sp_scan == S_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return sp_scan;
 	    }
-	  else
+	  else if (sp_scan != S_SUCCESS && sp_scan != S_SUCCESS_CHN_UPTODATE)
 	    {
-	      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+	      /* recdes is not filled for any other code; reading it would access garbage */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return S_ERROR;
 	    }
 
 #if 0
