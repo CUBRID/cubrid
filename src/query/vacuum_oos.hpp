@@ -31,29 +31,25 @@
 #include "thread_compat.hpp"
 
 /* Forward-walk OOS reclamation helpers. */
-#define VACUUM_OOS_VFID_CACHE_SIZE 16
-typedef struct vacuum_oos_vfid_cache_entry
-{
-  VFID heap_vfid;		/* key */
-  VFID oos_vfid;		/* value; VFID_NULL sentinel means "no OOS file" */
-} VACUUM_OOS_VFID_CACHE_ENTRY;
 
-/* Per-block cache mapping heap-VFID -> OOS-VFID (VFID_NULL sentinel = "no OOS file").
- * Avoids repeated file_descriptor_get + heap_oos_find_vfid for the same heap file within one block.
- * size tracks population (capped at VACUUM_OOS_VFID_CACHE_SIZE); evict_idx is the per-block
- * round-robin cursor used once the cache is full. Declared on the stack in vacuum_process_log_block
- * => per-worker-per-block, so the lookup needs no synchronization. Do NOT replace with a static —
- * vacuum runs across multiple worker threads and a shared static would race. */
-typedef struct vacuum_oos_vfid_cache VACUUM_OOS_VFID_CACHE;
-struct vacuum_oos_vfid_cache
+/* Single-slot memo mapping the most-recently-resolved heap-VFID -> OOS-VFID, used only by the
+ * forward-walk path. A bulk UPDATE emits a run of consecutive RVHF_UPDATE_NOTIFY_VACUUM records for
+ * the same heap, so a one-entry memo elides the repeat file_descriptor_get + heap_oos_find_vfid page
+ * fixes across that run. Declared on the stack in vacuum_process_log_block => per-worker-per-block,
+ * so the lookup needs no synchronization. Do NOT replace with a static — vacuum runs across multiple
+ * worker threads and a shared static would race. `valid` is false until the first successful lookup;
+ * once set, oos_vfid may itself be VFID_NULL, meaning the heap legitimately has no OOS file.
+ * Transient lookup failures are never memoized, so a later record retries cleanly. */
+typedef struct vacuum_oos_vfid_memo VACUUM_OOS_VFID_MEMO;
+struct vacuum_oos_vfid_memo
 {
-  VACUUM_OOS_VFID_CACHE_ENTRY entries[VACUUM_OOS_VFID_CACHE_SIZE];
-  int size = 0;			/* populated entries */
-  int evict_idx = 0;		/* round-robin eviction cursor used once the cache is full */
+  bool valid = false;		/* false until the first successful lookup */
+  VFID heap_vfid;		/* key; meaningful only when valid */
+  VFID oos_vfid;		/* value; meaningful only when valid (VFID_NULL = "no OOS file") */
 };
 
 extern void vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
-    const VFID *heap_vfid, VACUUM_OOS_VFID_CACHE *oos_vfid_cache);
+    const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo);
 extern int vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
     PGSLOTID slotid, INT16 record_type, VFID *oos_vfid);
 extern int vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record);

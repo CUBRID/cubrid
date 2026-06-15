@@ -40,68 +40,62 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* Tri-state result of vacuum_oos_vfid_cache_lookup so the caller can distinguish a legitimate
+/* Tri-state result of vacuum_oos_vfid_lookup so the caller can distinguish a legitimate
  * "this heap has no OOS file" (NONE) from a transient lookup failure (ERROR). On ERROR the error
  * is left set for the caller to log; the caller er_clear()s and leaves the OOS unreclaimed (a
  * bounded, logged leak) rather than failing the vacuum block. */
 typedef enum
 {
   VACUUM_OOS_VFID_FOUND,	/* resolved a non-null OOS VFID into out_oos_vfid */
-  VACUUM_OOS_VFID_NONE,		/* heap legitimately has no OOS file (negative sentinel cached) */
-  VACUUM_OOS_VFID_ERROR		/* transient lookup failure; error left set, not cached */
+  VACUUM_OOS_VFID_NONE,		/* heap legitimately has no OOS file */
+  VACUUM_OOS_VFID_ERROR		/* transient lookup failure; error left set, not memoized */
 } VACUUM_OOS_VFID_LOOKUP_RESULT;
 
-static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p,
-    VACUUM_OOS_VFID_CACHE *cache, const VFID *heap_vfid, VFID *out_oos_vfid);
+static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p,
+    VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid, VFID *out_oos_vfid);
 static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     OID_VECTOR oos_oids);
 
 /*
- * vacuum_oos_vfid_cache_lookup () - Look up (and populate on miss) the OOS VFID for a given heap VFID.
+ * vacuum_oos_vfid_lookup () - Resolve the OOS VFID for a given heap VFID, with a single-slot memo.
  *
  * return	      : Tri-state lookup result (see VACUUM_OOS_VFID_LOOKUP_RESULT).
  * thread_p (in)      : Thread entry.
- * cache (in/out)     : Per-block linear-scan cache. Caller owns the lifetime; it is stack-allocated
- *			in vacuum_process_log_block, making it per-block and thread-local.
+ * memo (in/out)      : Single-slot heap-VFID -> OOS-VFID memo. Caller owns the lifetime; it is
+ *			stack-allocated in vacuum_process_log_block, making it per-block and thread-local.
  * heap_vfid (in)     : Heap file VFID (key).
  * out_oos_vfid (out) : Resolved OOS VFID (may be VFID_NULL sentinel meaning "no OOS file").
  *
- * Caches a VFID_NULL sentinel for heaps with no OOS file, so non-OOS heaps skip file_descriptor_get
- * on repeat lookups. Only the genuine "no OOS file" case (false return, no error set) is cached;
- * transient failures are not — see the in-body comments for why caching one would poison the block.
+ * The heap -> OOS mapping is immutable for the life of the heap file, so resolving it is two page
+ * fixes (file_descriptor_get to get the HFID, then heap_oos_find_vfid to read the heap header). The
+ * memo elides those for a run of consecutive records on the same heap (the bulk-UPDATE case). Only a
+ * resolved value (FOUND, or a legitimate "no OOS file" NONE) is memoized; a transient failure is not,
+ * so a later record retries cleanly instead of inheriting a poisoned VFID_NULL.
  *
  * Returns a tri-state: FOUND (out_oos_vfid set to a non-null OOS VFID), NONE (heap legitimately has
- * no OOS file; negative sentinel cached), or ERROR (transient lookup failure; the error is left set
- * for the caller to log and clear — it is intentionally NOT er_clear()ed here, and NOT cached).
+ * no OOS file), or ERROR (transient lookup failure; the error is left set for the caller to log and
+ * clear — it is intentionally NOT er_clear()ed here, and NOT memoized).
  */
 static VACUUM_OOS_VFID_LOOKUP_RESULT
-vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_CACHE *cache, const VFID *heap_vfid,
-			      VFID *out_oos_vfid)
+vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid,
+			VFID *out_oos_vfid)
 {
   FILE_DESCRIPTORS file_descriptor;
   HFID hfid;
-  int i;
 
-  assert (cache != NULL);
+  assert (memo != NULL);
 
-  for (i = 0; i < cache->size; i++)
+  if (memo->valid && VFID_EQ (&memo->heap_vfid, heap_vfid))
     {
-      if (VFID_EQ (&cache->entries[i].heap_vfid, heap_vfid))
-	{
-	  VFID_COPY (out_oos_vfid, &cache->entries[i].oos_vfid);
-	  return VFID_ISNULL (out_oos_vfid) ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
-	}
+      VFID_COPY (out_oos_vfid, &memo->oos_vfid);
+      return VFID_ISNULL (out_oos_vfid) ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
     }
 
-  /* On any failure below — file_descriptor_get, HFID extraction, or transient heap_oos_find_vfid —
-   * do NOT cache: a falsely-cached VFID_NULL would skip OOS reclamation for every subsequent record
-   * on this heap in the block. Only cache when the heap legitimately has no OOS file (false return
-   * with no error set). */
   VFID_SET_NULL (out_oos_vfid);
 
   if (file_descriptor_get (thread_p, heap_vfid, &file_descriptor) != NO_ERROR)
     {
-      /* Transient failure — do NOT cache and do NOT er_clear: leave the error set for the caller
+      /* Transient failure — do NOT memoize and do NOT er_clear: leave the error set for the caller
        * to log, then the caller clears it (bounded, logged leak). */
       return VACUUM_OOS_VFID_ERROR;
     }
@@ -109,7 +103,7 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_CACHE *cac
   hfid = file_descriptor.heap.hfid;
   if (HFID_IS_NULL (&hfid))
     {
-      /* Transient failure — do NOT cache; leave the error (if any) set for the caller. */
+      /* Transient failure — do NOT memoize; leave the error (if any) set for the caller. */
       return VACUUM_OOS_VFID_ERROR;
     }
 
@@ -119,26 +113,16 @@ vacuum_oos_vfid_cache_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_CACHE *cac
       if (er_errid () != NO_ERROR)
 	{
 	  /* Transient failure (pgbuf_fix returned NULL with ER_PB_BAD_PAGEID, spage_get_record
-	   * failure, etc.) — do NOT cache. Leave the error set for the caller to log/clear. */
+	   * failure, etc.) — do NOT memoize. Leave the error set for the caller to log/clear. */
 	  return VACUUM_OOS_VFID_ERROR;
 	}
       /* Legitimate "no OOS file": heap_hdr->oos_vfid was VFID_NULL with docreate=false and no
-       * error was raised. Fall through to cache the VFID_NULL negative sentinel. */
+       * error was raised. Fall through to memoize the VFID_NULL "no OOS file" value. */
     }
 
-  /* Round-robin eviction once full (cycle all slots, not just slot 0). `cache->size` stays capped at
-   * VACUUM_OOS_VFID_CACHE_SIZE so the lookup loop above stays in-bounds. */
-  int slot;
-  if (cache->size < VACUUM_OOS_VFID_CACHE_SIZE)
-    {
-      slot = cache->size++;
-    }
-  else
-    {
-      slot = cache->evict_idx++ % VACUUM_OOS_VFID_CACHE_SIZE;
-    }
-  VFID_COPY (&cache->entries[slot].heap_vfid, heap_vfid);
-  VFID_COPY (&cache->entries[slot].oos_vfid, out_oos_vfid);
+  memo->valid = true;
+  VFID_COPY (&memo->heap_vfid, heap_vfid);
+  VFID_COPY (&memo->oos_vfid, out_oos_vfid);
 
   return VFID_ISNULL (out_oos_vfid) ? VACUUM_OOS_VFID_NONE : VACUUM_OOS_VFID_FOUND;
 }
@@ -210,7 +194,7 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  *                           recdes body. NULL or too-short data carries no pre-image and is ignored.
  * undo_data_size (in)     : Size of undo_data in bytes.
  * heap_vfid (in)          : VFID of the heap file the record lives in (the log_vacuum vfid).
- * oos_vfid_cache (in/out) : Per-block heap-VFID -> OOS-VFID cache.
+ * oos_vfid_memo (in/out) : Per-block single-slot heap-VFID -> OOS-VFID memo.
  *
  * NOTE: Any OOS reclaim failure degrades to a bounded, logged leak (log loudly, er_clear, return).
  * It never propagates an error or fails the block — that would trip the shutdown-only assert in
@@ -218,7 +202,7 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
  */
 void
 vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int undo_data_size,
-				 const VFID *heap_vfid, VACUUM_OOS_VFID_CACHE *oos_vfid_cache)
+				 const VFID *heap_vfid, VACUUM_OOS_VFID_MEMO *oos_vfid_memo)
 {
   if (undo_data == NULL || undo_data_size <= (int) sizeof (INT16))
     {
@@ -245,7 +229,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 
   /* Snapshot the undo image into a private buffer BEFORE any page fix below. The image usually
    * points straight into the worker's current log page buffer, and the page fixes inside
-   * vacuum_oos_vfid_cache_lookup can trigger log activity that rotates that buffer — the same
+   * vacuum_oos_vfid_lookup can trigger log activity that rotates that buffer — the same
    * hazard vacuum_forward_walk_delete_old_oos documents for oos_delete. Parsing the rotated
    * buffer reads zeroed/foreign bytes and silently extracts nothing (verified live: the flags
    * word at the same address flipped from 0x69 to 0x00 across the lookup). The copy also fixes
@@ -267,7 +251,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 
   VFID oos_vfid;
   VACUUM_OOS_VFID_LOOKUP_RESULT lookup_result =
-	  vacuum_oos_vfid_cache_lookup (thread_p, oos_vfid_cache, heap_vfid, &oos_vfid);
+	  vacuum_oos_vfid_lookup (thread_p, oos_vfid_memo, heap_vfid, &oos_vfid);
   if (lookup_result == VACUUM_OOS_VFID_ERROR)
     {
       vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
