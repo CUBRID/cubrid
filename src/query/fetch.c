@@ -4523,15 +4523,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
   assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
-  /* If this fetch needs no per-row post-processing, mark the regu_var so the inline fetch_peek_dbval ()
-   * wrapper can return the value pointer directly next time, skipping the type switch and these generic
-   * checks. The domain is fully resolved by this point, so the VARIABLE/collation tests are final.
-   * Eligible: a cached TYPE_ATTR_ID (wrapper re-checks cache_dbvalp != NULL, so a later reset is safe) or
-   * a TYPE_DBVAL literal constant (value embedded in the regu_var). */
-  /* Cheap type test first: non-eligible regu_vars (arith, function, subquery, ...) are re-fetched per
-   * row and must short-circuit here without touching the domain (the TP_DOMAIN_* derefs are a cache-
-   * missing pointer chase). Eligible attr/dbval vars pay the domain test once, then get flagged and
-   * never return to this slow path. */
+  /* flag a stable regu_var (cached attr/literal/pos/const) so inline fetch_peek_dbval () peeks it directly */
   if ((((regu_var->type == TYPE_ATTR_ID || regu_var->type == TYPE_SHARED_ATTR_ID
 	 || regu_var->type == TYPE_CLASS_ATTR_ID) && regu_var->value.attr_descr.cache_dbvalp != NULL)
        || regu_var->type == TYPE_DBVAL || regu_var->type == TYPE_POS_VALUE

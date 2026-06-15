@@ -1514,12 +1514,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
   /* clear run-time setting info */
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
-  /* FAST_PEEK is paired with the FETCH_*_CONST state above: fetch_peek_dbval_slow () sets it only after
-   * confirming those flags. Cleared XASL clones are pooled and reused (xcache_retire_clone ()), so leaving
-   * FAST_PEEK set while wiping the const flags would let the inline fetch_peek_dbval () serve the operand on
-   * the next execution without restoring FETCH_ALL_CONST. A parent TYPE_FUNC/arith would then re-run its
-   * one-time const test, see the operand as non-const, and re-evaluate an otherwise-constant function every
-   * row. Clear it here so the first fetch of the reused clone goes through the slow path and rebuilds both. */
+  /* pair with FETCH_*_CONST: clear so a reused (pooled) XASL clone rebuilds it via the slow path next time */
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 
   switch (regu_var->type)
