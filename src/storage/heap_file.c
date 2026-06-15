@@ -13740,6 +13740,14 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised (e.g. ER_HEAP_OOS_BAD_INLINE_HEADER) and any OOS buffer released
+	       * inside heap_midxkey_get_value. */
+	      goto error;
+	    }
 	}
 
       if (key_domain != NULL)
@@ -13938,6 +13946,14 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 		{
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
+	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised and any OOS buffer released inside heap_midxkey_get_value; the
+	       * previous iteration's value was cleared in-loop. */
+	      return NULL;
 	    }
 	}
     }
