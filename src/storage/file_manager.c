@@ -12469,7 +12469,13 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   {
     VFID oos_vfid;
     VFID_SET_NULL (&oos_vfid);
-    if (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false) && !VFID_ISNULL (&oos_vfid))
+    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+      {
+	/* genuine failure reading the heap header, not "no OOS file" */
+	ASSERT_ERROR_AND_SET (error_code);
+	goto exit;
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	error_code = file_apply_tde_algorithm (thread_p, &oos_vfid, tde_algo);
 	if (error_code != NO_ERROR)

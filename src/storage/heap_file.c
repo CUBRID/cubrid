@@ -5887,7 +5887,13 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	int error = oos_remove_file (thread_p, oos_vfid);
 	if (error != NO_ERROR)
@@ -5945,7 +5951,13 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	ret = oos_remove_file (thread_p, oos_vfid);
 	if (ret != NO_ERROR)
@@ -12157,6 +12169,19 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   return header_size + payload_size;
 }
 
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
 bool
 heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
 {
@@ -12168,6 +12193,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   bool success;
 
   success = true;
+  VFID_SET_NULL (oos_vfid);
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -12232,7 +12258,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	}
       else
 	{
-	  goto exit_on_error;
+	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  goto end;
 	}
     }
   else
