@@ -857,6 +857,8 @@ namespace parallel_scan
 		      {
 			m_err_messages_p->move_top_error_message_to_this();
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			/* heap left a tuple with NULL values; abandon top-N so write_finalize does not flush it. topn_items is reclaimed by qexec_clear_xasl. */
+			tl.is_topn = false;
 			return false;
 		      }
 		    /* OVERFLOW: write current row before flush; flush frees topn tuples and invalidates tpl_descr.f_valp. */
@@ -871,6 +873,8 @@ namespace parallel_scan
 		      {
 			m_err_messages_p->move_top_error_message_to_this();
 			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			/* the failed flush already freed topn_items; clear flag so write_finalize does not re-enter on NULL. */
+			tl.is_topn = false;
 			return false;
 		      }
 		    tl.is_topn = false;
@@ -901,6 +905,8 @@ namespace parallel_scan
 		  {
 		    m_err_messages_p->move_top_error_message_to_this();
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    /* the failed flush already freed topn_items; clear flag so write_finalize does not re-enter on NULL. */
+		    tl.is_topn = false;
 		    return false;
 		  }
 		tl.is_topn = false;
