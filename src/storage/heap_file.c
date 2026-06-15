@@ -10934,12 +10934,25 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
 
   buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
   buf.endptr = recdes->data + recdes->length;
+
+  /* CBRD-26769: validate the inline header exactly as heap_attrvalue_read_oos_inline does.
+   * A corrupt header must never be cast into a midxkey size: a negative/huge (int) length
+   * would mis-size midxkey.buf and let the legitimate columns overrun it before the read path
+   * raises ER_HEAP_OOS_BAD_INLINE_HEADER.  Return 0 so the buffer is sized from recdes->length
+   * alone; the corruption is then surfaced when the value is actually read. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      return 0;
+    }
+
   or_get_oid (&buf, &oos_oid);
-  assert (!OID_ISNULL (&oos_oid));
 
   /* Read OOS length directly from recdes inline data (no I/O needed) */
   DB_BIGINT length = or_get_bigint (&buf, &rc);
-  assert (rc == NO_ERROR);
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+    {
+      return 0;
+    }
 
   return (int) length;
 }
