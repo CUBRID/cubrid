@@ -15034,11 +15034,18 @@ cdc_cleanup_disconnected_connection (SOCKET fd)
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
 	  cdc_Gl.session_owner_generation = 0;
+	  cdc_Gl.session_cleanup_pending = false;
 	}
       else
 	{
-	  /* the producer could not be paused in time; keep the session state so that the next
-	   * scdc_start_session retries the cleanup instead of racing with the running producer */
+	  /* The socket is about to be closed regardless of this result. Do not keep its fd as the
+	   * CDC owner because the OS may reuse the number for an unrelated connection before the
+	   * pending cleanup is retried. Keep the producer/filter state untouched and make the next
+	   * scdc_start_session retry cdc_cleanup () before installing a new configuration. */
+	  cdc_Gl.conn.fd = -1;
+	  cdc_Gl.conn.status = CONN_CLOSED;
+	  cdc_Gl.session_owner_generation = 0;
+	  cdc_Gl.session_cleanup_pending = true;
 	  cdc_log ("cdc_cleanup_disconnected_connection : cleanup is deferred (fd %d)", fd);
 	}
     }
@@ -15053,6 +15060,7 @@ cdc_initialize ()
   cdc_Gl.conn.status = CONN_CLOSED;
   cdc_Gl.session_request_generation = 0;
   cdc_Gl.session_owner_generation = 0;
+  cdc_Gl.session_cleanup_pending = false;
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;

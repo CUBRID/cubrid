@@ -11180,11 +11180,28 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
    * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
    * Policy: the last client requesting a session always takes it over and the previous connection is forcibly
    * shut down. The new owner is registered only after the previous connection teardown has cleared the CDC
-   * session (cdc_cleanup_disconnected_connection); otherwise a partially built log info cache left by the
+   * session or after a deferred cleanup has been retried; otherwise a partially built log info cache left by the
    * previous session's aborted request could be served to the new session through the send-again branch of
    * scdc_get_loginfo_metadata, and the log items consumed by the aborted request would be lost. */
   cdc_session_lock ();
   request_generation = ++cdc_Gl.session_request_generation;
+
+  if (cdc_Gl.session_cleanup_pending)
+    {
+      /* The previous owner connection was already closed, but cleanup was deferred because
+       * the producer could not be paused safely at disconnect time. Retry the cleanup before
+       * installing a new owner/configuration; the stale socket fd has intentionally been
+       * detached so it cannot be confused with a later fd reuse. */
+      if (cdc_cleanup () != NO_ERROR)
+	{
+	  goto cleanup_error;
+	}
+
+      cdc_Gl.conn.fd = -1;
+      cdc_Gl.conn.status = CONN_CLOSED;
+      cdc_Gl.session_owner_generation = 0;
+      cdc_Gl.session_cleanup_pending = false;
+    }
 
   if (cdc_Gl.conn.fd == thread_p->conn_entry->fd)
     {
@@ -11199,6 +11216,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
       cdc_Gl.session_owner_generation = 0;
+      cdc_Gl.session_cleanup_pending = false;
     }
 
   /* A new client is requesting a session while another connection still holds it. Forcibly shut down the
@@ -11256,6 +11274,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
 	  cdc_Gl.session_owner_generation = 0;
+	  cdc_Gl.session_cleanup_pending = false;
 	}
     }
 
@@ -11278,6 +11297,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
       cdc_Gl.session_owner_generation = 0;
+      cdc_Gl.session_cleanup_pending = false;
     }
 
   error_code =
@@ -11297,6 +11317,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
   cdc_Gl.session_owner_generation = request_generation;
+  cdc_Gl.session_cleanup_pending = false;
 
   cdc_session_unlock ();
 
@@ -11532,6 +11553,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
 	  cdc_Gl.session_owner_generation = 0;
+	  cdc_Gl.session_cleanup_pending = false;
 	}
       else
 	{

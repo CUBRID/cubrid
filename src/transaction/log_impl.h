@@ -884,6 +884,7 @@ typedef struct cdc_global
 
   uint64_t session_request_generation;
   uint64_t session_owner_generation;
+  bool session_cleanup_pending;
 
 } CDC_GLOBAL;
 
