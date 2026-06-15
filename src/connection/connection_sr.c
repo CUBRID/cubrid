@@ -1306,48 +1306,6 @@ css_find_conn_from_fd (SOCKET fd)
   return conn;
 }
 
-
-/*
- * css_mark_conn_closing_by_fd_and_client_id() - mark connection closing when fd and client id match
- *   return: true if a matching open connection was marked closing, false otherwise
- *   fd(in): socket fd saved by CDC session start
- *   client_id(in): client id saved by CDC session start
- */
-bool
-css_mark_conn_closing_by_fd_and_client_id (SOCKET fd, int client_id)
-{
-  CSS_CONN_ENTRY *conn = NULL;
-  int r;
-  bool marked = false;
-
-  if (IS_INVALID_SOCKET (fd) || client_id < 0)
-    {
-      return false;
-    }
-
-  if (css_Active_conn_anchor != NULL)
-    {
-      START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-      for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
-	{
-	  if (conn->fd == fd && conn->client_id == client_id)
-	    {
-	      if (conn->status == CONN_OPEN)
-		{
-		  conn->status = CONN_CLOSING;
-		  marked = true;
-		}
-	      break;
-	    }
-	}
-
-      END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-    }
-
-  return marked;
-}
-
 /*
  * css_get_session_ids_for_active_connections () - get active session ids
  * return : error code or NO_ERROR

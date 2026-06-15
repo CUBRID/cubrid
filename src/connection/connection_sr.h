@@ -162,7 +162,6 @@ extern void css_register_handler_routines (css_error_code (*connect_handler) (CS
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
-extern bool css_mark_conn_closing_by_fd_and_client_id (SOCKET fd, int client_id);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
 extern void css_shutdown_conn_by_tran_index (int tran_index);
 
