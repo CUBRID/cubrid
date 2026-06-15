@@ -348,6 +348,30 @@ class OosRealVacuum : public ::testing::Test
       close_log_block_containing (hfid, class_oid, scan_cache, delete_block);
     }
 
+    /* MVCC-update heap_oid so it references a freshly inserted OOS payload;
+     * commit and close the update's log block. The previous version's OOS
+     * becomes update-superseded (reclaimed via the forward-walk path). Returns
+     * the new OOS OID via out param. Mirrors TC-R3's inline update sequence. */
+    void update_row_to_new_oos (OID &heap_oid, const std::string &payload, OID &new_oos_oid_out)
+    {
+      RECDES new_oos_rec {};
+      ASSERT_EQ (test_oos_utils::from_string_into_recdes (payload, new_oos_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_oos (&new_oos_rec, recdes_free_data_area);
+
+      new_oos_oid_out = OID_INITIALIZER;
+      ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, new_oos_rec, new_oos_oid_out), NO_ERROR);
+
+      RECDES new_heap_rec {};
+      ASSERT_EQ (build_heap_recdes_with_oos ({new_oos_oid_out}, { (INT64) new_oos_rec.length}, new_heap_rec), NO_ERROR);
+      test_oos_utils::auto_freed_recdes_ptr defer_heap (&new_heap_rec, recdes_free_data_area);
+
+      ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, new_heap_rec), NO_ERROR);
+      VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+      commit_current_tran ();
+
+      close_log_block_containing (hfid, class_oid, scan_cache, update_block);
+    }
+
     void expect_oos_gone (const OID &oos_oid, const char *what)
     {
       RECDES out {};
@@ -358,6 +382,24 @@ class OosRealVacuum : public ::testing::Test
 	  recdes_free_data_area (&out);
 	}
       er_clear ();
+    }
+
+    /* Race-free "is this OOS gone?" poll predicate. oos_read/oos_get_length use
+     * an UNCONDITIONAL page latch, so a still-present record reads back
+     * correctly even while a vacuum worker holds the page — unlike oos_live_recs()
+     * (oos_get_stats_by_vfid uses a CONDITIONAL latch and skips busy pages, which
+     * can transiently undercount mid-drain and falsely satisfy a non-zero target
+     * count). Use this to wait for a specific dead OOS to actually disappear. */
+    bool oos_unreadable (const OID &oos_oid)
+    {
+      RECDES out {};
+      int err = test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, out);
+      if (out.data != nullptr)
+	{
+	  recdes_free_data_area (&out);
+	}
+      er_clear ();
+      return err != NO_ERROR;
     }
 };
 
@@ -497,6 +539,290 @@ TEST_F (OosRealVacuum, SnapshotBlocksReclaimThenDrains)
       << "vacuum did not drain after the blocking snapshot was released";
 
   expect_oos_gone (oos_oid, "post-snapshot stale OOS");
+}
+
+// ============================================================================
+// TC-R5: Two readers — vacuum respects the OLDEST live snapshot, not "any gone"
+//
+// TC-R4 opens a single reader, so "reader released" coincides with "horizon
+// advanced" and cannot distinguish "oldest snapshot respected" from "any
+// snapshot gone". Here two snapshots are taken before the DELETE; releasing the
+// NEWER one (B) must NOT unblock reclaim, because the OLDER one (A) still pins
+// the global-oldest-visible horizon below the delete MVCCID.
+// ============================================================================
+TEST_F (OosRealVacuum, TwoReadersOldestSnapshotGatesReclaim)
+{
+  OID heap_oid, oos_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (4096), heap_oid, oos_oid);
+
+  int worker_idx = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* Reader A — snapshot taken first; predates the delete. */
+  TRAN_STATE st_a;
+  int reader_a = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &st_a,
+					  TRAN_LOCK_INFINITE_WAIT, TRAN_REPEATABLE_READ);
+  ASSERT_NE (reader_a, NULL_TRAN_INDEX);
+  ASSERT_NE (logtb_get_mvcc_snapshot (thread_p), nullptr);	/* under reader_a */
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  /* Reader B — also predates the delete, but its snapshot is newer than A's. */
+  TRAN_STATE st_b;
+  int reader_b = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &st_b,
+					  TRAN_LOCK_INFINITE_WAIT, TRAN_REPEATABLE_READ);
+  ASSERT_NE (reader_b, NULL_TRAN_INDEX);
+  ASSERT_NE (logtb_get_mvcc_snapshot (thread_p), nullptr);	/* under reader_b */
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  delete_row_and_close_block (heap_oid);
+
+  /* Release the NEWER reader (B); the OLDER reader (A) still sees the row, so
+   * the global horizon must NOT advance past the delete. */
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, reader_b);
+  (void) log_abort (thread_p, reader_b);
+  logtb_release_tran_index (thread_p, reader_b);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  bool drained_after_b = wait_for_vacuum ([this] { return oos_live_recs () == 0; }, 3);
+  EXPECT_FALSE (drained_after_b)
+      << "vacuum reclaimed while an older snapshot (reader A) could still see the OOS";
+
+  RECDES still_there {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, still_there), NO_ERROR)
+      << "OOS visible to the older snapshot must remain readable";
+  recdes_free_data_area (&still_there);
+
+  /* Release the OLDER reader (A) — now no live snapshot can see it. */
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, reader_a);
+  (void) log_abort (thread_p, reader_a);
+  logtb_release_tran_index (thread_p, reader_a);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  ASSERT_TRUE (wait_for_vacuum ([this] { return oos_live_recs () == 0; }, 60))
+      << "vacuum did not drain after the oldest snapshot was released; live recs = " << oos_live_recs ();
+  expect_oos_gone (oos_oid, "post-two-reader stale OOS");
+}
+
+// ============================================================================
+// TC-R6: A live snapshot gates the UPDATE forward-walk reclaim too
+//
+// TC-R4 only gates the DELETE/REMOVE path. The forward-walk path
+// (RVHF_UPDATE_NOTIFY_VACUUM, exercised by TC-R3) has its own visibility check;
+// this pins that a reader whose snapshot predates the UPDATE keeps the
+// superseded old-version OOS alive until the reader is released.
+// ============================================================================
+TEST_F (OosRealVacuum, UpdateSnapshotBlocksOldVersionReclaim)
+{
+  OID heap_oid, oos1_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (4096), heap_oid, oos1_oid);
+
+  const int recs_one_row = oos_live_recs ();
+  ASSERT_GT (recs_one_row, 0);
+
+  /* Open a reader whose snapshot predates the UPDATE — it still sees oos1. */
+  int worker_idx = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  TRAN_STATE reader_state;
+  int reader_idx = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &reader_state,
+		   TRAN_LOCK_INFINITE_WAIT, TRAN_REPEATABLE_READ);
+  ASSERT_NE (reader_idx, NULL_TRAN_INDEX);
+  ASSERT_NE (logtb_get_mvcc_snapshot (thread_p), nullptr);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  /* UPDATE the row onto a new OOS (oos2); oos1 becomes update-superseded. */
+  OID oos2_oid;
+  update_row_to_new_oos (heap_oid, test_oos_utils::make_repeated_pattern_string (4096), oos2_oid);
+
+  /* Grace window: while the pre-update reader is alive, oos1 must survive — the
+   * total must not fall back to a single row's worth of chunks. */
+  bool drained_early = wait_for_vacuum ([this, recs_one_row] { return oos_live_recs () == recs_one_row; }, 3);
+  EXPECT_FALSE (drained_early)
+      << "vacuum reclaimed the update-superseded OOS still visible to a live snapshot";
+
+  RECDES still_there {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos1_oid, still_there), NO_ERROR)
+      << "old-version OOS visible to a live snapshot must remain readable";
+  recdes_free_data_area (&still_there);
+
+  /* Release the reader; the old version becomes truly stale. */
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, reader_idx);
+  (void) log_abort (thread_p, reader_idx);
+  logtb_release_tran_index (thread_p, reader_idx);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, worker_idx);
+
+  ASSERT_TRUE (wait_for_vacuum ([this, &oos1_oid] { return oos_unreadable (oos1_oid); }, 60))
+      << "vacuum did not drain the superseded OOS after the snapshot was released; live recs = "
+      << oos_live_recs ();
+
+  expect_oos_gone (oos1_oid, "update-superseded OOS (gated by snapshot)");
+
+  RECDES survivor {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos2_oid, survivor), NO_ERROR)
+      << "new-version OOS must survive vacuum";
+  recdes_free_data_area (&survivor);
+}
+
+// ============================================================================
+// TC-R7: Negative control — a live (never-deleted) row's OOS is never reclaimed
+//
+// Nothing else proves the drains are CAUSED by vacuum reclaiming dead versions
+// rather than some incidental eager path. Closing several blocks and nudging
+// the daemon must leave a live row's OOS fully intact.
+// ============================================================================
+TEST_F (OosRealVacuum, LiveRowNeverReclaimed)
+{
+  OID heap_oid, oos_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (4096), heap_oid, oos_oid);
+
+  const int recs_one_row = oos_live_recs ();
+  ASSERT_GT (recs_one_row, 0);
+
+  /* Close several log blocks so the daemon has plenty of completed work to chew,
+   * but never delete the row. */
+  for (int i = 0; i < 3; i++)
+    {
+      close_log_block_containing (hfid, class_oid, scan_cache, current_log_blockid ());
+    }
+
+  /* A live row's OOS must NOT vanish no matter how often the daemon runs. */
+  bool wrongly_drained = wait_for_vacuum ([this] { return oos_live_recs () == 0; }, 3);
+  EXPECT_FALSE (wrongly_drained) << "vacuum reclaimed the OOS of a live (undeleted) row";
+  EXPECT_GE (oos_live_recs (), recs_one_row) << "live row's OOS record count shrank";
+
+  RECDES still_there {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos_oid, still_there), NO_ERROR)
+      << "live row's OOS must remain readable the whole time";
+  ASSERT_GT (still_there.length, 0);
+  recdes_free_data_area (&still_there);
+}
+
+// ============================================================================
+// TC-R8: Multi-version forward chain — every stale version drains, newest lives
+//
+// Generalizes TC-R3's single stale version: INSERT(oos1) -> UPDATE(oos2) ->
+// UPDATE(oos3) leaves TWO stale versions. Vacuum must reclaim oos1 AND oos2
+// (the whole stale lineage), not just the immediately previous version.
+// ============================================================================
+TEST_F (OosRealVacuum, MultiVersionForwardChainDrains)
+{
+  OID heap_oid, oos1_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (4096), heap_oid, oos1_oid);
+
+  const int recs_one_row = oos_live_recs ();
+  ASSERT_GT (recs_one_row, 0);
+
+  /* Pre-insert BOTH replacement OOS payloads before either update creates a dead
+   * version. With every oos_insert finished before the first reclaim can happen,
+   * the live daemon can never recycle a freed slot into a later insert — which
+   * would otherwise alias an earlier OID onto a live record and make this test
+   * flaky. The updates below only rewrite the heap row; they never insert OOS. */
+  RECDES oos2_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096),
+	     oos2_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos2 (&oos2_rec, recdes_free_data_area);
+  OID oos2_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos2_rec, oos2_oid), NO_ERROR);
+
+  RECDES oos3_rec {};
+  ASSERT_EQ (test_oos_utils::from_string_into_recdes (test_oos_utils::make_repeated_pattern_string (4096),
+	     oos3_rec), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_oos3 (&oos3_rec, recdes_free_data_area);
+  OID oos3_oid = OID_INITIALIZER;
+  ASSERT_EQ (test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, oos3_rec, oos3_oid), NO_ERROR);
+
+  /* v1 -> v2 (now references oos2): the original version's oos1 becomes stale. */
+  RECDES heap_rec_v2 {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oos2_oid}, { (INT64) oos2_rec.length}, heap_rec_v2), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_v2 (&heap_rec_v2, recdes_free_data_area);
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, heap_rec_v2), NO_ERROR);
+  commit_current_tran ();
+
+  /* v2 -> v3 (now references oos3): oos2 becomes stale too — two stale versions. */
+  RECDES heap_rec_v3 {};
+  ASSERT_EQ (build_heap_recdes_with_oos ({oos3_oid}, { (INT64) oos3_rec.length}, heap_rec_v3), NO_ERROR);
+  test_oos_utils::auto_freed_recdes_ptr defer_v3 (&heap_rec_v3, recdes_free_data_area);
+  ASSERT_EQ (heap_update_mvcc (hfid, class_oid, scan_cache, heap_oid, heap_rec_v3), NO_ERROR);
+  VACUUM_LOG_BLOCKID update_block = current_log_blockid ();
+  commit_current_tran ();
+
+  close_log_block_containing (hfid, class_oid, scan_cache, update_block);
+
+  /* Both superseded versions (oos1, oos2) drain; only the newest (oos3) remains.
+   * Poll on the records actually disappearing rather than the live-rec count: the
+   * two concurrent chunk deletions can transiently undercount the stats walk. */
+  ASSERT_TRUE (wait_for_vacuum ([this, &oos1_oid, &oos2_oid]
+  {
+    return oos_unreadable (oos1_oid) && oos_unreadable (oos2_oid);
+  }, 60))
+      << "vacuum did not drain the full stale lineage; live recs = " << oos_live_recs ();
+
+  expect_oos_gone (oos1_oid, "first stale version OOS");
+  expect_oos_gone (oos2_oid, "second stale version OOS");
+
+  RECDES survivor {};
+  ASSERT_EQ (test_oos_utils::oos_read_with_alloc (thread_p, oos3_oid, survivor), NO_ERROR)
+      << "newest-version OOS must survive vacuum";
+  recdes_free_data_area (&survivor);
+}
+
+// ============================================================================
+// TC-R9: Chunk-boundary arithmetic — exactly one chunk vs. one byte over
+//
+// oos_insert keeps a single in-page chunk while stored length <= max_chunk and
+// spills across pages otherwise. from_string_into_recdes appends a NUL byte, so
+// a string of length N stores N+1 bytes: (max_chunk - 1) stores exactly
+// max_chunk (1 chunk) and max_chunk stores max_chunk + 1 (spills to 2 chunks).
+// oos_live_recs() counts one record per chunk, so this pins the count arithmetic
+// at the boundary on both the insert and the reclaim walk.
+// ============================================================================
+TEST_F (OosRealVacuum, ChunkBoundaryExactSizes)
+{
+  const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
+  ASSERT_GT (max_chunk, 1);
+
+  OID heap_exact, oos_exact;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (max_chunk - 1), heap_exact, oos_exact);
+  ASSERT_EQ (oos_live_recs (), 1) << "payload at the exact single-chunk boundary must be one chunk";
+
+  OID heap_plus1, oos_plus1;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (max_chunk), heap_plus1, oos_plus1);
+  ASSERT_EQ (oos_live_recs (), 3) << "payload one byte over the boundary must spill to two chunks";
+
+  delete_row_and_close_block (heap_exact);
+  delete_row_and_close_block (heap_plus1);
+
+  ASSERT_TRUE (wait_for_vacuum ([this] { return oos_live_recs () == 0; }, 60))
+      << "boundary-sized OOS chains not fully reclaimed; live recs = " << oos_live_recs ();
+
+  expect_oos_gone (oos_exact, "exact single-chunk-boundary OOS");
+  expect_oos_gone (oos_plus1, "one-over-boundary 2-chunk OOS");
+}
+
+// ============================================================================
+// TC-R10: Re-vacuum after a full drain is idempotent (no-crash double pass)
+//
+// After a drain, waking the daemon again over the now-empty chains must keep
+// the count at 0 and must not crash. Guards the double-pass path (distinct from
+// crash recovery, which is out of scope for this file).
+// ============================================================================
+TEST_F (OosRealVacuum, ReVacuumAfterDrainIsIdempotent)
+{
+  OID heap_oid, oos_oid;
+  insert_row_with_oos (test_oos_utils::make_repeated_pattern_string (4096), heap_oid, oos_oid);
+  ASSERT_GT (oos_live_recs (), 0);
+
+  delete_row_and_close_block (heap_oid);
+  ASSERT_TRUE (wait_for_vacuum ([this] { return oos_live_recs () == 0; }, 60))
+      << "vacuum did not drain; live recs = " << oos_live_recs ();
+  expect_oos_gone (oos_oid, "drained OOS");
+
+  /* Wake the daemon repeatedly over the already-empty chains. */
+  for (int i = 0; i < 20; i++)
+    {
+      (void) vacuum_wakeup_master_daemon ();
+      std::this_thread::sleep_for (std::chrono::milliseconds (50));
+    }
+
+  EXPECT_EQ (oos_live_recs (), 0) << "re-vacuum after drain disturbed the empty OOS file";
+  expect_oos_gone (oos_oid, "drained OOS after re-vacuum");
 }
 
 int
