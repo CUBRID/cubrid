@@ -86,6 +86,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
     }
   return fetch_peek_dbval_slow (thread_p, regu_var, vd, class_oid, obj_oid, tpl, peek_dbval);
 }
+
 extern int fetch_copy_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_descr * vd, OID * class_oid,
 			     OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE * dbval);
 extern int fetch_val_list (THREAD_ENTRY * thread_p, regu_variable_list_node * regu_list, val_descr * vd,
