@@ -4222,8 +4222,9 @@ vacuum_process_log_record (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, LOG_
       && log_record_data->rcvindex != RVHF_UPDATE_NOTIFY_VACUUM && log_record_data->rcvindex != RVES_NOTIFY_VACUUM
       && log_record_data->rcvindex != RVHF_DELETE_NEWHOME_NOTIFY_VACUUM)
     {
-      /* Only unpack undo data for BTREE ops, RVHF_UPDATE_NOTIFY_VACUUM (forward-walk OOS cleanup),
-       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (remove_old_forward OOS cleanup), and ES. */
+      /* Vacuum needs the undo image only for these ops, so anything else returns now without
+       * unpacking it: BTREE ops, the two OOS forward-walk tags -- RVHF_UPDATE_NOTIFY_VACUUM and
+       * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM -- and ES (RVES_NOTIFY_VACUUM). */
       return NO_ERROR;
     }
 
