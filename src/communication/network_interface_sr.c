@@ -10768,7 +10768,11 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
 	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
 	      assert (r == NO_ERROR);
 
-	      if (prev_conn->status == CONN_OPEN)
+	      /* Re-validate under the lock: css_find_conn_from_fd () released the active-conn anchor lock
+	       * before returning, so the entry could have been freed and recycled to a different connection
+	       * in the meantime. Only mark it closing if it is still open AND still bound to the same socket
+	       * fd, otherwise we could tear down an unrelated client that reused this connection entry. */
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == cdc_Gl.conn.fd)
 		{
 		  prev_conn->status = CONN_CLOSING;
 		}
