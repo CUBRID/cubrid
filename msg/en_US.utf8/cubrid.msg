@@ -1475,7 +1475,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1374 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1375 Last Error
+1375 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+
+1376 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
