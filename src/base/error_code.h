@@ -1765,7 +1765,9 @@
 
 #define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1374
 
-#define ER_LAST_ERROR                               -1375
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1375
+
+#define ER_LAST_ERROR                               -1376
 
 
 
