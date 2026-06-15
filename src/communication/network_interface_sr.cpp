@@ -11113,6 +11113,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   int max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class;
   uint64_t *extraction_classoids = NULL;
   char **extraction_user = NULL;
+  uint64_t request_generation = 0;
 
   char *dummy_user = NULL;
 
@@ -11183,6 +11184,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
    * previous session's aborted request could be served to the new session through the send-again branch of
    * scdc_get_loginfo_metadata, and the log items consumed by the aborted request would be lost. */
   cdc_session_lock ();
+  request_generation = ++cdc_Gl.session_request_generation;
 
   if (cdc_Gl.conn.fd == thread_p->conn_entry->fd)
     {
@@ -11196,18 +11198,22 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
+      cdc_Gl.session_owner_generation = 0;
     }
 
   /* A new client is requesting a session while another connection still holds it. Forcibly shut down the
    * owner connection instead of rejecting the new client. The owner may change while the lock is released
-   * during the wait (e.g. yet another client registers); in that case take over the new owner again instead
-   * of clearing a session that does not belong to the awaited connection. With concurrent start_session
-   * requests the session goes to the last request that completes the registration; to each client this is
-   * indistinguishable from a later connection taking the session over right after its own success, so the
-   * last-connection-wins contract is preserved. */
+   * during the wait (e.g. yet another client registers); if a newer start request appears, this older
+   * requester stops the takeover attempt and leaves the session to the newest requester. */
   for (int retry = 0; cdc_Gl.conn.fd != -1 && retry < CDC_TAKEOVER_MAX_RETRY; retry++)
     {
       int prev_fd = cdc_Gl.conn.fd;
+
+      if (request_generation != cdc_Gl.session_request_generation
+	  || (cdc_Gl.session_owner_generation != 0 && cdc_Gl.session_owner_generation > request_generation))
+	{
+	  goto superseded;
+	}
 
       /* If the owner connection entry is gone already there is nothing to shut down; the teardown hook
        * clears the CDC session before the socket is closed, so the owner fd cannot belong to an unrelated
@@ -11228,6 +11234,11 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 	  cdc_session_unlock ();
 	  thread_sleep (CDC_TAKEOVER_WAIT_INTERVAL_MSECS);
 	  cdc_session_lock ();
+
+	  if (request_generation != cdc_Gl.session_request_generation)
+	    {
+	      goto superseded;
+	    }
 	}
 
       if (cdc_Gl.conn.fd == prev_fd)
@@ -11244,7 +11255,13 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
+	  cdc_Gl.session_owner_generation = 0;
 	}
+    }
+
+  if (request_generation != cdc_Gl.session_request_generation)
+    {
+      goto superseded;
     }
 
   if (cdc_Gl.conn.fd != -1)
@@ -11260,6 +11277,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
       cdc_Gl.conn.fd = -1;
       cdc_Gl.conn.status = CONN_CLOSED;
+      cdc_Gl.session_owner_generation = 0;
     }
 
   error_code =
@@ -11278,6 +11296,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   /* register the new owner only after the configuration is set successfully */
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.session_owner_generation = request_generation;
 
   cdc_session_unlock ();
 
@@ -11286,6 +11305,16 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
+
+superseded:
+
+  /* A newer start_session request arrived while this request was waiting for takeover cleanup. Do not
+   * shut down or clean up the newer owner; leave the session to the latest request. */
+  cdc_session_unlock ();
+
+  error_code = ER_CDC_NOT_AVAILABLE;
+  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
+  goto error;
 
 cleanup_error:
 
@@ -11502,6 +11531,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
 
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
+	  cdc_Gl.session_owner_generation = 0;
 	}
       else
 	{

@@ -11083,10 +11083,12 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
 
-	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
-	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
+	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
+	  while (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
+	    {
+	      pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
+	    }
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
@@ -14088,7 +14090,14 @@ cdc_pause_producer ()
 {
   cdc_log ("cdc_pause_producer : consumer request the producer to pause");
 
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
+  if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_BE_DEAD)
+    {
+      pthread_mutex_unlock (&cdc_Gl.producer.lock);
+      return ER_FAILED;
+    }
   cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
   /* bounded wait: this function can be called while holding cdc_Session_lock (session cleanup paths),
    * so waiting forever here would block every CDC session transition if the producer cannot reach the
@@ -14105,6 +14114,13 @@ cdc_pause_producer ()
       _er_log_debug (ARG_FILE_LINE,
 		     "cdc_pause_producer : producer did not reach the WAIT state in %d msec",
 		     CDC_PAUSE_PRODUCER_WAIT_MSECS);
+      pthread_mutex_lock (&cdc_Gl.producer.lock);
+      if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
+	{
+	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
+	  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+	}
+      pthread_mutex_unlock (&cdc_Gl.producer.lock);
       return ER_FAILED;
     }
 
@@ -14118,9 +14134,14 @@ cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
 
-  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
+  pthread_mutex_lock (&cdc_Gl.producer.lock);
+  if (cdc_Gl.producer.request != CDC_REQUEST_PRODUCER_TO_BE_DEAD)
+    {
+      cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
+    }
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
+  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 }
 
 void
@@ -15012,6 +15033,7 @@ cdc_cleanup_disconnected_connection (SOCKET fd)
 	{
 	  cdc_Gl.conn.fd = -1;
 	  cdc_Gl.conn.status = CONN_CLOSED;
+	  cdc_Gl.session_owner_generation = 0;
 	}
       else
 	{
@@ -15029,6 +15051,8 @@ cdc_initialize ()
 {
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.session_request_generation = 0;
+  cdc_Gl.session_owner_generation = 0;
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;

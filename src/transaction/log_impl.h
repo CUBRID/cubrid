@@ -882,6 +882,9 @@ typedef struct cdc_global
 
   bool is_queue_reinitialized;
 
+  uint64_t session_request_generation;
+  uint64_t session_owner_generation;
+
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
