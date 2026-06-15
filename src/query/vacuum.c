@@ -709,7 +709,6 @@ static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfi
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
-static int vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
 static void vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper,
@@ -2309,11 +2308,23 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
     case REC_BIGONE:
       /* First overflow page is required. */
       assert (helper->forward_page != NULL);
-      /* Invariant: OOS does not coexist with REC_BIGONE. See matching assert in vacuum_heap_record.
+      /* Invariant: OOS does not coexist with REC_BIGONE. See matching guard in vacuum_heap_record.
        * helper->record is NOT populated for REC_BIGONE (the record body lives on overflow pages, and
        * vacuum_heap_prepare_record only reads the MVCC header from there), so the OOS flag must be
        * checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      assert (!(MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS));
+      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): hard-fail in BOTH debug and release. assert() is
+	   * compiled out under NDEBUG and assert_release() only logs an ER_NOTIFICATION, so neither halts
+	   * a release server -- the OOS chunks referenced from the overflow body would silently leak.
+	   * abort() forces a core dump so CI surfaces exactly which TC violates the invariant.
+	   * REVERT BEFORE MERGE. */
+	  fprintf (stderr, "VACUUM ABORT (OOS+REC_BIGONE insid): home %d|%d slot %d mvcc_flag=%d\n",
+		   helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid,
+		   (int) MVCC_GET_FLAG (&helper->mvcc_header));
+	  fflush (stderr);
+	  abort ();
+	}
 
       /* Replace current insert MVCCID with MVCCID_ALL_VISIBLE. Header must remain the same size. */
       MVCC_SET_INSID (&helper->mvcc_header, MVCCID_ALL_VISIBLE);
@@ -2397,31 +2408,6 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
   perfmon_inc_stat (thread_p, PSTAT_HEAP_INSID_VACUUMS);
 
   /* Success. */
-  return NO_ERROR;
-}
-
-/*
- * vacuum_heap_record_remove_oos_inline () - Vacuum an OOS-bearing REC_HOME slot inline so the
- *   heap-slot removal log and the OOS chunk deletes share one sysop boundary; the bulk path
- *   would split them and a crash between the two could leave dangling OOS references. Caller
- *   must have the sysop open and the slot cleared via spage_vacuum_slot; this helper commits
- *   or aborts the sysop.
- */
-static int
-vacuum_heap_record_remove_oos_inline (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
-{
-  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
-  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
-				     helper->reusable);
-
-  int oos_err = vacuum_heap_oos_delete (thread_p, &helper->oos_vfid, &helper->record);
-  if (oos_err != NO_ERROR)
-    {
-      log_sysop_abort (thread_p);
-      return oos_err;
-    }
-
-  log_sysop_commit (thread_p);
   return NO_ERROR;
 }
 
@@ -2544,11 +2530,21 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       assert (!VFID_ISNULL (&helper->overflow_vfid));
       /* Invariant: OOS does not coexist with REC_BIGONE. If this ever fires, the REMOVE path
        * needs to reclaim the OOS records attached to the overflow record — add an oos_delete
-       * loop here. Until then, fail loud in debug so the regression is visible. helper->record is
-       * NOT populated for REC_BIGONE (the body lives on overflow pages — note this case logs
-       * helper->forward_recdes below, never helper->record), so the OOS flag must be checked on
-       * helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      assert (!(MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS));
+       * loop here. Until then, fail loud in BOTH debug and release so the regression is visible.
+       * helper->record is NOT populated for REC_BIGONE (the body lives on overflow pages — note
+       * this case logs helper->forward_recdes below, never helper->record), so the OOS flag must
+       * be checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
+      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): assert() is compiled out under NDEBUG and
+	   * assert_release() only logs an ER_NOTIFICATION, so neither halts a release server. abort()
+	   * crashes in BOTH builds so CI surfaces the violation as a core dump. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "VACUUM ABORT (OOS+REC_BIGONE remove): home %d|%d slot %d mvcc_flag=%d\n",
+		   helper->home_vpid.volid, helper->home_vpid.pageid, helper->crt_slotid,
+		   (int) MVCC_GET_FLAG (&helper->mvcc_header));
+	  fflush (stderr);
+	  abort ();
+	}
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2580,11 +2576,22 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
     case REC_HOME:
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_record_remove_oos_inline (thread_p, helper);
+	  /* OOS-bearing REC_HOME: the heap-slot removal log and the OOS chunk deletes must share the one
+	   * sysop opened above so a crash between them cannot leave dangling OOS references. The bulk path
+	   * would split them across sysop boundaries. The slot was already cleared via spage_vacuum_slot;
+	   * commit (or abort on failure) that sysop here, mirroring the REC_RELOCATION/REC_BIGONE cases. */
+	  pgbuf_set_dirty (thread_p, helper->home_page, DONT_FREE);
+	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
+					     helper->reusable);
+
+	  int oos_err = vacuum_heap_oos_delete (thread_p, &helper->oos_vfid, &helper->record);
 	  if (oos_err != NO_ERROR)
 	    {
+	      log_sysop_abort (thread_p);
 	      return oos_err;
 	    }
+
+	  log_sysop_commit (thread_p);
 	}
       else
 	{

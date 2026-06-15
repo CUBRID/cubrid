@@ -21310,6 +21310,18 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE insert): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -21517,6 +21529,18 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE update): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
