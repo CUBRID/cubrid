@@ -56,7 +56,7 @@ typedef enum
 
 static VACUUM_OOS_VFID_LOOKUP_RESULT vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p,
     VACUUM_OOS_VFID_MEMO *memo, const VFID *heap_vfid, VFID *out_oos_vfid);
-static int vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+static int vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
     std::vector<OID> oos_oids);
 
 /*
@@ -133,7 +133,7 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
 }
 
 /*
- * vacuum_forward_walk_delete_old_oos () - Delete the OOS records that an old row version still
+ * vacuum_forward_walk_oos_delete_atomic () - Delete the OOS records that an old row version still
  *   points to. As vacuum walks the undo log, it finds the "pre-image" (how the row looked before an
  *   UPDATE); that old image may still reference OOS records nobody can reach anymore.
  *
@@ -143,13 +143,14 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
  *
  *   All the deletes run inside one "sysop" (system operation) - the engine's unit of
  *   all-or-nothing work for crash recovery - so the whole multi-chunk delete either fully happens
- *   or fully rolls back.
+ *   or fully rolls back. (Contrast vacuum_heap_oos_delete_within_sysop: that one runs inside the caller's
+ *   existing sysop and must NOT open its own.)
  *
  *   The caller only calls this for RVHF_UPDATE_NOTIFY_VACUUM records; see commit fc0e35ced for why
  *   other log record types must be excluded.
  */
 static int
-vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid, std::vector<OID> oos_oids)
+vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_vfid, std::vector<OID> oos_oids)
 {
   int error_code = NO_ERROR;
 
@@ -163,6 +164,9 @@ vacuum_forward_walk_delete_old_oos (THREAD_ENTRY *thread_p, const VFID *oos_vfid
     return oid_compare (&a, &b) < 0;
   });
 
+  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
+   * sorted into page order, so one day we should group the OIDs that share a page and delete them
+   * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   log_sysop_start (thread_p);
   for (const OID &oid : oos_oids)
     {
@@ -245,7 +249,7 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
   /* Copy the undo image into our own buffer BEFORE we fix any page below. That image usually points
    * straight into the worker's current log page. The page reads inside vacuum_oos_vfid_lookup can
    * cause log activity that swaps that page out from under us (the same hazard noted in
-   * vacuum_forward_walk_delete_old_oos). If that happened, we would be parsing whatever bytes landed
+   * vacuum_forward_walk_oos_delete_atomic). If that happened, we would be parsing whatever bytes landed
    * there - usually zeros or another page's data - and quietly find nothing. (Seen live: the flags
    * byte at this address changed from 0x69 to 0x00 across the lookup.) The copy also fixes
    * alignment: the image starts at undo_data + sizeof (INT16), and the OR_BUF readers used by
@@ -282,12 +286,12 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
 
       if (oos_err == NO_ERROR)
 	{
-	  oos_err = vacuum_forward_walk_delete_old_oos (thread_p, &oos_vfid, std::move (oos_oids));
+	  oos_err = vacuum_forward_walk_oos_delete_atomic (thread_p, &oos_vfid, std::move (oos_oids));
 	}
 
       if (oos_err != NO_ERROR)
 	{
-	  /* vacuum_forward_walk_delete_old_oos already aborted its own sysop, so any partial deletes
+	  /* vacuum_forward_walk_oos_delete_atomic already aborted its own sysop, so any partial deletes
 	   * were rolled back. What leaks is only the OOS records we never got to delete. */
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
 			       "forward-walk oos cleanup failed; leaving OOS unreclaimed "
@@ -359,7 +363,16 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
 }
 
 /*
- * vacuum_heap_oos_delete () - Delete OOS records referenced by a heap record being vacuumed.
+ * vacuum_heap_oos_delete_within_sysop () - Delete OOS records referenced by a heap record being vacuumed.
+ *
+ *   PRECONDITION: the caller must already have an open sysop; this function deliberately does NOT
+ *   start one. The heap-slot vacuum record and these OOS deletes must commit in the SAME sysop, so a
+ *   crash between them cannot leave the heap slot vacuumed while its OOS chunks still look referenced
+ *   (or the reverse). The only caller, vacuum_heap_record, opens that sysop and commits/aborts it.
+ *
+ *   Contrast vacuum_forward_walk_oos_delete_atomic, which runs with no enclosing sysop and therefore
+ *   opens and commits its own. Same rule ("OOS deletes happen in exactly one sysop"), different
+ *   nesting level - so one must start a sysop and the other must not.
  *
  * return	  : Error code.
  * thread_p (in)  : Thread entry.
@@ -367,7 +380,7 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  * record (in)	  : Heap record whose OOS references are deleted.
  */
 int
-vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record)
+vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record)
 {
   assert (!VFID_ISNULL (oos_vfid));
   std::vector<OID> oos_oids;
@@ -378,6 +391,9 @@ vacuum_heap_oos_delete (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECD
       return error_code;
     }
 
+  /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. When a record references
+   * several OOS values on the same page, one day we should sort/group them by page and delete all of
+   * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   for (const OID &oos_oid : oos_oids)
     {
       error_code = oos_delete (thread_p, *oos_vfid, oos_oid);
