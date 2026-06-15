@@ -111,6 +111,7 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVHF_MVCC_INSERT \
    || (rcvindex) == RVHF_MVCC_DELETE_MODIFY_HOME \
    || (rcvindex) == RVHF_UPDATE_NOTIFY_VACUUM \
+   || (rcvindex) == RVHF_DELETE_NEWHOME_NOTIFY_VACUUM \
    || (rcvindex) == RVHF_INSERT_NEWHOME \
    || (rcvindex) == RVHF_MVCC_REDISTRIBUTE \
    || (rcvindex) == RVHF_MVCC_UPDATE_OVERFLOW \
