@@ -21,7 +21,7 @@
  * OOS reclaim through the REAL vacuum pipeline.
  *
  * Unlike test_oos_vacuum_server.cpp (which calls the vacuum leaf function
- * vacuum_heap_oos_delete on crafted RECDES), these tests drive the
+ * vacuum_heap_oos_delete_within_sysop on crafted RECDES), these tests drive the
  * whole chain:
  *
  *   MVCC heap DML (heap_insert_logical / heap_delete_logical / heap_update_logical)
@@ -31,7 +31,7 @@
  *        closes, so they remain correct for any block size)
  *     -> vacuum_wakeup_master_daemon() - the same entry csql ';vacuum' and the
  *        SQL VACUUM statement reach via svacuum in SERVER_MODE
- *     -> vacuum master -> worker -> vacuum_heap -> vacuum_heap_oos_delete -> oos_delete
+ *     -> vacuum master -> worker -> vacuum_heap -> vacuum_heap_oos_delete_within_sysop -> oos_delete
  *
  * The tests verify the MVCC notion of "stale": vacuum must NOT reclaim an OOS
  * value still visible to a live snapshot, and must reclaim it COMPLETELY

@@ -21,10 +21,10 @@
  *
  * These tests boot a full CUBRID server in-process (SERVER_MODE) and exercise
  * the OOS deletion paths by calling oos_delete() directly — mimicking the
- * pattern that vacuum uses, without invoking the actual vacuum_heap_oos_delete()
+ * pattern that vacuum uses, without invoking the actual vacuum_heap_oos_delete_within_sysop()
  * code path.
  *
- * For tests that exercise the real vacuum code path (vacuum_heap_oos_delete,
+ * For tests that exercise the real vacuum code path (vacuum_heap_oos_delete_within_sysop,
  * heap_recdes_get_oos_oids), see test_oos_vacuum_server.cpp.
  */
 
@@ -99,7 +99,7 @@ TEST_F (OosVacuumServer, BasicInsertAndDelete)
   ASSERT_STREQ (rec_check.data, rec_in.data);
   recdes_free_data_area (&rec_check);
 
-  /* Delete — this is what vacuum_heap_oos_delete does */
+  /* Delete — this is what vacuum_heap_oos_delete_within_sysop does */
   err = oos_delete (thread_p, oos_vfid, oid);
   ASSERT_EQ (err, NO_ERROR);
 
