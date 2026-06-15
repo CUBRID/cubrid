@@ -1571,15 +1571,15 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 #if defined (NDEBUG)
 	  if (!thread_p->shutdown)
 	    {
-	      // unexpected case
-	      // debug crashes; but can release do about it? just try to clean as much as possible
-	      er_clear ();
-	      error_code = NO_ERROR;
-	      // The for-header has no increment; page_ptr advances only on the success path below.
-	      // A bare continue here re-tests the same page_ptr forever (release-only CPU spin).
-	      // Advance to the next page group (obj_ptr) so a persistently-failing page is skipped.
-	      page_ptr = obj_ptr;
-	      continue;
+	      // TEMP (ovf+oos spec change): mirror the debug-build crash in release too.
+	      // Debug aborts at vacuum_check_shutdown_interruption()'s assert above; release
+	      // normally swallows the error and skips the page, which hides failing TCs.
+	      // abort() (not assert, which is compiled out under NDEBUG) forces a core dump
+	      // so we can see exactly which heap page / error_code fails. REVERT BEFORE MERGE.
+	      fprintf (stderr, "VACUUM ABORT: heap page %d|%d, error_code=%d\n",
+		       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
+	      fflush (stderr);
+	      abort ();
 	    }
 #endif // not DEBUG
 
