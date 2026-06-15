@@ -14107,13 +14107,16 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
 	{
-	  /* CBRD-26769: midxkey.buf is caller-owned; ownership only transfers to db_valuep
-	   * via db_make_midxkey on success.  Free it here so the new error return does not
-	   * leak the heap-allocated buffer. */
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_valuep holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_valuep is NULL on entry). */
 	  if (midxkey_size > DBVAL_BUFSIZE)
 	    {
 	      db_private_free_and_init (thread_p, midxkey.buf);
 	    }
+	  (void) pr_clear_value (db_valuep);
 	  return NULL;
 	}
 
@@ -14300,13 +14303,16 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 	{
-	  /* CBRD-26769: midxkey.buf is caller-owned; ownership only transfers to db_value
-	   * via db_make_midxkey on success.  Free it here so the new error return does not
-	   * leak the heap-allocated buffer. */
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_value holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_value is NULL on entry). */
 	  if (midxkey_size > DBVAL_BUFSIZE)
 	    {
 	      db_private_free_and_init (thread_p, midxkey.buf);
 	    }
+	  (void) pr_clear_value (db_value);
 	  return NULL;
 	}
 
