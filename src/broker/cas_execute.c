@@ -529,11 +529,7 @@ connect_error:
 
   if (db_err_msg)
     {
-      *db_err_msg = (char *) malloc (strlen (p) + 1);
-      if (*db_err_msg)
-	{
-	  strcpy (*db_err_msg, p);
-	}
+      *db_err_msg = strdup (p);
     }
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);

@@ -8108,13 +8108,12 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
   if (comp != NULL)
     {
       /* save the component name so we can rebuild the map cache after schema/transaction changes */
-      desc->name = (char *) malloc (strlen (comp->name) + 1);
+      desc->name = strdup (comp->name);
       if (desc->name == NULL)
 	{
 	  free_and_init (desc);
 	  return NULL;
 	}
-      strcpy (desc->name, comp->name);
       desc->name_space = comp->name_space;
     }
 

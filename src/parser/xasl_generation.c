@@ -7576,10 +7576,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  || (parser->symbols->query_node->info.query.q.select.connect_by == NULL))
 			{
 			  const char *opcode = pt_show_binopcode (node->info.expr.op);
-			  char *temp_buffer = (char *) malloc (strlen (opcode) + 1);
+			  char *temp_buffer = strdup (opcode);
 			  if (temp_buffer)
 			    {
-			      strcpy (temp_buffer, opcode);
 			      ustr_upper (temp_buffer);
 			    }
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_HIERACHICAL_QUERY,

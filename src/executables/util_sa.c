@@ -4970,14 +4970,13 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 	      exit_status = EXIT_FAILURE;
 	      goto exit;
 	    }
-	  dir->name = (char *) calloc (strlen (db_name) + 1, sizeof (char));
+	  dir->name = strdup (db_name);
 	  if (dir->name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (db_name) + 1);
 	      exit_status = EXIT_FAILURE;
 	      goto exit;
 	    }
-	  strcpy (dir->name, db_name);
 	  dir->next = NULL;
 	}
       else if (cfg_read_directory (&dir, false) != NO_ERROR)
