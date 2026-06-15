@@ -12202,6 +12202,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
 #endif /* 0 */
 
+      sc_info_ptr->system_class = false;
       if (!pt_has_error (parser))
 	{
 	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
@@ -12222,7 +12223,6 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		    {
 		      PT_NODE *saved_top = sc_info_ptr->top_node;
 
-		      sc_info_ptr->system_class = false;
 		      pt_resolve_names (parser, subq, sc_info_ptr);
 		      if (!pt_has_error (parser))
 			{
@@ -12274,7 +12274,6 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	    }
 	}
 
-      sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
       if (!pt_has_error (parser))
