@@ -1121,6 +1121,261 @@ namespace parallel_scan
 
   }
 
+  template <FUNC_CODE F>
+  bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node,
+      DB_VALUE *db_value_p)
+  {
+    AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
+    AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = &agg_node->accumulator_domain;
+
+    if constexpr (F == PT_COUNT)
+      {
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_MIN)
+      {
+	int coll_id = acc_dom->value_dom->collation_id;
+	if (acc->curr_cnt < 1
+	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
+	  {
+	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+	    pr_clear_value (acc->value);
+	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	      {
+		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	    else
+	      {
+		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_MAX)
+      {
+	int coll_id = acc_dom->value_dom->collation_id;
+	if (acc->curr_cnt < 1
+	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
+	  {
+	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+	    pr_clear_value (acc->value);
+	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	      {
+		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	    else
+	      {
+		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_SUM || F == PT_AVG)
+      {
+	if (acc->curr_cnt < 1)
+	  {
+	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
+	    pr_clear_value (acc->value);
+	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	      {
+		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	    else
+	      {
+		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
+		  {
+		    return false;
+		  }
+	      }
+	  }
+	else
+	  {
+	    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_STDDEV || F == PT_STDDEV_POP || F == PT_STDDEV_SAMP
+		       || F == PT_VARIANCE || F == PT_VAR_POP || F == PT_VAR_SAMP)
+      {
+	DB_VALUE coerced, squared;
+	db_make_null (&coerced);
+	db_make_null (&squared);
+
+	if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
+	  {
+	    pr_clear_value (&coerced);
+	    return false;
+	  }
+
+	if (qdata_multiply_dbval (&coerced, &coerced, &squared, acc_dom->value2_dom) != NO_ERROR)
+	  {
+	    pr_clear_value (&coerced);
+	    return false;
+	  }
+
+	if (acc->curr_cnt < 1)
+	  {
+	    pr_clear_value (acc->value);
+	    pr_clear_value (acc->value2);
+	    acc_dom->value_dom->type->setval (acc->value, &coerced, true);
+	    acc_dom->value2_dom->type->setval (acc->value2, &squared, true);
+	  }
+	else
+	  {
+	    if (qdata_add_dbval (acc->value, &coerced, acc->value, acc_dom->value_dom) != NO_ERROR)
+	      {
+		pr_clear_value (&coerced);
+		pr_clear_value (&squared);
+		return false;
+	      }
+	    if (qdata_add_dbval (acc->value2, &squared, acc->value2, acc_dom->value2_dom) != NO_ERROR)
+	      {
+		pr_clear_value (&coerced);
+		pr_clear_value (&squared);
+		return false;
+	      }
+	  }
+
+	pr_clear_value (&coerced);
+	pr_clear_value (&squared);
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_AGG_BIT_AND || F == PT_AGG_BIT_OR || F == PT_AGG_BIT_XOR)
+      {
+	DB_VALUE tmp_val;
+	db_make_bigint (&tmp_val, (DB_BIGINT) 0);
+	if (acc->curr_cnt < 1 || DB_IS_NULL (acc->value))
+	  {
+	    if (qdata_bit_or_dbval (&tmp_val, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	else
+	  {
+	    int bit_err = NO_ERROR;
+	    if constexpr (F == PT_AGG_BIT_AND)
+	      {
+		bit_err = qdata_bit_and_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+	      }
+	    else if constexpr (F == PT_AGG_BIT_OR)
+	      {
+		bit_err = qdata_bit_or_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+	      }
+	    else
+	      {
+		bit_err = qdata_bit_xor_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
+	      }
+	    if (bit_err != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_GROUP_CONCAT)
+      {
+	/* sort_list == NULL case; ORDER BY case is handled by the else-if above */
+	int gc_err;
+	if (acc->curr_cnt < 1)
+	  {
+	    gc_err = qdata_group_concat_first_value (thread_p, agg_node, db_value_p);
+	  }
+	else
+	  {
+	    gc_err = qdata_group_concat_value (thread_p, agg_node, db_value_p);
+	  }
+	if (gc_err != NO_ERROR)
+	  {
+	    return false;
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_JSON_ARRAYAGG)
+      {
+	if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
+	  {
+	    return false;
+	  }
+	acc->curr_cnt++;
+      }
+    else if constexpr (F == PT_JSON_OBJECTAGG)
+      {
+	REGU_VARIABLE_LIST second_operand = agg_node->operands->next;
+	if (second_operand == nullptr)
+	  {
+	    return false;
+	  }
+	DB_VALUE *db_value2_p;
+	if (second_operand->value.type == TYPE_CONSTANT)
+	  {
+	    db_value2_p = second_operand->value.value.dbvalptr;
+	  }
+	else
+	  {
+	    if (fetch_peek_dbval (thread_p, &second_operand->value, tl_vd, NULL, NULL,
+				  tl_tpl_buf.tpl, &db_value2_p) != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	if (DB_IS_NULL (db_value2_p))
+	  {
+	    JSON_DOC *json_null_doc = db_json_allocate_doc ();
+	    if (json_null_doc == nullptr)
+	      {
+		/* db_json_allocate_doc goes through the noexcept allocator and returns NULL
+		 * on OOM without setting an error; db_make_json would otherwise wrap the
+		 * NULL document into a non-NULL DB_VALUE and crash the accumulate call. */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
+	    DB_VALUE json_null;
+	    db_make_json (&json_null, json_null_doc, true);
+	    if (db_accumulate_json_objectagg (db_value_p, &json_null, acc->value) != NO_ERROR)
+	      {
+		pr_clear_value (&json_null);
+		return false;
+	      }
+	    pr_clear_value (&json_null);
+	  }
+	else
+	  {
+	    if (db_accumulate_json_objectagg (db_value_p, db_value2_p, acc->value) != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	acc->curr_cnt++;
+      }
+    else
+      {
+	assert (false);
+	return false;
+      }
+    return true;
+  }
+
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write (THREAD_ENTRY *thread_p)
   {
     if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
@@ -1406,271 +1661,67 @@ namespace parallel_scan
 		  }
 	      }
 
+	    bool acc_ok;
 	    switch (agg_node->function)
 	      {
 	      case PT_COUNT:
-		acc->curr_cnt++;
+		acc_ok = accumulate_node<PT_COUNT> (thread_p, agg_node, db_value_p);
 		break;
-
 	      case PT_MIN:
-	      {
-		int coll_id = acc_dom->value_dom->collation_id;
-		if (acc->curr_cnt < 1
-		    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
-		  {
-		    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-		    pr_clear_value (acc->value);
-		    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
-		      {
-			if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		    else
-		      {
-			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
-	      case PT_MAX:
-	      {
-		int coll_id = acc_dom->value_dom->collation_id;
-		if (acc->curr_cnt < 1
-		    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
-		  {
-		    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-		    pr_clear_value (acc->value);
-		    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
-		      {
-			if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		    else
-		      {
-			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
-	      case PT_SUM:
-	      case PT_AVG:
-		if (acc->curr_cnt < 1)
-		  {
-		    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
-		    pr_clear_value (acc->value);
-		    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
-		      {
-			if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		    else
-		      {
-			if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-			  {
-			    return false;
-			  }
-		      }
-		  }
-		else
-		  {
-		    if (qdata_add_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		acc->curr_cnt++;
+		acc_ok = accumulate_node<PT_MIN> (thread_p, agg_node, db_value_p);
 		break;
-
+	      case PT_MAX:
+		acc_ok = accumulate_node<PT_MAX> (thread_p, agg_node, db_value_p);
+		break;
+	      case PT_SUM:
+		acc_ok = accumulate_node<PT_SUM> (thread_p, agg_node, db_value_p);
+		break;
+	      case PT_AVG:
+		acc_ok = accumulate_node<PT_AVG> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_STDDEV:
+		acc_ok = accumulate_node<PT_STDDEV> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_STDDEV_POP:
+		acc_ok = accumulate_node<PT_STDDEV_POP> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_STDDEV_SAMP:
+		acc_ok = accumulate_node<PT_STDDEV_SAMP> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_VARIANCE:
+		acc_ok = accumulate_node<PT_VARIANCE> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_VAR_POP:
+		acc_ok = accumulate_node<PT_VAR_POP> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_VAR_SAMP:
-	      {
-		DB_VALUE coerced, squared;
-		db_make_null (&coerced);
-		db_make_null (&squared);
-
-		if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
-		  {
-		    pr_clear_value (&coerced);
-		    return false;
-		  }
-
-		if (qdata_multiply_dbval (&coerced, &coerced, &squared, acc_dom->value2_dom) != NO_ERROR)
-		  {
-		    pr_clear_value (&coerced);
-		    return false;
-		  }
-
-		if (acc->curr_cnt < 1)
-		  {
-		    pr_clear_value (acc->value);
-		    pr_clear_value (acc->value2);
-		    acc_dom->value_dom->type->setval (acc->value, &coerced, true);
-		    acc_dom->value2_dom->type->setval (acc->value2, &squared, true);
-		  }
-		else
-		  {
-		    if (qdata_add_dbval (acc->value, &coerced, acc->value, acc_dom->value_dom) != NO_ERROR)
-		      {
-			pr_clear_value (&coerced);
-			pr_clear_value (&squared);
-			return false;
-		      }
-		    if (qdata_add_dbval (acc->value2, &squared, acc->value2, acc_dom->value2_dom) != NO_ERROR)
-		      {
-			pr_clear_value (&coerced);
-			pr_clear_value (&squared);
-			return false;
-		      }
-		  }
-
-		pr_clear_value (&coerced);
-		pr_clear_value (&squared);
-		acc->curr_cnt++;
-	      }
-	      break;
-
+		acc_ok = accumulate_node<PT_VAR_SAMP> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_AGG_BIT_AND:
+		acc_ok = accumulate_node<PT_AGG_BIT_AND> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_AGG_BIT_OR:
+		acc_ok = accumulate_node<PT_AGG_BIT_OR> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_AGG_BIT_XOR:
-	      {
-		DB_VALUE tmp_val;
-		db_make_bigint (&tmp_val, (DB_BIGINT) 0);
-		if (acc->curr_cnt < 1 || DB_IS_NULL (acc->value))
-		  {
-		    if (qdata_bit_or_dbval (&tmp_val, db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		else
-		  {
-		    int bit_err = NO_ERROR;
-		    if (agg_node->function == PT_AGG_BIT_AND)
-		      {
-			bit_err = qdata_bit_and_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
-		      }
-		    else if (agg_node->function == PT_AGG_BIT_OR)
-		      {
-			bit_err = qdata_bit_or_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
-		      }
-		    else
-		      {
-			bit_err = qdata_bit_xor_dbval (acc->value, db_value_p, acc->value, acc_dom->value_dom);
-		      }
-		    if (bit_err != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
+		acc_ok = accumulate_node<PT_AGG_BIT_XOR> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_GROUP_CONCAT:
-	      {
-		/* sort_list == NULL case; ORDER BY case is handled by the else-if above */
-		int gc_err;
-		if (acc->curr_cnt < 1)
-		  {
-		    gc_err = qdata_group_concat_first_value (thread_p, agg_node, db_value_p);
-		  }
-		else
-		  {
-		    gc_err = qdata_group_concat_value (thread_p, agg_node, db_value_p);
-		  }
-		if (gc_err != NO_ERROR)
-		  {
-		    return false;
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
+		acc_ok = accumulate_node<PT_GROUP_CONCAT> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_JSON_ARRAYAGG:
-	      {
-		if (db_accumulate_json_arrayagg (db_value_p, acc->value) != NO_ERROR)
-		  {
-		    return false;
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
+		acc_ok = accumulate_node<PT_JSON_ARRAYAGG> (thread_p, agg_node, db_value_p);
+		break;
 	      case PT_JSON_OBJECTAGG:
-	      {
-		REGU_VARIABLE_LIST second_operand = agg_node->operands->next;
-		if (second_operand == nullptr)
-		  {
-		    return false;
-		  }
-		DB_VALUE *db_value2_p;
-		if (second_operand->value.type == TYPE_CONSTANT)
-		  {
-		    db_value2_p = second_operand->value.value.dbvalptr;
-		  }
-		else
-		  {
-		    if (fetch_peek_dbval (thread_p, &second_operand->value, tl_vd, NULL, NULL,
-					  tl_tpl_buf.tpl, &db_value2_p) != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		if (DB_IS_NULL (db_value2_p))
-		  {
-		    JSON_DOC *json_null_doc = db_json_allocate_doc ();
-		    if (json_null_doc == nullptr)
-		      {
-			/* db_json_allocate_doc goes through the noexcept allocator and returns NULL
-			 * on OOM without setting an error; db_make_json would otherwise wrap the
-			 * NULL document into a non-NULL DB_VALUE and crash the accumulate call. */
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
-			m_err_messages_p->move_top_error_message_to_this ();
-			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			return false;
-		      }
-		    DB_VALUE json_null;
-		    db_make_json (&json_null, json_null_doc, true);
-		    if (db_accumulate_json_objectagg (db_value_p, &json_null, acc->value) != NO_ERROR)
-		      {
-			pr_clear_value (&json_null);
-			return false;
-		      }
-		    pr_clear_value (&json_null);
-		  }
-		else
-		  {
-		    if (db_accumulate_json_objectagg (db_value_p, db_value2_p, acc->value) != NO_ERROR)
-		      {
-			return false;
-		      }
-		  }
-		acc->curr_cnt++;
-	      }
-	      break;
-
+		acc_ok = accumulate_node<PT_JSON_OBJECTAGG> (thread_p, agg_node, db_value_p);
+		break;
 	      default:
 		assert (false);
+		acc_ok = false;
+		break;
+	      }
+	    if (!acc_ok)
+	      {
 		return false;
 	      }
 	  }

@@ -240,6 +240,8 @@ namespace parallel_scan
       bool write (THREAD_ENTRY *thread_p);
       void write_finalize (THREAD_ENTRY *thread_p);
     private:
+      template <FUNC_CODE F>
+      bool accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node, DB_VALUE *db_value_p);
       int m_parallelism;
       std::mutex m_result_mutex;
       std::condition_variable m_result_cv;
