@@ -327,7 +327,7 @@ int
 vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
 				      PGSLOTID slotid, INT16 record_type, VFID *oos_vfid)
 {
-  if (!heap_recdes_contains_oos (record) || !VFID_ISNULL (oos_vfid))
+  if (!VFID_ISNULL (oos_vfid) || !heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
