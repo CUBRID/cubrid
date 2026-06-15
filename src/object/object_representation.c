@@ -38,9 +38,6 @@
 #include "file_io.h"
 #include "log_lsa.hpp"
 
-#if defined (SERVER_MODE)
-#include "thread_manager.hpp"	// for thread_get_thread_entry_info
-#endif
 #include "compressor.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
