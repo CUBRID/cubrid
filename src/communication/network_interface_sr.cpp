@@ -10878,6 +10878,22 @@ ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
   session_stop_attached_threads (thread_p, session);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
+static bool
+cdc_check_client_connection ()
+{
+  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
+    {
+      /* existing connection is alive */
+      return true;
+    }
+  else
+    {
+      return false;
+    }
+}
+#endif /* ENABLE_UNUSED_FUNCTION */
+
 void
 spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
