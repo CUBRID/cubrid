@@ -235,9 +235,6 @@ extern void cdc_daemons_destroy ();
 extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
 
 /* cdc functions */
-extern void cdc_session_lock (void);
-extern void cdc_session_unlock (void);
-extern void cdc_cleanup_disconnected_connection (SOCKET fd);
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);
 extern int cdc_set_configuration (int max_log_item, int timeout, int all_in_cond, char **user, int num_user,
 				  uint64_t * classoids, int num_class);
@@ -254,7 +251,7 @@ extern int cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern int cdc_set_extraction_lsa (LOG_LSA * lsa);
 extern void cdc_reinitialize_queue (LOG_LSA * start_lsa);
 
-extern int cdc_pause_producer ();
+extern void cdc_pause_producer ();
 extern void cdc_wakeup_producer ();
 extern void cdc_kill_producer ();
 

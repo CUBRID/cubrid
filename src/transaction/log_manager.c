@@ -185,7 +185,6 @@ struct archive_log_header_scan_context
 
 CDC_GLOBAL cdc_Gl;
 bool cdc_Logging = false;
-static pthread_mutex_t cdc_Session_lock = PTHREAD_MUTEX_INITIALIZER;
 /* CDC end */
 
 /*
@@ -11083,12 +11082,10 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	{
 	  cdc_log ("cdc_loginfo_producer_execute : cdc_Gl.producer.state is in CDC_PRODUCER_STATE_WAIT ");
 
-	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
-	  while (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
-	    {
-	      pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
-	    }
+
+	  pthread_mutex_lock (&cdc_Gl.producer.lock);
+	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
@@ -14082,51 +14079,19 @@ cdc_daemons_destroy ()
   cdc_finalize ();
 }
 #endif
-#define CDC_PAUSE_PRODUCER_WAIT_MSECS 5000
-#define CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS 100
-
-int
+void
 cdc_pause_producer ()
 {
   cdc_log ("cdc_pause_producer : consumer request the producer to pause");
 
-  pthread_mutex_lock (&cdc_Gl.producer.lock);
-  if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_BE_DEAD)
-    {
-      pthread_mutex_unlock (&cdc_Gl.producer.lock);
-      return ER_FAILED;
-    }
   cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_TO_WAIT;
-  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
-  /* bounded wait: this function can be called while holding cdc_Session_lock (session cleanup paths),
-   * so waiting forever here would block every CDC session transition if the producer cannot reach the
-   * WAIT state for any reason. The producer checks the request at every loop iteration (one log record
-   * per iteration), so the timeout fires only when a single record extraction is stuck. */
-  for (int i = 0; cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT
-       && i < CDC_PAUSE_PRODUCER_WAIT_MSECS / CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS; i++)
+  while (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
-      thread_sleep (CDC_PAUSE_PRODUCER_WAIT_INTERVAL_MSECS);
-    }
-
-  if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
-    {
-      _er_log_debug (ARG_FILE_LINE,
-		     "cdc_pause_producer : producer did not reach the WAIT state in %d msec",
-		     CDC_PAUSE_PRODUCER_WAIT_MSECS);
-      pthread_mutex_lock (&cdc_Gl.producer.lock);
-      if (cdc_Gl.producer.request == CDC_REQUEST_PRODUCER_TO_WAIT)
-	{
-	  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
-	  pthread_cond_signal (&cdc_Gl.producer.wait_cond);
-	}
-      pthread_mutex_unlock (&cdc_Gl.producer.lock);
-      return ER_FAILED;
+      sleep (1);
     }
 
   cdc_log ("cdc_pause_producer : producer is paused");
-
-  return NO_ERROR;
 }
 
 void
@@ -14134,14 +14099,9 @@ cdc_wakeup_producer ()
 {
   cdc_log ("cdc_wakeup_producer : consumer request the producer to wakeup");
 
-  pthread_mutex_lock (&cdc_Gl.producer.lock);
-  if (cdc_Gl.producer.request != CDC_REQUEST_PRODUCER_TO_BE_DEAD)
-    {
-      cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
-    }
+  cdc_Gl.producer.request = CDC_REQUEST_PRODUCER_NONE;
 
   pthread_cond_signal (&cdc_Gl.producer.wait_cond);
-  pthread_mutex_unlock (&cdc_Gl.producer.lock);
 }
 
 void
@@ -14993,74 +14953,11 @@ end:
   return NO_ERROR;
 }
 
-void
-cdc_session_lock (void)
-{
-  pthread_mutex_lock (&cdc_Session_lock);
-}
-
-void
-cdc_session_unlock (void)
-{
-  pthread_mutex_unlock (&cdc_Session_lock);
-}
-
-/*
- * cdc_cleanup_disconnected_connection - clear the CDC session when its owner connection is torn down
- *
- *   fd(in): socket fd of the connection being closed
- *
- * NOTE: called from the connection close path before the socket is closed, so the fd cannot have been
- *       reused by another connection yet. This guarantees that a stale CDC session never outlives its
- *       connection, and a partially built log info cache left by an aborted request is never served to
- *       the next session.
- */
-void
-cdc_cleanup_disconnected_connection (SOCKET fd)
-{
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
-    {
-      return;
-    }
-
-  cdc_session_lock ();
-
-  if (fd != INVALID_SOCKET && cdc_Gl.conn.fd == fd)
-    {
-      cdc_log ("cdc_cleanup_disconnected_connection : clean up disconnected CDC connection (fd %d)", fd);
-
-      if (cdc_cleanup () == NO_ERROR)
-	{
-	  cdc_Gl.conn.fd = -1;
-	  cdc_Gl.conn.status = CONN_CLOSED;
-	  cdc_Gl.session_owner_generation = 0;
-	  cdc_Gl.session_cleanup_pending = false;
-	}
-      else
-	{
-	  /* The socket is about to be closed regardless of this result. Do not keep its fd as the
-	   * CDC owner because the OS may reuse the number for an unrelated connection before the
-	   * pending cleanup is retried. Keep the producer/filter state untouched and make the next
-	   * scdc_start_session retry cdc_cleanup () before installing a new configuration. */
-	  cdc_Gl.conn.fd = -1;
-	  cdc_Gl.conn.status = CONN_CLOSED;
-	  cdc_Gl.session_owner_generation = 0;
-	  cdc_Gl.session_cleanup_pending = true;
-	  cdc_log ("cdc_cleanup_disconnected_connection : cleanup is deferred (fd %d)", fd);
-	}
-    }
-
-  cdc_session_unlock ();
-}
-
 int
 cdc_initialize ()
 {
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
-  cdc_Gl.session_request_generation = 0;
-  cdc_Gl.session_owner_generation = 0;
-  cdc_Gl.session_cleanup_pending = false;
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
@@ -15128,13 +15025,7 @@ cdc_cleanup ()
 
   if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
     {
-      if (cdc_pause_producer () != NO_ERROR)
-	{
-	  /* the producer is still extracting; freeing the extraction filter or draining the queue here
-	   * would race with the running producer (use-after-free). Keep the session state untouched and
-	   * let the caller retry or fail the request. */
-	  return ER_FAILED;
-	}
+      cdc_pause_producer ();
     }
 
   cdc_free_extraction_filter ();

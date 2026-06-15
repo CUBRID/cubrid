@@ -46,7 +46,6 @@
 #include "buffer.hpp"
 #include "thread_manager.hpp"
 #include "error_manager.h"
-#include "log_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -515,10 +514,6 @@ namespace cubconn::connection
 		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
     ctx->m_send.m_transmitter.clear ();
-
-    /* clear the CDC session if this connection owns it; must run before the socket is closed so that
-     * the owner fd cannot be reused by another connection while the CDC session still refers to it */
-    cdc_cleanup_disconnected_connection (ctx->m_conn->fd);
 
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);

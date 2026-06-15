@@ -11099,10 +11099,6 @@ smethod_invoke_fold_constants (THREAD_ENTRY *thread_p, unsigned int rid, char *r
 }
 #endif
 
-#define CDC_TAKEOVER_WAIT_MSECS 2000
-#define CDC_TAKEOVER_WAIT_INTERVAL_MSECS 50
-#define CDC_TAKEOVER_MAX_RETRY 3
-
 void
 scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11113,7 +11109,6 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   int max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class;
   uint64_t *extraction_classoids = NULL;
   char **extraction_user = NULL;
-  uint64_t request_generation = 0;
 
   char *dummy_user = NULL;
 
@@ -11123,6 +11118,42 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
       goto error;
     }
+
+  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
+  if (cdc_Gl.conn.fd != -1)
+    {
+      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Forcibly shut down the previous connection instead of rejecting the new client. If the previous
+	   * connection entry is gone already (or its socket fd was reused by this new connection) there is
+	   * nothing to shut down. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (cdc_Gl.conn.fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d) for the new client (fd %d)",
+		       __func__, cdc_Gl.conn.fd, thread_p->conn_entry->fd);
+
+	      /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
+	      css_request_shutdown_conn (prev_conn, 0, false, 0);
+	    }
+	}
+
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
+      LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
+    }
+
+  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
+  cdc_Gl.conn.status = thread_p->conn_entry->status;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -11176,191 +11207,19 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
    __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
-  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
-   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
-   * Policy: the last client requesting a session always takes it over and the previous connection is forcibly
-   * shut down. The new owner is registered only after the previous connection teardown has cleared the CDC
-   * session or after a deferred cleanup has been retried; otherwise a partially built log info cache left by the
-   * previous session's aborted request could be served to the new session through the send-again branch of
-   * scdc_get_loginfo_metadata, and the log items consumed by the aborted request would be lost. */
-  cdc_session_lock ();
-  request_generation = ++cdc_Gl.session_request_generation;
-
-  if (cdc_Gl.session_cleanup_pending)
-    {
-      /* The previous owner connection was already closed, but cleanup was deferred because
-       * the producer could not be paused safely at disconnect time. Retry the cleanup before
-       * installing a new owner/configuration; the stale socket fd has intentionally been
-       * detached so it cannot be confused with a later fd reuse. */
-      if (cdc_cleanup () != NO_ERROR)
-	{
-	  goto cleanup_error;
-	}
-
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
-      cdc_Gl.session_owner_generation = 0;
-      cdc_Gl.session_cleanup_pending = false;
-    }
-
-  if (cdc_Gl.conn.fd == thread_p->conn_entry->fd)
-    {
-      /* the same connection starts a session again without scdc_end_session; discard the previous session
-       * state entirely so that a log info cache built under the previous configuration cannot be served
-       * again through the send-again branch of scdc_get_loginfo_metadata */
-      if (cdc_cleanup () != NO_ERROR)
-	{
-	  goto cleanup_error;
-	}
-
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
-      cdc_Gl.session_owner_generation = 0;
-      cdc_Gl.session_cleanup_pending = false;
-    }
-
-  /* A new client is requesting a session while another connection still holds it. Forcibly shut down the
-   * owner connection instead of rejecting the new client. The owner may change while the lock is released
-   * during the wait (e.g. yet another client registers); if a newer start request appears, this older
-   * requester stops the takeover attempt and leaves the session to the newest requester. */
-  for (int retry = 0; cdc_Gl.conn.fd != -1 && retry < CDC_TAKEOVER_MAX_RETRY; retry++)
-    {
-      int prev_fd = cdc_Gl.conn.fd;
-
-      if (request_generation != cdc_Gl.session_request_generation
-	  || (cdc_Gl.session_owner_generation != 0 && cdc_Gl.session_owner_generation > request_generation))
-	{
-	  goto superseded;
-	}
-
-      /* If the owner connection entry is gone already there is nothing to shut down; the teardown hook
-       * clears the CDC session before the socket is closed, so the owner fd cannot belong to an unrelated
-       * connection. */
-      CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
-
-      if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
-	{
-	  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d) for the new client (fd %d)",
-		   __func__, prev_fd, thread_p->conn_entry->fd);
-
-	  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
-	  css_request_shutdown_conn (prev_conn, 0, false, 0);
-	}
-
-      for (int i = 0; cdc_Gl.conn.fd == prev_fd && i < CDC_TAKEOVER_WAIT_MSECS / CDC_TAKEOVER_WAIT_INTERVAL_MSECS; i++)
-	{
-	  cdc_session_unlock ();
-	  thread_sleep (CDC_TAKEOVER_WAIT_INTERVAL_MSECS);
-	  cdc_session_lock ();
-
-	  if (request_generation != cdc_Gl.session_request_generation)
-	    {
-	      goto superseded;
-	    }
-	}
-
-      if (cdc_Gl.conn.fd == prev_fd)
-	{
-	  /* the awaited connection teardown did not finish in time; clear the stale session here so that
-	   * the new client still takes the session over */
-	  cdc_log ("%s : previous CDC connection (fd %d) not cleared in %d msec; clean up the stale session",
-		   __func__, prev_fd, CDC_TAKEOVER_WAIT_MSECS);
-
-	  if (cdc_cleanup () != NO_ERROR)
-	    {
-	      goto cleanup_error;
-	    }
-
-	  cdc_Gl.conn.fd = -1;
-	  cdc_Gl.conn.status = CONN_CLOSED;
-	  cdc_Gl.session_owner_generation = 0;
-	  cdc_Gl.session_cleanup_pending = false;
-	}
-    }
-
-  if (request_generation != cdc_Gl.session_request_generation)
-    {
-      goto superseded;
-    }
-
-  if (cdc_Gl.session_cleanup_pending)
-    {
-      /* The owner teardown may have detached the fd while this request was waiting above.
-       * Retry the deferred cleanup before cdc_set_configuration (), which replaces the
-       * producer filter arrays read by cdc_log_extract (). */
-      if (cdc_cleanup () != NO_ERROR)
-	{
-	  goto cleanup_error;
-	}
-
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
-      cdc_Gl.session_owner_generation = 0;
-      cdc_Gl.session_cleanup_pending = false;
-    }
-
-  if (cdc_Gl.conn.fd != -1)
-    {
-      /* takeover contention exceeded the retry budget; clear the current owner to honor last-connection-wins */
-      cdc_log ("%s : the session is still owned (fd %d) after %d takeover retries; clean up for the new client",
-	       __func__, cdc_Gl.conn.fd, CDC_TAKEOVER_MAX_RETRY);
-
-      if (cdc_cleanup () != NO_ERROR)
-	{
-	  goto cleanup_error;
-	}
-
-      cdc_Gl.conn.fd = -1;
-      cdc_Gl.conn.status = CONN_CLOSED;
-      cdc_Gl.session_owner_generation = 0;
-      cdc_Gl.session_cleanup_pending = false;
-    }
-
   error_code =
 	  cdc_set_configuration (max_log_item, extraction_timeout, all_in_cond, extraction_user, num_extraction_user,
 				 extraction_classoids, num_extraction_class);
   if (error_code != NO_ERROR)
     {
-      cdc_session_unlock ();
       goto error;
     }
-
-  /* the arrays are owned by the cdc configuration from now on; prevent the error path from freeing them */
-  extraction_user = NULL;
-  extraction_classoids = NULL;
-
-  /* register the new owner only after the configuration is set successfully */
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-  cdc_Gl.session_owner_generation = request_generation;
-  cdc_Gl.session_cleanup_pending = false;
-
-  cdc_session_unlock ();
 
   or_pack_int (reply, error_code);
 
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   return;
-
-superseded:
-
-  /* A newer start_session request arrived while this request was waiting for takeover cleanup. Do not
-   * shut down or clean up the newer owner; leave the session to the latest request. */
-  cdc_session_unlock ();
-
-  error_code = ER_CDC_NOT_AVAILABLE;
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-  goto error;
-
-cleanup_error:
-
-  /* the producer could not be paused in time; establishing a session over a half-torn state would race
-   * with the running producer, so fail this request and let the client retry */
-  cdc_session_unlock ();
-
-  error_code = ER_CDC_NOT_AVAILABLE;
-  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
 
 error:
 
@@ -11411,12 +11270,9 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
       // make producer sleep, and producer request consumer to be sleep
       // if request is set to consumer to be sleep, go into spinlock
       // checks request is set to none, then if it is none,
-      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT && cdc_pause_producer () != NO_ERROR)
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
 	{
-	  /* reinitializing the queue while the producer is still extracting would race with it */
-	  error_code = ER_CDC_NOT_AVAILABLE;
-	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-	  goto error;
+	  cdc_pause_producer ();
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
@@ -11556,36 +11412,12 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  cdc_session_lock ();
+  error_code = cdc_cleanup ();
 
-  if (cdc_Gl.conn.fd == thread_p->conn_entry->fd)
-    {
-      error_code = cdc_cleanup ();
+  cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
-      if (error_code == NO_ERROR)
-	{
-	  cdc_log ("%s : clean up for cdc thread has done.", __func__);
-
-	  cdc_Gl.conn.fd = -1;
-	  cdc_Gl.conn.status = CONN_CLOSED;
-	  cdc_Gl.session_owner_generation = 0;
-	  cdc_Gl.session_cleanup_pending = false;
-	}
-      else
-	{
-	  /* the producer could not be paused in time; keep the session state so that the connection
-	   * teardown hook or the next scdc_start_session retries the cleanup */
-	  cdc_log ("%s : clean up is deferred (fd %d)", __func__, cdc_Gl.conn.fd);
-	}
-    }
-  else
-    {
-      /* the session has already been taken over by another client; there is nothing to clean up */
-      cdc_log ("%s : the session is owned by another connection (fd %d); skip clean up", __func__, cdc_Gl.conn.fd);
-      error_code = NO_ERROR;
-    }
-
-  cdc_session_unlock ();
+  cdc_Gl.conn.fd = -1;
+  cdc_Gl.conn.status = CONN_CLOSED;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
