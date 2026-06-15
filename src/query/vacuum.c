@@ -3566,18 +3566,14 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 
-	  /* Free the OOS data that an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM gets here:
+	  /* Free the old OOS values an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM should reach here:
 	   *
-	   *   - UPDATE writes brand-new OOS OIDs, so the old OIDs only live in the undo image. The
-	   *     current slot no longer points at them, so vacuum's normal REMOVE path never sees them.
-	   *     Reading them back out of the undo image is the only way to free them.
-	   *
-	   *   - A DELETE keeps the same OIDs (it just stamps a delete_mvccid), so the REMOVE path
-	   *     already frees them. Doing it here too would free them twice and hit an assert. So we
-	   *     must keep DELETE out, which is why the rcvindex check below matters.
-	   *
-	   *   - Other heap ops log no undo image at all, so the undo_data_size check skips them on its
-	   *     own. */
+	   *   - UPDATE writes new OOS OIDs. The old ones survive only in the undo image; the live slot no
+	   *     longer points at them, so vacuum's normal REMOVE path never sees them. Reading the undo
+	   *     image is the only way left to free them.
+	   *   - DELETE keeps the same OIDs, so REMOVE frees them already. Freeing them here too would be a
+	   *     double free and trip an assert -- so the check below lets UPDATE in but keeps DELETE out.
+	   *   - Other heap ops log no undo image, so the undo_data_size check above already skips them. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
 	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
