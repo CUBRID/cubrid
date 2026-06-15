@@ -11688,15 +11688,13 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat
   assert (class_ != NULL && class_->constraints != NULL && *cons != NULL);
 
   name_length = strlen ((*cons)->name) + 1;
-  saved_name = (char *) malloc (name_length);
+  saved_name = strdup ((*cons)->name);
   if (saved_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) name_length);
       goto end;
     }
-
-  strcpy (saved_name, (*cons)->name);
 
   /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be
    * used for identifying whether the instance will have been reallocated. */
