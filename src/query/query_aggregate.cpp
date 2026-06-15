@@ -2893,7 +2893,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, D
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned (a copy in serial, a peeked value in parallel); the caller clears it. */
       return error_code;
     }
 
@@ -2921,7 +2921,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, D
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned; the caller clears it. */
       return error_code;
     }
 
@@ -2997,7 +2997,7 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALU
   if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned; the caller clears it. */
       return ER_FAILED;
     }
 
