@@ -425,7 +425,8 @@ int
 heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
 {
-  OID_VECTOR old_oos_oids, new_oos_oids;
+  std::vector<OID> old_oos_oids;
+  std::vector<OID> new_oos_oids;
   VFID oos_vfid;
   int error_code;
 
