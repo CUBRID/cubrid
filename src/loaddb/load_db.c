@@ -1156,7 +1156,6 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	      do
 		{
 		  session_error = db_get_next_error (session_error, &line, &col);
-
 		  if (line <= 0)
 		    {
 		      db_get_parser_line_col (session, &line, &col);	// current input line and column
@@ -1181,8 +1180,18 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+          if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
+
 	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
@@ -1192,9 +1201,17 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
       error = db_query_end (res);
       if (error < 0)
 	{
-	  int line, col;
-	  db_get_parser_line_col (session, &line, &col);	// current input line and column
-	  ldr_print_error_msg (line, base_line, file_name);
+	  DB_SESSION_ERROR *session_error = db_get_errors (session);
+	  int line = -1, col;
+
+	  if (session_error != NULL)
+	    {
+	      db_get_next_error (session_error, &line, &col);
+	    }
+	  if (line <= 0)
+	    {
+	      db_get_parser_line_col (session, &line, &col);	// current input line and column
+	    }
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
 	  break;
