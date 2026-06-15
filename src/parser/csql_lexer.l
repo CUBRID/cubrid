@@ -59,10 +59,15 @@ static int from_plcsql_text;
 extern int yycolumn;
 extern int yycolumn_end;
 
-int str_identifier = '\0';
-
-
-
+static enum {
+  ensingle_quoted_string,  
+  endouble_quoted_string,
+  enbracket_quoted_string,
+  enbacktick_quoted_string,
+  enline_comment,
+  enC_style_comment,
+  enNone
+} g_yyinput_type = enNone;
 
 #undef YY_INPUT
 #define YY_INPUT(buffer, result, max_size) { result = parser_yyinput(buffer, max_size); result == 0 ? result = YY_NULL : result; }
@@ -2052,90 +2057,231 @@ init_plcsql_lexing (void)
   from_plcsql_text = 0;
 }
 
+static bool
+parser_yyinput_string_literal (char *buff, int max_size, int end_char, int *pos)
+{
+  int c;
+
+  while ((*pos) < max_size)
+    {
+      c = pt_nextchar ();
+
+      if (c == '\\' && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
+	{
+	  if ((*pos) >= max_size - 1)
+	    {
+	      return false;
+	    }
+	  else
+	    {
+	      buff[(*pos)++] = c;
+	      /* if escape character */
+	      c = pt_nextchar ();	/* read one more */
+	      buff[(*pos)++] = c;
+	    }
+	}
+      else
+	{
+	  buff[(*pos)++] = (char) c;
+	  if (c == end_char || c == -1)
+	    {
+	      g_yyinput_type = enNone;
+	      return true;
+	    }
+	}
+    }
+  return false;
+}
+
+/* Note: 
+ * Double quotes "" are usually for identifiers, but they can signify string literals depending on the PRM_ID_ANSI_QUOTES configuration.
+ * Also, query strings in a DBLINK should properly be enclosed in single quotes '', but an issue allows double quotes "" as well.
+ * Since we cannot verify here if the processing occurs within a DBLINK, it creates an issue where we cannot distinguish whether "" reads an identifier or a string literal.
+ * Moreover, PRM_ID_NO_BACKSLASH_ESCAPES matters only for string literals.
+ * As a minimum safeguard, query strings in DBLINKs must be enclosed in single quotes within unloaddb
+*/
+static bool
+parser_yyinput_identifier (char *buff, int max_size, int end_char, int *pos)
+{
+  int c;
+
+  while ((*pos) < max_size)
+    {
+      c = pt_nextchar ();
+      buff[(*pos)++] = (char) c;
+      if (c == end_char || c == -1)
+	{
+	  g_yyinput_type = enNone;
+	  return true;
+	}
+    }
+  return false;
+}
+
+static bool
+parser_yyinput_line_comment (char *buff, int max_size, int *pos)
+{
+  int i = 0;
+  int c;
+
+  while ((*pos) < max_size)
+    {
+      c = pt_nextchar ();
+      buff[(*pos)++] = (char) c;
+      if (c == '\n' || c == -1)
+	{
+	  g_yyinput_type = enNone;
+	  return true;
+	}
+    }
+  return false;
+}
+
+static bool
+parser_yyinput_c_style_comment (char *buff, int max_size, int *pos)
+{
+  int i = 0;
+  int c;
+
+  while ((*pos) < max_size)
+    {
+      c = pt_nextchar ();
+      buff[(*pos)++] = (char) c;
+      if ((c == '/' && buff[(*pos) - 2] == '*') || (c == -1))
+	{
+	  g_yyinput_type = enNone;
+	  return true;
+	}
+    }
+  return false;
+}
+
 static int
 parser_yyinput_single_line (char *buff, int max_size)
 {
-  int c, end;
+  int c;
   int i = 0;
 
   assert (max_size >= 1);
+
   do
     {
-      if (str_identifier == '\'' || str_identifier == '\"')
-        {
-	  c = str_identifier;
-        }
-      else
-        {
-	  c = pt_nextchar ();
-        }
-
-      if (c == '\'' || c == '\"')	/* string start */
+      switch (g_yyinput_type)
 	{
-          if (str_identifier != '\'' && str_identifier != '\"')
+	case ensingle_quoted_string:
+	  if (parser_yyinput_string_literal (buff, max_size, '\'', &i) == false)
 	    {
-              str_identifier = c;
-	      buff[i++] = c;
-	      if (i >= max_size)
-	        {
-	          return i;
-	        }
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
 	    }
-	    end = c;
-
-	  do
+	  break;
+	case endouble_quoted_string:
+	  if ((prm_get_bool_value (PRM_ID_ANSI_QUOTES)
+	       ? parser_yyinput_identifier (buff, max_size, '\"', &i) : parser_yyinput_string_literal (buff, max_size,
+												      '\"',
+												      &i)) == false)
 	    {
-	      c = pt_nextchar ();
-	      if (c == end)	/* string end */
-		{
-		  str_identifier = '\0';
-		  break;
-		}
-
-	      buff[i++] = c;
-	      if (i >= max_size)
-		{
-		  return i;
-		}
-
-	      if (c == '\\'
-		  && (prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) == false))
-		{
-		  /* if escape character */
-		  c = pt_nextchar (); /* read one more */
-		  buff[i++] = c;
-		  if (i >= max_size)
-		    {
-		      return i;
-		    }
-		}
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
 	    }
-	  while (c != -1);
+	  break;
+
+	case enbracket_quoted_string:
+	  if (parser_yyinput_identifier (buff, max_size, ']', &i) == false)
+	    {
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
+	    }
+	  break;
+	case enbacktick_quoted_string:
+	  if (parser_yyinput_identifier (buff, max_size, '`', &i) == false)
+	    {
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
+	    }
+	  break;
+	case enline_comment:
+	  if (parser_yyinput_line_comment (buff, max_size, &i) == false)
+	    {
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
+	    }
+	  break;
+	case enC_style_comment:
+	  if (parser_yyinput_c_style_comment (buff, max_size, &i) == false)
+	    {
+	      buff[i] = '\0';	/* not required but to ease debugging */
+	      return i;
+	    }
+	  break;
+
+	case enNone:
+	default:
+	  {
+	    c = pt_nextchar ();
+	    switch (c)
+	      {
+	      case '[':
+		g_yyinput_type = enbracket_quoted_string;
+		break;
+	      case '`':
+		g_yyinput_type = enbacktick_quoted_string;
+		break;
+	      case '\'':
+		g_yyinput_type = ensingle_quoted_string;
+		break;
+	      case '\"':
+		g_yyinput_type = endouble_quoted_string;
+		break;
+
+	      case '-':
+	      case '/':
+		if (i >= max_size - 1)
+		  {
+		    unput (c);
+		    buff[i] = '\0';	/* not required but to ease debugging */
+		    return i;
+		  }
+		else
+		  {
+		    int c2 = pt_nextchar ();
+		    if (c == c2)	// "--" or "//"
+		      {
+			buff[i++] = (char) c;
+			c = c2;
+			g_yyinput_type = enline_comment;
+		      }
+		    else if (c == '/' && c2 == '*')
+		      {
+			buff[i++] = (char) c;
+			c = c2;
+			g_yyinput_type = enC_style_comment;
+		      }
+		    else
+		      {
+			unput (c2);
+		      }
+		  }
+		break;
+
+	      case ';':
+		buff[i++] = (char) c;
+		buff[i] = '\0';	/* not required but to ease debugging */
+		/* stop filling the buffer. see PR 5403 */
+		return i;
+
+	      default:
+		break;
+	      }
+
+	    buff[i++] = (char) c;
+	  }
+	  break;
 	}
-
-      buff[i++] = c;
-
-      if (c == ';')
-	{
-          buff[i] = '\0'; /* not required but to ease debugging */
-          /* stop filling the buffer. see PR 5403 */
-	  return i;
-	}
-
-      if (i >= max_size)
-	{
-          buff[i] = '\0'; /* not required but to ease debugging */
-	  return i;
-	}
-
     }
-  while (c != -1);
+  while (buff[i - 1] != -1 && i < max_size);
 
-  buff[i] = '\0'; /* not required but to ease debugging */
-
-  /* end of file */
-  str_identifier = '\0';
-
+  buff[i] = '\0';		/* not required but to ease debugging */
   return i;
 }
 
