@@ -11874,7 +11874,7 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 
 static PT_NODE *pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_mark_dblink_derived_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-						  int *continue_walk);
+						 int *continue_walk);
 
 /*
  * pt_mark_dblink_derived_subquery () - mark FROM-derived sub-queries as sub-queries.
@@ -11893,8 +11893,7 @@ pt_mark_dblink_derived_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *
   *continue_walk = PT_CONTINUE_WALK;
 
   if (node->node_type == PT_SPEC && node->info.spec.derived_table != NULL
-      && PT_IS_QUERY (node->info.spec.derived_table)
-      && node->info.spec.derived_table->info.query.is_subquery == 0)
+      && PT_IS_QUERY (node->info.spec.derived_table) && node->info.spec.derived_table->info.query.is_subquery == 0)
     {
       node->info.spec.derived_table->info.query.is_subquery = PT_IS_SUBQUERY;
     }
