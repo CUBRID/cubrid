@@ -23522,9 +23522,9 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    * old forward record (REC_NEWHOME). All 4 sub-paths below either overwrite or remove the
    * forward slot, so OOS attached to the old forward becomes unreachable. In MVCC mode
    * (SERVER_MODE) the old OOS is preserved for concurrent readers; vacuum's forward-walk
-   * cleans up the update_old_forward sub-path via RVHF_UPDATE_NOTIFY_VACUUM (see the log
-   * call below). The remove_old_forward MVCC sub-paths still leak OOS until the forward-walk
-   * gate is extended to admit physical-delete log records — separate follow-up. */
+   * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
+   * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
+   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
   if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
     {
       rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
