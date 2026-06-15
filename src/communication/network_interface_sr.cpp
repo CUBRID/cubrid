@@ -11283,6 +11283,22 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto superseded;
     }
 
+  if (cdc_Gl.session_cleanup_pending)
+    {
+      /* The owner teardown may have detached the fd while this request was waiting above.
+       * Retry the deferred cleanup before cdc_set_configuration (), which replaces the
+       * producer filter arrays read by cdc_log_extract (). */
+      if (cdc_cleanup () != NO_ERROR)
+	{
+	  goto cleanup_error;
+	}
+
+      cdc_Gl.conn.fd = -1;
+      cdc_Gl.conn.status = CONN_CLOSED;
+      cdc_Gl.session_owner_generation = 0;
+      cdc_Gl.session_cleanup_pending = false;
+    }
+
   if (cdc_Gl.conn.fd != -1)
     {
       /* takeover contention exceeded the retry budget; clear the current owner to honor last-connection-wins */
