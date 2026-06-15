@@ -154,7 +154,6 @@ extern CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const c
 
 extern CSS_CONN_ENTRY *css_find_conn_by_tran_index (int tran_index);
 extern CSS_CONN_ENTRY *css_find_conn_from_fd (SOCKET fd);
-extern int css_request_shutdown_conn_by_fd_and_client_id (SOCKET fd, int client_id, int wait_time);
 extern int css_get_session_ids_for_active_connections (SESSION_ID ** ids, int *count);
 extern int css_shutdown_conn_by_tran_index (int tran_index, int wait_time);
 

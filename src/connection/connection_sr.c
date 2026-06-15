@@ -1258,52 +1258,6 @@ css_find_conn_from_fd (SOCKET fd)
   return conn;
 }
 
-
-/*
- * css_request_shutdown_conn_by_fd_and_client_id() - request shutdown when fd and client id match
- *   return: NO_ERROR if a matching open connection received a shutdown request, ER_FAILED otherwise
- *   fd(in): socket fd saved by CDC session start
- *   client_id(in): client id saved by CDC session start
- *   wait_time(in): wait time (-1: infinite, 0: no wait, >0: wait time)
- */
-int
-css_request_shutdown_conn_by_fd_and_client_id (SOCKET fd, int client_id, int wait_time)
-{
-  CSS_CONN_ENTRY *conn = NULL;
-  int error = ER_FAILED;
-  int r;
-
-  if (IS_INVALID_SOCKET (fd) || client_id < 0)
-    {
-      return error;
-    }
-
-  if (css_Active_conn_anchor != NULL)
-    {
-      START_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-
-      for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
-	{
-	  if (conn->fd == fd && conn->client_id == client_id)
-	    {
-	      if (conn->status == CONN_OPEN)
-		{
-		  conn->status = CONN_CLOSING;
-
-		  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE */
-		  css_request_shutdown_conn (conn, 0, false, wait_time);
-		  error = NO_ERROR;
-		}
-	      break;
-	    }
-	}
-
-      END_EXCLUSIVE_ACCESS_ACTIVE_CONN_ANCHOR (r);
-    }
-
-  return error;
-}
-
 /*
  * css_get_session_ids_for_active_connections () - get active session ids
  * return : error code or NO_ERROR

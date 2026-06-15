@@ -11147,13 +11147,25 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       if (thread_p->conn_entry->fd != prev_fd)
 	{
 	  /* A new client is requesting a session while the previous one still holds the CDC connection.
-	   * Forcibly shut down only the same connection recorded at CDC session start. A stale fd may be
-	   * reused by an unrelated client, so the saved client id is verified with the fd under the active
-	   * connection list lock before shutdown is requested. */
-	  if (css_request_shutdown_conn_by_fd_and_client_id (prev_fd, prev_client_id, 0) == NO_ERROR)
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
 	    {
-	      cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
-		       "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+
+		  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
+		  css_request_shutdown_conn (prev_conn, 0, false, 0);
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
 	    }
 	}
 
