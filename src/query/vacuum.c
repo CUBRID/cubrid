@@ -3543,22 +3543,18 @@ vacuum_process_log_block (THREAD_ENTRY * thread_p, VACUUM_DATA_ENTRY * data, boo
 			 "collected oid %d|%d|%d, in file %d|%d, based on %lld|%d", OID_AS_ARGS (&heap_object_oid),
 			 VFID_AS_ARGS (&log_vacuum.vfid), LSA_AS_ARGS (&rcv_lsa));
 
-	  /* Forward-walk OOS reclamation. Admit ONLY RVHF_UPDATE_NOTIFY_VACUUM:
+	  /* Free the OOS data that an UPDATE left behind. Only RVHF_UPDATE_NOTIFY_VACUUM gets here:
 	   *
-	   *   - UPDATE: heap_attrinfo_insert_to_oos allocates fresh OOS OIDs per transform, so the
-	   *     pre-image OIDs in undo are disjoint from the live post-image. The post-UPDATE slot
-	   *     references only the new OIDs; vacuum's REMOVE path can never reach the old ones.
-	   *     Forward-walk on the undo recdes is the only path that can reclaim them.
+	   *   - UPDATE writes brand-new OOS OIDs, so the old OIDs only live in the undo image. The
+	   *     current slot no longer points at them, so vacuum's normal REMOVE path never sees them.
+	   *     Reading them back out of the undo image is the only way to free them.
 	   *
-	   *   - RVHF_MVCC_DELETE_MODIFY_HOME also carries an OOS-bearing pre-image in undo, but a
-	   *     logical DELETE leaves the slot's recdes contents intact (only delete_mvccid changes).
-	   *     The post-DELETE slot still references the SAME OIDs, and vacuum's REMOVE path will
-	   *     reclaim them. Running forward-walk too would double-delete and trip oos_delete_chain's
-	   *     S_DOESNT_EXIST assert. The rcvindex gate below is load-bearing for this exclusion.
+	   *   - A DELETE keeps the same OIDs (it just stamps a delete_mvccid), so the REMOVE path
+	   *     already frees them. Doing it here too would free them twice and hit an assert. So we
+	   *     must keep DELETE out, which is why the rcvindex check below matters.
 	   *
-	   *   - RVHF_MVCC_INSERT, RVHF_MVCC_DELETE_REC_HOME, RVHF_MVCC_NO_MODIFY_HOME, and
-	   *     RVHF_MVCC_REDISTRIBUTE log no pre-image recdes in undo, so undo_data_size > 0 below
-	   *     filters them naturally; no rcvindex check needed for those. */
+	   *   - Other heap ops log no undo image at all, so the undo_data_size check skips them on its
+	   *     own. */
 	  if (log_record_data.rcvindex == RVHF_UPDATE_NOTIFY_VACUUM)
 	    {
 	      vacuum_forward_walk_reclaim_oos (thread_p, undo_data, undo_data_size, &log_vacuum.vfid, &oos_vfid_memo);
