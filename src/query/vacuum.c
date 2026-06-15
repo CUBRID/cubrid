@@ -2427,6 +2427,29 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
   assert (helper->home_page != NULL);
   assert (MVCC_IS_HEADER_DELID_VALID (&helper->mvcc_header));
 
+  /* Does removing this record touch more than the home page?  Two independent axes decide:
+   *
+   *   body footprint (record_type)       OOS footprint (heap_recdes_contains_oos)
+   *   ----------------------------       ----------------------------------------
+   *   REC_HOME       : home only  (1)    no OOS  : 0 extra pages
+   *   REC_RELOCATION : home + fwd  (2)   has OOS : N OOS pages (N>=1; multi-chunk -> more)
+   *   REC_BIGONE     : home + ovf  (>1)
+   *
+   *   total footprint = body + OOS  ==>  a sysop is needed iff it crosses the home page (total > 1):
+   *
+   *     record_type     OOS?   pages touched          path
+   *     -----------     ----   -------------          ---------------------------------
+   *     REC_HOME        no     home only              bulk log, NO sysop
+   *     REC_HOME        yes    home + OOS pages       one sysop   (this is `has_oos`)
+   *     REC_RELOCATION  any    home + fwd (+ OOS)     one sysop
+   *     REC_BIGONE      n/a    home + ovf chain       one sysop   (OOS must not coexist; abort below)
+   *
+   * The sysop bundles every per-page log record of a multi-page removal into one atomic unit, so a crash
+   * cannot leave it half-done (heap slot vacuumed but its OOS chunks still referenced, or vice versa).
+   * Single-page REC_HOME needs no sysop: its single log record is already atomic, so it rides the bulk
+   * path.  record_type alone is only a proxy for the footprint -- OOS is the orthogonal axis that can push
+   * an otherwise single-page REC_HOME into the sysop path.  See
+   * docs/adr/0001-synchronous-oos-reclaim-in-vacuum-sysop.md. */
   bool has_oos = (!VFID_ISNULL (&helper->oos_vfid)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
