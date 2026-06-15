@@ -1805,7 +1805,23 @@ END_SUPPRESS_WARNING_BISON_FLEX
 void
 csql_yyerror_explicit (int line, int column)
 {
+  /* The synthesized error node inherits its position from the scanner's
+   * current line/column (see pt_parser_line_col). By the time the reducing
+   * action calls here, the scanner has already advanced past the offending
+   * token to the look-ahead, so the reported position would be wrong.
+   * Point the scanner position at the caller-supplied location (e.g. @1) of
+   * the offending token, then restore it. */
+  int saved_lineno = csql_yyget_lineno ();
+  int saved_column = yycolumn;
+
+  csql_yyset_lineno (line);
+  yycolumn = column;
+
   csql_yyerror (NULL);
+
+  csql_yyset_lineno (saved_lineno);
+  yycolumn = saved_column;
+
   msg_ptr = 0;
 }
 

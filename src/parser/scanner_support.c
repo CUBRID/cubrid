@@ -50,7 +50,6 @@ int parser_output_host_index = 0;
 extern "C"
 {
   extern int yycolumn;
-  extern int csql_yyget_lineno ();
 }
 extern int yycolumn_end;
 

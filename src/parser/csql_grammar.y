@@ -3065,6 +3065,7 @@ create_stmt
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
 			csql_yyerror_explicit (@2.first_line, @2.first_column);
+                        YYABORT;
 		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
@@ -9388,6 +9389,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
@@ -9400,6 +9402,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9412,6 +9415,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9424,6 +9428,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -9436,6 +9441,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9448,6 +9454,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9460,6 +9467,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -18341,11 +18349,13 @@ comp_op
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| '!''=' opt_of_all_some_any
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| COMP_NULLSAFE_EQ opt_of_all_some_any
 		{{
@@ -24526,7 +24536,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (c < 1 || c > 2)
 	{
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	  csql_yyerror_explicit (10, 10);
+	  /* no parse-tree location available here; keep the scanner's current
+	   * position (the previous behavior when the arguments were ignored). */
+	  csql_yyerror_explicit (csql_yyget_lineno (), yycolumn);
 	  return NULL;
 	}
 
