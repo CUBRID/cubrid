@@ -35265,7 +35265,14 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	{
 	  BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
 
-	  if (node_header == NULL || node_header->max_key_len < helper->insert_helper.key_len_in_page)
+	  if (node_header == NULL)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
+
+	  if (node_header->max_key_len < helper->insert_helper.key_len_in_page)
 	    {
 	      search_key->result = BTREE_KEY_NOTFOUND;
 	      goto end;
