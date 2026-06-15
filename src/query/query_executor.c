@@ -10724,8 +10724,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 		      /* read lob attributes */
 		      scan_code =
-			heap_get_visible_version_skip_oos_expand (thread_p, oid, class_oid, &recdes,
-								  internal_class->scan_cache, PEEK, NULL_CHN);
+			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+						  NULL_CHN);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11534,8 +11534,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 		  /* read lob attributes */
 		  scan_code =
-		    heap_get_visible_version_skip_oos_expand (thread_p, oid, class_oid, &recdes,
-							      internal_class->scan_cache, PEEK, NULL_CHN);
+		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
+					      NULL_CHN);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -12369,8 +12369,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
   ispeeking = ((local_scan_cache != NULL && local_scan_cache->cache_last_fix_page) ? PEEK : COPY);
 
   scan_code =
-    heap_get_visible_version_skip_oos_expand (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking,
-					      NULL_CHN);
+    heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
@@ -14262,7 +14261,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED, false);
+							     LOG_WARNING_IF_DELETED);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();
@@ -14467,6 +14466,7 @@ exit_on_error:
   goto exit;
 }
 
+
 /*
  * qexec_init_instnum_val () -
  *   return: NO_ERROR, or ER_code
@@ -14485,12 +14485,9 @@ exit_on_error:
 static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
-  DB_TYPE orig_type;
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE *dbvalp;
+  DB_VALUE dbval;
   int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
 
   assert (xasl && xasl->instnum_val);
   db_make_bigint (xasl->instnum_val, 0);
@@ -14506,36 +14503,19 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
       && xasl->spec_list->indexptr->key_info.key_limit_l)
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
-      if (fetch_peek_dbval (thread_p, key_limit_l, &xasl_state->vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR)
+
+      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      orig_type = DB_VALUE_DOMAIN_TYPE (dbvalp);
-      if (orig_type != DB_TYPE_BIGINT)
-	{
-	  dom_status = tp_value_coerce (dbvalp, dbvalp, domainp);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbvalp, domainp);
-	      assert_release (error != NO_ERROR);
-
-	      goto exit_on_error;
-	    }
-
-	  if (DB_VALUE_DOMAIN_TYPE (dbvalp) != DB_TYPE_BIGINT)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-	      goto exit_on_error;
-	    }
-	}
-
-      if (pr_clone_value (dbvalp, xasl->instnum_val) != NO_ERROR)
+      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (dbvalp, xasl->save_instnum_val) != NO_ERROR)
+      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
@@ -17064,10 +17044,59 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (xasl->spec_list->type == TARGET_LIST && xasl->spec_list->s.list_node.list_regu_list_probe)
     {
       regu_list = xasl->spec_list->s.list_node.list_regu_list_probe;
+      REGU_VARIABLE_LIST probe_regu = regu_list;	/* Save first probe item before loop */
+
       while (regu_list)
 	{
 	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
 	  regu_list = regu_list->next;
+	}
+
+      /* Adjust probe domain precision/scale from rest_regu_list for hash list scan */
+      if (probe_regu && xasl->spec_list->s.list_node.list_regu_list_rest)
+	{
+	  REGU_VARIABLE_LIST rest_regu_numeric = NULL;
+
+	  /* Find first numeric item in rest_regu_list with fixed precision */
+	  for (REGU_VARIABLE_LIST rest_iter = xasl->spec_list->s.list_node.list_regu_list_rest;
+	       rest_iter != NULL; rest_iter = rest_iter->next)
+	    {
+	      if (TP_DOMAIN_TYPE (rest_iter->value.domain) == DB_TYPE_NUMERIC &&
+		  rest_iter->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  rest_regu_numeric = rest_iter;
+		  break;
+		}
+	    }
+
+	  /* Adjust first numeric probe item if found */
+	  if (rest_regu_numeric)
+	    {
+	      DB_TYPE vtype1 = REGU_VARIABLE_GET_TYPE (&probe_regu->value);
+
+	      if (vtype1 == DB_TYPE_NUMERIC &&
+		  probe_regu->value.domain && probe_regu->value.domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* in START WITH ... CONNECT BY, join and expression evaluation may widen
+		   * probe_regu_list domain to float numeric.
+		   *
+		   * since tp_value_coerce() always casts values to the probe domain,
+		   * the cast behavior depends on probe_regu_list->value.domain (vtype1's domain).
+		   * when the probe domain is float numeric, integer values are not scaled,
+		   * which can produce different hash keys from fixed numeric columns.
+		   *
+		   * to avoid this mismatch, restore precision/scale from rest_regu_list
+		   * when it represents a fixed numeric domain.
+		   */
+		  TP_DOMAIN *new_domain = tp_domain_copy (probe_regu->value.domain, false);
+		  if (new_domain != NULL)
+		    {
+		      new_domain->precision = rest_regu_numeric->value.domain->precision;
+		      new_domain->scale = rest_regu_numeric->value.domain->scale;
+		      probe_regu->value.domain = new_domain;
+		    }
+		}
+	    }
 	}
     }
 
@@ -20020,7 +20049,6 @@ static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
-  char *str1, *str2;
   int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
   int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
@@ -20028,40 +20056,22 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   char *string1 = NULL, *string2 = NULL;
   bool alloced_string1 = false, alloced_string2 = false;
 
-  str1 = (char *) mem1;
-  str2 = (char *) mem2;
-
-  /* generally, data is short enough */
-  str_length1 = OR_GET_BYTE (str1);
-  str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && str_length2 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  /* String 1: parse the string header (TINY / SMALL / MEDIUM / LARGE) and decompress if needed. */
+  or_init (&buf1, (char *) mem1, 0);
+  rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+  if (rc != NO_ERROR)
     {
-      str1 += OR_BYTE_SIZE;
-      str2 += OR_BYTE_SIZE;
-      return bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
+      goto cleanup;
     }
 
-  assert (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-	  || str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
-
-  /* String 1 */
-  or_init (&buf1, str1, 0);
-  if (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str1_compressed_length > 0)
     {
-      rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
-	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
-
       alloced_string1 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
@@ -20069,40 +20079,30 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-
-      str_length1 = str1_decompressed_length;
-      string1[str_length1] = '\0';
+      string1[str1_decompressed_length] = '\0';
     }
   else
     {
-      /* Skip the size byte */
-      string1 = str1 + OR_BYTE_SIZE;
+      string1 = buf1.ptr;	/* peek into disk image */
     }
+  str_length1 = str1_decompressed_length;
 
+  /* String 2 */
+  or_init (&buf2, (char *) mem2, 0);
+  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
   if (rc != NO_ERROR)
     {
-      ASSERT_ERROR ();
       goto cleanup;
     }
 
-  /* String 2 */
-  or_init (&buf2, str2, 0);
-  if (str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str2_compressed_length > 0)
     {
-      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
-	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
-
       alloced_string2 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
@@ -20110,49 +20110,26 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-
-      str_length2 = str2_decompressed_length;
-      string2[str_length2] = '\0';
+      string2[str2_decompressed_length] = '\0';
     }
   else
     {
-      /* Skip the size byte */
-      string2 = str2 + OR_BYTE_SIZE;
+      string2 = buf2.ptr;	/* peek into disk image */
     }
+  str_length2 = str2_decompressed_length;
 
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-
-  /* Compare the strings */
   c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
-  /* Clean up the strings */
-  if (string1 != NULL && alloced_string1 == true)
-    {
-      db_private_free_and_init (NULL, string1);
-    }
-
-  if (string2 != NULL && alloced_string2 == true)
-    {
-      db_private_free_and_init (NULL, string2);
-    }
-
-  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
     {
       db_private_free_and_init (NULL, string1);
     }
-
   if (string2 != NULL && alloced_string2 == true)
     {
       db_private_free_and_init (NULL, string2);
     }
-
-  return DB_UNK;
+  return c;
 }
 
 /*
@@ -20628,17 +20605,11 @@ qexec_resolve_domains_for_aggregation (THREAD_ENTRY * thread_p, AGGREGATE_TYPE *
 	    case PT_SUM:
 	      if (TP_IS_NUMERIC_TYPE (DB_VALUE_TYPE (dbval)))
 		{
-		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC)
+		  if (TP_DOMAIN_TYPE (agg_p->domain) == DB_TYPE_NUMERIC || DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
 		    {
 		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, agg_p->domain->scale, NULL,
-					   0);
-		    }
-		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_NUMERIC)
-		    {
-		      agg_p->accumulator_domain.value_dom =
-			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_MAX_NUMERIC_PRECISION, DB_VALUE_SCALE (dbval),
-					   NULL, 0);
+			tp_domain_resolve (DB_TYPE_NUMERIC, NULL, DB_DEFAULT_NUMERIC_PRECISION,
+					   DB_DEFAULT_NUMERIC_SCALE, NULL, 0);
 		    }
 		  else if (DB_VALUE_TYPE (dbval) == DB_TYPE_FLOAT)
 		    {
@@ -24904,6 +24875,14 @@ qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
       DB_VALUE comma, bracket1, bracket2;
       DB_DATA_STATUS data_stat;
 
+      /* if numeric with default precision (float numeric), return "numeric" only */
+      if (id == DB_TYPE_NUMERIC && precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  db_make_string (result, name);
+	  return NO_ERROR;
+	}
+
+      /* otherwise, format as "name(precision, scale)" */
       db_make_int (&db_int_precision, precision);
       db_make_null (&db_str_precision);
       if (tp_value_cast (&db_int_precision, &db_str_precision, &tp_String_domain, false) != DOMAIN_COMPATIBLE)

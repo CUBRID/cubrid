@@ -63,6 +63,7 @@
 #include "statistics.h"
 #include "chartype.h"
 #include "heap_file.h"
+#include "oos_file.hpp"
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -5306,7 +5307,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (pr_type->id == DB_TYPE_VARCHAR)
+      if (TP_IS_CHAR_TYPE (pr_type->id))
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5346,7 +5347,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
 
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR))
+	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
 	    {
 	      buf.ptr = tuple_p;
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
@@ -9907,9 +9908,13 @@ svacuum (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
-  /* Call vacuum */
+#if defined(SERVER_MODE)
+  /* In SERVER_MODE xvacuum is disabled — wake the vacuum master daemon instead.
+   * This gives dev/debug users (;vacuum in csql) a way to force vacuum passes. */
+  err = vacuum_wakeup_master_daemon ();
+#else /* SA_MODE */
   err = xvacuum (thread_p);
-
+#endif
   if (err != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -9918,8 +9923,44 @@ svacuum (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   /* Send error code as reply */
   (void) or_pack_int (reply, err);
 
-  /* For now no results are required, just fail/success */
   css_send_data_to_client (thread_p->conn_entry, rid, OR_ALIGNED_BUF_START (a_reply), OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * soos_stats - Server handler for OOS stats session command (dev/debug).
+ *   Request : class OID (OR_OID_SIZE bytes)
+ *   Reply   : err (int) + has_oos (int) + vfid_volid (int) + vfid_fileid (int)
+ *             + num_user_pages (int) + page_size (int) + num_recs (int)
+ *             + recs_sumlen (bigint)
+ */
+void
+soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE * 7 + OR_BIGINT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  OID class_oid;
+  OOS_STATS_INFO info;
+  int err = NO_ERROR;
+
+  (void) or_unpack_oid (request, &class_oid);
+
+  memset (&info, 0, sizeof (info));
+  err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  char *ptr = or_pack_int (reply, err);
+  ptr = or_pack_int (ptr, info.has_oos_file);
+  ptr = or_pack_int (ptr, (int) info.oos_vfid.volid);
+  ptr = or_pack_int (ptr, (int) info.oos_vfid.fileid);
+  ptr = or_pack_int (ptr, info.num_user_pages);
+  ptr = or_pack_int (ptr, info.page_size);
+  ptr = or_pack_int (ptr, info.num_recs);
+  ptr = or_pack_int64 (ptr, info.recs_sumlen);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*

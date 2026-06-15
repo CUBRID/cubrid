@@ -105,6 +105,19 @@ typedef enum
 extern int oos_bestspace_initialize (void);
 extern int oos_bestspace_finalize (void);
 
+struct oos_stats_info
+{
+  int has_oos_file;		/* 0 if class has no OOS file, 1 otherwise */
+  VFID oos_vfid;
+  int num_user_pages;		/* physical user pages allocated to OOS file */
+  int page_size;		/* DB_PAGESIZE */
+  int num_recs;			/* live OOS records tracked by OOS_HDR_STATS */
+  INT64 recs_sumlen;		/* sum of live OOS record body bytes */
+};
+using OOS_STATS_INFO = struct oos_stats_info;
+
+extern int xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out);
+
 #ifdef __cplusplus
 extern "C"
 {

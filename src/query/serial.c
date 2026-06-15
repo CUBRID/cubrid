@@ -213,7 +213,9 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
   /* get record into record desc */
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan =
+    heap_get_visible_version_expand_oos (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK,
+					 NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -528,7 +530,9 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  scan = heap_get_visible_version (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan =
+    heap_get_visible_version_expand_oos (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK,
+					 NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -662,7 +666,9 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan =
+    heap_get_visible_version_expand_oos (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK,
+					 NULL_CHN);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -1034,9 +1040,10 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
   /* Now calculate next value */
   if (nth > 1)
     {
-      numeric_coerce_int_to_num (nth, num);
-      db_make_numeric (&tmp_val, num, DB_MAX_NUMERIC_PRECISION, 0);
+      numeric_coerce_int_to_num (nth, num, NULL);
+      db_make_numeric (&tmp_val, num, DB_MAX_FIXED_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false, false);
       numeric_db_value_mul (inc_val, &tmp_val, &add_val);
+      FLOAT_TO_FIXED_NUMERIC (&add_val);
     }
   else
     {
@@ -1051,6 +1058,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  return ret;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
       ret = numeric_db_value_compare (cur_val, &tmp_val, &cmp_result);
       if (ret != NO_ERROR)
 	{
@@ -1073,6 +1081,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
       else
 	{
 	  (void) numeric_db_value_add (cur_val, &add_val, result_val);
+	  FLOAT_TO_FIXED_NUMERIC (result_val);
 	}
     }
   else
@@ -1082,6 +1091,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	{
 	  return ret;
 	}
+      FLOAT_TO_FIXED_NUMERIC (&tmp_val);
       ret = numeric_db_value_compare (cur_val, &tmp_val, &cmp_result);
       if (ret != NO_ERROR)
 	{
@@ -1104,6 +1114,7 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
       else
 	{
 	  (void) numeric_db_value_add (cur_val, &add_val, result_val);
+	  FLOAT_TO_FIXED_NUMERIC (result_val);
 	}
     }
 

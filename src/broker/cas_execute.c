@@ -3554,17 +3554,16 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
       if (default_value_expr_op_string != NULL)
 	{
-	  strcpy (default_value_string, default_value_expr_op_string);
-	  strcat (default_value_string, "(");
-	  strcat (default_value_string, default_value_expr_type_string);
 	  if (default_expr_format)
 	    {
-	      strcat (default_value_string, ", \'");
-	      strcat (default_value_string, default_expr_format);
-	      strcat (default_value_string, "\'");
+	      snprintf (default_value_string, len + 1, "%s(%s, \'%s\')",
+			default_value_expr_op_string, default_value_expr_type_string, default_expr_format);
 	    }
-
-	  strcat (default_value_string, ")");
+	  else
+	    {
+	      snprintf (default_value_string, len + 1, "%s(%s)",
+			default_value_expr_op_string, default_value_expr_type_string);
+	    }
 	}
       else
 	{

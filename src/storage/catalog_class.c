@@ -1505,16 +1505,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  goto error;
 		}
 
-	      strcpy (default_str_val_tmp, default_expr_op_string);
-	      strcat (default_str_val_tmp, "(");
-	      strcat (default_str_val_tmp, default_expr_type_string);
 	      if (def_expr_format_string)
 		{
-		  strcat (default_str_val_tmp, ", \'");
-		  strcat (default_str_val_tmp, def_expr_format_string);
-		  strcat (default_str_val_tmp, "\'");
+		  snprintf (default_str_val_tmp, len + 1, "%s(%s, \'%s\')", default_expr_op_string,
+			    default_expr_type_string, def_expr_format_string);
 		}
-	      strcat (default_str_val_tmp, ")");
+	      else
+		{
+		  snprintf (default_str_val_tmp, len + 1, "%s(%s)", default_expr_op_string, default_expr_type_string);
+		}
 	    }
 	  else
 	    {
@@ -1566,10 +1565,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  len = strlen (default_expr_type_string);
 
 	  /* add whitespace character if default_str_val is not an empty string */
-	  str_val =
-	    (char *) db_private_alloc (thread_p,
-				       (default_value_len + (default_value_len ? 1 : 0) + len + strlen ("ON UPDATE ")
-					+ 1));
+	  size_t str_val_size = default_value_len + 1 + len + strlen ("ON UPDATE ") + 1;
+
+	  str_val = (char *) db_private_alloc (thread_p, str_val_size);
 	  if (str_val == NULL)
 	    {
 	      pr_clear_value (&default_expr);
@@ -1579,14 +1577,11 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	    }
 	  if (default_str_val != NULL)
 	    {
-	      strcpy (str_val, default_str_val);
-	      strcat (str_val, " ON UPDATE ");
-	      strcat (str_val, default_expr_type_string);
+	      snprintf (str_val, str_val_size, "%s ON UPDATE %s", default_str_val, default_expr_type_string);
 	    }
 	  else
 	    {
-	      strcpy (str_val, "ON UPDATE ");
-	      strcat (str_val, default_expr_type_string);
+	      snprintf (str_val, str_val_size, "ON UPDATE %s", default_expr_type_string);
 	    }
 
 	  pr_clear_value (attr_val_p);	/* clean old default value */
@@ -4015,7 +4010,7 @@ catcls_delete_instance (THREAD_ENTRY * thread_p, OID * oid_p, OID * class_oid_p,
   is_lock_inited = true;
 #endif /* SERVER_MODE */
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4180,7 +4175,8 @@ catcls_update_instance (THREAD_ENTRY * thread_p, OR_VALUE * value_p, OID * oid_p
   int i, j, k;
   int error = NO_ERROR;
 
-  if (heap_get_visible_version (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, oid_p, class_oid_p, &old_record, scan_p, COPY, NULL_CHN) !=
+      S_SUCCESS)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
@@ -4503,7 +4499,8 @@ catcls_update_class_stats (THREAD_ENTRY * thread_p, const char *class_name, unsi
 
   is_scan_inited = true;
 
-  if (heap_get_visible_version (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) != S_SUCCESS)
+  if (heap_get_visible_version_expand_oos (thread_p, &oid, catalog_class_oid_p, &record, &scan, COPY, NULL_CHN) !=
+      S_SUCCESS)
     {
       ASSERT_ERROR_AND_SET (error);
       goto error;

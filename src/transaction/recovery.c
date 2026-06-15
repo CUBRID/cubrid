@@ -866,9 +866,6 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
-  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM (=134); kept as a no-op stub because
-   * RV_fun[] is positionally indexed by rcvindex and existing on-disk logs may still reference
-   * this slot. See recovery.h for the matching enum-side TODO. */
   {RVOOS_NOTIFY_VACUUM,
    "RVOOS_NOTIFY_VACUUM",
    vacuum_rv_es_nop,

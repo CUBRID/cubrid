@@ -17,39 +17,34 @@
 
 project(test_oos_project)
 
-# =============================================================================
-# SA_MODE tests (linked to cubridsa, standalone in-process server)
-# =============================================================================
-set(SA_MODE_TESTS
-  test_oos
-  test_oos_delete
-  test_oos_remove_file
-  test_oos_bestspace
-)
+#
+# test_oos
+#
 
-foreach(test_name ${SA_MODE_TESTS})
-  add_executable(${test_name} ${test_name}.cpp)
+# # Collect all test source files matching test_*.cpp
+file(GLOB TEST_CPP_SOURCES test_*.cpp)
+
+foreach(src ${TEST_CPP_SOURCES})
+  # Extract the base name without extension
+  get_filename_component(test_name ${src} NAME_WE)
+
+  # Define executable
+  add_executable(${test_name} ${src})
+
+  # Link libraries
   target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubridsa GTest::gtest)
+
+  # Common definitions and includes
   target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SA_MODE)
   target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
-endforeach()
+  
 
-# =============================================================================
-# SERVER_MODE tests (linked to cubrid, in-process server with MVCC/threading)
-# =============================================================================
-set(SERVER_MODE_TESTS
-  test_oos_server
-  test_oos_delete_server
-  test_oos_remove_file_server
-  test_oos_mock_vacuum_server
-  test_oos_vacuum_server
-)
-
-foreach(test_name ${SERVER_MODE_TESTS})
-  add_executable(${test_name} ${test_name}.cpp)
-  target_link_libraries(${test_name} PRIVATE ${EP_LIBS} cubrid GTest::gtest)
-  target_compile_definitions(${test_name} PRIVATE ${COMMON_DEFS} SERVER_MODE)
-  target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES})
+  # Register the test automatically:
+  # add_test(NAME ${test_name} COMMAND ${test_name})
+  #
+  # but while active development,
+  # it is convenient to comment this out to avoid running all tests at once.
+  # Prefer to register tests one by one below.
 endforeach()
 
 # =============================================================================
@@ -76,40 +71,26 @@ add_test(NAME oos_cleanup_db
     "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
     "PATH=$ENV{PATH}"
     bash -c "
-      cubrid server stop unittestdb 2>/dev/null || true
       if grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
         cubrid deletedb unittestdb
       fi
     "
 )
-set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
+set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB)
 
-# =============================================================================
-# Register SA_MODE tests
-# =============================================================================
+# Register individual tests one by one.
 add_test(NAME test_oos COMMAND test_oos)
 add_test(NAME test_oos_delete COMMAND test_oos_delete)
 add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
+# pure-logic test for the bounded writer used by oos_read; no DB fixture.
+add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
+# add_test(NAME test_oos_persist COMMAND test_oos_persist)
+# add_test(NAME test_oos_record_descriptor COMMAND test_oos_record_descriptor)
 
 set_tests_properties(
   test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
-  PROPERTIES FIXTURES_REQUIRED OOS_DB TIMEOUT 30
-)
-
-# =============================================================================
-# Register SERVER_MODE tests
-# =============================================================================
-add_test(NAME test_oos_server COMMAND test_oos_server)
-add_test(NAME test_oos_delete_server COMMAND test_oos_delete_server)
-add_test(NAME test_oos_remove_file_server COMMAND test_oos_remove_file_server)
-add_test(NAME test_oos_mock_vacuum_server COMMAND test_oos_mock_vacuum_server)
-add_test(NAME test_oos_vacuum_server COMMAND test_oos_vacuum_server)
-
-set_tests_properties(
-  test_oos_server test_oos_delete_server test_oos_remove_file_server
-  test_oos_mock_vacuum_server test_oos_vacuum_server
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 60
+  PROPERTIES FIXTURES_REQUIRED OOS_DB
 )
 
 # Note: add_test vs. gtest_discover_tests

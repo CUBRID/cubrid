@@ -189,11 +189,6 @@ typedef enum
   RVOOS_DELETE = 131,
   RVREPL_OOS_INSERT = 132,
   RVREPL_OOS_DELETE = 133,
-  /* TODO: RVOOS_NOTIFY_VACUUM is currently unused (no emitter) but its numeric value
-   * must stay pinned at 134: existing on-disk log records may carry it, and RV_fun[] in
-   * recovery.c is positionally indexed by rcvindex so renumbering would shift the slot of
-   * RVREPL_DUMMY_OOS_RECORD. Either reuse this slot for a real OOS-vacuum-notify path or retire
-   * it together with a log-format bump. */
   RVOOS_NOTIFY_VACUUM = 134,
   RVREPL_DUMMY_OOS_RECORD = 135,	/* multi-chunk OOS replication marker */
   RV_LAST_LOGID = RVREPL_DUMMY_OOS_RECORD,
@@ -275,9 +270,6 @@ extern void rv_check_rvfuns (void);
    || (idx) == RVHF_LOB_REMOVE_DIR \
    || (idx) == RVBT_DELETE_OBJECT_POSTPONE)
 
-/* TODO: the RVOOS_NOTIFY_VACUUM clause below has no emitter today; kept because the
- * rcvindex must remain pinned at 134 (see the enum-side TODO above). Drop together with the
- * enum slot when the log format is bumped. */
 #define RCV_IS_LOGICAL_LOG(vpid, idx) \
   (((vpid)->volid == NULL_VOLID) \
    || ((vpid)->pageid == NULL_PAGEID) \

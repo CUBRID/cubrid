@@ -669,6 +669,9 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_VACUUM];
   req_p->processing_function = svacuum;
 
+  req_p = &net_Requests[NET_SERVER_OOS_STATS];
+  req_p->processing_function = soos_stats;
+
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 

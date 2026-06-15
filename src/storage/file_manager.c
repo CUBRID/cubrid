@@ -1429,13 +1429,10 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
-      /* OOS files do not currently store a parent HFID in their FILE_DESCRIPTORS, so we cannot
-       * emit an "Overflow for HFID: ..." line the way FILE_MULTIPAGE_OBJECT_HEAP does. Terminate
-       * the dump block with a newline instead — matches the default-case handling. The previous
-       * assert(false) here aborted cubrid diagdb in debug builds whenever it walked a database
-       * that contained any OOS file (i.e. any DB with a variable-length column >512 B). */
-      fprintf (fp, "\n");
-      break;
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
@@ -12465,22 +12462,6 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
     }
-
-  /* apply to OOS file (if it has been lazily created already).
-   * Lazy creation that happens after this point applies TDE inline in
-   * heap_oos_find_vfid (docreate=true branch). */
-  {
-    VFID oos_vfid;
-    VFID_SET_NULL (&oos_vfid);
-    if (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false) && !VFID_ISNULL (&oos_vfid))
-      {
-	error_code = file_apply_tde_algorithm (thread_p, &oos_vfid, tde_algo);
-	if (error_code != NO_ERROR)
-	  {
-	    goto exit;
-	  }
-      }
-  }
 
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
   if (or_repr == NULL)

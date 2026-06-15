@@ -381,21 +381,7 @@ struct heap_get_context
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
 
-  /* When true (default), heap_record_replace_oos_oids rewrites the returned record so that
-   * each inline OOS OID slot is replaced by the actual variable-attribute bytes from the OOS
-   * file. Set to false when the caller will decode per-attribute via heap_attrinfo_read_dbvalues
-   * (which calls oos_read() itself), so the record-level expansion would be wasted work. */
-  bool expand_oos;
-
-  /* True when the caller pre-positioned recdes_p->data into a buffer it owns (e.g. xlocator_fetch_all
-   * writes successive records into a copyarea slot) and therefore expects heap_get to write the record
-   * into THAT buffer. In this case, heap_record_replace_oos_oids must NOT reallocate recdes_p->data
-   * via scan_cache when the OOS expansion overflows -- it must return S_DOESNT_FIT so the caller's
-   * retry-with-bigger-buffer loop kicks in. Detected at heap_init_get_context time: recdes->data
-   * non-NULL on entry => externally positioned. Set to false when recdes->data was NULL on entry,
-   * in which case scan_cache is the owner and growing it is safe (used by heap_get_last_version's
-   * UPDATE path, which cannot itself retry). */
-  bool data_externally_positioned;
+  bool expand_oos;		/* if true, replace inline OOS OID slots with actual values */
 };
 
 typedef struct sampling_info SAMPLING_INFO;
@@ -704,20 +690,12 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
-/* heap_get_visible_version variant that returns the record with inline OOS OID slots left in
- * place (HEAP_GET_CONTEXT::expand_oos = false). Use when the caller decodes per-attribute via
- * heap_attrinfo_read_dbvalues, which already calls oos_read() for each OOS column. */
-extern SCAN_CODE heap_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-							   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-							   int old_chn);
+extern SCAN_CODE heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+						      RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+						      int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn);
-/* heap_scan_get_visible_version variant matching heap_get_visible_version_skip_oos_expand. */
-extern SCAN_CODE heap_scan_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid,
-								OID * class_oid, RECDES * recdes,
-								RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
-								int ispeeking, int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
