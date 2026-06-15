@@ -1183,7 +1183,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	  DB_SESSION_ERROR *session_error = db_get_errors (session);
 	  int line = -1, col;
 
-          if (session_error != NULL)
+	  if (session_error != NULL)
 	    {
 	      db_get_next_error (session_error, &line, &col);
 	    }
