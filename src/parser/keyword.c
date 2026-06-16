@@ -195,6 +195,7 @@ static KEYWORD_RECORD keywords[] = {
   {ERROR_, "ERROR", 1},
   {ESCAPE, "ESCAPE", 0},
   {EVALUATE, "EVALUATE", 0},
+  {EXACT, "EXACT", 1},
   {EXCEPT, "EXCEPT", 0},
   {EXCEPTION, "EXCEPTION", 0},
   {EXEC, "EXEC", 0},

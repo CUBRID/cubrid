@@ -18479,16 +18479,23 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   int i = 0;
   int parts_count = 0;
   bool is_all = false;
+  bool is_exact = false;
+  LOCK class_lock = IS_LOCK;
 
-  assert (arg_cnt == 2);
+  assert (arg_cnt == 3);
   assert (DB_VALUE_TYPE (arg_values[0]) == DB_TYPE_CHAR);
-  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);
+  assert (DB_VALUE_TYPE (arg_values[1]) == DB_TYPE_INTEGER);	/* EXACT flag */
+  assert (DB_VALUE_TYPE (arg_values[2]) == DB_TYPE_INTEGER);	/* partition type */
 
   *ptr = NULL;
 
   class_name = db_get_string (arg_values[0]);
 
-  partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[1]);
+  /* default uses IS_LOCK; the EXACT option requests S_LOCK to read fully consistent statistics */
+  is_exact = (db_get_int (arg_values[1]) != 0);
+  class_lock = is_exact ? S_LOCK : IS_LOCK;
+
+  partition_type = (DB_CLASS_PARTITION_TYPE) db_get_int (arg_values[2]);
 
   ctx = (HEAP_SHOW_SCAN_CTX *) db_private_alloc (thread_p, sizeof (HEAP_SHOW_SCAN_CTX));
   if (ctx == NULL)
@@ -18499,7 +18506,7 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
     }
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
