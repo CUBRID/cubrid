@@ -4047,11 +4047,14 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_optimize_min_max_list (parser, tree, info->qo_plan, aggregate_list);
 	}
 
-      arg_list = parser_copy_tree_list (parser, tree->info.function.arg_list);
-      if (arg_list == NULL)
+      if (tree->info.function.arg_list != NULL)
 	{
-	  PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return NULL;
+	  arg_list = parser_copy_tree_list (parser, tree->info.function.arg_list);
+	  if (arg_list == NULL)
+	    {
+	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return NULL;
+	    }
 	}
 
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
