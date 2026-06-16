@@ -12463,6 +12463,28 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	}
     }
 
+  /* apply to OOS file (if it has been lazily created already).
+   * Lazy creation that happens after this point applies TDE inline in
+   * heap_oos_find_vfid (docreate=true branch). */
+  {
+    VFID oos_vfid;
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+      {
+	/* genuine failure reading the heap header, not "no OOS file" */
+	ASSERT_ERROR_AND_SET (error_code);
+	goto exit;
+      }
+    if (!VFID_ISNULL (&oos_vfid))
+      {
+	error_code = file_apply_tde_algorithm (thread_p, &oos_vfid, tde_algo);
+	if (error_code != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+  }
+
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
   if (or_repr == NULL)
     {

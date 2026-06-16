@@ -1475,7 +1475,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1374 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1375 Last Error
+1375 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+
+1376 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
