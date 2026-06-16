@@ -12235,7 +12235,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	    }
 
 	  /* Apply TDE to the new OOS file atomically with its creation.
-	   * Pattern mirrors heap_ovf_find_vfid (heap_file.c:6535). */
+	   * Pattern mirrors heap_ovf_find_vfid */
 	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
