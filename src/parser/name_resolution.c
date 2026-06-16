@@ -11511,7 +11511,7 @@ pt_get_table_func_attr_list (PARSER_CONTEXT * parser, PT_NODE * derived_table, P
   sp_mop = jsp_find_stored_procedure (func_name, DB_AUTH_EXECUTE);
   if (sp_mop == NULL)
     {
-      PT_ERRORmf (parser, derived_table, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, func_name);
+      PT_ERRORmf (parser, derived_table, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, func_name);
       return NULL;
     }
 
