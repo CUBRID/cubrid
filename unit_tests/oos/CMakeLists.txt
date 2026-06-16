@@ -26,6 +26,7 @@ set(SA_MODE_TESTS
   test_oos_remove_file
   test_oos_bestspace
   test_byte_span_writer
+  test_oos_tde_gate
 )
 
 foreach(test_name ${SA_MODE_TESTS})
@@ -102,6 +103,8 @@ add_test(NAME test_oos_remove_file COMMAND test_oos_remove_file)
 add_test(NAME test_oos_bestspace COMMAND test_oos_bestspace)
 # pure-logic test for the bounded writer used by oos_read; no DB fixture.
 add_test(NAME test_byte_span_writer COMMAND test_byte_span_writer)
+# pure-logic guard that the OOS forward-delete rcvindex is TDE-gated (CBRD-26668); no DB fixture.
+add_test(NAME test_oos_tde_gate COMMAND test_oos_tde_gate)
 
 set_tests_properties(
   test_oos test_oos_delete test_oos_remove_file test_oos_bestspace
