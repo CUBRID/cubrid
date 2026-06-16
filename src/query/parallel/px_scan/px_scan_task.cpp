@@ -34,6 +34,7 @@
 #include "memoize.hpp"
 #include "scan_manager.h"
 #include "partition_sr.h"
+#include "object_primitive.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -98,6 +99,48 @@ namespace parallel_scan
       {
 	return err_code;
       }
+
+    /* CBRD-26931: inject main-thread-precomputed scalar subquery values into this clone so predicate
+     * evaluation reads the precomputed value rather than re-executing the subquery per worker. The clone's
+     * precomp_regu_array elements alias the clone's own predicate-operand regus (serialization preserves
+     * source-pointer aliasing), so redirecting them redirects exactly what the predicate evaluates. */
+    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
+      {
+	for (int pc = 0; pc < cnode->precomp_regu_count; pc++)
+	  {
+	    REGU_VARIABLE *regu = cnode->precomp_regu_array[pc];
+	    if (regu == nullptr || regu->xasl == nullptr)
+	      {
+		continue;
+	      }
+	    xasl_node *clone_subq = regu->xasl;
+	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
+	    if (map_val == nullptr || clone_subq->single_tuple == nullptr || clone_subq->single_tuple->valp == nullptr
+		|| clone_subq->single_tuple->valp->val == nullptr)
+	      {
+		continue;
+	      }
+	    DB_VALUE *slot = clone_subq->single_tuple->valp->val;
+	    /* 1. release the clone's stale operand value first, unless it already aliases the slot we fill. */
+	    if (regu->value.dbvalptr != nullptr && regu->value.dbvalptr != slot)
+	      {
+		pr_clear_value (regu->value.dbvalptr);
+	      }
+	    /* 2. copy the precomputed value into the subquery's single_tuple slot (valp->val is a DB_VALUE *). */
+	    pr_clone_value (map_val, slot);
+	    /* 3. alias the predicate operand to that slot -- no second copy. */
+	    regu->value.dbvalptr = slot;
+	    /* 4. the single_tuple clear loop in qexec_clear_xasl is the sole owner; avoid a double clear. */
+	    REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+	    /* 5. mark already-executed so EXECUTE_REGU_VARIABLE_XASL's initial-status guard skips re-execution. */
+	    clone_subq->status = XASL_SUCCESS;
+	    /* 6. force the non-cache fetch branch so the worker uses the redirected dbvalptr. */
+	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
+	    assert (regu->value.dbvalptr == clone_subq->single_tuple->valp->val
+		    && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE));
+	  }
+      }
+
     if constexpr (ST != SCAN_TYPE::LIST)
       {
 	hsidp = &m_scan_id->s.hsid;
@@ -178,7 +221,7 @@ namespace parallel_scan
 	  {
 	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
-		scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
+		scan_info scan_info = m_pre_execution_info->get_scan_info (xptr->header.id);
 		ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 		xptr->curr_spec = xptr->spec_list;
 		if (spec_ptr->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (spec_ptr->access)
@@ -420,7 +463,7 @@ namespace parallel_scan
 		  }
 	      }
 
-	    m_join_info->record_join_info (xptr->header.id, xptr);
+	    m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
 
 	  }
 
