@@ -55,6 +55,9 @@ stx_get_xasl_errcode (THREAD_ENTRY *thread_p)
 void
 stx_set_xasl_errcode (THREAD_ENTRY *thread_p, int errcode)
 {
+  if (errcode != 0)
+    {
+    }
 #if defined(SERVER_MODE)
   thread_p->xasl_errcode = errcode;
 #else /* SERVER_MODE */

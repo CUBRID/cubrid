@@ -725,7 +725,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(1, java.sql.Types.OTHER);",
                 "      %'+SET-GLOBAL-FUNC-ARGS'%",
                 "      pstmt_%'SQL-SERIAL-NO'%.execute();",
-                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt_%'SQL-SERIAL-NO'%.getObject(1);",
+                "      %'RETURN-TYPE'% ret = %'RETURN-CAST'%;",
                 "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                 "      return ret;",
                 "    } catch (SQLException e) {",
@@ -757,7 +757,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "      pstmt_%'SQL-SERIAL-NO'%.registerOutParameter(1, java.sql.Types.OTHER);",
                 "      %'+SET-GLOBAL-FUNC-ARGS'%",
                 "      pstmt_%'SQL-SERIAL-NO'%.execute();",
-                "      %'RETURN-TYPE'% ret = (%'RETURN-TYPE'%) pstmt_%'SQL-SERIAL-NO'%.getObject(1);",
+                "      %'RETURN-TYPE'% ret = %'RETURN-CAST'%;",
                 "      %'+UPDATE-GLOBAL-FUNC-OUT-ARGS'%",
                 "      return ret;",
                 "    } catch (SQLException e) {",
@@ -783,6 +783,18 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         GlobalCallCodeSnippets code =
                 getGlobalCallCodeSnippets(argSize, 2, node.args, node.decl.paramList);
 
+        String retTypeJava = getJavaCodeOfType(node.decl.retTypeSpec);
+        Type retType = node.decl.retTypeSpec.type;
+        String retCastExpr;
+        if (retType == Type.SYS_REFCURSOR || retType == Type.CURSOR) {
+            retCastExpr =
+                    "com.cubrid.plcsql.predefined.sp.SpLib.Query.fromObject(pstmt_"
+                            + node.sqlSerialNo
+                            + ".getObject(1))";
+        } else {
+            retCastExpr = "(" + retTypeJava + ") pstmt_" + node.sqlSerialNo + ".getObject(1)";
+        }
+
         CodeTemplate tmpl =
                 new CodeTemplate(
                         "ExprGlobalFuncCall",
@@ -795,7 +807,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'DYNAMIC-SQL'%",
                         dynSql,
                         "%'RETURN-TYPE'%",
-                        getJavaCodeOfType(node.decl.retTypeSpec),
+                        retTypeJava,
+                        "%'RETURN-CAST'%",
+                        retCastExpr,
                         "%'PARAMETERS'%",
                         wrapperParam,
                         "%'+SET-GLOBAL-FUNC-ARGS'%",

@@ -2140,6 +2140,8 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  break;
 	case S_DBLINK_SCAN:
 	  break;
+	case S_TABLE_FUNC_SCAN:
+	  break;
 	}
       if (p->s_id.val_list)
 	{
@@ -2234,6 +2236,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	    }
 
+	  break;
+	case TARGET_TABLE_FUNC:
+	  pg_cnt +=
+	    qexec_clear_regu_list (thread_p, xasl_p, p->s.table_func_node.regu_list, is_final, for_parallel_aptr);
+	  /* sig_array is managed by the XASL unpack buffer — do not delete */
 	  break;
 	case TARGET_REGUVAL_LIST:
 	  break;
@@ -7823,6 +7830,18 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
       break;
 
+    case TARGET_TABLE_FUNC:
+      error_code =
+	scan_open_table_func_scan (thread_p, s_id, grouped, curr_spec->single_fetch, curr_spec->s_dbval, val_list, vd,
+				   ACCESS_SPEC_TABLE_FUNC_SIG_ARRAY (curr_spec),
+				   ACCESS_SPEC_TABLE_FUNC_ARG_LIST (curr_spec), curr_spec->where_pred);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      break;
+
     case TARGET_DBLINK:
       {
 	DBLINK_HOST_VARS host_vars;
@@ -7957,6 +7976,9 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 
 	case TARGET_METHOD:
 	  perfmon_inc_stat (thread_p, PSTAT_QM_NUM_METHSCANS);
+	  break;
+
+	case TARGET_TABLE_FUNC:
 	  break;
 
 	case TARGET_DBLINK:
@@ -9315,6 +9337,17 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	{
 	  return S_ERROR;
 	}
+      break;
+
+    case TARGET_LIST:
+    case TARGET_SET:
+    case TARGET_METHOD:
+    case TARGET_TABLE_FUNC:
+    case TARGET_SHOWSTMT:
+    case TARGET_REGUVAL_LIST:
+    case TARGET_JSON_TABLE:
+    case TARGET_DBLINK:
+      /* non-partitioned scan types — nothing to reinitialize */
       break;
 
     default:

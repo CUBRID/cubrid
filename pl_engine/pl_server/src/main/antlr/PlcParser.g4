@@ -39,8 +39,17 @@ create_routine
     ;
 
 routine_definition
-    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (authid_spec? deterministic_spec? | deterministic_spec authid_spec) (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+    : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN return_type_spec)?
+      (authid_spec? deterministic_spec? | deterministic_spec authid_spec) (IS | AS) (LANGUAGE PLCSQL)? (DECLARE)? seq_of_declare_specs? body (SEMICOLON)?
+    ;
+
+return_type_spec
+    : type_spec
+    | TABLE_ LPAREN table_return_col (',' table_return_col)* RPAREN
+    ;
+
+table_return_col
+    : identifier type_spec
     ;
 
 routine_uniq_name

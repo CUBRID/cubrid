@@ -5332,6 +5332,26 @@ pt_make_cselect_access_spec (XASL_NODE * xasl, PL_SIGNATURE_ARRAY_TYPE * sig_arr
   return spec;
 }
 
+static ACCESS_SPEC_TYPE *pt_to_table_func_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * func_call,
+						     PT_NODE * where_part);
+
+static ACCESS_SPEC_TYPE *
+pt_make_table_func_access_spec (PL_SIGNATURE_ARRAY_TYPE * sig_array, PRED_EXPR * where_pred,
+				REGU_VARIABLE_LIST attr_list)
+{
+  ACCESS_SPEC_TYPE *spec;
+
+  spec = pt_make_access_spec (TARGET_TABLE_FUNC, ACCESS_METHOD_SEQUENTIAL, NULL, NULL, where_pred, NULL);
+
+  if (spec)
+    {
+      spec->s.table_func_node.sig_array = sig_array;
+      spec->s.table_func_node.regu_list = attr_list;
+    }
+
+  return spec;
+}
+
 /*
  * pt_make_dblink_access_spec () - Create an initialized
  * 				    ACCESS_SPEC_TYPE TARGET_DBLINK structure
@@ -12872,6 +12892,72 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
   return NULL;
 }
 
+/*
+ * pt_to_table_func_spec_list () - Create an ACCESS_SPEC for a table-valued function call
+ *   Builds PL_SIGNATURE from the PT_METHOD_CALL node and creates a TARGET_TABLE_FUNC access spec.
+ */
+static ACCESS_SPEC_TYPE *
+pt_to_table_func_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * func_call, PT_NODE * where_part)
+{
+  ACCESS_SPEC_TYPE *access;
+  PL_SIGNATURE_ARRAY_TYPE *sig_array = NULL;
+  PL_SIGNATURE_TYPE *sig_list = NULL;
+  REGU_VARIABLE_LIST regu_attributes;
+  PRED_EXPR *where = NULL;
+
+  if (!func_call || func_call->node_type != PT_METHOD_CALL)
+    {
+      return NULL;
+    }
+
+  /* Build PL_SIGNATURE for the function call */
+  regu_alloc (sig_array);
+  if (sig_array == NULL)
+    {
+      return NULL;
+    }
+  new (sig_array) cubpl::pl_signature_array ();
+
+  sig_array->num_sigs = 1;
+  regu_array_alloc (&sig_list, 1);
+  sig_array->sigs = sig_list;
+  new (&sig_array->sigs[0]) cubpl::pl_signature ();
+
+  int error = jsp_make_pl_signature (parser, func_call, spec->info.spec.as_attr_list, sig_array->sigs[0]);
+  if (error != NO_ERROR)
+    {
+      /* Propagate the error from jsp_make_pl_signature to the parser */
+      const char *err_msg = er_msg ();
+      if (err_msg && err_msg[0])
+	{
+	  PT_ERRORf (parser, func_call, "%s", err_msg);
+	}
+      return NULL;
+    }
+
+  /* Generate position regu variables for the output columns */
+  regu_attributes = pt_to_position_regu_variable_list (parser, spec->info.spec.as_attr_list, NULL, NULL);
+
+  /* Generate regu variables for the function arguments */
+  REGU_VARIABLE_LIST arg_list = NULL;
+  PT_NODE *args = func_call->info.method_call.arg_list;
+  if (args)
+    {
+      arg_list = pt_to_regu_variable_list (parser, args, UNBOX_AS_VALUE, NULL, NULL);
+    }
+
+  /* Build predicate from WHERE clause */
+  where = pt_to_pred_expr (parser, where_part);
+
+  access = pt_make_table_func_access_spec (sig_array, where, regu_attributes);
+  if (access)
+    {
+      access->s.table_func_node.arg_list = arg_list;
+    }
+
+  return access;
+}
+
 static ACCESS_SPEC_TYPE *
 pt_to_json_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * json_table,
 			    PT_NODE * src_derived_tbl, PT_NODE * where_p)
@@ -13136,6 +13222,11 @@ pt_to_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_pa
 	  /* PT_DERIVED_DBLINK_TABLE derived table */
 	  access =
 	    pt_to_dblink_table_spec_list (parser, spec, spec->info.spec.derived_table, src_derived_tbl, where_part);
+	}
+      else if (spec->info.spec.derived_table_type == PT_DERIVED_TABLE_FUNC)
+	{
+	  /* Table-valued function call */
+	  access = pt_to_table_func_spec_list (parser, spec, spec->info.spec.derived_table, where_part);
 	}
       else
 	{

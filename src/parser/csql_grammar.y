@@ -810,6 +810,8 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <node> opt_sp_param_list
 %type <node> sp_param_list
 %type <node> sp_param_def
+%type <node> sp_ret_col_def_list
+%type <node> sp_ret_col_def
 %type <node> esql_query_stmt
 %type <node> csql_query
 %type <node> csql_query_select_has_no_with_clause
@@ -1405,6 +1407,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
+%token SYS_REFCURSOR
 %token SYS_TIME_
 %token SYS_TIMESTAMP
 %token SYSTEM_USER
@@ -5262,17 +5265,47 @@ original_table_spec
 			$$ = ent;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-        | DBLINK  '('  dblink_expr ')'   dblink_identifier_col_attrs 
+	| only_class_name '(' opt_expression_list ')' opt_as_identifier_attr_name
+		{{
+			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
+			if (ent)
+			  {
+			    /* Create a PT_METHOD_CALL node to hold the function call */
+			    PT_NODE *func = parser_new_node (this_parser, PT_METHOD_CALL);
+			    if (func)
+			      {
+				func->info.method_call.method_name = $1;
+				func->info.method_call.arg_list = $3;
+				func->info.method_call.on_call_target = NULL;
+				func->info.method_call.call_or_expr = PT_IS_MTHD_EXPR;
+			      }
+
+			    ent->info.spec.derived_table = func;
+			    ent->info.spec.derived_table_type = PT_DERIVED_TABLE_FUNC;
+
+			    PT_NODE *range_var = CONTAINER_AT_0 ($5);
+			    if (range_var == NULL)
+			      {
+				/* Use function name as default alias */
+				range_var = parser_copy_tree (this_parser, $1);
+			      }
+			    ent->info.spec.range_var = range_var;
+			    ent->info.spec.as_attr_list = CONTAINER_AT_1 ($5);
+			  }
+			$$ = ent;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+        | DBLINK  '('  dblink_expr ')'   dblink_identifier_col_attrs
                 {{
 			PT_NODE *ent = parser_new_node (this_parser, PT_SPEC);
 			if (ent)
 			  {
 			    ent->info.spec.derived_table = $3;  // dblink_expr
-			    ent->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;                            
-			    ent->info.spec.range_var = CONTAINER_AT_0 ($5); // table name                                                        
-			    ent->info.spec.derived_table->info.dblink_table.cols = CONTAINER_AT_1 ($5); // def. columns 
+			    ent->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+			    ent->info.spec.range_var = CONTAINER_AT_0 ($5); // table name
+			    ent->info.spec.derived_table->info.dblink_table.cols = CONTAINER_AT_1 ($5); // def. columns
 			  }
-			$$ = ent;                        
+			$$ = ent;
 		        PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
 	;
@@ -11658,7 +11691,7 @@ opt_plus
 	;
 
 sp_return_type
-        : 
+        :
            {
                 is_in_sp_func_type = true;
            }
@@ -11673,6 +11706,26 @@ sp_return_type
 			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
 			$$ = ctn;
                 }}
+        | SYS_REFCURSOR
+                {{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SYS_REFCURSOR), NULL);
+			$$ = ctn;
+                }}
+        | TABLE '(' sp_ret_col_def_list ')'
+		{{
+			container_2 ctn;
+
+			PT_NODE *dt = parser_new_node (this_parser, PT_DATA_TYPE);
+			if (dt)
+			  {
+			    dt->type_enum = PT_TYPE_TABLE_COLUMNS;
+			    dt->info.data_type.col_list = $3;
+			  }
+
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_TABLE_COLUMNS), dt);
+			$$ = ctn;
+		}}
         | table_column MOD TYPE
 		{{
 			container_2 ctn;
@@ -11919,6 +11972,12 @@ sp_param_type
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_RESULTSET), NULL);
 			$$ = ctn;
 		}}
+        | SYS_REFCURSOR
+		{{
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SYS_REFCURSOR), NULL);
+			$$ = ctn;
+		}}
         | table_column MOD TYPE
 		{{
 			container_2 ctn;
@@ -11950,6 +12009,42 @@ table_column
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
         ;
+
+sp_ret_col_def_list
+	: sp_ret_col_def_list ',' sp_ret_col_def
+		{{
+			$$ = parser_make_link ($1, $3);
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| sp_ret_col_def
+		{{
+			$$ = $1;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+sp_ret_col_def
+	: identifier data_type
+		{{
+			/* Note: is_in_sp_func_type is NOT set here, so precision is allowed
+			 * e.g. TABLE(name VARCHAR(50), score NUMERIC(10,2))
+			 */
+			PT_NODE *node = parser_new_node (this_parser, PT_SP_PARAMETERS);
+
+			if (node)
+			  {
+			    node->type_enum = TO_NUMBER (CONTAINER_AT_0 ($2));
+			    node->data_type = CONTAINER_AT_1 ($2);
+			    node->info.sp_param.name = $1;
+			    node->info.sp_param.mode = PT_INPUT;
+			    node->info.sp_param.default_value = NULL;
+			    node->info.sp_param.comment = NULL;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
 
 opt_sp_in_out
 	: opt_in_out

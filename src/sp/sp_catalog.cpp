@@ -347,6 +347,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
   DB_VALUE value;
   DB_SET *param = NULL;
   MOP *mop_list = NULL;
+  MOP *mop_list_ret_cols = NULL;
   int save, err;
 
   AU_DISABLE (save);
@@ -424,6 +425,61 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
       {
 	goto error;
       }
+
+    // return_cols (_db_stored_procedure_return_cols) begin
+    {
+      DB_SET *ret_param = set_create_sequence (0);
+      if (ret_param == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  err = er_errid ();
+	  goto error;
+	}
+
+      mop_list_ret_cols = (MOP *) malloc (info.return_cols.size () * sizeof (MOP));
+
+      int j = 0;
+      for (sp_return_col_info &col : info.return_cols)
+	{
+	  DB_VALUE v;
+
+	  col.sp_name = info.sp_name;
+
+	  err = sp_add_stored_procedure_return_col (&mop_list_ret_cols[j], col);
+	  if (err != NO_ERROR)
+	    {
+	      set_free (ret_param);
+	      goto error;
+	    }
+
+	  db_make_object (&v, mop_list_ret_cols[j]);
+	  err = set_put_element (ret_param, j++, &v);
+	  pr_clear_value (&v);
+
+	  if (err != NO_ERROR)
+	    {
+	      set_free (ret_param);
+	      goto error;
+	    }
+	}
+      db_make_sequence (&value, ret_param);
+      err = dbt_put_internal (obt_p, SP_ATTR_RETURN_COLS, &value);
+      pr_clear_value (&value);
+      ret_param = NULL;
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      db_make_int (&value, (int) info.return_cols.size ());
+      err = dbt_put_internal (obt_p, SP_ATTR_RETURN_COLS_CNT, &value);
+      pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto error;
+	}
+    }
+    // return_cols (_db_stored_procedure_return_cols) end
 
     if (!info.pkg_name.empty ())
       {
@@ -634,6 +690,53 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
       }
     free (mop_list);
     // args (_db_stored_procedure_args) sp_of oid end
+
+    // return_cols (_db_stored_procedure_return_cols) sp_of oid begin
+    if (mop_list_ret_cols != NULL)
+      {
+	int n_ret_cols = (int) info.return_cols.size ();
+	for (int k = 0; k < n_ret_cols; k++)
+	  {
+	    DB_OBJECT *ret_col_obj;
+
+	    obt_p = dbt_edit_object (mop_list_ret_cols[k]);
+	    if (!obt_p)
+	      {
+		assert (er_errid () != NO_ERROR);
+		err = er_errid ();
+		goto error;
+	      }
+
+	    db_make_object (&value, object_p);
+	    err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_SP_OF, &value);
+	    pr_clear_value (&value);
+	    if (err != NO_ERROR)
+	      {
+		goto error;
+	      }
+
+	    ret_col_obj = dbt_finish_object (obt_p);
+	    if (!ret_col_obj)
+	      {
+		assert (er_errid () != NO_ERROR);
+		err = er_errid ();
+		goto error;
+	      }
+	    obt_p = NULL;
+
+	    err = locator_flush_instance (ret_col_obj);
+	    if (err != NO_ERROR)
+	      {
+		assert (er_errid () != NO_ERROR);
+		err = er_errid ();
+		obj_delete (ret_col_obj);
+		goto error;
+	      }
+	  }
+	free (mop_list_ret_cols);
+	mop_list_ret_cols = NULL;
+      }
+    // return_cols (_db_stored_procedure_return_cols) sp_of oid end
   }
 
   AU_ENABLE (save);
@@ -643,6 +746,11 @@ error:
   if (param)
     {
       set_free (param);
+    }
+
+  if (mop_list_ret_cols)
+    {
+      free (mop_list_ret_cols);
     }
 
   if (obt_p)
@@ -747,6 +855,115 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
       db_make_string (&value, info.comment.data ());
     }
   err = dbt_put_internal (obt_p, SP_ARG_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  object_p = dbt_finish_object (obt_p);
+  if (!object_p)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+  obt_p = NULL;
+
+  err = locator_flush_instance (object_p);
+  if (err != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      obj_delete (object_p);
+      goto error;
+    }
+
+  *mop_p = object_p;
+
+  AU_ENABLE (save);
+  return NO_ERROR;
+
+error:
+  if (obt_p)
+    {
+      dbt_abort_object (obt_p);
+    }
+
+  AU_ENABLE (save);
+  return err;
+}
+
+int
+sp_add_stored_procedure_return_col (MOP *mop_p, SP_RETURN_COL_INFO &info)
+{
+  DB_OBJECT *classobj_p, *object_p;
+  DB_OTMPL *obt_p = NULL;
+  DB_VALUE value;
+  int save;
+  int err;
+
+  db_make_null (&value);
+  AU_DISABLE (save);
+
+  classobj_p = db_find_class (SP_RETURN_COL_CLASS_NAME);
+  if (classobj_p == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  obt_p = dbt_create_object_internal (classobj_p, false);
+  if (obt_p == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      err = er_errid ();
+      goto error;
+    }
+
+  db_make_int (&value, info.index_of);
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_INDEX_OF, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, info.col_name.data ());
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_COL_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, (int) info.data_type);
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_DATA_TYPE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.precision);
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_PRECISION, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.scale);
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_SCALE, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_int (&value, info.collation);
+  err = dbt_put_internal (obt_p, SP_RET_COL_ATTR_COLLATION, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

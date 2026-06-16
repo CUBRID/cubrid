@@ -43,6 +43,8 @@
 #include "system_parameter.h"
 #include "object_print.h"
 #include "jsp_cl.h"
+#include "sp_constants.hpp"
+#include "set_object.h"
 #include "execute_schema.h"
 #include "schema_manager.h"
 #include "schema_system_catalog_constants.h"
@@ -249,6 +251,7 @@ static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
 						   PT_NODE * derived_table, PT_NODE * derived_name);
+static PT_NODE *pt_get_table_func_attr_list (PARSER_CONTEXT * parser, PT_NODE * derived_table, PT_NODE * derived_alias);
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
 				    PT_NODE * derived_table, PT_NODE * parent_spec);
 static PT_NODE *pt_count_with_clauses (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -11468,11 +11471,143 @@ pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived
 								   derived_alias->info.name.original);
       break;
 
+    case PT_DERIVED_TABLE_FUNC:
+      /* Table-valued function call — column definitions come from catalog RETURNS TABLE metadata */
+      as_attr_list = pt_get_table_func_attr_list (parser, derived_table, derived_alias);
+      break;
+
     default:
       /* this can't happen since we removed MERGE/CSELECT from grammar */
       assert (derived_table_type == PT_IS_CSELECT);
       PT_INTERNAL_ERROR (parser, "resolution");
       return NULL;
+    }
+
+  return as_attr_list;
+}
+
+/*
+ * pt_get_table_func_attr_list - get attribute list for a table-valued function call
+ *   by looking up RETURNS TABLE column definitions from the catalog
+ */
+static PT_NODE *
+pt_get_table_func_attr_list (PARSER_CONTEXT * parser, PT_NODE * derived_table, PT_NODE * derived_alias)
+{
+  PT_NODE *as_attr_list = NULL;
+  const char *func_name;
+  MOP sp_mop;
+  DB_VALUE val;
+  int return_cols_cnt;
+
+  if (derived_table == NULL || derived_table->node_type != PT_METHOD_CALL)
+    {
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+  func_name = derived_table->info.method_call.method_name->info.name.original;
+
+  /* Look up the stored procedure from catalog */
+  sp_mop = jsp_find_stored_procedure (func_name, DB_AUTH_EXECUTE);
+  if (sp_mop == NULL)
+    {
+      PT_ERRORmf (parser, derived_table, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, func_name);
+      return NULL;
+    }
+
+  /* Read return_cols_cnt */
+  if (db_get (sp_mop, SP_ATTR_RETURN_COLS_CNT, &val) != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+  return_cols_cnt = db_get_int (&val);
+
+  if (return_cols_cnt <= 0)
+    {
+      PT_ERRORf (parser, derived_table,
+		 "Function '%s' cannot be used in FROM clause because it does not have RETURNS TABLE columns.",
+		 func_name);
+      return NULL;
+    }
+
+  /* Read return_cols sequence to get column definitions */
+  if (db_get (sp_mop, SP_ATTR_RETURN_COLS, &val) != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+  DB_SET *return_cols = db_get_set (&val);
+  if (return_cols == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "resolution");
+      return NULL;
+    }
+
+  for (int i = 0; i < return_cols_cnt; i++)
+    {
+      DB_VALUE elem_val, col_name_val, col_type_val, col_prec_val, col_scale_val;
+      MOP col_mop;
+
+      if (set_get_element (return_cols, i, &elem_val) != NO_ERROR)
+	{
+	  break;
+	}
+      col_mop = db_get_object (&elem_val);
+      if (col_mop == NULL)
+	{
+	  break;
+	}
+
+      /* Get col_name */
+      if (db_get (col_mop, SP_RET_COL_ATTR_COL_NAME, &col_name_val) != NO_ERROR)
+	{
+	  break;
+	}
+      const char *col_name = db_get_string (&col_name_val);
+
+      /* Get data_type */
+      if (db_get (col_mop, SP_RET_COL_ATTR_DATA_TYPE, &col_type_val) != NO_ERROR)
+	{
+	  break;
+	}
+      int col_type = db_get_int (&col_type_val);
+
+      /* Get precision */
+      if (db_get (col_mop, SP_RET_COL_ATTR_PRECISION, &col_prec_val) != NO_ERROR)
+	{
+	  break;
+	}
+      int col_prec = db_get_int (&col_prec_val);
+
+      /* Get scale */
+      if (db_get (col_mop, SP_RET_COL_ATTR_SCALE, &col_scale_val) != NO_ERROR)
+	{
+	  break;
+	}
+      int col_scale = db_get_int (&col_scale_val);
+
+      /* Create PT_NAME node for this column */
+      PT_NODE *col_node = pt_name (parser, col_name);
+      if (col_node)
+	{
+	  col_node->type_enum = pt_db_to_type_enum ((DB_TYPE) col_type);
+
+	  /* Set data_type node with precision info */
+	  PT_NODE *dt = parser_new_node (parser, PT_DATA_TYPE);
+	  if (dt)
+	    {
+	      dt->type_enum = col_node->type_enum;
+	      dt->info.data_type.precision = col_prec;
+	      dt->info.data_type.dec_precision = col_scale;
+	      col_node->data_type = dt;
+	    }
+
+	  as_attr_list = parser_append_node (col_node, as_attr_list);
+	}
+
+      pr_clear_value (&col_name_val);
     }
 
   return as_attr_list;
@@ -11618,6 +11753,10 @@ pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC
 
     case PT_DERIVED_DBLINK_TABLE:
       // nothing to do? Types already set during pt_dblink_table_gather_attribs ()
+      return;
+
+    case PT_DERIVED_TABLE_FUNC:
+      /* Types already set in pt_get_table_func_attr_list() */
       return;
 
     default:

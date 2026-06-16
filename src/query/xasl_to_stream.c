@@ -170,6 +170,7 @@ static char *xts_process_showstmt_spec_type (char *ptr, const SHOWSTMT_SPEC_TYPE
 static char *xts_process_set_spec_type (char *ptr, const SET_SPEC_TYPE * set_spec);
 static char *xts_process_json_table_column_behavior (char *ptr, const json_table_column_behavior * behavior);
 static char *xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec);
+static char *xts_process_table_func_spec_type (char *ptr, const TABLE_FUNC_SPEC_TYPE * table_func_spec);
 static char *xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec);
 static char *xts_process_rlist_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
 static char *xts_process_list_id (char *ptr, const QFILE_LIST_ID * list_id);
@@ -229,6 +230,7 @@ static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
 static int xts_sizeof_showstmt_spec_type (const SHOWSTMT_SPEC_TYPE * ptr);
 static int xts_sizeof_set_spec_type (const SET_SPEC_TYPE * ptr);
 static int xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * ptr);
+static int xts_sizeof_table_func_spec_type (const TABLE_FUNC_SPEC_TYPE * ptr);
 static int xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * ptr);
 static int xts_sizeof_json_table_column_behavior (const json_table_column_behavior * behavior);
 static int xts_sizeof_list_id (const QFILE_LIST_ID * ptr);
@@ -4611,6 +4613,10 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
       ptr = xts_process_method_spec_type (ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
       break;
 
+    case TARGET_TABLE_FUNC:
+      ptr = xts_process_table_func_spec_type (ptr, &ACCESS_SPEC_TABLE_FUNC_SPEC (access_spec));
+      break;
+
     case TARGET_JSON_TABLE:
       ptr = xts_process (ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
@@ -5152,6 +5158,35 @@ xts_process_method_spec_type (char *ptr, const METHOD_SPEC_TYPE * method_spec)
   ptr = or_pack_int (ptr, offset);
 
   offset = xts_save_packable_object (*(method_spec->sig_array));
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  return ptr;
+}
+
+static char *
+xts_process_table_func_spec_type (char *ptr, const TABLE_FUNC_SPEC_TYPE * table_func_spec)
+{
+  int offset;
+
+  offset = xts_save_packable_object (*(table_func_spec->sig_array));
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (table_func_spec->regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_regu_variable_list (table_func_spec->arg_list);
   if (offset == ER_FAILED)
     {
       return NULL;
@@ -6842,6 +6877,15 @@ xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * access_spec)
       size += tmp_size;
       break;
 
+    case TARGET_TABLE_FUNC:
+      tmp_size = xts_sizeof_table_func_spec_type (&ACCESS_SPEC_TABLE_FUNC_SPEC (access_spec));
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;
+      break;
+
     case TARGET_DBLINK:
       tmp_size = xts_sizeof_dblink_spec_type (&ACCESS_SPEC_DBLINK_SPEC (access_spec));
       if (tmp_size == ER_FAILED)
@@ -7039,6 +7083,23 @@ xts_sizeof_method_spec_type (const METHOD_SPEC_TYPE * method_spec)
   size += (PTR_SIZE		/* method_regu_list */
 	   + PTR_SIZE		/* xasl_node */
 	   + PTR_SIZE);		/* sig_array */
+
+  return size;
+}
+
+/*
+ * xts_sizeof_table_func_spec_type () -
+ *   return:
+ *   ptr(in)    :
+ */
+static int
+xts_sizeof_table_func_spec_type (const TABLE_FUNC_SPEC_TYPE * table_func_spec)
+{
+  int size = 0;
+
+  size += (PTR_SIZE		/* sig_array */
+	   + PTR_SIZE		/* regu_list */
+	   + PTR_SIZE);		/* arg_list */
 
   return size;
 }

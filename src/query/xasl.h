@@ -145,6 +145,7 @@ typedef struct showstmt_spec_node SHOWSTMT_SPEC_TYPE;
 typedef struct set_spec_node SET_SPEC_TYPE;
 typedef struct method_spec_node METHOD_SPEC_TYPE;
 typedef struct dblink_spec_node DBLINK_SPEC_TYPE;
+typedef struct table_func_spec_node TABLE_FUNC_SPEC_TYPE;
 typedef struct reguval_list_spec_node REGUVAL_LIST_SPEC_TYPE;
 typedef union hybrid_node HYBRID_NODE;
 
@@ -735,7 +736,8 @@ typedef enum
   TARGET_METHOD,
   TARGET_REGUVAL_LIST,
   TARGET_SHOWSTMT,
-  TARGET_DBLINK
+  TARGET_DBLINK,
+  TARGET_TABLE_FUNC
 } TARGET_TYPE;
 
 typedef enum
@@ -856,6 +858,13 @@ struct reguval_list_spec_node
   VALPTR_LIST *valptr_list;	/* point to xasl.outptr_list */
 };
 
+struct table_func_spec_node
+{
+  PL_SIGNATURE_ARRAY_TYPE *sig_array;	/* function signature */
+  REGU_VARIABLE_LIST regu_list;	/* output attribute regu list */
+  REGU_VARIABLE_LIST arg_list;	/* input argument regu list */
+};
+
 union hybrid_node
 {
   CLS_SPEC_TYPE cls_node;	/* class specification */
@@ -866,6 +875,7 @@ union hybrid_node
   DBLINK_SPEC_TYPE dblink_node;	/* dblink specification */
   REGUVAL_LIST_SPEC_TYPE reguval_list_node;	/* reguval_list specification */
   json_table_spec_node json_table_node;	/* json_table specification */
+  TABLE_FUNC_SPEC_TYPE table_func_node;	/* table-valued function specification */
 };				/* class/list access specification */
 
 /*
@@ -952,6 +962,18 @@ union hybrid_node
 
 #define ACCESS_SPEC_DBLINK_LIST_ID(ptr) \
 	(ACCESS_SPEC_DBLINK_XASL_NODE(ptr)->list_id)
+
+#define ACCESS_SPEC_TABLE_FUNC_SPEC(ptr) \
+	((ptr)->s.table_func_node)
+
+#define ACCESS_SPEC_TABLE_FUNC_SIG_ARRAY(ptr) \
+	((ptr)->s.table_func_node.sig_array)
+
+#define ACCESS_SPEC_TABLE_FUNC_REGU_LIST(ptr) \
+	((ptr)->s.table_func_node.regu_list)
+
+#define ACCESS_SPEC_TABLE_FUNC_ARG_LIST(ptr) \
+	((ptr)->s.table_func_node.arg_list)
 
 #define ACCESS_SPEC_FLAGS(ptr) \
 	((ptr)->flags)

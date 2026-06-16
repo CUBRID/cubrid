@@ -129,6 +129,8 @@ static char *stx_build_rlist_spec_type (THREAD_ENTRY * thread_p, char *ptr, REGU
 					OUTPTR_LIST * outptr_list);
 static char *stx_build_set_spec_type (THREAD_ENTRY * thread_p, char *tmp, SET_SPEC_TYPE * ptr);
 static char *stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *tmp, METHOD_SPEC_TYPE * ptr);
+static char *stx_build_table_func_spec_type (THREAD_ENTRY * thread_p, char *ptr,
+					     TABLE_FUNC_SPEC_TYPE * table_func_spec);
 static char *stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE * dblink_spec);
 static char *stx_build_val_list (THREAD_ENTRY * thread_p, char *tmp, VAL_LIST * ptr);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4638,6 +4640,10 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
       ptr = stx_build_method_spec_type (thread_p, ptr, &ACCESS_SPEC_METHOD_SPEC (access_spec));
       break;
 
+    case TARGET_TABLE_FUNC:
+      ptr = stx_build_table_func_spec_type (thread_p, ptr, &ACCESS_SPEC_TABLE_FUNC_SPEC (access_spec));
+      break;
+
     case TARGET_JSON_TABLE:
       ptr = stx_build (thread_p, ptr, ACCESS_SPEC_JSON_TABLE_SPEC (access_spec));
       break;
@@ -5346,6 +5352,60 @@ stx_build_method_spec_type (THREAD_ENTRY * thread_p, char *ptr, METHOD_SPEC_TYPE
     {
       method_spec->sig_array = stx_restore_pl_sig_array (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (method_spec->sig_array == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  return ptr;
+}
+
+static char *
+stx_build_table_func_spec_type (THREAD_ENTRY * thread_p, char *ptr, TABLE_FUNC_SPEC_TYPE * table_func_spec)
+{
+  int offset;
+  XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      table_func_spec->sig_array = NULL;
+    }
+  else
+    {
+      table_func_spec->sig_array = stx_restore_pl_sig_array (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (table_func_spec->sig_array == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      table_func_spec->regu_list = NULL;
+    }
+  else
+    {
+      table_func_spec->regu_list = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (table_func_spec->regu_list == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      table_func_spec->arg_list = NULL;
+    }
+  else
+    {
+      table_func_spec->arg_list = stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (table_func_spec->arg_list == NULL)
 	{
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;

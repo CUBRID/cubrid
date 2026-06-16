@@ -173,6 +173,7 @@ SUBSETEQ:                     S U B S E T E Q ;
 SUPERSET:                     S U P E R S E T ;
 SUPERSETEQ:                   S U P E R S E T E Q ;
 SYS_REFCURSOR:                S Y S '_' R E F C U R S O R ;
+TABLE_:                       T A B L E ;
 THEN:                         T H E N ;
 TIME:                         T I M E ;
 TIMESTAMP:                    T I M E S T A M P ;

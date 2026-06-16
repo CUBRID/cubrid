@@ -52,6 +52,7 @@ namespace cubschema
       static system_catalog_definition get_stored_procedure ();
       static system_catalog_definition get_stored_procedure_code ();
       static system_catalog_definition get_stored_procedure_args ();
+      static system_catalog_definition get_stored_procedure_return_cols ();
       static system_catalog_definition get_serial ();
 
       static system_catalog_definition get_ha_apply_info ();
@@ -80,6 +81,7 @@ namespace cubschema
       static system_catalog_definition get_view_partition ();
       static system_catalog_definition get_view_stored_procedure ();
       static system_catalog_definition get_view_stored_procedure_args ();
+      static system_catalog_definition get_view_stored_procedure_return_cols ();
       static system_catalog_definition get_view_serial ();
       static system_catalog_definition get_view_ha_apply_info ();
       static system_catalog_definition get_view_collation ();
@@ -162,6 +164,7 @@ const char *sm_define_view_trigger_spec (void);
 const char *sm_define_view_partition_spec (void);
 const char *sm_define_view_stored_procedure_spec (void);
 const char *sm_define_view_stored_procedure_args_spec (void);
+const char *sm_define_view_stored_procedure_return_cols_spec (void);
 const char *sm_define_view_serial_spec (void);
 const char *sm_define_view_ha_apply_info_spec (void);
 const char *sm_define_view_collation_spec (void);

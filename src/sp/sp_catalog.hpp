@@ -60,6 +60,28 @@ struct sp_entry
 };
 
 // *INDENT-OFF*
+struct sp_return_col_info
+{
+  std::string sp_name;
+  int index_of;
+  std::string col_name;
+  DB_TYPE data_type;
+  int precision;
+  int scale;
+  int collation;
+
+  sp_return_col_info ()
+  : sp_name {}
+  , index_of {0}
+  , col_name {}
+  , data_type {DB_TYPE::DB_TYPE_NULL}
+  , precision {0}
+  , scale {0}
+  , collation {0}
+  {}
+};
+typedef sp_return_col_info SP_RETURN_COL_INFO;
+
 struct sp_arg_info
 {
   std::string sp_name;
@@ -119,6 +141,7 @@ struct sp_info
   std::string pkg_name;
   SP_TYPE_ENUM sp_type;
   DB_TYPE return_type;
+  std::vector <sp_return_col_info> return_cols;
   bool is_system_generated;
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
@@ -131,12 +154,13 @@ struct sp_info
   DB_DATETIME created_time;
   DB_DATETIME updated_time;
 
-  sp_info () 
+  sp_info ()
   : unique_name {}
   , sp_name {}
   , pkg_name {}
   , sp_type {SP_TYPE_ENUM::SP_TYPE_PROCEDURE}
   , return_type {DB_TYPE::DB_TYPE_NULL}
+  , return_cols {}
   , is_system_generated {false}
   , args {}
   , lang {SP_LANG_ENUM::SP_LANG_PLCSQL}
@@ -158,6 +182,7 @@ int sp_builtin_install ();
 // insert into system catalogs
 int sp_add_stored_procedure (SP_INFO &info);
 int sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info);
+int sp_add_stored_procedure_return_col (MOP *mop_p, SP_RETURN_COL_INFO &info);
 int sp_add_stored_procedure_code (SP_CODE_INFO &info);
 
 // update into system catalogs

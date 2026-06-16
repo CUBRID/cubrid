@@ -53,6 +53,8 @@
 #include "query_hash_scan.h"
 #include "statistics.h"
 #include "px_scan.hpp"
+#include "query_manager.h"
+#include "pl_executor.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -201,6 +203,7 @@ static SCAN_CODE scan_next_set_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 static SCAN_CODE scan_next_json_table_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_value_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_table_func_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -4481,6 +4484,203 @@ scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 }
 
 /*
+ * scan_open_table_func_scan () - Open a scan for table-valued function results
+ *   The actual function call happens during scan_start (first next_scan).
+ */
+int
+scan_open_table_func_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+			   int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+			   val_list_node * val_list, VAL_DESCR * vd,
+			   PL_SIGNATURE_ARRAY_TYPE * sig_array, REGU_VARIABLE_LIST arg_list, PRED_EXPR * pr)
+{
+  TABLE_FUNC_SCAN_ID *tfsidp;
+
+  scan_id->type = S_TABLE_FUNC_SCAN;
+  scan_init_scan_id (scan_id, false, S_SELECT, true, grouped, single_fetch, join_dbval, val_list, vd);
+
+  tfsidp = &scan_id->s.tfsid;
+  tfsidp->sig_array = sig_array;
+  tfsidp->arg_list = arg_list;
+  tfsidp->cursor_list_id = NULL;
+  tfsidp->cursor_opened = false;
+  tfsidp->num_cols = 0;
+  DB_TYPE single_node_type = DB_TYPE_NULL;
+  tfsidp->scan_pred.pred_expr = pr;
+  tfsidp->scan_pred.pr_eval_fnc = (pr) ? eval_fnc (thread_p, pr, &single_node_type) : NULL;
+
+  if (val_list)
+    {
+      tfsidp->num_cols = val_list->val_cnt;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * scan_next_table_func_scan () - The scan is moved to the next table-valued function result row.
+ *   On first call, the function is invoked and the cursor is opened.
+ *   Subsequent calls iterate the cursor.
+ *
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id(in/out): Scan identifier
+ */
+static SCAN_CODE
+scan_next_table_func_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  TABLE_FUNC_SCAN_ID *tfsidp = &scan_id->s.tfsid;
+
+  if (!tfsidp->cursor_opened)
+    {
+      /* First call: invoke the function using cubpl::executor and open the cursor */
+      if (tfsidp->sig_array == NULL || tfsidp->sig_array->num_sigs < 1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return S_ERROR;
+	}
+
+      cubpl::executor exec (tfsidp->sig_array->sigs[0]);
+
+      /* Evaluate the function arguments from the XASL regu variable list */
+      std::vector < DB_VALUE > arg_values;
+      std::vector < std::reference_wrapper < DB_VALUE >> arg_wrapper;
+
+      for (REGU_VARIABLE_LIST regu = tfsidp->arg_list; regu; regu = regu->next)
+	{
+	  DB_VALUE val;
+	  db_make_null (&val);
+	  if (fetch_copy_dbval (thread_p, &regu->value, scan_id->vd, NULL, NULL, NULL, &val) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  arg_values.push_back (val);
+	}
+    for (auto & v:arg_values)
+	{
+	  arg_wrapper.push_back (std::ref (v));
+	}
+
+      int error = exec.fetch_args_peek (arg_wrapper);
+      if (error != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      DB_VALUE ret_val;
+      db_make_null (&ret_val);
+      error = exec.execute (ret_val);
+      if (error != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      /* The return value should be a RESULTSET (cursor) */
+      if (db_value_type (&ret_val) != DB_TYPE_RESULTSET)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  pr_clear_value (&ret_val);
+	  return S_ERROR;
+	}
+
+      /* Get the cursor's query entry to find the list file */
+      std::uint64_t query_id = db_get_resultset (&ret_val);
+      QMGR_QUERY_ENTRY *query_entry = qmgr_get_query_entry (thread_p, query_id, NULL_TRAN_INDEX);
+      if (query_entry == NULL || query_entry->list_id == NULL)
+	{
+	  pr_clear_value (&ret_val);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return S_ERROR;
+	}
+
+      /* Clone the list file so it survives executor destruction */
+      tfsidp->cursor_list_id = qfile_clone_list_id (query_entry->list_id, false, QFILE_SKIP_DEPENDENT);
+      pr_clear_value (&ret_val);
+
+      if (tfsidp->cursor_list_id == NULL)
+	{
+	  return S_ERROR;
+	}
+
+      /* Open a list scan on the cloned list file */
+      if (qfile_open_list_scan (tfsidp->cursor_list_id, &tfsidp->cursor_scan_id) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
+      tfsidp->cursor_opened = true;
+    }
+
+  /* Fetch rows from the cursor list file, applying predicate filter */
+  while (true)
+    {
+      QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+      SCAN_CODE qp_scan = qfile_scan_list_next (thread_p, &tfsidp->cursor_scan_id, &tuple_record, PEEK);
+
+      if (qp_scan != S_SUCCESS)
+	{
+	  if (qp_scan == S_END)
+	    {
+	      scan_id->position = S_AFTER;
+	      qfile_close_scan (thread_p, &tfsidp->cursor_scan_id);
+	    }
+	  return qp_scan;
+	}
+
+      /* Extract column values from the tuple and copy to val_list */
+      QPROC_DB_VALUE_LIST dest_valp = scan_id->val_list->valp;
+      int col_idx = 0;
+
+      for (; dest_valp && col_idx < tfsidp->num_cols; dest_valp = dest_valp->next, col_idx++)
+	{
+	  DB_VALUE tmp_val;
+	  db_make_null (&tmp_val);
+
+	  QFILE_TUPLE_VALUE_TYPE_LIST *type_list = &tfsidp->cursor_list_id->type_list;
+	  if (type_list && col_idx < type_list->type_cnt)
+	    {
+	      TP_DOMAIN *dom = type_list->domp[col_idx];
+	      int tuple_val_size;
+	      char *tuple_val_ptr;
+
+	      if (qfile_locate_tuple_value (tuple_record.tpl, col_idx, &tuple_val_ptr, &tuple_val_size) == V_BOUND)
+		{
+		  OR_BUF buf;
+		  or_init (&buf, tuple_val_ptr, tuple_val_size);
+		  if (dom->type->data_readval (&buf, &tmp_val, dom, tuple_val_size, true, NULL, 0) != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		}
+	    }
+
+	  pr_clear_value (dest_valp->val);
+	  if (!DB_IS_NULL (&tmp_val))
+	    {
+	      db_value_clone (&tmp_val, dest_valp->val);
+	    }
+	  pr_clear_value (&tmp_val);
+	}
+
+      /* Evaluate the predicate to see if the tuple qualifies */
+      DB_LOGICAL ev_res = V_TRUE;
+      if (tfsidp->scan_pred.pr_eval_fnc && tfsidp->scan_pred.pred_expr)
+	{
+	  ev_res = (*tfsidp->scan_pred.pr_eval_fnc) (thread_p, tfsidp->scan_pred.pred_expr, scan_id->vd, NULL);
+	  if (ev_res == V_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      if (ev_res != V_TRUE)
+	{
+	  continue;		/* not qualified, skip to next row */
+	}
+
+      return S_SUCCESS;
+    }
+}
+
+/*
  * scan_open_dblink_scan () -
  *   return: NO_ERROR, or ER_code
  *   scan_id(out): Scan identifier
@@ -4819,6 +5019,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+    case S_TABLE_FUNC_SCAN:
     case S_DBLINK_SCAN:
       break;
 
@@ -5014,6 +5215,21 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       status = dblink_scan_reset (&s_id->s.dblid.scan_info);
       break;
 
+    case S_TABLE_FUNC_SCAN:
+      s_id->position = S_BEFORE;
+      /* Reset cursor so it will be re-invoked on next scan */
+      if (s_id->s.tfsid.cursor_opened)
+	{
+	  qfile_close_scan (thread_p, &s_id->s.tfsid.cursor_scan_id);
+	  if (s_id->s.tfsid.cursor_list_id)
+	    {
+	      qfile_free_list_id (s_id->s.tfsid.cursor_list_id);
+	      s_id->s.tfsid.cursor_list_id = NULL;
+	    }
+	  s_id->s.tfsid.cursor_opened = false;
+	}
+      break;
+
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       status = S_ERROR;
@@ -5159,6 +5375,7 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_SHOWSTMT_SCAN:
     case S_SET_SCAN:
     case S_METHOD_SCAN:
+    case S_TABLE_FUNC_SCAN:
     case S_DBLINK_SCAN:
     case S_JSON_TABLE_SCAN:
     case S_VALUES_SCAN:
@@ -5304,6 +5521,7 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+    case S_TABLE_FUNC_SCAN:
     case S_DBLINK_SCAN:
       break;
 
@@ -5564,6 +5782,19 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       scan_id->s.msid.close ();
       break;
 
+    case S_TABLE_FUNC_SCAN:
+      if (scan_id->s.tfsid.cursor_opened)
+	{
+	  qfile_close_scan (thread_p, &scan_id->s.tfsid.cursor_scan_id);
+	}
+      if (scan_id->s.tfsid.cursor_list_id)
+	{
+	  qfile_free_list_id (scan_id->s.tfsid.cursor_list_id);
+	  scan_id->s.tfsid.cursor_list_id = NULL;
+	}
+      scan_id->s.tfsid.cursor_opened = false;
+      break;
+
     case S_DBLINK_SCAN:
       dblink_close_scan (&scan_id->s.dblid.scan_info, false);
       break;
@@ -5774,6 +6005,10 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_METHOD_SCAN:
       status = scan_next_method_scan (thread_p, scan_id);
+      break;
+
+    case S_TABLE_FUNC_SCAN:
+      status = scan_next_table_func_scan (thread_p, scan_id);
       break;
 
     case S_DBLINK_SCAN:
@@ -8586,6 +8821,7 @@ scan_print_stats_json (SCAN_ID * scan_id, json_t * scan_stats)
       break;
 
     case S_METHOD_SCAN:
+    case S_TABLE_FUNC_SCAN:
       json_object_set_new (scan_stats, "method", scan);
       break;
 
@@ -8671,6 +8907,7 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       break;
 
     case S_METHOD_SCAN:
+    case S_TABLE_FUNC_SCAN:
       fprintf (fp, "(method");
       break;
 
