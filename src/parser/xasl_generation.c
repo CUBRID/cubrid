@@ -22630,56 +22630,134 @@ pt_capture_precomp_node (XASL_NODE * xasl)
   xasl->precomp_regu_count = ctx.count;
 }
 
-/* recursively walk the freshly generated (acyclic) xasl tree along the same structural links the
- * serializer follows, capturing scalar subqueries at every node. */
+/* CBRD-26931: cycle/visited guard for the capture walk below.
+ *
+ * The structural links the walk follows (aptr/bptr/dptr/fptr/scan_ptr/connect_by_ptr, the
+ * union/cte/mergelist/hashjoin children, and the xasl->next chains) do NOT form a pure tree: in
+ * UNION ALL / LIMIT / CTE shapes the same sub-xasl is reachable from more than one parent, and a
+ * head's ->next chain can re-enter an already-walked node.  The original walk assumed an acyclic
+ * tree, so on those shapes it re-descended shared nodes and recursed until the stack overflowed
+ * (SIGSEGV).  We record every XASL node already walked and skip it on re-entry, which guarantees
+ * termination (each node is walked at most once) and is result-equivalent to the old walk:
+ * pt_capture_precomp_node rebuilds a node's precomp_regu_array purely from that node's own spec
+ * lists, so visiting a node once produces the same capture as visiting it repeatedly -- the guard
+ * only drops the redundant re-walks. */
+typedef struct precomp_visited_set PRECOMP_VISITED_SET;
+struct precomp_visited_set
+{
+  XASL_NODE **nodes;		/* dynamic array of already-walked node pointers */
+  int count;
+  int capacity;
+};
+
+/* Record xasl in the visited set.  Returns true if it is newly added (caller should walk it),
+ * false if it was already present (or on the practically-impossible OOM, in which case we report
+ * "visited" to keep termination guaranteed). */
+static bool
+pt_precomp_visited_add (PRECOMP_VISITED_SET * visited, XASL_NODE * xasl)
+{
+  int i;
+  XASL_NODE **new_nodes;
+  int new_capacity;
+
+  for (i = 0; i < visited->count; i++)
+    {
+      if (visited->nodes[i] == xasl)
+	{
+	  return false;
+	}
+    }
+
+  if (visited->count >= visited->capacity)
+    {
+      new_capacity = (visited->capacity == 0) ? 32 : visited->capacity * 2;
+      new_nodes = (XASL_NODE **) realloc (visited->nodes, new_capacity * sizeof (XASL_NODE *));
+      if (new_nodes == NULL)
+	{
+	  return false;
+	}
+      visited->nodes = new_nodes;
+      visited->capacity = new_capacity;
+    }
+
+  visited->nodes[visited->count++] = xasl;
+  return true;
+}
+
+/* recursively walk the freshly generated xasl graph along the same structural links the serializer
+ * follows, capturing scalar subqueries at every node.  Guarded by a visited set so that shared
+ * sub-xasls (UNION ALL / LIMIT / CTE) are walked exactly once. */
 static void
-pt_capture_precomp_scalar_subqueries (XASL_NODE * xasl)
+pt_capture_precomp_scalar_subqueries_walk (PRECOMP_VISITED_SET * visited, XASL_NODE * xasl)
 {
   if (xasl == NULL)
     {
       return;
     }
 
+  if (!pt_precomp_visited_add (visited, xasl))
+    {
+      return;
+    }
+
   pt_capture_precomp_node (xasl);
 
-  /* Each list head's ->next chain is followed by the trailing pt_capture_precomp_scalar_subqueries
-   * (xasl->next) recursion below, so recurse on the heads only -- iterating the lists here AND recursing
-   * on ->next would re-visit nodes. */
-  pt_capture_precomp_scalar_subqueries (xasl->aptr_list);
-  pt_capture_precomp_scalar_subqueries (xasl->bptr_list);
-  pt_capture_precomp_scalar_subqueries (xasl->dptr_list);
-  pt_capture_precomp_scalar_subqueries (xasl->fptr_list);
-  pt_capture_precomp_scalar_subqueries (xasl->scan_ptr);
-  pt_capture_precomp_scalar_subqueries (xasl->connect_by_ptr);
+  /* Each list head's ->next chain is followed by the trailing walk (xasl->next) recursion below, so
+   * recurse on the heads only -- iterating the lists here AND recursing on ->next would re-visit
+   * nodes (the visited set would catch it, but recursing on heads keeps the surface identical). */
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->aptr_list);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->bptr_list);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->dptr_list);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->fptr_list);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->scan_ptr);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->connect_by_ptr);
 
   switch (xasl->type)
     {
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      pt_capture_precomp_scalar_subqueries (xasl->proc.union_.left);
-      pt_capture_precomp_scalar_subqueries (xasl->proc.union_.right);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.union_.left);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.union_.right);
       break;
     case BUILDLIST_PROC:
-      pt_capture_precomp_scalar_subqueries (xasl->proc.buildlist.eptr_list);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.buildlist.eptr_list);
       break;
     case CTE_PROC:
-      pt_capture_precomp_scalar_subqueries (xasl->proc.cte.non_recursive_part);
-      pt_capture_precomp_scalar_subqueries (xasl->proc.cte.recursive_part);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.cte.non_recursive_part);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.cte.recursive_part);
       break;
     case MERGELIST_PROC:
-      pt_capture_precomp_scalar_subqueries (xasl->proc.mergelist.outer_xasl);
-      pt_capture_precomp_scalar_subqueries (xasl->proc.mergelist.inner_xasl);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.mergelist.outer_xasl);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.mergelist.inner_xasl);
       break;
     case HASHJOIN_PROC:
-      pt_capture_precomp_scalar_subqueries (xasl->proc.hashjoin.outer.xasl);
-      pt_capture_precomp_scalar_subqueries (xasl->proc.hashjoin.inner.xasl);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.hashjoin.outer.xasl);
+      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.hashjoin.inner.xasl);
       break;
     default:
       break;
     }
 
-  pt_capture_precomp_scalar_subqueries (xasl->next);
+  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->next);
+}
+
+/* entry point: set up the visited guard and walk the graph once. */
+static void
+pt_capture_precomp_scalar_subqueries (XASL_NODE * xasl)
+{
+  PRECOMP_VISITED_SET visited;
+
+  visited.nodes = NULL;
+  visited.count = 0;
+  visited.capacity = 0;
+
+  pt_capture_precomp_scalar_subqueries_walk (&visited, xasl);
+
+  if (visited.nodes != NULL)
+    {
+      free_and_init (visited.nodes);
+    }
 }
 
 /*
