@@ -2897,6 +2897,19 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
+  /* CBRD-26931: precomputed-scalar subquery regu pointers. Packed via xts_save_regu_variable so the
+   * source-pointer dedup makes each element alias the very predicate-operand regu on unpack. */
+  ptr = or_pack_int (ptr, xasl->precomp_regu_count);
+  for (i = 0; i < xasl->precomp_regu_count; i++)
+    {
+      offset = xts_save_regu_variable (xasl->precomp_regu_array[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   ptr = or_pack_int (ptr, xasl->option);
 
   offset = xts_save_outptr_list (xasl->outptr_list);
@@ -5985,6 +5998,9 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* scan_op_type */
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
+
+  size += OR_INT_SIZE;		/* precomp_regu_count (CBRD-26931) */
+  size += (PTR_SIZE * xasl->precomp_regu_count);	/* precomp_regu_array offsets */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)
