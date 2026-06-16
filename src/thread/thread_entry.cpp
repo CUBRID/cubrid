@@ -81,6 +81,8 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
+    , pgbuf_fix_req_cnt (0)
+    , pgbuf_pg_unfix_cnt (0)
     , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
