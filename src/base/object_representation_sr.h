@@ -257,6 +257,7 @@ const char *or_get_constraint_comment (RECDES * record, const char *constraint_n
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern int or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string);
 extern int or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string);
+extern int or_get_attrid (RECDES * record, const char *name, int *attrid);
 
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)

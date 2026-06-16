@@ -4740,14 +4740,11 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   RECDES class_record;
   OID *class_oid_p, tmp_oid;
   const char *class_name_p;
-  char *attr_name_p;
   CT_ATTR *atts;
   int n_atts;
-  int c, a, i;
+  int c, a;
   HEAP_SCANCACHE scan;
-  int alloced_string = 0;
   int error = NO_ERROR;
-  OR_CLASSREP *rep = NULL;
   bool is_scan_inited = false;
 
   if (thread_p == NULL)
@@ -4795,57 +4792,17 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      rep = or_get_classrep (&class_record, NULL_REPRID);
-      if (rep == NULL)
-	{
-	  error = ER_FAILED;
-	  goto error;
-	}
-
+      /* Bind by name to the live attribute ids (non-dense after catalog ALTER). or_get_classrep ()
+       * must NOT be used here: it caches attribute domains, swizzling OBJECT-typed OIDs through
+       * ws_mop (), which aborts during the restore-from-backup boot where no workspace is up yet. */
       for (a = 0; a < n_atts; a++)
 	{
-	  atts[a].ca_id = NULL_ATTRID;
-	}
-
-      for (i = 0; i < rep->n_attributes; i++)
-	{
-	  int attrid = rep->attributes[i].id;
-
-	  alloced_string = 0;
-	  attr_name_p = NULL;
-
-	  error = or_get_attrname (&class_record, attrid, &attr_name_p, &alloced_string);
+	  error = or_get_attrid (&class_record, atts[a].ca_name, &atts[a].ca_id);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      goto error;
 	    }
-	  if (attr_name_p == NULL)
-	    {
-	      error = ER_FAILED;
-	      goto error;
-	    }
-
-	  for (a = 0; a < n_atts; a++)
-	    {
-	      if (strcmp (atts[a].ca_name, attr_name_p) == 0)
-		{
-		  atts[a].ca_id = attrid;
-		  break;
-		}
-	    }
-
-	  if (alloced_string == 1)
-	    {
-	      db_private_free_and_init (thread_p, attr_name_p);
-	    }
-	}
-
-      or_free_classrep (rep);
-      rep = NULL;
-
-      for (a = 0; a < n_atts; a++)
-	{
 	  if (atts[a].ca_id == NULL_ATTRID)
 	    {
 	      assert (false);
@@ -4883,10 +4840,6 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
   return NO_ERROR;
 
 error:
-  if (rep != NULL)
-    {
-      or_free_classrep (rep);
-    }
   if (is_scan_inited)
     {
       (void) heap_scancache_end (thread_p, &scan);

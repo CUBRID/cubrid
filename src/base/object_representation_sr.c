@@ -4006,6 +4006,90 @@ or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_str
 }
 
 /*
+ * or_get_attrid () - Find the id of the attribute with the given name
+ *   return: NO_ERROR or error code
+ *   record(in): disk record
+ *   name(in): name of the desired attribute
+ *   attrid(out): id of the matching attribute, NULL_ATTRID if there is no such attribute
+ *
+ *       Counterpart of or_get_attrname (): given a name, return the attribute id of the
+ *       current representation. Instance, shared and class attributes are all searched,
+ *       same as or_find_diskattr ().
+ */
+int
+or_get_attrid (RECDES * record, const char *name, int *attrid)
+{
+  char *ptr, *attset, *diskatt;
+  char *attr_name;
+  int n_fixed, n_variable, n_shared, n_class, n_attrs;
+  int type_attr, i, id;
+  int alloced_string;
+  int error = NO_ERROR;
+
+  *attrid = NULL_ATTRID;
+
+  assert (OR_GET_OFFSET_SIZE (record->data) == BIG_VAR_OFFSET_SIZE);
+
+  ptr = record->data + OR_FIXED_ATTRIBUTES_OFFSET (record->data, ORC_CLASS_VAR_ATT_COUNT);
+  n_fixed = OR_GET_INT (ptr + ORC_FIXED_COUNT_OFFSET);
+  n_variable = OR_GET_INT (ptr + ORC_VARIABLE_COUNT_OFFSET);
+  n_shared = OR_GET_INT (ptr + ORC_SHARED_COUNT_OFFSET);
+  n_class = OR_GET_INT (ptr + ORC_CLASS_ATTR_COUNT_OFFSET);
+
+  for (type_attr = 0; type_attr < 3; type_attr++)
+    {
+      if (type_attr == 0)
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_ATTRIBUTES_INDEX);
+	  n_attrs = n_fixed + n_variable;
+	}
+      else if (type_attr == 1)
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_SHARED_ATTRS_INDEX);
+	  n_attrs = n_shared;
+	}
+      else
+	{
+	  attset = record->data + OR_VAR_OFFSET (record->data, ORC_CLASS_ATTRS_INDEX);
+	  n_attrs = n_class;
+	}
+
+      for (i = 0; i < n_attrs; i++)
+	{
+	  diskatt = attset + OR_SET_ELEMENT_OFFSET (attset, i);
+	  ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
+	  id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
+
+	  alloced_string = 0;
+	  attr_name = NULL;
+	  error = or_get_attrname (record, id, &attr_name, &alloced_string);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error;
+	    }
+
+	  if (attr_name != NULL && strcmp (attr_name, name) == 0)
+	    {
+	      *attrid = id;
+	    }
+
+	  if (alloced_string == 1)
+	    {
+	      db_private_free_and_init (NULL, attr_name);
+	    }
+
+	  if (*attrid != NULL_ATTRID)
+	    {
+	      return NO_ERROR;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * or_install_btids_function_info () - Install (add) function index
  *				      information to the index structure
  *				      of the class representation
