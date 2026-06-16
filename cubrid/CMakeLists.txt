@@ -607,9 +607,9 @@ install(FILES
   )
 # install pdb files for debugging on windows
 if(WIN32)
-  install(DIRECTORY
-    ${CMAKE_CURRENT_BINARY_DIR}/\${CMAKE_INSTALL_CONFIG_NAME}/
+  install(FILES
+    ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/\${CMAKE_INSTALL_CONFIG_NAME}/libcubrid.pdb
     DESTINATION ${CUBRID_BINDIR} COMPONENT Debuginfo
-    FILES_MATCHING PATTERN "*.pdb"
+    OPTIONAL
     )
 endif(WIN32)
