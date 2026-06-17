@@ -109,6 +109,7 @@ static void or_install_btids (OR_CLASSREP * rep, DB_SEQ * props);
 static OR_CLASSREP *or_get_current_representation (RECDES * record, int do_indexes);
 static OR_CLASSREP *or_get_old_representation (RECDES * record, int repid, int do_indexes);
 static const char *or_find_diskattr (RECDES * record, int attr_id);
+static int or_get_diskattr_string (char *diskatt, int attr_index, char **string, int *alloced_string);
 static int or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string);
 
 static char or_mvcc_get_flag (RECDES * record);
@@ -3867,6 +3868,91 @@ or_find_diskattr (RECDES * record, int attr_id)
 }
 
 /*
+ * or_get_diskattr_string () - Get the string of the given disk attribute (diskatt,index)
+ *   return: NO_ERROR or error code.
+ *   diskatt(in): pointer to the disk attribute inside the class record
+ *   attr_index(in): index to a string among the attribute
+ *   string(out) : The pointer towards the desire attribute.
+ *   alloced_string(out) : States whether the returned string was alloc'ed due do decompression,
+ *			   or is just a pointer from the record.
+ */
+static int
+or_get_diskattr_string (char *diskatt, int attr_index, char **string, int *alloced_string)
+{
+  char *attr = NULL;
+  int offset = 0, offset_next = 0;
+  OR_BUF buffer;
+  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
+
+  assert (diskatt != NULL);
+  assert (attr_index < ORC_ATT_LAST_INDEX);
+  assert (*alloced_string == 0);
+
+  /*
+   * diskatt now points to the attribute that we are interested in.
+   * Get the attribute name.
+   */
+  offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
+  attr = diskatt + offset;
+
+  /*
+   * Get boundary of the attribute, that is, the offset of next attribute.
+   * Regardless the next attribute exists or not,
+   * the "offset_next" is always retrievable.
+   * There is a last offset to denote the end of object. See attribute_to_disk.
+   */
+  offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
+
+  assert (attr != NULL);
+
+  if (offset == offset_next)
+    {
+      attr = NULL;
+      *string = NULL;
+    }
+  else
+    {
+      or_init (&buffer, attr, -1);
+
+      rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  *string = NULL;
+	  return rc;
+	}
+
+      if (compressed_length > 0)
+	{
+	  assert (*string == NULL);
+	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+	  if (*string == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  *alloced_string = 1;
+
+	  rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      db_private_free (NULL, *string);
+	      *alloced_string = 0;
+	      *string = NULL;
+	      return rc;
+	    }
+	}
+      else
+	{
+	  *string = buffer.ptr;
+	}
+    }
+
+  return rc;
+}
+
+/*
  * or_get_attr_string () - Get the string of the given attribute (id,index)
  *   return: NO_ERROR or error code.
  *   record(in): disk record
@@ -3882,90 +3968,25 @@ or_find_diskattr (RECDES * record, int attr_id)
 int
 or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string, int *alloced_string)
 {
-  char *diskatt, *attr = NULL;
-  int offset = 0, offset_next = 0;
-  OR_BUF buffer;
-  int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
-
-  assert (*alloced_string == 0);
+  char *diskatt;
 
   assert (attr_index < ORC_ATT_LAST_INDEX);
+  assert (*alloced_string == 0);
 
   diskatt = (char *) or_find_diskattr (record, attr_id);
   if (diskatt != NULL)
     {
-      /*
-       * diskatt now points to the attribute that we are interested in.
-       * Get the attribute name.
-       */
-      offset = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index);
-      attr = diskatt + offset;
-
-      /*
-       * Get boundary of the attribute, that is, the offset of next attribute.
-       * Regardless the next attribute exists or not,
-       * the "offset_next" is always retrievable.
-       * There is a last offset to denote the end of object. See attribute_to_disk.
-       */
-      offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
-
-      assert (attr != NULL);
-
-      if (offset == offset_next)
-	{
-	  attr = NULL;
-	  *string = NULL;
-	}
-      else
-	{
-	  or_init (&buffer, attr, -1);
-
-	  rc = or_get_varchar_compression_lengths (&buffer, &compressed_length, &decompressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      *string = NULL;
-	      return rc;
-	    }
-
-	  if (compressed_length > 0)
-	    {
-	      assert (*string == NULL);
-	      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
-	      if (*string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-	      *alloced_string = 1;
-
-	      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
-	      if (rc != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  db_private_free (NULL, *string);
-		  *alloced_string = 0;
-		  *string = NULL;
-		  return rc;
-		}
-	    }
-	  else
-	    {
-	      *string = buffer.ptr;
-	    }
-	}
+      return or_get_diskattr_string (diskatt, attr_index, string, alloced_string);
     }
-  else
+
+  *alloced_string = 0;
+  *string = NULL;
+  if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
     {
-      *alloced_string = 0;
-      *string = NULL;
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id) && (attr_index == ORC_ATT_NAME_INDEX))
-	{
-	  *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
-	}
+      *string = dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (attr_id));
     }
 
-  return rc;
+  return NO_ERROR;
 }
 
 /*
@@ -4011,10 +4032,6 @@ or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_str
  *   record(in): disk record
  *   name(in): name of the desired attribute
  *   attrid(out): id of the matching attribute, NULL_ATTRID if there is no such attribute
- *
- *       Counterpart of or_get_attrname (): given a name, return the attribute id of the
- *       current representation. Instance, shared and class attributes are all searched,
- *       same as or_find_diskattr ().
  */
 int
 or_get_attrid (RECDES * record, const char *name, int *attrid)
@@ -4062,7 +4079,7 @@ or_get_attrid (RECDES * record, const char *name, int *attrid)
 
 	  alloced_string = 0;
 	  attr_name = NULL;
-	  error = or_get_attrname (record, id, &attr_name, &alloced_string);
+	  error = or_get_diskattr_string (diskatt, ORC_ATT_NAME_INDEX, &attr_name, &alloced_string);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
