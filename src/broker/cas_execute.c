@@ -9482,6 +9482,22 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (query_handler != nullptr)
     {
       const cubmethod::query_result & qresult = query_handler->get_result ();
+      DB_QUERY_RESULT *rs_result = (DB_QUERY_RESULT *) qresult.result;
+
+      /* The cached DB_QUERY_RESULT may have been freed and its memory reused by another
+       * (e.g. CALL) result before this deferred fetch. Validate the live object type/status
+       * instead of trusting the cached stmt_type, otherwise a bogus 1-row(NULL) result is returned. */
+      if (rs_result == NULL || rs_result->type != T_SELECT || rs_result->status == T_CLOSED)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+	  cas_log_write (0, false, "make_out_rs invalid result for query_id %lld type %d status %d %s%d",
+			 (long long) query_id, (rs_result != NULL) ? rs_result->type : -1,
+			 (rs_result != NULL) ? rs_result->status : -1, "error:", err_info.err_number);
+
+	  goto ux_make_out_rs_error;
+	}
+
       DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
       new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
 								     qresult.stmt_type,
