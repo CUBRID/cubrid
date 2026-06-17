@@ -181,6 +181,7 @@ Available administrator's utilities:\n\
     restoreslave\n\
     spacedb\n\
     unloaddb\n\
+    upgradedb\n\
     paramdump\n\
     statdump\n\
     changemode\n\

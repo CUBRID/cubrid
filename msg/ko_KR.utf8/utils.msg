@@ -181,6 +181,7 @@ cubrid 관리자 유틸리티, 버전 %1$s\n\
     restoreslave\n\
     spacedb\n\
     unloaddb\n\
+    upgradedb\n\
     paramdump\n\
     statdump\n\
     changemode\n\
