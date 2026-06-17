@@ -1343,7 +1343,7 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	if (err != NO_ERROR)
 	  {
 	    obj_delete (object);
-	    goto cleanup1;
+	    goto cleanup0;
 	  }
       }
   }
