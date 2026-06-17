@@ -5456,8 +5456,8 @@ upgradedb_execute_sql_buffer (const char *buf)
       return error;
     }
 
-  /* db_open_buffer parses the whole buffer; bail on syntax errors before compiling. */
-  if (db_get_errors (session) != NULL || er_errid () != NO_ERROR)
+  /* db_open_buffer parses the whole buffer; stop on syntax errors before compiling. */
+  if ((db_get_errors (session) != NULL) || (er_errid () != NO_ERROR))
     {
       error = er_errid ();
       if (error == NO_ERROR)
@@ -5576,7 +5576,6 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
     }
 
   error = upgradedb_process_upgrade_scripts (UPGRADEDB_OP_EXECUTE);
-
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -5589,7 +5588,6 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
     }
 
   upgradedb_update_and_log_version (target_version);
-
   error = db_commit_transaction ();
   if (error != NO_ERROR)
     {
