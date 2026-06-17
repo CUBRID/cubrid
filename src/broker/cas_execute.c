@@ -9502,6 +9502,13 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
 								     qresult.stmt_type,
 								     qresult.num_column, column_info, true);
+      if (new_handle_id > 0)
+	{
+	  /* The new server handle now shares and owns this DB_QUERY_RESULT and frees it on its
+	   * teardown (ux_free_result). Detach it from the method query handler so the handler's
+	   * deferred end_qresult () does not free the same object again (double / dangling free). */
+	  query_handler->detach_result_for_out_rs ();
+	}
     }
 
   srv_handle = hm_find_srv_handle (new_handle_id);
