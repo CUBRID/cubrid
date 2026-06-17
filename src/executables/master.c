@@ -406,17 +406,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 	      if (entry != NULL)
 		{
 		  server_name += length;
-		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
+		  entry->version_string = strdup (server_name);
 		  if (entry->version_string != NULL)
 		    {
-		      strcpy (entry->version_string, server_name);
 		      server_name += strlen (entry->version_string) + 1;
 
-		      entry->env_var = (char *) malloc (strlen (server_name) + 1);
-		      if (entry->env_var != NULL)
-			{
-			  strcpy (entry->env_var, server_name);
-			}
+		      entry->env_var = strdup (server_name);
 
 		      server_name += strlen (server_name) + 1;
 
@@ -484,10 +479,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 	  if (length < server_name_length)
 	    {
 	      server_name += length;
-	      if ((entry->version_string = (char *) malloc (strlen (server_name) + 1)) != NULL)
-		{
-		  strcpy (entry->version_string, server_name);
-		}
+	      entry->version_string = strdup (server_name);
 	    }
 	}
     }
@@ -628,16 +620,11 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 			  char *recv_data;
 
 			  recv_data = server_name + length;
-			  entry->version_string = (char *) malloc (strlen (recv_data) + 1);
+			  entry->version_string = strdup (recv_data);
 			  if (entry->version_string != NULL)
 			    {
-			      strcpy (entry->version_string, recv_data);
 			      recv_data += strlen (entry->version_string) + 1;
-			      entry->env_var = (char *) malloc (strlen (recv_data) + 1);
-			      if (entry->env_var != NULL)
-				{
-				  strcpy (entry->env_var, recv_data);
-				}
+			      entry->env_var = strdup (recv_data);
 			      recv_data += strlen (recv_data) + 1;
 			      entry->pid = atoi (recv_data);
 			    }
@@ -1443,10 +1430,9 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
 
   if (name_p)
     {
-      p->name = (char *) malloc (strlen (name_p) + 1);
+      p->name = strdup (name_p);
       if (p->name)
 	{
-	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
 	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
 	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))

@@ -10072,6 +10072,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
