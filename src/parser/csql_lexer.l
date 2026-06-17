@@ -387,6 +387,9 @@ IDL       [a-zA-Z0-9_]
                                                                                 return ERROR_; }
 [eE][sS][cC][aA][pP][eE]						{ begin_token(yytext);   return ESCAPE; }
 [eE][vV][aA][lL][uU][aA][tT][eE]					{ begin_token(yytext);   return EVALUATE; }
+[eE][xX][aA][cC][tT]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return EXACT; }
 [eE][xX][cC][eE][pP][tT]						{ begin_token(yytext);   return EXCEPT; }
 [eE][xX][cC][eE][pP][tT][iI][oO][nN]					{ begin_token(yytext);   return EXCEPTION; }
 [eE][xX][eE][cC]							{ begin_token(yytext);   return EXEC; }

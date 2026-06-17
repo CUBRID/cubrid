@@ -326,7 +326,8 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* 1 = EXACT (S_LOCK), 0 = default (IS_LOCK) */
   };
 
   static SHOWSTMT_METADATA md_only = {
@@ -373,7 +374,8 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* 1 = EXACT (S_LOCK), 0 = default (IS_LOCK) */
   };
 
   static SHOWSTMT_METADATA md_only = {
