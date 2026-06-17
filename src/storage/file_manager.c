@@ -8026,7 +8026,29 @@ file_spacedb (THREAD_ENTRY * thread_p, SPACEDB_FILES * spacedb, char **table_arr
 
 	  if (find_result == LC_CLASSNAME_ERROR)
 	    {
-	      /* Lock conflict with pending DDL — treat as busy. */
+	      /* xlocator_find_class_oid returns LC_CLASSNAME_ERROR both for a
+	       * zero-wait lock conflict (pending DDL) and for genuine server
+	       * errors (csect failure, interrupt, lock-manager errors).  Only the
+	       * former is benign here; disambiguate via er_errid() so real errors
+	       * are propagated instead of being hidden as a "busy" skip. */
+	      int er = er_errid ();
+	      bool is_lock_conflict = (er == ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG || er == ER_LK_OBJECT_TIMEOUT_CLASS_MSG
+				       || er == ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG
+				       || er == ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG);
+
+	      if (!is_lock_conflict)
+		{
+		  /* genuine server error — do not mask it */
+		  error_code = (er != NO_ERROR) ? er : ER_FAILED;
+		  *actual_count_p = 0;
+		  file_spacedb_free_table_sizes (*table_sizes_p, table_num);
+		  *table_sizes_p = NULL;
+		  return error_code;
+		}
+
+	      /* confirmed zero-wait lock conflict with pending DDL — treat as busy. */
 	      er_clear ();
 	      error_code = file_spacedb_set_busy_sentinel (&(*table_sizes_p)[table_num], table_array[table_num]);
 	      if (error_code != NO_ERROR)
