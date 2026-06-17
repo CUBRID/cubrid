@@ -1072,7 +1072,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
   memset (&cmsgbuf, 0, sizeof (cmsgbuf));
 
   iov.iov_base = &req_id;
-  iov.iov_len = sizeof (unsigned short);
+  iov.iov_len = sizeof (req_id);
 
   msg.msg_name = (caddr_t) NULL;
   msg.msg_namelen = 0;
@@ -1086,6 +1086,11 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
     {
       TPRINTF ("recvmsg failed for fd = %d\n", rc);
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
+      return INVALID_SOCKET;
+    }
+  if (rc != (int) sizeof (req_id))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
       return INVALID_SOCKET;
     }
 
@@ -1105,6 +1110,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
     }
 
   *rid = ntohs (req_id);
+
   pid = getpid ();
   fcntl (new_fd, F_SETOWN, pid);
   css_sockopt (new_fd);
@@ -1120,9 +1126,10 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server,
+		 int client_type)
 {
-  int request;
+  unsigned int request;
   unsigned short req_id;
   struct iovec iov[1];
   struct msghdr msg;
@@ -1130,7 +1137,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SER
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  request = htonl (request_for_server);
+  request = htonl (CSS_PACK_SERVER_REQUEST (request_for_server, client_type));
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */
@@ -1141,7 +1148,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SER
 
   /* Pass the fd to the server */
   iov[0].iov_base = (char *) &req_id;
-  iov[0].iov_len = sizeof (unsigned short);
+  iov[0].iov_len = sizeof (req_id);
   msg.msg_iov = iov;
   msg.msg_iovlen = 1;
   msg.msg_namelen = 0;
