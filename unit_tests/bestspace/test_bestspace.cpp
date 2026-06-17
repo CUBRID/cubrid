@@ -272,7 +272,7 @@ namespace cubstorage
 	rhs.set (bestspace::tier::FS2, 3);
 	rhs.set (bestspace::tier::FS2, bestspace::L3_FANOUT - 1);
 
-	return !(lhs == rhs);
+	return ! (lhs == rhs);
       }
 
       static bool shard_second_allocation_mark_is_blocked ()
