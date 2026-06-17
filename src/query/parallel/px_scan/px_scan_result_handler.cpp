@@ -952,50 +952,69 @@ namespace parallel_scan
       }
   }
 
-  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
+  template <FUNC_CODE F>
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p)
   {
-    std::unique_lock<std::mutex> lock (m_result_mutex);
-    while (m_result_completed < m_parallelism)
+    /* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
+    if constexpr (F == PT_COUNT_STAR)
       {
-	m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return S_ERROR;
-	  }
+	return S_SUCCESS;
       }
-    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+    else
       {
-	/* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
-	if (orig_agg_p->function == PT_COUNT_STAR)
+	if constexpr (F != PT_MIN && F != PT_MAX)
 	  {
-	    continue;
+	    if (orig_agg_p->option == Q_DISTINCT)
+	      {
+		return S_SUCCESS;
+	      }
 	  }
-	if (orig_agg_p->option == Q_DISTINCT
-	    && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
-	  {
-	    continue;
-	  }
-	if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
-	     && orig_agg_p->option != Q_DISTINCT)
-	    || orig_agg_p->function == PT_MEDIAN || orig_agg_p->function == PT_PERCENTILE_CONT
-	    || orig_agg_p->function == PT_PERCENTILE_DISC)
+	if constexpr (F == PT_MEDIAN || F == PT_PERCENTILE_CONT || F == PT_PERCENTILE_DISC)
 	  {
 	    /* List-based aggregates: the result is produced later by
 	     * qdata_finalize_aggregate_list from the connected list_id. The accumulator
 	     * value holds no result yet and value2 holds only metadata (the GROUP_CONCAT
 	     * separator), so they must not be re-homed here -- cloning value2 would leak
 	     * the separator buffer (mr_setval_char) on the transaction heap. */
-	    continue;
+	    return S_SUCCESS;
 	  }
-	if (orig_agg_p->function == PT_COUNT)
+	else if constexpr (F == PT_GROUP_CONCAT)
+	  {
+	    if (orig_agg_p->sort_list != NULL && orig_agg_p->option != Q_DISTINCT)
+	      {
+		/* List-based ORDER BY GROUP_CONCAT: result produced later by
+		 * qdata_finalize_aggregate_list from the connected list_id. */
+		return S_SUCCESS;
+	      }
+	    /* Non-order GROUP_CONCAT: re-home value only. value2 holds the separator
+	     * (metadata set on the main thread at init) and must NOT be re-homed --
+	     * cloning it leaks the separator buffer (mr_setval_char) on the txn heap. */
+	    DB_VALUE tmp;
+	    if (!DB_IS_NULL (orig_agg_p->accumulator.value))
+	      {
+		db_make_null (&tmp);
+		if (pr_clone_value (orig_agg_p->accumulator.value, &tmp) != NO_ERROR)
+		  {
+		    return S_ERROR;
+		  }
+		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
+		pr_clear_value (orig_agg_p->accumulator.value);
+		db_change_private_heap (thread_p, save_heap);
+		* (orig_agg_p->accumulator.value) = tmp;
+	      }
+	    return S_SUCCESS;
+	  }
+	else if constexpr (F == PT_COUNT)
 	  {
 	    db_make_bigint (orig_agg_p->accumulator.value, (INT64) orig_agg_p->accumulator.curr_cnt);
+	    return S_SUCCESS;
 	  }
-	else if (orig_agg_p->function == PT_CUME_DIST || orig_agg_p->function == PT_PERCENT_RANK)
+	else if constexpr (F == PT_CUME_DIST || F == PT_PERCENT_RANK)
 	  {
 	    /* CUME_DIST / PERCENT_RANK: the final ratio is computed by
 	     * qdata_finalize_aggregate_list from the merged nlargers / curr_cnt counters.
 	     * accumulator.value holds no result yet, so do not re-home it here. */
+	    return S_SUCCESS;
 	  }
 	else
 	  {
@@ -1013,22 +1032,121 @@ namespace parallel_scan
 		* (orig_agg_p->accumulator.value) = tmp;
 	      }
 	    /* value2 carries a real accumulated result only for STDDEV/VARIANCE (sum of
-	     * squares). For GROUP_CONCAT it holds the separator (metadata set on the main
-	     * thread at init), which must not be re-homed -- cloning it leaks the separator
-	     * buffer (mr_setval_char) on the transaction heap. */
-	    if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2)
-		&& orig_agg_p->function != PT_GROUP_CONCAT)
+	     * squares), so re-home it only for that family. */
+	    if constexpr (F == PT_STDDEV || F == PT_STDDEV_POP || F == PT_STDDEV_SAMP
+			  || F == PT_VARIANCE || F == PT_VAR_POP || F == PT_VAR_SAMP)
 	      {
-		db_make_null (&tmp);
-		if (pr_clone_value (orig_agg_p->accumulator.value2, &tmp) != NO_ERROR)
+		if (orig_agg_p->accumulator.value2 != NULL && !DB_IS_NULL (orig_agg_p->accumulator.value2))
 		  {
-		    return S_ERROR;
+		    db_make_null (&tmp);
+		    if (pr_clone_value (orig_agg_p->accumulator.value2, &tmp) != NO_ERROR)
+		      {
+			return S_ERROR;
+		      }
+		    HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
+		    pr_clear_value (orig_agg_p->accumulator.value2);
+		    db_change_private_heap (thread_p, save_heap);
+		    * (orig_agg_p->accumulator.value2) = tmp;
 		  }
-		HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
-		pr_clear_value (orig_agg_p->accumulator.value2);
-		db_change_private_heap (thread_p, save_heap);
-		* (orig_agg_p->accumulator.value2) = tmp;
 	      }
+	    return S_SUCCESS;
+	  }
+      }
+  }
+
+  SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
+  {
+    std::unique_lock<std::mutex> lock (m_result_mutex);
+    while (m_result_completed < m_parallelism)
+      {
+	m_result_cv.wait_for (lock, std::chrono::microseconds (50));
+	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	  {
+	    return S_ERROR;
+	  }
+      }
+    for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
+      {
+	SCAN_CODE rc;
+	switch (orig_agg_p->function)
+	  {
+	  case PT_COUNT_STAR:
+	    rc = read_node<PT_COUNT_STAR> (thread_p, orig_agg_p);
+	    break;
+	  case PT_COUNT:
+	    rc = read_node<PT_COUNT> (thread_p, orig_agg_p);
+	    break;
+	  case PT_MIN:
+	    rc = read_node<PT_MIN> (thread_p, orig_agg_p);
+	    break;
+	  case PT_MAX:
+	    rc = read_node<PT_MAX> (thread_p, orig_agg_p);
+	    break;
+	  case PT_SUM:
+	    rc = read_node<PT_SUM> (thread_p, orig_agg_p);
+	    break;
+	  case PT_AVG:
+	    rc = read_node<PT_AVG> (thread_p, orig_agg_p);
+	    break;
+	  case PT_STDDEV:
+	    rc = read_node<PT_STDDEV> (thread_p, orig_agg_p);
+	    break;
+	  case PT_STDDEV_POP:
+	    rc = read_node<PT_STDDEV_POP> (thread_p, orig_agg_p);
+	    break;
+	  case PT_STDDEV_SAMP:
+	    rc = read_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p);
+	    break;
+	  case PT_VARIANCE:
+	    rc = read_node<PT_VARIANCE> (thread_p, orig_agg_p);
+	    break;
+	  case PT_VAR_POP:
+	    rc = read_node<PT_VAR_POP> (thread_p, orig_agg_p);
+	    break;
+	  case PT_VAR_SAMP:
+	    rc = read_node<PT_VAR_SAMP> (thread_p, orig_agg_p);
+	    break;
+	  case PT_AGG_BIT_AND:
+	    rc = read_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p);
+	    break;
+	  case PT_AGG_BIT_OR:
+	    rc = read_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p);
+	    break;
+	  case PT_AGG_BIT_XOR:
+	    rc = read_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p);
+	    break;
+	  case PT_GROUP_CONCAT:
+	    rc = read_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p);
+	    break;
+	  case PT_MEDIAN:
+	    rc = read_node<PT_MEDIAN> (thread_p, orig_agg_p);
+	    break;
+	  case PT_PERCENTILE_CONT:
+	    rc = read_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p);
+	    break;
+	  case PT_PERCENTILE_DISC:
+	    rc = read_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p);
+	    break;
+	  case PT_JSON_ARRAYAGG:
+	    rc = read_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p);
+	    break;
+	  case PT_JSON_OBJECTAGG:
+	    rc = read_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p);
+	    break;
+	  case PT_CUME_DIST:
+	    rc = read_node<PT_CUME_DIST> (thread_p, orig_agg_p);
+	    break;
+	  case PT_PERCENT_RANK:
+	    rc = read_node<PT_PERCENT_RANK> (thread_p, orig_agg_p);
+	    break;
+	  default:
+	    assert (false);
+	    rc = S_ERROR;
+	    break;
+	  }
+	if (rc == S_ERROR)
+	  {
+	    return S_ERROR;
 	  }
       }
     return S_END;

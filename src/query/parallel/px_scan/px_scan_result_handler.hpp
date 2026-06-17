@@ -242,6 +242,8 @@ namespace parallel_scan
     private:
       template <FUNC_CODE F>
       bool accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node, DB_VALUE *db_value_p);
+      template <FUNC_CODE F>
+      SCAN_CODE read_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p);
       int m_parallelism;
       std::mutex m_result_mutex;
       std::condition_variable m_result_cv;
