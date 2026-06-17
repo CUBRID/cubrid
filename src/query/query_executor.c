@@ -18378,6 +18378,13 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
  *  tpl(in):
  *  type_list(in):
  *  are_equal(out):
+ *
+ *  Note: User columns in CONNECT BY outptr_list are normally TYPE_CONSTANT regu_variables
+ *  whose dbvalptr points to a val_list DB_VALUE filled by the current scan. Derived sort-key
+ *  columns injected for ORDER SIBLINGS BY may be other regu types (e.g. TYPE_INARITH) where
+ *  reading .value.dbvalptr would mis-interpret an active union field. Those columns are
+ *  deterministic functions of the original TYPE_CONSTANT columns, so skipping them does not
+ *  weaken cycle detection.
  */
 static int
 qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -18392,6 +18399,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
   TP_DOMAIN *domp;
   int length1, length2, equal, i;
   bool copy = false;
+  bool compare_this;
 
   *are_equal = 1;
 
@@ -18403,8 +18411,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
     {
       /* compare regulist->value.value.dbvalptr to the DB_VALUE from tuple */
 
-      dbvalp2 = regulist->value.value.dbvalptr;
-      length2 = (dbvalp2->domain.general_info.is_null != 0) ? 0 : -1;
+      compare_this = (regulist->value.type == TYPE_CONSTANT);
 
       domp = type_list->domp[i];
       type = TP_DOMAIN_TYPE (domp);
@@ -18427,21 +18434,32 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 	    }
 	}
 
-      if (length1 == 0 && length2 == 0)
+      if (compare_this)
 	{
-	  equal = 1;
-	}
-      else if (length1 == 0)
-	{
-	  equal = 0;
-	}
-      else if (length2 == 0)
-	{
-	  equal = 0;
+	  dbvalp2 = regulist->value.value.dbvalptr;
+	  length2 = (dbvalp2->domain.general_info.is_null != 0) ? 0 : -1;
+
+	  if (length1 == 0 && length2 == 0)
+	    {
+	      equal = 1;
+	    }
+	  else if (length1 == 0)
+	    {
+	      equal = 0;
+	    }
+	  else if (length2 == 0)
+	    {
+	      equal = 0;
+	    }
+	  else
+	    {
+	      equal = pr_type_p->cmpval (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ;
+	    }
 	}
       else
 	{
-	  equal = pr_type_p->cmpval (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ;
+	  /* derived column injected for ORDER SIBLINGS BY; skip comparison */
+	  equal = 1;
 	}
 
       if (copy || DB_NEED_CLEAR (&dbval1))
