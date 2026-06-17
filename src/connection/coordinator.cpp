@@ -1276,7 +1276,11 @@ not_transferred:
 	    handle_message_queue_return_to_pool (request);
 	    break;
 
-	  default:
+	  case message_type::START:
+	  case message_type::HANDOFF_REPLY:
+	  case message_type::STATISTICS:
+	  case message_type::SHUTDOWN:
+	  case message_type::TYPE_COUNT:
 	    break;
 	  }
       }

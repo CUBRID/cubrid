@@ -2126,7 +2126,13 @@ respond:
 		m_parent->retire_context (request.ctx);
 		break;
 
-	      default:
+	      case message_type::START:
+	      case message_type::HIBERNATE:
+	      case message_type::AWAKEN:
+	      case message_type::SHUTDOWN:
+	      case message_type::HANDOFF_CLIENT:
+	      case message_type::RELEASE_PACKET:
+	      case message_type::TYPE_COUNT:
 		break;
 	      }
 	  }
