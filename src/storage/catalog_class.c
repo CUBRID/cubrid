@@ -4792,9 +4792,6 @@ catcls_compile_catalog_classes (THREAD_ENTRY * thread_p)
 	  goto error;
 	}
 
-      /* Bind by name to the live attribute ids (non-dense after catalog ALTER). or_get_classrep ()
-       * must NOT be used here: it caches attribute domains, swizzling OBJECT-typed OIDs through
-       * ws_mop (), which aborts during the restore-from-backup boot where no workspace is up yet. */
       for (a = 0; a < n_atts; a++)
 	{
 	  error = or_get_attrid (&class_record, atts[a].ca_name, &atts[a].ca_id);
@@ -4914,61 +4911,25 @@ catcls_get_server_compat_info (THREAD_ENTRY * thread_p, INTL_CODESET * charset_i
       goto exit;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, "charset", &charset_att_id);
+  if (error != NO_ERROR)
     {
-      char *rec_attr_name_p, *string = NULL;
-      int alloced_string = 0;
-      bool set_break = false;
+      ASSERT_ERROR ();
+      goto exit;
+    }
 
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
+  error = or_get_attrid (&recdes, "lang", &lang_att_id);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
 
-      rec_attr_name_p = string;
-      if (rec_attr_name_p == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      if (strcmp ("charset", rec_attr_name_p) == 0)
-	{
-	  charset_att_id = i;
-	  if (lang_att_id != -1)
-	    {
-	      set_break = true;
-	      goto clean_string;
-	    }
-	}
-
-      if (strcmp ("lang", rec_attr_name_p) == 0)
-	{
-	  lang_att_id = i;
-	  if (charset_att_id != -1)
-	    {
-	      set_break = true;
-	      goto clean_string;
-	    }
-	}
-
-      if (strcmp ("timezone_checksum", rec_attr_name_p) == 0)
-	{
-	  timezone_id = i;
-	}
-
-    clean_string:
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-
-      if (set_break == true)
-	{
-	  break;
-	}
+  error = or_get_attrid (&recdes, "timezone_checksum", &timezone_id);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   if (charset_att_id == -1 || lang_att_id == -1 || timezone_id == -1)
@@ -5318,12 +5279,11 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
   HEAP_SCANCACHE scan_cache;
   RECDES recdes;
   const char *class_name = "_db_collation";
-  int i;
   int error = NO_ERROR;
-  int att_id_cnt = 0;
   int max_coll_cnt;
   int coll_id_att_id = -1, coll_name_att_id = -1, charset_id_att_id = -1, checksum_att_id = -1;
   int alloc_size;
+  int i;
   bool attr_info_inited = false;
   bool scan_cache_inited = false;
 
@@ -5362,58 +5322,36 @@ catcls_get_db_collation (THREAD_ENTRY * thread_p, LANG_COLL_COMPAT ** db_collati
       goto exit;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, CT_DBCOLL_COLL_ID_COLUMN, &coll_id_att_id);
+  if (error != NO_ERROR)
     {
-      char *rec_attr_name_p, *string = NULL;
-      int alloced_string = 0;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
-
-      rec_attr_name_p = string;
-      if (rec_attr_name_p == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      if (strcmp (CT_DBCOLL_COLL_ID_COLUMN, rec_attr_name_p) == 0)
-	{
-	  coll_id_att_id = i;
-	  att_id_cnt++;
-	}
-      else if (strcmp (CT_DBCOLL_COLL_NAME_COLUMN, rec_attr_name_p) == 0)
-	{
-	  coll_name_att_id = i;
-	  att_id_cnt++;
-	}
-      else if (strcmp (CT_DBCOLL_CHARSET_ID_COLUMN, rec_attr_name_p) == 0)
-	{
-	  charset_id_att_id = i;
-	  att_id_cnt++;
-	}
-      else if (strcmp (CT_DBCOLL_CHECKSUM_COLUMN, rec_attr_name_p) == 0)
-	{
-	  checksum_att_id = i;
-	  att_id_cnt++;
-	}
-
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-
-      if (att_id_cnt >= 4)
-	{
-	  break;
-	}
+      ASSERT_ERROR ();
+      goto exit;
     }
 
-  if (att_id_cnt != 4)
+  error = or_get_attrid (&recdes, CT_DBCOLL_COLL_NAME_COLUMN, &coll_name_att_id);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  error = or_get_attrid (&recdes, CT_DBCOLL_CHARSET_ID_COLUMN, &charset_id_att_id);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  error = or_get_attrid (&recdes, CT_DBCOLL_CHECKSUM_COLUMN, &checksum_att_id);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto exit;
+    }
+
+  if (coll_id_att_id == NULL_ATTRID || coll_name_att_id == NULL_ATTRID
+      || charset_id_att_id == NULL_ATTRID || checksum_att_id == NULL_ATTRID)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_FAILED;
@@ -5557,8 +5495,8 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
   DB_DATETIME tmp_datetime;
   time_t tmp_log_record_time = 0;
   int log_record_time_att_id = -1;
-  int error = NO_ERROR;
   int i;
+  int error = NO_ERROR;
   bool attr_info_inited = false;
   bool scan_cache_inited = false;
   int num_record = 0;
@@ -5598,41 +5536,11 @@ catcls_get_apply_info_log_record_time (THREAD_ENTRY * thread_p, time_t * log_rec
       goto exit;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, "log_record_time", &log_record_time_att_id);
+  if (error != NO_ERROR)
     {
-      char *rec_attr_name_p, *string = NULL;
-      int alloced_string = 0;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
-
-      rec_attr_name_p = string;
-      if (rec_attr_name_p == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
-
-      if (strcmp ("log_record_time", rec_attr_name_p) == 0)
-	{
-	  log_record_time_att_id = i;
-
-	  if (string != NULL && alloced_string == 1)
-	    {
-	      db_private_free_and_init (thread_p, string);
-	    }
-
-	  break;
-	}
-
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
+      ASSERT_ERROR ();
+      goto exit;
     }
 
   if (log_record_time_att_id == -1)

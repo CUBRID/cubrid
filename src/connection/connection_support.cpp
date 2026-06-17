@@ -2367,7 +2367,6 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
   int i, attr_idx = -1;
   bool attr_info_inited;
   bool scan_cache_inited;
-  char *rec_attr_name_p = NULL, *string = NULL;
   const char *user_name = NULL;
   HFID hfid;
   OID inst_oid;
@@ -2400,42 +2399,11 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
       goto end;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
+  error = or_get_attrid (&recdes, "name", &attr_idx);
+  if (error != NO_ERROR)
     {
-      int alloced_string = 0;
-      bool set_break = false;
-      string = NULL;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
-      rec_attr_name_p = string;
-
-      if (rec_attr_name_p == NULL)
-	{
-	  continue;
-	}
-
-      if (strcmp ("name", rec_attr_name_p) == 0)
-	{
-	  attr_idx = i;
-	  set_break = true;
-	  goto clean_string;
-	}
-
-clean_string:
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-
-      if (set_break == true)
-	{
-	  break;
-	}
+      ASSERT_ERROR ();
+      goto end;
     }
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;

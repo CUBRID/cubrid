@@ -180,10 +180,7 @@ sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p)
   HEAP_SCANCACHE scan;
   RECDES class_record;
   HEAP_CACHE_ATTRINFO attr_info;
-  int i, error = NO_ERROR;
-  char *attr_name_p, *string = NULL;
-  int alloced_string = 0;
-  int attr_idx = -1;
+  int error = NO_ERROR;
 
   if (spcode_Num_attrs != -1)
     {
@@ -211,36 +208,21 @@ sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p)
       return error;
     }
 
-  for (i = 0; i < attr_info.num_values; i++)
-    {
-      string = NULL;
-      alloced_string = 0;
+  static const char *sp_code_attr_names[NUM_SP_CODE_ATTR] =
+  {
+#define MAP_LIST_ITEM(item)     SP_CODE_ATTR_##item,
+    SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
+  };
 
-      error = or_get_attrname (&class_record, i, &string, &alloced_string);
+  for (int attr_idx = 0; attr_idx < NUM_SP_CODE_ATTR; attr_idx++)
+    {
+      error = or_get_attrid (&class_record, sp_code_attr_names[attr_idx], &spcode_Attrs_id[attr_idx]);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-
-      attr_name_p = string;
-      if (attr_name_p == NULL)
-	{
-	  error = ER_FAILED;
-	  goto exit_on_error;
-	}
-
-      attr_idx = sp_get_attr_idx (attr_name_p);
-      if (attr_idx != -1)
-	{
-	  spcode_Attrs_id [attr_idx] = i;
-	}
-
-      if (string != NULL && alloced_string)
-	{
-	  db_private_free_and_init (NULL, string);
-	}
-
     }
   spcode_Num_attrs = attr_info.num_values;
 
