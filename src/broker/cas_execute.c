@@ -9502,13 +9502,17 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
       new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
 								     qresult.stmt_type,
 								     qresult.num_column, column_info, true);
-      if (new_handle_id > 0)
+      if (new_handle_id < 0)
 	{
-	  /* The new server handle now shares and owns this DB_QUERY_RESULT and frees it on its
-	   * teardown (ux_free_result). Detach it from the method query handler so the handler's
-	   * deferred end_qresult () does not free the same object again (double / dangling free). */
-	  query_handler->detach_result_for_out_rs ();
+	  err_code = new_handle_id;	/* preserve the specific error (e.g. MAX_PREPARED_STMT / NO_MORE_MEMORY) */
+	  goto ux_make_out_rs_error;
 	}
+      assert (new_handle_id > 0);	/* a created handle id is 1-based; 0 is never returned */
+
+      /* The new server handle now shares and solely owns this DB_QUERY_RESULT and frees it on its
+       * teardown (ux_free_result). Detach it from the method query handler so the handler's
+       * deferred end_qresult () does not free the same object again (double / dangling free). */
+      query_handler->detach_result_for_out_rs ();
     }
 
   srv_handle = hm_find_srv_handle (new_handle_id);
@@ -9628,6 +9632,12 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   return 0;
 ux_make_out_rs_error:
+  if (new_handle_id > 0)
+    {
+      /* The server handle was created and (after detach_result_for_out_rs ()) solely owns the
+       * query result. Free it here so an error after its creation does not leak the handle/result. */
+      hm_srv_handle_free (new_handle_id);
+    }
   NET_BUF_ERR_SET (net_buf);
   return err_code;
 }
