@@ -8721,19 +8721,11 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		    }
 		  if (xs_scan == S_SUCCESS)
 		    {
-		      /* v1 invariant: single-fetch (QPROC_SINGLE_INNER) scan-like inner; drain bounded (one more
-		         call returns S_END), releases latches; memoize disabled for semi/anti inners.
-		         TODO(composite-RHS): a composite/derived inner must not blind-drain the subtree (side
-		         effects / instnum / CONNECT BY) -- re-evaluate the drain bound then. */
-		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
-							  next_scan_fnc + 1)) == S_SUCCESS)
-			{
-			  ;
-			}
-		      if (xs_scan == S_ERROR)
-			{
-			  return S_ERROR;
-			}
+		      /* single-fetch (QPROC_SINGLE_INNER) inner yields at most one qualifying row, so this first
+		         S_SUCCESS already settles the match -- no drain needed (a second scan_next_scan would just
+		         short-circuit to S_END without touching the physical scan, so it releases no latch).
+		         TODO(composite-RHS): a composite/derived inner can yield many rows; it would then need to
+		         drain (or short-circuit) the subtree explicitly (side effects / instnum / CONNECT BY). */
 		      qualified = false;	/* inner matched -> anti suppresses this outer row */
 		    }
 		  else
