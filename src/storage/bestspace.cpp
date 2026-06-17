@@ -198,7 +198,7 @@ namespace cubstorage
   {
     assert (minimum >= tier::FS1 && minimum <= tier::FS8);
 
-    return m_freespace[static_cast<std::size_t> (minimum)].find (pos, BITS_PER_BYTE - 1);
+    return m_freespace[static_cast<std::size_t> (minimum)].find (pos);
   }
 
   void
@@ -215,7 +215,7 @@ namespace cubstorage
   {
     uint64_t val;
 
-    assert (index < BITS_PER_BYTE - 1);
+    assert (index < BITS_PER_BYTE);
 
     std::memcpy (&val, m_freespace.data (), sizeof (uint64_t));
     val &= ~ (0x0101010101010101ULL << index);
@@ -226,13 +226,14 @@ namespace cubstorage
   bestspace::L3::set (tier fs, std::size_t index)
   {
     assert (fs > tier::FS0);
-    assert (index < BITS_PER_BYTE - 1);
+    assert (index < BITS_PER_BYTE);
 
     m_freespace[static_cast<std::size_t> (fs)].set (index);
   }
 
   bestspace::shard::shard () noexcept
-    : m_L3 ()
+    : m_allocating (false)
+    , m_L3 ()
     , m_L2 ()
     , m_L1 ()
     , m_recs_num (0)
@@ -245,36 +246,6 @@ namespace cubstorage
     , m_found (0)
     , m_allocated (0)
   {
-  }
-
-  bool
-  bestspace::L3::is_allocating ()
-  {
-    uint64_t value;
-
-    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
-
-    return (value & FLAG_ALLOCATING);
-  }
-
-  void
-  bestspace::L3::clear_allocating ()
-  {
-    uint64_t value;
-
-    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
-    value &= ~FLAG_ALLOCATING;
-    std::memcpy (static_cast<void *> (m_freespace.data ()), &value, sizeof (uint64_t));
-  }
-
-  void
-  bestspace::L3::set_allocating ()
-  {
-    uint64_t value;
-
-    std::memcpy (&value, m_freespace.data (), sizeof (uint64_t));
-    value |= FLAG_ALLOCATING;
-    std::memcpy (static_cast<void *> (m_freespace.data ()), &value, sizeof (uint64_t));
   }
 
   void
@@ -635,19 +606,17 @@ namespace cubstorage
   bestspace::status
   bestspace::shard::allocate_mark ()
   {
-    L3 expected, desired;
+    bool expected;
 
-    expected = m_L3.load ();
+    expected = m_allocating.load ();
     do
       {
-	desired = expected;
-	if (desired.is_allocating ())
+	if (expected)
 	  {
 	    return status::ALLOCATING;
 	  }
-	desired.set_allocating ();
       }
-    while (!m_L3.compare_exchange_strong (expected, desired));
+    while (!m_allocating.compare_exchange_strong (expected, true));
 
     return status::SUCCESS;
   }
@@ -655,17 +624,9 @@ namespace cubstorage
   void
   bestspace::shard::allocate_unmark ()
   {
-    // update L3 and clear allocating bit
-    L3 expected, desired;
+    assert (m_allocating.load ());
 
-    expected = m_L3.load ();
-    do
-      {
-	desired = expected;
-	assert (desired.is_allocating ());
-	desired.clear_allocating ();
-      }
-    while (!m_L3.compare_exchange_strong (expected, desired));
+    m_allocating.store (false);
   }
 
   void

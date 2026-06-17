@@ -253,41 +253,61 @@ namespace cubstorage
 	return l3_find_positions (l3, fs);
       }
 
-      static std::vector<std::size_t> l3_find_after_allocating_only (int fs)
+      static bool l3_find_includes_highest_index (int fs)
       {
 	bestspace::L3 l3;
+	std::vector<std::size_t> positions;
 
-	l3.set_allocating ();
-	return l3_find_positions (l3, fs);
+	l3.set (tier_from_value (fs), bestspace::L3_FANOUT - 1);
+	positions = l3_find_positions (l3, fs);
+	return positions == std::vector<std::size_t> { bestspace::L3_FANOUT - 1 };
       }
 
-      static bool l3_allocating_after_set ()
-      {
-	bestspace::L3 l3;
-
-	l3.set_allocating ();
-	return l3.is_allocating ();
-      }
-
-      static bool l3_allocating_after_clear ()
-      {
-	bestspace::L3 l3;
-
-	l3.set_allocating ();
-	l3.clear_allocating ();
-	return l3.is_allocating ();
-      }
-
-      static bool l3_compare_ignores_allocating_flag ()
+      static bool l3_compare_distinguishes_highest_index ()
       {
 	bestspace::L3 lhs;
 	bestspace::L3 rhs;
 
 	lhs.set (bestspace::tier::FS2, 3);
 	rhs.set (bestspace::tier::FS2, 3);
-	rhs.set_allocating ();
+	rhs.set (bestspace::tier::FS2, bestspace::L3_FANOUT - 1);
 
-	return lhs == rhs;
+	return !(lhs == rhs);
+      }
+
+      static bool shard_second_allocation_mark_is_blocked ()
+      {
+	bestspace::shard shard;
+
+	if (shard.allocate_mark () != bestspace::status::SUCCESS)
+	  {
+	    return false;
+	  }
+	if (shard.allocate_mark () != bestspace::status::ALLOCATING)
+	  {
+	    shard.allocate_unmark ();
+	    return false;
+	  }
+	shard.allocate_unmark ();
+	return true;
+      }
+
+      static bool shard_allocation_mark_can_be_reused ()
+      {
+	bestspace::shard shard;
+
+	if (shard.allocate_mark () != bestspace::status::SUCCESS)
+	  {
+	    return false;
+	  }
+	shard.allocate_unmark ();
+	if (shard.allocate_mark () != bestspace::status::SUCCESS)
+	  {
+	    return false;
+	  }
+	shard.allocate_unmark ();
+
+	return true;
       }
 
       static bool initialized_l1_matches_entry (std::size_t shard_index, std::size_t l1_index, bestspace_entry entry)
@@ -588,7 +608,7 @@ TEST_CASE ("bestspace L2 covers tier index operations", "[bestspace]")
   }
 }
 
-TEST_CASE ("bestspace L3 covers shard index and allocation flag operations", "[bestspace]")
+TEST_CASE ("bestspace L3 covers shard index and allocation mark operations", "[bestspace]")
 {
   using probe = cubstorage::bestspace_test_probe;
 
@@ -602,24 +622,24 @@ TEST_CASE ("bestspace L3 covers shard index and allocation flag operations", "[b
     CHECK (probe::l3_find_after_set (probe::fs5 (), 2) == std::vector<std::size_t> { 2 });
   }
 
-  SECTION ("BS-026: L3 allocation flag bit is not returned as a regular index")
+  SECTION ("BS-026: L3 finds the highest L2 index as a regular index")
   {
-    CHECK (probe::l3_find_after_allocating_only (probe::fs8 ()).empty ());
+    CHECK (probe::l3_find_includes_highest_index (probe::fs8 ()));
   }
 
-  SECTION ("BS-027: L3 reports allocating after flag set")
+  SECTION ("BS-027: L3 comparison includes the highest L2 index")
   {
-    CHECK (probe::l3_allocating_after_set ());
+    CHECK (probe::l3_compare_distinguishes_highest_index ());
   }
 
-  SECTION ("BS-028: L3 does not report allocating after flag clear")
+  SECTION ("BS-028: shard allocation mark blocks a second allocator")
   {
-    CHECK_FALSE (probe::l3_allocating_after_clear ());
+    CHECK (probe::shard_second_allocation_mark_is_blocked ());
   }
 
-  SECTION ("BS-029: L3 comparison ignores allocation flag")
+  SECTION ("BS-029: shard allocation mark can be reused after unmark")
   {
-    CHECK (probe::l3_compare_ignores_allocating_flag ());
+    CHECK (probe::shard_allocation_mark_can_be_reused ());
   }
 }
 

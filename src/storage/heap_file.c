@@ -207,7 +207,7 @@ struct heap_hdr_stats
   float recs_sumlen;		/* Estimation total length of records */
 
   // *INDENT-OFF*
-  cubstorage::bestspace_entry bestspaces[1][56];
+  cubstorage::bestspace_entry bestspaces[1][64];
   // *INDENT-ON*
 
   struct
@@ -5447,9 +5447,9 @@ end:
   // skip in case of boot/internal heap
   if (class_oid && !OID_ISNULL (class_oid))
     {
-      cubstorage::bestspace_entry bestspaces[8][56];
-      std::memset (bestspaces[1], 0, sizeof (uint64_t) * 7 * 56);
-      std::memcpy (bestspaces[0], heap_hdr.bestspaces, sizeof (uint64_t) * 56);
+      cubstorage::bestspace_entry bestspaces[8][64];
+      std::memset (bestspaces[1], 0, sizeof (uint64_t) * 7 * 64);
+      std::memcpy (bestspaces[0], heap_hdr.bestspaces, sizeof (uint64_t) * 64);
       cubstorage::bestspaces.create ((OID *) class_oid, hfid, bestspaces);
     }
 
