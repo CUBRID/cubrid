@@ -1220,8 +1220,6 @@ typedef struct _ha_config
 #define SPACE_PURPOSE_L                         "purpose"
 #define SPACE_CLASS_NAME_S                      'n'
 #define SPACE_CLASS_NAME_L                      "class-name"
-#define SPACE_INPUT_FILE_S                      'i'
-#define SPACE_INPUT_FILE_L                      "input-file"
 
 /* lockdb option list */
 #define LOCK_OUTPUT_FILE_S                      'o'

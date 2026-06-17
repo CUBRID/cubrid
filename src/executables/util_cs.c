@@ -954,9 +954,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
   char **table_array = NULL;
   const char *output_file = NULL;
   const char *table_name = NULL;
-#if !defined (NDEBUG)
-  const char *table_array_file = NULL;
-#endif /* !NDEBUG */
   int i;
   int table_array_length = 0;
   const char *size_unit;
@@ -1008,15 +1005,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
 			     "It must be less than %d characters.\n", SM_MAX_IDENTIFIER_LENGTH);
       goto error_exit;
     }
-#if !defined (NDEBUG)
-  table_array_file = utility_get_option_string_value (arg_map, SPACE_INPUT_FILE_S, 0);
-
-  if (table_name && table_array_file)
-    {
-      fprintf (stderr, "The -n and -i options cannot be used together.\n");
-      goto error_exit;
-    }
-#endif /* !NDEBUG */
 
   size_unit_type = SPACEDB_SIZE_UNIT_HUMAN_READABLE;
 
@@ -1103,72 +1091,6 @@ spacedb (UTIL_FUNCTION_ARG * arg)
       table_array = only_table;
       table_array_length = 1;
     }
-#if !defined (NDEBUG)
-  else if (table_array_file != NULL)
-    {
-      FILE *infp = NULL;
-      char input_table[SM_MAX_IDENTIFIER_LENGTH];
-      char lower_input_table[INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER * SM_MAX_IDENTIFIER_LENGTH + 1];
-      int capacity = 16;	/* initial capacity, doubled on overflow */
-
-      infp = fopen (table_array_file, "r");
-      if (infp == NULL)
-	{
-	  perror (table_array_file);
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      table_array = (char **) malloc (capacity * sizeof (char *));
-      if (table_array == NULL)
-	{
-	  fclose (infp);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) capacity * sizeof (char *));
-	  db_shutdown ();
-	  goto error_exit;
-	}
-
-      while (fgets (input_table, sizeof (input_table), infp) != NULL)
-	{
-	  char **new_table_array = NULL;
-
-	  trim (input_table);
-	  if (strlen (input_table) == 0)
-	    {
-	      continue;
-	    }
-
-	  if (table_array_length >= capacity)
-	    {
-	      capacity *= 2;
-	      new_table_array = (char **) realloc (table_array, capacity * sizeof (char *));
-	      if (new_table_array == NULL)
-		{
-		  fclose (infp);
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			  (size_t) capacity * sizeof (char *));
-		  db_shutdown ();
-		  goto error_exit;
-		}
-	      table_array = new_table_array;
-	    }
-
-	  intl_identifier_lower (input_table, lower_input_table);
-	  table_array[table_array_length] = strdup (lower_input_table);
-	  if (table_array[table_array_length] == NULL)
-	    {
-	      fclose (infp);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (lower_input_table) + 1);
-	      db_shutdown ();
-	      goto error_exit;
-	    }
-
-	  table_array_length++;
-	}
-
-      fclose (infp);
-    }
-#endif /* !NDEBUG */
 
   spacedb_error =
     netcl_spacedb (all, volsp, filesp, &table_sizes, &actual_table_count, table_array, table_array_length);
