@@ -31,7 +31,6 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassLoaderManager;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
@@ -424,23 +423,12 @@ public class ExecuteThread extends Thread {
 
                         CompiledCodeSet codeSet = compiler.compile(sCode);
 
-                        int mode = 1; // 0: temp file mode, 1: memory stream mode
                         byte[] data = null;
 
                         // write to persistent
-                        if (mode == 0) {
-                            Path jarPath =
-                                    ClassLoaderManager.getDynamicPath()
-                                            .resolve(response.className + ".jar");
-                            OutputStream jarStream = Files.newOutputStream(jarPath);
-                            writeJar(codeSet, jarStream);
-                            data = Files.readAllBytes(jarPath);
-                            Files.deleteIfExists(jarPath);
-                        } else {
-                            ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                            writeJar(codeSet, baos);
-                            data = baos.toByteArray();
-                        }
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        writeJar(codeSet, baos);
+                        data = baos.toByteArray();
 
                         response.compiledCode = Base64.getEncoder().encode(data);
                         break;

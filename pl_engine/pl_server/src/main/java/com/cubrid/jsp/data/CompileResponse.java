@@ -265,7 +265,7 @@ public class CompileResponse implements PackableObject {
             this.dbType = dbType;
             this.mode = mode;
             this.defaultValue = defaultValue == null ? "" : defaultValue;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
         }
 
         @Override
@@ -304,7 +304,7 @@ public class CompileResponse implements PackableObject {
             this.returnType = returnType;
             this.directive = directive;
             this.sqlDataAccess = sqlDataAccess;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
         }
 
         public void addArg(String name, int dbType, int mode, String defaultValue, String comment) {
@@ -351,7 +351,7 @@ public class CompileResponse implements PackableObject {
             this.scale = scale;
             this.flags = flags;
             this.name = name;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
         }
 
         @Override
@@ -372,7 +372,7 @@ public class CompileResponse implements PackableObject {
 
         PkgException(String name, String comment) {
             this.name = name;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
         }
 
         @Override
@@ -392,7 +392,7 @@ public class CompileResponse implements PackableObject {
         PkgCursor(String name, String recordType, String comment, List<String> parameters) {
             this.name = name;
             this.recordType = recordType;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
             this.parameters = parameters;
         }
 
@@ -420,7 +420,7 @@ public class CompileResponse implements PackableObject {
 
         PkgRecType(String name, String comment, List<String> fields) {
             this.name = name;
-            this.comment = comment == null ? "" : comment;
+            this.comment = (comment == null) ? "" : comment;
             this.fields = fields;
         }
 
