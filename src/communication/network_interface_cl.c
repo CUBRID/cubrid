@@ -10470,9 +10470,10 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
 	       int table_array_length)
 {
 #if defined (CS_MODE)
-  OR_ALIGNED_BUF (3 * OR_INT_SIZE) a_request;
+  /* sized for the single-table case; OR_ALIGNED_BUF guarantees the int
+     alignment that or_pack_int/or_pack_string_array require. */
+  OR_ALIGNED_BUF (3 * OR_INT_SIZE + 2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH) a_request;
   char *request = NULL;
-  char request_local[3 * OR_INT_SIZE + 2 * OR_INT_SIZE + SM_MAX_IDENTIFIER_LENGTH];
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply;
   char *data_reply = NULL;
@@ -10488,7 +10489,7 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
 
   assert (table_array_length >= 0);
   /* Validate per-element length: or_pack_string writes strlen+1+pad bytes,
-     but request_local / the malloc path both reserve only
+     but the aligned request buffer / the malloc path both reserve only
      SM_MAX_IDENTIFIER_LENGTH bytes per slot.  Reject before allocation so we
      do not leak the malloc'd request buffer. */
   for (int i = 0; i < table_array_length; i++)
@@ -10501,15 +10502,10 @@ netcl_spacedb (SPACEDB_ALL * spaceall, SPACEDB_ONEVOL ** spacevols, SPACEDB_FILE
 	}
     }
 
-  if (table_array_length == 0)
+  if (table_array_length <= 1)
     {
       request = OR_ALIGNED_BUF_START (a_request);
       request_size = OR_ALIGNED_BUF_SIZE (a_request);
-    }
-  else if (table_array_length == 1)
-    {
-      request = request_local;
-      request_size = sizeof (request_local);
     }
   else
     {
