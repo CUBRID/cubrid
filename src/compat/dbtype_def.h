@@ -563,6 +563,8 @@ extern "C"
 /* Maximum allowable class name. */
 #define DB_MAX_CLASS_LENGTH (223)	// (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH - 1 /* '.' */ + 1  /* '\0' */)
 
+#define DB_MAX_SERIAL_NAME_LENGTH (223)
+
 #define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
 /* Maximum allowable class comment length */
