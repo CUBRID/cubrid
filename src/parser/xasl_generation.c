@@ -66,6 +66,7 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
+#include "dbtype_def.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
 #include "px_scan_checker.hpp"
@@ -612,7 +613,8 @@ static PRED_REGU_VARIABLE_P_LIST pt_get_var_regu_variable_p_list (const REGU_VAR
 
 static XASL_NODE *pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NODE * xasl);
 
-static SORT_LIST *pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * connect_by_xasl);
+static int pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * select_node,
+						       XASL_NODE * select_xasl, XASL_NODE * connect_by_xasl);
 static SORT_LIST *pt_agg_orderby_to_sort_list (PARSER_CONTEXT * parser, PT_NODE * order_list, PT_NODE * agg_args_list);
 static PT_NODE *pt_substitute_assigned_name_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
@@ -6786,15 +6788,9 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
     }
   else
     {
-      /*
-       * To avoid being set to default Numeric, set numeric(any,any) to precision = 0, scale = 0.
-       * TO DO: We need to define a separate type for numeric(any,any) in the future.
-       */
-      int *numeric = prm_get_integer_list_value (PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE);
-
       regu->domain = pt_node_to_db_domain (parser, node, NULL);
-      regu->domain->precision = numeric[PRM_PRECISION];
-      regu->domain->scale = numeric[PRM_SCALE];
+      regu->domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+      regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
   return regu;
@@ -7259,11 +7255,12 @@ pt_to_misc_operand (REGU_VARIABLE * regu, PT_MISC_TYPE misc_specifier)
  * pt_make_prim_data_type_fortonum () -
  *   return:
  *   parser(in):
- *   prec(in):
- *   scale(in):
+ *
+ *  Note : this function creates a PT_DATA_TYPE with NUMERIC type for PT_TO_NUMBER.
+ *         the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC.
  */
 PT_NODE *
-pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
+pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser)
 {
   PT_NODE *dt = NULL;
 
@@ -7273,16 +7270,9 @@ pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale)
       return NULL;
     }
 
-  if (prec > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_PRECISION || prec < 0 || scale < 0)
-    {
-      parser_free_tree (parser, dt);
-      dt = NULL;
-      return NULL;
-    }
-
   dt->type_enum = PT_TYPE_NUMERIC;
-  dt->info.data_type.precision = prec;
-  dt->info.data_type.dec_precision = scale;
+  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 
   return dt;
 }
@@ -7366,131 +7356,6 @@ pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e)
     }
 
   return dt;
-}
-
-/*
- * pt_to_regu_resolve_domain () -
- *   return:
- *   p_precision(out):
- *   p_scale(out):
- *   node(in):
- */
-void
-pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node)
-{
-  const char *format_buf;
-  const char *fbuf_end_ptr;
-  int format_sz;
-  int precision, scale, maybe_sci_notation = 0;
-
-  if (node == NULL)
-    {
-      *p_precision = DB_MAX_NUMERIC_PRECISION;
-      *p_scale = DB_DEFAULT_NUMERIC_SCALE;
-    }
-  else
-    {
-      switch (node->info.value.db_value.data.ch.info.style)
-	{
-	case SMALL_STRING:
-	  format_sz = node->info.value.db_value.data.ch.sm.size;
-	  format_buf = (char *) node->info.value.db_value.data.ch.sm.buf;
-	  break;
-
-	case MEDIUM_STRING:
-	  format_sz = node->info.value.db_value.data.ch.medium.size;
-	  format_buf = node->info.value.db_value.data.ch.medium.buf;
-	  break;
-
-	default:
-	  format_sz = 0;
-	  format_buf = NULL;
-	}
-
-      fbuf_end_ptr = format_buf + format_sz - 1;
-
-      precision = scale = 0;
-
-      /* analyze format string */
-      if (format_sz > 0)
-	{
-	  /* skip white space or CR prefix */
-	  while (format_buf < fbuf_end_ptr && (*format_buf == ' ' || *format_buf == '\t' || *format_buf == '\n'))
-	    {
-	      format_buf++;
-	    }
-
-	  while (*format_buf != '.' && format_buf <= fbuf_end_ptr)
-	    {
-	      switch (*format_buf)
-		{
-		case '9':
-		case '0':
-		  precision++;
-		  break;
-		case '+':
-		case '-':
-		case ',':
-		case ' ':
-		case '\t':
-		case '\n':
-		  break;
-
-		case 'c':
-		case 'C':
-		case 's':
-		case 'S':
-		  if (precision == 0)
-		    {
-		      break;
-		    }
-		  [[fallthrough]];
-
-		default:
-		  maybe_sci_notation = 1;
-		}
-	      format_buf++;
-	    }
-
-	  if (*format_buf == '.')
-	    {
-	      format_buf++;
-	      while (format_buf <= fbuf_end_ptr)
-		{
-		  switch (*format_buf)
-		    {
-		    case '9':
-		    case '0':
-		      scale++;
-		    case '+':
-		    case '-':
-		    case ',':
-		    case ' ':
-		    case '\t':
-		    case '\n':
-		      break;
-
-		    default:
-		      maybe_sci_notation = 1;
-		    }
-		  format_buf++;
-		}
-	    }
-
-	  precision += scale;
-	}
-
-      if (!maybe_sci_notation && (precision + scale) < DB_MAX_NUMERIC_PRECISION)
-	{
-	  *p_precision = precision;
-	  *p_scale = scale;
-	}
-      else
-	{
-	  *p_precision = DB_MAX_NUMERIC_PRECISION;
-	  *p_scale = DB_DEFAULT_NUMERIC_PRECISION;
-	}
-    }
 }
 
 /*
@@ -7712,10 +7577,9 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			  || (parser->symbols->query_node->info.query.q.select.connect_by == NULL))
 			{
 			  const char *opcode = pt_show_binopcode (node->info.expr.op);
-			  char *temp_buffer = (char *) malloc (strlen (opcode) + 1);
+			  char *temp_buffer = strdup (opcode);
 			  if (temp_buffer)
 			    {
-			      strcpy (temp_buffer, opcode);
 			      ustr_upper (temp_buffer);
 			    }
 			  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_HIERACHICAL_QUERY,
@@ -9065,17 +8929,12 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_TO_NUMBER:
 		  {
-		    int precision, scale;
+		    /* the TO_NUMBER() function processes NUMERIC values, so it is always handled as FLOAT NUMERIC. */
 
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&precision, &scale, node->info.expr.arg2);
-		    data_type = pt_make_prim_data_type_fortonum (parser, precision, scale);
+		    data_type = pt_make_prim_data_type_fortonum (parser);
 
 		    /* create NUMERIC domain with default precision and scale. */
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
-
-		    /* If 2nd argument of to_number() exists, modify domain. */
-		    pt_to_regu_resolve_domain (&domain->precision, &domain->scale, node->info.expr.arg2);
 
 		    r3 = pt_to_regu_variable (parser, node->info.expr.arg3, unbox);
 
@@ -13494,6 +13353,28 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
   xasl->connect_by_ptr = connect_by_xasl;
   XASL_SET_FLAG (xasl, XASL_HAS_CONNECT_BY);
 
+  /* Build ORDER SIBLINGS BY sort keys on the CONNECT BY scan tuple from the ORDER SIBLINGS BY
+   * expressions themselves (not by matching outer SELECT list regu trees). */
+  if (xasl->orderby_list != NULL && select_node->info.query.flag.order_siblings == 1)
+    {
+      if (pt_to_connect_by_extend_for_order_siblings (parser, select_node, xasl, connect_by_xasl) != NO_ERROR)
+	{
+	  if (!pt_has_error (parser))
+	    {
+	      int errid = er_errid ();
+	      if (errid == ER_OUT_OF_VIRTUAL_MEMORY || errid == ER_REGU_NO_SPACE)
+		{
+		  PT_ERRORm (parser, select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		}
+	      else
+		{
+		  PT_INTERNAL_ERROR (parser, "connect by ORDER SIBLINGS BY sort-key generation");
+		}
+	    }
+	  return NULL;
+	}
+    }
+
   /* make regu vars for use for pseudo-columns values fetching */
 
   n = connect_by_xasl->outptr_list->valptr_cnt;
@@ -13540,14 +13421,10 @@ pt_set_connect_by_xasl (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NOD
 	}
     }
 
-  /* move ORDER SIBLINGS BY column list in the CONNECT BY xasl if order_by was not cut out because of aggregates */
+  /* move ORDER SIBLINGS BY sort list to the CONNECT BY xasl (pos_no already remapped above) */
   if (xasl->orderby_list != NULL && select_node->info.query.flag.order_siblings == 1)
     {
-      connect_by_xasl->orderby_list = pt_to_order_siblings_by (parser, xasl, connect_by_xasl);
-      if (!connect_by_xasl->orderby_list)
-	{
-	  return NULL;
-	}
+      connect_by_xasl->orderby_list = xasl->orderby_list;
       xasl->orderby_list = NULL;
     }
 
@@ -23925,50 +23802,334 @@ parser_generate_do_stmt_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_to_order_siblings_by () - modify order by list to match tuples used
- *                              at order siblings by execution
- *   return:
- *   parser(in):
- *   node(in):
+ * pt_qproc_val_list_tail () - last node of a QPROC_DB_VALUE_LIST chain
  */
-static SORT_LIST *
-pt_to_order_siblings_by (PARSER_CONTEXT * parser, XASL_NODE * xasl, XASL_NODE * connect_by_xasl)
+static QPROC_DB_VALUE_LIST
+pt_qproc_val_list_tail (QPROC_DB_VALUE_LIST valp)
 {
-  SORT_LIST *orderby;
-  REGU_VARIABLE_LIST regu_list1, regu_list2;
-  int i, j;
-
-  if (!xasl || !xasl->outptr_list || !connect_by_xasl || !connect_by_xasl->outptr_list)
+  if (valp == NULL)
     {
       return NULL;
     }
 
-  for (orderby = xasl->orderby_list; orderby; orderby = orderby->next)
+  while (valp->next != NULL)
     {
-      for (i = 0, regu_list1 = xasl->outptr_list->valptrp; regu_list1; regu_list1 = regu_list1->next, i++)
+      valp = valp->next;
+    }
+
+  return valp;
+}
+
+/*
+ * pt_order_siblings_sort_key_expr () - expression to evaluate for an ORDER SIBLINGS BY key.
+ *   After pt_check_order_by(), pos_descr.pos_no refers to a SELECT list item (including hidden
+ *   columns for expressions not listed); otherwise use the sort spec expression as-is.
+ */
+static PT_NODE *
+pt_order_siblings_sort_key_expr (PT_NODE * sort_spec, PT_NODE * select_list)
+{
+  PT_NODE *col;
+  int pos;
+
+  if (sort_spec == NULL || sort_spec->node_type != PT_SORT_SPEC)
+    {
+      return NULL;
+    }
+
+  pos = sort_spec->info.sort_spec.pos_descr.pos_no;
+  if (pos > 0 && select_list != NULL)
+    {
+      for (col = select_list; col != NULL && pos > 1; col = col->next, pos--)
 	{
-	  if (i == orderby->pos_descr.pos_no)
-	    {
-	      if (regu_list1->value.type != TYPE_CONSTANT)
-		{
-		  PT_INTERNAL_ERROR (parser, "invalid column in order siblings by");
-		}
-	      for (j = 0, regu_list2 = connect_by_xasl->outptr_list->valptrp; regu_list2;
-		   regu_list2 = regu_list2->next, j++)
-		{
-		  if (regu_list2->value.type == TYPE_CONSTANT
-		      && regu_list1->value.value.dbvalptr == regu_list2->value.value.dbvalptr)
-		    {
-		      orderby->pos_descr.pos_no = j;
-		      break;
-		    }
-		}
-	      break;
-	    }
+	  ;
+	}
+      if (col != NULL)
+	{
+	  return col;
 	}
     }
 
-  return xasl->orderby_list;
+  return sort_spec->info.sort_spec.expr;
+}
+
+/*
+ * pt_order_siblings_sort_key_domain () - return the sort key domain, trying the regu domain first,
+ *   then the orderby pos_descr, then the sort_spec pos_descr; returns NULL if none is available.
+ */
+static TP_DOMAIN *
+pt_order_siblings_sort_key_domain (REGU_VARIABLE * sort_key_regu, SORT_LIST * orderby, PT_NODE * sort_spec)
+{
+  if (sort_key_regu != NULL && sort_key_regu->domain != NULL)
+    {
+      return sort_key_regu->domain;
+    }
+  if (orderby != NULL && orderby->pos_descr.dom != NULL)
+    {
+      return orderby->pos_descr.dom;
+    }
+  if (sort_spec != NULL && sort_spec->info.sort_spec.pos_descr.dom != NULL)
+    {
+      return sort_spec->info.sort_spec.pos_descr.dom;
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_order_siblings_base_val_pos () - if regu is a TYPE_CONSTANT for a base CONNECT BY column,
+ *   return its val_list index; otherwise -1.
+ */
+static int
+pt_order_siblings_base_val_pos (REGU_VARIABLE * regu, VAL_LIST * val_list, int base_cnt)
+{
+  QPROC_DB_VALUE_LIST valp;
+  int j;
+
+  if (regu == NULL || regu->type != TYPE_CONSTANT || val_list == NULL || base_cnt <= 0)
+    {
+      return -1;
+    }
+
+  for (valp = val_list->valp, j = 0; valp != NULL && j < base_cnt; valp = valp->next, j++)
+    {
+      if (regu->value.dbvalptr == valp->val)
+	{
+	  return j;
+	}
+    }
+
+  return -1;
+}
+
+/*
+ * pt_append_pos_regu_to_list () - append a TYPE_POSITION regu to a regu variable list
+ */
+static int
+pt_append_pos_regu_to_list (REGU_VARIABLE_LIST * head, TP_DOMAIN * dom, DB_VALUE * fetch_to, int pos_no)
+{
+  REGU_VARIABLE_LIST entry;
+
+  if (head == NULL || dom == NULL || fetch_to == NULL || pos_no < 0)
+    {
+      return ER_FAILED;
+    }
+
+  regu_alloc (entry);
+  if (entry == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  entry->value.type = TYPE_POSITION;
+  entry->value.domain = dom;
+  entry->value.vfetch_to = fetch_to;
+  entry->value.value.pos_descr.pos_no = pos_no;
+  entry->value.value.pos_descr.dom = dom;
+  pt_add_regu_var_to_list (head, entry);
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_alloc_order_siblings_val_slot () - allocate one val_list slot for a sort key column
+ */
+static QPROC_DB_VALUE_LIST
+pt_alloc_order_siblings_val_slot (PARSER_CONTEXT * parser, TP_DOMAIN * dom)
+{
+  QPROC_DB_VALUE_LIST new_val;
+
+  regu_alloc (new_val);
+  if (new_val == NULL)
+    {
+      return NULL;
+    }
+
+  regu_alloc (new_val->val);
+  if (new_val->val == NULL)
+    {
+      return NULL;
+    }
+
+  pt_register_orphan_db_value (parser, new_val->val);
+  new_val->dom = dom;
+
+  return new_val;
+}
+
+/*
+ * pt_to_connect_by_extend_for_order_siblings () - for each ORDER SIBLINGS BY sort key, build a
+ *   regu_variable from the ORDER SIBLINGS BY expression in CONNECT BY scan context and either
+ *   reuse an existing scan-column outptr slot or inject a new trailing user column (before pseudo
+ *   columns). Also remaps orderby_list pos_no to the CONNECT BY outptr_list position.
+ *
+ *   Sort keys are determined solely by ORDER SIBLINGS BY expressions; they are not matched against
+ *   outer SELECT list regu trees.
+ *
+ *   return: NO_ERROR or ER_FAILED
+ */
+static int
+pt_to_connect_by_extend_for_order_siblings (PARSER_CONTEXT * parser, PT_NODE * select_node,
+					    XASL_NODE * select_xasl, XASL_NODE * connect_by_xasl)
+{
+  CONNECTBY_PROC_NODE *connect_by;
+  PT_NODE *sort_spec, *sort_key_expr, *select_list;
+  SORT_LIST *orderby;
+  REGU_VARIABLE *sort_key_regu;
+  REGU_VARIABLE_LIST new_regu;
+  REGU_VARIABLE_LIST cb_prev, cb_insert_before;
+  REGU_VARIABLE_LIST prior_prev, prior_insert_before;
+  QPROC_DB_VALUE_LIST val_tail, prior_val_tail, new_val, new_prior_val;
+  TP_DOMAIN *new_dom;
+  int base_user_cnt, user_cnt, idx, base_pos;
+
+  if (select_node->node_type != PT_SELECT || select_xasl->orderby_list == NULL
+      || connect_by_xasl->outptr_list == NULL || connect_by_xasl->val_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  connect_by = &connect_by_xasl->proc.connect_by;
+  if (connect_by->prior_outptr_list == NULL || connect_by->prior_val_list == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  select_list = select_node->info.query.q.select.list;
+  base_user_cnt = user_cnt = connect_by_xasl->val_list->val_cnt;
+
+  /* insertion point in outptr_list / prior_outptr_list: just before the first pseudo column */
+  cb_prev = NULL;
+  cb_insert_before = connect_by_xasl->outptr_list->valptrp;
+  for (idx = 0; idx < user_cnt && cb_insert_before != NULL; idx++)
+    {
+      cb_prev = cb_insert_before;
+      cb_insert_before = cb_insert_before->next;
+    }
+
+  prior_prev = NULL;
+  prior_insert_before = connect_by->prior_outptr_list->valptrp;
+  for (idx = 0; idx < user_cnt && prior_insert_before != NULL; idx++)
+    {
+      prior_prev = prior_insert_before;
+      prior_insert_before = prior_insert_before->next;
+    }
+
+  val_tail = pt_qproc_val_list_tail (connect_by_xasl->val_list->valp);
+  prior_val_tail = pt_qproc_val_list_tail (connect_by->prior_val_list->valp);
+
+  for (sort_spec = select_node->info.query.order_by, orderby = select_xasl->orderby_list;
+       sort_spec != NULL && orderby != NULL; sort_spec = sort_spec->next, orderby = orderby->next)
+    {
+      sort_key_expr = pt_order_siblings_sort_key_expr (sort_spec, select_list);
+      sort_key_regu = pt_to_regu_variable (parser, sort_key_expr, UNBOX_AS_VALUE);
+      if (sort_key_regu == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      new_dom = pt_order_siblings_sort_key_domain (sort_key_regu, orderby, sort_spec);
+      if (new_dom == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      base_pos = pt_order_siblings_base_val_pos (sort_key_regu, connect_by_xasl->val_list, base_user_cnt);
+      if (base_pos >= 0)
+	{
+	  orderby->pos_descr.pos_no = base_pos;
+	  continue;
+	}
+
+      /* compound sort key: materialize as a trailing user column before pseudo columns */
+      new_val = pt_alloc_order_siblings_val_slot (parser, new_dom);
+      new_prior_val = pt_alloc_order_siblings_val_slot (parser, new_dom);
+      if (new_val == NULL || new_prior_val == NULL)
+	{
+	  return ER_FAILED;
+	}
+
+      if (val_tail != NULL)
+	{
+	  val_tail->next = new_val;
+	}
+      else
+	{
+	  connect_by_xasl->val_list->valp = new_val;
+	}
+      val_tail = new_val;
+      connect_by_xasl->val_list->val_cnt++;
+
+      if (prior_val_tail != NULL)
+	{
+	  prior_val_tail->next = new_prior_val;
+	}
+      else
+	{
+	  connect_by->prior_val_list->valp = new_prior_val;
+	}
+      prior_val_tail = new_prior_val;
+      connect_by->prior_val_list->val_cnt++;
+
+      if (pt_append_pos_regu_to_list (&connect_by->regu_list_rest, new_dom, new_val->val, user_cnt) != NO_ERROR
+	  || pt_append_pos_regu_to_list (&connect_by->prior_regu_list_rest, new_dom, new_prior_val->val,
+					 user_cnt) != NO_ERROR
+	  || pt_append_pos_regu_to_list (&connect_by->after_cb_regu_list_rest, new_dom, new_val->val,
+					 user_cnt) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      regu_alloc (new_regu);
+      if (new_regu == NULL)
+	{
+	  return ER_FAILED;
+	}
+      new_regu->value = *sort_key_regu;
+      REGU_VARIABLE_CLEAR_FLAG (&new_regu->value, REGU_VARIABLE_HIDDEN_COLUMN);
+      new_regu->next = cb_insert_before;
+      if (cb_prev != NULL)
+	{
+	  cb_prev->next = new_regu;
+	}
+      else
+	{
+	  connect_by_xasl->outptr_list->valptrp = new_regu;
+	}
+      cb_prev = new_regu;
+      connect_by_xasl->outptr_list->valptr_cnt++;
+
+      regu_alloc (new_regu);
+      if (new_regu == NULL)
+	{
+	  return ER_FAILED;
+	}
+      new_regu->value.type = TYPE_CONSTANT;
+      new_regu->value.domain = new_dom;
+      new_regu->value.value.dbvalptr = new_prior_val->val;
+      new_regu->next = prior_insert_before;
+      if (prior_prev != NULL)
+	{
+	  prior_prev->next = new_regu;
+	}
+      else
+	{
+	  connect_by->prior_outptr_list->valptrp = new_regu;
+	}
+      prior_prev = new_regu;
+      connect_by->prior_outptr_list->valptr_cnt++;
+
+      orderby->pos_descr.pos_no = user_cnt;
+      user_cnt++;
+    }
+
+  /* pt_make_connect_by_proc() copied regu_list_rest into the list scan access spec before we
+   * appended sort-key fetches above; refresh it so the list scan loads those DB_VALUEs too. */
+  if (!connect_by->single_table_opt && connect_by_xasl->spec_list != NULL)
+    {
+      connect_by_xasl->spec_list->s.list_node.list_regu_list_rest = connect_by->regu_list_rest;
+    }
+
+  return NO_ERROR;
 }
 
 /*

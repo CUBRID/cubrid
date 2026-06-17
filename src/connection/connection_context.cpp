@@ -116,6 +116,11 @@ namespace cubconn::connection
   {
   }
 
+  bool context::prepare ()
+  {
+    return m_recv.m_receiver.prepare ();
+  }
+
   void context::reset ()
   {
     m_conn = nullptr;

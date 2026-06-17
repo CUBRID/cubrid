@@ -2070,7 +2070,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       return qdata_add_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
@@ -3678,7 +3678,7 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_sub (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_sub (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
@@ -5127,7 +5127,7 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       return qdata_multiply_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_mul (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_mul (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
@@ -5739,7 +5739,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_div (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_div (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -6047,11 +6047,21 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_NUMERIC:
-      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
-      if (numeric_db_value_negate (result_p) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      {
+	bool is_float_numeric = false;
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (dbval_p, &precision, &scale, &is_float_numeric);
+
+	bool is_value_negative = !dbval_p->domain.numeric_info.is_value_negative;
+	if (is_value_negative && numeric_db_value_is_zero (dbval_p))
+	  {
+	    /* Prevent -0; zero is always treated as positive. */
+	    is_value_negative = false;
+	  }
+
+	db_make_numeric (result_p, db_get_numeric (dbval_p), precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative,
+			 is_float_numeric);
+      }
       break;
 
     case DB_TYPE_MONETARY:
@@ -9067,7 +9077,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
 	    }
 	  else if (type == DB_TYPE_NUMERIC)
 	    {
-	      numeric_coerce_num_to_double (db_locate_numeric (f_value), DB_VALUE_SCALE (f_value), &d_result);
+	      numeric_coerce_num_to_double (f_value, db_get_numeric_scale (f_value, NULL), &d_result);
 	    }
 
 	  db_make_double (result, d_result);
@@ -9259,8 +9269,8 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (f_value), DB_VALUE_SCALE (f_value), &d1);
-      numeric_coerce_num_to_double (db_locate_numeric (c_value), DB_VALUE_SCALE (c_value), &d2);
+      numeric_coerce_num_to_double (f_value, db_get_numeric_scale (f_value, NULL), &d1);
+      numeric_coerce_num_to_double (c_value, db_get_numeric_scale (c_value, NULL), &d2);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
