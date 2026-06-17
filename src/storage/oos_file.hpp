@@ -90,6 +90,9 @@ extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer 
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
+/* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
+ * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
+extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
 extern int oos_get_length (THREAD_ENTRY *thread_p, const OID &oid);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
@@ -117,6 +120,7 @@ struct oos_stats_info
 using OOS_STATS_INFO = struct oos_stats_info;
 
 extern int xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out);
+extern int oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out);
 
 #ifdef __cplusplus
 extern "C"

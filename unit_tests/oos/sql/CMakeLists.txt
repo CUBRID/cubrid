@@ -17,6 +17,9 @@
 
 project(test_oos_sql_project)
 
+# =============================================================================
+# SA_MODE tests (linked to cubridsa, in-process server)
+# =============================================================================
 file(GLOB TEST_SQL_SOURCES test_oos_sql_*.cpp)
 
 foreach(src ${TEST_SQL_SOURCES})
@@ -28,16 +31,19 @@ foreach(src ${TEST_SQL_SOURCES})
   target_include_directories(${test_name} PRIVATE ${TEST_INCLUDES} ${CMAKE_CURRENT_SOURCE_DIR})
 endforeach()
 
-# Register tests
+# Register SA_MODE tests
 add_test(NAME test_oos_sql_crud COMMAND test_oos_sql_crud)
 add_test(NAME test_oos_sql_ddl COMMAND test_oos_sql_ddl)
 add_test(NAME test_oos_sql_delete COMMAND test_oos_sql_delete)
 add_test(NAME test_oos_sql_boundary COMMAND test_oos_sql_boundary)
 add_test(NAME test_oos_sql_update_delete COMMAND test_oos_sql_update_delete)
 add_test(NAME test_oos_sql_txn COMMAND test_oos_sql_txn)
+add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 
 set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
   test_oos_sql_boundary test_oos_sql_update_delete test_oos_sql_txn
-  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE
+  test_oos_sql_eager_cleanup
+  PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
+
