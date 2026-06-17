@@ -440,6 +440,10 @@ namespace cubconn::connection
 	&& ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
 	&& this->is_registering_client (ctx))
       {
+	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
+	ctx->m_conn->stop_talk = true;
+	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
+
 	er_log_conn (__FILE__, __LINE__,
 		     "connection::worker->handle_connection_close: retry for transaction index. conn = %p, fd = %d\n",
 		     ctx->m_conn, ctx->m_conn->fd);
