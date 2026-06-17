@@ -9141,6 +9141,13 @@ ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stm
   srv_handle->has_result_set = true;
   srv_handle->max_row = q_result->tuple_count;
 
+  if (is_holdable)
+    {
+      /* Keep symmetric with hm_qresult_end (), which decrements num_holdable_results when it frees
+       * a holdable result. Without this increment the counter underflows on teardown. */
+      as_info->num_holdable_results++;
+    }
+
   return srv_h_id;
 
 error:
