@@ -2027,6 +2027,287 @@ namespace parallel_scan
       }
     return true;
   }
+  template <FUNC_CODE F>
+  void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::finalize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p,
+      AGGREGATE_TYPE *cur_agg_p)
+  {
+    if constexpr (F == PT_COUNT_STAR)
+      {
+	orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	cur_agg_p->accumulator.curr_cnt = 0;
+	return;
+      }
+
+    if constexpr (F != PT_MIN && F != PT_MAX)
+      {
+	if (orig_agg_p->option == Q_DISTINCT)
+	  {
+	    qfile_close_list (thread_p, cur_agg_p->list_id);
+	    if (cur_agg_p->list_id->tuple_cnt == 0)
+	      {
+		qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		return;
+	      }
+
+	    if (orig_agg_p->list_id->tuple_cnt > 0)
+	      {
+		QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+		if (list_id_p == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    (size_t) sizeof (QFILE_LIST_ID));
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    return;
+		  }
+		if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		  {
+		    free_and_init (list_id_p);
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    return;
+		  }
+		er_clear ();
+		if (qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    free_and_init (list_id_p);
+		  }
+		qfile_clear_list_id (cur_agg_p->list_id);
+		return;
+	      }
+	    else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+	      {
+		qfile_clear_list_id (orig_agg_p->list_id);
+	      }
+	    else
+	      {
+		QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
+	      }
+
+	    if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
+	    qfile_clear_list_id (cur_agg_p->list_id);
+	    return;
+	  }
+      }
+
+    if constexpr (F == PT_MEDIAN || F == PT_PERCENTILE_CONT || F == PT_PERCENTILE_DISC)
+      {
+	/* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: merge list_ids from worker into main */
+	qfile_close_list (thread_p, cur_agg_p->list_id);
+	if (cur_agg_p->list_id->tuple_cnt == 0)
+	  {
+	    qfile_destroy_list (thread_p, cur_agg_p->list_id);
+	    return;
+	  }
+	/* Propagate the percentile ratio (set per-row on the worker clone) to the main agg
+	 * so qdata_aggregate_interpolation uses the correct value. Only a worker that
+	 * processed rows (tuple_cnt > 0) has a valid ratio. */
+	if (orig_agg_p->function == PT_PERCENTILE_CONT || orig_agg_p->function == PT_PERCENTILE_DISC)
+	  {
+	    orig_agg_p->info.percentile.cur_group_percentile = cur_agg_p->info.percentile.cur_group_percentile;
+	  }
+	if (orig_agg_p->list_id->tuple_cnt > 0)
+	  {
+	    QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+	    if (list_id_p == nullptr)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			(size_t) sizeof (QFILE_LIST_ID));
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		return;
+	      }
+	    if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	      {
+		free_and_init (list_id_p);
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		return;
+	      }
+	    er_clear ();
+	    if (qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		free_and_init (list_id_p);
+	      }
+	    qfile_clear_list_id (cur_agg_p->list_id);
+	  }
+	else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+	  {
+	    qfile_clear_list_id (orig_agg_p->list_id);
+	    if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
+	    qfile_clear_list_id (cur_agg_p->list_id);
+	  }
+	else
+	  {
+	    QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
+	    if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
+	    qfile_clear_list_id (cur_agg_p->list_id);
+	  }
+	return;
+      }
+    else if constexpr (F == PT_GROUP_CONCAT)
+      {
+	if (orig_agg_p->sort_list != NULL)
+	  {
+	    /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: merge list_ids from worker into main */
+	    qfile_close_list (thread_p, cur_agg_p->list_id);
+	    if (cur_agg_p->list_id->tuple_cnt == 0)
+	      {
+		qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		return;
+	      }
+	    /* Propagate the percentile ratio (set per-row on the worker clone) to the main agg
+	     * so qdata_aggregate_interpolation uses the correct value. Only a worker that
+	     * processed rows (tuple_cnt > 0) has a valid ratio. */
+	    if (orig_agg_p->function == PT_PERCENTILE_CONT || orig_agg_p->function == PT_PERCENTILE_DISC)
+	      {
+		orig_agg_p->info.percentile.cur_group_percentile = cur_agg_p->info.percentile.cur_group_percentile;
+	      }
+	    if (orig_agg_p->list_id->tuple_cnt > 0)
+	      {
+		QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
+		if (list_id_p == nullptr)
+		  {
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			    (size_t) sizeof (QFILE_LIST_ID));
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    return;
+		  }
+		if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		  {
+		    free_and_init (list_id_p);
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    qfile_destroy_list (thread_p, cur_agg_p->list_id);
+		    return;
+		  }
+		er_clear ();
+		if (qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    free_and_init (list_id_p);
+		  }
+		qfile_clear_list_id (cur_agg_p->list_id);
+	      }
+	    else if (orig_agg_p->list_id->type_list.type_cnt > 0)
+	      {
+		qfile_clear_list_id (orig_agg_p->list_id);
+		if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		qfile_clear_list_id (cur_agg_p->list_id);
+	      }
+	    else
+	      {
+		QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
+		if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  }
+		qfile_clear_list_id (cur_agg_p->list_id);
+	      }
+	    return;
+	  }
+	/* GROUP_CONCAT (no ORDER BY): merge partial strings from worker into main */
+	if (cur_agg_p->accumulator.curr_cnt > 0)
+	  {
+	    HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
+	    if (orig_agg_p->accumulator.curr_cnt > 0)
+	      {
+		if (qdata_group_concat_value (thread_p, orig_agg_p,
+					      cur_agg_p->accumulator.value) != NO_ERROR)
+		  {
+		    db_change_private_heap (thread_p, prev_heap_id);
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    return;
+		  }
+	      }
+	    else
+	      {
+		if (pr_clone_value (cur_agg_p->accumulator.value, orig_agg_p->accumulator.value) != NO_ERROR)
+		  {
+		    db_change_private_heap (thread_p, prev_heap_id);
+		    m_err_messages_p->move_top_error_message_to_this ();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    return;
+		  }
+	      }
+	    orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	    db_change_private_heap (thread_p, prev_heap_id);
+	  }
+	return;
+      }
+    else if constexpr (F == PT_COUNT)
+      {
+	orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	cur_agg_p->accumulator.curr_cnt = 0;
+	return;
+      }
+    else if constexpr (F == PT_CUME_DIST || F == PT_PERCENT_RANK)
+      {
+	/* CUME_DIST / PERCENT_RANK: sum the partial counters; qdata_finalize_aggregate_list
+	 * computes the final ratio from the merged nlargers / curr_cnt on the main agg. */
+	orig_agg_p->info.dist_percent.nlargers += cur_agg_p->info.dist_percent.nlargers;
+	orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
+	/* free the worker clone's const_array (the serial path frees it in finalize, which
+	 * does not run on the clone here). */
+	if (cur_agg_p->info.dist_percent.const_array != NULL)
+	  {
+	    db_private_free_and_init (thread_p, cur_agg_p->info.dist_percent.const_array);
+	    cur_agg_p->info.dist_percent.list_len = 0;
+	  }
+	return;
+      }
+    else
+      {
+	if (orig_agg_p->accumulator_domain.value_dom == NULL && cur_agg_p->accumulator_domain.value_dom != NULL)
+	  {
+	    orig_agg_p->accumulator_domain.value_dom = cur_agg_p->accumulator_domain.value_dom;
+	    orig_agg_p->accumulator_domain.value2_dom = cur_agg_p->accumulator_domain.value2_dom;
+	  }
+
+	HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
+	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
+		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
+		  orig_agg_p->domain, &cur_agg_p->accumulator);
+	db_change_private_heap (thread_p, prev_heap_id);
+	if (err != NO_ERROR)
+	  {
+	    m_err_messages_p->move_top_error_message_to_this ();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	  }
+	/* cur_agg_p accumulator cleanup is handled by qexec_clear_xasl on the cloned XASL. */
+	return;
+      }
+  }
+
   void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write_finalize (THREAD_ENTRY *thread_p)
   {
     {
@@ -2071,218 +2352,81 @@ namespace parallel_scan
 		}
 	      break;
 	    }
-	  if (orig_agg_p->function == PT_COUNT_STAR)
-	    {
-	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
-	      cur_agg_p->accumulator.curr_cnt = 0;
-	      cur_agg_p = cur_agg_p->next;
-	      continue;
-	    }
 
-	  if (orig_agg_p->option == Q_DISTINCT
-	      && orig_agg_p->function != PT_MIN && orig_agg_p->function != PT_MAX)
+	  switch (orig_agg_p->function)
 	    {
-	      qfile_close_list (thread_p, cur_agg_p->list_id);
-	      if (cur_agg_p->list_id->tuple_cnt == 0)
-		{
-		  qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		  cur_agg_p = cur_agg_p->next;
-		  continue;
-		}
-
-	      if (orig_agg_p->list_id->tuple_cnt > 0)
-		{
-		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
-		  if (list_id_p == nullptr)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) sizeof (QFILE_LIST_ID));
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		      cur_agg_p = cur_agg_p->next;
-		      continue;
-		    }
-		  if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-		    {
-		      free_and_init (list_id_p);
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		      cur_agg_p = cur_agg_p->next;
-		      continue;
-		    }
-		  er_clear ();
-		  if (qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p) != NO_ERROR)
-		    {
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      free_and_init (list_id_p);
-		    }
-		  qfile_clear_list_id (cur_agg_p->list_id);
-		  cur_agg_p = cur_agg_p->next;
-		  continue;
-		}
-	      else if (orig_agg_p->list_id->type_list.type_cnt > 0)
-		{
-		  qfile_clear_list_id (orig_agg_p->list_id);
-		}
-	      else
-		{
-		  QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
-		}
-
-	      if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-		{
-		  m_err_messages_p->move_top_error_message_to_this ();
-		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		}
-	      qfile_clear_list_id (cur_agg_p->list_id);
-	    }
-	  else if ((orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list != NULL
-		    && orig_agg_p->option != Q_DISTINCT)
-		   || orig_agg_p->function == PT_MEDIAN || orig_agg_p->function == PT_PERCENTILE_CONT
-		   || orig_agg_p->function == PT_PERCENTILE_DISC)
-	    {
-	      /* GROUP_CONCAT(ORDER BY), MEDIAN, PERCENTILE_CONT/DISC: merge list_ids from worker into main */
-	      qfile_close_list (thread_p, cur_agg_p->list_id);
-	      if (cur_agg_p->list_id->tuple_cnt == 0)
-		{
-		  qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		  cur_agg_p = cur_agg_p->next;
-		  continue;
-		}
-	      /* Propagate the percentile ratio (set per-row on the worker clone) to the main agg
-	       * so qdata_aggregate_interpolation uses the correct value. Only a worker that
-	       * processed rows (tuple_cnt > 0) has a valid ratio. */
-	      if (orig_agg_p->function == PT_PERCENTILE_CONT || orig_agg_p->function == PT_PERCENTILE_DISC)
-		{
-		  orig_agg_p->info.percentile.cur_group_percentile = cur_agg_p->info.percentile.cur_group_percentile;
-		}
-	      if (orig_agg_p->list_id->tuple_cnt > 0)
-		{
-		  QFILE_LIST_ID *list_id_p = (QFILE_LIST_ID *) malloc (sizeof (QFILE_LIST_ID));
-		  if (list_id_p == nullptr)
-		    {
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-			      (size_t) sizeof (QFILE_LIST_ID));
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		      cur_agg_p = cur_agg_p->next;
-		      continue;
-		    }
-		  if (qfile_copy_list_id (list_id_p, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-		    {
-		      free_and_init (list_id_p);
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      qfile_destroy_list (thread_p, cur_agg_p->list_id);
-		      cur_agg_p = cur_agg_p->next;
-		      continue;
-		    }
-		  er_clear ();
-		  if (qfile_connect_list (thread_p, orig_agg_p->list_id, list_id_p) != NO_ERROR)
-		    {
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		      free_and_init (list_id_p);
-		    }
-		  qfile_clear_list_id (cur_agg_p->list_id);
-		}
-	      else if (orig_agg_p->list_id->type_list.type_cnt > 0)
-		{
-		  qfile_clear_list_id (orig_agg_p->list_id);
-		  if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-		    {
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    }
-		  qfile_clear_list_id (cur_agg_p->list_id);
-		}
-	      else
-		{
-		  QFILE_CLEAR_LIST_ID (orig_agg_p->list_id);
-		  if (qfile_copy_list_id (orig_agg_p->list_id, cur_agg_p->list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
-		    {
-		      m_err_messages_p->move_top_error_message_to_this ();
-		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    }
-		  qfile_clear_list_id (cur_agg_p->list_id);
-		}
-	    }
-	  else if (orig_agg_p->function == PT_GROUP_CONCAT && orig_agg_p->sort_list == NULL
-		   && orig_agg_p->option != Q_DISTINCT)
-	    {
-	      /* GROUP_CONCAT (no ORDER BY): merge partial strings from worker into main */
-	      if (cur_agg_p->accumulator.curr_cnt > 0)
-		{
-		  HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
-		  if (orig_agg_p->accumulator.curr_cnt > 0)
-		    {
-		      if (qdata_group_concat_value (thread_p, orig_agg_p,
-						    cur_agg_p->accumulator.value) != NO_ERROR)
-			{
-			  db_change_private_heap (thread_p, prev_heap_id);
-			  m_err_messages_p->move_top_error_message_to_this ();
-			  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			  cur_agg_p = cur_agg_p->next;
-			  continue;
-			}
-		    }
-		  else
-		    {
-		      if (pr_clone_value (cur_agg_p->accumulator.value, orig_agg_p->accumulator.value) != NO_ERROR)
-			{
-			  db_change_private_heap (thread_p, prev_heap_id);
-			  m_err_messages_p->move_top_error_message_to_this ();
-			  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			  cur_agg_p = cur_agg_p->next;
-			  continue;
-			}
-		    }
-		  orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
-		  db_change_private_heap (thread_p, prev_heap_id);
-		}
-	    }
-	  else if (orig_agg_p->function == PT_COUNT)
-	    {
-	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
-	      cur_agg_p->accumulator.curr_cnt = 0;
-	    }
-	  else if (orig_agg_p->function == PT_CUME_DIST || orig_agg_p->function == PT_PERCENT_RANK)
-	    {
-	      /* CUME_DIST / PERCENT_RANK: sum the partial counters; qdata_finalize_aggregate_list
-	       * computes the final ratio from the merged nlargers / curr_cnt on the main agg. */
-	      orig_agg_p->info.dist_percent.nlargers += cur_agg_p->info.dist_percent.nlargers;
-	      orig_agg_p->accumulator.curr_cnt += cur_agg_p->accumulator.curr_cnt;
-	      /* free the worker clone's const_array (the serial path frees it in finalize, which
-	       * does not run on the clone here). */
-	      if (cur_agg_p->info.dist_percent.const_array != NULL)
-		{
-		  db_private_free_and_init (thread_p, cur_agg_p->info.dist_percent.const_array);
-		  cur_agg_p->info.dist_percent.list_len = 0;
-		}
-	    }
-	  else
-	    {
-	      if (orig_agg_p->accumulator_domain.value_dom == NULL && cur_agg_p->accumulator_domain.value_dom != NULL)
-		{
-		  orig_agg_p->accumulator_domain.value_dom = cur_agg_p->accumulator_domain.value_dom;
-		  orig_agg_p->accumulator_domain.value2_dom = cur_agg_p->accumulator_domain.value2_dom;
-		}
-
-	      HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
-	      int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
-			&orig_agg_p->accumulator_domain, orig_agg_p->function,
-			orig_agg_p->domain, &cur_agg_p->accumulator);
-	      db_change_private_heap (thread_p, prev_heap_id);
-	      if (err != NO_ERROR)
-		{
-		  m_err_messages_p->move_top_error_message_to_this ();
-		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		}
-	      /* cur_agg_p accumulator cleanup is handled by qexec_clear_xasl on the cloned XASL. */
+	    case PT_COUNT_STAR:
+	      finalize_node<PT_COUNT_STAR> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_COUNT:
+	      finalize_node<PT_COUNT> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_MIN:
+	      finalize_node<PT_MIN> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_MAX:
+	      finalize_node<PT_MAX> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_SUM:
+	      finalize_node<PT_SUM> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_AVG:
+	      finalize_node<PT_AVG> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_STDDEV:
+	      finalize_node<PT_STDDEV> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_STDDEV_POP:
+	      finalize_node<PT_STDDEV_POP> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_STDDEV_SAMP:
+	      finalize_node<PT_STDDEV_SAMP> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_VARIANCE:
+	      finalize_node<PT_VARIANCE> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_VAR_POP:
+	      finalize_node<PT_VAR_POP> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_VAR_SAMP:
+	      finalize_node<PT_VAR_SAMP> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_AGG_BIT_AND:
+	      finalize_node<PT_AGG_BIT_AND> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_AGG_BIT_OR:
+	      finalize_node<PT_AGG_BIT_OR> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_AGG_BIT_XOR:
+	      finalize_node<PT_AGG_BIT_XOR> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_GROUP_CONCAT:
+	      finalize_node<PT_GROUP_CONCAT> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_MEDIAN:
+	      finalize_node<PT_MEDIAN> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_PERCENTILE_CONT:
+	      finalize_node<PT_PERCENTILE_CONT> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_PERCENTILE_DISC:
+	      finalize_node<PT_PERCENTILE_DISC> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_JSON_ARRAYAGG:
+	      finalize_node<PT_JSON_ARRAYAGG> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_JSON_OBJECTAGG:
+	      finalize_node<PT_JSON_OBJECTAGG> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_CUME_DIST:
+	      finalize_node<PT_CUME_DIST> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    case PT_PERCENT_RANK:
+	      finalize_node<PT_PERCENT_RANK> (thread_p, orig_agg_p, cur_agg_p);
+	      break;
+	    default:
+	      assert (false);
+	      break;
 	    }
 	  cur_agg_p = cur_agg_p->next;
 	}
