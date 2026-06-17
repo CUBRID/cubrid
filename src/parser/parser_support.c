@@ -11274,7 +11274,10 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  for (int i = 0; i < snl->server_node_cnt; i++)
+  /* server[] has 2 slots, but server_node_cnt may be advanced past the number
+     of actually-stored slots by the dedup branches below. Bound the scan to
+     stored, non-NULL slots so it cannot dereference an unstored slot. */
+  for (int i = 0; i < snl->server_node_cnt && i < 2 && snl->server[i] != NULL; i++)
     {
       int node_cnt = 0;
 
@@ -11300,7 +11303,9 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
     }
 
-  if (name_ptr != NULL)
+  /* only 2 slots exist; never store past them. An over-count is still rejected
+     by the server_node_cnt >= 2 multi-remote check downstream. */
+  if (name_ptr != NULL && snl->server_node_cnt < 2)
     {
       new_name = parser_new_node (parser, PT_NAME);
       new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
