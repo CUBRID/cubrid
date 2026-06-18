@@ -568,6 +568,14 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_DEALLOC_CNT, "Num_data_page_avoid_dealloc"),
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_PB_AVOID_VICTIM_CNT, "Num_data_page_avoid_victim"),
 
+  /* transaction slots and workers */
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_TOTAL, "Num_request_concurrency_total"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_TARGET, "Num_request_concurrency_target"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_CONCURRENCY_BUSY, "Num_request_concurrency_busy"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_TOTAL, "Num_request_worker_total"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_TARGET, "Num_request_worker_target"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_REQUEST_WORKER_BUSY, "Num_request_worker_busy"),
+
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_ASYNC, "Log_redo_async"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_REDO_FUNC_EXEC, "Log_redo_func_exec"),
 
@@ -4056,6 +4064,14 @@ perfmon_get_peek_stats (UINT64 * stats)
   stats[pstat_Metadata[PSTAT_HF_NUM_STATS_ENTRIES].start_offset] = heap_get_best_space_num_stats_entries ();
   stats[pstat_Metadata[PSTAT_QM_NUM_HOLDABLE_CURSORS].start_offset] = session_get_number_of_holdable_cursors ();
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE)
+  css_get_thread_runtime_stats (&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_TOTAL].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_TARGET].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_CONCURRENCY_BUSY].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_TOTAL].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_TARGET].start_offset]),
+				&(stats[pstat_Metadata[PSTAT_REQUEST_WORKER_BUSY].start_offset]));
+#endif /* SERVER_MODE */
 }
 
 /*

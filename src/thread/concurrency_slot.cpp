@@ -537,6 +537,13 @@ namespace cubthread
     return -static_cast<float> (m_available_slots.size ()) + m_wait_queue.size () * 2.0f;
   }
 
+  void concurrency_slot_pool::get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, INT64 &busy_slots) const
+  {
+    total_slots += m_slot_count;
+    target_slots += m_target_count;
+    busy_slots += static_cast<INT64> (m_slot_count) - static_cast<INT64> (m_available_slots.size ());
+  }
+
   void
   concurrency_slot_pool::check_surplus_slots ()
   {
@@ -576,13 +583,13 @@ namespace cubthread
 
       void wakeup_workers (void *identifier, std::vector<concurrency_slot_subscriber *> &subs);
 
-      void tune_parameters (std::size_t &max_transaction_concurrency, std::size_t &max_transaction_worker);
+      void tune_parameters (std::size_t &max_request_concurrency, std::size_t &max_request_worker);
       void check_and_propagate_parameters ();
 
       concurrency_slot_publisher *m_publisher;
 
-      std::size_t m_max_transaction_concurrency;
-      std::size_t m_max_transaction_worker;
+      std::size_t m_max_request_concurrency;
+      std::size_t m_max_request_worker;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -591,8 +598,8 @@ namespace cubthread
 
   concurrency_slot_daemon_task::concurrency_slot_daemon_task (concurrency_slot_publisher *publisher)
     : m_publisher (publisher)
-    , m_max_transaction_concurrency (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY)))
-    , m_max_transaction_worker (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER)))
+    , m_max_request_concurrency (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY)))
+    , m_max_request_worker (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER)))
   {
   }
 
@@ -741,52 +748,52 @@ namespace cubthread
   }
 
   void
-  concurrency_slot_daemon_task::tune_parameters (std::size_t &max_transaction_concurrency,
-      std::size_t &max_transaction_worker)
+  concurrency_slot_daemon_task::tune_parameters (std::size_t &max_request_concurrency,
+      std::size_t &max_request_worker)
   {
     std::size_t core_count = system_core_count ();
     std::size_t max_clients = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
     std::size_t clamp_min = max_clients < core_count ? core_count : max_clients;
 
-    if (max_transaction_concurrency > max_clients)
+    if (max_request_concurrency > max_clients)
       {
-	max_transaction_concurrency = clamp_min;
+	max_request_concurrency = clamp_min;
       }
-    if (max_transaction_concurrency < core_count)
+    if (max_request_concurrency < core_count)
       {
-	max_transaction_concurrency = core_count;
+	max_request_concurrency = core_count;
       }
 
-    if (max_transaction_worker > max_clients)
+    if (max_request_worker > max_clients)
       {
-	max_transaction_worker = clamp_min;
+	max_request_worker = clamp_min;
       }
-    if (max_transaction_worker < max_transaction_concurrency)
+    if (max_request_worker < max_request_concurrency)
       {
-	max_transaction_worker = max_transaction_concurrency;
+	max_request_worker = max_request_concurrency;
       }
   }
 
   void
   concurrency_slot_daemon_task::check_and_propagate_parameters ()
   {
-    std::size_t max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
-    std::size_t max_transaction_worker = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER);
+    std::size_t max_request_concurrency = prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY);
+    std::size_t max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
-    if (max_transaction_concurrency != m_max_transaction_concurrency ||
-	max_transaction_worker != m_max_transaction_worker)
+    if (max_request_concurrency != m_max_request_concurrency ||
+	max_request_worker != m_max_request_worker)
       {
-	tune_parameters (max_transaction_concurrency, max_transaction_worker);
+	tune_parameters (max_request_concurrency, max_request_worker);
 
 	// propagate
-	css_set_max_concurrency_and_workers (max_transaction_concurrency, max_transaction_worker);
+	css_set_max_concurrency_and_workers (max_request_concurrency, max_request_worker);
 
 	// set
-	prm_set_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY, max_transaction_concurrency);
-	prm_set_integer_value (PRM_ID_MAX_TRANSACTION_WORKER, max_transaction_worker);
+	prm_set_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY, max_request_concurrency);
+	prm_set_integer_value (PRM_ID_MAX_REQUEST_WORKER, max_request_worker);
 
-	m_max_transaction_concurrency = max_transaction_concurrency;
-	m_max_transaction_worker = max_transaction_worker;
+	m_max_request_concurrency = max_request_concurrency;
+	m_max_request_worker = max_request_worker;
       }
   }
 
