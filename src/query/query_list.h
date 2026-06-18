@@ -26,6 +26,10 @@
 
 #ident "$Id$"
 
+#ifdef __cplusplus
+#include <atomic>
+#endif
+
 #include "storage_common.h"
 #include "object_domain.h"
 
@@ -503,6 +507,7 @@ struct qfile_list_scan_id
   PAGE_PTR curr_pgptr;		/* current page pointer */
   QFILE_TUPLE curr_tpl;		/* current tuple pointer */
   bool keep_page_on_finish;	/* flag; when set, does not free page when scan ends */
+  bool is_read_only;		/* flag; when set, does not latch write */
   int curr_offset;		/* current page offset */
   int curr_tplno;		/* current tuple number */
   QFILE_TUPLE_RECORD tplrec;	/* used for overflow tuple peeking */
@@ -526,6 +531,54 @@ enum
 #define QFILE_CLEAR_FLAG(var, flag)        ((var) &= (flag))
 #define QFILE_IS_FLAG_SET(var, flag)       ((var) & (flag))
 #define QFILE_IS_FLAG_SET_BOTH(var, flag1, flag2) (((var) & (flag1)) && ((var) & (flag2)))
+
+#ifdef __cplusplus
+/* Sector-based data page info for QFILE_LIST_ID.
+ * membuf_tfile: membuf exists only in the first list_id (not in dependent_list_id).
+ * sectors/tfiles: parallel arrays, one entry per disk sector across all dependent list_ids. */
+typedef struct qfile_list_sector_info QFILE_LIST_SECTOR_INFO;
+struct qfile_list_sector_info
+{
+  // *INDENT-OFF*
+  struct qmgr_temp_file *membuf_tfile;	/* tfile owning membuf pages (NULL = none) */
+  struct file_partial_sector *sectors;	/* data page sectors (FTAB excluded) */
+  void **tfiles;			/* parallel array: tfile per sector */
+  int sector_cnt;
+
+  qfile_list_sector_info ()
+    : membuf_tfile (NULL)
+    , sectors (NULL)
+    , tfiles (NULL)
+    , sector_cnt (0)
+  {
+    //
+  }
+
+  // *INDENT-ON*
+};
+#endif /*  __cplusplus */
+
+#ifdef __cplusplus
+/* Sector-based parallel page scan distribution state.
+ * Wraps QFILE_LIST_SECTOR_INFO with the atomic cursors workers use to coordinate. */
+typedef struct qfile_list_sector_scan_info QFILE_LIST_SECTOR_SCAN_INFO;
+struct qfile_list_sector_scan_info
+{
+  // *INDENT-OFF*
+  QFILE_LIST_SECTOR_INFO sector_info;	/* sector layout (from qfile_collect_list_sector_info) */
+  std::atomic<bool> membuf_claimed;	/* atomic flag: one worker claims all membuf pages */
+  std::atomic<int> next_sector_index;	/* atomic cursor for sector distribution */
+
+  qfile_list_sector_scan_info ()
+    : sector_info ()
+    , membuf_claimed (false)
+    , next_sector_index (0)
+  {
+    //
+  }
+  // *INDENT-ON*
+};
+#endif /*  __cplusplus */
 
 /* SORTING RELATED DEFINITIONS */
 

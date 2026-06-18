@@ -150,15 +150,17 @@ struct hbp_proc_register
 extern const char *hb_process_type_string (int ptype);
 extern void hb_set_exec_path (char *exec_path);
 extern void hb_set_argv (char **argv);
+extern HBP_PROC_REGISTER *hb_make_set_hbp_register (int type);
 extern int css_send_heartbeat_request (CSS_CONN_ENTRY * conn, int command);
 extern int css_send_heartbeat_data (CSS_CONN_ENTRY * conn, const char *data, int size);
 extern int css_receive_heartbeat_request (CSS_CONN_ENTRY * conn, int *command);
 extern int css_receive_heartbeat_data (CSS_CONN_ENTRY * conn, char *data, int size);
-extern int hb_process_master_request (void);
 extern int hb_register_to_master (CSS_CONN_ENTRY * conn, int type);
+#if defined (CS_MODE)
 extern int hb_deregister_from_master (void);
 extern int hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type);
 extern void hb_process_term (void);
+#endif
 extern const char *hb_node_state_string (HB_NODE_STATE_TYPE nstate);
 
 extern bool hb_Proc_shutdown;

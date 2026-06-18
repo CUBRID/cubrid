@@ -60,12 +60,12 @@
 #endif /* SA_MODE */
 #include "jsp_cl.h"
 #include "execute_statement.h"
-#include "connection_support.h"
+#include "connection_support.hpp"
 #include "trigger_manager.h"
 #if !defined(CS_MODE)
 #include "session.h"
 #endif
-#include "connection_cl.h"
+
 #include "dbtype.h"
 #include "method_callback.hpp"
 #include "filesys_temp.hpp"
@@ -138,6 +138,7 @@ install_static_methods (void)
   db_install_static_methods ();	/* Authorization classes */
 }
 
+#if defined(SA_MODE)
 /*
  * db_init() - This will create a database file and associated log files and
  *    install the authorization objects and other required system objects.
@@ -296,6 +297,7 @@ db_init (const char *program, int print_version, const char *dbname, const char 
 
   return (error);
 }
+#endif /* SA_MODE */
 
 /*
  * db_add_volume() - Add a volume extension to the database. The addition of

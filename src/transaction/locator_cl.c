@@ -52,6 +52,7 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "log_lsa.hpp"
+#include "object_primitive.h"
 
 #define WS_SET_FOUND_DELETED(mop) WS_SET_DELETED(mop)
 #define MAX_FETCH_SIZE 64
@@ -145,10 +146,6 @@ static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_m
 				      bool decache, bool isone_mflush);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_reallocate_copy_area (LOCATOR_MFLUSH_CACHE * mflush, int minsize);
-
-static int locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush);
-static int locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
-static void locator_repl_mflush_check_error (LC_COPYAREA * mflush);
 
 static void locator_mflush_end (LOCATOR_MFLUSH_CACHE * mflush);
 static int locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush);
@@ -3986,81 +3983,6 @@ locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument)
 }
 
 /*
- * locator_repl_mflush_force () - Force the mflush area
- *
- * return:
- *
- *   mflush(in): Structure which describes to objects to flush
- *
- * Note: The repl objects placed on the mflush area are forced to the server (page buffer pool).
- */
-static int
-locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
-{
-  LC_COPYAREA *reply_copy_area = NULL;
-  int error_code = NO_ERROR;
-
-  assert (mflush != NULL);
-
-  /* Force the objects stored in area */
-  if (mflush->mobjs->num_objs > 0)
-    {
-      error_code = locator_repl_force (mflush->copy_area, &reply_copy_area);
-
-      /* If the force failed and the system is down.. finish */
-      if (error_code == ER_LK_UNILATERALLY_ABORTED
-	  || ((error_code != NO_ERROR && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
-	      && !BOOT_IS_CLIENT_RESTARTED ()))
-	{
-	  return error_code;
-	}
-
-      if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
-	{
-	  locator_repl_mflush_check_error (reply_copy_area);
-	}
-    }
-
-  if (reply_copy_area != NULL)
-    {
-      locator_free_copy_area (reply_copy_area);
-    }
-
-  /* Now reset the flushing area... and continue flushing */
-  locator_mflush_reset (mflush);
-
-  return error_code;
-}
-
-/*
- * locator_repl_mflush_check_error () - save error info for later use
- *
- * return: void
- *
- *   reply_copyarea(in):
- */
-static void
-locator_repl_mflush_check_error (LC_COPYAREA * reply_copyarea)
-{
-  LC_COPYAREA_MANYOBJS *mobjs;
-  LC_COPYAREA_ONEOBJ *obj;
-  char *content_ptr;
-  int i;
-
-  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (reply_copyarea);
-
-  for (i = 0; i < mobjs->num_objs; i++)
-    {
-      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mobjs, i);
-      content_ptr = reply_copyarea->mem + obj->offset;
-
-      ws_set_repl_error_into_error_link (obj, content_ptr);
-    }
-
-  return;
-}
-
-/*
  * locator_mflush_force () - Force the mflush area
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -4953,117 +4875,6 @@ locator_mflush (MOP mop, void *mf)
 }
 
 /*
- * locator_repl_mflush () - place repl objects into LOCATOR_MFLUSH_CACHE
- *
- * return: error code
- *
- *   mflush(in/out): copy area contents and descriptors
- */
-static int
-locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
-{
-  int error = NO_ERROR;
-  WS_REPL_OBJ *repl_obj;
-  int required_length;
-  int key_length, round_length, wasted_length;
-  char *ptr, *obj_start_p;
-
-  while (true)
-    {
-      repl_obj = ws_get_repl_obj_from_list ();
-      if (repl_obj == NULL)
-	{
-	  break;
-	}
-
-      /* includes leading and trailing alignment */
-      required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
-      if (repl_obj->operation != LC_FLUSH_DELETE)
-	{
-	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
-	  required_length += repl_obj->recdes->length + MAX_ALIGNMENT;
-	}
-
-      while (mflush->recdes.area_size < required_length)
-	{
-	  if (mflush->mobjs->num_objs == 0)
-	    {
-	      error = locator_mflush_reallocate_copy_area (mflush, required_length + DB_SIZEOF (LC_COPYAREA_MANYOBJS));
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
-	  else
-	    {
-	      error = locator_repl_mflush_force (mflush);
-	      if (error != NO_ERROR && error != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
-		{
-		  return error;
-		}
-	    }
-	}
-
-      /* put packed key_value and recdes in copy_area */
-
-      /* put packed key_value first */
-      obj_start_p = ptr = mflush->recdes.data;
-
-      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
-
-      memcpy (ptr, repl_obj->packed_pkey_value, repl_obj->packed_pkey_value_length);
-      ptr += repl_obj->packed_pkey_value_length;
-
-      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
-
-      key_length = CAST_BUFLEN (ptr - obj_start_p);
-      mflush->recdes.data = ptr;
-
-      if (repl_obj->operation == LC_FLUSH_DELETE)
-	{
-	  assert (repl_obj->recdes == NULL);
-	  mflush->recdes.length = 0;
-	}
-      else
-	{
-	  assert (repl_obj->recdes->data != NULL);
-
-	  memcpy (mflush->recdes.data, repl_obj->recdes->data, repl_obj->recdes->length);
-	  mflush->recdes.length = repl_obj->recdes->length;
-	}
-
-      mflush->mobjs->num_objs++;
-      mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
-      if (repl_obj->has_index == true)
-	{
-	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
-	}
-
-      COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);
-      HFID_SET_NULL (&mflush->obj->hfid);
-      OID_SET_NULL (&mflush->obj->oid);
-
-      mflush->obj->length = mflush->recdes.length + key_length;
-      mflush->obj->offset = CAST_BUFLEN (obj_start_p - mflush->copy_area->mem);
-
-      wasted_length = DB_WASTED_ALIGN (mflush->obj->length, MAX_ALIGNMENT);
-#if !defined(NDEBUG)
-      /* suppress valgrind UMW error */
-      memset (obj_start_p + mflush->obj->length, 0,
-	      MIN (wasted_length, mflush->recdes.area_size - mflush->obj->length));
-#endif
-      round_length = mflush->obj->length + wasted_length;
-      mflush->recdes.data = obj_start_p + round_length;
-      mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
-
-      mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
-      ws_free_repl_obj (repl_obj);
-    }
-
-  return error;
-}
-
-/*
  * locator_flush_class () - Flush a dirty class
  *
  * return: NO_ERROR if all OK, ER status otherwise
@@ -5503,45 +5314,6 @@ locator_all_flush (void)
 }
 
 /*
- * locator_repl_flush_all () - flush all repl objects
- *
- * return: error code
- */
-int
-locator_repl_flush_all (void)
-{
-  LOCATOR_MFLUSH_CACHE mflush;
-  int error;
-  bool continued_on_error = false;
-
-  error = locator_mflush_initialize (&mflush, NULL, NULL, NULL, DONT_DECACHE, MANY_MFLUSHES);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = locator_repl_mflush (&mflush);
-  if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
-    {
-      continued_on_error = true;
-    }
-  else if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  error = locator_repl_mflush_force (&mflush);
-  if (error == NO_ERROR && continued_on_error == true)
-    {
-      error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
-    }
-
-  locator_mflush_end (&mflush);
-
-  return error;
-}
-
-/*
  * locator_add_root () - Insert root
  *
  * return:MOP
@@ -5722,6 +5494,7 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
   if (HFID_IS_NULL (hfid))
     {
       OID *oid;
+      SM_CLASS *class_;
 
       /* Need to update the class, must fetch it again with write purpose */
       class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5743,6 +5516,12 @@ locator_create_heap_if_needed (MOP class_mop, bool reuse_oid)
       assert (!OID_ISNULL (sm_ch_rep_dir (class_obj)));
 
       if (heap_create (hfid, oid, reuse_oid) != NO_ERROR)
+	{
+	  return NULL;
+	}
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
+
+      if (locator_lob_process_dir (class_, NULL, hfid) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -5873,8 +5652,12 @@ int
 locator_remove_class (MOP class_mop)
 {
   MOBJ class_obj;		/* The class object */
-  const char *classname;	/* The classname */
   HFID *insts_hfid;		/* Heap of instances of the class */
+  SM_CLASS *class_;		/* class info for checking LOB attributes */
+  SM_ATTRIBUTE *attr;		/* attribute info for checking LOB attributes */
+  bool lob_attr_exist = false;
+  const char *classname;	/* The classname */
+  int attrid_arr[1];
   int error_code = NO_ERROR;
 
   class_obj = locator_fetch_class (class_mop, DB_FETCH_WRITE);
@@ -5897,6 +5680,29 @@ locator_remove_class (MOP class_mop)
       if (error_code != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      au_fetch_class (class_mop, &class_, AU_FETCH_READ, DB_AUTH_NONE);
+
+      for (int i = 0; i < class_->att_count; i++)
+	{
+	  attr = &class_->attributes[i];
+
+	  if (TP_IS_LOB_TYPE (attr->type->id))
+	    {
+	      lob_attr_exist = true;
+	      break;
+	    }
+	}
+
+      if (lob_attr_exist)
+	{
+	  attrid_arr[0] = -1;
+	  error_code = locator_lob_create_or_remove_dir (insts_hfid, NULL, attrid_arr, 1);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
 
@@ -6943,4 +6749,353 @@ locator_can_skip_fetch_from_server (MOP mop, LOCK * lock, LC_FETCH_VERSION_TYPE 
 
   /* We are here because we need to upgrade lock on object. */
   return false;
+}
+
+/*
+ * locator_lob_create_or_remove_dir() - Unified interface for creating or removing LOB directories.
+ * return: error code
+ * prev_hfid(in): HFID of an existing LOB directory to remove.
+ * new_hfid(in): HFID for the new LOB directory to create.
+ * lob_attrid_arr(in): Array of LOB attribute IDs used for create/remove operations.
+ * lob_attrid_arr_length(in): Number of elements in lob_attrid_arr.
+ *
+ * NOTE: This function abstracts the logic of calling lob_create_dir() and lob_remove_dir(),
+ *       allowing the caller to handle both operations through a single interface.
+ */
+int
+locator_lob_create_or_remove_dir (HFID * prev_hfid, HFID * new_hfid, int *lob_attrid_arr, int lob_attrid_arr_length)
+{
+  int error = NO_ERROR;
+
+  assert (prev_hfid != NULL || new_hfid != NULL);
+  assert (lob_attrid_arr_length >= 1);
+
+  if (prev_hfid != NULL)
+    {
+      int target_attrid = (new_hfid != NULL) ? -1 : lob_attrid_arr[0];	/* -1 means removing all LOB directories of the table, used in truncate case. */
+
+      error = lob_remove_dir (prev_hfid, target_attrid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (new_hfid != NULL)
+    {
+      error = lob_create_dir (new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return error;
+}
+
+/*
+ * locator_lob_process_dir() - Prepare an array of LOB attrid to create or remove LOB directories.
+ * return: error code
+ * class_(in): Class structure that contains LOB information.
+ * prev_hfid(in): HFID of an existing LOB directory to remove.
+ * new_hfid(in): HFID for the new LOB directory to create.
+ *
+ * NOTE: Call locator_lob_create_or_remove_dir() to handle LOB directories.
+ */
+int
+locator_lob_process_dir (SM_CLASS * class_, HFID * prev_hfid, HFID * new_hfid)
+{
+  SM_ATTRIBUTE *attr;
+  int lob_attrid_arr_length = 0;
+  int lob_local_attrid_arr[2];
+  int *lob_alloc_attrid_arr = NULL;
+  int *lob_attrid_arr = NULL;
+  int error = NO_ERROR;
+
+  assert (new_hfid != NULL);
+
+  for (int i = 0; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  lob_attrid_arr_length++;
+	}
+    }
+
+  if (lob_attrid_arr_length == 0)
+    {
+      goto end;
+    }
+  else if (lob_attrid_arr_length <= 2)
+    {
+      lob_attrid_arr = lob_local_attrid_arr;
+    }
+  else if (lob_attrid_arr_length > 2)
+    {
+      lob_alloc_attrid_arr = (int *) malloc (sizeof (int) * lob_attrid_arr_length);
+      if (lob_alloc_attrid_arr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * lob_attrid_arr_length);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+
+      lob_attrid_arr = lob_alloc_attrid_arr;
+    }
+
+  for (int i = 0, index = 0; i < class_->att_count; i++)
+    {
+      attr = &class_->attributes[i];
+      if (TP_IS_LOB_TYPE (attr->type->id))
+	{
+	  lob_attrid_arr[index++] = attr->id;
+	}
+    }
+
+  /* Create or remove LOB dir as needed */
+  error = locator_lob_create_or_remove_dir (prev_hfid, new_hfid, lob_attrid_arr, lob_attrid_arr_length);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+end:
+  free (lob_alloc_attrid_arr);
+
+  return error;
+}
+
+
+//
+// class locator_repl
+CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
+
+/*
+ * locator_repl_mflush_force () - Force the mflush area
+ *
+ * return:
+ *
+ *   mflush(in): Structure which describes to objects to flush
+ *
+ * Note: The repl objects placed on the mflush area are forced to the server (page buffer pool).
+ */
+int
+locator_repl::locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
+{
+  LC_COPYAREA *reply_copy_area = NULL;
+  int error_code = NO_ERROR;
+
+  assert (mflush != NULL);
+
+  /* Force the objects stored in area */
+  if (mflush->mobjs->num_objs > 0)
+    {
+      error_code = locator_repl_force (mflush->copy_area, &reply_copy_area);
+
+      /* If the force failed and the system is down.. finish */
+      if (error_code == ER_LK_UNILATERALLY_ABORTED
+	  || ((error_code != NO_ERROR && error_code != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	      && !BOOT_IS_CLIENT_RESTARTED ()))
+	{
+	  return error_code;
+	}
+
+      if (error_code == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+	{
+	  locator_repl_mflush_check_error (reply_copy_area);
+	}
+    }
+
+  if (reply_copy_area != NULL)
+    {
+      locator_free_copy_area (reply_copy_area);
+    }
+
+  /* Now reset the flushing area... and continue flushing */
+  locator_mflush_reset (mflush);
+
+  return error_code;
+}
+
+ /*
+  * locator_repl_mflush_check_error () - save error info for later use
+  *
+  * return: void
+  *
+  *   reply_copyarea(in):
+  */
+void
+locator_repl::locator_repl_mflush_check_error (LC_COPYAREA * reply_copyarea)
+{
+  LC_COPYAREA_MANYOBJS *mobjs;
+  LC_COPYAREA_ONEOBJ *obj;
+  char *content_ptr;
+  int i;
+
+  mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (reply_copyarea);
+
+  for (i = 0; i < mobjs->num_objs; i++)
+    {
+      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mobjs, i);
+      content_ptr = reply_copyarea->mem + obj->offset;
+
+      ws_set_repl_error_into_error_link (obj, content_ptr);
+    }
+
+  return;
+}
+
+
+/*
+ * locator_repl_mflush () - place repl objects into LOCATOR_MFLUSH_CACHE
+ *
+ * return: error code
+ *
+ *   mflush(in/out): copy area contents and descriptors
+ */
+int
+locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
+{
+  int error = NO_ERROR;
+  WS_REPL_OBJ *repl_obj;
+  int required_length;
+  int key_length, round_length, wasted_length;
+  char *ptr, *obj_start_p;
+
+  while (true)
+    {
+      repl_obj = ws_get_repl_obj_from_list ();
+      if (repl_obj == NULL)
+	{
+	  break;
+	}
+
+      /* includes leading and trailing alignment */
+      required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+      if (repl_obj->operation != LC_FLUSH_DELETE)
+	{
+	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
+	  required_length += repl_obj->recdes->length + MAX_ALIGNMENT;
+	}
+
+      while (mflush->recdes.area_size < required_length)
+	{
+	  if (mflush->mobjs->num_objs == 0)
+	    {
+	      error = locator_mflush_reallocate_copy_area (mflush, required_length + DB_SIZEOF (LC_COPYAREA_MANYOBJS));
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  else
+	    {
+	      error = locator_repl_mflush_force (mflush);
+	      if (error != NO_ERROR && error != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+		{
+		  return error;
+		}
+	    }
+	}
+
+      /* put packed key_value and recdes in copy_area */
+
+      /* put packed key_value first */
+      obj_start_p = ptr = mflush->recdes.data;
+
+      ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
+
+      memcpy (ptr, repl_obj->packed_pkey_value, repl_obj->packed_pkey_value_length);
+      ptr += repl_obj->packed_pkey_value_length;
+
+      ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
+
+      key_length = CAST_BUFLEN (ptr - obj_start_p);
+      mflush->recdes.data = ptr;
+
+      if (repl_obj->operation == LC_FLUSH_DELETE)
+	{
+	  assert (repl_obj->recdes == NULL);
+	  mflush->recdes.length = 0;
+	}
+      else
+	{
+	  assert (repl_obj->recdes->data != NULL);
+
+	  memcpy (mflush->recdes.data, repl_obj->recdes->data, repl_obj->recdes->length);
+	  mflush->recdes.length = repl_obj->recdes->length;
+	}
+
+      mflush->mobjs->num_objs++;
+      mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
+      if (repl_obj->has_index == true)
+	{
+	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
+	}
+
+      COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);
+      HFID_SET_NULL (&mflush->obj->hfid);
+      OID_SET_NULL (&mflush->obj->oid);
+
+      mflush->obj->length = mflush->recdes.length + key_length;
+      mflush->obj->offset = CAST_BUFLEN (obj_start_p - mflush->copy_area->mem);
+
+      wasted_length = DB_WASTED_ALIGN (mflush->obj->length, MAX_ALIGNMENT);
+#if !defined(NDEBUG)
+      /* suppress valgrind UMW error */
+      memset (obj_start_p + mflush->obj->length, 0,
+	      MIN (wasted_length, mflush->recdes.area_size - mflush->obj->length));
+#endif
+      round_length = mflush->obj->length + wasted_length;
+      mflush->recdes.data = obj_start_p + round_length;
+      mflush->recdes.area_size -= round_length + sizeof (*(mflush->obj));
+
+      mflush->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (mflush->obj);
+      ws_free_repl_obj (repl_obj);
+    }
+
+  return error;
+}
+
+
+/*
+ * locator_repl_flush_all () - flush all repl objects
+ *
+ * return: error code
+ */
+int
+locator_repl::locator_repl_flush_all (void)
+{
+  LOCATOR_MFLUSH_CACHE mflush;
+  int error;
+  bool continued_on_error = false;
+
+  error = locator_mflush_initialize (&mflush, NULL, NULL, NULL, DONT_DECACHE, MANY_MFLUSHES);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = locator_repl_mflush (&mflush);
+  if (error == ER_LC_PARTIALLY_FAILED_TO_FLUSH)
+    {
+      continued_on_error = true;
+    }
+  else if (error != NO_ERROR)
+    {
+      locator_mflush_end (&mflush);
+      return error;
+    }
+
+  error = locator_repl_mflush_force (&mflush);
+  if (error == NO_ERROR && continued_on_error == true)
+    {
+      error = ER_LC_PARTIALLY_FAILED_TO_FLUSH;
+    }
+
+  locator_mflush_end (&mflush);
+
+  return error;
 }

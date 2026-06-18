@@ -33,7 +33,7 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-ATTR_ID spcode_Attrs_id[SPC_ATTR_MAX_INDEX];
+ATTR_ID spcode_Attrs_id[NUM_SP_CODE_ATTR];
 int spcode_Num_attrs = -1;
 
 static int sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p);
@@ -41,21 +41,15 @@ static void sp_code_attr_init ();
 static int sp_get_attrid (THREAD_ENTRY *thread_p, int attr_index, ATTR_ID &attrid);
 static int sp_get_attr_idx (const std::string &attr_name);
 
-using sp_code_attr_map_type = std::unordered_map <std::string, SP_CODE_ATTRIBUTES>;
+using sp_code_attr_map_type = std::unordered_map <std::string, int>;
 static sp_code_attr_map_type attr_idx_map;
 
 static void
 sp_code_attr_init ()
 {
-  attr_idx_map [SP_ATTR_CLS_NAME] = SPC_ATTR_NAME_INDEX;
-  attr_idx_map [SP_ATTR_TIMESTAMP] = SPC_ATTR_CREATED_TIME;
-  attr_idx_map [SP_ATTR_OWNER] = SPC_ATTR_OWNER_INDEX;
-  attr_idx_map [SP_ATTR_IS_STATIC] = SPC_ATTR_IS_STATIC_INDEX;
-  attr_idx_map [SP_ATTR_IS_SYSTEM_GENERATED] = SPC_ATTR_IS_SYSTEM_GENERATED_INDEX;
-  attr_idx_map [SP_ATTR_SOURCE_TYPE] = SPC_ATTR_STYPE_INDEX;
-  attr_idx_map [SP_ATTR_SOURCE_CODE] = SPC_ATTR_SCODE_INDEX;
-  attr_idx_map [SP_ATTR_OBJECT_TYPE] = SPC_ATTR_OTYPE_INDEX;
-  attr_idx_map [SP_ATTR_OBJECT_CODE] = SPC_ATTR_OCODE_INDEX;
+#define MAP_LIST_ITEM(item)     attr_idx_map [SP_CODE_ATTR_##item] = INDEX_SP_CODE_ATTR_##item;
+  SP_CODE_ATTR_LIST
+#undef MAP_LIST_ITEM
 }
 
 static int

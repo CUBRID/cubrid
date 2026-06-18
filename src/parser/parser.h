@@ -404,10 +404,9 @@ extern "C"
   extern int pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
   extern int pt_user_specified_name_compare (const char *p, const char *q);
 
-  extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
   extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
-  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
+  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
@@ -538,7 +537,7 @@ extern "C"
   extern int pt_statement_line_number (const PT_NODE * stmt);
 
   extern const char *pt_get_select_from_name (PARSER_CONTEXT * parser, const PT_NODE * spec);
-  extern const char *pt_get_proxy_spec_name (const char *qspec);
+  extern const char *pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec);
   extern const char *pt_get_spec_name (PARSER_CONTEXT * parser, const PT_NODE * selqry);
   extern const char *pt_get_name (PT_NODE * nam);
   extern PT_NODE *pt_get_cursor (const PT_HOST_VARS * hv);

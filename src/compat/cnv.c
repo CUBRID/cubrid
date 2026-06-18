@@ -84,7 +84,7 @@ bfmt_print (BIT_STRING_FORMAT * bfmt, const DB_VALUE * the_db_bit, char *string,
   int bit_index;
   const char *bstring;
   int error = NO_ERROR;
-  static char digits[16] = {
+  static const char digits[16] = {
     '0', '1', '2', '3', '4', '5', '6', '7',
     '8', '9', 'a', 'b', 'c', 'd', 'e', 'f'
   };

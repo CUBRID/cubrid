@@ -92,6 +92,13 @@
 #define FK_INFO_SORT_BY_FKTABLE_NAME	2
 #define DBLINK_HINT                     "DBLINK"
 
+#define CLASS_UNIQUE_NAME_EXPR(is_system_class_expr, owner_name_expr, class_name_expr) \
+  "CASE " \
+    "WHEN (" is_system_class_expr ") = 'NO' OR " owner_name_expr " = '" AU_INFORMATION_SCHEMA_USER_NAME "' " \
+      "THEN LOWER (" owner_name_expr ") || '.' || " class_name_expr " " \
+    "ELSE " class_name_expr " " \
+  "END"
+
 #if !defined(WINDOWS)
 #define STRING_APPEND(buffer_p, avail_size_holder, ...) \
   do {                                                          \
@@ -522,11 +529,7 @@ connect_error:
 
   if (db_err_msg)
     {
-      *db_err_msg = (char *) malloc (strlen (p) + 1);
-      if (*db_err_msg)
-	{
-	  strcpy (*db_err_msg, p);
-	}
+      *db_err_msg = strdup (p);
     }
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
@@ -3547,17 +3550,16 @@ get_column_default_as_string (DB_ATTRIBUTE * attr, bool * alloc)
 
       if (default_value_expr_op_string != NULL)
 	{
-	  strcpy (default_value_string, default_value_expr_op_string);
-	  strcat (default_value_string, "(");
-	  strcat (default_value_string, default_value_expr_type_string);
 	  if (default_expr_format)
 	    {
-	      strcat (default_value_string, ", \'");
-	      strcat (default_value_string, default_expr_format);
-	      strcat (default_value_string, "\'");
+	      snprintf (default_value_string, len + 1, "%s(%s, \'%s\')",
+			default_value_expr_op_string, default_value_expr_type_string, default_expr_format);
 	    }
-
-	  strcat (default_value_string, ")");
+	  else
+	    {
+	      snprintf (default_value_string, len + 1, "%s(%s)",
+			default_value_expr_op_string, default_value_expr_type_string);
+	    }
 	}
       else
 	{
@@ -3738,12 +3740,13 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
       {
 	char *value, *invalid_pos = NULL;
 	int val_size;
-	int val_length;
 	bool is_composed = false;
 	int composed_size;
 
 	net_arg_get_str (&value, &val_size, net_value);
 
+	/* CAS protocol: string payload carries a trailing NUL that is counted in val_size. */
+	assert (val_size > 0 && value[val_size - 1] == '\0');
 	val_size--;
 
 	if (intl_check_string (value, val_size, &invalid_pos, lang_get_client_charset ()) != INTL_UTF8_VALID)
@@ -3794,7 +3797,6 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
 	else
 	  {
-	    intl_char_count ((unsigned char *) value, val_size, lang_get_client_charset (), &val_length);
 	    err_code =
 	      db_make_char (&db_val, -1, value, val_size, lang_get_client_charset (), lang_get_client_collation ());
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
@@ -4266,13 +4268,12 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     case DB_TYPE_CHAR:
       {
 	DB_CONST_C_CHAR str;
-	int dummy = 0;
 	int bytes_size = 0;
 	int decomp_size;
 	char *decomposed = NULL;
 	bool need_decomp = false;
 
-	str = db_get_char (val, &dummy);
+	str = db_get_char (val);
 	bytes_size = db_get_string_size (val);
 	if (max_col_size > 0)
 	  {
@@ -4574,7 +4575,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	DB_DOMAIN *char_domain;
 	DB_VALUE v;
 	const char *str;
-	int len, err;
+	int err;
 	char buf[128];
 
 	char_domain = db_type_to_db_domain (DB_TYPE_VARCHAR);
@@ -4586,7 +4587,7 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	  }
 	else
 	  {
-	    str = db_get_char (&v, &len);
+	    str = db_get_char (&v);
 	    if (str != NULL)
 	      {
 		strncpy (buf, str, sizeof (buf) - 1);
@@ -7142,10 +7143,8 @@ sch_class_info (T_NET_BUF * net_buf, char *class_name, char pattern_flag, char v
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN is_system_class = 'NO' THEN LOWER (owner_name) || '.' || class_name "
-	    "ELSE class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR ("is_system_class", "owner_name", "class_name")
+	  " AS unique_name, "
 	  "CAST ( "
 	      "CASE "
 		"WHEN is_system_class = 'YES' THEN 0 "
@@ -7235,14 +7234,11 @@ sch_attr_info (T_NET_BUF * net_buf, char *class_name, char *attr_name, char patt
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -7485,14 +7481,11 @@ sch_attr_with_synonym_info (T_NET_BUF * net_buf, char *class_name, char *attr_na
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "a.attr_name "
 	"FROM "
 	  "db_attribute a "
@@ -8397,22 +8390,16 @@ sch_direct_super_class (T_NET_BUF * net_buf, char *class_name, int pattern_flag,
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT b.is_system_class "
-		"FROM db_class b "
-		"WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name "
-	      ") = 'NO' THEN LOWER (a.super_owner_name) || '.' || a.super_class_name "
-	    "ELSE a.super_class_name "
-	    "END AS super_unique_name "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.class_name AND b.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT b.is_system_class FROM db_class b "
+	      "WHERE b.class_name = a.super_class_name AND b.owner_name = a.super_owner_name",
+	      "a.super_owner_name", "a.super_class_name")
+	  " AS super_unique_name "
 	"FROM "
 	  "db_direct_super_class a "
 	"WHERE 1 = 1 ");
@@ -8496,14 +8483,11 @@ sch_primary_key (T_NET_BUF * net_buf, char *class_name, T_SRV_HANDLE * srv_handl
   // *INDENT-OFF*
   STRING_APPEND (sql_p, avail_size,
 	"SELECT "
-	  "CASE "
-	    "WHEN ( "
-		"SELECT c.is_system_class "
-		"FROM db_class c "
-		"WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name "
-	      ") = 'NO' THEN LOWER (a.owner_name) || '.' || a.class_name "
-	    "ELSE a.class_name "
-	    "END AS unique_name, "
+	  CLASS_UNIQUE_NAME_EXPR (
+	      "SELECT c.is_system_class FROM db_class c "
+	      "WHERE c.class_name = a.class_name AND c.owner_name = a.owner_name",
+	      "a.owner_name", "a.class_name")
+	  " AS unique_name, "
 	  "b.key_attr_name, "
 	  "b.key_order + 1, "
 	  "a.index_name "
@@ -9827,14 +9811,14 @@ convert_db_value_to_string (DB_VALUE * value, DB_VALUE * value_string)
 {
   const char *val_str = NULL;
   DB_TYPE val_type;
-  int err, len;
+  int err;
 
   val_type = db_value_type (value);
 
   err = db_value_coerce (value, value_string, db_type_to_db_domain (DB_TYPE_VARCHAR));
   if (err >= 0)
     {
-      val_str = db_get_char (value_string, &len);
+      val_str = db_get_char (value_string);
     }
 
   return val_str;

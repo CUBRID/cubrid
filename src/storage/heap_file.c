@@ -39,6 +39,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
+#include <random>
 #include "slotted_page.h"
 #include "overflow_file.h"
 #include "boot_sr.h"
@@ -5073,58 +5074,6 @@ heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 }
 
 /*
- * heap_vpid_skip_next () - Skip pages by skip_cnt
- *   return: NO_ERROR
- *   hfid(in): Object heap file identifier
- *   pgptr(in): Current page pointer
- *   next_vpid(in/out): Next volume-page identifier
- *   skip_cnt(in): skip pages by skip_cnt
- *
- * Note: Find the next page of heap file.
- */
-int
-heap_vpid_skip_next (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * curr_page_watcher,
-		     PGBUF_WATCHER * old_page_watcher, int skip_cnt, VPID * vpid, HEAP_SCANCACHE * scan_cache)
-{
-  int ret = NO_ERROR;
-
-#if !defined (NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher->pgptr, PAGE_HEAP);
-#endif /* !NDEBUG */
-
-  for (int i = 0; i < skip_cnt - 1; i++)
-    {
-      (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-      if (vpid->pageid == NULL_PAGEID)
-	{
-	  /* must be last page, end scanning */
-	  return ret;
-	}
-      pgbuf_replace_watcher (thread_p, curr_page_watcher, old_page_watcher);
-      curr_page_watcher->pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache, curr_page_watcher);
-      if (old_page_watcher->pgptr != NULL)
-	{
-	  pgbuf_ordered_unfix (thread_p, old_page_watcher);
-	}
-      if (curr_page_watcher->pgptr == NULL)
-	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 1);
-	    }
-
-	  /* something went wrong, return */
-	  return S_ERROR;
-	}
-    }
-
-  (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-
-  return ret;
-}
-
-/*
  * heap_vpid_prev () - Find previous page of heap
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier
@@ -6847,28 +6796,18 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	   * levels that release the locks of the class when the class is read.
 	   */
 #if defined(SERVER_MODE)
-	  THREAD_ENTRY *target_thread_p = NULL;
+	  THREAD_ENTRY *main_thread_p = NULL;
 	  if (thread_p->m_px_orig_thread_entry != NULL)
 	    {
-	      target_thread_p = thread_p;
-	      while (target_thread_p->m_px_orig_thread_entry != NULL)
-		{
-		  if (target_thread_p->m_px_orig_thread_entry == target_thread_p)
-		    {
-		      break;
-		    }
-		  target_thread_p = target_thread_p->m_px_orig_thread_entry;
-		  assert (target_thread_p != thread_p);
-		}
-	      assert (target_thread_p != NULL);
-	      pthread_mutex_lock (&target_thread_p->m_px_lock_mutex);
+	      main_thread_p = thread_get_main_thread (thread_p);
+	      pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	  granted = lock_scan (thread_p, class_oid, LK_UNCOND_LOCK, IS_LOCK);
 #if defined(SERVER_MODE)
-	  if (target_thread_p != NULL)
+	  if (main_thread_p != NULL)
 	    {
-	      pthread_mutex_unlock (&target_thread_p->m_px_lock_mutex);
+	      pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 	    }
 #endif
 	  if (granted != LK_GRANTED)
@@ -7707,7 +7646,7 @@ try_again:
 	  /* A deleted class record, corresponding to a deleted class can be accessed through catalog update operations
 	   * on another class. This is possible if a class has an attribute holding a domain that references the
 	   * dropped class. Another situation is the client request for authentication, which fetches the object (an
-	   * instance of db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
+	   * instance of _db_user) using dirty version. If it has been removed, it will be found as a deleted record. */
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid_p->volid,
 		  context->oid_p->pageid, context->oid_p->slotid);
 	}
@@ -7888,6 +7827,7 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
   /* Shouldn't be here. */
   return S_ERROR;
 }
+
 
 /*
  * heap_next_internal () - Retrieve of peek next object.
@@ -8113,11 +8053,17 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      if (sampling)
 			{
-			  /* skip pages */
-			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
-						   sampling->weight, &vpid, scan_cache) == S_ERROR)
+			  /* next pre-picked VPID in current slice */
+			  assert (sampling->picked_cursor <= sampling->slice_end);
+			  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
+			  if (sampling->picked_cursor >= sampling->slice_end)
 			    {
-			      return S_ERROR;
+			      /* slice exhausted -> S_END */
+			      VPID_SET_NULL (&vpid);
+			    }
+			  else
+			    {
+			      vpid = sampling->picked_vpids[sampling->picked_cursor++];
 			    }
 			}
 		      else
@@ -12061,6 +12007,7 @@ heap_attrinfo_transform_fixed_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRI
 
   if (value->do_increment && (incremented_attrids->find (index) == incremented_attrids->end ()))
     {
+      /* handle INCR(), DECR() functions */
       if (qdata_increment_dbval (dbvalue, dbvalue, value->do_increment) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -12132,12 +12079,11 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 {
   HEAP_ATTRVALUE *value;
   DB_VALUE *dbvalue;
+  ATTR_ID attrid;
   const PR_TYPE *pr_type;
-  DB_ELO dest_elo, *elo_p;
-  char *save_meta_data, *new_meta_data;
-  int rv;
 
   value = &attr_info->values[index];
+  attrid = value->attrid;
   pr_type = value->last_attrepr->domain->type;
   if (pr_type == NULL)
     {
@@ -12156,6 +12102,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (value->do_increment != 0)
     {
+      /* handle INCR(), DECR() functions */
       return S_ERROR;
     }
 
@@ -12178,8 +12125,14 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       buf->ptr = *ptr_varvals;
 
       if (lob_create_flag == LOB_FLAG_INCLUDE_LOB && value->state == HEAP_WRITTEN_ATTRVALUE
-	  && (pr_type->id == DB_TYPE_BLOB || pr_type->id == DB_TYPE_CLOB))
+	  && TP_IS_LOB_TYPE (pr_type->id))
 	{
+	  DB_ELO dest_elo, *elo_p;
+	  HFID hfid;
+	  char *save_meta_data, *new_meta_data;
+	  char lob_path_prefix[PATH_MAX];
+	  int ret;
+
 	  assert (db_value_type (dbvalue) == DB_TYPE_BLOB || db_value_type (dbvalue) == DB_TYPE_CLOB);
 
 	  elo_p = db_get_elo (dbvalue);
@@ -12195,26 +12148,41 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    {
 	      return S_ERROR;
 	    }
+
+	  heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+
+	  snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), attrid);
+
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  rv = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
-
+	  ret = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
 	  free_and_init (elo_p->meta_data);
 	  elo_p->meta_data = save_meta_data;
+	  if (ret != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
 
 	  /* The purpose of HEAP_WRITTEN_LOB_ATTRVALUE is to avoid reenter this branch. In the first pass,
 	   * this branch is entered and elo is copied. When BUFFER_OVERFLOW happens, we need avoid to copy
 	   * elo again. Otherwize it will generate 2 copies. */
 	  value->state = HEAP_WRITTEN_LOB_ATTRVALUE;
 
-	  if (rv < 0)
-	    {
-	      return S_ERROR;
-	    }
-
 	  pr_clear_value (dbvalue);
 	  db_make_elo (dbvalue, pr_type->id, &dest_elo);
 	  dbvalue->need_clear = true;
+	}
+
+      /* 
+       * user AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
+       * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
+       * this byte-size mismatch corrupts values.
+       * fix: if user column precision < 38, override current_val precision to match it.
+       */
+      if (dbvalue->domain.general_info.type == DB_TYPE_NUMERIC && value->last_attrepr->is_autoincrement
+	  && value->last_attrepr->domain->precision != DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  dbvalue->domain.numeric_info.precision = value->last_attrepr->domain->precision;
 	}
 
       if (buf->ptr + pr_type->get_disk_size_of_value (dbvalue) > buf->endptr)
@@ -17282,212 +17250,60 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
   return id;
 }
 
-/*
- * heap_set_autoincrement_value () -
- *   return: NO_ERROR, or ER_code
- *   attr_info(in):
- *   scan_cache(in):
- *   is_set(out): 1 if at least one autoincrement value has been set
- */
-int
-heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
-			      int *is_set)
+static int
+build_auto_increment_serial_name (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
+				  OR_ATTRIBUTE * att, char *serial_name)
 {
-  int i, idx_in_cache;
-  char *classname = NULL;
-  char *attr_name = NULL;
-  RECDES recdes;		/* Used to obtain attribute name */
-  char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
-  HEAP_ATTRVALUE *value;
-  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
-  OR_ATTRIBUTE *att;
-  OID serial_class_oid;
-  LC_FIND_CLASSNAME status;
-  OR_CLASSREP *classrep;
-  BTID serial_btid;
-  DB_DATA_STATUS data_stat;
-  HEAP_SCANCACHE local_scan_cache;
-  bool use_local_scan_cache = false;
   int ret = NO_ERROR;
   int alloced_string = 0;
-  char *string = NULL;
-
-  if (!attr_info || !scan_cache)
-    {
-      return ER_FAILED;
-    }
-
-  *is_set = 0;
+  char *attr_name = NULL;
+  char *classname = NULL;	/* Used to obtain attribute name */
+  HEAP_SCANCACHE local_scan_cache;
+  bool use_local_scan_cache = false;
+  RECDES recdes;
 
   recdes.data = NULL;
   recdes.area_size = 0;
 
-  for (i = 0; i < attr_info->num_values; i++)
+  if (scan_cache->cache_last_fix_page == false)
     {
-      value = &attr_info->values[i];
-      dbvalue = &value->dbvalue;
-      att = &attr_info->last_classrepr->attributes[i];
+      scan_cache = &local_scan_cache;
+      (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
+      use_local_scan_cache = true;
+    }
 
-      if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
-	{
-	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-	    {
-	      memset (serial_name, '\0', sizeof (serial_name));
-	      recdes.data = NULL;
-	      recdes.area_size = 0;
+  if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
 
-	      if (scan_cache->cache_last_fix_page == false)
-		{
-		  scan_cache = &local_scan_cache;
-		  (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
-		  use_local_scan_cache = true;
-		}
+  if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto error_serial_name;
+    }
 
-	      if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
+  ret = or_get_attrname (&recdes, att->id, &attr_name, &alloced_string);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_serial_name;
+    }
 
-	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (ret);
-		  goto exit_on_error;
-		}
+  if (attr_name == NULL)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
 
-	      string = NULL;
-	      alloced_string = 0;
+  ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
 
-	      ret = or_get_attrname (&recdes, att->id, &string, &alloced_string);
-	      if (ret != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto exit_on_error;
-		}
-
-	      attr_name = string;
-	      if (attr_name == NULL)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname, attr_name);
-
-	      if (OID_ISNULL (&serial_obj_oid))
-		{
-		  if (string != NULL && alloced_string == 1)
-		    {
-		      db_private_free_and_init (thread_p, string);
-		    }
-
-		  free_and_init (classname);
-
-		  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
-				       LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
-		  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
-		  if (classrep == NULL)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  if (classrep->indexes)
-		    {
-		      BTREE_SEARCH search_result;
-		      OID serial_oid;
-
-		      BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		      search_result =
-			xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
-					    &serial_oid, false);
-		      heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		      if (search_result != BTREE_KEY_FOUND)
-			{
-			  ret = ER_FAILED;
-			  goto exit_on_error;
-			}
-
-		      assert (!OID_ISNULL (&serial_oid));
-		      or_aligned_oid null_aligned_oid = { oid_Null_oid };
-		      or_aligned_oid serial_aligned_oid = { serial_oid };
-		      att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
-		    }
-		  else
-		    {
-		      heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-		}
-	    }
-
-	  thread_p->no_supplemental_log = true;
-
-	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
-					  1,	/* generate one value */
-					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      if (numeric_db_value_coerce_from_num (&dbvalue_numeric, dbvalue, &data_stat) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-	    }
-	  else if (att->type == DB_TYPE_NUMERIC)
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	      if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
-					  1,	/* generate one value */
-					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-	    }
-
-	  *is_set = 1;
-	  value->state = HEAP_READ_ATTRVALUE;
-
-	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-
-	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-	      assert (tdes != NULL);
-
-	      if (!tdes->has_supplemental_log)
-		{
-		  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
-						strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
-		  tdes->has_supplemental_log = true;
-		}
-
-	      log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
-	      thread_p->no_supplemental_log = false;
-	    }
-	}
+error_serial_name:
+  free_and_init (classname);
+  if (attr_name != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, attr_name);
     }
 
   if (use_local_scan_cache)
@@ -17496,17 +17312,168 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
     }
 
   return ret;
+}
+
+/*
+ * heap_set_autoincrement_value () -
+ *   return: NO_ERROR, or ER_code
+ *   attr_info(in):
+ *   scan_cache(in):
+ *   is_set(out): 1 if at least one autoincrement value has been set
+ *   auto_incr_pos(in): Position of autoincrement attribute in cache
+ *   serial_name(in/out): Buffer to store the generated serial name if needed
+ */
+int
+heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
+			      int *is_set, int auto_incr_pos, char *serial_name)
+{
+  int idx_in_cache;
+  HEAP_ATTRVALUE *value;
+  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
+  OR_ATTRIBUTE *att;
+  OID serial_class_oid;
+  LC_FIND_CLASSNAME status;
+  OR_CLASSREP *classrep;
+  BTID serial_btid;
+  DB_DATA_STATUS data_stat;
+  int ret = NO_ERROR;
+
+  if (!attr_info || !scan_cache)
+    {
+      return ER_FAILED;
+    }
+
+  *is_set = 0;
+
+  att = &attr_info->last_classrepr->attributes[auto_incr_pos];
+  assert (att->is_autoincrement == true);
+
+  value = &attr_info->values[auto_incr_pos];
+  dbvalue = &value->dbvalue;
+
+  if (value->state == HEAP_UNINIT_ATTRVALUE)
+    {
+      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+      if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  if (serial_name[0] == '\0')
+	    {
+	      ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+
+	  if (OID_ISNULL (&serial_obj_oid))
+	    {
+	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
+				   LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
+	      if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
+	      if (classrep == NULL)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      if (classrep->indexes)
+		{
+		  BTREE_SEARCH search_result;
+		  OID serial_oid;
+
+		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
+		  search_result =
+		    xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
+					&serial_oid, false);
+		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  if (search_result != BTREE_KEY_FOUND)
+		    {
+		      ret = ER_FAILED;
+		      goto exit_on_error;
+		    }
+
+		  assert (!OID_ISNULL (&serial_oid));
+		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		  or_aligned_oid serial_aligned_oid = { serial_oid };
+		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+		}
+	      else
+		{
+		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+	    }
+	}
+
+      thread_p->no_supplemental_log = true;
+
+      if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
+				      1,	/* generate one value */
+				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (numeric_db_value_coerce_from_num (&dbvalue_numeric, dbvalue, &data_stat) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	}
+      else if (att->type == DB_TYPE_NUMERIC)
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
+				      1,	/* generate one value */
+				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	}
+
+      *is_set = 1;
+      value->state = HEAP_READ_ATTRVALUE;
+
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+
+	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+	  assert (tdes != NULL);
+
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+					    strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+	      tdes->has_supplemental_log = true;
+	    }
+
+	  log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
+	  thread_p->no_supplemental_log = false;
+	}
+    }
 
 exit_on_error:
-  if (classname != NULL)
-    {
-      free_and_init (classname);
-    }
 
-  if (use_local_scan_cache)
-    {
-      heap_scancache_end (thread_p, scan_cache);
-    }
   return ret;
 }
 
@@ -17928,6 +17895,45 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
 
       if (error == NO_ERROR)
 	{
+	  if (src_type == DB_TYPE_NUMERIC && dest_type == DB_TYPE_NUMERIC)
+	    {
+	      int src_prec = value->dbvalue.domain.numeric_info.precision;
+	      int src_scale = value->dbvalue.domain.numeric_info.scale;
+	      int dest_scale = dest_dom->scale;
+
+	      bool can_skip_cast = false;
+
+	      if (dest_prec == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* this handles both ATT_CHG_TYPE_NUMERIC_PREC_INCR and SM_ATTR_CHG_WITH_ROW_UPDATE cases.
+		   * For float numeric, precision must be calculated accurately from the actual value.
+		   */
+		  value->dbvalue.data.num.header.precision =
+		    numeric_get_precision_digits (value->dbvalue.data.num.d.buf);
+		  value->dbvalue.data.num.header.scale = src_scale;
+		  can_skip_cast = true;
+		}
+	      else if (src_scale == dest_scale && src_prec < dest_prec)
+		{
+		  /* optimize ATT_CHG_TYPE_NUMERIC_PREC_INCR case: when numeric precision increases
+		   * with same scale, only update domain metadata (no value cast needed).
+		   */
+		  can_skip_cast = true;
+		}
+
+	      if (can_skip_cast)
+		{
+		  value->dbvalue.domain.numeric_info.precision = dest_prec;
+		  value->dbvalue.domain.numeric_info.scale = dest_scale;
+		  value->state = HEAP_WRITTEN_ATTRVALUE;
+		  atts_id[updated_n_attrs_id] = value->attrid;
+		  updated_n_attrs_id++;
+
+		  /* Skip tp_value_cast - just update domain metadata */
+		  continue;
+		}
+	    }
+
 	  if ((status = tp_value_cast (&(value->dbvalue), &(value->dbvalue), dest_dom, false)) != DOMAIN_COMPATIBLE)
 	    {
 	      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &(value->dbvalue), dest_dom);
@@ -23661,6 +23667,8 @@ error:
 #endif /* ENABLE_SYSTEMTAP */
 
   /* all ok */
+  heap_unfix_watchers (thread_p, context);
+
   return rc;
 }
 
@@ -26737,3 +26745,22 @@ heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid,
 }
 
 // *INDENT-ON*
+
+/*
+ * heap_rv_lob_remove_dir () - Recovery function for LOB directories.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * rcv (in)	 : Recovery data.
+ *
+ * NOTE: This function is called when creating or deleting a LOB directory.
+ *       If a LOB directory is created and the transaction is rolled back, this
+ *       function will be called to remove the created directory.
+ *       If a LOB directory deletion command is issued and the transaction is
+ *       committed, this function will be called to actually remove the directory.
+ */
+int
+heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  return fileio_lob_remove_matching_dir (rcv->data);
+}

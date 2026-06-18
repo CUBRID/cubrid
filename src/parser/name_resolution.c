@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "object_print.h"
@@ -131,7 +132,7 @@ static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_N
 						   int *continue_walk);
 static PT_NODE *pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_value_to_hostvar_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr);
+static int pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr, bool is_spec_dummy);
 static int pt_find_class_attribute (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE * attr);
 static int pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name);
 static int pt_check_unique_exposed (PARSER_CONTEXT * parser, const PT_NODE * p);
@@ -2043,11 +2044,11 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
        * obtaining record information or page header information and so on. In these cases, names will be resolved to a
        * set of reserved names for each type of results. The query spec must be marked accordingly. NOTE: These hints
        * can be applied on single-spec queries. If this is a joined-spec query, just ignore the hints. */
-      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+      if (node->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SCAN)
 	{
 	  for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
 	    {
-	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_HEAP_SCAN);
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
 	    }
 	}
 
@@ -3294,6 +3295,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
+    case PT_SHOW_HISTOGRAM:
+      scopestack.specs = node->info.histogram.target_table_spec;
+      bind_arg->scopes = &scopestack;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+      bind_arg->spec_frames = &spec_frame;
+      pt_bind_scope (parser, bind_arg);
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+      bind_arg->spec_frames = bind_arg->spec_frames->next;
+      bind_arg->scopes = bind_arg->scopes->next;
+
+      *continue_walk = PT_LIST_WALK;
+      break;
     case PT_METHOD_CALL:
       /*
        * We accept two different method call syntax:
@@ -3928,13 +3946,14 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 
 /*
  * pt_find_attr_in_class_list () - trying to resolve X.attr
- *   return: returns a PT_NAME list or NULL
- *   parser(in):
+ *   return: 1 on success, 0 on failure
+ *   parser(in): parser context
  *   flat(in): list of PT_NAME nodes (class names)
  *   attr(in): a PT_NAME (an attribute name)
+ *   is_spec_dummy(in): is PT_SPEC has flag PT_SPEC_FLAG_DUMMY_REMOVED?
  */
 static int
-pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr)
+pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * attr, bool is_spec_dummy)
 {
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
@@ -3982,6 +4001,12 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	    {
 	      PT_ERRORc (parser, attr, er_msg ());
 	    }
+	  return 0;
+	}
+
+      if (is_spec_dummy && db_attribute_is_invisible_column (att))
+	{
+	  /* dummy spec from subquery cannot see invisible columns */
 	  return 0;
 	}
 
@@ -4065,7 +4090,6 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
       cname = cname->next;
     }
   attr->info.name.spec_id = flat->info.name.spec_id;
-
   return 1;
 }
 
@@ -4167,7 +4191,9 @@ pt_find_name_in_spec (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * name)
 	    {
 	      return 1;
 	    }
-	  ok = pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name);
+	  ok =
+	    pt_find_attr_in_class_list (parser, spec->info.spec.flat_entity_list, name,
+					spec->info.spec.flag & PT_SPEC_FLAG_DUMMY_REMOVED);
 	}
     }
   else
@@ -4874,6 +4900,12 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       att = (DB_ATTRIBUTE *) db_get_attributes_force (object);
     }
 
+  /* invisible columns will not be shown */
+  while (att != NULL && db_attribute_is_invisible_column (att))
+    {
+      att = db_attribute_next (att);
+    }
+
   if (att != NULL)
     {
       /* make result anchor the list */
@@ -4905,6 +4937,13 @@ pt_get_all_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * cls, PT_NODE
       /* for the rest of the attributes do */
       while (att != NULL)
 	{
+	  /* column is invisible. skip it */
+	  if (db_attribute_is_invisible_column (att))
+	    {
+	      att = db_attribute_next (att);
+	      continue;
+	    }
+
 	  /* make new node & copy attribute name into it */
 	  node = pt_name (parser, db_attribute_name (att));
 	  if (node == NULL)
@@ -5149,6 +5188,11 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
       dt->info.data_type.units = attr->charset;
+      /* CCI remote-column metadata carries a codeset (units) but no collation;
+       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
+       * pt_check_expr_collation invariant that equal collation_id implies equal
+       * codeset. Assign the codeset's binary collation to keep them consistent. */
+      dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
     }
 
   attr_def_node->data_type = dt;
@@ -6399,7 +6443,7 @@ pt_get_resolution (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg, PT_NOD
 	    {
 	      exposed_spec = NULL;
 	    }
-	  if (!pt_find_attr_in_class_list (parser, arg1->data_type->info.data_type.entity, arg2))
+	  if (!pt_find_attr_in_class_list (parser, arg1->data_type->info.data_type.entity, arg2, false))
 	    {
 	      temp = arg1->data_type;
 	      if (temp)
@@ -6903,7 +6947,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       result->info.name.spec_id = id;
       result->info.name.meta_class = meta_class;
       result->info.name.partition = NULL;
-
+      result->info.name.histogram = NULL;
       if ((au_fetch_class_force (db, &smclass, AU_FETCH_READ) == NO_ERROR))
 	{
 	  if (smclass->partition != NULL && smclass->partition->pname == NULL)
@@ -8674,6 +8718,10 @@ generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN
 
   for (db_attr_cur = db_attrs; db_attr_cur != NULL; db_attr_cur = db_attribute_next (db_attr_cur))
     {
+      if (db_attribute_is_invisible_column (db_attr_cur))
+	{
+	  continue;
+	}
       attr_cur = (NATURAL_JOIN_ATTR_INFO *) malloc (sizeof (NATURAL_JOIN_ATTR_INFO));
       if (attr_cur == NULL)
 	{

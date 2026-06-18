@@ -129,6 +129,10 @@ set(BASE_SOURCES
   ${BASE_DIR}/tz_compile.c
   ${BASE_DIR}/tz_support.c
   ${BASE_DIR}/ddl_log.c
+  ${BASE_DIR}/ifsys.cpp
+  ${BASE_DIR}/filesys_parser.cpp
+  ${BASE_DIR}/cgroup.cpp
+  ${BASE_DIR}/resources.cpp
   )
 set(BASE_HEADERS
   ${BASE_DIR}/compressor.hpp
@@ -165,7 +169,11 @@ set(BASE_HEADERS
   ${BASE_DIR}/resource_tracker.hpp
   ${BASE_DIR}/scope_exit.hpp
   ${BASE_DIR}/fixed_size_allocator.hpp
-)
+  ${BASE_DIR}/ifsys.hpp
+  ${BASE_DIR}/filesys_parser.hpp
+  ${BASE_DIR}/cgroup.hpp
+  ${BASE_DIR}/resources.hpp
+  )
 
 set(HEAPLAYER_SOURCES
   ${HEAPLAYERS_DIR}/customheaps.cpp
@@ -173,13 +181,17 @@ set(HEAPLAYER_SOURCES
   )
 
 set(CONNECTION_SOURCES
-  ${CONNECTION_DIR}/connection_less.c
-  ${CONNECTION_DIR}/connection_cl.c
+  ${CONNECTION_DIR}/connection_less.cpp
+  ${CONNECTION_DIR}/connection_cl.cpp
   ${CONNECTION_DIR}/connection_globals.c
-  ${CONNECTION_DIR}/connection_list_cl.c
-  ${CONNECTION_DIR}/client_support.c
-  ${CONNECTION_DIR}/connection_support.c
+  ${CONNECTION_DIR}/connection_list_cl.cpp
+  ${CONNECTION_DIR}/client_support.cpp
+  ${CONNECTION_DIR}/connection_support.cpp
   ${CONNECTION_DIR}/host_lookup.c
+  )
+
+set(CONNECTION_HEADERS
+  ${CONNECTION_DIR}/connection_support.hpp
   )
 
 set(COMMUNICATION_SOURCES
@@ -268,6 +280,8 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
+  ${QUERY_DIR}/dblink_2pc_daemon.c
+  ${QUERY_DIR}/dblink_global_tran_catalog.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/partition.c
   ${QUERY_DIR}/query_aggregate.cpp
@@ -351,6 +365,11 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/trigger_manager.c
   ${OBJECT_DIR}/virtual_object.c
   ${OBJECT_DIR}/work_space.c
+  ${OBJECT_DIR}/schema_information_schema.cpp
+  ${OBJECT_DIR}/schema_information_schema_builder.cpp
+  ${OBJECT_DIR}/schema_information_schema_definition.cpp
+  ${OBJECT_DIR}/schema_information_schema_install.cpp
+  ${OBJECT_DIR}/schema_information_schema_install_query_spec.cpp
   )
 set(OBJECT_HEADERS
   ${OBJECT_DIR}/lob_locator.hpp
@@ -380,12 +399,12 @@ set(SP_HEADERS
   ${SP_DIR}/pl_struct_compile.cpp
 )
 
-set(PARALLEL_HEAP_SCAN_SOURCES
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.cpp
+set(PARALLEL_SCAN_SOURCES
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.cpp
   )
 
-set(PARALLEL_HEAP_SCAN_HEADERS
-  ${PARALLEL_HEAP_SCAN_DIR}/px_heap_scan_checker.hpp
+set(PARALLEL_SCAN_HEADERS
+  ${PARALLEL_SCAN_DIR}/px_scan_checker.hpp
   )
 
 set(PARALLEL_QUERY_EXECUTE_SOURCES
@@ -502,6 +521,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/external_sort.c
   ${STORAGE_DIR}/file_io.c
   ${STORAGE_DIR}/file_manager.c
+  ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/overflow_file.c
@@ -516,6 +536,7 @@ set(STORAGE_SOURCES
   )
 set(STORAGE_HEADERS
   ${STORAGE_DIR}/btree_unique.hpp
+  ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
 )
 
@@ -543,6 +564,17 @@ set(XASL_HEADERS
   ${XASL_DIR}/xasl_stream.hpp
   ${XASL_DIR}/xasl_iteration.hpp
   )
+
+set(HISTOGRAM_SOURCES
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
+)
+set(HISTOGRAM_HEADERS
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
+)
 
 set(LOADDB_SOURCES
   ${BISON_loader_grammar_OUTPUT_SOURCE}
@@ -635,7 +667,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${QUERY_SOURCES}
   ${OBJECT_SOURCES}
   ${SP_SOURCES}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
+  ${PARALLEL_SCAN_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${METHOD_SOURCES}
   ${THREAD_SOURCES}
@@ -646,6 +678,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${PROBES_OBJECT}
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
+  ${HISTOGRAM_SOURCES}
   PROPERTIES LANGUAGE CXX
   )
 
@@ -666,6 +699,7 @@ add_library(cubridsa SHARED
   ${COMPAT_SOURCES}
   ${COMPAT_SOURCES_C}
   ${CONNECTION_SOURCES}
+  ${CONNECTION_HEADERS}
   ${CONNECTION_TCP_SOURCE}
   ${DEBUGGING_HEADERS}
   ${ES_SOURCES}
@@ -673,8 +707,8 @@ add_library(cubridsa SHARED
   ${HEAPLAYER_SOURCES}
   ${SP_SOURCES}
   ${SP_HEADERS}
-  ${PARALLEL_HEAP_SCAN_SOURCES}
-  ${PARALLEL_HEAP_SCAN_HEADERS}
+  ${PARALLEL_SCAN_SOURCES}
+  ${PARALLEL_SCAN_HEADERS}
   ${PARALLEL_QUERY_EXECUTE_SOURCES}
   ${PARALLEL_QUERY_EXECUTE_HEADERS}
   ${METHOD_SOURCES}
@@ -699,6 +733,8 @@ add_library(cubridsa SHARED
   ${XASL_SOURCES}
   ${LOADDB_SOURCES}
   ${LOADDB_HEADERS}
+  ${HISTOGRAM_SOURCES}
+  ${HISTOGRAM_HEADERS}
   )
 set_target_properties(cubridsa PROPERTIES SOVERSION "${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}")
 

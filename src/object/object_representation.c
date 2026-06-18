@@ -83,7 +83,7 @@ static TP_DOMAIN *unpack_domain (OR_BUF * buf, int *is_null);
 static char *unpack_str_array (char *buffer, char ***string_array, int count);
 #endif
 static int or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align);
-static int or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align);
+static int or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int align);
 static int or_packed_json_schema_length (const char *json_schema);
 static int or_packed_json_validator_length (JSON_VALIDATOR * json_validator);
 static char *or_unpack_var_table_internal (char *ptr, int nvars, OR_VARINFO * vars, int offset_size);
@@ -236,8 +236,8 @@ classobj_decompose_property_oid (const char *buffer, int *volid, int *fileid, in
 char *
 or_class_name (RECDES * record)
 {
-  char *start, *name;
-  int offset, len;
+  OR_BUF buffer;
+  int offset, rc = NO_ERROR;
 
   /*
    * the first variable attribute for both classes and the rootclass
@@ -247,28 +247,15 @@ or_class_name (RECDES * record)
    */
 
   offset = OR_VAR_OFFSET (record->data, 0);
-  start = &record->data[offset];
 
-  /*
-   * kludge kludge kludge
-   * This is now an encoded "varchar" string, we need to skip over the length
-   * before returning it.  Note that this also depends on the stored string
-   * being NULL terminated.  This interface should be returning either a copy
-   * or performing an extraction into a user supplied buffer !
-   * Knowledge of the format of packed varchars should be in a different
-   * or_ function.
-   */
-  len = (int) *((unsigned char *) start);
-  if (len != 0xFF)
+  or_init (&buffer, &record->data[offset], -1);
+  rc = or_get_string_header (&buffer, NULL, NULL, NULL);
+  if (rc != NO_ERROR)
     {
-      name = start + 1;
+      assert (false);
+      return NULL;
     }
-  else
-    {
-      name = start + 1 + OR_INT_SIZE;
-    }
-
-  return name;
+  return buffer.ptr;
 }
 
 /*
@@ -628,127 +615,19 @@ or_put_varbit (OR_BUF * buf, const char *string, int bitlen)
   return or_put_varbit_internal (buf, string, bitlen, CHAR_ALIGNMENT);
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varbit - get varbit from or buffer
- *    return: NO_ERROR or error code
- *    buf(in/out): or buffer
- *    length_ptr(out): length of varbit read
- */
-char *
-or_get_varbit (OR_BUF * buf, int *length_ptr)
-{
-  int bitlen, charlen;
-  char *new_ = NULL;
-  int rc = NO_ERROR;
-
-  bitlen = or_get_varbit_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  charlen = BITS_TO_BYTES (bitlen);
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen);
-
-  if (rc == NO_ERROR)
-    {
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = bitlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      if (new_)
-	{
-	  db_private_free_and_init (NULL, new_);
-	}
-      return NULL;
-    }
-
-  return new_;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-
 /*
  * or_put_varchar - put varchar to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    string(in): string to put into the or buffer
- *    charlen(in): string length
+ *    string(in) : string bytes to put into the or buffer (uncompressed)
+ *    size(in)   : byte count of string
+ *    length(in) : character count (logical length)
  */
 int
-or_put_varchar (OR_BUF * buf, char *string, int charlen)
+or_put_varchar (OR_BUF * buf, char *string, int size, int length)
 {
-  return or_put_varchar_internal (buf, string, charlen, CHAR_ALIGNMENT);
+  return or_put_varchar_internal (buf, string, size, length, CHAR_ALIGNMENT);
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * or_get_varchar - get varchar from or buffer
- *    return: varchar pointer read from the or buffer. or NULL for error
- *    buf(in/out): or buffer
- *    length_ptr(out): length of returned string
- */
-char *
-or_get_varchar (OR_BUF * buf, int *length_ptr)
-{
-  int rc = NO_ERROR;
-  int charlen;
-  char *new_;
-
-  charlen = or_get_varchar_length (buf, &rc);
-
-  if (rc != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* Allocate storage for the string including the kludge NULL terminator */
-  new_ = db_private_alloc (NULL, charlen + 1);
-
-  if (new_ == NULL)
-    {
-      return NULL;
-    }
-  rc = or_get_data (buf, new_, charlen + 1);
-
-  if (rc == NO_ERROR)
-    {
-
-      /* return the length */
-      if (length_ptr != NULL)
-	{
-	  *length_ptr = charlen;
-	}
-
-      /* round up to a word boundary */
-      rc = or_get_align32 (buf);
-    }
-  if (rc != NO_ERROR)
-    {
-      db_private_free_and_init (NULL, new_);
-      return NULL;
-    }
-  else
-    {
-      return new_;
-    }
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 static int
 or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
@@ -785,44 +664,21 @@ or_put_varbit_internal (OR_BUF * buf, const char *string, int bitlen, int align)
 }
 
 static int
-or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
+or_put_varchar_internal (OR_BUF * buf, char *string, int size, int length, int align)
 {
-  int net_charlen = 0, compress_buffer_size;
+  int compress_buffer_size;
   char *compressed_string = NULL;
   int rc = NO_ERROR;
-  bool compressable = false;
   int compressed_length = 0;
 
-  /* store the size prefix */
-  if (charlen < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  /* Attempt LZ4 compression for sufficiently long inputs (mirrors as-is: short
+   * strings skip compression, long strings try and fall back to raw on failure). */
+  if (OR_IS_STRING_LENGTH_COMPRESSABLE (size) && pr_Enable_string_compression)
     {
-      rc = or_put_byte (buf, charlen);
-    }
-  else
-    {
-      rc = or_put_byte (buf, OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
-      compressable = true;
-    }
-
-  if (rc != NO_ERROR)
-    {
-      goto cleanup;
-    }
-
-  if (compressable == true)
-    {
-      if (!pr_Enable_string_compression || charlen > LZ4_MAX_INPUT_SIZE)	/* compression is not set */
-	{
-	  compressed_length = 0;
-	  goto after_compression;
-	}
-
-      assert (OR_IS_STRING_LENGTH_COMPRESSABLE (charlen));
-
       /* Alloc memory for the compressed string */
 
       // *INDENT-OFF*
-      compress_buffer_size = cubcompress::bound<cubcompress::LZ4> (charlen);
+      compress_buffer_size = cubcompress::bound<cubcompress::LZ4> (size);
       // *INDENT-ON*
       compressed_string = (char *) malloc (compress_buffer_size);
       if (compressed_string == NULL)
@@ -835,7 +691,7 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
       /* Compress the string */
       // *INDENT-OFF*
       compressed_length =
-	cubcompress::compress<cubcompress::LZ4> (string, charlen, compressed_string, compress_buffer_size);
+	cubcompress::compress<cubcompress::LZ4> (string, size, compressed_string, compress_buffer_size);
       // *INDENT-ON*
       if (compressed_length <= 0)
 	{
@@ -847,60 +703,32 @@ or_put_varchar_internal (OR_BUF * buf, char *string, int charlen, int align)
 	}
       assert (compressed_length <= compress_buffer_size);
 
-      if (compressed_length >= charlen - 8)
+      if (compressed_length >= size - 8)
 	{
 	  /* Compression successful but its length exceeds the original length of the string. */
 	  compressed_length = 0;
 	}
+    }
 
-      /* Store the compression size */
-      assert (compressed_length < charlen - 8);
-    after_compression:
-      OR_PUT_INT (&net_charlen, compressed_length);
-      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
+  rc = or_put_string_header (buf, length, size, compressed_length);
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
+    }
 
-      net_charlen = 0;
-      /* Store the uncompressed data size */
-      OR_PUT_INT (&net_charlen, charlen);
-      rc = or_put_data (buf, (char *) &net_charlen, OR_INT_SIZE);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
-      if (compressed_length == 0)
-	{
-	  /* Compression failed. */
-	  /* Store the original string bytes */
-	  rc = or_put_data (buf, string, charlen);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
-      else
-	{
-	  /* Store the compressed string bytes */
-	  rc = or_put_data (buf, compressed_string, (int) compressed_length);
-	  if (rc != NO_ERROR)
-	    {
-	      goto cleanup;
-	    }
-	}
+  if (compressed_length > 0)
+    {
+      /* Store the compressed string bytes */
+      rc = or_put_data (buf, compressed_string, compressed_length);
     }
   else
     {
-      /* No compression needed */
       /* Store the string in its raw form */
-      rc = or_put_data (buf, string, charlen);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
+      rc = or_put_data (buf, string, size);
+    }
+  if (rc != NO_ERROR)
+    {
+      goto cleanup;
     }
 
   if (align == INT_ALIGNMENT)
@@ -1019,25 +847,28 @@ or_packed_varbit_length (int bitlen)
  * or_packed_put_varchar - put varchar to or buffer
  *    return: NO_ERROR or error code
  *    buf(in/out): or buffer
- *    string(in): string to put into the or buffer
- *    charlen(in): string length
+ *    string(in) : string bytes to put into the or buffer (uncompressed)
+ *    size(in)   : byte count of string
+ *    length(in) : character count (logical length)
  */
 int
-or_packed_put_varchar (OR_BUF * buf, char *string, int charlen)
+or_packed_put_varchar (OR_BUF * buf, char *string, int size, int length)
 {
-  return or_put_varchar_internal (buf, string, charlen, INT_ALIGNMENT);
+  return or_put_varchar_internal (buf, string, size, length, INT_ALIGNMENT);
 }
 
 /*
- * or_packed_varchar_length - returns length of place holder that can contain
- * package varchar length. Also ajust length up to 4 byte boundary.
- *    return: length of placeholder that can contain packed varchar length
- *    charlen(in): varchar length
+ * or_packed_varchar_length - byte count of a packed varchar (header + data + NUL + pad).
+ *
+ *   return              : header bytes + data bytes + trailing NUL + INT_ALIGNMENT pad
+ *   length(in)          : character count
+ *   size(in)            : decompressed byte count
+ *   compressed_size(in) : LZ4-compressed byte count; 0 when stored uncompressed
  */
 int
-or_packed_varchar_length (int charlen)
+or_packed_varchar_length (int length, int size, int compressed_size)
 {
-  return or_varchar_length_internal (charlen, INT_ALIGNMENT);
+  return or_varchar_length_internal (length, size, compressed_size, INT_ALIGNMENT);
 }
 
 int
@@ -1544,13 +1375,21 @@ or_unpack_int_array (char *ptr, int n, int **number_array)
 {
   int i;
 
-  *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
-  if (*number_array)
+  ASSERT_ALIGN (ptr, INT_ALIGNMENT);
+
+  if (n > 0)
     {
-      ASSERT_ALIGN (ptr, INT_ALIGNMENT);
-      for (i = 0; i < n; i++)
+      *number_array = (int *) db_private_alloc (NULL, (n * sizeof (int)));
+      if (*number_array)
 	{
-	  ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	  for (i = 0; i < n; i++)
+	    {
+	      ptr = or_unpack_int (ptr, &(*number_array)[i]);
+	    }
+	}
+      else
+	{
+	  ptr = NULL;
 	}
     }
   else
@@ -2519,7 +2358,17 @@ or_decode (const char *buffer, char *dest, int size)
 
 #define OR_DOMAIN_SCALE_MASK		(0xFF00)
 #define OR_DOMAIN_SCALE_SHIFT		(8)
-#define OR_DOMAIN_SCALE_MAX		(0xFF)
+
+/* Scale encoding (1 byte):
+ *   0 ~ 127      : direct scale
+ *   otherwise    : extended scale follows
+ *              - for scale >= 128
+ *              - for scale in range -211 .. -1
+ *
+ * Note: 0xFF acts as a flag indicating "read actual scale from extra bytes".
+ */
+#define OR_DOMAIN_SCALE_EXT_FLAG       (128)	/* MSB set => extended encoding */
+#define OR_DOMAIN_SCALE_MAX            (0xFF)	/* extended scale follows in extra bytes */
 
 #define OR_DOMAIN_CODSET_MASK		(0xFF00)
 #define OR_DOMAIN_CODSET_SHIFT		(8)
@@ -2645,7 +2494,7 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 	  size += OR_INT_SIZE;
 	}
 
-      if (scale >= OR_DOMAIN_SCALE_MAX)
+      if (scale >= OR_DOMAIN_SCALE_EXT_FLAG || scale < 0)
 	{
 	  size += OR_INT_SIZE;
 	}
@@ -2676,7 +2525,8 @@ or_packed_domain_size (TP_DOMAIN * domain, int include_classoids)
 int
 or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_null)
 {
-  unsigned int carrier, extended_precision, extended_scale;
+  unsigned int carrier, extended_precision;
+  int extended_scale;
   int precision, scale;
   int has_oid, has_subdomain, has_enum;
   bool has_schema;
@@ -2754,14 +2604,14 @@ or_put_domain (OR_BUF * buf, TP_DOMAIN * domain, int include_classoids, int is_n
 	      scale = 0;
 	    }
 
-	  if (scale < OR_DOMAIN_SCALE_MAX)
-	    {
-	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
-	    }
-	  else
+	  if (scale >= OR_DOMAIN_SCALE_EXT_FLAG || scale < 0)
 	    {
 	      carrier |= OR_DOMAIN_SCALE_MAX << OR_DOMAIN_SCALE_SHIFT;
 	      extended_scale = d->scale;
+	    }
+	  else
+	    {
+	      carrier |= scale << OR_DOMAIN_SCALE_SHIFT;
 	    }
 	  /* handle all precisions the same way at the end */
 	  precision = d->precision;
@@ -2986,8 +2836,8 @@ static TP_DOMAIN *
 unpack_domain_2 (OR_BUF * buf, int *is_null)
 {
   TP_DOMAIN *domain, *last, *d;
-  unsigned int carrier, precision, scale, codeset, has_classoid, has_setdomain, has_enum, collation_id,
-    collation_storage;
+  unsigned int carrier, precision, codeset, has_classoid, has_setdomain, has_enum, collation_id, collation_storage;
+  int scale;
   bool has_schema;
   bool more, auto_precision, is_desc, has_collation;
   DB_TYPE type;
@@ -3172,7 +3022,7 @@ unpack_domain_2 (OR_BUF * buf, int *is_null)
 	      goto error;
 	    }
 
-	  /* do we have an extra scale word ? */
+	  /* extra scale now follows new rules (see OR_DOMAIN_SCALE_* defines) */
 	  if (scale == OR_DOMAIN_SCALE_MAX)
 	    {
 	      scale = or_get_int (buf, &rc);
@@ -3326,7 +3176,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   DB_TYPE type;
   bool more, is_desc;
   unsigned int carrier, index;
-  unsigned int precision, scale, codeset = 0, collation_id;
+  unsigned int precision, codeset = 0, collation_id;
+  int scale;
   OID class_oid;
   struct db_object *class_mop = NULL;
   int rc = NO_ERROR;
@@ -3335,7 +3186,8 @@ unpack_domain (OR_BUF * buf, int *is_null)
   unsigned char collation_flag;
 
   domain = last = dom = setdomain = NULL;
-  precision = scale = 0;
+  precision = 0;
+  scale = 0;
 
   char *schema_raw = NULL;
 
@@ -3418,7 +3270,7 @@ unpack_domain (OR_BUF * buf, int *is_null)
 		      goto error;
 		    }
 		}
-	      /* do we have an extra scale word ? */
+	      /* extra scale now follows new rules (see OR_DOMAIN_SCALE_* defines) */
 	      if (scale == OR_DOMAIN_SCALE_MAX)
 		{
 		  scale = or_get_int (buf, &rc);
@@ -5752,6 +5604,37 @@ or_header_size (char *ptr)
   return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
 }
 
+/*
+ * or_pack_int_array - write a int array
+ *    return: advanced buffer pointer
+ *    buffer(out): output buffer
+ *    count(in): array length
+ *    int_array(in): int array
+ */
+char *
+or_pack_int_array (char *buffer, int count, const int *int_array)
+{
+  int i;
+  char *ptr;
+
+  assert (buffer != NULL && int_array != NULL && count >= 0);
+
+  if (count < 0 || int_array == NULL)
+    {
+      count = 0;
+    }
+
+  /* pack count + that many integers */
+  ptr = or_pack_int (buffer, count);
+
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_pack_int (ptr, int_array[i]);
+    }
+
+  return ptr;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * or_packed_string_array_length - get the amount of space needed to pack an
@@ -5793,36 +5676,6 @@ or_packed_db_value_array_length (int count, DB_VALUE * val)
       size += or_db_value_size (val++);
     }
   return size;
-}
-
-/*
- * or_pack_int_array - write a int array
- *    return: advanced buffer pointer
- *    buffer(out): output buffer
- *    count(in): array length
- *    int_array(in): int array
- */
-char *
-or_pack_int_array (char *buffer, int count, int *int_array)
-{
-  int i;
-  char *ptr;
-
-  if (!int_array)
-    {
-      /* there are no values to pack, so pack a count of 0 */
-      ptr = or_pack_int (buffer, 0);
-    }
-  else
-    {
-      /* pack count + that many integers */
-      ptr = or_pack_int (buffer, count);
-      for (i = 0; i < count; i++)
-	{
-	  ptr = or_pack_int (ptr, int_array[i]);
-	}
-    }
-  return ptr;
 }
 
 /*

@@ -69,7 +69,10 @@ namespace cubthread
   const char *PGBUF_TRACK_NAME = "Page Buffer";
   const char *PGBUF_TRACK_RES_NAME = "pgptr";
   const std::size_t PGBUF_TRACK_MAX_ITEMS = 1024;
-  const unsigned PGBUF_TRACK_MAX_AMOUNT = 16;       // re-fix is possible... how many to accept is debatable
+  // this is only a debug check to find page fix leaks.
+  // one query can fix the same page many times. for example, nested subqueries with fixed scan fix the same page
+  // one time for each level. SQL nesting can go up to max_recursion_sql_depth (default 400), so we allow 400.
+  const unsigned PGBUF_TRACK_MAX_AMOUNT = 400;
 
   //////////////////////////////////////////////////////////////////////////
   // entry implementation
@@ -139,7 +142,6 @@ namespace cubthread
     , m_px_stats (NULL)
     , m_px_orig_thread_entry (NULL)
     , m_uses_px_stats (false)
-    , m_skip_end_resource_tracks_in_recycle (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
       // private:
@@ -362,6 +364,12 @@ namespace cubthread
 	    tran_entries[i] = NULL;
 	  }
       }
+  }
+
+  void
+  entry::release_packet (void *buffer)
+  {
+    conn_entry->release_packet (buffer);
   }
 
   void

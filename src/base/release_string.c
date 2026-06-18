@@ -94,10 +94,10 @@ static const char *build_type = makestring (BUILD_TYPE);
 #if defined (VERSION_STRING)
 static const char *version_string = VERSION_STRING;
 #endif /* VERSION_STRING */
-static int bit_platform = __WORDSIZE;
+static const int bit_platform = __WORDSIZE;
 
 static REL_COMPATIBILITY rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str,
-						      COMPATIBILITY_CHECK_MODE check, REL_VERSION rules[]);
+						      COMPATIBILITY_CHECK_MODE check, const REL_VERSION rules[]);
 
 /*
  * Disk (database image) Version Compatibility
@@ -269,7 +269,7 @@ rel_bit_platform (void)
  *         to be incompatible.
  * {base_level (of database), apply_level (of system), compatibility, fix_func}
  */
-static COMPATIBILITY_RULE disk_compatibility_rules[] = {
+static const COMPATIBILITY_RULE disk_compatibility_rules[] = {
   /* a zero indicates the end of the table */
   {{0, 0, 0}, {0, 0, 0}, REL_NOT_COMPATIBLE, NULL}
 };
@@ -292,7 +292,7 @@ static COMPATIBILITY_RULE disk_compatibility_rules[] = {
 REL_COMPATIBILITY
 rel_get_disk_compatible (float db_level, REL_FIXUP_FUNCTION ** fixups)
 {
-  COMPATIBILITY_RULE *rule;
+  const COMPATIBILITY_RULE *rule;
   REL_COMPATIBILITY compat;
   REL_FIXUP_FUNCTION *func;
 
@@ -438,7 +438,7 @@ rel_compare (const char *rel_a, const char *rel_b)
 /*
  * log compatibility matrix
  */
-static REL_VERSION log_incompatible_versions[] = {
+static const REL_VERSION log_incompatible_versions[] = {
   {10, 0, 0},
 
   /* PLEASE APPEND HERE versions that are incompatible with existing ones. */
@@ -472,7 +472,7 @@ rel_is_log_compatible (const char *writer_rel_str, const char *reader_rel_str)
 /*
  * network compatibility matrix
  */
-static REL_VERSION net_incompatible_versions[] = {
+static const REL_VERSION net_incompatible_versions[] = {
   {10, 0, 0},
 
   /* PLEASE APPEND HERE versions that are incompatible with existing ones. */
@@ -515,9 +515,9 @@ rel_get_net_compatible (const char *client_rel_str, const char *server_rel_str)
  */
 static REL_COMPATIBILITY
 rel_get_compatible_internal (const char *base_rel_str, const char *apply_rel_str, COMPATIBILITY_CHECK_MODE check,
-			     REL_VERSION versions[])
+			     const REL_VERSION versions[])
 {
-  REL_VERSION *version, *base_version, *apply_version;
+  const REL_VERSION *version, *base_version, *apply_version;
   char *base, *apply, *str_a, *str_b;
   int val;
 

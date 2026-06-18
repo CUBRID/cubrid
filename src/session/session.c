@@ -48,7 +48,10 @@
 #include "object_primitive.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
@@ -232,10 +235,12 @@ static int session_state_verify_ref_count (THREAD_ENTRY * thread_p, SESSION_STAT
 #endif
 
 // *INDENT-OFF*
+#if defined (SERVER_MODE)
 static cubthread::daemon *session_Control_daemon = NULL;
 
 static void session_control_daemon_init ();
 static void session_control_daemon_destroy ();
+#endif
 
 session_state::session_state ()
 {
@@ -568,6 +573,8 @@ session_control_daemon_execute (cubthread::entry & thread_ref)
 /*
  * session_control_daemon_init () - initialize session control daemon
  */
+REGISTER_DAEMON (session_control);
+
 void
 session_control_daemon_init ()
 {
@@ -578,7 +585,7 @@ session_control_daemon_init ()
     new cubthread::entry_callable_task (std::bind (session_control_daemon_execute, std::placeholders::_1));
 
   // create session control daemon thread
-  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session_control");
+  session_Control_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "session-control");
 }
 
 /*
@@ -1469,7 +1476,8 @@ session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool
     {
       need_coercion = true;
     }
-  else if (DB_VALUE_PRECISION (value) != DB_MAX_NUMERIC_PRECISION || DB_VALUE_SCALE (value) != 0)
+  else if (DB_VALUE_PRECISION (value) != DB_DEFAULT_NUMERIC_PRECISION
+	   || DB_VALUE_SCALE (value) != DB_DEFAULT_NUMERIC_SCALE)
     {
       need_coercion = true;
     }
@@ -1498,8 +1506,8 @@ session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool
   else
     {
       TP_DOMAIN *num = tp_domain_resolve_default (DB_TYPE_NUMERIC);
-      num->precision = DB_MAX_NUMERIC_PRECISION;
-      num->scale = 0;
+      num->precision = DB_DEFAULT_NUMERIC_PRECISION;
+      num->scale = DB_DEFAULT_NUMERIC_SCALE;
       if (tp_value_cast (value, &state_p->cur_insert_id, num, false) != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&state_p->cur_insert_id);

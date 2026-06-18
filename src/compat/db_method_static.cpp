@@ -709,6 +709,7 @@ au_login_method (MOP class_mop, DB_VALUE *returnval, DB_VALUE *user, DB_VALUE *p
   if (error == NO_ERROR)
     {
       user_name = db_get_user_name ();
+      tm_Tran_invalidate_snapshot = 1;
       error = clogin_user (user_name);
 
       if (error == NO_ERROR)
@@ -1102,7 +1103,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *serial_v
   DB_IDENTIFIER serial_obj_id;
   MOP owner_mop = NULL;
   const char *serial_name = NULL;
-  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char user_specified_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   const char *owner_name = NULL;
   int error = NO_ERROR;
 
@@ -1129,7 +1130,7 @@ au_change_serial_owner_method (MOP obj, DB_VALUE *return_val, DB_VALUE *serial_v
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+  sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, sizeof (user_specified_serial_name));
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, user_specified_serial_name);
   if (serial_mop == NULL)
     {

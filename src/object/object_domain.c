@@ -152,6 +152,7 @@ static const DB_TYPE db_type_rank[] = { DB_TYPE_NULL,
   DB_TYPE_DB_VALUE,
   (DB_TYPE) (DB_TYPE_LAST + 1)
 };
+static int db_type_rank_order[DB_TYPE_LAST + 1] = { 0, };
 
 AREA *tp_Domain_area = NULL;
 static bool tp_Initialized = false;
@@ -555,6 +556,37 @@ TP_DOMAIN **tp_Domain_conversion_matrix[] = {
 /* lock for domain list cache */
 static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 #endif /* SERVER_MODE */
+
+
+#ifdef __cplusplus
+/* Notice)
+ * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
+ */
+class type_rank_order_initializer
+{
+public:
+  type_rank_order_initializer ()
+  {
+    memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
+    for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+      {
+	db_type_rank_order[db_type_rank[i]] = i;
+      }
+  }
+};
+static volatile class type_rank_order_initializer tro_instance;
+#else
+__attribute__ ((constructor))
+     static void tp_init_db_type_rank_order (void)
+{
+  memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
+  for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
+    {
+      db_type_rank_order[db_type_rank[i]] = i;
+    }
+}
+#endif
+
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);
 static void tp_value_slam_domain (DB_VALUE * value, const DB_DOMAIN * domain);
@@ -2379,7 +2411,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_NUMERIC:
       /*
        * The first domain is a default domain for numeric type,
-       * actually NUMERIC(15,0). We try to match it first.
+       * actually NUMERIC(43,0). We try to match it first.
        */
       if (transient->precision == domain->precision && transient->scale == domain->scale
 	  && transient->is_desc == domain->is_desc)
@@ -3300,12 +3332,12 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * the default "maximum" precision.
 	   * This may not be necessary any more.
 	   */
-	  if (domain->precision == -1)
+	  if (domain->precision == DB_DEFAULT_PRECISION)
 	    {
 	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
-	  if (domain->scale == -1)
+	  if (domain->scale == DB_DEFAULT_SCALE)
 	    {
 	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	    }
@@ -4539,8 +4571,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     {
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
@@ -5384,9 +5415,21 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		    db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_float);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII float string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -5441,9 +5484,21 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		    db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_double);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII double string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -10176,10 +10231,6 @@ oidcmp (OID * oid1, OID * oid2)
 int
 tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 {
-  static int rank[DB_TYPE_LAST + 1];
-  static int rank_init = 0;
-  int i;
-
   if (type1 == type2)
     {
       return 0;
@@ -10198,19 +10249,8 @@ tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 #endif /* CUBRID_DEBUG */
       return 0;
     }
-  if (!rank_init)
-    {
-      /* set up rank so we can do fast table lookup */
-      memset (rank, 0x00, sizeof (rank));
 
-      for (i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
-	{
-	  rank[db_type_rank[i]] = i;
-	}
-      rank_init = 1;
-    }
-
-  return rank[type1] - rank[type2];
+  return db_type_rank_order[type1] - db_type_rank_order[type2];
 }
 
 /*
@@ -11116,7 +11156,14 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	  if (d->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	    }
 	  break;
 
 	default:
@@ -11271,27 +11318,44 @@ TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+  static const INT64 max_value[DB_BIGINT_PRECISION] = {
+    1LL,
+    10LL,
+    100LL,
+    1000LL,
+    10000LL,
+    100000LL,
+    1000000LL,
+    10000000LL,
+    100000000LL,
+    1000000000LL,
+    10000000000LL,
+    100000000000LL,
+    1000000000000LL,
+    10000000000000LL,
+    100000000000000LL,
+    1000000000000000LL,
+    10000000000000000LL,
+    100000000000000000LL,
+    1000000000000000000LL
+  };				/* max precision of a big integer is 19 */
 
-  static INT64 max_value[19];	/* max precision of a big integer is 19 */
-  static bool init_bigint_value = false;
-
-  if (!init_bigint_value)
+#if defined(SA_MODE) && !defined(NDEBUG)
+  static int dbg_check_initialize = 0;
+  if (dbg_check_initialize == 0)
     {
-      int i;
-
-      max_value[0] = 1;
-      for (i = 1; i < 19; i++)
+      for (int i = 1; i < DB_BIGINT_PRECISION; i++)
 	{
-	  max_value[i] = max_value[i - 1] * 10;
+	  assert (max_value[i] == (max_value[i - 1] * 10));
 	}
-
-      init_bigint_value = true;
+      dbg_check_initialize = 1;
     }
+#endif
 
   if (TP_IS_DISCRETE_NUMBER_TYPE (src->domain.general_info.type))
     {
       /* if the numeric's precision is 19 or more, then it can get the bigint enough */
-      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < 19)
+      if (desired_domain->type->id == DB_TYPE_NUMERIC && desired_domain->precision < DB_BIGINT_PRECISION)
 	{
 	  INT64 bigint;
 
@@ -11490,13 +11554,8 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	}
       else if (common_type == DB_TYPE_NUMERIC)
 	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_scale;
-	  integral_digits2 = arg2_prec - arg2_scale;
-	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision = (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision = MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	  target_domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  target_domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
       else
 	{

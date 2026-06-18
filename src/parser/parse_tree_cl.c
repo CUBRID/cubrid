@@ -20,6 +20,7 @@
  * parse_tree_cl.c - Parser module for the client
  */
 
+
 #ident "$Id$"
 
 #include "config.h"
@@ -212,6 +213,7 @@ static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, void
 static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
+static PT_NODE *pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -340,6 +342,8 @@ static PARSER_VARCHAR *pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
+static PARSER_VARCHAR *pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -3075,6 +3079,12 @@ pt_show_node_type (PT_NODE * node)
       return "CREATE_ENTITY";
     case PT_CREATE_INDEX:
       return "CREATE_INDEX";
+    case PT_UPDATE_HISTOGRAM:
+      return "update_histogram";
+    case PT_SHOW_HISTOGRAM:
+      return "show histogram";
+    case PT_DROP_HISTOGRAM:
+      return "DROP_HISTOGRAM";
     case PT_CREATE_USER:
       return "CREATE_USER";
     case PT_CREATE_TRIGGER:
@@ -4042,6 +4052,14 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "typeof ";
     case PT_INDEX_CARDINALITY:
       return "index_cardinality ";
+    case PT_ESTIMATED_TABLE_ROWS:
+      return "estimated_table_rows";
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      return "estimated_avg_row_length";
+    case PT_ESTIMATED_DATA_LENGTH:
+      return "estimated_data_length";
+    case PT_ESTIMATED_DATA_FREE:
+      return "estimated_data_free";
     case PT_EVALUATE_VARIABLE:
       return "evaluate_variable";
     case PT_DEFINE_VARIABLE:
@@ -4090,6 +4108,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "schema_def";
     case PT_CONV_TZ:
       return "conv_tz";
+    case PT_COLLECTION_TO_STRING:
+      return "collection_to_string";
     default:
       assert (false);
       return "unknown opcode";
@@ -5028,6 +5048,9 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_COMMIT_WORK] = pt_apply_commit_work;
   pt_apply_func_array[PT_CREATE_ENTITY] = pt_apply_create_entity;
   pt_apply_func_array[PT_CREATE_INDEX] = pt_apply_create_index;
+  pt_apply_func_array[PT_UPDATE_HISTOGRAM] = pt_apply_update_histogram;
+  pt_apply_func_array[PT_DROP_HISTOGRAM] = pt_apply_update_histogram;
+  pt_apply_func_array[PT_SHOW_HISTOGRAM] = pt_apply_update_histogram;
   pt_apply_func_array[PT_CREATE_USER] = pt_apply_create_user;
   pt_apply_func_array[PT_CREATE_TRIGGER] = pt_apply_create_trigger;
   pt_apply_func_array[PT_CREATE_SERIAL] = pt_apply_create_serial;
@@ -5162,6 +5185,9 @@ pt_init_init_f (void)
   pt_init_func_array[PT_COMMIT_WORK] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_ENTITY] = pt_init_create_entity;
   pt_init_func_array[PT_CREATE_INDEX] = pt_init_create_index;
+  pt_init_func_array[PT_UPDATE_HISTOGRAM] = pt_init_func_null_function;
+  pt_init_func_array[PT_DROP_HISTOGRAM] = pt_init_func_null_function;
+  pt_init_func_array[PT_SHOW_HISTOGRAM] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_USER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_SERIAL] = pt_init_func_null_function;
@@ -5292,6 +5318,9 @@ pt_init_print_f (void)
   pt_print_func_array[PT_COMMIT_WORK] = pt_print_commit_work;
   pt_print_func_array[PT_CREATE_ENTITY] = pt_print_create_entity;
   pt_print_func_array[PT_CREATE_INDEX] = pt_print_create_index;
+  pt_print_func_array[PT_UPDATE_HISTOGRAM] = pt_print_analyze_histogram;
+  pt_print_func_array[PT_DROP_HISTOGRAM] = pt_print_analyze_histogram;
+  pt_print_func_array[PT_SHOW_HISTOGRAM] = pt_print_show_histogram;
   pt_print_func_array[PT_CREATE_USER] = pt_print_create_user;
   pt_print_func_array[PT_CREATE_TRIGGER] = pt_print_create_trigger;
   pt_print_func_array[PT_CREATE_SERIAL] = pt_print_create_serial;
@@ -6714,8 +6743,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       if (p->data_type)
 	{
 	  /* only show non-default parameter */
-	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
-	      || p->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
+	  if (p->data_type->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION)
 	    {
 	      sprintf (s, "(%d,%d)", p->data_type->info.data_type.precision,
 		       p->data_type->info.data_type.dec_precision);
@@ -6742,6 +6770,7 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
 	      /* fixed data type: always show parameter */
 	      show_precision = true;
 	      break;
+
 	    default:
 	      /* variable data type: only show non-maximum(i.e., default) parameter */
 	      if (precision == TP_FLOATING_PRECISION_VALUE)
@@ -6817,6 +6846,11 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       sprintf (s, " collate %s", lang_get_collation_name (p->data_type->info.data_type.collation_id));
       q = pt_append_nulstring (parser, q, s);
+    }
+
+  if (p->info.attr_def.attr_invisible == PT_ATTR_INVISIBLE)
+    {
+      q = pt_append_nulstring (parser, q, " invisible ");
     }
 
   if (p->info.attr_def.data_default)
@@ -7317,6 +7351,112 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
+/*
+ * pt_apply_update_histogram () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PT_NODE *
+pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
+{
+  PT_APPLY_WALK (parser, p->info.histogram.target_table_spec, arg);
+  PT_APPLY_WALK (parser, p->info.histogram.target_columns, arg);
+  return p;
+}
+
+/*
+ * pt_print_update_histogram () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PARSER_VARCHAR *
+pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
+  unsigned int saved_cp = parser->custom_print;
+  PT_NODE *target_columns;
+
+
+  b = pt_append_nulstring (parser, b, "analyze table ");
+  if (p->info.histogram.target_table_spec)
+    {
+      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
+    }
+
+  b = pt_append_varchar (parser, b, tbl);
+
+  if (p->node_type == PT_UPDATE_HISTOGRAM)
+    {
+      b = pt_append_nulstring (parser, b, " update histogram");
+    }
+  else if (p->node_type == PT_DROP_HISTOGRAM)
+    {
+      b = pt_append_nulstring (parser, b, " drop histogram");
+    }
+
+  b = pt_append_nulstring (parser, b, " on ");
+
+  if (p->info.histogram.target_columns)
+    {
+      target_columns = p->info.histogram.target_columns;
+      cl = pt_print_bytes_l (parser, target_columns);
+    }
+
+  b = pt_append_nulstring (parser, b, " (");
+  b = pt_append_varchar (parser, b, cl);
+  b = pt_append_nulstring (parser, b, ") ");
+
+  parser->custom_print = saved_cp;
+
+  return b;
+}
+
+/*
+ * pt_print_show_histogram () -
+ *   return:
+ *   parser(in):
+ *   p(in):
+ *   g(in):
+ *   arg(in):
+ */
+static PARSER_VARCHAR *
+pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
+{
+  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
+  unsigned int saved_cp = parser->custom_print;
+  PT_NODE *target_columns;
+
+  b = pt_append_nulstring (parser, b, "show histogram ");
+  if (p->info.histogram.target_table_spec)
+    {
+      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
+    }
+
+  b = pt_append_varchar (parser, b, tbl);
+
+  b = pt_append_nulstring (parser, b, " on ");
+
+  if (p->info.histogram.target_columns)
+    {
+      target_columns = p->info.histogram.target_columns;
+      cl = pt_print_bytes_l (parser, target_columns);
+    }
+
+  b = pt_append_nulstring (parser, b, " (");
+  b = pt_append_varchar (parser, b, cl);
+  b = pt_append_nulstring (parser, b, ") ");
+
+  parser->custom_print = saved_cp;
+
+  return b;
+}
+
 /* CREATE_INDEX */
 /*
  * pt_apply_create_index () -
@@ -7673,27 +7813,24 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1, *r2, *r3;
 
-  r1 = pt_print_bytes (parser, p->info.sp.name);
-
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? "CREATE OR REPLACE " : "create ");
-  if (p->info.sp.or_replace && !parser->flag.is_parsing_unload_schema)
+  if (parser->flag.is_unloading_plcsql_def)
     {
-      q = pt_append_nulstring (parser, q, "or replace ");
-    }
-  q =
-    pt_append_nulstring (parser, q,
-			 parser->flag.is_parsing_unload_schema ? strcmp (pt_show_misc_type (p->info.sp.type),
-									 "procedure") ==
-			 0 ? "PROCEDURE" : "FUNCTION" : pt_show_misc_type (p->info.sp.type));
-  q = pt_append_nulstring (parser, q, " ");
-  if (parser->custom_print & (PT_PRINT_NO_SPECIFIED_USER_NAME | PT_PRINT_NO_CURRENT_USER_NAME))
-    {
-      q = pt_append_name (parser, q, p->info.sp.name->info.name.original);
+      q = pt_append_nulstring (parser, q, "CREATE OR REPLACE ");
+      q = pt_append_nulstring (parser, q, (p->info.sp.type == PT_SP_PROCEDURE) ? "PROCEDURE" : "FUNCTION");
     }
   else
     {
-      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, "create ");
+      if (p->info.sp.or_replace)
+	{
+	  q = pt_append_nulstring (parser, q, "or replace ");
+	}
+      q = pt_append_nulstring (parser, q, pt_show_misc_type (p->info.sp.type));
     }
+
+  q = pt_append_nulstring (parser, q, " ");
+  r1 = pt_print_bytes (parser, p->info.sp.name);
+  q = pt_append_varchar (parser, q, r1);
 
   r2 = pt_print_bytes_l (parser, p->info.sp.param_list);
   q = pt_append_nulstring (parser, q, "(");
@@ -7702,7 +7839,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
-      q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " RETURN " : " return ");
+      q = pt_append_nulstring (parser, q, parser->flag.is_unloading_plcsql_def ? " RETURN " : " return ");
       if (p->info.sp.ret_data_type)
 	{
 	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
@@ -7713,7 +7850,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (parser->flag.is_parsing_unload_schema)
+  if (parser->flag.is_unloading_plcsql_def)
     {
       if (p->info.sp.auth_id == PT_AUTHID_OWNER)
 	{
@@ -7729,11 +7866,28 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_nulstring (parser, q, " DETERMINISTIC");
 	}
     }
+  else
+    {
+      if (p->info.sp.auth_id == PT_AUTHID_OWNER)
+	{
+	  q = pt_append_nulstring (parser, q, " authid owner");
+	}
+      else
+	{
+	  q = pt_append_nulstring (parser, q, " authid caller");
+	}
+
+      if (p->info.sp.dtrm_type == PT_DETERMINISTIC)
+	{
+	  q = pt_append_nulstring (parser, q, " deterministic");
+	}
+    }
 
   r3 = pt_print_bytes (parser, p->info.sp.body);
   q = pt_append_varchar (parser, q, r3);
 
-  if (p->info.sp.comment != NULL && !parser->flag.is_parsing_unload_schema)
+  // CBRD-26513 : do not print comment when unloading plcsql definition
+  if (p->info.sp.comment != NULL && !parser->flag.is_unloading_plcsql_def)
     {
       r1 = pt_print_bytes (parser, p->info.sp.comment);
       q = pt_append_nulstring (parser, q, " comment ");
@@ -7987,7 +8141,7 @@ pt_print_sp_parameter (PARSER_CONTEXT * parser, PT_NODE * p)
   r1 = pt_print_bytes (parser, p->info.sp_param.name);
   q = pt_append_varchar (parser, q, r1);
   q = pt_append_nulstring (parser, q, " ");
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ?
+  q = pt_append_nulstring (parser, q, parser->flag.is_unloading_plcsql_def ?
 			   (p->info.sp_param.mode == PT_INPUT || p->info.sp_param.mode == PT_NOPUT) ?
 			   "IN" : p->info.sp_param.mode == PT_OUTPUT ?
 			   "OUT" : "INOUT" : pt_show_misc_type (p->info.sp_param.mode));
@@ -8041,43 +8195,16 @@ static PARSER_VARCHAR *
 pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *q = NULL, *r1 = NULL;
-  q = pt_append_nulstring (parser, q, parser->flag.is_parsing_unload_schema ? " AS\n" : " as ");
+  q = pt_append_nulstring (parser, q, parser->flag.is_unloading_plcsql_def ? " AS\n" : " as ");
   if (p->info.sp_body.lang == SP_LANG_PLCSQL)
     {
-      // TODO: PL/CSQL compiler should permit it.
-      // q = pt_append_nulstring (parser, q, "language plcsql ");
       r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
     }
-  else				/* (p->info.sp_body.lang == SP_LANG_JAVA) */
+  else
+    /* (p->info.sp_body.lang == SP_LANG_JAVA) */
     {
-      q = pt_append_nulstring (parser, q, "language java ");
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " begin ");
-         r1 = pt_print_bytes (parser, p->info.sp_body.impl);
-         }
-       */
-
-      if (p->info.sp_body.direct == false)
-	{
-	  q = pt_append_nulstring (parser, q, " name ");
-	  r1 = pt_print_bytes (parser, p->info.sp_body.decl);
-	}
-      else
-	{
-	  r1 = pt_append_varchar (parser, r1, p->info.sp_body.impl->info.value.data_value.str);
-	}
-
-      // TODO: CBRD-24641
-      /*
-         if (p->info.sp_body.direct)
-         {
-         q = pt_append_nulstring (parser, q, " end ");
-         }
-       */
+      q = pt_append_nulstring (parser, q, "language java name ");
+      r1 = pt_print_bytes (parser, p->info.sp_body.decl);
     }
 
   q = pt_append_varchar (parser, q, r1);
@@ -8666,8 +8793,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_NUMERIC:
       q = pt_append_nulstring (parser, q, pt_show_type_enum (p->type_enum));
-      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION
-	  || p->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE)
+      if (p->info.data_type.precision != DB_DEFAULT_NUMERIC_PRECISION)
 	{
 	  sprintf (buf, "(%d,%d)", p->info.data_type.precision, p->info.data_type.dec_precision);
 	  q = pt_append_nulstring (parser, q, buf);
@@ -8676,7 +8802,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_TYPE_CHAR:
     case PT_TYPE_VARCHAR:
-      if (parser->flag.is_parsing_unload_schema)
+      if (parser->flag.is_unloading_plcsql_def)
 	{
 	  switch (p->type_enum)
 	    {
@@ -8711,6 +8837,7 @@ pt_print_datatype (PARSER_CONTEXT * parser, PT_NODE * p)
 	    /* fixed data type: always show parameter */
 	    show_precision = true;
 	    break;
+
 	  default:
 	    /* variable data type: only show non-maximum(i.e., default) parameter */
 	    if (precision == TP_FLOATING_PRECISION_VALUE)
@@ -12122,6 +12249,34 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, ")");
       break;
 
+    case PT_ESTIMATED_TABLE_ROWS:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_table_rows(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_avg_row_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_DATA_LENGTH:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_data_length(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
+    case PT_ESTIMATED_DATA_FREE:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " estimated_data_free(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+
     case PT_TO_ENUMERATION_VALUE:
       /* only print argument */
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -12380,6 +12535,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_SCHEMA_DEF:
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
       q = pt_append_nulstring (parser, q, " schema_def(");
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ")");
+      break;
+    case PT_COLLECTION_TO_STRING:
+      r1 = pt_print_bytes (parser, p->info.expr.arg1);
+      q = pt_append_nulstring (parser, q, " collection_to_string(");
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
@@ -14708,9 +14869,9 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "NO_SUBQUERY_CACHE ");
 	    }
 
-	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_HEAP_SCAN)
+	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SCAN)
 	    {
-	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_HEAP_SCAN ");
+	      q = pt_append_nulstring (parser, q, "NO_PARALLEL_SCAN ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SUBQUERY)
@@ -14731,6 +14892,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_nulstring (parser, q, buffer);
 	      q = pt_append_nulstring (parser, q, ") ");
+	    }
+
+	  if (p->info.query.q.select.hint & PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED)
+	    {
+	      q = pt_append_nulstring (parser, q, "NLJ_KEEP_HEAP_PAGE_PINNED ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
@@ -19420,8 +19586,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  /* For Query-cache:
-	   * Separate comments have been added 
+	   * Separate comments have been added
 	   * for cases where there is no change in the query but information on the server has changed. */
+	}
+    }
+  else
+    {
+      if (!pt->url || !pt->user || !pt->pwd)
+	{
+	  print_detail = false;
 	}
     }
 

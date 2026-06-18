@@ -71,6 +71,7 @@
 #include "xserver_interface.h"
 #include "session.h"
 #include "event_log.h"
+#include "trace_log.h"
 #include "tz_support.h"
 #include "filter_pred_cache.h"
 #include "scan_manager.h"
@@ -101,6 +102,11 @@
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
+
+#ifdef CCI_XA
+#include "dblink_2pc_daemon.h"
+#endif /* CCI_XA */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -109,6 +115,8 @@
 
 #define BOOT_FORMAT_MAX_LENGTH	500
 #define BOOTSR_MAX_LINE	 500
+
+#define BOOT_LOB_TEMP_DIR_KEYWORD "ces"
 
 typedef struct boot_dbparm BOOT_DB_PARM;
 struct boot_dbparm
@@ -549,9 +557,9 @@ xboot_add_volume_extension (THREAD_ENTRY * thread_p, DBDEF_VOL_EXT_INFO * ext_in
 {
   VOLID volid;
 
-  if (disk_add_volume_extension (thread_p, ext_info->purpose, ext_info->max_npages, ext_info->path, ext_info->name,
-				 ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid)
-      != NO_ERROR)
+  if (disk_add_volume_extension
+      (thread_p, ext_info->purpose, ext_info->voltype, ext_info->max_npages, ext_info->path, ext_info->name,
+       ext_info->comments, ext_info->max_writesize_in_sec, ext_info->overwrite, &volid) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL_VOLID;
@@ -873,8 +881,8 @@ boot_parse_add_volume_extensions (THREAD_ENTRY * thread_p, const char *filename_
 	}
 
       error_code =
-	disk_add_volume_extension (thread_p, ext_purpose, ext_npages, ext_path, ext_name, ext_comments, 0, false,
-				   &volid);
+	disk_add_volume_extension (thread_p, ext_purpose, DB_PERMANENT_VOLTYPE, ext_npages, ext_path, ext_name,
+				   ext_comments, 0, false, &volid);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2178,6 +2186,7 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   er_clear ();
 
   event_log_init (db_name);
+  trace_log_init (db_name);
 
   /* initialize allocations areas for things we need, on the client, most of this is done inside ws_init(). */
   area_init ();
@@ -2404,6 +2413,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
     }
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_init ();
+#endif
   pgbuf_daemons_init ();
   dwb_daemons_init ();
   parallel_query::worker_manager_global::get_manager ().init ();
@@ -2558,6 +2570,15 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
   if (boot_Lob_path[0] != '\0')
     {
       error_code = es_init (boot_Lob_path);
+
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
       if (error_code != NO_ERROR)
 	{
 	  goto error;
@@ -3055,6 +3076,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   (void) boot_remove_all_temp_volumes (thread_p, REMOVE_TEMP_VOL_DEFAULT_ACTION);
 
+  /* remove lob ces temp dir */
+  (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
 
@@ -3064,6 +3088,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif /* CCI_XA */
   pgbuf_daemons_destroy ();
   cdc_daemons_destroy ();
   pl_server_destroy ();
@@ -3870,6 +3897,7 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
 #if defined(SERVER_MODE)
   css_free_accessible_ip_info ();
   event_log_final ();
+  trace_log_final ();
 #endif
 }
 
@@ -5237,6 +5265,12 @@ boot_remove_all_volumes (THREAD_ENTRY * thread_p, const char *db_fullname, const
       boot_server_status (BOOT_SERVER_UP);
       log_final (thread_p);
 
+      /* remove lob ces temp dir */
+      error_code = fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
+      if (error_code != NO_ERROR)
+	{
+	  goto error_rem_allvols;
+	}
     }
 
   /* Now delete the database */

@@ -32,6 +32,12 @@
 
 %define parse.assert
 
+%initial-action {
+#if YYDEBUG
+  set_debug_level (loader_init_yydebug ());
+#endif
+}
+
 %union {
   int int_val;
   string_type *string;
@@ -57,15 +63,28 @@ namespace cubload
 #include "dbtype.h"
 #include "load_driver.hpp"
 
+#include <cstdlib>
+
 #undef yylex
 #define yylex m_driver.get_scanner ().yylex
 
-/*#define PARSER_DEBUG*/
-
-#ifdef PARSER_DEBUG
-#define DBG_PRINT(s) printf("rule: %s\n", (s));
-#else
-#define DBG_PRINT(s)
+#if YYDEBUG
+static int
+loader_init_yydebug (void)
+{
+  static int initialized = 0;
+  static int debug_level = 0;
+  if (!initialized)
+    {
+      const char *env = std::getenv ("CUBRID_LOADER_DEBUG");
+      if (env && env[0] == '1')
+        {
+          debug_level = 1;
+        }
+      initialized = 1;
+    }
+  return debug_level;
+}
 #endif
 }
 
@@ -197,12 +216,10 @@ loader_start :
 loader_lines :
   line
   {
-    DBG_PRINT ("line");
   }
   |
   loader_lines line
   {
-    DBG_PRINT ("line_list line");
   }
   ;
 
@@ -212,7 +229,6 @@ line :
   }
   one_line NL
   {
-    DBG_PRINT ("one_line");
     m_driver.get_semantic_helper ().set_in_instance_line (true);
   }
   |
@@ -225,13 +241,11 @@ line :
 one_line :
   command_line
   {
-    DBG_PRINT ("command_line");
     m_driver.get_semantic_helper ().reset_after_line ();
   }
   |
   instance_line
   {
-    DBG_PRINT ("instance_line");
     m_driver.get_object_loader ().finish_line ();
     m_driver.get_semantic_helper ().reset_after_line ();
   }
@@ -240,19 +254,16 @@ one_line :
 command_line :
   class_command
   {
-    DBG_PRINT ("class_command");
   }
   |
   id_command
   {
-    DBG_PRINT ("id_command");
   }
   ;
 
 id_command :
   CMD_ID IDENTIFIER DOT IDENTIFIER INT_LIT
   {
-    DBG_PRINT ("CMD_ID IDENTIFIER DOT IDENTIFIER INT_LIT");
     std::string name;
     name.reserve($2->size + sizeof (".") + $4->size);
     name.append ($2->val).append (".").append ($4->val);
@@ -261,7 +272,6 @@ id_command :
   |
   CMD_ID IDENTIFIER INT_LIT
   {
-    DBG_PRINT ("CMD_ID IDENTIFIER INT_LIT");
     m_driver.get_class_installer ().check_class ($2->val, atoi ($3->val));
   }
   ;
@@ -269,7 +279,6 @@ id_command :
 class_command :
   CMD_CLASS IDENTIFIER DOT IDENTIFIER class_command_spec
   {
-    DBG_PRINT ("CMD_CLASS IDENTIFIER DOT IDENTIFIER class_command_spec");
     std::string name;
     name.reserve($2->size + sizeof (".") + $4->size);
     name.append ($2->val).append (".").append ($4->val);
@@ -282,7 +291,6 @@ class_command :
   |
   CMD_CLASS IDENTIFIER class_command_spec
   {
-    DBG_PRINT ("CMD_CLASS IDENTIFIER class_command_spec");
     m_driver.get_class_installer ().install_class ($2, $3);
 
     delete $3;
@@ -293,25 +301,21 @@ class_command :
 class_command_spec :
   attribute_list
   {
-    DBG_PRINT ("attribute_list");
     $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, NULL);
   }
   |
   attribute_list constructor_spec
   {
-    DBG_PRINT ("attribute_list constructor_spec");
     $$ = new class_command_spec_type (LDR_ATTRIBUTE_ANY, $1, $2);
   }
   |
   attribute_list_type attribute_list
   {
-    DBG_PRINT ("attribute_list_type attribute_list");
     $$ = new class_command_spec_type ($1, $2, NULL);
   }
   |
   attribute_list_type attribute_list constructor_spec
   {
-    DBG_PRINT ("attribute_list_type attribute_list constructor_spec");
     $$ = new class_command_spec_type ($1, $2, $3);
   }
   ;
@@ -319,19 +323,16 @@ class_command_spec :
 attribute_list_type :
   CLASS
   {
-    DBG_PRINT ("CLASS");
     $$ = LDR_ATTRIBUTE_CLASS;
   }
   |
   SHARED
   {
-    DBG_PRINT ("SHARED");
     $$ = LDR_ATTRIBUTE_SHARED;
   }
   |
   DEFAULT
   {
-    DBG_PRINT ("DEFAULT");
     $$ = LDR_ATTRIBUTE_DEFAULT;
   }
   ;
@@ -351,19 +352,16 @@ attribute_list :
 attribute_names :
   attribute_name
   {
-    DBG_PRINT ("attribute_name");
     $$ = m_driver.get_semantic_helper ().append_string_list (NULL, $1);
   }
   |
   attribute_names attribute_name
   {
-    DBG_PRINT ("attribute_names attribute_name");
     $$ = m_driver.get_semantic_helper ().append_string_list ($1, $2);
   }
   |
   attribute_names COMMA attribute_name
   {
-    DBG_PRINT ("attribute_names COMMA attribute_name");
     $$ = m_driver.get_semantic_helper ().append_string_list ($1, $3);
   }
   ;
@@ -397,19 +395,16 @@ constructor_argument_list :
 argument_names :
   argument_name
   {
-    DBG_PRINT ("argument_name");
     $$ = m_driver.get_semantic_helper ().append_string_list (NULL, $1);
   }
   |
   argument_names argument_name
   {
-    DBG_PRINT ("argument_names argument_name");
     $$ = m_driver.get_semantic_helper ().append_string_list ($1, $2);
   }
   |
   argument_names COMMA argument_name
   {
-    DBG_PRINT ("argument_names COMMA argument_name");
     $$ = m_driver.get_semantic_helper ().append_string_list ($1, $3);
   }
   ;
@@ -450,13 +445,11 @@ object_id :
 constant_list :
   constant
   {
-    DBG_PRINT ("constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list (NULL, $1);
   }
   |
   constant_list constant
   {
-    DBG_PRINT ("constant_list constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $2);
   }
   ;
@@ -634,31 +627,26 @@ set_constant :
 set_elements:
   constant
   {
-    DBG_PRINT ("constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list (NULL, $1);
   }
   |
   set_elements constant
   {
-    DBG_PRINT ("set_elements constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $2);
   }
   |
   set_elements COMMA constant
   {
-    DBG_PRINT ("set_elements COMMA constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $3);
   }
   |
   set_elements NL constant
   {
-    DBG_PRINT ("set_elements NL constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $3);
   }
   |
   set_elements COMMA NL constant
   {
-    DBG_PRINT ("set_elements COMMA NL constant");
     $$ = m_driver.get_semantic_helper ().append_constant_list ($1, $4);
   }
   ;

@@ -220,7 +220,7 @@ if(UNIX)
     set(CMAKE_CXX_COMMON_FLAGS "${CMAKE_C_COMMON_FLAGS} -std=c++17")
 
     # C flags for debug build
-    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_C_COMMON_FLAGS}")
+    set(CMAKE_C_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline -fstack-protector-strong ${CMAKE_C_COMMON_FLAGS}")
     # C++ flags for debug build
     set(CMAKE_CXX_DEBUG_FLAGS "-ggdb3 -Wall -fno-inline ${CMAKE_CXX_COMMON_FLAGS}")
 
@@ -323,8 +323,13 @@ set(CSQL_GRAMMAR_INPUT ${CMAKE_CURRENT_BINARY_DIR}/csql_grammar.yy)
 # whenever csql_grammar.y is modified, bison and flex will be
 # run to create new outputs
 
+set(BISON_CSQL_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_CSQL_FLAGS "${BISON_CSQL_FLAGS} --debug")
+endif()
+
 bison_target(csql_grammar ${CSQL_GRAMMAR_INPUT} ${CSQL_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "--no-lines --name-prefix=csql_yy -d -r all")
+  COMPILE_FLAGS "${BISON_CSQL_FLAGS}")
 flex_target(csql_lexer ${CSQL_LEXER_INPUT} ${CSQL_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline --never-interactive --prefix=csql_yy")
 add_flex_bison_dependency(csql_lexer csql_grammar)
@@ -332,8 +337,13 @@ add_custom_target(gen_csql_grammar DEPENDS ${BISON_csql_grammar_OUTPUTS})
 add_custom_target(gen_csql_lexer DEPENDS ${FLEX_csql_lexer_OUTPUTS})
 
 # Loader FLEX/BISON targets
+set(BISON_LOADER_FLAGS "-d -r all")
+if(CMAKE_BUILD_TYPE MATCHES "Debug")
+  set(BISON_LOADER_FLAGS "${BISON_LOADER_FLAGS} --debug")
+endif()
+
 bison_target(loader_grammar ${LOADER_GRAMMAR_INPUT} ${LOADER_GRAMMAR_OUTPUT}
-  COMPILE_FLAGS "-d -r all")
+  COMPILE_FLAGS "${BISON_LOADER_FLAGS}")
 flex_target(loader_lexer ${LOADER_LEXER_INPUT} ${LOADER_LEXER_OUTPUT}
   COMPILE_FLAGS "--noline")
 add_flex_bison_dependency(loader_lexer loader_grammar)
@@ -401,8 +411,9 @@ set(WIN_TOOLS_DIR            ${CMAKE_SOURCE_DIR}/src/win_tools)
 set(XASL_DIR                 ${CMAKE_SOURCE_DIR}/src/xasl)
 set(PARALLEL_QUERY_DIR       ${CMAKE_SOURCE_DIR}/src/query/parallel)
 set(PARALLEL_HASH_JOIN_DIR   ${CMAKE_SOURCE_DIR}/src/query/parallel/px_hash_join)
-set(PARALLEL_HEAP_SCAN_DIR    ${CMAKE_SOURCE_DIR}/src/query/parallel/px_heap_scan)
+set(PARALLEL_SCAN_DIR        ${CMAKE_SOURCE_DIR}/src/query/parallel/px_scan)
 set(PARALLEL_QUERY_EXECUTE_DIR ${CMAKE_SOURCE_DIR}/src/query/parallel/px_query_execute)
+set(OPTIMIZER_HISTOGRAM_DIR    ${CMAKE_SOURCE_DIR}/src/optimizer/histogram)
 
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
 include_directories(
@@ -422,6 +433,7 @@ include_directories(
   src/monitor
   src/object
   src/optimizer
+  src/optimizer/histogram
   src/parser
   src/replication
   src/query
@@ -431,7 +443,8 @@ include_directories(
   src/transaction
   src/xasl
   src/query/parallel/px_hash_join
-  src/query/parallel/px_heap_scan
+  src/query/parallel/px_scan
+  src/query/parallel/px_scan/index
   src/query/parallel
   src/query/parallel/px_query_execute
   )
@@ -591,11 +604,11 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     add_definitions(-DCCI_XA)
   endif(SUPPORT_XA)
   if(CMAKE_BUILD_TYPE MATCHES "Release|RelWithDebInfo")  
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wwrite-strings  -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Werror -Wwrite-strings -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Werror -Wwrite-strings  -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-parameter -pthread")
   else()
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-format-security -pthread")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-format-security -pthread")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wclobbered -Wextra -Wno-unused -Wno-unused-parameter -Wno-format-security -pthread")
   endif()
  
   if(SIZEOF_OFF64_T)

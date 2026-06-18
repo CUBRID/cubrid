@@ -371,7 +371,7 @@ static void _er_log_debug_internal (const char *file_name, const int line_no, co
 static bool er_is_error_severity (er_severity severity);
 
 /* vector of functions to call when an error is set */
-static PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
+static const PTR_FNERLOG er_Fnlog[ER_MAX_SEVERITY + 1] = {
   er_log,			/* ER_FATAL_ERROR_SEVERITY */
   er_log,			/* ER_ERROR_SEVERITY */
   er_log,			/* ER_SYNTAX_ERROR_SEVERITY */
@@ -948,10 +948,9 @@ er_init (const char *msglog_filename, int exit_ask)
 	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_INTERNAL, i);
 	  if (msg && *msg)
 	    {
-	      tmp = (char *) malloc (std::strlen (msg) + 1);
+	      tmp = strdup (msg);
 	      if (tmp)
 		{
-		  strcpy (tmp, msg);
 		  er_Cached_msg[i] = tmp;
 		}
 	    }
@@ -1489,8 +1488,8 @@ er_set_internal (int severity, const char *file_name, const int line_no, int err
     }
   if (os_error != NULL)
     {
-      strcat (crt_error.msg_area, "... ");
-      strcat (crt_error.msg_area, os_error);
+      size_t len = strlen (crt_error.msg_area);
+      snprintf (crt_error.msg_area + len, crt_error.msg_area_size - len, "... %s", os_error);
     }
 
   /* Call the logging function if any */

@@ -28,7 +28,9 @@
 #include "double_write_buffer.hpp"
 
 #include "system_parameter.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
@@ -4065,25 +4067,29 @@ dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
  */
+REGISTER_DAEMON (dwb_flush_block);
+
 void
 dwb_flush_block_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (1));
   dwb_flush_block_daemon_task *daemon_task = new dwb_flush_block_daemon_task ();
 
-  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  dwb_flush_block_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb-flush-block");
 }
 
 /*
  * dwb_file_sync_helper_daemon_init () - initialize DWB file sync helper daemon thread
  */
+REGISTER_DAEMON (dwb_file_sync_helper);
+
 void
 dwb_file_sync_helper_daemon_init ()
 {
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (10));
   cubthread::entry_callable_task *daemon_task = new cubthread::entry_callable_task (dwb_file_sync_helper_execute);
 
-  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task);
+  dwb_file_sync_helper_daemon = cubthread::get_manager ()->create_daemon (looper, daemon_task, "dwb-file-sync");
 }
 
 /*
