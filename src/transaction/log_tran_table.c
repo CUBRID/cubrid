@@ -140,6 +140,8 @@ static int logtb_global_unique_stat_init (void *unique_stat);
 static int logtb_global_unique_stat_key_copy (void *src, void *dest);
 static void logtb_free_tran_mvcc_info (LOG_TDES * tdes);
 
+static void logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid);
+
 static int logtb_check_kill_tran_auth (THREAD_ENTRY * thread_p, int tran_id, bool * has_authorization);
 static void logtb_find_thread_entry_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, int tran_index,
 					     bool except_me, REFPTR (THREAD_ENTRY, found_ptr));
@@ -4528,6 +4530,91 @@ logtb_has_deadlock_priority (int tran_index)
     }
 
   return false;
+}
+
+/*
+ *logtb_get_new_subtransaction_mvccid - assign a new sub-transaction MVCCID
+ *
+ * return: error code
+ *
+ *   thread_p(in): Thread entry
+ *   curr_mvcc_info(in): current MVCC info
+ *
+ *  Note: If transaction MVCCID is NULL then a new transaction MVCCID is
+ *    allocated first.
+ */
+void
+logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info)
+{
+  MVCCID mvcc_subid;
+  mvcctable *mvcc_table;
+
+  assert (curr_mvcc_info != NULL);
+
+  mvcc_table = &log_Gl.mvcc_table;
+
+  // curr_mvcc_info->id must be valid too!
+  if (MVCCID_IS_VALID (curr_mvcc_info->id))
+    {
+      mvcc_subid = mvcc_table->get_new_mvccid ();
+    }
+  else
+    {
+      mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
+    }
+
+  logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+}
+
+/*
+ * logtb_assign_subtransaction_mvccid () - Assign sub-transaction MVCCID.
+ *
+ * return	       : Error code.
+ * thread_p (in)       : Thread entry.
+ * curr_mvcc_info (in) : Current transaction MVCC information.
+ * mvcc_subid (in)     : Sub-transaction MVCCID.
+ */
+static void
+logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvcc_subid)
+{
+  assert (curr_mvcc_info != NULL);
+  assert (MVCCID_IS_VALID (curr_mvcc_info->id));
+  curr_mvcc_info->sub_ids.push_back (mvcc_subid);
+}
+
+/*
+ * logtb_complete_sub_mvcc () - Called at end of sub-transaction
+ *
+ * return	  : Void.
+ * thread_p (in)  : Thread entry.
+ * tdes (in)	  : Transaction descriptor.
+ */
+void
+logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  MVCC_INFO *curr_mvcc_info = NULL;
+  MVCCID mvcc_sub_id;
+  mvcctable *mvcc_table = &log_Gl.mvcc_table;
+
+  assert (tdes != NULL);
+
+  curr_mvcc_info = &tdes->mvccinfo;
+  mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
+
+  mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+  curr_mvcc_info->sub_ids.pop_back ();
+
+  if (tdes->mvccinfo.snapshot.valid)
+    {
+      /* adjust snapshot to reflect committed sub-transaction, since the parent transaction didn't finished yet */
+      MVCC_SNAPSHOT *snapshot = &tdes->mvccinfo.snapshot;
+      if (mvcc_sub_id >= snapshot->highest_completed_mvccid)
+	{
+	  snapshot->highest_completed_mvccid = mvcc_sub_id;
+	  MVCCID_FORWARD (snapshot->highest_completed_mvccid);
+	}
+      snapshot->m_active_mvccs.set_inactive_mvccid (mvcc_sub_id);
+    }
 }
 
 /*

@@ -14120,6 +14120,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   REGU_VARLIST_LIST outptr = NULL;
   REGU_VARIABLE *varptr = NULL;
   DB_VALUE *rightvalp = NULL, *thirdvalp = NULL;
+  bool subtransaction_started = false;
   OID last_cached_class_oid;
   int tran_index;
   int err = NO_ERROR;
@@ -14341,6 +14342,20 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   log_sysop_start (thread_p);
   sysop_started = true;
 
+  /* Run the increments in an autonomous subtransaction so the new values commit
+   * independently of the enclosing statement (click-counter semantics) and survive an
+   * outer rollback. The former global "instant lock mode" only gated this block; the
+   * subtransaction itself - not the flag - is what provides the autonomy, so it is kept.
+   * Several instances can be updated here, so the marker keeps the flush atomic. */
+  if (need_ha_replication)
+    {
+      repl_start_flush_mark (thread_p);
+    }
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  assert (tdes != NULL);
+  logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+  subtransaction_started = true;
+
   for (selupd = list; selupd; selupd = selupd->next)
     {
       for (outptr = selupd->select_list; outptr; outptr = outptr->next)
@@ -14368,16 +14383,36 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       scan_cache_inited = false;
     }
 
-  if (need_ha_replication)
+  if (subtransaction_started && need_ha_replication)
     {
       /* Ends previously started marker. */
       repl_end_flush_mark (thread_p, false);
     }
 
-    /* Transaction case. */
-    log_sysop_attach_to_outer (thread_p);
+  /* Commit the autonomous subtransaction so the increment is durable independently of the
+   * enclosing statement's outcome. */
+  assert (subtransaction_started);
+  log_sysop_commit (thread_p);
 
 exit:
+  /* Release subtransaction resources. */
+  if (subtransaction_started)
+    {
+      /* Release subtransaction MVCCID. */
+      logtb_complete_sub_mvcc (thread_p, tdes);
+    }
+
+  /* Release the per-row write locks taken for the increment now that the autonomous
+   * subtransaction has settled. This replaces the former lock_stop_instant_lock_mode():
+   * the locks are scoped explicitly to the rows we incremented (all_incr_info) instead of
+   * a global per-transaction "instant duration" flag tested on every lock acquisition.
+   * lock_unlock_object(force=true) removes exactly this statement's lock contribution on
+   * each row, so a lock the surrounding transaction already held is left intact. */
+  for (const incr_info & released_info : all_incr_info)
+    {
+      lock_unlock_object (thread_p, &released_info.m_oid, &released_info.m_class_oid, X_LOCK, true);
+    }
+
   if (err != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -14400,7 +14435,7 @@ exit_on_error:
       scan_cache_inited = false;
     }
 
-  if (need_ha_replication)
+  if (subtransaction_started && need_ha_replication)
     {
       /* Ends previously started marker. */
       repl_end_flush_mark (thread_p, true);
@@ -15619,7 +15654,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since can't reevaluate in execute_selupd_list. */
+	      /* Reevaluate at select since we can't reevaluate in execute_selupd_list. The rows
+	       * are locked here; qexec_execute_selupd_list releases them after its subtransaction. */
 	      force_select_lock = true;
 	    }
 	}
@@ -16320,7 +16356,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   /*
    * Cleanup and Exit processing
    */
-  /* destroy hash table */
   if (xasl->type == BUILDLIST_PROC)
     {
       /* destroy hash table */
