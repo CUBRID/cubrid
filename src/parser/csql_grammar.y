@@ -14408,7 +14408,7 @@ opt_orderby_clause
 				parser_save_and_set_pseudoc (0);
 			  }
 
-			if (stmt && !stmt->info.query.q.select.from)
+			if (stmt && stmt->node_type == PT_SELECT && !stmt->info.query.q.select.from)
 			    PT_ERRORmf(this_parser, pt_top(this_parser),
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
@@ -14589,6 +14589,7 @@ opt_siblings
 	| SIBLINGS
 		{{
 			PT_NODE *stmt = parser_top_orderby_node ();
+
 			stmt->info.query.flag.order_siblings = true;
 			if (stmt->info.query.q.select.connect_by == NULL)
 			    {
