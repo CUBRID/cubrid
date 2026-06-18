@@ -8671,7 +8671,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
       /* leaf-deferral: on THIS level's own predicate reject, clear single_fetched so QPROC_SINGLE_INNER
          advances to the next physical row (not a downstream scan_ptr suppression, handled below) */
-      if (!qualified && XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec != NULL)
+      if (!qualified && xasl->curr_spec != NULL && xasl->curr_spec->single_fetch == QPROC_SINGLE_INNER)
 	{
 	  xasl->curr_spec->s_id.single_fetched = false;
 	}
