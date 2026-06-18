@@ -866,6 +866,9 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
+  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM (=134); kept as a no-op stub because
+   * RV_fun[] is positionally indexed by rcvindex and existing on-disk logs may still reference
+   * this slot. See recovery.h for the matching enum-side TODO. */
   {RVOOS_NOTIFY_VACUUM,
    "RVOOS_NOTIFY_VACUUM",
    vacuum_rv_es_nop,
@@ -876,7 +879,16 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    NULL,
-   repl_data_insert_log_dump}
+   repl_data_insert_log_dump},
+  /* Crash recovery replays the forward REC_NEWHOME delete identically to RVHF_DELETE; the OOS
+   * reclaim is an additional vacuum-time action driven off the undo image, not part of redo/undo.
+   * Handlers MUST mirror RVHF_DELETE's (heap_rv_undo_delete / heap_rv_redo_delete). */
+  {RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
+   "RVHF_DELETE_NEWHOME_NOTIFY_VACUUM",
+   heap_rv_undo_delete,
+   heap_rv_redo_delete,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

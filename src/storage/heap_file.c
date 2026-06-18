@@ -39,6 +39,7 @@
 #include "heap_file.h"
 #include "heap_oos.hpp"
 #include "oos_file.hpp"
+#include "oos_util.hpp"
 
 #include "deduplicate_key.h"
 #include "porting.h"
@@ -701,10 +702,11 @@ static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_in
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
-static void heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size);
-static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					   RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
-					   int oos_scratch_size);
+static int heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+					   bool * oos_owned_buffer);
+static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
+					  RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
+					  int oos_scratch_size);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
@@ -860,9 +862,6 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
-#if !defined (NDEBUG)
-static bool heap_recdes_compute_oos_flag_debug (const RECDES * recdes);
-#endif /* !NDEBUG */
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -881,7 +880,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -5887,7 +5886,13 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	int error = oos_remove_file (thread_p, oos_vfid);
 	if (error != NO_ERROR)
@@ -5945,7 +5950,13 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	ret = oos_remove_file (thread_p, oos_vfid);
 	if (ret != NO_ERROR)
@@ -10463,38 +10474,64 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 /*
  * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
  *   Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ *
+ *   return: NO_ERROR, or an error code when the inline header / OOS page is
+ *           corrupted or the payload buffer cannot be obtained. On every error
+ *           path raw->data is set to NULL so the caller never reads stale data.
+ *   oos_owned_buffer(out): true iff raw->data must be cleaned up by the caller
+ *           (success, or Case 5 where it is freed here but the caller's
+ *           NULL-tolerant free is a harmless no-op). false on Cases 1-4 where
+ *           neither the scratch nor the heap allocator was engaged.
+ *
  *   On success raw->data is either the caller scratch (when oos_len fits) or a
  *   heap-allocated buffer the caller must free via recdes_free_data_area.
- *   On failure raw->data is set to NULL.
  */
-static void
-heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size)
+static int
+heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+				bool * oos_owned_buffer)
 {
   OR_BUF buf;
   OID oos_oid;
   DB_BIGINT oos_len;
   int rc = NO_ERROR;
+  int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
+
+  /* Keep the OID well-defined before any er_set: Case 1 reports it before it is read. */
+  OID_SET_NULL (&oos_oid);
 
   buf.ptr = raw->data;
   buf.endptr = recdes->data + recdes->length;
-  /* Writer invariant: the OOS-marked variable region always starts with [OID | bigint]. */
-  assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
+
+  /* Case 1: the OOS-marked variable region must start with [OID | bigint]. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      raw->data = NULL;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
 
   or_get_oid (&buf, &oos_oid);
   oos_len = or_get_bigint (&buf, &rc);
 
-  if (rc != NO_ERROR)
+  /* Case 2: bigint read failed or the forwarder OID is NULL. */
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
       raw->data = NULL;
-      assert_release_error (er_errid () != NO_ERROR);
-      return;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  /* Writer invariants: non-null OID, length fits int. */
-  assert (!OID_ISNULL (&oos_oid));
-  assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
+  /* Case 3: full length out of the (0, INT_MAX] range a single record can hold. */
+  if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      raw->data = NULL;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
 
   thread_p = thread_get_thread_entry_info ();
 
@@ -10505,30 +10542,40 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       raw->data = oos_scratch;
       raw->area_size = oos_scratch_size;
     }
+  /* Case 4: heap allocation failed. recdes_allocate_data_area does not er_set itself. */
   else if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
       raw->data = NULL;
-      assert_release (false);
-      return;
+      *oos_owned_buffer = false;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  if (oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len)) != NO_ERROR)
+  /* Case 5: oos_read failed. It has already er_set; just propagate its code.
+   * raw->data is a live buffer here, so free it (scratch is stack-backed) and NULL it. */
+  error = oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len));
+  if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       if (raw->data != oos_scratch)
 	{
 	  recdes_free_data_area (raw);
 	}
       raw->data = NULL;
-      assert_release (false);
-      return;
+      *oos_owned_buffer = true;
+      return error;
     }
+
   raw->length = (int) oos_len;
+  *oos_owned_buffer = true;
+  return NO_ERROR;
 }
 
 /*
  * heap_attrvalue_point_variable () -
  *
- *   return: NO_ERROR
+ *   return: NO_ERROR, or an error code propagated from the inline-OOS read or
+ *           raised when the variable offset table header is inconsistent.
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
@@ -10538,17 +10585,19 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
  *                          recdes_free_data_area unless raw->data == oos_scratch.
  *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
  */
-static void
+static int
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
 			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
 {
   int offset;
   int offset_size;
 
+  *oos_owned_buffer = false;
+
   if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
       /* nothing to do */
-      return;
+      return NO_ERROR;
     }
 
   /* the variable attribute is bound. */
@@ -10570,16 +10619,16 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
       break;
     default:
-      assert_release (false);
-      break;
+      /* Case D: corrupt offset_size. Return now so the indeterminate `offset` below is never read. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      /* Flag set before the call so every helper exit leaves caller in OOS-owned state. */
-      *oos_owned_buffer = true;
-      heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size);
+      /* The helper owns oos_owned_buffer from here: false on Cases 1-4, true on success / Case 5. */
+      return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
     }
   else
     {
@@ -10596,6 +10645,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 	  raw->length = -1;	/* remains can read without disk_length */
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10712,8 +10763,19 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-					 IO_MAX_PAGE_SIZE);
+	  error = heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
+						 IO_MAX_PAGE_SIZE);
+	  if (error != NO_ERROR)
+	    {
+	      /* Contract: only oos_owned_buffer (Case 5) leaves a buffer to reclaim; the free is
+	       * NULL-tolerant so it is a no-op on Cases 1-4. Do not fall through to transform,
+	       * which would otherwise turn the corruption into a silent NULL dbvalue. */
+	      if (oos_owned_buffer && raw.data != oos_scratch)
+		{
+		  recdes_free_data_area (&raw);
+		}
+	      return error;
+	    }
 	}
     }
 
@@ -10746,6 +10808,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int i;
+  int error = NO_ERROR;
 
   /* Initialize disk value information */
   db_make_null (value);
@@ -10785,8 +10848,17 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-					     IO_MAX_PAGE_SIZE);
+	      error = heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
+						     IO_MAX_PAGE_SIZE);
+	      if (error != NO_ERROR)
+		{
+		  /* value is already db_make_null at entry; only Case 5 leaves a buffer (NULL-tolerant free). */
+		  if (oos_owned_buffer && raw.data != oos_scratch)
+		    {
+		      recdes_free_data_area (&raw);
+		    }
+		  return error;
+		}
 	    }
 	}
     }
@@ -10872,12 +10944,25 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
 
   buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
   buf.endptr = recdes->data + recdes->length;
+
+  /* CBRD-26769: validate the inline header exactly as heap_attrvalue_read_oos_inline does.
+   * A corrupt header must never be cast into a midxkey size: a negative/huge (int) length
+   * would mis-size midxkey.buf and let the legitimate columns overrun it before the read path
+   * raises ER_HEAP_OOS_BAD_INLINE_HEADER.  Return 0 so the buffer is sized from recdes->length
+   * alone; the corruption is then surfaced when the value is actually read. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      return 0;
+    }
+
   or_get_oid (&buf, &oos_oid);
-  assert (!OID_ISNULL (&oos_oid));
 
   /* Read OOS length directly from recdes inline data (no I/O needed) */
   DB_BIGINT length = or_get_bigint (&buf, &rc);
-  assert (rc == NO_ERROR);
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+    {
+      return 0;
+    }
 
   return (int) length;
 }
@@ -12157,6 +12242,19 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   return header_size + payload_size;
 }
 
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
 bool
 heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
 {
@@ -12168,6 +12266,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   bool success;
 
   success = true;
+  VFID_SET_NULL (oos_vfid);
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -12198,9 +12297,25 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
     {
       if (docreate == true)
 	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
 	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Apply TDE to the new OOS file atomically with its creation.
+	   * Pattern mirrors heap_ovf_find_vfid */
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
@@ -12216,7 +12331,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	}
       else
 	{
-	  goto exit_on_error;
+	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  goto end;
 	}
     }
   else
@@ -13678,6 +13794,14 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised (e.g. ER_HEAP_OOS_BAD_INLINE_HEADER) and any OOS buffer released
+	       * inside heap_midxkey_get_value. */
+	      goto error;
+	    }
 	}
 
       if (key_domain != NULL)
@@ -13877,6 +14001,14 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised and any OOS buffer released inside heap_midxkey_get_value; the
+	       * previous iteration's value was cleared in-loop. */
+	      return NULL;
+	    }
 	}
     }
 
@@ -13963,6 +14095,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       /* Single column index. */
       if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
 	{
+	  /* CBRD-26769: db_valuep may hold a function-index result stored above; clear it before the
+	   * error return (mirroring the multi-column path), since callers do not clean up on NULL. */
+	  (void) pr_clear_value (db_valuep);
 	  return NULL;
 	}
     }
@@ -14029,6 +14164,16 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
 	{
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_valuep holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_valuep is NULL on entry). */
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
+	  (void) pr_clear_value (db_valuep);
 	  return NULL;
 	}
 
@@ -14215,6 +14360,16 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 	{
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_value holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_value is NULL on entry). */
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
+	  (void) pr_clear_value (db_value);
 	  return NULL;
 	}
 
@@ -21310,6 +21465,18 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE insert): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -21517,6 +21684,18 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE update): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -22245,7 +22424,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -22716,7 +22895,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -22739,6 +22918,21 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	}
+
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the forward
+       * REC_NEWHOME record before the destructive physical delete below removes the forward slot.
+       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID
+       * is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is
+       * reclaimed by vacuum. */
+      if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return rc;
+	    }
+	}
       /*
        * Delete forward record
        */
@@ -22748,10 +22942,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * should not be referenced anywhere in the database.
        */
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL,
+				RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23071,11 +23266,25 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the home record
+       * before the destructive physical delete below removes the slot. There is no new image on
+       * DELETE and OOS OIDs are never shared across rows, so every OOS OID is reclaimed. MVCC mode
+       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+      if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+	{
+	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable,
-				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23140,10 +23349,13 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
+ *   rcvindex(in): recovery index for the delete log record. Normally RVHF_DELETE; pass
+ *                 RVHF_DELETE_NEWHOME_NOTIFY_VACUUM for the MVCC remove_old_forward forward
+ *                 REC_NEWHOME delete so vacuum's forward-walk reclaims the old OOS records.
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable, LOG_LSA * undo_lsa)
+			  bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -23170,12 +23382,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
 
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, &temp_recdes, NULL);
     }
   else
     {
       /* log record descriptor */
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -23485,6 +23697,23 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records referenced only by the
+   * old forward record (REC_NEWHOME). All 4 sub-paths below either overwrite or remove the
+   * forward slot, so OOS attached to the old forward becomes unreachable. In MVCC mode
+   * (SERVER_MODE) the old OOS is preserved for concurrent readers; vacuum's forward-walk
+   * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
+   * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
+   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
+  if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+    {
+      rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -23631,11 +23860,20 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 	}
 
-      /* log operation */
+      /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
+       * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
+       * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
+       * from the undo image; otherwise (non-OOS, or SA mode handled by the eager-delete path above)
+       * use the plain RVHF_DELETE — no behavior change. */
+      LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
+      if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  delete_rcvindex = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM;
+	}
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa);
+				&forward_recdes, true, &prev_version_lsa, delete_rcvindex);
 
-      /* undo lsa for SUPPLEMENT_UPDATE log 
+      /* undo lsa for SUPPLEMENT_UPDATE log
        * case : 1. relocation to home
        *        2. relocation to bigone
        *        3. relocation to relocation (new forward recdes doesn't fit in existing forward page) */
@@ -23663,9 +23901,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* log operation */
+      /* log operation. In MVCC mode use RVHF_UPDATE_NOTIFY_VACUUM so the vacuum forward-walk
+       * picks up the old forward recdes and reclaims any OOS records it referenced. The home
+       * page log above (line ~24028) carries REC_RELOCATION (8-byte pointer, no OOS); this
+       * forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p, RVHF_UPDATE);
+				&forward_recdes, context->recdes_p,
+				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
 
       /* undo, redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation (forward recdes fits in existing page) */
       if (context->do_supplemental_log)
@@ -23937,6 +24179,20 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
       error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
 						 newhome_pg_watcher_p, &prev_version_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
+   * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
+   * by vacuum via a forward walk of the log block (vacuum_process_log_block). */
+  if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+    {
+      error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
+						 "update home");
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -27619,92 +27875,17 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
   return ER_FAILED;
 }
 
-#if !defined (NDEBUG)
+#if defined(CUBRID_UNIT_TEST_ENABLED)
 /*
- * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_MVCC_FLAG_HAS_OOS
- *                                      against the on-disk VOT
- *    return: true if the VOT contains any OOS-flagged entry, false otherwise
- *    recdes(in): heap record being written
- *
- * Note:
- *    Debug-only sanity check used by heap_update_adjust_recdes_header () to
- *    verify the upstream builder (heap_attrinfo_transform_header_to_disk)
- *    stamped HAS_OOS consistently with the VOT contents. The production path
- *    trusts the bit; this walker is the assert that catches divergence.
- *
- *    Defense against non-object-instance records: the heap can hold records
- *    with layouts other than the object-instance VOT format (class records,
- *    root records, etc.). For those, the bytes read as a VOT offset are
- *    arbitrary and could spuriously satisfy OR_IS_OOS.
- *
- *    The caller of this function asserts !OID_IS_ROOTOID() upstream, but we
- *    still validate the first VOT entry as a cheap belt-and-suspenders check:
- *    a real first offset must fall inside [0, recdes->length] (after masking
- *    the two flag bits). Anything outside that range means we are not looking
- *    at a real VOT, and we return false rather than walking arbitrary bytes.
- *
- *    Only index 0 needs the bound check — once the first entry validates,
- *    the loop is self-terminating via OR_IS_OOS or OR_IS_LAST_ELEMENT, and
- *    max_var_count is a backstop against malformed data.
+ * bridge_heap_attrvalue_read_oos_inline () - Unit-test seam exposing the static
+ *   inline-OOS reader so unit_tests/oos can drive the corrupt-header paths
+ *   (Cases 1-3) and assert the error code + cleanup contract. See
+ *   unit_tests/oos/test_oos.cpp.
  */
-static bool
-heap_recdes_compute_oos_flag_debug (const RECDES * recdes)
+int
+bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+				       bool * oos_owned_buffer)
 {
-  if (recdes == NULL || recdes->data == NULL)
-    {
-      return false;
-    }
-
-  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
-
-  for (int index = 0;; ++index)
-    {
-      if (index == max_var_count)
-	{
-	  assert (false && "LAST_ELEMENT flag not found within record bounds");
-	  return false;
-	}
-
-      int offset;
-      switch (offset_size)
-	{
-	case OR_BYTE_SIZE:
-	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_SHORT_SIZE:
-	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	default:
-	  assert (false && "unexpected variable offset size");
-	  return false;
-	}
-
-      /* First-entry bound check — see the function header for the rationale. */
-      if (index == 0)
-	{
-	  const int clean = offset & ~OR_VAR_FLAG_MASK;
-	  if (clean < 0 || clean > recdes->length)
-	    {
-	      return false;
-	    }
-	}
-
-      if (OR_IS_OOS (offset))
-	{
-	  return true;
-	}
-
-      if (OR_IS_LAST_ELEMENT (offset))
-	{
-	  return false;
-	}
-    }
-
-  return false;
+  return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
 }
-#endif /* !NDEBUG */
+#endif /* CUBRID_UNIT_TEST_ENABLED */

@@ -1762,6 +1762,62 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
 }
 
 /*
+ * oos_chunk_exists () - Probe whether the OOS chunk at oid still exists. Read-only companion to
+ *   oos_delete for idempotent callers (e.g. vacuum forward-walk block retry, which must skip OIDs
+ *   whose chunks a previously committed sysop already removed instead of tripping the
+ *   S_DOESNT_EXIST hard error inside oos_delete_chain).
+ *
+ *   "Already gone" is narrowly defined:
+ *     - pgbuf_fix_if_not_deallocated returns NO_ERROR with page_ptr==NULL (page deallocated), OR
+ *     - spage_get_record returns S_DOESNT_EXIST (slot removed but page still alive).
+ *
+ *   Any other failure (real pgbuf_fix error from I/O / interrupt / buffer corruption, or
+ *   spage_get_record returning S_ERROR) is propagated as the probe's return value; callers must
+ *   treat that as a failure rather than a successful "gone".
+ */
+int
+oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists)
+{
+  *out_exists = false;
+
+  VPID vpid;
+  vpid.volid = oid.volid;
+  vpid.pageid = oid.pageid;
+
+  PAGE_PTR page_ptr = NULL;
+  int error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+		   &page_ptr);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  if (page_ptr == NULL)
+    {
+      /* Page legitimately deallocated; chunk is gone. */
+      return NO_ERROR;
+    }
+
+  RECDES probe = RECDES_INITIALIZER;
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &probe, PEEK);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+
+  if (code == S_SUCCESS)
+    {
+      *out_exists = true;
+      return NO_ERROR;
+    }
+  if (code == S_DOESNT_EXIST)
+    {
+      /* Slot already removed; chunk is gone. */
+      return NO_ERROR;
+    }
+  ASSERT_ERROR ();
+  int errid = er_errid ();
+  return errid != NO_ERROR ? errid : ER_FAILED;
+}
+
+/*
  * oos_delete () - delete an OOS record (single-chunk or multi-chunk chain)
  *
  *   return: NO_ERROR or error code
@@ -1975,6 +2031,24 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
       return NO_ERROR;
     }
 
+  return oos_get_stats_by_vfid (thread_p, oos_vfid, out);
+}
+
+/*
+ * oos_get_stats_by_vfid () - Collect live-record statistics for an OOS file.
+ *   Core of xoos_get_stats_by_class_oid; also usable for OOS files that are
+ *   not attached to a catalogued class (e.g. unit-test heaps).
+ */
+int
+oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out)
+{
+  if (out == NULL || VFID_ISNULL (&oos_vfid))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  memset (out, 0, sizeof (*out));
+  out->page_size = DB_PAGESIZE;
   out->has_oos_file = 1;
   out->oos_vfid = oos_vfid;
 
@@ -2020,14 +2094,17 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
 	  continue;		/* page busy — accept a slight undercount */
 	}
 
-      int page_npages = 0;
-      int page_nrecs = 0;
-      int page_recs_len = 0;
-      spage_collect_statistics (page_ptr, &page_npages, &page_nrecs, &page_recs_len);
+      /* Walk slots explicitly: spage_collect_statistics skips slot 0 (a heap-page
+       * assumption where slot 0 holds the header record), but OOS data pages keep
+       * records starting at slot 0, so it undercounts by one record per page. */
+      PGSLOTID slotid = -1;
+      RECDES slot_recdes;
+      while (spage_next_record (page_ptr, &slotid, &slot_recdes, PEEK) == S_SUCCESS)
+	{
+	  total_recs++;
+	  total_sumlen += slot_recdes.length;
+	}
       pgbuf_unfix_and_init (thread_p, page_ptr);
-
-      total_recs += page_nrecs;
-      total_sumlen += page_recs_len;
     }
 
   out->num_recs = (int) total_recs;

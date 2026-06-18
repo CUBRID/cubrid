@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +17,7 @@
  */
 
 /*
- * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion
+ * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion and eager cleanup
  */
 
 #ifndef _HEAP_OOS_HPP_
@@ -26,5 +27,10 @@
 #include "storage_common.h"
 
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
+
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
+ * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
+extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
 
 #endif /* _HEAP_OOS_HPP_ */
