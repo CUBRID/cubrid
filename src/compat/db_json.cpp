@@ -2558,6 +2558,13 @@ db_json_object_merge_ignore_duplicates_func (const JSON_DOC *source, JSON_DOC *&
   if (dest == NULL)
     {
       dest = db_json_allocate_doc ();
+      if (dest == NULL)
+	{
+	  /* db_json_allocate_doc goes through the noexcept allocator and returns NULL on OOM
+	   * without setting an error; dereferencing it in db_json_copy_doc would crash. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	  return ER_FAILED;
+	}
       db_json_copy_doc (*dest, source);
       return NO_ERROR;
     }
