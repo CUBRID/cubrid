@@ -37,6 +37,7 @@
 #include "db_value_printer.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "file_manager.h"
 #include "log_append.hpp"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -4651,75 +4652,102 @@ qfile_duplicate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, int fl
  */
 
 /*
- * qfile_get_tuple () -
- *   return:
- *   first_page(in):
- *   tuplep(in):
- *   tplrec(in):
- *   list_idp(in):
+ * qfile_get_tuple () - Copy a tuple from first_page_p into dest_tplrec. For an overflow tuple,
+ *                      delegates to qfile_assemble_overflow_tuple to reassemble the VPID chain.
+ *                      Reallocates dest_tplrec if its buffer is too small.
+ *   returns              : NO_ERROR or ER_FAILED.
+ *   thread_p (in)        : thread entry
+ *   first_page_p (in)    : page that holds the tuple start
+ *   src_tuple (in)       : pointer to the tuple data inside first_page_p
+ *   dest_tplrec (in/out) : destination buffer (grown as needed; tpl receives the copy)
+ *   list_id_p (in)       : list that owns first_page_p (used to resolve the overflow tfile)
  */
 int
-qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE tuple, QFILE_TUPLE_RECORD * tuple_record_p,
-		 QFILE_LIST_ID * list_id_p)
+qfile_get_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE src_tuple,
+		 QFILE_TUPLE_RECORD * dest_tplrec, QFILE_LIST_ID * list_id_p)
 {
-  VPID ovfl_vpid;
-  char *tuple_p;
-  int offset;
-  int tuple_length, tuple_page_size;
-  int max_tuple_page_size;
-  PAGE_PTR page_p;
+  int tuple_length = QFILE_GET_TUPLE_LENGTH (src_tuple);
 
-  page_p = first_page_p;
-  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
-
-  if (tuple_record_p->size < tuple_length)
+  if (QFILE_GET_OVERFLOW_PAGE_ID (first_page_p) != NULL_PAGEID)
     {
-      if (qfile_reallocate_tuple (tuple_record_p, tuple_length) != NO_ERROR)
+      return qfile_assemble_overflow_tuple (thread_p, first_page_p, dest_tplrec, list_id_p->tfile_vfid);
+    }
+
+  /* tuple is inside the page */
+  if (dest_tplrec->size < tuple_length)
+    {
+      if (qfile_reallocate_tuple (dest_tplrec, tuple_length) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
     }
 
-  tuple_p = (char *) tuple_record_p->tpl;
+  memcpy (dest_tplrec->tpl, src_tuple, tuple_length);
+  return NO_ERROR;
+}
 
-  if (QFILE_GET_OVERFLOW_PAGE_ID (page_p) == NULL_PAGEID)
-    {
-      /* tuple is inside the page */
-      memcpy (tuple_p, tuple, tuple_length);
-      return NO_ERROR;
-    }
-  else
-    {
-      /* tuple has overflow pages */
-      offset = 0;
-      max_tuple_page_size = qfile_Max_tuple_page_size;
+/*
+ * qfile_assemble_overflow_tuple () - Reassemble a tuple spread across overflow pages into tplrec.
+ *                                    Reallocates tplrec if its buffer is too small.
+ *                                    Frees the continuation pages it walks via tfile_vfid_p
+ *                                    (the first page is left to the caller).
+ *   returns           : NO_ERROR or er_errid ().
+ *   thread_p (in)     : thread entry
+ *   first_page_p (in) : first overflow page (caller owns its lifetime)
+ *   tplrec (in/out)   : destination buffer (grown as needed; tpl points to assembled data on success)
+ *   tfile_vfid_p (in) : tfile that owns first_page_p and its continuation chain
+ */
+int
+qfile_assemble_overflow_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUPLE_RECORD * tplrec,
+			       struct qmgr_temp_file *tfile_vfid_p)
+{
+  VPID overflow_vpid = VPID_INITIALIZER;
+  PAGE_PTR overflow_page_p = first_page_p;
+  int tuple_length = QFILE_GET_TUPLE_LENGTH ((char *) first_page_p + QFILE_PAGE_HEADER_SIZE);
+  int copy_offset = 0;
+  int copy_size;
 
-      do
+  if (tplrec->size < tuple_length)
+    {
+      if (qfile_reallocate_tuple (tplrec, tuple_length) != NO_ERROR)
 	{
-	  QFILE_GET_OVERFLOW_VPID (&ovfl_vpid, page_p);
-	  tuple_page_size = MIN (tuple_length - offset, max_tuple_page_size);
-
-	  memcpy (tuple_p, (char *) page_p + QFILE_PAGE_HEADER_SIZE, tuple_page_size);
-
-	  tuple_p += tuple_page_size;
-	  offset += tuple_page_size;
-
-	  if (page_p != first_page_p)
-	    {
-	      qmgr_free_old_page_and_init (thread_p, page_p, list_id_p->tfile_vfid);
-	    }
-
-	  if (ovfl_vpid.pageid != NULL_PAGEID)
-	    {
-	      page_p = qmgr_get_old_page (thread_p, &ovfl_vpid, list_id_p->tfile_vfid);
-	      if (page_p == NULL)
-		{
-		  return ER_FAILED;
-		}
-	    }
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
 	}
-      while (ovfl_vpid.pageid != NULL_PAGEID);
     }
+
+  do
+    {
+      copy_size = MIN (tuple_length - copy_offset, qfile_Max_tuple_page_size);
+
+      memcpy (tplrec->tpl + copy_offset, (char *) overflow_page_p + QFILE_PAGE_HEADER_SIZE, copy_size);
+
+      copy_offset += copy_size;
+      assert (copy_offset <= tuple_length);
+
+      QFILE_GET_OVERFLOW_VPID (&overflow_vpid, overflow_page_p);
+
+      if (overflow_page_p != first_page_p)
+	{
+	  /* overflow continuation pages share the same tfile as the first page (see qfile_allocate_new_ovf_page) */
+	  qmgr_free_old_page_and_init (thread_p, overflow_page_p, tfile_vfid_p);
+	}
+
+      if (VPID_ISNULL (&overflow_vpid))
+	{
+	  /* end */
+	  break;
+	}
+
+      /* next overflow page */
+      overflow_page_p = qmgr_get_old_page (thread_p, &overflow_vpid, tfile_vfid_p);
+      if (overflow_page_p == NULL)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+    }
+  while (!VPID_ISNULL (&overflow_vpid));
 
   return NO_ERROR;
 }
@@ -7068,4 +7096,178 @@ bool
 qfile_has_no_cache_entries ()
 {
   return (qfile_List_cache.n_entries == 0);
+}
+
+/*
+ * qfile_collect_list_sector_info () - Collect data page sectors from list_id and all dependent list files.
+ *   membuf exists only in the first list_id (not in dependent_list_id).
+ *   Disk sectors are collected via file_get_all_data_sectors for each dependent list_id.
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * list_id (in)    : list file identifier (may have dependent_list_id chain)
+ * sector_info (out) : output sector info (caller must free with qfile_free_list_sector_info)
+ */
+int
+qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  QFILE_LIST_ID *current;
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (list_id->tfile_vfid != NULL);
+  assert (sector_info != NULL);
+
+  /* reset sector_info */
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  /* membuf exists only in the first list_id */
+  if (list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
+    {
+      assert (list_id->tfile_vfid->membuf_npages > 0);
+      sector_info->membuf_tfile = list_id->tfile_vfid;
+    }
+
+  for (current = list_id; current != NULL; current = current->dependent_list_id)
+    {
+      assert (current->tfile_vfid != NULL);
+
+      if (VFID_ISNULL (&current->tfile_vfid->temp_vfid))
+	{
+	  continue;
+	}
+
+      error = file_get_all_data_sectors (thread_p, &current->tfile_vfid->temp_vfid, &collector);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      if (collector.nsects > 0)
+	{
+	  int old_cnt = sector_info->sector_cnt;
+	  int new_cnt = old_cnt + collector.nsects;
+
+	  FILE_PARTIAL_SECTOR *merged_sectors =
+	    (FILE_PARTIAL_SECTOR *) db_private_realloc (thread_p, sector_info->sectors,
+							new_cnt * sizeof (FILE_PARTIAL_SECTOR));
+	  if (merged_sectors == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->sectors = merged_sectors;
+
+	  void **merged_tfiles =
+	    (void **) db_private_realloc (thread_p, sector_info->tfiles, new_cnt * sizeof (void *));
+	  if (merged_tfiles == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  sector_info->tfiles = merged_tfiles;
+
+	  memcpy (sector_info->sectors + old_cnt, collector.partsect_ftab,
+		  collector.nsects * sizeof (FILE_PARTIAL_SECTOR));
+
+	  for (int i = 0; i < collector.nsects; i++)
+	    {
+	      sector_info->tfiles[old_cnt + i] = (void *) current->tfile_vfid;
+	    }
+
+	  sector_info->sector_cnt = new_cnt;
+	}
+
+      if (collector.partsect_ftab != NULL)
+	{
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
+	}
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  if (collector.partsect_ftab != NULL)
+    {
+      db_private_free_and_init (thread_p, collector.partsect_ftab);
+    }
+
+  qfile_free_list_sector_info (thread_p, sector_info);
+
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * qfile_free_list_sector_info () - Free sector info allocated by qfile_collect_list_sector_info.
+ *
+ * thread_p (in)     : thread entry
+ * sector_info (in)  : sector info to free
+ */
+void
+qfile_free_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_INFO * sector_info)
+{
+  assert (thread_p != NULL);
+  assert (sector_info != NULL);
+
+  if (sector_info->sectors != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->sectors);
+    }
+
+  if (sector_info->tfiles != NULL)
+    {
+      db_private_free_and_init (thread_p, sector_info->tfiles);
+    }
+
+  sector_info->membuf_tfile = NULL;
+  sector_info->sector_cnt = 0;
+}
+
+/*
+ * qfile_open_list_sector_scan () - Begin a sector-based parallel page scan: collect data
+ *   page sectors from list_id and reset the per-pass atomic cursors.
+ *
+ *   return: error code
+ *   thread_p (in)  : thread entry
+ *   list_id (in)   : source list_id whose data pages drive this pass
+ *   sector_scan (out): sector scan distribution state (caller must release
+ *                    via qfile_close_list_sector_scan)
+ */
+int
+qfile_open_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
+			     QFILE_LIST_SECTOR_SCAN_INFO * sector_scan)
+{
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (sector_scan != NULL);
+
+  error = qfile_collect_list_sector_info (thread_p, list_id, &sector_scan->sector_info);
+  if (error != NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  sector_scan->membuf_claimed.store (false, std::memory_order_relaxed);
+  sector_scan->next_sector_index.store (0, std::memory_order_relaxed);
+
+  return NO_ERROR;
+}
+
+/*
+ * qfile_close_list_sector_scan () - Release a sector scan opened by qfile_open_list_sector_scan.
+ *
+ * thread_p (in)  : thread entry
+ * sector_scan (in) : sector scan distribution state to release
+ */
+void
+qfile_close_list_sector_scan (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_SCAN_INFO * sector_scan)
+{
+  assert (thread_p != NULL);
+  assert (sector_scan != NULL);
+
+  qfile_free_list_sector_info (thread_p, &sector_scan->sector_info);
 }

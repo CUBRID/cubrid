@@ -20,6 +20,7 @@
  * semantic_check.c - semantic checking functions
  */
 
+#include "parse_tree.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -370,18 +371,8 @@ pt_update_compatible_info (PARSER_CONTEXT * parser, SEMAN_COMPATIBLE_INFO * cinf
 
       cinfo->type_enum = common_type;
 
-      cinfo->scale = MAX (att1_info->scale, att2_info->scale);
-      cinfo->prec = MAX ((att1_info->prec - att1_info->scale), (att2_info->prec - att2_info->scale)) + cinfo->scale;
-
-      if (cinfo->prec > DB_MAX_NUMERIC_PRECISION)
-	{			/* overflow */
-	  cinfo->scale -= (cinfo->prec - DB_MAX_NUMERIC_PRECISION);
-	  if (cinfo->scale < 0)
-	    {
-	      cinfo->scale = 0;
-	    }
-	  cinfo->prec = DB_MAX_NUMERIC_PRECISION;
-	}
+      cinfo->scale = DB_DEFAULT_NUMERIC_SCALE;
+      cinfo->prec = DB_DEFAULT_NUMERIC_PRECISION;
       break;
 
     case PT_TYPE_SET:
@@ -1346,7 +1337,7 @@ pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node)
 
 /*
  * pt_check_user_exists () -  given 'user.class', check that 'user' exists
- *   return:  db_user instance if user exists, NULL otherwise.
+ *   return:  _db_user instance if user exists, NULL otherwise.
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  *
@@ -1380,7 +1371,7 @@ pt_check_user_exists (PARSER_CONTEXT * parser, PT_NODE * cls_ref)
 
 /*
  * pt_check_user_owns_class () - given user.class, check that user owns class
- *   return:  db_user instance if 'user' exists & owns 'class', NULL otherwise
+ *   return:  _db_user instance if 'user' exists & owns 'class', NULL otherwise
  *   parser(in): the parser context used to derive cls_ref
  *   cls_ref(in): a PT_NAME node
  */
@@ -2275,20 +2266,8 @@ pt_union_compatible (PARSER_CONTEXT * parser, PT_NODE * item1, PT_NODE * item2, 
 	    {
 	      return PT_UNION_ERROR;
 	    }
-	  data_type->info.data_type.precision =
-	    MAX ((ci1.prec - ci1.scale), (ci2.prec - ci2.scale)) + MAX (ci1.scale, ci2.scale);
-	  data_type->info.data_type.dec_precision = MAX (ci1.scale, ci2.scale);
-
-	  if (data_type->info.data_type.precision > DB_MAX_NUMERIC_PRECISION)
-	    {
-	      data_type->info.data_type.dec_precision =
-		(DB_MAX_NUMERIC_PRECISION - data_type->info.data_type.dec_precision);
-	      if (data_type->info.data_type.dec_precision < 0)
-		{
-		  data_type->info.data_type.dec_precision = 0;
-		}
-	      data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
-	    }
+	  data_type->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	}
 
       if (item1->type_enum == common_type && item2->type_enum == common_type)
@@ -4910,6 +4889,13 @@ pt_check_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      if (attr->info.attr_def.auto_increment != NULL)
 		{
 		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
+		  return;
+		}
+	      if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+		{
+		  /* attempt to set visibility in vclass */
+		  PT_ERRORm (parser, alter, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
+		  return;
 		}
 	    }
 	}
@@ -8733,6 +8719,12 @@ pt_check_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_BE_AUTOINC);
 	      return;
 	    }
+	  if (attr->info.attr_def.attr_invisible != PT_ATTR_INVISIBLE_UNSET)
+	    {
+	      /* attempt to set visibility in vclass */
+	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VCLASS_ATT_CANT_SET_VISIBILITY);
+	      return;
+	    }
 	}
     }
 
@@ -9057,6 +9049,75 @@ pt_check_create_index (PARSER_CONTEXT * parser, PT_NODE * node)
 
   /* if this is a filter index, check that the filter is a valid filter expression. */
   pt_check_filter_index_expr (parser, node->info.index.column_names, node->info.index.where, db_obj);
+}
+
+static void
+pt_check_update_histogram (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *name;
+  DB_OBJECT *db_obj;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
+
+  /* check that there trying to create an histogram on a class */
+  name = node->info.histogram.target_table_spec->info.spec.entity_name;
+
+  /* We cannot create histogram of a class by using synonym names. */
+  if (db_find_synonym (name->info.name.original) != NULL)
+    {
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      return;
+    }
+  else
+    {
+      /* db_find_synonym () == NULL */
+      ASSERT_ERROR ();
+
+      if (er_errid () == ER_SYNONYM_NOT_EXIST)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  return;
+	}
+    }
+
+  db_obj = db_find_class (name->info.name.original);
+  if (db_obj == NULL)
+    {
+      PT_ERRORmf (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_A_CLASS, name->info.name.original);
+      return;
+    }
+
+  /* make sure it's not a virtual class */
+  if (db_is_class (db_obj) <= 0)
+    {
+      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NO_INDEX_ON_VCLASS);
+      return;
+    }
+
+  /* check if this is a sub_ partition class */
+  if (sm_partitioned_class_type (db_obj, &is_partition, NULL, NULL) != NO_ERROR)
+    {
+      PT_ERROR (parser, node, er_msg ());
+      return;
+    }
+
+  if (is_partition == DB_PARTITION_CLASS)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_PARTITION_REQUEST);
+      return;
+    }
+
+  name->info.name.db_object = db_obj;
+
+  /* auth check */
+  pt_check_user_owns_class (parser, name);
+  if (pt_has_error (parser))
+    {
+      return;
+    }
+
 }
 
 static void
@@ -10089,7 +10150,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	  const char *proc_name = procs->info.name.original;
 	  if (jsp_is_exist_stored_procedure (proc_name) == false)
 	    {
-	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
 	      break;
 	    }
 	}
@@ -12284,6 +12345,58 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
 		  node = parser_walk_tree (parser, node, pt_expand_isnull_preds, node, NULL, NULL);
 		}
+	    }
+	}
+      break;
+
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
+      if (parser->host_var_count)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_IN_DDL);
+	}
+      else
+	{
+	  sc_info_ptr->system_class = false;
+	  node = pt_resolve_names (parser, node, sc_info_ptr);
+	  if (!pt_has_error (parser))
+	    {
+	      pt_check_update_histogram (parser, node);
+	    }
+
+	  if (!pt_has_error (parser))
+	    {
+	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+	    }
+	}
+      break;
+    case PT_SHOW_HISTOGRAM:
+      if (parser->host_var_count)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_HOSTVAR_NOT_ALLOWED_ON_QUERY_SPEC);
+	}
+      else
+	{
+	  sc_info_ptr->system_class = false;
+	  node = pt_resolve_names (parser, node, sc_info_ptr);
+	  if (!pt_has_error (parser))
+	    {
+	      pt_check_update_histogram (parser, node);
+	    }
+
+	  if (!pt_has_error (parser))
+	    {
+	      node = pt_semantic_type (parser, node, info);
+	    }
+
+	  if (node && !pt_has_error (parser))
+	    {
+	      node = parser_walk_tree (parser, node, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
 	    }
 	}
       break;
