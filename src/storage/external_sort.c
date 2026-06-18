@@ -4435,6 +4435,15 @@ sort_copy_sort_param (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   for (i = 0; i < parallel_num; i++)
     {
       px_sort_param[i].internal_memory = NULL;
+      /* The memcpy above shallow-copies main's caller-owned pointers into
+       * every worker slot. If a later alloc in this function fails, cleanup
+       * runs sort_return_used_resources(PX_THREAD_IN_PARALLEL) which would
+       * then free those pointers (e.g. main's stack-allocated GROUPBY_STATE)
+       * as if they belonged to the worker. Null them out up front so the
+       * cleanup short-circuits on the failure path. */
+      px_sort_param[i].get_arg = NULL;
+      px_sort_param[i].put_arg = NULL;
+      px_sort_param[i].ori_sort_param = NULL;
       for (j = 0; j < SORT_MAX_TOT_FILES; j++)
 	{
 	  px_sort_param[i].file_contents[j].num_pages = NULL;
