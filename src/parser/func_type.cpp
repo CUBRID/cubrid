@@ -1938,6 +1938,7 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	  if (arg_type == PT_TYPE_NUMERIC && node->data_type)
 	    {
 	      node->data_type->info.data_type.precision = DB_MAX_NUMERIC_PRECISION;
+	      node->data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 	    }
 	  break;
 
@@ -2156,10 +2157,15 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 	    {
 	      int precision = TP_FLOATING_PRECISION_VALUE;
 
-	      precision = pt_character_length_for_node (arg, arg_type);
 	      if (max_precision != TP_FLOATING_PRECISION_VALUE)
 		{
-		  if (precision == TP_FLOATING_PRECISION_VALUE || max_precision < precision)
+		  precision = pt_character_length_for_node (arg, arg_type);
+		  if (precision == TP_FLOATING_PRECISION_VALUE)
+		    {
+		      max_precision = precision;
+		      break;
+		    }
+		  else if (max_precision < precision)
 		    {
 		      max_precision = precision;
 		    }
@@ -2652,26 +2658,45 @@ pt_character_length_for_node (PT_NODE *node, const PT_TYPE_ENUM coerce_type)
       precision = TP_DATETIMETZ_AS_CHAR_LENGTH;
       break;
     case PT_TYPE_NUMERIC:
+    {
+      int scale = DB_DEFAULT_SCALE;
+
       if (node->data_type == NULL)
 	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION + 1;	/* sign */
+	  precision = DB_MAX_VARCHAR_PRECISION_FOR_NUMERIC_CAST + 1;	  /* for end character */
 	  break;
 	}
 
       precision = node->data_type->info.data_type.precision;
-      if (precision == 0 || precision == DB_DEFAULT_PRECISION)
-	{
-	  precision = DB_DEFAULT_NUMERIC_PRECISION;
-	}
-      precision++;		/* for sign */
+      scale = node->data_type->info.data_type.dec_precision;
 
-      if (node->data_type->info.data_type.dec_precision
-	  && (node->data_type->info.data_type.dec_precision != DB_DEFAULT_SCALE
-	      || node->data_type->info.data_type.dec_precision != DB_DEFAULT_NUMERIC_SCALE))
+      /* check if this is a floating numeric */
+      if (precision == DB_DEFAULT_NUMERIC_PRECISION || precision == 0 || precision == DB_DEFAULT_PRECISION)
 	{
-	  precision++;		/* for decimal point */
+	  precision = DB_MAX_VARCHAR_PRECISION_FOR_NUMERIC_CAST + 1;	/* for end character */
+	  break;
 	}
-      break;
+
+      /* fixed numeric: calculate precision based on precision and scale*/
+      precision++;	  /* for sign */
+
+      if (scale != DB_DEFAULT_SCALE && scale != DB_DEFAULT_NUMERIC_SCALE)
+	{
+	  if (scale > precision)
+	    {
+	      precision = scale + 2; /* for sign and decimal point */
+	    }
+	  else if (scale < 0)
+	    {
+	      precision = (precision - scale); /* for negative scale, no decimal point is needed */
+	    }
+	  else
+	    {
+	      precision++; /* for decimal point */
+	    }
+	}
+    }
+    break;
     case PT_TYPE_CHAR:
       if (node->data_type != NULL)
 	{

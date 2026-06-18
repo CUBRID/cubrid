@@ -2411,7 +2411,7 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
     case DB_TYPE_NUMERIC:
       /*
        * The first domain is a default domain for numeric type,
-       * actually NUMERIC(15,0). We try to match it first.
+       * actually NUMERIC(43,0). We try to match it first.
        */
       if (transient->precision == domain->precision && transient->scale == domain->scale
 	  && transient->is_desc == domain->is_desc)
@@ -3332,12 +3332,12 @@ tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 	   * the default "maximum" precision.
 	   * This may not be necessary any more.
 	   */
-	  if (domain->precision == -1)
+	  if (domain->precision == DB_DEFAULT_PRECISION)
 	    {
 	      domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
 	    }
 
-	  if (domain->scale == -1)
+	  if (domain->scale == DB_DEFAULT_SCALE)
 	    {
 	      domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	    }
@@ -4571,8 +4571,7 @@ tp_can_steal_string (const DB_VALUE * val, const DB_DOMAIN * desired_domain)
     {
     case DB_TYPE_CHAR:
       return (desired_precision == original_length
-	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR)
-	      && DB_GET_COMPRESSED_STRING (val) == NULL);
+	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
     case DB_TYPE_VARCHAR:
       return (desired_precision >= original_length
 	      && (original_type == DB_TYPE_CHAR || original_type == DB_TYPE_VARCHAR));
@@ -5416,9 +5415,21 @@ tp_ftoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_float, strlen (str_float), db_get_string_codeset (result),
-		    db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_float);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_float, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII float string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -5473,9 +5484,21 @@ tp_dtoa (DB_VALUE const *src, DB_VALUE * result)
   switch (DB_VALUE_DOMAIN_TYPE (result))
     {
     case DB_TYPE_CHAR:
-      db_make_char (result, DB_VALUE_PRECISION (result), str_double, strlen (str_double),
-		    db_get_string_codeset (result), db_get_string_collation (result));
-      result->need_clear = true;
+      {
+	int prec = DB_VALUE_PRECISION (result);
+	int data_size = strlen (str_double);
+
+	db_make_char (result, (prec == TP_FLOATING_PRECISION_VALUE) ? data_size : prec,
+		      str_double, data_size, db_get_string_codeset (result), db_get_string_collation (result));
+	result->need_clear = true;
+	result->data.ch.medium.length = data_size;	/* ASCII double string: char_count == byte_count */
+
+	if (data_size < prec && pr_pad_char_to_precision (result, prec) != NO_ERROR)
+	  {
+	    pr_clear_value (result);
+	    return;
+	  }
+      }
       break;
 
     case DB_TYPE_VARCHAR:
@@ -11133,7 +11156,14 @@ fprint_domain (FILE * fp, TP_DOMAIN * domain)
 	  break;
 
 	case DB_TYPE_NUMERIC:
-	  fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	  if (d->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      fprintf (fp, "%s", d->type->name);
+	    }
+	  else
+	    {
+	      fprintf (fp, "%s(%d,%d)", d->type->name, d->precision, d->scale);
+	    }
 	  break;
 
 	default:
@@ -11524,13 +11554,8 @@ tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 	}
       else if (common_type == DB_TYPE_NUMERIC)
 	{
-	  int integral_digits1, integral_digits2;
-
-	  integral_digits1 = arg1_prec - arg1_scale;
-	  integral_digits2 = arg2_prec - arg2_scale;
-	  target_domain->scale = MAX (arg1_scale, arg2_scale);
-	  target_domain->precision = (target_domain->scale + MAX (integral_digits1, integral_digits2));
-	  target_domain->precision = MIN (target_domain->precision, DB_MAX_NUMERIC_PRECISION);
+	  target_domain->precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  target_domain->scale = DB_DEFAULT_NUMERIC_SCALE;
 	}
       else
 	{

@@ -55,6 +55,8 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
+#include "xserver_interface.h"
+#include "intl_support.h"
 
 #include "dbtype.h"
 
@@ -2068,7 +2070,7 @@ qdata_add_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_VAL
       return qdata_add_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_add (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
 	  return ER_QPROC_OVERFLOW_ADDITION;
@@ -3676,7 +3678,7 @@ qdata_subtract_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_sub (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_sub (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_SUBTRACTION, 0);
 	  return ER_FAILED;
@@ -5125,7 +5127,7 @@ qdata_multiply_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, D
       return qdata_multiply_numeric (numeric_val_p, dbval_p, result_p);
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_mul (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_mul (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_MULTIPLICATION, 0);
 	  return ER_FAILED;
@@ -5737,7 +5739,7 @@ qdata_divide_numeric_to_dbval (DB_VALUE * numeric_val_p, DB_VALUE * dbval_p, DB_
       break;
 
     case DB_TYPE_NUMERIC:
-      if (numeric_db_value_div (numeric_val_p, dbval_p, result_p) != NO_ERROR)
+      if (float_numeric_db_value_div (numeric_val_p, dbval_p, result_p) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_DIVISION, 0);
 	  return ER_FAILED;
@@ -6045,11 +6047,21 @@ qdata_unary_minus_dbval (DB_VALUE * result_p, DB_VALUE * dbval_p)
       break;
 
     case DB_TYPE_NUMERIC:
-      db_make_numeric (result_p, db_get_numeric (dbval_p), DB_VALUE_PRECISION (dbval_p), DB_VALUE_SCALE (dbval_p));
-      if (numeric_db_value_negate (result_p) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
+      {
+	bool is_float_numeric = false;
+	int precision = 0, scale = 0;
+	db_get_numeric_precision_and_scale (dbval_p, &precision, &scale, &is_float_numeric);
+
+	bool is_value_negative = !dbval_p->domain.numeric_info.is_value_negative;
+	if (is_value_negative && numeric_db_value_is_zero (dbval_p))
+	  {
+	    /* Prevent -0; zero is always treated as positive. */
+	    is_value_negative = false;
+	  }
+
+	db_make_numeric (result_p, db_get_numeric (dbval_p), precision, scale, DB_NUMERIC_BUF_SIZE, is_value_negative,
+			 is_float_numeric);
+      }
       break;
 
     case DB_TYPE_MONETARY:
@@ -8834,6 +8846,127 @@ exit:
 }
 
 /*
+ * qdata_get_estimated_heap_stat () - gets an estimated heap statistic
+ *				      of a table using its name
+ *   return: NO_ERROR, or error code
+ *   thread_p(in)      : thread context
+ *   db_table_name(in) : string DB_VALUE holding the unique_name of the table
+ *   result_p(out)     : estimated statistic (bigint or NULL DB_VALUE)
+ *   op(in)            : which statistic to return
+ *
+ * Note: If the specified table does not exist, is a view/vclass, or NULL is given,
+ *       result_p is set to NULL and NO_ERROR is returned.
+ *       heap_get_class_info() is not used because heap_hfid_cache_get() asserts
+ *       that the HFID is non-null and ftype == FILE_HEAP, which fails for views.
+ */
+int
+qdata_get_estimated_heap_stat (THREAD_ENTRY * thread_p, DB_VALUE * db_table_name, DB_VALUE * result_p, OPERATOR_TYPE op)
+{
+  const char *unique_name_str;
+  char lower_name[SM_MAX_IDENTIFIER_LENGTH];
+  OID class_oid;
+  HFID hfid;
+  RECDES recdes;
+  HEAP_SCANCACHE scan_cache;
+  bool scan_cache_opened = false;
+  int npages, nobjs, avg_length;
+  int error = NO_ERROR;
+  int str_len;
+
+  db_make_null (result_p);
+
+  if (DB_IS_NULL (db_table_name))
+    {
+      goto exit;
+    }
+
+  if (!QSTR_IS_CHAR (DB_VALUE_DOMAIN_TYPE (db_table_name)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UNEXPECTED, 1, "Arguments type mismatching.");
+      error = ER_UNEXPECTED;
+      goto exit;
+    }
+
+  str_len = db_get_string_size (db_table_name);
+  if (str_len < 0 || str_len >= SM_MAX_IDENTIFIER_LENGTH)
+    {
+      goto exit;
+    }
+
+  unique_name_str = db_get_string (db_table_name);
+  if (unique_name_str == NULL)
+    {
+      goto exit;
+    }
+
+  intl_identifier_lower (unique_name_str, lower_name);
+
+  if (xlocator_find_class_oid (thread_p, lower_name, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      er_clear ();
+      goto exit;
+    }
+
+  (void) heap_scancache_quick_start_root_hfid (thread_p, &scan_cache);
+  scan_cache_opened = true;
+
+  if (heap_get_class_record (thread_p, &class_oid, &recdes, &scan_cache, PEEK) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  or_class_hfid (&recdes, &hfid);
+  if (HFID_IS_NULL (&hfid))
+    {
+      /* view or virtual class — no heap file; return NULL DB_VALUE */
+      goto exit;
+    }
+
+  error = heap_scancache_end (thread_p, &scan_cache);
+  scan_cache_opened = false;
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (heap_estimate (thread_p, &hfid, &npages, &nobjs, &avg_length) < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto exit;
+    }
+
+  switch (op)
+    {
+    case T_ESTIMATED_TABLE_ROWS:
+      db_make_bigint (result_p, (DB_BIGINT) nobjs);
+      break;
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) avg_length);
+      break;
+    case T_ESTIMATED_DATA_LENGTH:
+      db_make_bigint (result_p, (DB_BIGINT) npages * DB_PAGESIZE);
+      break;
+    case T_ESTIMATED_DATA_FREE:
+      {
+	DB_BIGINT data_free = (DB_BIGINT) npages * DB_PAGESIZE - (DB_BIGINT) nobjs * avg_length;
+	db_make_bigint (result_p, data_free > 0 ? data_free : 0);
+      }
+      break;
+    default:
+      assert (false);
+      break;
+    }
+
+exit:
+  if (scan_cache_opened)
+    {
+      (void) heap_scancache_end (thread_p, &scan_cache);
+    }
+  return error;
+}
+
+/*
  * qdata_tuple_to_values_array () - construct an array of values from a
  *				    tuple descriptor
  * return : error code or NO_ERROR
@@ -8944,7 +9077,7 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
 	    }
 	  else if (type == DB_TYPE_NUMERIC)
 	    {
-	      numeric_coerce_num_to_double (db_locate_numeric (f_value), DB_VALUE_SCALE (f_value), &d_result);
+	      numeric_coerce_num_to_double (f_value, db_get_numeric_scale (f_value, NULL), &d_result);
 	    }
 
 	  db_make_double (result, d_result);
@@ -9136,8 +9269,8 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       break;
 
     case DB_TYPE_NUMERIC:
-      numeric_coerce_num_to_double (db_locate_numeric (f_value), DB_VALUE_SCALE (f_value), &d1);
-      numeric_coerce_num_to_double (db_locate_numeric (c_value), DB_VALUE_SCALE (c_value), &d2);
+      numeric_coerce_num_to_double (f_value, db_get_numeric_scale (f_value, NULL), &d1);
+      numeric_coerce_num_to_double (c_value, db_get_numeric_scale (c_value, NULL), &d2);
 
       /* calculate */
       d_result = (c_row_num_d - row_num_d) * d1 + (row_num_d - f_row_num_d) * d2;
