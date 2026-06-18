@@ -88,16 +88,17 @@ namespace parallel_scan
       }
   }
 
-  /* CBRD-26931: snapshot the main-thread-precomputed value of every XASL_PRECOMPUTED_SCALAR subquery in the
-   * consuming node's aptr lists (across the scan_ptr chain), keyed by the subquery's header.id. Called on the
-   * main thread before worker tasks start. Idempotent (emplace skips an existing key). */
+  /* CBRD-26931: snapshot the main-thread-precomputed value of every uncorrelated single-value (scalar)
+   * subquery (one carrying precomp_owner_regu) in the consuming node's aptr lists (across the scan_ptr chain),
+   * keyed by the subquery's header.id. Called on the main thread before worker tasks start. Idempotent
+   * (emplace skips an existing key). */
   void pre_execution_info::capture_precomp_vals (xasl_node *head)
   {
     for (xasl_node *xptr = head; xptr != NULL; xptr = xptr->scan_ptr)
       {
 	for (xasl_node *subq = xptr->aptr_list; subq != NULL; subq = subq->next)
 	  {
-	    if (!XASL_IS_FLAGED (subq, XASL_PRECOMPUTED_SCALAR))
+	    if (subq->precomp_owner_regu == NULL)
 	      {
 		continue;
 	      }

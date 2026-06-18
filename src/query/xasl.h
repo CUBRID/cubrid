@@ -520,9 +520,6 @@ struct cte_proc_node
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
-#define XASL_PRECOMPUTED_SCALAR		(0x1 << 23)	/* uncorrelated single-value subquery consumed as a scalar in an
-							 * outer predicate; precomputed once on the main thread and the
-							 * value injected into parallel-scan worker clones (CBRD-26931) */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
@@ -1095,11 +1092,12 @@ struct xasl_node
 
   int is_single_tuple;		/* single tuple subquery? */
 
-  /* CBRD-26931: predicate regu variables of this consuming node that own an uncorrelated single-value
-   * (XASL_PRECOMPUTED_SCALAR) subquery. Holds the exact predicate-operand regu pointers (not copies); the array
-   * container is owned by the (un)pack arena, the regu elements are owned by the predicate. */
-  REGU_VARIABLE **precomp_regu_array;
-  int precomp_regu_count;
+  /* CBRD-26931: for an uncorrelated single-value (scalar) subquery consumed in an outer predicate, this is the
+   * predicate-operand regu that owns this subquery (regu->xasl == this node), set at linkage in
+   * pt_make_regu_subquery. NULL on any node that is not such a subquery. Its presence (not a separate flag)
+   * marks the node for the precompute/inject/checker-relax path: the value is precomputed once on the main
+   * thread and injected into parallel-scan worker clones. Owned by the predicate; (un)pack via offset dedup. */
+  REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */

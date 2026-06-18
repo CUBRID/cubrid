@@ -453,7 +453,6 @@ static XASL_NODE *pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PR
 static XASL_NODE *pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node);
 static XASL_NODE *parser_generate_xasl_proc (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * query_list);
-static void pt_capture_precomp_scalar_subqueries (XASL_NODE * xasl);
 static bool pt_xasl_spec_has_dblink (XASL_NODE * xasl);
 static PT_NODE *parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static int pt_spec_to_xasl_class_oid_list (PARSER_CONTEXT * parser, const PT_NODE * spec, OID ** oid_listp,
@@ -6981,6 +6980,11 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
+	      /* CBRD-26931: record the owning predicate-operand regu on the subquery node itself. This is the
+	       * single source of truth that marks an uncorrelated single-value (scalar) subquery for the
+	       * parallel-scan precompute/inject/checker-relax path -- captured here at the regu<->xasl linkage
+	       * point, so no separate post-pass walk over predicate surfaces is needed. */
+	      xasl->precomp_owner_regu = regu;
 	    }
 	  else
 	    {
@@ -17112,7 +17116,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  pt_capture_precomp_scalar_subqueries (xasl);
   scan_check_parallel_scan_possible (xasl);
 
   return xasl;
@@ -17344,7 +17347,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   /* restore old parent xasl */
   parser->parent_proc_xasl = save_parent_proc_xasl;
 
-  pt_capture_precomp_scalar_subqueries (xasl);
   scan_check_parallel_scan_possible (xasl);
 
   return xasl;
@@ -18584,7 +18586,6 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 	}
     }
 
-  pt_capture_precomp_scalar_subqueries (xasl);
   scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
@@ -22420,347 +22421,6 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 }
 
 /*
- * CBRD-26931: capture uncorrelated single-value (scalar) subqueries that are consumed in an outer
- * node's predicate, so that the parallel-scan machinery can later (1) relax the blanket
- * no-parallel block for exactly these subqueries (px_scan_checker.cpp) and (2) precompute the
- * value once on the main thread and inject it into worker clones (query_executor.c +
- * px_scan_task.cpp).
- *
- * The predicate consumer surface walked below MUST mirror the surface walked by
- * px_scan_checker.cpp -- see check (ACCESS_SPEC_TYPE *) and check (REGU_VARIABLE *) there -- so the
- * marker scope (XASL_PRECOMPUTED_SCALAR) and the injection scope (precomp_regu_array) stay
- * identical.  We store the exact predicate-operand regu pointers (not copies); the array container
- * is allocated from the packing buffer (bulk-freed), the regu elements remain owned by the
- * predicate.
- */
-typedef struct precomp_capture_ctx PRECOMP_CAPTURE_CTX;
-struct precomp_capture_ctx
-{
-  REGU_VARIABLE **array;	/* destination array; NULL while only counting */
-  int count;			/* number of qualifying regus seen so far */
-};
-
-static void pt_capture_precomp_regu_variable (PRECOMP_CAPTURE_CTX * ctx, REGU_VARIABLE * regu);
-static void pt_capture_precomp_regu_list (PRECOMP_CAPTURE_CTX * ctx, REGU_VARIABLE_LIST regu_list);
-static void pt_capture_precomp_pred_expr (PRECOMP_CAPTURE_CTX * ctx, PRED_EXPR * pred);
-
-static void
-pt_capture_precomp_regu_variable (PRECOMP_CAPTURE_CTX * ctx, REGU_VARIABLE * regu)
-{
-  if (regu == NULL)
-    {
-      return;
-    }
-
-  if (regu->type == TYPE_CONSTANT && regu->xasl != NULL && XASL_IS_FLAGED (regu->xasl, XASL_LINK_TO_REGU_VARIABLE)
-      && regu->xasl->is_single_tuple)
-    {
-      if (ctx->array != NULL)
-	{
-	  ctx->array[ctx->count] = regu;
-	  XASL_SET_FLAG (regu->xasl, XASL_PRECOMPUTED_SCALAR);
-	}
-      ctx->count++;
-    }
-
-  /* mirror check (REGU_VARIABLE *) recursion in px_scan_checker.cpp -- but do NOT descend into
-   * regu->xasl; that subquery body is visited on its own when the tree walk reaches the aptr node. */
-  switch (regu->type)
-    {
-    case TYPE_INARITH:
-    case TYPE_OUTARITH:
-      if (regu->value.arithptr != NULL)
-	{
-	  pt_capture_precomp_regu_variable (ctx, regu->value.arithptr->leftptr);
-	  pt_capture_precomp_regu_variable (ctx, regu->value.arithptr->rightptr);
-	  pt_capture_precomp_regu_variable (ctx, regu->value.arithptr->thirdptr);
-	  pt_capture_precomp_pred_expr (ctx, regu->value.arithptr->pred);
-	}
-      break;
-    case TYPE_FUNC:
-      if (regu->value.funcp != NULL)
-	{
-	  pt_capture_precomp_regu_list (ctx, regu->value.funcp->operand);
-	}
-      break;
-    case TYPE_REGU_VAR_LIST:
-      pt_capture_precomp_regu_list (ctx, regu->value.regu_var_list);
-      break;
-    case TYPE_SP:
-      if (regu->value.sp_ptr != NULL)
-	{
-	  pt_capture_precomp_regu_list (ctx, regu->value.sp_ptr->args);
-	}
-      break;
-    default:
-      break;
-    }
-}
-
-static void
-pt_capture_precomp_regu_list (PRECOMP_CAPTURE_CTX * ctx, REGU_VARIABLE_LIST regu_list)
-{
-  REGU_VARIABLE_LIST node;
-
-  for (node = regu_list; node != NULL; node = node->next)
-    {
-      pt_capture_precomp_regu_variable (ctx, &node->value);
-    }
-}
-
-static void
-pt_capture_precomp_pred_expr (PRECOMP_CAPTURE_CTX * ctx, PRED_EXPR * pred)
-{
-  if (pred == NULL)
-    {
-      return;
-    }
-
-  switch (pred->type)
-    {
-    case T_PRED:
-      pt_capture_precomp_pred_expr (ctx, pred->pe.m_pred.lhs);
-      pt_capture_precomp_pred_expr (ctx, pred->pe.m_pred.rhs);
-      break;
-    case T_EVAL_TERM:
-      switch (pred->pe.m_eval_term.et_type)
-	{
-	case T_COMP_EVAL_TERM:
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_comp.lhs);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_comp.rhs);
-	  break;
-	case T_ALSM_EVAL_TERM:
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_alsm.elem);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_alsm.elemset);
-	  break;
-	case T_LIKE_EVAL_TERM:
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_like.src);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_like.pattern);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_like.esc_char);
-	  break;
-	case T_RLIKE_EVAL_TERM:
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_rlike.src);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_rlike.pattern);
-	  pt_capture_precomp_regu_variable (ctx, pred->pe.m_eval_term.et.et_rlike.case_sensitive);
-	  break;
-	default:
-	  break;
-	}
-      break;
-    case T_NOT_TERM:
-      pt_capture_precomp_pred_expr (ctx, pred->pe.m_not_term);
-      break;
-    default:
-      break;
-    }
-}
-
-/* walk one access spec's predicate consumer surface; mirror check (ACCESS_SPEC_TYPE *). */
-static void
-pt_capture_precomp_access_spec (PRECOMP_CAPTURE_CTX * ctx, ACCESS_SPEC_TYPE * spec)
-{
-  if (spec->type == TARGET_CLASS)
-    {
-      pt_capture_precomp_regu_list (ctx, spec->s.cls_node.cls_regu_list_pred);
-      pt_capture_precomp_regu_list (ctx, spec->s.cls_node.cls_regu_list_rest);
-      pt_capture_precomp_pred_expr (ctx, spec->where_pred);
-      if (spec->access == ACCESS_METHOD_INDEX)
-	{
-	  pt_capture_precomp_regu_list (ctx, spec->s.cls_node.cls_regu_list_key);
-	  pt_capture_precomp_pred_expr (ctx, spec->where_key);
-	  pt_capture_precomp_regu_list (ctx, spec->s.cls_node.cls_regu_list_range);
-	  pt_capture_precomp_pred_expr (ctx, spec->where_range);
-	}
-    }
-  else if (spec->type == TARGET_LIST)
-    {
-      pt_capture_precomp_regu_list (ctx, spec->s.list_node.list_regu_list_pred);
-      pt_capture_precomp_regu_list (ctx, spec->s.list_node.list_regu_list_rest);
-      pt_capture_precomp_pred_expr (ctx, spec->where_pred);
-    }
-}
-
-/* process a single consuming xasl node: collect qualifying regus over its spec surfaces and, if
- * any, allocate precomp_regu_array and stamp markers (count pass then fill pass over the same
- * deterministic traversal). */
-static void
-pt_capture_precomp_node (XASL_NODE * xasl)
-{
-  PRECOMP_CAPTURE_CTX ctx;
-  ACCESS_SPEC_TYPE *spec;
-
-  /* start clean: never leave a stale count paired with a NULL array on a re-visit. */
-  xasl->precomp_regu_array = NULL;
-  xasl->precomp_regu_count = 0;
-
-  ctx.array = NULL;
-  ctx.count = 0;
-  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
-    {
-      pt_capture_precomp_access_spec (&ctx, spec);
-    }
-  for (spec = xasl->merge_spec; spec != NULL; spec = spec->next)
-    {
-      pt_capture_precomp_access_spec (&ctx, spec);
-    }
-
-  if (ctx.count == 0)
-    {
-      return;
-    }
-
-  regu_array_alloc (&xasl->precomp_regu_array, (size_t) ctx.count);
-  if (xasl->precomp_regu_array == NULL)
-    {
-      return;
-    }
-
-  /* fill pass: re-walk the identical surface, now storing each qualifying regu into the array and
-   * stamping the marker. */
-  ctx.array = xasl->precomp_regu_array;
-  ctx.count = 0;
-  for (spec = xasl->spec_list; spec != NULL; spec = spec->next)
-    {
-      pt_capture_precomp_access_spec (&ctx, spec);
-    }
-  for (spec = xasl->merge_spec; spec != NULL; spec = spec->next)
-    {
-      pt_capture_precomp_access_spec (&ctx, spec);
-    }
-  xasl->precomp_regu_count = ctx.count;
-}
-
-/* CBRD-26931: cycle/visited guard for the capture walk below.
- *
- * The structural links the walk follows (aptr/bptr/dptr/fptr/scan_ptr/connect_by_ptr, the
- * union/cte/mergelist/hashjoin children, and the xasl->next chains) do NOT form a pure tree: in
- * UNION ALL / LIMIT / CTE shapes the same sub-xasl is reachable from more than one parent, and a
- * head's ->next chain can re-enter an already-walked node.  The original walk assumed an acyclic
- * tree, so on those shapes it re-descended shared nodes and recursed until the stack overflowed
- * (SIGSEGV).  We record every XASL node already walked and skip it on re-entry, which guarantees
- * termination (each node is walked at most once) and is result-equivalent to the old walk:
- * pt_capture_precomp_node rebuilds a node's precomp_regu_array purely from that node's own spec
- * lists, so visiting a node once produces the same capture as visiting it repeatedly -- the guard
- * only drops the redundant re-walks. */
-typedef struct precomp_visited_set PRECOMP_VISITED_SET;
-struct precomp_visited_set
-{
-  XASL_NODE **nodes;		/* dynamic array of already-walked node pointers */
-  int count;
-  int capacity;
-};
-
-/* Record xasl in the visited set.  Returns true if it is newly added (caller should walk it),
- * false if it was already present (or on the practically-impossible OOM, in which case we report
- * "visited" to keep termination guaranteed). */
-static bool
-pt_precomp_visited_add (PRECOMP_VISITED_SET * visited, XASL_NODE * xasl)
-{
-  int i;
-  XASL_NODE **new_nodes;
-  int new_capacity;
-
-  for (i = 0; i < visited->count; i++)
-    {
-      if (visited->nodes[i] == xasl)
-	{
-	  return false;
-	}
-    }
-
-  if (visited->count >= visited->capacity)
-    {
-      new_capacity = (visited->capacity == 0) ? 32 : visited->capacity * 2;
-      new_nodes = (XASL_NODE **) realloc (visited->nodes, new_capacity * sizeof (XASL_NODE *));
-      if (new_nodes == NULL)
-	{
-	  return false;
-	}
-      visited->nodes = new_nodes;
-      visited->capacity = new_capacity;
-    }
-
-  visited->nodes[visited->count++] = xasl;
-  return true;
-}
-
-/* recursively walk the freshly generated xasl graph along the same structural links the serializer
- * follows, capturing scalar subqueries at every node.  Guarded by a visited set so that shared
- * sub-xasls (UNION ALL / LIMIT / CTE) are walked exactly once. */
-static void
-pt_capture_precomp_scalar_subqueries_walk (PRECOMP_VISITED_SET * visited, XASL_NODE * xasl)
-{
-  if (xasl == NULL)
-    {
-      return;
-    }
-
-  if (!pt_precomp_visited_add (visited, xasl))
-    {
-      return;
-    }
-
-  pt_capture_precomp_node (xasl);
-
-  /* Each list head's ->next chain is followed by the trailing walk (xasl->next) recursion below, so
-   * recurse on the heads only -- iterating the lists here AND recursing on ->next would re-visit
-   * nodes (the visited set would catch it, but recursing on heads keeps the surface identical). */
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->aptr_list);
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->bptr_list);
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->dptr_list);
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->fptr_list);
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->scan_ptr);
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->connect_by_ptr);
-
-  switch (xasl->type)
-    {
-    case UNION_PROC:
-    case DIFFERENCE_PROC:
-    case INTERSECTION_PROC:
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.union_.left);
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.union_.right);
-      break;
-    case BUILDLIST_PROC:
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.buildlist.eptr_list);
-      break;
-    case CTE_PROC:
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.cte.non_recursive_part);
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.cte.recursive_part);
-      break;
-    case MERGELIST_PROC:
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.mergelist.outer_xasl);
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.mergelist.inner_xasl);
-      break;
-    case HASHJOIN_PROC:
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.hashjoin.outer.xasl);
-      pt_capture_precomp_scalar_subqueries_walk (visited, xasl->proc.hashjoin.inner.xasl);
-      break;
-    default:
-      break;
-    }
-
-  pt_capture_precomp_scalar_subqueries_walk (visited, xasl->next);
-}
-
-/* entry point: set up the visited guard and walk the graph once. */
-static void
-pt_capture_precomp_scalar_subqueries (XASL_NODE * xasl)
-{
-  PRECOMP_VISITED_SET visited;
-
-  visited.nodes = NULL;
-  visited.count = 0;
-  visited.capacity = 0;
-
-  pt_capture_precomp_scalar_subqueries_walk (&visited, xasl);
-
-  if (visited.nodes != NULL)
-    {
-      free_and_init (visited.nodes);
-    }
-}
-
-/*
  * parser_generate_xasl () - Creates xasl proc for parse tree.
  *   return:
  *   parser(in):
@@ -22848,7 +22508,6 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
       break;
     }
 
-  pt_capture_precomp_scalar_subqueries (xasl);
   scan_check_parallel_scan_possible (xasl);
   check_parallel_subquery_possible (xasl);
 
@@ -26366,7 +26025,6 @@ pt_to_merge_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_n
   /* set TDE flag */
   XASL_SET_FLAG (xasl, xptr->flag & XASL_INCLUDES_TDE_CLASS);
 
-  pt_capture_precomp_scalar_subqueries (xasl);
   scan_check_parallel_scan_possible (xasl);
 
   return xasl;

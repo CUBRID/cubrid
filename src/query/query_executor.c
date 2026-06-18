@@ -15934,18 +15934,25 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 #endif
 
-      /* CBRD-26931: precompute uncorrelated single-value scalar subqueries (XASL_PRECOMPUTED_SCALAR) once on
-       * the main thread, before the consuming scan opens. Worker clones then read an injected value instead
-       * of re-executing the subquery (px_scan_task.cpp). fetch_peek_dbval drives the same TYPE_CONSTANT path
-       * used during lazy predicate evaluation, preserving the SQ-cache and result-cache, and sets the owning
-       * regu's dbvalptr for the single-threaded path. Errors propagate exactly as the lazy path would. */
+      /* CBRD-26931: precompute uncorrelated single-value (scalar) subqueries once on the main thread, before
+       * the consuming scan opens. Worker clones then read an injected value instead of re-executing the
+       * subquery (px_scan_task.cpp). A subquery is such a scalar iff it carries precomp_owner_regu (set at the
+       * regu<->xasl linkage point in pt_make_regu_subquery). fetch_peek_dbval drives the same TYPE_CONSTANT
+       * path used during lazy predicate evaluation, preserving the SQ-cache and result-cache, and sets the
+       * owning regu's dbvalptr for the single-threaded path. Errors propagate exactly as the lazy path would.
+       * MUST iterate aptr_list only: dptr_list holds correlated subqueries whose value depends on the outer
+       * row and must never be precomputed. */
       for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	{
-	  int pc;
-	  for (pc = 0; pc < xptr->precomp_regu_count; pc++)
+	  XASL_NODE *subq;
+	  for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
 	    {
 	      DB_VALUE *peek_precomp = NULL;
-	      if (fetch_peek_dbval (thread_p, xptr->precomp_regu_array[pc], &xasl_state->vd, NULL, NULL, NULL,
+	      if (subq->precomp_owner_regu == NULL)
+		{
+		  continue;
+		}
+	      if (fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL, NULL,
 				    &peek_precomp) != NO_ERROR)
 		{
 		  if (tplrec.tpl)

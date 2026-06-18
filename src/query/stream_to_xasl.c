@@ -1894,31 +1894,21 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
-  /* CBRD-26931: precomputed-scalar subquery regu pointers. The array container lives in the unpack
-   * arena (stx_alloc_struct); each restored regu aliases the predicate-operand regu via the
-   * offset-dedup visited table, so injection redirects the exact regu the predicate evaluates. */
-  ptr = or_unpack_int (ptr, &xasl->precomp_regu_count);
-  if (xasl->precomp_regu_count > 0)
+  /* CBRD-26931: owning predicate-operand regu of this uncorrelated single-value (scalar) subquery; the
+   * restored regu aliases the predicate-operand regu via the offset-dedup visited table, so worker injection
+   * redirects the exact regu the predicate evaluates. offset 0 means this node is not such a subquery. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
     {
-      xasl->precomp_regu_array =
-	(REGU_VARIABLE **) stx_alloc_struct (thread_p, (int) (sizeof (REGU_VARIABLE *) * xasl->precomp_regu_count));
-      if (xasl->precomp_regu_array == NULL)
-	{
-	  goto error;
-	}
-      for (i = 0; i < xasl->precomp_regu_count; i++)
-	{
-	  ptr = or_unpack_int (ptr, &offset);
-	  xasl->precomp_regu_array[i] = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
-	  if (xasl->precomp_regu_array[i] == NULL)
-	    {
-	      goto error;
-	    }
-	}
+      xasl->precomp_owner_regu = NULL;
     }
   else
     {
-      xasl->precomp_regu_array = NULL;
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
     }
 
   ptr = or_unpack_int (ptr, &tmp);

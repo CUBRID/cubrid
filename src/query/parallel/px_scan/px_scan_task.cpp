@@ -101,19 +101,22 @@ namespace parallel_scan
       }
 
     /* CBRD-26931: inject main-thread-precomputed scalar subquery values into this clone so predicate
-     * evaluation reads the precomputed value rather than re-executing the subquery per worker. The clone's
-     * precomp_regu_array elements alias the clone's own predicate-operand regus (serialization preserves
-     * source-pointer aliasing), so redirecting them redirects exactly what the predicate evaluates. */
+     * evaluation reads the precomputed value rather than re-executing the subquery per worker. A clone
+     * subquery carries precomp_owner_regu (its predicate-operand regu) iff it is such a scalar; that regu
+     * aliases the clone's own predicate operand (serialization preserves source-pointer aliasing), so
+     * redirecting it redirects exactly what the predicate evaluates. Iterate aptr_list only -- correlated
+     * (dptr_list) subqueries must never be injected. A single back-pointer is sufficient even when one
+     * subquery is referenced by multiple predicate operands: all such operands alias the same
+     * single_tuple->valp->val slot (set at linkage), so writing that slot + status=XASL_SUCCESS serves all. */
     for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
       {
-	for (int pc = 0; pc < cnode->precomp_regu_count; pc++)
+	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
 	  {
-	    REGU_VARIABLE *regu = cnode->precomp_regu_array[pc];
-	    if (regu == nullptr || regu->xasl == nullptr)
+	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
+	    if (regu == nullptr)
 	      {
 		continue;
 	      }
-	    xasl_node *clone_subq = regu->xasl;
 	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
 	    if (map_val == nullptr || clone_subq->single_tuple == nullptr || clone_subq->single_tuple->valp == nullptr
 		|| clone_subq->single_tuple->valp->val == nullptr)
@@ -136,7 +139,7 @@ namespace parallel_scan
 	    clone_subq->status = XASL_SUCCESS;
 	    /* 6. force the non-cache fetch branch so the worker uses the redirected dbvalptr. */
 	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
-	    assert (regu->value.dbvalptr == clone_subq->single_tuple->valp->val
+	    assert (regu->xasl == clone_subq && regu->value.dbvalptr == clone_subq->single_tuple->valp->val
 		    && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE));
 	  }
       }
