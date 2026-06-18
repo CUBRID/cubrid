@@ -1428,6 +1428,11 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
 
   switch (fhead->type)
     {
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
@@ -3054,6 +3059,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "QUERY_AREA";
     case FILE_TEMP:
       return "TEMPORARILY";
+    case FILE_OOS:
+      return "OUT_OF_LINE_OVERFLOW_STORAGE";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
@@ -3438,7 +3445,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* decide on what page to use as file header page (which is going to decide the VFID also). */
 #if defined (SERVER_MODE)
-  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS)
+  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_OOS)
     {
       /* we need to consider dropped files in vacuum's list. If we create a file with a duplicate VFID, we can run
        * into problems. */
@@ -10893,6 +10900,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_UNKNOWN_TYPE:
       /* accept any type */
       break;
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* accept heap or heap reuse slots */
@@ -10916,6 +10928,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
    * run-time), but b-tree and heap files must be protected by lock. */
   switch ((FILE_TYPE) item->type)
     {
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -10955,6 +10972,11 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_BTREE:
       *class_oid = fhead->descriptor.btree.class_oid;
       break;
+    case FILE_OOS:
+      {
+	assert (false);
+	break;
+      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       *class_oid = fhead->descriptor.heap.class_oid;
@@ -12209,6 +12231,16 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
     case FILE_BTREE_OVERFLOW_KEY:
       /* index file */
       spacedb_ftype = SPACEDB_INDEX_FILE;
+      break;
+    case FILE_OOS:
+      assert_release (false);
+      //TODO: spacedb_ftype = SPACEDB_OOS_FILE;
+      spacedb_ftype = SPACEDB_HEAP_FILE;
+      // TODO oos: why heap file, instead of OOS file?
+      // I did not add SPACEDB_OOS_FILE yet, and
+      // if spacedb_ftype is not initialized,
+      // the build fails in github cubridci.
+      // This is just a workaround.
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
