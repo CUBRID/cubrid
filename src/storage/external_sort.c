@@ -5043,7 +5043,7 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       error = sort_add_new_file (thread_p, &(sort_param->temp[i]), file_pg_cnt_est, true, sort_param->tde_encrypted);
       if (error != NO_ERROR)
 	{
-	  return error;
+	  goto retire_all_on_error;
 	}
     }
 
@@ -5058,6 +5058,11 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       error = sort_exphase_merge (thread_p, sort_param);
     }
 
+  if (error != NO_ERROR)
+    {
+      goto retire_all_on_error;
+    }
+
   /* save result run */
   sort_param->px_result_run->temp_file = sort_param->temp[sort_param->px_result_file_idx];
   sort_param->px_result_run->num_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
@@ -5066,6 +5071,23 @@ sort_merge_nruns (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   for (i = 0; i < sort_param->tot_tempfiles; i++)
     {
       if (sort_param->temp[i].volid != NULL_VOLID && i != sort_param->px_result_file_idx)
+	{
+	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
+	  VFID_SET_NULL (&sort_param->temp[i]);
+	}
+    }
+  return NO_ERROR;
+
+retire_all_on_error:
+  /* On error: retire every allocated temp file — both the dequeued inputs
+   * (temp[0..half_files-1], already removed from the queue and no longer
+   * tracked there) and any output files allocated before the failure. The
+   * caller (sort_merge_nruns_queue_cb) leaves px_result_run at its
+   * setup_ctx-initialized NULL_VOLID, so no separate result-file retire is
+   * needed here. */
+  for (i = 0; i < sort_param->tot_tempfiles; i++)
+    {
+      if (sort_param->temp[i].volid != NULL_VOLID)
 	{
 	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
 	  VFID_SET_NULL (&sort_param->temp[i]);
