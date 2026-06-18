@@ -154,6 +154,8 @@ namespace cubthread
       const void *get_parent ();
       float get_score ();
 
+      void get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, INT64 &busy_slots) const;
+
     private:
       // must be greater than 1
       static constexpr std::size_t SLOT_SURPLUS_THRESHOLD = 2;

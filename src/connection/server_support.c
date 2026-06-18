@@ -562,7 +562,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t max_transaction_concurrency, max_transaction_worker;
+  std::size_t max_request_concurrency, max_request_worker;
   std::size_t max_connection_workers, min_connection_workers;
   std::size_t max_connections;
   std::string name;
@@ -574,8 +574,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
-  max_transaction_worker = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER);
+  max_request_concurrency = prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY);
+  max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
   max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
@@ -590,8 +590,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
       css_get_max_connections (),
       cubthread::system_core_count (),
-      max_transaction_concurrency,
-      max_transaction_worker,
+      max_request_concurrency,
+      max_request_worker,
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),
@@ -2351,6 +2351,35 @@ void
 css_get_thread_stats (UINT64 *stats_out)
 {
   css_Server_request_worker_pool->get_stats (stats_out);
+}
+
+/*
+ * css_get_thread_runtime_stats () - get runtime statistics for server request handlers
+ *
+ * total_slots (out)     : total slots count
+ * target_slots (out)    : target slots count
+ * busy_slots (out)      : busy slots count
+ * total_workers (out)   : total worker count
+ * target_workers (out)  : target worker count
+ * busy_workers (out)    : busy worker count
+ */
+void
+css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 *busy_slots,
+			      UINT64 *total_workers, UINT64 *target_workers, UINT64 *busy_workers)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      *total_slots = 0;
+      *target_slots = 0;
+      *busy_slots = 0;
+      *total_workers = 0;
+      *target_workers = 0;
+      *busy_workers = 0;
+      return;
+    }
+
+  css_Server_request_worker_pool->get_runtime_stats (*total_slots, *target_slots, *busy_slots,
+						     *total_workers, *target_workers, *busy_workers);
 }
 
 //
