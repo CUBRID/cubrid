@@ -6981,10 +6981,7 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
-	      /* CBRD-26931: record the owning predicate-operand regu on the subquery node itself. This is the
-	       * single source of truth that marks an uncorrelated single-value (scalar) subquery for the
-	       * parallel-scan precompute/inject/checker-relax path -- captured here at the regu<->xasl linkage
-	       * point, so no separate post-pass walk over predicate surfaces is needed. */
+	      /* mark uncorrelated scalar subquery for precompute/inject/checker-relax: stash owning predicate-operand regu at the regu<->xasl linkage (no post-pass predicate walk). */
 	      xasl->precomp_owner_regu = regu;
 	    }
 	  else

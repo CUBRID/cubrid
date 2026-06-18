@@ -100,14 +100,7 @@ namespace parallel_scan
 	return err_code;
       }
 
-    /* CBRD-26931: inject main-thread-precomputed scalar subquery values into this clone so predicate
-     * evaluation reads the precomputed value rather than re-executing the subquery per worker. A clone
-     * subquery carries precomp_owner_regu (its predicate-operand regu) iff it is such a scalar; that regu
-     * aliases the clone's own predicate operand (serialization preserves source-pointer aliasing), so
-     * redirecting it redirects exactly what the predicate evaluates. Iterate aptr_list only -- correlated
-     * (dptr_list) subqueries must never be injected. A single back-pointer is sufficient even when one
-     * subquery is referenced by multiple predicate operands: all such operands alias the same
-     * single_tuple->valp->val slot (set at linkage), so writing that slot + status=XASL_SUCCESS serves all. */
+    /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
     for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
       {
 	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
@@ -124,20 +117,20 @@ namespace parallel_scan
 		continue;
 	      }
 	    DB_VALUE *slot = clone_subq->single_tuple->valp->val;
-	    /* 1. release the clone's stale operand value first, unless it already aliases the slot we fill. */
+	    /* release clone's stale operand value, unless it already aliases the target slot. */
 	    if (regu->value.dbvalptr != nullptr && regu->value.dbvalptr != slot)
 	      {
 		pr_clear_value (regu->value.dbvalptr);
 	      }
-	    /* 2. copy the precomputed value into the subquery's single_tuple slot (valp->val is a DB_VALUE *). */
+	    /* copy precomputed value into the single_tuple slot. */
 	    pr_clone_value (map_val, slot);
-	    /* 3. alias the predicate operand to that slot -- no second copy. */
+	    /* alias the predicate operand to that slot -- no second copy. */
 	    regu->value.dbvalptr = slot;
-	    /* 4. the single_tuple clear loop in qexec_clear_xasl is the sole owner; avoid a double clear. */
+	    /* single_tuple clear loop in qexec_clear_xasl is sole owner -- avoid double clear. */
 	    REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
-	    /* 5. mark already-executed so EXECUTE_REGU_VARIABLE_XASL's initial-status guard skips re-execution. */
+	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution. */
 	    clone_subq->status = XASL_SUCCESS;
-	    /* 6. force the non-cache fetch branch so the worker uses the redirected dbvalptr. */
+	    /* force non-cache fetch branch so the worker uses the redirected dbvalptr. */
 	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
 	    assert (regu->xasl == clone_subq && regu->value.dbvalptr == clone_subq->single_tuple->valp->val
 		    && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE));

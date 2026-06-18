@@ -1827,9 +1827,7 @@ namespace parallel_scan
       {
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {
-	    /* CBRD-26931: snapshot main-thread-precomputed scalar subquery values for worker injection. Done
-	     * unconditionally (also when there is no join / scan_ptr chain) so a single-table consuming scan
-	     * still injects instead of re-executing the subquery per worker. */
+	    /* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too instead of re-executing per worker. */
 	    m_pre_execution_info.capture_precomp_vals (m_xasl);
 	    if (m_xasl->scan_ptr)
 	      {

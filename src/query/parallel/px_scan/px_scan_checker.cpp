@@ -825,12 +825,7 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	/* CBRD-26931: a regu-linked subquery is force-blocked from parallelism (CBRD-26722) -- EXCEPT an
-	 * uncorrelated single-value (scalar) subquery, which carries precomp_owner_regu (set at the regu<->xasl
-	 * linkage point) and whose value is precomputed once on the main thread and injected into worker clones.
-	 * For those, recurse normally so their own inner scans can parallelize during that main-thread
-	 * precompute. table-form (UNBOX_AS_TABLE) subqueries have no precomp_owner_regu and stay blocked; the
-	 * separate dptr_list loop below keeps correlated subqueries blocked unconditionally. */
+	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated scalar ones (precomp_owner_regu set): recurse so their inner scans parallelize during main-thread precompute; table-form (UNBOX_AS_TABLE) and correlated (dptr_list, below) stay blocked. */
 	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);

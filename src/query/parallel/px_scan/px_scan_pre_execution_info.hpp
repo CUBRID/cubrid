@@ -63,9 +63,7 @@ namespace parallel_scan
       void record_pre_execution_info (XASL_NODE_ID xasl_id, xasl_node *xptr);
       void apply_pre_execution_info (xasl_node *xptr);
 
-      /* CBRD-26931: main-thread-precomputed scalar subquery values, keyed by the subquery xasl node's
-       * header.id, cloned into each worker's single_tuple. NEVER use operator[] (it would default-insert a
-       * NULL DB_VALUE on a miss) -- use find/at/emplace only. */
+      /* precomputed scalar values, keyed by subquery xasl header.id; never operator[] (default-inserts NULL on miss) -- find/at/emplace only. */
       const DB_VALUE *find_precomp_val (XASL_NODE_ID subquery_id) const;
       void capture_precomp_vals (xasl_node *head);
 

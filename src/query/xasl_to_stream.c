@@ -2897,9 +2897,7 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
-  /* CBRD-26931: owning predicate-operand regu of this uncorrelated single-value (scalar) subquery (NULL on
-   * any other node -> offset 0). Packed via xts_save_regu_variable so source-pointer dedup makes it alias the
-   * predicate-operand regu on unpack, so worker injection redirects the exact regu the predicate evaluates. */
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0); xts_save_regu_variable source-pointer dedup re-aliases it to the predicate regu on unpack. */
   offset = xts_save_regu_variable (xasl->precomp_owner_regu);
   if (offset == ER_FAILED)
     {
@@ -5996,7 +5994,7 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
-  size += PTR_SIZE;		/* precomp_owner_regu offset (CBRD-26931) */
+  size += PTR_SIZE;		/* precomp_owner_regu offset */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)

@@ -38,7 +38,7 @@ namespace parallel_scan
 
   pre_execution_info::~pre_execution_info()
   {
-    /* CBRD-26931: each precomputed scalar value was cloned in via pr_clone_value -- clear exactly once. */
+    /* each precomputed scalar value cloned in via pr_clone_value -- clear exactly once. */
     for (auto &entry : m_precomp_vals)
       {
 	pr_clear_value (&entry.second);
@@ -88,10 +88,7 @@ namespace parallel_scan
       }
   }
 
-  /* CBRD-26931: snapshot the main-thread-precomputed value of every uncorrelated single-value (scalar)
-   * subquery (one carrying precomp_owner_regu) in the consuming node's aptr lists (across the scan_ptr chain),
-   * keyed by the subquery's header.id. Called on the main thread before worker tasks start. Idempotent
-   * (emplace skips an existing key). */
+  /* snapshot each uncorrelated scalar subquery (precomp_owner_regu set) in aptr lists across the scan_ptr chain, keyed by header.id; main thread, before workers; idempotent (emplace skips existing). */
   void pre_execution_info::capture_precomp_vals (xasl_node *head)
   {
     for (xasl_node *xptr = head; xptr != NULL; xptr = xptr->scan_ptr)

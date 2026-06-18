@@ -1092,11 +1092,7 @@ struct xasl_node
 
   int is_single_tuple;		/* single tuple subquery? */
 
-  /* CBRD-26931: for an uncorrelated single-value (scalar) subquery consumed in an outer predicate, this is the
-   * predicate-operand regu that owns this subquery (regu->xasl == this node), set at linkage in
-   * pt_make_regu_subquery. NULL on any node that is not such a subquery. Its presence (not a separate flag)
-   * marks the node for the precompute/inject/checker-relax path: the value is precomputed once on the main
-   * thread and injected into parallel-scan worker clones. Owned by the predicate; (un)pack via offset dedup. */
+  /* predicate-operand regu owning this uncorrelated scalar subquery (regu->xasl == node), set in pt_make_regu_subquery; NULL otherwise. Presence marks the precompute/inject/checker-relax path; owned by the predicate, (un)packed via offset dedup. */
   REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */

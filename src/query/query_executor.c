@@ -15934,14 +15934,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 #endif
 
-      /* CBRD-26931: precompute uncorrelated single-value (scalar) subqueries once on the main thread, before
-       * the consuming scan opens. Worker clones then read an injected value instead of re-executing the
-       * subquery (px_scan_task.cpp). A subquery is such a scalar iff it carries precomp_owner_regu (set at the
-       * regu<->xasl linkage point in pt_make_regu_subquery). fetch_peek_dbval drives the same TYPE_CONSTANT
-       * path used during lazy predicate evaluation, preserving the SQ-cache and result-cache, and sets the
-       * owning regu's dbvalptr for the single-threaded path. Errors propagate exactly as the lazy path would.
-       * MUST iterate aptr_list only: dptr_list holds correlated subqueries whose value depends on the outer
-       * row and must never be precomputed. */
+      /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
       for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	{
 	  XASL_NODE *subq;
