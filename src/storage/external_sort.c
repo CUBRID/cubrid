@@ -4617,6 +4617,11 @@ sort_merge_queue_setup_ctx (int pool_idx, SORT_MERGE_QUEUE_CTX * qctx, const RES
       ctx->file_contents[j].last_run = -1;
     }
   ctx->px_result_run = &qctx->ctx_results[pool_idx];
+  /* Clear stale value from a previous merge that reused this pool slot, so the
+   * callback error branch can reliably detect whether sort_merge_nruns produced
+   * an output run that needs to be retired. */
+  VFID_SET_NULL (&ctx->px_result_run->temp_file);
+  ctx->px_result_run->num_pages = 0;
 }
 
 static void sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT_MERGE_QUEUE_CTX * qctx);
@@ -4664,9 +4669,14 @@ sort_merge_queue_enqueue_initial_runs (SORT_MERGE_QUEUE_CTX * qctx, SORT_PARAM *
  * sort_merge_queue_run () - drive the dispatcher + wait loop until all merges
  *   complete. On return the queue holds 0 or 1 run depending on input;
  *   the caller stages the final run.
+ *
+ *   On error, the queue is fully drained and every remaining run's temp file
+ *   is retired. Workers do not retire temp[k] for PX_THREAD_IN_PARALLEL, so the
+ *   queue is the sole owner of every enqueued run (initial or intermediate)
+ *   once dispatch begins.
  */
 static int
-sort_merge_queue_run (SORT_MERGE_QUEUE_CTX * qctx)
+sort_merge_queue_run (THREAD_ENTRY * thread_p, SORT_MERGE_QUEUE_CTX * qctx)
 {
   pthread_mutex_lock (&qctx->mtx);
   while (qctx->queue_size >= 2)
@@ -4679,6 +4689,19 @@ sort_merge_queue_run (SORT_MERGE_QUEUE_CTX * qctx)
   while (qctx->in_flight > 0 || (!qctx->has_error && qctx->queue_size > 1))
     {
       pthread_cond_wait (&qctx->done_cond, &qctx->mtx);
+    }
+
+  if (qctx->has_error)
+    {
+      /* Drain the queue and retire each remaining run's temp file. */
+      while (qctx->queue_size > 0)
+	{
+	  RESULT_RUN run = sort_merge_queue_dequeue (qctx);
+	  if (run.temp_file.volid != NULL_VOLID)
+	    {
+	      (void) file_temp_retire (thread_p, &run.temp_file);
+	    }
+	}
     }
   pthread_mutex_unlock (&qctx->mtx);
 
@@ -4803,6 +4826,13 @@ sort_merge_nruns_queue_cb (cubthread::entry & thread_ref, SORT_PARAM * ctx, SORT
 	  qctx->has_error = true;
 	  ctx->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
 	}
+      /* The failed merge's result run is not enqueued; queue drain on error
+       * will not see it. Retire it here to avoid leaking the temp file. */
+      if (ctx->px_result_run->temp_file.volid != NULL_VOLID)
+	{
+	  (void) file_temp_retire (thread_p, &ctx->px_result_run->temp_file);
+	  VFID_SET_NULL (&ctx->px_result_run->temp_file);
+	}
     }
   else
     {
@@ -4841,7 +4871,7 @@ sort_merge_run_for_parallel (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param
     (void) enqueued;
   }
 
-  error = sort_merge_queue_run (&qctx);
+  error = sort_merge_queue_run (thread_p, &qctx);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -4938,7 +4968,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   if (qctx.queue_size >= 2)
     {
-      error = sort_merge_queue_run (&qctx);
+      error = sort_merge_queue_run (thread_p, &qctx);
       if (error != NO_ERROR)
 	{
 	  sort_merge_queue_ctx_destroy (&qctx);
@@ -5561,7 +5591,7 @@ sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
 
   if (qctx.queue_size >= 2)
     {
-      error = sort_merge_queue_run (&qctx);
+      error = sort_merge_queue_run (thread_p, &qctx);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
