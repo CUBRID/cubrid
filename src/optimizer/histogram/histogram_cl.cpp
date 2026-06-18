@@ -1369,6 +1369,7 @@ int
 db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
 {
   int error = NO_ERROR;
+  int au_save;
   DB_OBJECT *histogram_class;
   DB_VALUE value[2];
   DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
@@ -1385,7 +1386,11 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
   db_make_object (&value[0], classop);
   db_make_string (&value[1], attr_name);
 
+  /* _db_histogram is an internal catalog read during optimizer stat collection; bypass user
+   * authorization (otherwise a non-DBA query raises ER_AU_SELECT_FAILURE on it). (CBRD-26667) */
+  AU_DISABLE (au_save);
   *histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  AU_ENABLE (au_save);
 
   db_value_clear (value_ptrs[0]);
   db_value_clear (value_ptrs[1]);
