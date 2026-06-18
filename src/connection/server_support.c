@@ -190,7 +190,7 @@ private:
   cubthread::entry_task *m_task;
 };
 
-static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 7;
 
 static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
@@ -210,7 +210,6 @@ static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
-static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 
 // WorkerPoolCore template parameter confuses indent
 template <typename WorkerPoolCore>
@@ -244,11 +243,6 @@ static void css_start_all_threads (void);
  *
  * NOTE: job queues don't really exist anymore, at least not the way SHOW JOB QUEUES statement was created for.
  *       we now have worker pool "cores" that act as partitions of workers and queued tasks.
- *       for backward compatibility, the statement is not changed; only its columns are reinterpreted
- *       1. job queue index => core index
- *       2. job queue max workers => core max workers
- *       3. job queue busy workers => core busy workers
- *       4. job queue connection workers => 0    // connection workers are separated in a different worker pool
  */
 int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
@@ -266,7 +260,9 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
       return error;
     }
 
-  size_t core_index = 0;	// core index starts with 0
+  // core index starts with 0
+  size_t core_index = 0;
+
   //*INDENT-OFF*
   using request_pool_core_t = css_request_worker_pool_t::core_impl;
   css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
@@ -2709,29 +2705,6 @@ css_get_num_request_workers (void)
 }
 
 //
-// css_wp_worker_get_busy_count_mapper () - function to map through worker pool entries and count busy workers
-//
-// thread_ref (in)      : thread entry (context)
-// stop_mapper (in/out) : normally used to stop mapping early, ignored here
-// busy_count (out)     : increment when busy worker is found
-//
-static void
-css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int & busy_count)
-{
-  (void) stop_mapper;   // suppress unused parameter warning
-
-  if (thread_ref.tran_index != NULL_TRAN_INDEX)
-    {
-      // busy thread
-      busy_count++;
-    }
-  else
-    {
-      // must be waiting for task; not busy
-    }
-}
-
-//
 // css_wp_core_job_scan_mapper () - function to map worker pool cores and get info required for "job scan"
 //
 // wp_core (in)         : worker pool core
@@ -2747,7 +2720,12 @@ css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {
-  DB_VALUE *vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+  size_t val_index;
+  UINT64 total_slots, target_slots, total_workers, target_workers, busy_workers;
+  INT64 busy_slots;
+  DB_VALUE *vals;
+
+  vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
   if (vals == NULL)
     {
       assert (false);
@@ -2756,20 +2734,30 @@ css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
       return;
     }
 
-  // add core index; it used to be job queue index
-  size_t val_index = 0;
+  val_index = 0;
+  total_slots = 0;
+  target_slots = 0;
+  busy_slots = 0;
+  total_workers = 0;
+  target_workers = 0;
+  busy_workers = 0;
+
+  assert (dynamic_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core)));
+  static_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core))->get_runtime_stats (total_slots,
+					      target_slots, busy_slots, total_workers, target_workers, busy_workers);
+
+  // core index; it used to be job queue index
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
-  // add max worker count; it used to be max thread workers per job queue
-  (void) db_make_int (&vals[val_index++], (int) wp_core.get_worker_count ());
+  // Num_request_concurrency_total, Num_request_concurrency_target, Num_request_concurrency_busy
+  (void) db_make_int (&vals[val_index++], (int) total_slots);
+  (void) db_make_int (&vals[val_index++], (int) target_slots);
+  (void) db_make_int (&vals[val_index++], (int) busy_slots);
 
-  // number of busy workers; core does not keep it, we need to count them manually
-  int busy_count = 0;
-  wp_core.map_running_contexts (stop_mapper, css_wp_worker_get_busy_count_mapper, busy_count);
-  (void) db_make_int (&vals[val_index++], (int) busy_count);
-
-  // number of connection workers; just for backward compatibility, there are no connections workers here
-  (void) db_make_int (&vals[val_index++], 0);
+  // Num_request_worker_total, Num_request_worker_target, Num_request_worker_busy
+  (void) db_make_int (&vals[val_index++], (int) total_workers);
+  (void) db_make_int (&vals[val_index++], (int) target_workers);
+  (void) db_make_int (&vals[val_index++], (int) busy_workers);
 
   // increment core_index
   ++core_index;
