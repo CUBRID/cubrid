@@ -2997,8 +2997,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 TypeNumeric tn = (TypeNumeric) dp.typeSpec.type;
                 ret.add(
                         String.format(
-                                "if (%s != null) { %s[0] = checkPrecision(%d, (short) %d, %s[0]); }",
-                                name, name, tn.precision, tn.scale, name));
+                                "%s[0] = checkPrecision(%d, (short) %d, %s[0]);",
+                                name, tn.precision, tn.scale, name));
             }
         }
 
