@@ -9516,9 +9516,8 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 	}
       assert (new_handle_id > 0);	/* a created handle id is 1-based; 0 is never returned */
 
-      /* The new server handle now shares and solely owns this DB_QUERY_RESULT and frees it on its
-       * teardown (ux_free_result). Detach it from the method query handler so the handler's
-       * deferred end_qresult () does not free the same object again (double / dangling free). */
+      /* Detach the DB_QUERY_RESULT from the method query handler so the handler's
+       * deferred end_qresult () does not free the same object again (double free). */
       query_handler->detach_result_for_out_rs ();
     }
 
