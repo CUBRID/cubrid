@@ -2749,12 +2749,12 @@ css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
   // core index; it used to be job queue index
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
-  // Num_total_slots, Num_target_slots, Num_busy_slots
+  // Num_request_concurrency_total, Num_request_concurrency_target, Num_request_concurrency_busy
   (void) db_make_int (&vals[val_index++], (int) total_slots);
   (void) db_make_int (&vals[val_index++], (int) target_slots);
   (void) db_make_int (&vals[val_index++], (int) busy_slots);
 
-  // Num_total_workers, Num_target_workers, Num_busy_workers
+  // Num_request_worker_total, Num_request_worker_target, Num_request_worker_busy
   (void) db_make_int (&vals[val_index++], (int) total_workers);
   (void) db_make_int (&vals[val_index++], (int) target_workers);
   (void) db_make_int (&vals[val_index++], (int) busy_workers);
