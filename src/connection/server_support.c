@@ -605,7 +605,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
+  if (!connections.initialize (max_connections, max_connection_workers, min_connection_workers))
     {
       _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
