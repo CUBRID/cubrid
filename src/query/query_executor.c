@@ -15889,7 +15889,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      break;
 		    }
 		  specp = xptr->merge_spec;
-		  if (specp)
+		  for (; specp; specp = specp->next)
 		    {
 		      if (specp->type == TARGET_CLASS)
 			{
