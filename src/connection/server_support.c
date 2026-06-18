@@ -563,7 +563,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t max_transaction_concurrency, max_transaction_worker;
+  std::size_t max_request_concurrency, max_request_worker;
   std::size_t max_connection_workers, min_connection_workers;
   std::size_t max_connections;
   std::string name;
@@ -575,8 +575,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  max_transaction_concurrency = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_CONCURRENCY);
-  max_transaction_worker = prm_get_integer_value (PRM_ID_MAX_TRANSACTION_WORKER);
+  max_request_concurrency = prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY);
+  max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
   max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
@@ -591,8 +591,8 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
       css_get_max_connections (),
       cubthread::system_core_count (),
-      max_transaction_concurrency,
-      max_transaction_worker,
+      max_request_concurrency,
+      max_request_worker,
       "transaction",
       thread_get_entry_manager (),
       css_get_server_request_thread_pooling_configuration (),
