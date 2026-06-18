@@ -1243,7 +1243,6 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
-#define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
 
 /* Codes for error messages */
 typedef enum
