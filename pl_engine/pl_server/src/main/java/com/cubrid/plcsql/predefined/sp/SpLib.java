@@ -617,6 +617,19 @@ public class SpLib {
             this.query = query;
         }
 
+        public static Query fromObject(Object obj) {
+            if (obj == null) {
+                return null;
+            } else if (obj instanceof Query) {
+                return (Query) obj;
+            } else if (obj instanceof ResultSet) {
+                Query q = new Query(null);
+                q.rs = (ResultSet) obj;
+                return q;
+            }
+            return null;
+        }
+
         public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
 
             assert val != null;

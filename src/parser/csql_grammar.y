@@ -1419,6 +1419,7 @@ static int g_plcsql_text_pos;
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
+%token SYS_REFCURSOR
 %token SYS_TIME_
 %token SYS_TIMESTAMP
 %token SYSTEM_USER
@@ -12836,6 +12837,14 @@ sp_return_type
 			$$ = ctn;
 
                 DBG_PRINT}}
+        | SYS_REFCURSOR
+                {{ DBG_TRACE_GRAMMAR(sp_return_type, | SYS_REFCURSOR);
+
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_SYS_REFCURSOR), NULL);
+			$$ = ctn;
+
+                DBG_PRINT}}
         | table_column MOD TYPE
 		{{ DBG_TRACE_GRAMMAR(sp_return_type, | table_column MOD TYPE);
 
@@ -13104,6 +13113,14 @@ sp_param_type
 
 			container_2 ctn;
 			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
+
+		DBG_PRINT}}
+        | SYS_REFCURSOR
+		{{ DBG_TRACE_GRAMMAR(sp_param_type, | SYS_REFCURSOR);
+
+			container_2 ctn;
+			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SYS_REFCURSOR), NULL);
 			$$ = ctn;
 
 		DBG_PRINT}}
