@@ -18901,8 +18901,12 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* num_vals drives the val_list read loop in the executor */
-  insert->num_vals = (xasl->val_list != NULL) ? xasl->val_list->val_cnt : 0;
+  /* num_vals drives the val_list read loop in the executor. Count only the visible projection
+   * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
+   * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
+   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
+   * trailing ones. */
+  insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
   insert->num_default_expr = 0;
   insert->att_id = NULL;
 

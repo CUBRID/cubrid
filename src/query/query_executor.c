@@ -12584,8 +12584,10 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 	      insert->vals[k] = vallist->val;
 	    }
 
-	  /* verify vallist count matches val_no */
-	  if (k != val_no || vallist != NULL)
+	  /* verify we collected the leading val_no (visible) columns. Trailing hidden columns added for
+	   * ORDER BY / GROUP BY keys not in the select list may remain in vallist and are intentionally
+	   * ignored (they are not part of the remote INSERT), matching the canonical local INSERT path. */
+	  if (k != val_no)
 	    {
 	      assert (0);
 	      qexec_failure_line (__LINE__, xasl_state);
