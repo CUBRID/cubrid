@@ -49,7 +49,7 @@ int parser_yyinput_single_mode = 0;
 static void init_plcsql_lexing (void);
 static int parser_yyinput (char *buff, int max_size);
 static bool parser_check_hint (char* hint_string);
-static void parser_yy_user_action();
+static void parser_yy_user_action(void);
 
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
@@ -2161,7 +2161,7 @@ parser_check_hint (char *hint_string)
 }
 
 static void
-parser_yy_user_action ()
+parser_yy_user_action (void)
 {
   yyline_start_pos_bk = yyline_start_pos;
 
