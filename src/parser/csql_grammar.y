@@ -14408,7 +14408,7 @@ opt_orderby_clause
 				parser_save_and_set_pseudoc (0);
 			  }
 
-			if (stmt && !stmt->info.query.q.select.from)
+			if (stmt && stmt->node_type == PT_SELECT && !stmt->info.query.q.select.from)
 			    PT_ERRORmf(this_parser, pt_top(this_parser),
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
@@ -14589,6 +14589,7 @@ opt_siblings
 	| SIBLINGS
 		{{
 			PT_NODE *stmt = parser_top_orderby_node ();
+
 			stmt->info.query.flag.order_siblings = true;
 			if (stmt->info.query.q.select.connect_by == NULL)
 			    {
@@ -24037,7 +24038,6 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
-  INIT_PT_HINT("NLJ_KEEP_HEAP_PAGE_PINNED", PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
