@@ -2847,7 +2847,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private static final int CREATE_SP = 1;
     private static final int CREATE_PKG_SPEC = 2;
     private static final int CREATE_PKG_BODY = 3;
-    private static int topLevelStmt;
 
     private static String regexId =
             "^[A-Za-z_\uAC00-\uD7A3][A-Za-z_0-9\uAC00-\uD7A3]*$"; // \uAC00-\uD7A3: Korean
@@ -2926,6 +2925,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     // Private
     // --------------------------------------------------------
     //
+
+    private int topLevelStmt;
 
     private int sqlDataAccess;
 

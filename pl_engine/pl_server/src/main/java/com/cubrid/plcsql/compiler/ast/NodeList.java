@@ -62,4 +62,13 @@ public class NodeList<N extends AstNode> extends AstNode {
         NodeList other = (NodeList) o;
         return this.nodes.equals(other.nodes);
     }
+
+    @Override
+    public int hashCode() {
+        int ret = 0;
+        for (Object o : nodes) {
+            ret += o.hashCode();
+        }
+        return ret;
+    }
 }

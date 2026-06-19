@@ -71,6 +71,11 @@ public class DeclParamOut extends DeclParam {
     }
 
     @Override
+    public int hashCode() {
+        return name.hashCode() + typeSpec.type.hashCode() + (alsoIn ? 1 : 0);
+    }
+
+    @Override
     public String toJavaSignature() {
         return String.format("%s[]", typeSpec.type.fullJavaType);
     }

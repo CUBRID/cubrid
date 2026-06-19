@@ -38,10 +38,10 @@ import org.antlr.v4.runtime.ParserRuleContext;
 Decl
    - DeclLabel
    - DeclException
-   - DeclPacakge
+   - DeclPackage
    - DeclRoutine
        - DeclFunc
-       - DedlProc
+       - DeclProc
    - DeclId
        - DeclDynamicRecord
        - DeclForIter

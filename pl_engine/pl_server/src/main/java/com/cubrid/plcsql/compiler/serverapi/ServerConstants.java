@@ -33,7 +33,7 @@ package com.cubrid.plcsql.compiler.serverapi;
 public class ServerConstants {
 
     // package variable flags - see sp/sp_constants.hpp
-    public static final int PKG_VAR_CONSTANT = 1;
+    public static final int PKG_VAR_CONSTANT = (1 << 0);
     public static final int PKG_VAR_NOT_NULL = (1 << 1);
 
     // see compat/dbtype_def.h

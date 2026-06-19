@@ -163,7 +163,7 @@ public class Type {
                     "'xyz'",
                     DBType.DB_STRING,
                     ServerConstants.DB_DEFAULT_PRECISION,
-                    ServerConstants.DB_DEFAULT_SCALE);
+                    NO_SCALE);
     // NUMERIC with any precision and scale
     public static Type NUMERIC_ANY =
             new Type(
