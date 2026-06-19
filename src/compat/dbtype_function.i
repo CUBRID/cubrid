@@ -2231,7 +2231,7 @@ db_get_compressed_size (DB_VALUE * value)
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR);
+  assert (TP_IS_CHAR_TYPE (type));
   return value->data.ch.medium.compressed_size;
 }
 
@@ -2255,7 +2255,7 @@ db_set_compressed_string (DB_VALUE * value, char *compressed_string, int compres
   type = DB_VALUE_DOMAIN_TYPE (value);
 
   /* Preliminary check */
-  assert (type == DB_TYPE_VARCHAR);
+  assert (TP_IS_CHAR_TYPE (type));
 
   value->data.ch.medium.compressed_buf = compressed_string;
   value->data.ch.medium.compressed_size = compressed_size;
@@ -2352,7 +2352,7 @@ db_value_need_clear (const DB_VALUE * value)
       /**
        * If the copy_buf is reused, the need_clear flag may be false.
        */
-      if (TP_IS_VAR_LEN_CHAR_TYPE (type) && (value->data.ch.info.compressed_need_clear == true))
+      if (TP_IS_CHAR_TYPE (type) && (value->data.ch.info.compressed_need_clear == true))
 	{
 	  return true;
 	}
