@@ -2223,7 +2223,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
       /* Skip bytes up to insid_offset. */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2301,7 +2301,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 
       /* Skip bytes up to insid_offset */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2806,12 +2806,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header)];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;

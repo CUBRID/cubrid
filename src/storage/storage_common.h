@@ -156,6 +156,7 @@ typedef enum
   PAGE_QRESULT,			/* query result page */
   PAGE_EHASH,			/* ehash bucket/dir page */
   PAGE_OVERFLOW,		/* overflow page (with ovf_keyval) */
+  PAGE_OOS,			/* oos page */
   PAGE_AREA,			/* area page */
   PAGE_CATALOG,			/* catalog page */
   PAGE_BTREE,			/* b+tree index page (with ovf_OIDs) */

@@ -380,6 +380,12 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+
+  /* When true (default), heap_record_replace_oos_oids rewrites the returned record so that
+   * each inline OOS OID slot is replaced by the actual variable-attribute bytes from the OOS
+   * file. Set to false when the caller will decode per-attribute via heap_attrinfo_read_dbvalues
+   * (which calls oos_read() itself), so the record-level expansion would be wasted work. */
+  bool expand_oos;
 };
 
 typedef struct sampling_info SAMPLING_INFO;
@@ -689,9 +695,20 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
+/* heap_get_visible_version variant that returns the record with inline OOS OID slots left in
+ * place (HEAP_GET_CONTEXT::expand_oos = false). Use when the caller decodes per-attribute via
+ * heap_attrinfo_read_dbvalues, which already calls oos_read() for each OOS column. */
+extern SCAN_CODE heap_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+							   RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
+							   int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn);
+/* heap_scan_get_visible_version variant matching heap_get_visible_version_skip_oos_expand. */
+extern SCAN_CODE heap_scan_get_visible_version_skip_oos_expand (THREAD_ENTRY * thread_p, const OID * oid,
+								OID * class_oid, RECDES * recdes,
+								RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
+								int ispeeking, int old_chn);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
@@ -720,10 +737,24 @@ extern int heap_nonheader_page_capacity ();
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
+
+extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
+extern bool heap_recdes_contains_oos (const RECDES * record);
+
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
 						 const std::vector<VPID> &heap_pages_array);
 // *INDENT-ON*
+
+// Currently heap_file.c uses GNU indent as formatting tool and it does not support C++,
+// so we need to turn off indent for this part of code.
+// TODO: Rename heap_file.c to heap_file.cpp and enable C++ formatting in indent tool, then we can remove the following lines.
+
+// *INDENT-OFF*
+using OID_VECTOR = std::vector<OID>;
+// *INDENT-ON*
+
+extern int heap_recdes_get_oos_oids (const RECDES * record, OID_VECTOR & oos_oids);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

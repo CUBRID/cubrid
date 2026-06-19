@@ -2314,6 +2314,7 @@ css_set_thread_info (THREAD_ENTRY * thread_p, int client_id, int rid, int tran_i
   thread_p->lockwait_state = -1;
   thread_p->query_entry = NULL;
   thread_p->tran_next_wait = NULL;
+  thread_p->oos_oids.clear ();
 
   thread_p->end_resource_tracks ();
   thread_clear_recursion_depth (thread_p);
