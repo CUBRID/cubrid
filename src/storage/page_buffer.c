@@ -6432,6 +6432,19 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 
   CAST_BFPTR_TO_PGPTR (pgptr, bufptr);
 
+#if defined (SERVER_MODE)
+  /* CBRD-26957: honor a pending flush request now, while we still hold the latch. As a current holder,
+   * safe_flush takes the immediate-flush path (clears ASYNC_FLUSH_REQ, wakes the flush waiter); force_lock
+   * keeps the bcb mutex for the unlatch below. The page latch is lock-free, so flushing only after release
+   * lets a concurrent fixer re-grab it first and defer the flush again -- under sustained writes on a hot
+   * page this starves the checkpoint flush forever, blocking archive-log reclamation. The post-unlatch
+   * flush below remains a fallback for the no-longer-held case. */
+  if (pgbuf_bcb_is_async_flush_request (bufptr))
+    {
+      (void) pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, false);
+    }
+#endif /* SERVER_MODE */
+
   /* decrement the fix count */
   do
     {
