@@ -800,8 +800,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
-#define PRM_NAME_ENABLE_HEAP_FIXED_SCAN "enable_heap_fixed_scan"
-
 // #endregion 
 
 /*
@@ -2164,7 +2162,8 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_COMPAT_NUMERIC_DIVISION_SCALE,
    PRM_NAME_COMPAT_NUMERIC_DIVISION_SCALE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT | PRM_FOR_PL_CONTEXT | PRM_HIDDEN |
+    PRM_DEPRECATED),
    PRM_BOOLEAN,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.b = false}},
@@ -5069,7 +5068,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
    PRM_NAME_STORED_PROCEDURE_RETURN_NUMERIC_SIZE,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER),
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_HIDDEN | PRM_DEPRECATED),
    PRM_INTEGER_LIST,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.integer_list = (int *) prm_stored_procedure_return_numeric_size_default_arr}},
@@ -5356,17 +5355,6 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 512}},
    {false, {.i = 4096}},
    {false, {.i = 4}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ENABLE_HEAP_FIXED_SCAN,
-   PRM_NAME_ENABLE_HEAP_FIXED_SCAN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = true}},
-   {false, {.b = true}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -9138,22 +9126,6 @@ sysprm_generate_new_value (SYSPRM_PARAM * prm, const char *value, bool check, SY
 	      }
 	    /* save size in the first position */
 	    val[0] = list_size;
-	  }
-
-	if (prm->id == PRM_ID_STORED_PROCEDURE_RETURN_NUMERIC_SIZE)
-	  {
-	    /*  
-	     *  The length of the parameter must be 2
-	     *  Check the valid range
-	     *    precision ( 1 ~ 38 ) and scale (0 ~ 38)
-	     *    precision >= scale
-	     */
-	    if (val[0] != 2 || val[PRM_PRECISION] < 1 || val[PRM_PRECISION] > DB_MAX_NUMERIC_PRECISION
-		|| val[PRM_SCALE] < 0 || val[PRM_SCALE] > val[PRM_PRECISION])
-	      {
-		free_and_init (val);
-		return PRM_ERR_BAD_VALUE;
-	      }
 	  }
 
 	new_value->integer_list = val;

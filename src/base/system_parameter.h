@@ -531,8 +531,6 @@ enum param_id
 
   PRM_ID_LOG_POSTPONE_CACHE_SIZE,
 
-  PRM_ID_ENABLE_HEAP_FIXED_SCAN,
-
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
 
@@ -688,14 +686,6 @@ extern "C"
 #define SERVER_SESSION_MASK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) | PRM_CLIENT_SESSION)	// 0x00000904
 #define SERVER_SESSION_CHCK  ((PRM_FOR_SESSION | PRM_FOR_SERVER) & ~PRM_CLIENT_SESSION)	// 0x00000104
 #define PRM_SERVER_SESSION(id)  (((GET_PRM (id))->static_flag & SERVER_SESSION_MASK) == SERVER_SESSION_CHCK)
-
-
-/* 
- * for PRM_STORE_PROCEDURE_RETURN_NUMERIC_SIZE
- * PARAM type integer list, first is precision second is scale
- */
-#define PRM_PRECISION	1
-#define PRM_SCALE	2
 
 /*
  * for PRM_ID_PARALLELISM
