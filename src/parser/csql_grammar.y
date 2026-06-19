@@ -3053,7 +3053,7 @@ create_stmt
 
 				if (CONTAINER_AT_2 ($14) != NULL)
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				             MSGCAT_SEMANTIC_INDEX_BUILD_OPTION_ON_NON_VECTOR);
+					     MSGCAT_SEMANTIC_INDEX_BUILD_OPTION_ON_NON_VECTOR);
 
 				node->info.index.deduplicate_level = TO_NUMBER (CONTAINER_AT_1 ($14));
 				if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF
@@ -3088,16 +3088,19 @@ create_stmt
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_METRIC);
 				if ($4)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_REVERSE);
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_REVERSE);
 				if ($5)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_UNIQUE);
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_UNIQUE);
 				if ($13)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_PARTIAL);
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_PARTIAL);
 				if (kvp == NULL
 				    && (TO_NUMBER (CONTAINER_AT_0 ($14)) != 0
 					|| TO_NUMBER (CONTAINER_AT_1 ($14)) != DEDUPLICATE_OPTION_AUTO))
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				             MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
 
 				/* accept only m / ef_construction, each at most once */
 				for (kv_pair *it = kvp; it != NULL; it = it->next)
@@ -3105,17 +3108,18 @@ create_stmt
 				    const char *k = it->key->info.name.original;
 				    if (strcasecmp (k, "m") != 0 && strcasecmp (k, "ef_construction") != 0)
 				      PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				                  MSGCAT_SEMANTIC_VECTOR_INDEX_UNKNOWN_OPTION, k);
+						  MSGCAT_SEMANTIC_VECTOR_INDEX_UNKNOWN_OPTION, k);
 				    for (kv_pair *jt = it->next; jt != NULL; jt = jt->next)
 				      if (strcasecmp (k, jt->key->info.name.original) == 0)
-				        PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-				                    MSGCAT_SEMANTIC_VECTOR_INDEX_DUP_OPTION, k);
+					PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						    MSGCAT_SEMANTIC_VECTOR_INDEX_DUP_OPTION, k);
 				  }
 
 				if (has_metric)
 				  {
 				    const char *metric_name = metric_node->info.name.original;
-				    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+				    enum DB_VECTOR_DISTANCE_METRIC metric =
+				      string_to_vector_distance_metric (metric_name);
 				    if (metric == METRIC_UNKNOWN)
 				      PT_ERRORm (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
 						 MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
@@ -3131,7 +3135,8 @@ create_stmt
 				      node->info.index.vector_index.hnsw_m = m_node->info.value.data_value.i;
 				    PT_NODE *ef_node = kv_pair_lookup (kvp, "ef_construction");
 				    if (ef_node != NULL)
-				      node->info.index.vector_index.hnsw_ef_construction = ef_node->info.value.data_value.i;
+				      node->info.index.vector_index.hnsw_ef_construction =
+					ef_node->info.value.data_value.i;
 				  }
 
 				node->info.index.index_status = SM_NORMAL_INDEX;
