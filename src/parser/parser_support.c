@@ -11873,33 +11873,6 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 }
 
 static PT_NODE *pt_convert_select (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_mark_dblink_derived_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
-						 int *continue_walk);
-
-/*
- * pt_mark_dblink_derived_subquery () - mark FROM-derived sub-queries as sub-queries.
- *   The remote INSERT ... SELECT sink path skips mq_translate, which normally marks every
- *   FROM-derived sub-query (is_subquery) so XASL generation gathers their XASL into
- *   aptr_list and executes them. This walk restores that marking for ANY FROM-derived query
- *   spec (not only the dblink-rewritten source) -- it is needed here for the same-server
- *   mixed source, whose remote part pt_check_sub_query_spec rewrote into a dblink derived
- *   sub-query. Without the mark the dblink scan is built (column metadata prepared) but never
- *   executed, so the derived list stays empty and 0 rows are inserted.
- *   (UNION operand analog: pt_mark_remote_union_operands.)
- */
-static PT_NODE *
-pt_mark_dblink_derived_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (node->node_type == PT_SPEC && node->info.spec.derived_table != NULL
-      && PT_IS_QUERY (node->info.spec.derived_table) && node->info.spec.derived_table->info.query.is_subquery == 0)
-    {
-      node->info.spec.derived_table->info.query.is_subquery = PT_IS_SUBQUERY;
-    }
-
-  return node;
-}
 
 static PT_NODE *
 pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -12032,17 +12005,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	{
 	  /* Same-server mixed source (local + remote, all on the target server). Full pushdown is
 	   * impossible (the remote server has no local table) but the CCI sink can run it: rewrite
-	   * the remote source spec(s) into dblink scans and mark the derived sub-queries so XASL
-	   * generation gathers them into aptr_list and executes them. Cross-server / multi-remote
-	   * mixed sources are left to the existing rejections below (server_node_cnt >= 2). */
+	   * the remote source spec(s) into dblink scans. The derived sub-queries are marked as
+	   * sub-queries (so XASL generation gathers them into aptr_list and executes them) by the
+	   * canonical mq_translate run on the SELECT subquery in pt_semantic_check (semantic_check.c).
+	   * Cross-server / multi-remote mixed sources are left to the existing rejections below
+	   * (server_node_cnt >= 2). */
 	  PT_NODE *vlist;
 	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
 	    {
 	      parser_walk_tree (parser, vlist, pt_check_sub_query_spec, snl, NULL, NULL);
-	    }
-	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
-	    {
-	      parser_walk_tree (parser, vlist, pt_mark_dblink_derived_subquery, NULL, pt_continue_walk, NULL);
 	    }
 	}
       else
