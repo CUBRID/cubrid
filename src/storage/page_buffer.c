@@ -699,7 +699,7 @@ struct pgbuf_monitor_thread_counter
   char m_pad[64 - 2 * sizeof (std::atomic_int)];	/* isolate each shard to its own cache line */
 };
 
-static_assert (sizeof (PGBUF_MONITOR_THREAD_COUNTER) == 64, "pgbuf_monitor_thread_counter must be exactly one 64B cache line; fix m_pad");
+static_assert (sizeof (PGBUF_MONITOR_THREAD_COUNTER) == 64, "shard must be exactly one 64B cache line; fix m_pad");
 
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
