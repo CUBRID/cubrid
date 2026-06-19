@@ -378,6 +378,9 @@ struct fileio_node
   ssize_t nread;
   FILEIO_BACKUP_PAGE *area;	/* Area to read/write the page */
   FILEIO_ZIP_INFO *zip_info;	/* Zip info containing area to compress/decompress the page */
+  /* parallel-read (PR2: declared only; wired up in PR3+4) */
+  bool ready;			/* page fully read & compressed, eligible to emit */
+  bool tombstone;		/* skipped page (only_updated): emit nothing, just advance */
 };
 
 typedef struct fileio_queue FILEIO_QUEUE;
@@ -387,6 +390,19 @@ struct fileio_queue
   FILEIO_NODE *head;
   FILEIO_NODE *tail;
   FILEIO_NODE *free_list;
+};
+
+/* parallel-read reorder queue (PR2: declared only; wired up in PR3+4).
+ * Single writer drains slots in monotonic pageid order; N readers fill them. */
+typedef struct fileio_reorder_queue FILEIO_REORDER_QUEUE;
+struct fileio_reorder_queue
+{
+  FILEIO_NODE **slots;		/* ring buffer, indexed by (pageid % capacity) */
+  int capacity;			/* number of slots (0 until allocated) */
+  int next_emit_pageid;		/* next pageid the writer must emit (monotonic) */
+  int dispatch_high_water;	/* highest pageid a reader may claim */
+  FILEIO_NODE *free_list;	/* recycled nodes for this queue */
+  int pool_total;		/* total nodes allocated (for leak assert in teardown) */
 };
 
 typedef struct fileio_thread_info FILEIO_THREAD_INFO;
@@ -417,6 +433,12 @@ struct fileio_thread_info
   int check_npages;
 
   FILEIO_QUEUE io_queue;
+
+  /* parallel-read state (PR2: declared only; wired up in PR3+4) */
+  FILEIO_REORDER_QUEUE rq;
+  bool abort;			/* set on any reader/writer error to unblock peers */
+  int next_read_pageid;		/* next pageid a reader will claim */
+  int eof_pageid;		/* MIN reported short/0-read boundary (claim guard) */
 };
 
 typedef struct io_backup_session FILEIO_BACKUP_SESSION;

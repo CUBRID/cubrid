@@ -543,7 +543,11 @@ static FILEIO_LOCKF_TYPE fileio_get_lockf_type (int vdes);
 
 static int fileio_get_primitive_way_max (const char *path, long int *filename_max, long int *pathname_max);
 static int fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static ssize_t fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid,
+				      FILEIO_BACKUP_PAGE * area);
 static ssize_t fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid);
+static int fileio_write_backup_from (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, const char *src,
+				     ssize_t towrite_nbytes);
 static int fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, ssize_t towrite_nbytes);
 static int fileio_write_backup_header (FILEIO_BACKUP_SESSION * session);
 
@@ -592,7 +596,7 @@ static int fileio_lock_region (int fd, int cmd, int type, off_t offset, int when
 
 #if defined(SERVER_MODE)
 static void fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
-static FILEIO_TYPE fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
 static FILEIO_NODE *fileio_append_queue (FILEIO_QUEUE * qp, FILEIO_NODE * node);
 #endif /* SERVER_MODE */
 
@@ -6711,6 +6715,17 @@ fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_thre
   queue_p->tail = NULL;
   queue_p->free_list = NULL;
 
+  /* parallel-read state (PR2: zero-init; readers/writer wired in PR3+4) */
+  thread_info_p->rq.slots = NULL;
+  thread_info_p->rq.capacity = 0;
+  thread_info_p->rq.next_emit_pageid = 0;
+  thread_info_p->rq.dispatch_high_water = 0;
+  thread_info_p->rq.free_list = NULL;
+  thread_info_p->rq.pool_total = 0;
+  thread_info_p->abort = false;
+  thread_info_p->next_read_pageid = 0;
+  thread_info_p->eof_pageid = 0;
+
   thread_info_p->initialized = true;
 
   return NO_ERROR;
@@ -7037,6 +7052,68 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FILEIO_ZIP_MET
     }
 
   qp->free_list = NULL;
+
+  /* parallel-read reorder queue teardown: free any leftover slot nodes and the
+   * recycled pool, then the slots array. Defensive against abnormal exit. */
+  {
+    FILEIO_REORDER_QUEUE *rq = &tp->rq;
+    int freed = 0;
+    int i;
+
+    if (rq->slots != NULL)
+      {
+	for (i = 0; i < rq->capacity; i++)
+	  {
+	    node = rq->slots[i];
+	    if (node != NULL)
+	      {
+		/* move into the recycled pool so it is freed below (no double-free) */
+		rq->slots[i] = NULL;
+		node->next = rq->free_list;
+		rq->free_list = node;
+	      }
+	  }
+      }
+
+    for (node = rq->free_list; node != NULL; node = node_next)
+      {
+	node_next = node->next;
+	switch (zip_method)
+	  {
+	  case FILEIO_ZIP_LZ4_METHOD:
+	    if (node->zip_info != NULL)
+	      {
+		free_and_init (node->zip_info);
+	      }
+	    break;
+	  case FILEIO_ZIP_LZO1X_METHOD:
+	    break;
+	  case FILEIO_ZIP_ZLIB_METHOD:
+	    break;
+	  default:
+	    break;
+	  }
+
+	if (node->area != NULL)
+	  {
+	    free_and_init (node->area);
+	  }
+
+	free_and_init (node);
+	freed++;
+      }
+    rq->free_list = NULL;
+
+    assert (freed == rq->pool_total);
+
+    if (rq->slots != NULL)
+      {
+	free_and_init (rq->slots);
+      }
+    rq->slots = NULL;
+    rq->capacity = 0;
+    rq->pool_total = 0;
+  }
 
   tp->initialized = false;
 }
@@ -7542,6 +7619,10 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
     {
       node_p = queue_p->free_list;
       queue_p->free_list = node_p->next;	/* cut-off */
+      node_p->prev = NULL;
+      node_p->next = NULL;
+      node_p->ready = false;
+      node_p->tombstone = false;
       return node_p;
     }
 
@@ -7553,6 +7634,10 @@ fileio_allocate_node (FILEIO_QUEUE * queue_p, FILEIO_BACKUP_HEADER * backup_head
       goto exit_on_error;
     }
 
+  node_p->prev = NULL;
+  node_p->next = NULL;
+  node_p->ready = false;
+  node_p->tombstone = false;
   node_p->area = NULL;
   node_p->zip_info = NULL;
   size = FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p);
@@ -7789,6 +7874,7 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
 			  FILEIO_BACKUP_HEADER * backup_header_p)
 {
   int error = NO_ERROR;
+  const char *src;
 
   if (!session_p || !node_p || !backup_header_p)
     {
@@ -7800,8 +7886,8 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
     case FILEIO_ZIP_LZ4_METHOD:
       /* Skip allocated block size inside of FILEIO_ZIP_PAGE */
 
-      session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) & node_p->zip_info->zip_page;
       node_p->nread = sizeof (int) + node_p->zip_info->zip_page.buf_len;
+      src = (const char *) &node_p->zip_info->zip_page;
       break;
     case FILEIO_ZIP_LZO1X_METHOD:
       error = ER_LOG_DBBACKUP_FAIL;
@@ -7810,13 +7896,14 @@ fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
 	      fileio_get_zip_level_string (backup_header_p->zip_level));
       goto exit_on_error;
     case FILEIO_ZIP_ZLIB_METHOD:
+      src = (const char *) session_p->dbfile.area;
       break;
     default:
-      session_p->dbfile.area = node_p->area;
+      src = (const char *) node_p->area;
       break;
     }
 
-  if (fileio_write_backup (thread_p, session_p, node_p->nread) != NO_ERROR)
+  if (fileio_write_backup_from (thread_p, session_p, src, node_p->nread) != NO_ERROR)
     {
       goto exit_on_error;
     }
@@ -7840,16 +7927,73 @@ exit_on_error:
  *   session(in/out):
  */
 #if defined(SERVER_MODE)
+/*
+ * rq_pool_get () - claim a node from the reorder-queue pool (free_list reuse,
+ *                  else allocate). Caller must hold thread_info_p->mtx.
+ *   return: node or NULL on alloc failure (enforces pool_total <= capacity)
+ */
+#if defined(SERVER_MODE)
+static FILEIO_NODE *
+rq_pool_get (FILEIO_THREAD_INFO * thread_info_p, FILEIO_BACKUP_HEADER * backup_header_p)
+{
+  FILEIO_REORDER_QUEUE *rq = &thread_info_p->rq;
+  FILEIO_NODE *node_p;
+
+  if (rq->free_list != NULL)
+    {
+      /* re-use already alloced node */
+      node_p = rq->free_list;
+      rq->free_list = node_p->next;	/* cut-off */
+      node_p->prev = NULL;
+      node_p->next = NULL;
+      node_p->ready = false;
+      node_p->tombstone = false;
+      return node_p;
+    }
+
+  /* fileio_allocate_node operates on a FILEIO_QUEUE; reuse it for the actual
+   * malloc/zip_info setup but pull from an empty list so it always allocates,
+   * then account against rq.pool_total. */
+  {
+    FILEIO_QUEUE tmp_q;
+    tmp_q.free_list = NULL;
+    node_p = fileio_allocate_node (&tmp_q, backup_header_p);
+    if (node_p == NULL)
+      {
+	return NULL;
+      }
+    rq->pool_total++;
+    return node_p;
+  }
+}
+
+/*
+ * rq_pool_free () - return a node to the reorder-queue pool free_list for reuse.
+ *                   Caller must hold thread_info_p->mtx.
+ */
+static void
+rq_pool_free (FILEIO_THREAD_INFO * thread_info_p, FILEIO_NODE * node_p)
+{
+  FILEIO_REORDER_QUEUE *rq = &thread_info_p->rq;
+
+  if (node_p != NULL)
+    {
+      node_p->prev = NULL;
+      node_p->next = rq->free_list;
+      rq->free_list = node_p;
+    }
+}
+#endif /* SERVER_MODE */
+
 static void
 fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   FILEIO_THREAD_INFO *thread_info_p;
-  FILEIO_QUEUE *queue_p;
-  FILEIO_NODE *node_p = NULL;
-  int rv;
-  bool need_unlock = false;
+  FILEIO_REORDER_QUEUE *rq;
   FILEIO_BACKUP_HEADER *backup_header_p;
-  FILEIO_BACKUP_PAGE *save_area_p;
+  FILEIO_NODE *held_node = NULL;	/* worker-stack single-owner (DESIGN 3.4) */
+  int held_pid = -1;
+  int rv;
 
   if (thread_p == NULL)
     {
@@ -7867,101 +8011,80 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
     }
 
   thread_info_p = &session_p->read_thread_info;
-  queue_p = &thread_info_p->io_queue;
+  rq = &thread_info_p->rq;
   thread_p->tran_index = thread_info_p->tran_index;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_read, session = %p\n", session_p);
 #endif /* CUBRID_DEBUG */
   backup_header_p = session_p->bkup.bkuphdr;
-  node_p = NULL;		/* init */
+
   while (1)
     {
+      /* === CS1: dispatch === */
       rv = pthread_mutex_lock (&thread_info_p->mtx);
-      while (thread_info_p->io_type == FILEIO_WRITE)
+      while (!thread_info_p->abort && thread_info_p->next_read_pageid < thread_info_p->from_npages
+	     && (rq->dispatch_high_water - rq->next_emit_pageid) >= rq->capacity)
 	{
+	  /* dispatch window full: wait for the writer to open it (slot_avail == rcv) */
 	  pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
 	}
 
-      if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
+      if (thread_info_p->abort)
 	{
-	  need_unlock = true;
-	  node_p = NULL;
-	  goto exit_on_error;
-	}
-
-      /* get one page from queue head and do write */
-      if (node_p)
-	{
-	  node_p->writeable = true;
-	  thread_info_p->io_type = FILEIO_WRITE;
-	  pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-	  while (thread_info_p->io_type == FILEIO_WRITE)
-	    {
-	      pthread_cond_wait (&thread_info_p->rcv, &thread_info_p->mtx);
-	    }
-
-	  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
-	    {
-	      need_unlock = true;
-	      node_p = NULL;
-	      goto exit_on_error;
-	    }
-	}
-
-      /* check EOF */
-      if (thread_info_p->pageid >= thread_info_p->from_npages)
-	{
-	  thread_info_p->end_r_threads++;
-	  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-	    {
-	      thread_info_p->io_type = FILEIO_WRITE;
-	      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-	    }
+	  /* held_node == NULL here; nothing to reclaim */
 	  pthread_mutex_unlock (&thread_info_p->mtx);
-	  break;
+	  goto drain_self;
 	}
 
-      /* alloc queue node */
-      node_p = fileio_allocate_node (queue_p, backup_header_p);
-      if (node_p == NULL)
+      if (thread_info_p->next_read_pageid >= thread_info_p->from_npages)
 	{
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  goto eof;
 	}
 
-      /* read one page from Disk sequentially */
-
-      save_area_p = session_p->dbfile.area;	/* save link */
-      session_p->dbfile.area = node_p->area;
-      node_p->pageid = thread_info_p->pageid;
-      node_p->writeable = false;	/* init */
-      node_p->nread = fileio_read_backup (thread_p, session_p, node_p->pageid);
-      session_p->dbfile.area = save_area_p;	/* restore link */
-      if (node_p->nread == -1)
+      held_pid = thread_info_p->next_read_pageid++;
+      if (held_pid + 1 > rq->dispatch_high_water)
 	{
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  rq->dispatch_high_water = held_pid + 1;
 	}
-      else if (node_p->nread == 0)
+
+      held_node = rq_pool_get (thread_info_p, backup_header_p);
+      if (held_node == NULL)
 	{
-	  /* This could be an error since we estimated more pages. End of file/volume. */
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  /* alloc failure: no node held, no drain needed */
+	  thread_info_p->abort = true;
+	  if (thread_info_p->errid == NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      thread_info_p->errid = er_errid ();
+	    }
+	  pthread_cond_broadcast (&thread_info_p->wcv);
+	  pthread_cond_broadcast (&thread_info_p->rcv);
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  goto eof;
+	}
+      pthread_mutex_unlock (&thread_info_p->mtx);
+
+      /* === step2: heavy work OUTSIDE mtx (N concurrent). No abort early-exit:
+       * held_node stays single-owned until publish or self-free. === */
+      held_node->pageid = held_pid;
+      held_node->tombstone = false;
+      held_node->ready = false;
+      held_node->writeable = false;
+      held_node->nread = fileio_read_backup_to (thread_p, session_p, held_pid, held_node->area);
+      if (held_node->nread <= 0)
+	{
+	  /* -1 read error, 0 early-EOF (sparse mid-volume): both are fatal */
+	  goto fail_publish_abort;
 	}
 
       /* Have to allow other threads to run and check for interrupts from the user (i.e. Ctrl-C ) */
-      if ((thread_info_p->pageid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0
-	  && pgbuf_is_log_check_for_interrupts (thread_p) == true)
+      if ((held_pid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0 && pgbuf_is_log_check_for_interrupts (thread_p) == true)
 	{
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "io_backup_volume_read interrupt\n");
 #endif /* CUBRID_DEBUG */
-	  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	  need_unlock = true;
-	  goto exit_on_error;
+	  goto fail_publish_abort;
 	}
 
       /*
@@ -7969,81 +8092,80 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
        * In other words, has it been changed since either the previous backup
        * of this level or a lower level.
        */
-
-      if (thread_info_p->only_updated_pages == false || LSA_ISNULL (&session_p->dbfile.lsa)
-	  || LSA_LT (&session_p->dbfile.lsa, &node_p->area->iopage.prv.lsa))
+      if (thread_info_p->only_updated_pages == true && !LSA_ISNULL (&session_p->dbfile.lsa)
+	  && !LSA_LT (&session_p->dbfile.lsa, &held_node->area->iopage.prv.lsa))
 	{
-	  /* Backup the content of this page along with its page identifier add alloced node to the queue */
-	  (void) fileio_append_queue (queue_p, node_p);
+	  /* unchanged page: emit nothing, writer just advances the cursor */
+	  held_node->tombstone = true;
 	}
       else
 	{
-	  /* free node */
-	  (void) fileio_free_node (queue_p, node_p);
-	  node_p = NULL;
-	}
-
-#if defined(CUBRID_DEBUG)
-      fprintf (stdout, "read_thread from_npages = %d, pageid = %d\n", thread_info_p->from_npages,
-	       thread_info_p->pageid);
-#endif /* CUBRID_DEBUG */
-      thread_info_p->pageid++;
-      pthread_mutex_unlock (&thread_info_p->mtx);
-      if (node_p)
-	{
-	  node_p->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
-	  FILEIO_SET_BACKUP_PAGE_ID_COPY (node_p->area, node_p->pageid, backup_header_p->bkpagesize);
+	  held_node->nread += FILEIO_BACKUP_PAGE_OVERHEAD;
+	  FILEIO_SET_BACKUP_PAGE_ID_COPY (held_node->area, held_pid, backup_header_p->bkpagesize);
 
 #if defined(CUBRID_DEBUG)
 	  fprintf (stdout, "fileio_read_backup_volume: %d\t%d,\t%d\n",
-		   ((FILEIO_BACKUP_PAGE *) (node_p->area))->iopageid,
-		   *(PAGEID *) (((char *) (node_p->area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) +
+		   ((FILEIO_BACKUP_PAGE *) (held_node->area))->iopageid,
+		   *(PAGEID *) (((char *) (held_node->area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) +
 				backup_header_p->bkpagesize), backup_header_p->bkpagesize);
 #endif
 
 	  if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD
-	      && fileio_compress_backup_node (node_p, backup_header_p) != NO_ERROR)
+	      && fileio_compress_backup_node (held_node, backup_header_p) != NO_ERROR)
 	    {
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	      need_unlock = false;
-	      node_p = NULL;
-	      goto exit_on_error;
+	      goto fail_publish_abort;
 	    }
 	}
+
+#if defined(CUBRID_DEBUG)
+      fprintf (stdout, "read_thread from_npages = %d, pageid = %d\n", thread_info_p->from_npages, held_pid);
+#endif /* CUBRID_DEBUG */
+
+      /* === CS3: publish (normal) === */
+      pthread_mutex_lock (&thread_info_p->mtx);
+      held_node->ready = true;
+      rq->slots[held_pid % rq->capacity] = held_node;
+      held_node = NULL;			/* ownership transferred to the queue */
+      pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after publish */
+      pthread_mutex_unlock (&thread_info_p->mtx);
+      continue;
     }
 
-exit_on_end:
-
+eof:
+  /* normal: no more pages to dispatch */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->end_r_threads++;
+  pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after end_r_threads++ */
+  pthread_mutex_unlock (&thread_info_p->mtx);
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "end io_backup_volume_read\n");
 #endif /* CUBRID_DEBUG */
   return;
-exit_on_error:
 
-  /* set error info */
+fail_publish_abort:
+  /* this worker hit an error during step2 while holding held_node */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->abort = true;
   if (thread_info_p->errid == NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       thread_info_p->errid = er_errid ();
     }
-
+  rq_pool_free (thread_info_p, held_node);	/* free own node directly (never slotted) */
+  held_node = NULL;
   thread_info_p->end_r_threads++;
-  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-    {
-      pthread_cond_signal (&thread_info_p->wcv);	/* wake up write thread */
-    }
+  pthread_cond_broadcast (&thread_info_p->wcv);	/* INVARIANT: broadcast after abort/end */
+  pthread_cond_broadcast (&thread_info_p->rcv);	/* wake peers to propagate abort */
+  pthread_mutex_unlock (&thread_info_p->mtx);
+  return;
 
-  if (need_unlock)
-    {
-      pthread_mutex_unlock (&thread_info_p->mtx);
-    }
-
-  if (node_p != NULL)
-    {
-      (void) fileio_free_node (queue_p, node_p);
-    }
-
-  goto exit_on_end;
+drain_self:
+  /* saw a peer's abort in CS1; held_node == NULL, nothing to reclaim */
+  pthread_mutex_lock (&thread_info_p->mtx);
+  thread_info_p->end_r_threads++;
+  pthread_cond_broadcast (&thread_info_p->wcv);
+  pthread_mutex_unlock (&thread_info_p->mtx);
+  return;
 }
 
 /*
@@ -8051,60 +8173,88 @@ exit_on_error:
  *   return:
  *   session(in/out):
  */
-static FILEIO_TYPE
+static int
 fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   FILEIO_THREAD_INFO *thread_info_p;
-  FILEIO_QUEUE *queue_p;
+  FILEIO_REORDER_QUEUE *rq;
   FILEIO_NODE *node_p;
+  FILEIO_NODE *local_head;	/* detached run of consecutive ready slots (via node->next) */
+  FILEIO_NODE *next_p;
   int rv;
-  bool need_unlock = false;
+  int i;
   FILEIO_BACKUP_HEADER *backup_header_p;
-  FILEIO_BACKUP_PAGE *save_area_p;
 
   if (!session_p)
     {
-      return FILEIO_WRITE;
+      return NO_ERROR;
     }
 
   thread_info_p = &session_p->read_thread_info;
-  queue_p = &thread_info_p->io_queue;
+  rq = &thread_info_p->rq;
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "start io_backup_volume_write\n");
 #endif /* CUBRID_DEBUG */
   backup_header_p = session_p->bkup.bkuphdr;
+
   rv = pthread_mutex_lock (&thread_info_p->mtx);
   while (1)
     {
-      while (thread_info_p->io_type == FILEIO_READ)
+      /* single composite wait predicate on work_avail (wcv) */
+      while (!((rq->slots[rq->next_emit_pageid % rq->capacity] != NULL
+		&& rq->slots[rq->next_emit_pageid % rq->capacity]->ready)
+	       || thread_info_p->abort
+	       || (thread_info_p->end_r_threads >= thread_info_p->act_r_threads
+		   && rq->next_emit_pageid >= rq->dispatch_high_water)))
 	{
 	  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
 	}
 
-      if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
+      if (thread_info_p->abort)
 	{
-	  need_unlock = true;
-	  goto exit_on_error;
+	  goto abort_drain;
 	}
 
-      /* do write */
-      while (queue_p->head && queue_p->head->writeable == true)
+      if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads
+	  && rq->next_emit_pageid >= rq->dispatch_high_water)
 	{
-	  /* delete the head node of the queue */
-	  node_p = fileio_delete_queue_head (queue_p);
-	  if (node_p == NULL)
+	  /* normal completion: all readers done and everything emitted */
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  break;
+	}
+
+      /* detach the run of consecutive ready slots into a local list, NULL the
+       * slot and advance next_emit_pageid */
+      local_head = NULL;
+      while ((node_p = rq->slots[rq->next_emit_pageid % rq->capacity]) != NULL && node_p->ready)
+	{
+	  rq->slots[rq->next_emit_pageid % rq->capacity] = NULL;
+	  rq->next_emit_pageid++;
+	  node_p->next = local_head;	/* push */
+	  local_head = node_p;
+	}
+
+      pthread_cond_broadcast (&thread_info_p->rcv);	/* INVARIANT: window opened, wake readers */
+      pthread_mutex_unlock (&thread_info_p->mtx);
+
+      /* actual output OUTSIDE the lock (seek-free append, monotonic by pageid) */
+      for (node_p = local_head; node_p != NULL; node_p = node_p->next)
+	{
+	  if (!node_p->tombstone)
 	    {
-	      thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
-	    }
-	  else
-	    {
-	      save_area_p = session_p->dbfile.area;	/* save link */
 	      rv = fileio_write_backup_node (thread_p, session_p, node_p, backup_header_p);
 	      if (rv != NO_ERROR)
 		{
-		  thread_info_p->io_type = FILEIO_ERROR_INTERRUPT;
+		  /* publish error and abort */
+		  pthread_mutex_lock (&thread_info_p->mtx);
+		  thread_info_p->abort = true;
+		  if (thread_info_p->errid == NO_ERROR)
+		    {
+		      thread_info_p->errid = (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
+		    }
+		  pthread_cond_broadcast (&thread_info_p->rcv);	/* propagate abort to readers */
+		  pthread_mutex_unlock (&thread_info_p->mtx);
 		}
-	      session_p->dbfile.area = save_area_p;	/* restore link */
 #if defined(CUBRID_DEBUG)
 	      fprintf (stdout, "write_thread node->pageid = %d, node->nread = %d\n", node_p->pageid, node_p->nread);
 #endif /* CUBRID_DEBUG */
@@ -8116,39 +8266,41 @@ fileio_write_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
 		  thread_info_p->check_npages =
 		    (int) (((float) thread_info_p->from_npages / 25.0) * thread_info_p->check_ratio);
 		}
-
-	      /* free node */
-	      (void) fileio_free_node (queue_p, node_p);
-	    }
-
-	  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT)
-	    {
-	      need_unlock = true;
-	      goto exit_on_error;
 	    }
 	}
 
-      thread_info_p->io_type = FILEIO_READ;	/* reset */
-      /* check EOF */
-      if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
+      /* relock, free the emitted nodes back to the pool */
+      pthread_mutex_lock (&thread_info_p->mtx);
+      for (node_p = local_head; node_p != NULL; node_p = next_p)
 	{
-	  /* only write thread alive */
-	  pthread_mutex_unlock (&thread_info_p->mtx);
-	  break;
+	  next_p = node_p->next;
+	  rq_pool_free (thread_info_p, node_p);
 	}
-
-      pthread_cond_broadcast (&thread_info_p->rcv);	/* wake up all read threads */
+      /* loop: re-evaluate predicate (may now see abort from a write error above) */
     }
 
 #if defined(CUBRID_DEBUG)
   fprintf (stdout, "end io_backup_volume_write\n");
 #endif /* CUBRID_DEBUG */
-exit_on_end:
+  return NO_ERROR;
 
-  return thread_info_p->io_type;
-exit_on_error:
+abort_drain:
+  /* wait until all readers have joined, then reclaim ALL non-NULL slots */
+  while (thread_info_p->end_r_threads < thread_info_p->act_r_threads)
+    {
+      pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
+    }
 
-  /* set error info */
+  for (i = 0; i < rq->capacity; i++)
+    {
+      if (rq->slots[i] != NULL)
+	{
+	  rq_pool_free (thread_info_p, rq->slots[i]);
+	  rq->slots[i] = NULL;
+	}
+    }
+
+  /* set error info (preserve legacy er_set logic) */
   if (er_errid () == NO_ERROR)
     {
       switch (thread_info_p->errid)
@@ -8163,19 +8315,8 @@ exit_on_error:
 	}
     }
 
-  if (thread_info_p->end_r_threads >= thread_info_p->act_r_threads)
-    {
-      /* only write thread alive an error (i.e, INTERRUPT) was broken out, so terminate the all threads. But, I am the
-       * last one, and all the readers are terminated */
-      pthread_mutex_unlock (&thread_info_p->mtx);
-      goto exit_on_end;
-    }
-
-  /* wake up all read threads and wait for all killed */
-  pthread_cond_broadcast (&thread_info_p->rcv);
-  pthread_cond_wait (&thread_info_p->wcv, &thread_info_p->mtx);
   pthread_mutex_unlock (&thread_info_p->mtx);
-  goto exit_on_end;
+  return thread_info_p->errid;
 }
 
 // *INDENT-OFF*
@@ -8204,6 +8345,24 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->check_ratio = check_ratio;
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  /* parallel-read reorder queue: allocate slots before spawning readers.
+   * act_r_threads is already set by the caller. */
+  thread_info_p->rq.capacity = MAX (thread_info_p->act_r_threads, 1) * 4;
+  thread_info_p->rq.slots = (FILEIO_NODE **) calloc (thread_info_p->rq.capacity, sizeof (FILEIO_NODE *));
+  if (thread_info_p->rq.slots == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) (thread_info_p->rq.capacity * sizeof (FILEIO_NODE *)));
+      thread_info_p->rq.capacity = 0;
+      return ER_FAILED;
+    }
+  thread_info_p->rq.next_emit_pageid = 0;
+  thread_info_p->rq.dispatch_high_water = 0;
+  thread_info_p->rq.pool_total = 0;
+  thread_info_p->next_read_pageid = 0;
+  thread_info_p->abort = false;
+
   /* start read threads */
   conn_p = css_get_current_conn_entry ();
   for (i = 1; i <= thread_info_p->act_r_threads; i++)
@@ -8217,7 +8376,7 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   /* work as write thread */
   (void) fileio_write_backup_volume (thread_p, session_p);
   /* at here, finished all read threads check error, interrupt */
-  if (thread_info_p->io_type == FILEIO_ERROR_INTERRUPT || queue_p->size != 0)
+  if (thread_info_p->abort || thread_info_p->rq.next_emit_pageid < thread_info_p->rq.dispatch_high_water)
     {
       return ER_FAILED;
     }
@@ -8433,11 +8592,8 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	    }
 
 	  /* read one page sequentially */
-	  save_area_p = session_p->dbfile.area;	/* save link */
-	  session_p->dbfile.area = node_p->area;
 	  node_p->pageid = page_id;
-	  node_p->nread = fileio_read_backup (thread_p, session_p, node_p->pageid);
-	  session_p->dbfile.area = save_area_p;	/* restore link */
+	  node_p->nread = fileio_read_backup_to (thread_p, session_p, node_p->pageid, node_p->area);
 	  if (node_p->nread == -1)
 	    {
 	      goto error;
@@ -8763,7 +8919,7 @@ fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
  *       the whole volume/file is backed up.
  */
 static ssize_t
-fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id)
+fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id, FILEIO_BACKUP_PAGE * area)
 {
   int io_page_size = session_p->bkup.bkuphdr->bkpagesize;
 #if defined(WINDOWS)
@@ -8775,15 +8931,15 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 
   /* Read until you acumulate io_pagesize or the EOF mark is reached. */
   nread = 0;
-  FILEIO_SET_BACKUP_PAGE_ID (session_p->dbfile.area, page_id, io_page_size);
+  FILEIO_SET_BACKUP_PAGE_ID (area, page_id, io_page_size);
 
 #if defined(CUBRID_DEBUG)
-  fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n", ((FILEIO_BACKUP_PAGE *) (session_p->dbfile.area))->iopageid,
-	   *(PAGEID *) (((char *) (session_p->dbfile.area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
+  fprintf (stdout, "fileio_read_backup: %d\t%d,\t%d\n", ((FILEIO_BACKUP_PAGE *) (area))->iopageid,
+	   *(PAGEID *) (((char *) (area)) + offsetof (FILEIO_BACKUP_PAGE, iopage) + io_page_size),
 	   io_page_size);
 #endif
 
-  buffer_p = (char *) &session_p->dbfile.area->iopage;
+  buffer_p = (char *) &area->iopage;
   while (nread < io_page_size)
     {
       /* Read the desired amount of bytes */
@@ -8801,7 +8957,7 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 	  if (errno != EINTR)
 	    {
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2,
-				   FILEIO_GET_BACKUP_PAGE_ID (session_p->dbfile.area), session_p->dbfile.vlabel);
+				   FILEIO_GET_BACKUP_PAGE_ID (area), session_p->dbfile.vlabel);
 	      return -1;
 	    }
 	}
@@ -8867,6 +9023,19 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
 }
 
 /*
+ * fileio_read_backup () - Behavior-preserving wrapper that reads into the
+ *                      session's shared dbfile.area buffer.
+ *   return: number of bytes read (see fileio_read_backup_to)
+ *   session_p(in/out): The session array
+ *   page_id(in): Page identifier to read
+ */
+static ssize_t
+fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id)
+{
+  return fileio_read_backup_to (thread_p, session_p, page_id, session_p->dbfile.area);
+}
+
+/*
  * fileio_write_backup () - Write the number of indicated bytes from the dbfile
  *                      area to to the backup destination
  *   return:
@@ -8874,12 +9043,13 @@ fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, 
  *   towrite_nbytes(in): Number of bytes that must be written
  */
 static int
-fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, ssize_t to_write_nbytes)
+fileio_write_backup_from (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, const char *src,
+			  ssize_t to_write_nbytes)
 {
   char *buffer_p;
   ssize_t nbytes;
 
-  buffer_p = (char *) session_p->dbfile.area;
+  buffer_p = (char *) src;
   while (to_write_nbytes > 0)
     {
       /*
@@ -8909,6 +9079,19 @@ fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * fileio_write_backup () - Behavior-preserving wrapper that writes from the
+ *                      session's shared dbfile.area buffer.
+ *   return: NO_ERROR / ER_FAILED (see fileio_write_backup_from)
+ *   session_p(in/out): The session array
+ *   to_write_nbytes(in): Number of bytes that must be written
+ */
+static int
+fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, ssize_t to_write_nbytes)
+{
+  return fileio_write_backup_from (thread_p, session_p, (const char *) session_p->dbfile.area, to_write_nbytes);
 }
 
 /*
