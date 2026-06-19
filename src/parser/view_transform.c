@@ -40,6 +40,7 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
+#include "language_support.h"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -4943,6 +4944,7 @@ mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
 	  dinfo->corr_key_outer_copy[i] = NULL;
 	}
       dinfo->corr_key_col_names[i] = NULL;
+      dinfo->corr_key_remote_cs[i] = -1;
     }
   dinfo->corr_key_count = 0;
   dinfo->corr_sql_built = false;
@@ -5065,11 +5067,67 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
     {
       return false;
     }
-  base = pt_append_nulstring (parser, base, col_name);
+  /* Force a binary (byte) comparison on the pushed correlated key so the remote
+   * result matches local evaluation on non-push-down paths (IN/JOIN, or EXISTS
+   * with DBLINK_NO_PUSH_DOWN_SUBQ): outer key compared with *_bin collation.
+   * Binary-force syntax differs by DBMS; only character-string keys get it (INT/
+   * numeric keys and unknown DBMS emit plain "<col>").  CUBRID picks <codeset>_bin
+   * from corr_key_remote_cs (the remote column the COLLATE attaches to).
+   *   CUBRID  : <col> COLLATE <codeset>_bin   (utf8_bin / iso88591_bin / euckr_bin)
+   *   Oracle  : <col> COLLATE BINARY          (codeset-agnostic)
+   *   MySQL   : BINARY <col>                  (operator, charset-agnostic) */
+  if (di->corr_key_outer_copy[0] != NULL && PT_IS_CHAR_STRING_TYPE (di->corr_key_outer_copy[0]->type_enum))
+    {
+      switch (di->dbms_kind)
+	{
+	case PT_DBLINK_DBMS_MYSQL:	/* BINARY <col> operator (charset-agnostic; also MariaDB) */
+	  base = pt_append_bytes (parser, base, "BINARY ", 7);
+	  if (base != NULL)
+	    {
+	      base = pt_append_nulstring (parser, base, col_name);
+	    }
+	  break;
+	case PT_DBLINK_DBMS_CUBRID:	/* <col> COLLATE <codeset>_bin */
+	  {
+	    /* Pick the binary collation from the remote column's codeset (the COLLATE
+	     * attaches to that column), not the local outer's; the two coincide for a
+	     * pushable equality, but the remote codeset is the authoritative source. */
+	    int rcs = di->corr_key_remote_cs[0];
+	    LANG_COLLATION *lc = (rcs >= 0) ? lang_get_collation (LANG_GET_BINARY_COLLATION (rcs)) : NULL;
+	    const char *bin_coll = (lc != NULL) ? lc->coll.coll_name : "utf8_bin";
+	    base = pt_append_nulstring (parser, base, col_name);
+	    if (base != NULL)
+	      {
+		base = pt_append_nulstring (parser, base, " COLLATE ");
+	      }
+	    if (base != NULL)
+	      {
+		base = pt_append_nulstring (parser, base, bin_coll);
+	      }
+	  }
+	  break;
+	case PT_DBLINK_DBMS_ORACLE:	/* <col> COLLATE BINARY (codeset-agnostic) */
+	  base = pt_append_nulstring (parser, base, col_name);
+	  if (base != NULL)
+	    {
+	      base = pt_append_nulstring (parser, base, " COLLATE BINARY");
+	    }
+	  break;
+	case PT_DBLINK_DBMS_OTHER:
+	default:		/* unknown DBMS: no binary force */
+	  base = pt_append_nulstring (parser, base, col_name);
+	  break;
+	}
+    }
+  else
+    {
+      base = pt_append_nulstring (parser, base, col_name);
+    }
   if (base == NULL)
     {
       return false;
     }
+
   base = pt_append_bytes (parser, base, " = ?", 4);
   if (base == NULL)
     {
@@ -7163,6 +7221,11 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 			}
 		      else
 			{
+			  /* Capture the remote column's codeset (the COLLATE attaches to it).
+			   * -1 when not a character type / no data_type; the injector treats
+			   * that as "no codeset" and skips the codeset-based collation name. */
+			  dinfo->corr_key_remote_cs[dinfo->corr_key_count] =
+			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
 			  dinfo->corr_key_count++;
 			}
 		    }

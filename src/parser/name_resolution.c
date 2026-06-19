@@ -59,6 +59,7 @@
 #endif
 
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
 
 extern "C"
 {
@@ -5531,6 +5532,32 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
   if (conn < 0)
     {
       goto set_parser_error;
+    }
+
+  /* The connection handshake carries the remote DBMS type
+   * (broker_info[BROKER_INFO_DBMS_TYPE]); normalize it to a DBMS kind so the
+   * push-down builder can pick the binary-force syntax without knowing the wire
+   * integers. Native, shard-proxy and CGW variants of the same DBMS fold together. */
+  switch (cci_get_dbms_type (conn))
+    {
+    case CAS_DBMS_CUBRID:
+    case CAS_PROXY_DBMS_CUBRID:
+      dblink_table->dbms_kind = PT_DBLINK_DBMS_CUBRID;
+      break;
+    case CAS_DBMS_MYSQL:
+    case CAS_PROXY_DBMS_MYSQL:
+    case CAS_CGW_DBMS_MYSQL:
+    case CAS_CGW_DBMS_MARIADB:
+      dblink_table->dbms_kind = PT_DBLINK_DBMS_MYSQL;
+      break;
+    case CAS_DBMS_ORACLE:
+    case CAS_PROXY_DBMS_ORACLE:
+    case CAS_CGW_DBMS_ORACLE:
+      dblink_table->dbms_kind = PT_DBLINK_DBMS_ORACLE;
+      break;
+    default:
+      dblink_table->dbms_kind = PT_DBLINK_DBMS_OTHER;
+      break;
     }
 
   req = cci_prepare (conn, sql, 0, &cci_error);
