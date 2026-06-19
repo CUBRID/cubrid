@@ -23839,15 +23839,12 @@ parser_init_yydebug (void)
 }
 #endif
 
-#if 0 // ctshim
-extern int parser_yyinput_single_mode;
-#endif
 PT_NODE **
 parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv, yybuffer_pos_save;
+  int rv, yybuffer_pos_save, yyline_start_pos_save; 
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23863,6 +23860,7 @@ parser_main (PARSER_CONTEXT * parser)
   dbcs_start_input ();
   
   yybuffer_pos_save = yybuffer_pos;
+  yyline_start_pos_save = yyline_start_pos; 
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
@@ -23882,23 +23880,7 @@ parser_main (PARSER_CONTEXT * parser)
   // parser_main can be reentered while executing statements loaded by loaddb -s.
   // During the loaddb -s, the yybuffer_pos must not be currupted.
   yybuffer_pos = yybuffer_pos_save;
-
-#if 0 // ctshim
-  // When reentered from parse_one_statement (parser_yyinput_single_mode==1), the outer
-  // yyparse is tracking a FILE position in yybuffer_pos (accumulated byte offset), not a
-  // position within any in-memory buffer.  parser_parse_string_with_escapes sets
-  // parser->original_buffer to its short inner query string before calling parser_main,
-  // and that value persists after parser_main returns.  If left non-NULL, the outer stmt
-  // rule's mid-rule actions compute g_query_string as original_buffer + file_pos, which
-  // overruns the short inner buffer and trips assert(pos <= g_original_buffer_len).
-  // Restore original_buffer to NULL so the outer stmt rule skips the buffer-relative
-  // g_query_string computation entirely.
-  if (parser_yyinput_single_mode)
-    {
-      parser->original_buffer = NULL;
-      g_original_buffer_len = 0;
-    }
-#endif    
+  yyline_start_pos = yyline_start_pos_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
@@ -23995,9 +23977,6 @@ parse_one_statement (int state)
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
-#if 0  // ctshim
-  this_parser->original_buffer = NULL;
-#endif  
 
   g_query_string = NULL;
   g_query_string_pos = 0;
