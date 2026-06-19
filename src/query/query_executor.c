@@ -14342,11 +14342,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   log_sysop_start (thread_p);
   sysop_started = true;
 
-  /* Run the increments in an autonomous subtransaction so the new values commit
-   * independently of the enclosing statement (click-counter semantics) and survive an
-   * outer rollback. The former global "instant lock mode" only gated this block; the
-   * subtransaction itself - not the flag - is what provides the autonomy, so it is kept.
-   * Several instances can be updated here, so the marker keeps the flush atomic. */
+  /* Increments run in an autonomous subtransaction: they commit independently of the
+   * enclosing statement and survive its rollback (click-counter semantics). */
   if (need_ha_replication)
     {
       repl_start_flush_mark (thread_p);
@@ -14389,8 +14386,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       repl_end_flush_mark (thread_p, false);
     }
 
-  /* Commit the autonomous subtransaction so the increment is durable independently of the
-   * enclosing statement's outcome. */
+  /* Commit the autonomous subtransaction. */
   assert (subtransaction_started);
   log_sysop_commit (thread_p);
 
@@ -14402,14 +14398,11 @@ exit:
       logtb_complete_sub_mvcc (thread_p, tdes);
     }
 
-  /* Release the per-row write locks taken for the increment now that the autonomous
-   * subtransaction has settled. This replaces the former lock_stop_instant_lock_mode():
-   * the locks are scoped explicitly to the rows we incremented (all_incr_info) instead of
-   * a global per-transaction "instant duration" flag tested on every lock acquisition.
-   * lock_unlock_object(force=true) removes exactly this statement's lock contribution on
-   * each row, so a lock the surrounding transaction already held is left intact. */
-  for (const incr_info & released_info : all_incr_info)
+  /* Release the per-row X-locks the increment took, scoped to all_incr_info. force=true drops
+   * only this statement's lock count, so a lock the outer transaction already holds is kept. */
+  for (size_t i = 0; i < all_incr_info.size (); i++)
     {
+      const incr_info & released_info = all_incr_info[i];
       lock_unlock_object (thread_p, &released_info.m_oid, &released_info.m_class_oid, X_LOCK, true);
     }
 
@@ -15654,8 +15647,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since we can't reevaluate in execute_selupd_list. The rows
-	       * are locked here; qexec_execute_selupd_list releases them after its subtransaction. */
+	      /* Reevaluate at select since we can't in execute_selupd_list; selupd releases these locks later. */
 	      force_select_lock = true;
 	    }
 	}
