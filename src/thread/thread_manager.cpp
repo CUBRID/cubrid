@@ -426,6 +426,14 @@ namespace cubthread
     return 1 + (Manager != NULL ? Manager->get_max_thread_count () : 0);
   }
 
+  entry *
+  get_main_entry (void)
+  {
+    // the main/system thread entry; lives outside manager::get_all_entries (). may be NULL before initialize ()
+    // or after finalize (). in SA_MODE this is the only entry (get_all_entries () is empty).
+    return Main_entry_p;
+  }
+
   entry &
   get_entry (void)
   {

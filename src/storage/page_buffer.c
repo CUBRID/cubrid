@@ -2042,8 +2042,8 @@ pgbuf_monitor_sum_fix_req (bool reset)
   cubthread::entry * all_entries = mgr->get_all_entries ();
   /* Bound by the managed-entry array size (manager::get_max_thread_count == m_max_threads), NOT the free
    * thread_num_total_threads() which adds +1 for the separate system thread (Main_entry_p) that is not part of
-   * m_all_entries - iterating that far would read/write one element past the array. The system entry's shard is
-   * intentionally not summed: it does negligible page fixing and this is only a coarse LRU-quota heuristic. */
+   * m_all_entries - iterating that far would read/write one element past the array. In SA_MODE the managed array
+   * is empty (m_max_threads == 0, all_entries == NULL) so this loop is skipped. */
   size_t n = mgr->get_max_thread_count ();
   size_t i;
   for (i = 0; i < n; i++)
@@ -2054,12 +2054,27 @@ pgbuf_monitor_sum_fix_req (bool reset)
 	  all_entries[i].pgbuf_fix_req_cnt = 0;
 	}
     }
+  /* Also include the main/system thread entry: it lives outside m_all_entries and is the ONLY writer in SA_MODE
+   * (where the managed array is empty), so omitting it would zero out the heuristic for standalone utilities. */
+  cubthread::entry * main_entry = cubthread::get_main_entry ();
+  if (main_entry != NULL)
+    {
+      total += main_entry->pgbuf_fix_req_cnt;
+      if (reset)
+	{
+	  main_entry->pgbuf_fix_req_cnt = 0;
+	}
+    }
   return total;
 }
 
 /*
  * pgbuf_monitor_sum_pg_unfix () - sum the per-thread page-unfix shards (THREAD_ENTRY::pgbuf_pg_unfix_cnt);
- *                                 reset them to 0 when reset==true.
+ *                                 reset them to 0 when reset==true. Feeds only a coarse page-buffer-activity
+ *                                 heuristic (pgbuf_adjust_quotas), so the data race with the owner-thread writers
+ *                                 is accepted by design: a plain int read/write does not tear on our targets, and
+ *                                 the few increments that may be lost between the read and the reset store are
+ *                                 negligible against millions of unfixes. See also pgbuf_monitor_sum_fix_req.
  */
 STATIC_INLINE int
 pgbuf_monitor_sum_pg_unfix (bool reset)
@@ -2071,7 +2086,7 @@ pgbuf_monitor_sum_pg_unfix (bool reset)
       return 0;
     }
   cubthread::entry * all_entries = mgr->get_all_entries ();
-  /* See pgbuf_monitor_sum_fix_req: bound by m_all_entries size, excluding the separate system thread entry. */
+  /* See pgbuf_monitor_sum_fix_req: bound by m_all_entries size; SA_MODE has an empty managed array. */
   size_t n = mgr->get_max_thread_count ();
   size_t i;
   for (i = 0; i < n; i++)
@@ -2080,6 +2095,16 @@ pgbuf_monitor_sum_pg_unfix (bool reset)
       if (reset)
 	{
 	  all_entries[i].pgbuf_pg_unfix_cnt = 0;
+	}
+    }
+  /* Include the main/system thread entry (outside m_all_entries; the only writer in SA_MODE). See sum_fix_req. */
+  cubthread::entry * main_entry = cubthread::get_main_entry ();
+  if (main_entry != NULL)
+    {
+      total += main_entry->pgbuf_pg_unfix_cnt;
+      if (reset)
+	{
+	  main_entry->pgbuf_pg_unfix_cnt = 0;
 	}
     }
   return total;
