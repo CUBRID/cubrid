@@ -1343,7 +1343,7 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	if (err != NO_ERROR)
 	  {
 	    obj_delete (object);
-	    goto cleanup1;
+	    goto cleanup0;
 	  }
       }
   }
@@ -3134,6 +3134,7 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 	  err = jsp_drop_pkg (unique_name, pkg_mop, owner_mop);
 	  if (err != NO_ERROR)
 	    {
+	      pr_clear_value (&scode_body_value);
 	      goto error_exit;
 	    }
 	}
@@ -3141,6 +3142,7 @@ jsp_create_pkg_spec (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 	{
 	  err = ER_PKG_ALREADY_EXIST;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, unique_name);
+	  pr_clear_value (&scode_body_value);
 	  goto error_exit;
 	}
     }
@@ -3321,8 +3323,7 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 
       if (sm_qualifier_name (unique_name, owner_name, DB_MAX_USER_LENGTH) == NULL)
 	{
-	  ASSERT_ERROR ();
-	  err = er_errid();
+	  ASSERT_ERROR_AND_SET (err);
 	  goto error_exit;
 	}
       assert (owner_name[0]);     // package name has its owner name at this point of execution
