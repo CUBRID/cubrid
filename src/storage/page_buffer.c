@@ -487,6 +487,8 @@ struct pgbuf_holder_anchor
   char m_pad[64 - 2 * sizeof (int) - 2 * sizeof (PGBUF_HOLDER *)];
 };
 
+static_assert (sizeof (PGBUF_HOLDER_ANCHOR) == 64, "pgbuf_holder_anchor must be exactly one 64B cache line; fix m_pad");
+
 /* the entry(array structure) of free BCB holder list shared by threads */
 struct pgbuf_holder_set
 {
@@ -696,6 +698,8 @@ struct pgbuf_monitor_thread_counter
   std::atomic_int pg_unfix_cnt;	/* number of page unfixes (this thread) */
   char m_pad[64 - 2 * sizeof (std::atomic_int)];	/* isolate each shard to its own cache line */
 };
+
+static_assert (sizeof (PGBUF_MONITOR_THREAD_COUNTER) == 64, "pgbuf_monitor_thread_counter must be exactly one 64B cache line; fix m_pad");
 
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
