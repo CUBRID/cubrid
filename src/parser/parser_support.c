@@ -11765,7 +11765,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * plain INSERT (dblink_insert_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
    * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
    * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
-   * remote target is deferred (CBRD-26796 / PR #7261 C-04). */
+   * remote target is deferred. */
   if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
       && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
     {

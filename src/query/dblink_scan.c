@@ -50,6 +50,17 @@
 
 #define MAX_LEN_CONNECTION_URL    512
 
+/* SQL buffer size estimates for building the remote INSERT statement
+ * ("INSERT INTO <table> [(cols)] VALUES (?, ...)") in dblink_insert_open():
+ *   HDR_OVERHEAD     - fixed INSERT prefix + trailing slack/NUL
+ *   PER_COLUMN       - separator/parens budget per attribute name
+ *   PER_PLACEHOLDER  - budget per "?," bind placeholder
+ *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack */
+#define DBLINK_INSERT_SQL_HDR_OVERHEAD      64
+#define DBLINK_INSERT_SQL_PER_COLUMN        4
+#define DBLINK_INSERT_SQL_PER_PLACEHOLDER   4
+#define DBLINK_INSERT_SQL_VALUES_OVERHEAD   16
+
 // *INDENT-OFF*
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
@@ -1272,15 +1283,15 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
     }
 
   /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
-  sql_len = strlen (table_name) + 64;
+  sql_len = strlen (table_name) + DBLINK_INSERT_SQL_HDR_OVERHEAD;
   if (num_attrs > 0)
     {
       for (i = 0; i < num_attrs; i++)
 	{
-	  sql_len += strlen (attr_names[i]) + 4;
+	  sql_len += strlen (attr_names[i]) + DBLINK_INSERT_SQL_PER_COLUMN;
 	}
     }
-  sql_len += (size_t) num_bind *4 + 16;
+  sql_len += (size_t) num_bind *DBLINK_INSERT_SQL_PER_PLACEHOLDER + DBLINK_INSERT_SQL_VALUES_OVERHEAD;
 
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
@@ -1391,7 +1402,16 @@ dblink_bind_insert_value (int stmt_handle, int param_index, DB_VALUE * dbval)
   unsigned char type;
 
   value = &dbval->data;
-  type = DB_VALUE_DOMAIN_TYPE (dbval);
+  /* A typed NULL (e.g. NUMERIC/DATE domain with the null flag set) must be bound as NULL,
+   * not decoded through its type branch; otherwise it yields a precision-0 error or a zero date. */
+  if (DB_IS_NULL (dbval))
+    {
+      type = DB_TYPE_NULL;
+    }
+  else
+    {
+      type = DB_VALUE_DOMAIN_TYPE (dbval);
+    }
 
   switch (type)
     {
@@ -1425,8 +1445,11 @@ dblink_bind_insert_value (int stmt_handle, int param_index, DB_VALUE * dbval)
       u_type = CCI_U_TYPE_NUMERIC;
       value = (void *) numeric_db_value_print (dbval, num_str);
       break;
-    case DB_TYPE_DOUBLE:
     case DB_TYPE_FLOAT:
+      a_type = CCI_A_TYPE_FLOAT;
+      u_type = CCI_U_TYPE_FLOAT;
+      break;
+    case DB_TYPE_DOUBLE:
       a_type = CCI_A_TYPE_DOUBLE;
       u_type = CCI_U_TYPE_DOUBLE;
       break;

@@ -12537,16 +12537,9 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 
   val_no = insert->num_vals;
 
-  /* allocate vals array if not present (defensive: XASL unpack may leave it NULL) */
-  if (insert->vals == NULL && val_no > 0)
-    {
-      insert->vals = (DB_VALUE **) db_private_alloc (thread_p, val_no * sizeof (DB_VALUE *));
-      if (insert->vals == NULL)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  return ER_FAILED;
-	}
-    }
+  /* stx_build_insert_proc() (server-side XASL unpack) always allocates insert->vals when
+   * num_vals > 0, so it is non-NULL on this path. */
+  assert (val_no == 0 || insert->vals != NULL);
 
   /* open remote connection and prepare INSERT statement */
   if (dblink_insert_open (thread_p, insert->remote_url, insert->remote_user, insert->remote_pwd,
