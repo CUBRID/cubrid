@@ -713,6 +713,12 @@ namespace cubload
 	if (!m_error_handler.current_line_has_error ())
 	  {
 	    m_recdes_collected.push_back (std::move (new_recdes));
+
+	    if (!HA_DISABLED () && heap_recdes_contains_oos (&m_recdes_collected.back ().get_recdes ()))
+	      {
+		/* OOS replication state is thread/transaction-local and belongs to the just-transformed record. */
+		flush_records ();
+	      }
 	  }
 	else
 	  {
@@ -789,6 +795,7 @@ namespace cubload
 		  }
 
 		// Error was filtered so we can continue.
+		m_error_handler.set_error_on_current_line (false);
 		continue;
 	      }
 
@@ -796,6 +803,7 @@ namespace cubload
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    ++m_rows;
 	  }
+	m_recdes_collected.clear ();
       }
     else
       {
@@ -814,6 +822,7 @@ namespace cubload
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    m_rows += m_recdes_collected.size ();
+	    m_recdes_collected.clear ();
 	  }
       }
   }
