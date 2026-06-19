@@ -200,6 +200,7 @@ static bool is_char_string (const DB_VALUE * s);
 static bool is_integer (const DB_VALUE * i);
 static bool is_number (const DB_VALUE * n);
 static int qstr_grow_string (DB_VALUE * src_string, DB_VALUE * result, int new_size);
+static void qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type, const unsigned char *s2,
 			int s2_length, int s2_precision, DB_TYPE s2_type, INTL_CODESET codeset, int *result_length,
@@ -440,7 +441,7 @@ db_string_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE 
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -2092,6 +2093,33 @@ db_string_repeat (const DB_VALUE * src_string, const DB_VALUE * count, DB_VALUE 
 }
 
 /*
+ * qstr_retype_char_to_varchar () - Retype a CHAR value to VARCHAR in place.
+ *   Preserve the compressed image (compressed_size > 0) across the rebuild,
+ *   since db_make_varchar() resets the compression fields.
+ */
+static void
+qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int codeset, int collation)
+{
+  if (result->data.ch.medium.compressed_size > 0)
+    {
+      char *saved_compressed_buf = result->data.ch.medium.compressed_buf;
+      int saved_compressed_size = result->data.ch.medium.compressed_size;
+
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+
+      result->data.ch.medium.compressed_buf = saved_compressed_buf;
+      result->data.ch.medium.compressed_size = saved_compressed_size;
+      result->data.ch.info.compressed_need_clear = 1;
+    }
+  else
+    {
+      qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
+    }
+
+  result->need_clear = true;
+}
+
+/*
  * db_string_substring_index - returns the substring from a string before
  *			       count occurences of delimeter
  *
@@ -2347,11 +2375,9 @@ db_string_substring_index (DB_VALUE * src_string, DB_VALUE * delim_string, const
 	  error_status = pr_clone_value ((DB_VALUE *) src_string, result);
 	  if (src_type == DB_TYPE_CHAR)
 	    {
-	      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				      DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				      src_cs, src_coll);
-	      result->need_clear = true;
+	      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	      qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result), src_cs,
+					   src_coll);
 	    }
 
 	  if (error_status < 0)
@@ -3009,9 +3035,8 @@ db_string_insert_substring (DB_VALUE * src_string, const DB_VALUE * position, co
   /* force type to variable string */
   if (src_type == DB_TYPE_CHAR)
     {
-      /* convert CHARACTER(N) to CHARACTER VARYING(N) */
-      qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-			      TP_FLOATING_PRECISION_VALUE, db_get_string (result), result_size, src_cs, src_coll);
+      /* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+      qstr_retype_char_to_varchar (result, TP_FLOATING_PRECISION_VALUE, result_size, src_cs, src_coll);
     }
   else if (src_type == DB_TYPE_BIT)
     {
@@ -3691,7 +3716,7 @@ db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB
 
 	  if (!ignore_trailing_space)
 	    {
-	      ti = (QSTR_IS_FIXED_LENGTH (str1_type) && QSTR_IS_FIXED_LENGTH (str2_type));
+	      ti = (QSTR_IS_PADDED_LENGTH (str1_type) && QSTR_IS_PADDED_LENGTH (str2_type));
 	    }
 	  cmp_result = QSTR_COMPARE (coll_id, DB_GET_UCHAR (string1), (int) db_get_string_size (string1),
 				     DB_GET_UCHAR (string2), (int) db_get_string_size (string2), ti);
@@ -5274,10 +5299,9 @@ exit_copy:
     DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src);
     if (src_type == DB_TYPE_CHAR)
       {
-	/* convert CHARACTER(N) to CHARACTER VARYING(N) */
-	qstr_make_typed_string (DB_TYPE_VARCHAR, result,
-				DB_VALUE_PRECISION (result), db_get_string (result), db_get_string_size (result),
-				db_get_string_codeset (src), db_get_string_collation (src));
+	/* convert CHARACTER(N) to CHARACTER VARYING(N), keeping any compressed image */
+	qstr_retype_char_to_varchar (result, DB_VALUE_PRECISION (result), db_get_string_size (result),
+				     db_get_string_codeset (src), db_get_string_collation (src));
       }
     result->need_clear = true;
   }
@@ -5623,7 +5647,7 @@ db_string_limit_size_string (DB_VALUE * src_string, DB_VALUE * result, const int
       memcpy (r, db_get_string (src_string), adj_char_size);
     }
   /* adjust also domain precision in case of fixed length types */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_domain_precision = MIN (src_domain_precision, char_count);
     }
@@ -8471,7 +8495,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  we are through.
    */
 
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8481,7 +8505,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8494,7 +8518,7 @@ qstr_append (unsigned char *s1, int s1_length, int s1_precision, DB_TYPE s1_type
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        *  The result will be a chararacter string of length =
@@ -8666,7 +8690,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  characters are present.  They all will be by the time
    *  we are through.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type))
     {
       s1_logical_length = s1_precision;
     }
@@ -8676,7 +8700,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
     }
 
 
-  if (QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s2_type))
     {
       s2_logical_length = s2_precision;
     }
@@ -8689,7 +8713,7 @@ qstr_concatenate (const unsigned char *s1, int s1_length, int s1_size_, int s1_p
    *  If both source strings are fixed-length, the concatenated
    *  result will be fixed-length.
    */
-  if (QSTR_IS_FIXED_LENGTH (s1_type) && QSTR_IS_FIXED_LENGTH (s2_type))
+  if (QSTR_IS_PADDED_LENGTH (s1_type) && QSTR_IS_PADDED_LENGTH (s2_type))
     {
       /*
        * The only time we enter inside this if statement is 
@@ -9333,7 +9357,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9381,7 +9405,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9444,7 +9468,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *  <src_padded_length> is the length of the fully padded
    *  source string.
    */
-  if (QSTR_IS_FIXED_LENGTH (src_type))
+  if (QSTR_IS_PADDED_LENGTH (src_type))
     {
       src_padded_length = src_precision;
     }
@@ -9480,7 +9504,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
    *    Allocate enough for a fully padded source string, copy
    *    the source string and pad the rest.
    */
-  if (QSTR_IS_FIXED_LENGTH (dest_type))
+  if (QSTR_IS_PADDED_LENGTH (dest_type))
     {
       *dest_length = dest_precision;
     }
@@ -9503,7 +9527,7 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 	      copy_size = dest_precision;
 	    }
 	  copy_length = copy_size;
-	  if (QSTR_IS_VARIABLE_LENGTH (dest_type))
+	  if (QSTR_IS_UNPADDED_LENGTH (dest_type))
 	    {
 	      *dest_length = copy_length;
 	    }
