@@ -3258,8 +3258,6 @@ struct pt_pointer_info
   int rank;			/* rank factor for the same selectivity */
   int pred_order;		/* for view-merge or predicate-push. pred is ordered by pred_order */
   bool do_walk;			/* apply walk on node bool */
-  unsigned produced:1;		/* the shared DB_VALUE ('etc') is produced by a preceding regu variable (used for
-				 * aggregate argument sharing in xasl generation) */
 };
 
 struct pt_stored_proc_body_info

@@ -645,9 +645,6 @@ static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL
 static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
 						ANALYTIC_INFO * info);
 
-static PT_NODE *pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static void pt_mark_produced_groupby_refs (AGGREGATE_INFO * info, PT_NODE * arg_list);
 static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						 int *continue_walk);
 static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -4163,33 +4160,65 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  if (pt_node_list_to_value_and_reguvar_list (parser, arg_list, &value_list, &regu_position_list) ==
-		      NULL)
-		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
+		  /* Share the input DB_VALUE slot across aggregates that have an identical single argument
+		   * (e.g. sum(c3), avg(c3)). Look the argument up in the per-query registry (info->args); on a
+		   * hit, point this aggregate's operand at the already-produced slot and add NOTHING to
+		   * out_list / value_list / out_names. Only CUME_DIST and PERCENT_RANK are excluded (handled by
+		   * the enclosing branch); multi-argument aggregates fall back to the producer path below. */
+		  PT_NODE *arg = tree->info.function.arg_list;
+		  DB_VALUE *shared_value = NULL;
+		  bool can_share = (arg != NULL && arg->next == NULL && pt_is_shareable_groupby_ref (parser, arg));
 
-		  error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
-		  if (error_code != NO_ERROR)
+		  if (can_share)
 		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
-
-		  bool need_append = false;
-		  for (PT_NODE * arg = arg_list; arg != NULL; arg = arg->next)
-		    {
-		      if (!(PT_IS_POINTER_REF_NODE (arg) && arg->info.pointer.produced))
+		      for (PT_NODE * args = info->args; args != NULL; args = args->next)
 			{
-			  need_append = true;
-			  break;
+			  PT_NODE *out_name = args;
+			  while (out_name != NULL && out_name->node_type == PT_NODE_POINTER)
+			    {
+			      out_name = out_name->info.pointer.node;
+			    }
+
+			  if (pt_aggregate_arg_eq (parser, arg, out_name))
+			    {
+			      shared_value = (DB_VALUE *) args->etc;
+			      break;
+			    }
 			}
 		    }
 
-		  if (need_append)
+		  if (shared_value != NULL)
+		    {
+		      /* reuse the shared slot: build a one-element value_list over it and turn it into the
+		       * operand. No producer regu, no out_list / value_list / out_names growth. */
+		      QPROC_DB_VALUE_LIST dbval_list = NULL;
+
+		      regu_alloc (value_list);
+		      regu_alloc (dbval_list);
+		      if (value_list == NULL || dbval_list == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      dbval_list->val = shared_value;
+		      dbval_list->dom = pt_xasl_node_to_domain (parser, arg);
+		      dbval_list->next = NULL;
+		      value_list->valp = dbval_list;
+		      value_list->val_cnt = 1;
+
+		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list,
+									     &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		    }
+		  else
 		    {
 		      // add dummy output name nodes, one for each argument
 		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
@@ -4206,6 +4235,23 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 			  parser_append_node (pt_val, info->out_names);
 			}
 
+		      // for each element from arg_list we create a corresponding node in the value_list and regu_list
+		      if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+								  &value_list, &regu_position_list) == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list,
+									     &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
 
 		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
 		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
@@ -4219,7 +4265,15 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      // also we need to update the scan_regu_list from info
 		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 
-		      pt_mark_produced_groupby_refs (info, arg_list);
+		      if (can_share)
+			{
+			  PT_NODE *reg = pt_point (parser, arg);
+			  if (reg != NULL)
+			    {
+			      reg->etc = (void *) pt_index_value (value_list, 0);
+			      info->args = parser_append_node (reg, info->args);
+			    }
+			}
 		    }
 		}
 	      else
@@ -4446,6 +4500,24 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
 
 	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
+
+	  REGU_VARIABLE_LIST scan_constant_list = NULL;
+	  regu_alloc (scan_constant_list);
+	  if (scan_constant_list == NULL)
+	    {
+	      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
+	    }
+	  scan_constant_list->value = *regu;
+	  pt_aggregate_info_update_scan_regu_list (info, scan_constant_list);
+
+	  PT_NODE *reg = pt_point (parser, tree);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, 0);
+	      info->args = parser_append_node (reg, info->args);
+	    }
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -4656,6 +4728,47 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.args = NULL;
   info.grbynum_valp = grbynum_valp;
   info.qo_plan = plan;
+
+
+  PT_NODE *out_name = NULL;
+  int i = 0;
+  for (out_name = out_names; out_name; out_name = out_name->next, i++)
+    {
+      PT_NODE *name = out_name;
+      while (name && name->node_type == PT_NODE_POINTER)
+	{
+	  name = name->info.pointer.node;
+	}
+
+      bool can_share = pt_is_shareable_groupby_ref (parser, name);
+      bool is_exists = false;
+
+      for (PT_NODE * args = info.args; args; args = args->next)
+	{
+	  PT_NODE *arg = args;
+	  while (arg != NULL && arg->node_type == PT_NODE_POINTER)
+	    {
+	      arg = arg->info.pointer.node;
+	    }
+
+	  if (pt_aggregate_arg_eq (parser, name, arg))
+	    {
+	      is_exists = true;
+	      break;
+	    }
+	}
+
+      if (can_share && !is_exists)
+	{
+	  PT_NODE *reg = pt_point (parser, name);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, i);
+	      info.args = parser_append_node (reg, info.args);
+	    }
+	}
+    }
+
 
   /* init */
   info.class_name = NULL;
@@ -28751,165 +28864,4 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
       /* unknown / unsupported node: conservatively treat as different */
       return false;
     }
-}
-
-static PT_NODE *
-pt_substitute_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  PT_NODE *out_name;
-  bool already_exist = false;
-
-  if (node == NULL)
-    {
-      return node;
-    }
-
-  *continue_walk = PT_CONTINUE_WALK;
-
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || node->node_type == PT_CTE || node->node_type == PT_DOT_
-      || node->node_type == PT_VALUE)
-    {
-      *continue_walk = PT_LIST_WALK;
-      return node;
-    }
-
-  if (node->node_type == PT_NODE_POINTER)
-    {
-      return node;
-    }
-
-  if (!pt_is_shareable_groupby_ref (parser, node))
-    {
-      return node;
-    }
-
-  if (node->node_type != PT_NAME && node->node_type != PT_EXPR && node->node_type != PT_FUNCTION)
-    {
-      return node;
-    }
-
-  for (PT_NODE * args = info->args; args != NULL; args = args->next)
-    {
-      out_name = args;
-      while (out_name && out_name->node_type == PT_NODE_POINTER)
-	{
-	  out_name = out_name->info.pointer.node;
-	}
-
-      if (pt_aggregate_arg_eq (parser, node, out_name))
-	{
-	  already_exist = true;
-	  break;
-	}
-    }
-
-  if (!already_exist)
-    {
-      DB_VALUE *dbval = NULL;
-      regu_alloc (dbval);
-      if (dbval == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return node;
-	}
-      pt_data_type_init_value (node, dbval);
-
-      PT_NODE *reg = pt_point_ref (parser, node);
-      if (reg == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	  return node;
-	}
-      reg->etc = dbval;
-      info->args = parser_append_node (reg, info->args);
-    }
-
-  return node;
-}
-
-
-/*
- * pt_mark_produced_groupby_refs () - marks collected args whose shared DB_VALUE is produced by the
- *				      regu variables of the aggregate just appended
- *   return: none
- *   info(in): aggregate info
- *   subst_arg_list(in): substituted argument list of the appended aggregate; its top-level POINTER_REF
- *			 nodes identify the shared DB_VALUEs that now have a producer
- */
-static void
-pt_mark_produced_groupby_refs (AGGREGATE_INFO * info, PT_NODE * arg_list)
-{
-  PT_NODE *node, *out_name;
-
-  for (node = arg_list; node != NULL; node = node->next)
-    {
-      if (!PT_IS_POINTER_REF_NODE (node))
-	{
-	  continue;
-	}
-
-      for (out_name = info->args; out_name != NULL; out_name = out_name->next)
-	{
-	  if (PT_IS_POINTER_REF_NODE (out_name) && out_name->etc == node->etc)
-	    {
-	      out_name->info.pointer.produced = 1;
-	      break;
-	    }
-	}
-    }
-}
-
-static PT_NODE *
-pt_substitute_groupby_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  AGGREGATE_INFO *info = (AGGREGATE_INFO *) arg;
-  PT_NODE *out_name, *new_node, *tmp, *pointer;
-
-  if (node == NULL)
-    {
-      return node;
-    }
-
-  if (!pt_is_shareable_groupby_ref (parser, node))
-    {
-      return node;
-    }
-
-  for (PT_NODE * args = info->args; args != NULL; args = args->next)
-    {
-      out_name = args;
-      while (out_name && out_name->node_type == PT_NODE_POINTER)
-	{
-	  out_name = out_name->info.pointer.node;
-	}
-
-      if (pt_aggregate_arg_eq (parser, node, out_name))
-	{
-	  new_node = parser_copy_tree (parser, node);
-	  if (new_node == NULL)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return node;
-	    }
-
-	  pointer = pt_point_ref (parser, new_node);
-	  if (pointer == NULL)
-	    {
-	      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return node;
-	    }
-
-	  pointer->etc = (DB_VALUE *) args->etc;
-	  pointer->info.pointer.produced = args->info.pointer.produced;
-
-	  tmp = node->next;
-	  pointer->next = tmp;
-	  node->next = NULL;
-
-	  return pointer;
-	}
-    }
-
-  return node;
 }
