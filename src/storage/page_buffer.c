@@ -2034,12 +2034,12 @@ STATIC_INLINE int
 pgbuf_monitor_sum_fix_req (bool reset)
 {
   int total = 0;
-  cubthread::manager *mgr = cubthread::get_manager ();
+  cubthread::manager * mgr = cubthread::get_manager ();
   if (mgr == NULL)
     {
       return 0;
     }
-  cubthread::entry *all_entries = mgr->get_all_entries ();
+  cubthread::entry * all_entries = mgr->get_all_entries ();
   /* Bound by the managed-entry array size (manager::get_max_thread_count == m_max_threads), NOT the free
    * thread_num_total_threads() which adds +1 for the separate system thread (Main_entry_p) that is not part of
    * m_all_entries - iterating that far would read/write one element past the array. The system entry's shard is
@@ -2065,12 +2065,12 @@ STATIC_INLINE int
 pgbuf_monitor_sum_pg_unfix (bool reset)
 {
   int total = 0;
-  cubthread::manager *mgr = cubthread::get_manager ();
+  cubthread::manager * mgr = cubthread::get_manager ();
   if (mgr == NULL)
     {
       return 0;
     }
-  cubthread::entry *all_entries = mgr->get_all_entries ();
+  cubthread::entry * all_entries = mgr->get_all_entries ();
   /* See pgbuf_monitor_sum_fix_req: bound by m_all_entries size, excluding the separate system thread entry. */
   size_t n = mgr->get_max_thread_count ();
   size_t i;
@@ -13762,8 +13762,7 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if (pgbuf_monitor_sum_pg_unfix (false) < PGBUF_TRAN_THRESHOLD_ACTIVITY
-      && diff_usec < 500000LL)
+  if (pgbuf_monitor_sum_pg_unfix (false) < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
     {
       quota->is_adjusting = 0;
       return;
