@@ -23,7 +23,6 @@
 
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
-#include "db_vector.hpp"
 #include "dbtype.h"
 #include "error_manager.h"
 #include "intl_support.h"
@@ -156,43 +155,6 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_VARCHAR:
       db_make_varchar (val, field_len, data, field_len, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
       break;
-
-    case DB_TYPE_VECTOR:
-    {
-      if (field_len < (int) sizeof (int32_t))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		  "COPY binary: VECTOR needs at least 4 bytes for dimension");
-	  return ER_DB_UNIMPLEMENTED;
-	}
-
-      int32_t dim = read_int32 (data);
-      int expected_len = (int) sizeof (int32_t) + dim * (int) sizeof (float);
-      if (field_len != expected_len)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-		  "COPY binary: VECTOR size mismatch");
-	  return ER_DB_UNIMPLEMENTED;
-	}
-
-      DB_VECTOR_FLOAT vf;
-      vf.dim = dim;
-      /* decode float array from network byte order */
-      float *floats = db_vector_allocate_float_array (dim);
-      if (floats == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      const char *fptr = data + sizeof (int32_t);
-      for (int i = 0; i < dim; i++)
-	{
-	  floats[i] = read_float (fptr + i * sizeof (float));
-	}
-      vf.float_array = floats;
-      db_make_vector_float (val, &vf);
-      /* db_make_vector_float stores the pointer, not a copy — db_value_clear frees it */
-    }
-    break;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: unsupported column type");
