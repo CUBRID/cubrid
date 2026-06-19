@@ -108,7 +108,6 @@ void csql_yyerror (const char *s);
 
 extern int g_msg[1024];
 extern int msg_ptr;
-extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
 extern int yylex(void);
@@ -285,7 +284,6 @@ static bool is_in_sp_func_type = false;
  * parser_new_node() stamps line_number/column_number from the scanner's CURRENT position (csql_yyget_lineno()/yycolumn).
  *  A reduce action runs only after bison has fetched the look-ahead token,
  * so that position has already moved past the token (and across any blank lines).
- * The location stack (@N) keeps the position captured by begin_token() at scan time, which is the location we actually want to report.
  */
 #define PARSER_SET_LINE_COL(node, loc) \
   if (node) \
@@ -1735,9 +1733,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NCHAR_STRING
 %token <cptr> BIT_STRING
 %token <cptr> HEX_STRING
-%token <cptr> CPP_STYLE_HINT
-%token <cptr> C_STYLE_HINT
-%token <cptr> SQL_STYLE_HINT
+%token <cptr> SQL_HINT
 %token <cptr> BINARY_STRING
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
@@ -13336,37 +13332,13 @@ opt_hint_list
 	;
 
 hint_list
-	: hint_list CPP_STYLE_HINT
+	: hint_list SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 		}}
-	| hint_list SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| hint_list C_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| CPP_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| C_STYLE_HINT
+	| SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
@@ -22707,9 +22679,6 @@ pop_msg ()
   msg_ptr--;
 }
 
-int yycolumn = 0;
-int yycolumn_end = 0;
-
 int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
 
@@ -23891,8 +23860,7 @@ parser_main (PARSER_CONTEXT * parser)
   this_parser = parser;
 
   dbcs_start_input ();
-
-  yycolumn = yycolumn_end = 1;
+  
   yybuffer_pos_save = yybuffer_pos;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
@@ -24012,8 +23980,7 @@ parse_one_statement (int state)
     {
       // a new session starts. reset line and column number.
       csql_yyset_lineno (1);
-      yycolumn = yycolumn_end = 1;
-
+      
       // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
       yybuffer_pos=0;
 
@@ -24580,7 +24547,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	  /* no parse-tree location available here; keep the scanner's current position 
            * (the previous behavior when the arguments were ignored). */
-	  csql_yyerror_explicit (csql_yyget_lineno (), yycolumn);
+	  csql_yyerror_explicit (csql_yyget_lineno (), parser_column_position());
 	  return NULL;
 	}
 

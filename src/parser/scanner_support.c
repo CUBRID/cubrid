@@ -47,11 +47,6 @@ int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
-extern "C"
-{
-  extern int yycolumn;
-}
-extern int yycolumn_end;
 
 
 #if defined(SA_MODE) && !defined(NDEBUG)
@@ -258,7 +253,7 @@ pt_parser_line_col (PT_NODE * node)
     return;
 
   node->line_number = csql_yyget_lineno ();
-  node->column_number = yycolumn;
+  node->column_number = parser_column_position ();
 }
 
 /*

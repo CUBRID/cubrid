@@ -18,7 +18,7 @@
 
 
 /*
- * scanner_support.h - scanner support functions
+ * csql_grammar_scan.h 
  */
 
 #ifndef _SCANNER_SUPPORT_H_
@@ -75,6 +75,11 @@ extern "C"
 
   extern bool pt_check_ipv4 (char *p);
   extern bool pt_check_hostname (char *p);
+
+#define parser_column_position()    (yybuffer_pos - yyline_start_pos + 1)
+  extern int yybuffer_pos;
+  extern int yyline_start_pos;
+
 
 #ifdef __cplusplus
 }
