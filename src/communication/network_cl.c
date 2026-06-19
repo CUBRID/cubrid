@@ -110,14 +110,6 @@ namespace
 /* avoid truncation when dumping large plans */
 #define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
 
-#if defined(CS_MODE)
-#if !defined(MULTI_CONN_TO_A_SERVER)
-unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
-#else
-unsigned short method_request_id;
-#endif
-#endif /* CS_MODE */
-
 /* Contains the name of the current sever host machine.  */
 static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
@@ -1389,14 +1381,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      }
 		    else
 		      {
-#if defined(CS_MODE)
-			bool need_to_reset = false;
-			if (method_request_id == 0)
-			  {
-			    method_request_id = CSS_RID_FROM_EID (rc);
-			    need_to_reset = true;
-			  }
-#endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 			if (error == NO_ERROR)
@@ -1416,13 +1400,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
 			  }
-#if defined(CS_MODE)
-			if (need_to_reset == true)
-			  {
-			    method_request_id = 0;
-			    need_to_reset = false;
-			  }
-#endif /* CS_MODE */
 		      }
 		  }
 		else
@@ -1821,14 +1798,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		  }
 		else
 		  {
-#if defined(CS_MODE)
-		    bool need_to_reset = false;
-		    if (method_request_id == 0)
-		      {
-			method_request_id = CSS_RID_FROM_EID (rc);
-			need_to_reset = true;
-		      }
-#endif /* CS_MODE */
 		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 		    if (error == NO_ERROR)
@@ -1848,13 +1817,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			  }
 		      }
-#if defined(CS_MODE)
-		    if (need_to_reset == true)
-		      {
-			method_request_id = 0;
-			need_to_reset = false;
-		      }
-#endif /* CS_MODE */
 		  }
 	      }
 	    else

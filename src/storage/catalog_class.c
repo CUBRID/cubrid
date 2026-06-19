@@ -174,6 +174,7 @@ static int catcls_resolution_space (int name_space);
 static void catcls_apply_resolutions (OR_VALUE * value_p, OR_VALUE * resolution_p);
 static int catcls_replace_entry_oid (THREAD_ENTRY * thread_p, OID * entry_class_oid, OID * entry_new_oid);
 static int catcls_get_or_value_from_partition (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_VALUE * value_p);
+static int catcls_filter_attflag (int or_flags);
 
 static void catcls_set_or_value_timestamps (OR_VALUE * value_p);
 static void catcls_update_or_value_updated_time (OR_VALUE * value_p);
@@ -1281,6 +1282,7 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   OR_VARINFO *vars = NULL;
   int size;
   int error = NO_ERROR;
+  int flags;
   const char *default_expr_type_string = NULL;
   const char *def_expr_format_string = NULL;
   bool with_to_char = false;
@@ -1328,12 +1330,16 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
       goto error;
     }
 
-  /* flag */
+  /* flags */
   attr_val_p = &attrs[7].value;
   tp_Integer.data_readval (buf_p, attr_val_p, NULL, -1, true, NULL, 0);
 
+  flags = db_get_int (attr_val_p);
   /* for 'is_nullable', reverse NON_NULL flag */
-  db_make_int (attr_val_p, (db_get_int (attr_val_p) & SM_ATTFLAG_NON_NULL) ? false : true);
+  db_make_int (attr_val_p, (flags & SM_ATTFLAG_NON_NULL) ? false : true);
+
+  attr_val_p = &attrs[10].value;
+  db_make_int (attr_val_p, catcls_filter_attflag (flags));
 
   /* index_file_id */
   or_advance (buf_p, OR_INT_SIZE);
@@ -1492,16 +1498,15 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 		  goto error;
 		}
 
-	      strcpy (default_str_val_tmp, default_expr_op_string);
-	      strcat (default_str_val_tmp, "(");
-	      strcat (default_str_val_tmp, default_expr_type_string);
 	      if (def_expr_format_string)
 		{
-		  strcat (default_str_val_tmp, ", \'");
-		  strcat (default_str_val_tmp, def_expr_format_string);
-		  strcat (default_str_val_tmp, "\'");
+		  snprintf (default_str_val_tmp, len + 1, "%s(%s, \'%s\')", default_expr_op_string,
+			    default_expr_type_string, def_expr_format_string);
 		}
-	      strcat (default_str_val_tmp, ")");
+	      else
+		{
+		  snprintf (default_str_val_tmp, len + 1, "%s(%s)", default_expr_op_string, default_expr_type_string);
+		}
 	    }
 	  else
 	    {
@@ -1553,10 +1558,9 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	  len = strlen (default_expr_type_string);
 
 	  /* add whitespace character if default_str_val is not an empty string */
-	  str_val =
-	    (char *) db_private_alloc (thread_p,
-				       (default_value_len + (default_value_len ? 1 : 0) + len + strlen ("ON UPDATE ")
-					+ 1));
+	  size_t str_val_size = default_value_len + 1 + len + strlen ("ON UPDATE ") + 1;
+
+	  str_val = (char *) db_private_alloc (thread_p, str_val_size);
 	  if (str_val == NULL)
 	    {
 	      pr_clear_value (&default_expr);
@@ -1566,14 +1570,11 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
 	    }
 	  if (default_str_val != NULL)
 	    {
-	      strcpy (str_val, default_str_val);
-	      strcat (str_val, " ON UPDATE ");
-	      strcat (str_val, default_expr_type_string);
+	      snprintf (str_val, str_val_size, "%s ON UPDATE %s", default_str_val, default_expr_type_string);
 	    }
 	  else
 	    {
-	      strcpy (str_val, "ON UPDATE ");
-	      strcat (str_val, default_expr_type_string);
+	      snprintf (str_val, str_val_size, "ON UPDATE %s", default_expr_type_string);
 	    }
 
 	  pr_clear_value (attr_val_p);	/* clean old default value */
@@ -1588,10 +1589,10 @@ catcls_get_or_value_from_attribute (THREAD_ENTRY * thread_p, OR_BUF * buf_p, OR_
   pr_clear_value (&default_expr);
   pr_clear_value (&val);
   attr_val_p->need_clear = true;
-  db_string_truncate (attr_val_p, DB_MAX_IDENTIFIER_LENGTH);
+  db_string_truncate (attr_val_p, DB_MAX_DEFAULT_EXPR_LENGTH);
 
   /* comment */
-  attr_val_p = &attrs[10].value;
+  attr_val_p = &attrs[11].value;
   tp_String.data_readval (buf_p, attr_val_p, NULL, vars[ORC_ATT_COMMENT_INDEX].length, true, NULL, 0);
   db_string_truncate (attr_val_p, DB_MAX_COMMENT_LENGTH);
 
@@ -5820,4 +5821,22 @@ end:
     }
 
   return error;
+}
+
+/*
+ * catcls_filter_attflag () -
+ *   return: flags for system catalog 'db_attribute'
+ * 
+ *   or_flags (in): flags from attribute object representation
+ */
+static int
+catcls_filter_attflag (int or_flags)
+{
+  int catcls_attr_flags = 0;
+
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_AUTO_INCREMENT) ? DB_ATTOPT_AUTO_INCREMENT : 0;
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? DB_ATTOPT_INVISIBLE_COLUMN : 0;
+  catcls_attr_flags |= (or_flags & SM_ATTFLAG_PARTITION_KEY) ? DB_ATTOPT_PARTITION_KEY : 0;
+
+  return catcls_attr_flags;
 }
