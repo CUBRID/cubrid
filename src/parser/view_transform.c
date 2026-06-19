@@ -4195,9 +4195,16 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
        * Pure-corr path (no non-corr terms): handled in mq_copypush_sargable_terms_helper. */
       if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
 	{
+	  /* Save the non-corr push-down SQL: a corr-append failure (e.g. OOM) must not discard it,
+	   * since mq_dblink_clear_corr_keys resets rewritten to NULL (which would fall back to a full
+	   * table scan and lose the already-built non-corr predicate). */
+	  PARSER_VARCHAR *saved_rewritten = query->info.dblink_table.rewritten;
+	  bool saved_has_where = query->info.dblink_table.rewritten_has_where;
 	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
 	    {
 	      mq_dblink_clear_corr_keys (parser, &query->info.dblink_table);
+	      query->info.dblink_table.rewritten = saved_rewritten;
+	      query->info.dblink_table.rewritten_has_where = saved_has_where;
 	    }
 	}
 
@@ -5075,8 +5082,11 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
    * from corr_key_remote_cs (the remote column the COLLATE attaches to).
    *   CUBRID  : <col> COLLATE <codeset>_bin   (utf8_bin / iso88591_bin / euckr_bin)
    *   Oracle  : <col> COLLATE BINARY          (codeset-agnostic)
-   *   MySQL   : BINARY <col>                  (operator, charset-agnostic) */
-  if (di->corr_key_outer_copy[0] != NULL && PT_IS_CHAR_STRING_TYPE (di->corr_key_outer_copy[0]->type_enum))
+   *   MySQL   : BINARY <col>                  (operator, charset-agnostic)
+   * corr_key_remote_cs[0] >= 0 means the remote column is a character type (has a
+   * codeset); a non-string remote column must not get a COLLATE clause. */
+  if (di->corr_key_outer_copy[0] != NULL && PT_IS_CHAR_STRING_TYPE (di->corr_key_outer_copy[0]->type_enum)
+      && di->corr_key_remote_cs[0] >= 0)
     {
       switch (di->dbms_kind)
 	{
