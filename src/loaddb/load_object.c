@@ -73,7 +73,7 @@ static void default_clear_err_filter (void);
 
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
-				int copy_buf_len, DB_TYPE type);
+				int copy_buf_len);
 #endif
 
 /*
@@ -133,7 +133,7 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
 	  db_make_null (&obj->values[i]);
 	  obj->atts[i] = att;
 
-	  if (obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att->type->get_id ()))
+	  if (obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      INT64 byte_sz = pre_alloc_varchar_size;
 	      assert (pre_alloc_varchar_size <= DB_MAX_VARCHAR_PRECISION);
@@ -646,11 +646,10 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	   i++, j++, att = (SM_ATTRIBUTE *) att->header.next)
 	{
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
-	  DB_TYPE att_type_id = att->type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att_type_id))
+	  if (is_unloaddb && obj->dbvalue_buf_ptr && att->type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,
-				   obj->dbvalue_buf_ptr[i].buf_size, att_type_id);
+				   obj->dbvalue_buf_ptr[i].buf_size);
 	    }
 	  else
 #endif
@@ -839,12 +838,11 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  /* read it into the proper value */
 	  storage_order = attmap[att_index]->storage_order;
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
-	  DB_TYPE type_id = type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (type_id))
+	  if (is_unloaddb && obj->dbvalue_buf_ptr && type->get_id () == DB_TYPE_VARCHAR)
 	    {
 	      data_readval_string (buf, &obj->values[storage_order], rat->domain, vars[i], false,
 				   obj->dbvalue_buf_ptr[storage_order].buf,
-				   obj->dbvalue_buf_ptr[storage_order].buf_size, type_id);
+				   obj->dbvalue_buf_ptr[storage_order].buf_size);
 	    }
 	  else
 #endif
