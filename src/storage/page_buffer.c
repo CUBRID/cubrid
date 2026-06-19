@@ -2024,16 +2024,6 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
   return pgptr;
 }
 
-/* Sampled interrupt check for the page-fix hot path: resolve this thread's interrupt state (a
- * cross-translation-unit call to logtb_is_interrupted ()) only once per PGBUF_INTERRUPT_SAMPLE_MASK
- * + 1 page fixes instead of on every fix. The authoritative logtb_is_interrupted () still decides, so
- * BOTH ^C cancellation and query_timeout (tdes->query_timeout, which does not bump
- * trantable.num_interrupts) remain covered without duplicating any interrupt-source check here;
- * only the polling granularity changes (bounded sub-millisecond latency on the hot path). The
- * counter is per-thread, so there is no sharing or contention. */
-#define PGBUF_INTERRUPT_SAMPLE_MASK 0x3FF	/* check once per 1024 page fixes */
-static thread_local unsigned int pgbuf_interrupt_sample_cnt = 0;
-
 /*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
@@ -2128,9 +2118,8 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
 try_again:
 
-  /* interrupt check (sampled; see pgbuf_interrupt_sample_cnt) */
-  if (((++pgbuf_interrupt_sample_cnt & PGBUF_INTERRUPT_SAMPLE_MASK) == 0)
-      && logtb_get_check_interrupt (thread_p) == true)
+  /* interrupt check */
+  if (logtb_get_check_interrupt (thread_p) == true)
     {
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
@@ -4490,8 +4479,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
   PGBUF_BCB *bufptr;
   PAGE_PTR pgptr;
 
-  if (((++pgbuf_interrupt_sample_cnt & PGBUF_INTERRUPT_SAMPLE_MASK) == 0)
-      && logtb_get_check_interrupt (thread_p) == true)
+  if (logtb_get_check_interrupt (thread_p) == true)
     {
       if (logtb_is_interrupted (thread_p, true, &pgbuf_Pool.check_for_interrupts) == true)
 	{
