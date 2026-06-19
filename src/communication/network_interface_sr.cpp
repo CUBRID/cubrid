@@ -12290,7 +12290,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 	goto reply;
       }
 
-    error_code = session_set_copy_session (thread_p, session);
+    error_code = session_set_stream_session (thread_p, session);
     if (error_code != NO_ERROR)
       {
 	session->abort (thread_p);
@@ -12322,8 +12322,8 @@ scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
 {
   int error_code = NO_ERROR;
 
-  copy_session *session = NULL;
-  error_code = session_get_copy_session (thread_p, session);
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
       if (error_code == NO_ERROR)
@@ -12334,12 +12334,12 @@ scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
       goto reply;
     }
 
-  error_code = session->receive_data (thread_p, request, reqlen);
+  error_code = session->receive_chunk (thread_p, request, reqlen);
   if (error_code != NO_ERROR)
     {
       session->abort (thread_p);
       delete session;
-      session_set_copy_session (thread_p, NULL);
+      session_set_stream_session (thread_p, NULL);
     }
 
 reply:
@@ -12363,8 +12363,8 @@ scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   int error_code = NO_ERROR;
   int rows_loaded = 0;
 
-  copy_session *session = NULL;
-  error_code = session_get_copy_session (thread_p, session);
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
       if (error_code == NO_ERROR)
@@ -12375,10 +12375,15 @@ scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
       goto reply;
     }
 
-  error_code = session->finish (thread_p, &rows_loaded);
+  {
+    stream_result result;
+    result.count = 0;
+    error_code = session->finish (thread_p, &result);
+    rows_loaded = (int) result.count;
+  }
 
   delete session;
-  session_set_copy_session (thread_p, NULL);
+  session_set_stream_session (thread_p, NULL);
 
 reply:
   {

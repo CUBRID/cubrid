@@ -32,7 +32,7 @@
 
 #include "system.h"
 #include "session.h"
-#include "copy_session.hpp"
+#include "stream_session.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -142,7 +142,7 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
-  copy_session *copy_session_p;
+  stream_session *stream_session_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -3266,7 +3266,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 }
 
 int
-session_set_copy_session (THREAD_ENTRY * thread_p, copy_session * copy_session_p)
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p)
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3276,19 +3276,21 @@ session_set_copy_session (THREAD_ENTRY * thread_p, copy_session * copy_session_p
       return ER_FAILED;
     }
 
-  if (copy_session_p != NULL && state_p->copy_session_p != NULL)
+  /* one stream session per connection (the invariant the transport seam depends on) */
+  if (stream_session_p != NULL && state_p->stream_session_p != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY already in progress on this connection");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+	      "a stream session is already active on this connection");
       return ER_DB_UNIMPLEMENTED;
     }
 
-  state_p->copy_session_p = copy_session_p;
+  state_p->stream_session_p = stream_session_p;
 
   return NO_ERROR;
 }
 
 int
-session_get_copy_session (THREAD_ENTRY * thread_p, REFPTR (copy_session, copy_session_ref_ptr))
+session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr))
 {
   SESSION_STATE *state_p = NULL;
 
@@ -3298,7 +3300,7 @@ session_get_copy_session (THREAD_ENTRY * thread_p, REFPTR (copy_session, copy_se
       return ER_FAILED;
     }
 
-  copy_session_ref_ptr = state_p->copy_session_p;
+  stream_session_ref_ptr = state_p->stream_session_p;
 
   return NO_ERROR;
 }
@@ -3370,13 +3372,13 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
       session->load_session_p = NULL;
     }
 
-  // on uninit abort and delete copy session
-  if (session->copy_session_p != NULL)
+  // on uninit abort and delete the active stream session (COPY / LOB / ...)
+  if (session->stream_session_p != NULL)
     {
-      session->copy_session_p->abort (thread_p);
+      session->stream_session_p->abort (thread_p);
 
-      delete session->copy_session_p;
-      session->copy_session_p = NULL;
+      delete session->stream_session_p;
+      session->stream_session_p = NULL;
     }
 
   if (session->pl_session_p)

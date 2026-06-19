@@ -119,7 +119,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 }
 
 int
-copy_session::receive_data (THREAD_ENTRY *thread_p, const char *data, int data_len)
+copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len)
 {
   int error = NO_ERROR;
   int pos = 0;
@@ -279,9 +279,9 @@ cleanup:
 }
 
 int
-copy_session::finish (THREAD_ENTRY *thread_p, int *rows_loaded)
+copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 {
-  *rows_loaded = m_rows_loaded;
+  result->count = m_rows_loaded;
   return NO_ERROR;
 }
 

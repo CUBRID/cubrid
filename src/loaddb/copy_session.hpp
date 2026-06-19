@@ -26,19 +26,23 @@
 #include "heap_file.h"
 #include "oid.h"
 #include "thread_compat.hpp"
+#include "stream_session.hpp"
 
 #include <vector>
 
-class copy_session
+class copy_session : public stream_session
 {
   public:
     copy_session ();
-    ~copy_session ();
+    ~copy_session () override;
 
+    /* binding-specific open (not part of the stream_session seam) */
     int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols);
-    int receive_data (THREAD_ENTRY *thread_p, const char *data, int data_len);
-    int finish (THREAD_ENTRY *thread_p, int *rows_loaded);
-    void abort (THREAD_ENTRY *thread_p);
+
+    /* stream_session seam */
+    int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
+    int finish (THREAD_ENTRY *thread_p, stream_result *result) override;
+    void abort (THREAD_ENTRY *thread_p) override;
 
   private:
     OID m_class_oid;
