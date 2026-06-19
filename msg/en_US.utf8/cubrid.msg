@@ -1980,6 +1980,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 339 REVERSE is not supported for a vector index.
 340 ONLINE and DEDUPLICATE options are not supported for a vector index.
 341 A partial index (WHERE clause) is not supported for a vector index.
+342 Index build options (m, ef_construction) are valid only for a vector index.
+343 Unknown vector index option '%1$s'.
+344 Duplicate vector index option '%1$s'.
 
 
 

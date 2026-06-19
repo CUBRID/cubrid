@@ -3051,6 +3051,10 @@ create_stmt
 				      }
 				  }
 
+				if (CONTAINER_AT_2 ($14) != NULL)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				             MSGCAT_SEMANTIC_INDEX_BUILD_OPTION_ON_NON_VECTOR);
+
 				node->info.index.deduplicate_level = TO_NUMBER (CONTAINER_AT_1 ($14));
 				if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF
 					   && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
@@ -3089,9 +3093,24 @@ create_stmt
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_UNIQUE);
 				if ($13)
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_PARTIAL);
-				if (kvp == NULL && TO_NUMBER (CONTAINER_AT_0 ($14)) != 0)
+				if (kvp == NULL
+				    && (TO_NUMBER (CONTAINER_AT_0 ($14)) != 0
+					|| TO_NUMBER (CONTAINER_AT_1 ($14)) != DEDUPLICATE_OPTION_AUTO))
 				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
+				             MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
+
+				/* accept only m / ef_construction, each at most once */
+				for (kv_pair *it = kvp; it != NULL; it = it->next)
+				  {
+				    const char *k = it->key->info.name.original;
+				    if (strcasecmp (k, "m") != 0 && strcasecmp (k, "ef_construction") != 0)
+				      PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				                  MSGCAT_SEMANTIC_VECTOR_INDEX_UNKNOWN_OPTION, k);
+				    for (kv_pair *jt = it->next; jt != NULL; jt = jt->next)
+				      if (strcasecmp (k, jt->key->info.name.original) == 0)
+				        PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+				                    MSGCAT_SEMANTIC_VECTOR_INDEX_DUP_OPTION, k);
+				  }
 
 				if (has_metric)
 				  {
