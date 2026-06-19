@@ -1086,8 +1086,10 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <c2> alter_server_item
 %type <c2> opt_create_synonym
 %type <c2> class_name_with_server_name
-%type <c2> opt_index_with_clause
+%type <c3> opt_index_with_clause
 %type <c2> index_with_item_list
+%type <c2> index_column_name_list_with_opt_metric
+%type <node> opt_using_index_algorithm
 %type <c2> opt_vector_args
 %type <c2> opt_authid_and_deterministic
 %type <c2> vector_index_column_with_metric
@@ -2697,6 +2699,7 @@ create_stmt
 
 
 			node->info.index.is_vector_index = true;
+			node->info.index.algorithm = PT_INDEX_ALGO_HNSW;	/* deprecated alias of CREATE INDEX ... USING hnsw */
 
 			node->info.index.vector_index.hnsw_m = HNSW_DEFAULT_M;
 			node->info.index.vector_index.hnsw_ef_construction = HNSW_DEFAULT_EF_CONSTRUCTION;
@@ -2907,42 +2910,59 @@ create_stmt
 	  opt_reverse					/* 4 */
 	  opt_unique					/* 5 */
 	  INDEX						/* 6 */
-		{ pop_msg(); }  			/* 7 */
+		{ pop_msg(); }				/* 7 */
 	  identifier					/* 8 */
 	  ON_						/* 9 */
 	  only_class_name				/* 10 */
-	  index_column_name_list			/* 11 */
-	  opt_where_clause				/* 12 */
-          opt_index_with_clause                         /* 13 */
-	  opt_invisible					/* 14 */
-	  opt_comment_spec				/* 15 */          
+	  index_column_name_list_with_opt_metric	/* 11 */
+	  opt_using_index_algorithm			/* 12 */
+	  opt_where_clause				/* 13 */
+	  opt_index_with_clause				/* 14 */
+	  opt_invisible					/* 15 */
+	  opt_comment_spec				/* 16 */
 		{{
 			PT_NODE *node = parser_pop_hint_node ();
-			PT_NODE *ocs = parser_new_node(this_parser, PT_SPEC);
+			PT_NODE *ocs = parser_new_node (this_parser, PT_SPEC);
 			PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
 
-		        if ($5 && $12)
+			PT_NODE *col = CONTAINER_AT_0 ($11);
+			PT_NODE *metric_node = CONTAINER_AT_1 ($11);
+			bool has_metric = (metric_node != NULL);
+
+			/* a metric without USING implies a vector index */
+			PT_INDEX_ALGORITHM algorithm = PT_INDEX_ALGO_BTREE;
+			if ($12 == NULL)
 			  {
-			    /* Currently, not allowed unique with filter/function index.
-			       However, may be introduced later, if it will be usefull.
-			       Unique filter/function index code is removed from
-			       grammar module only. It is kept yet in the others modules.
-			       This will allow us to easily support this feature later by
-			       adding in grammar only. If no need such feature,
-			       filter/function code must be removed from all modules. */
-			    PT_ERRORm (this_parser, node,
-			               MSGCAT_SET_PARSER_SYNTAX,
-			               MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+			    algorithm = has_metric ? PT_INDEX_ALGO_HNSW : PT_INDEX_ALGO_BTREE;
 			  }
+			else
+			  {
+			    const char *algo_name = $12->info.name.original;
+			    if (strcasecmp (algo_name, "btree") == 0)
+			      algorithm = PT_INDEX_ALGO_BTREE;
+			    else if (strcasecmp (algo_name, "hnsw") == 0)
+			      algorithm = PT_INDEX_ALGO_HNSW;
+			    else
+			      {
+				PT_ERRORmf (this_parser, $12, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_INVALID_INDEX_ALGORITHM, algo_name);
+			      }
+			  }
+
+			if (node)
+			  {
+			    node->info.index.algorithm = algorithm;
+			    node->info.index.is_vector_index = (algorithm != PT_INDEX_ALGO_BTREE);
+			  }
+
 			if (node && ocs)
 			  {
-			    PT_NODE *col, *temp;
+			    PT_NODE *temp;
 			    int arg_count = 0, prefix_col_count = 0;
 
 			    ocs->info.spec.entity_name = $10;
 			    ocs->info.spec.only_all = PT_ONLY;
 			    ocs->info.spec.meta_class = PT_CLASS;
-
 			    PARSER_SAVE_ERR_CONTEXT (ocs, @10.buffer_pos)
 
 			    node->info.index.indexed_class = ocs;
@@ -2950,129 +2970,155 @@ create_stmt
 			    node->info.index.unique = $5;
 			    node->info.index.index_name = $8;
 			    if (node->info.index.index_name)
-			      {
-				node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
-			      }
+			      node->info.index.index_name->info.name.meta_class = PT_INDEX_NAME;
 
-			    col = $11;
-			    if (node->info.index.unique)
-			      {
-			        for (temp = col; temp != NULL; temp = temp->next)
-			          {
-			            if (temp->info.sort_spec.expr->node_type == PT_EXPR)
-			              {
-			                /* Currently, not allowed unique with
-			                   filter/function index. However, may be
-			                   introduced later, if it will be usefull.
-			                   Unique filter/function index code is removed
-			                   from grammar module only. It is kept yet in
-			                   the others modules. This will allow us to
-			                   easily support this feature later by adding in
-			                   grammar only. If no need such feature,
-			                   filter/function code must be removed from all
-			                   modules. */
-			                PT_ERRORm (this_parser, node,
-			                           MSGCAT_SET_PARSER_SYNTAX,
-			                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-			              }
-			          }
-			      }
+			    node->info.index.where = $13;
+			    node->info.index.column_names = col;
+			    node->info.index.comment = $16;
 
-			    prefix_col_count =
-				parser_count_prefix_columns (col, &arg_count);
+			    if (algorithm == PT_INDEX_ALGO_BTREE)
+			      {
+				/* B-tree: legacy behavior, unchanged */
+				if (has_metric)
+				  PT_ERRORm (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_INDEX_METRIC_ON_NON_VECTOR);
 
-			    if (prefix_col_count > 1 ||	(prefix_col_count == 1 && arg_count > 1))
-			      {
-				PT_ERRORm (this_parser, node,
-					   MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
-			      }
-			    else
-			      {
-				if (arg_count == 1 && (prefix_col_count == 1
-				    || col->info.sort_spec.expr->node_type == PT_FUNCTION))
+				if ($5 && $13)
 				  {
-				    PT_NODE *expr = col->info.sort_spec.expr;
-				    PT_NODE *arg_list = expr->info.function.arg_list;
-				    if ((arg_list != NULL)
-					&& (arg_list->next == NULL)
-					&& (arg_list->node_type == PT_VALUE))
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				  }
+
+				if (node->info.index.unique)
+				  {
+				    for (temp = col; temp != NULL; temp = temp->next)
 				      {
-					if (node->info.index.reverse
-					    || node->info.index.unique)
+					if (temp->info.sort_spec.expr->node_type == PT_EXPR)
+					  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+						     MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				      }
+				  }
+
+				prefix_col_count = parser_count_prefix_columns (col, &arg_count);
+				if (prefix_col_count > 1 || (prefix_col_count == 1 && arg_count > 1))
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					       MSGCAT_SEMANTIC_MULTICOL_PREFIX_INDX_NOT_ALLOWED);
+				  }
+				else
+				  {
+				    if (arg_count == 1 && (prefix_col_count == 1
+					|| col->info.sort_spec.expr->node_type == PT_FUNCTION))
+				      {
+					PT_NODE *expr = col->info.sort_spec.expr;
+					PT_NODE *arg_list = expr->info.function.arg_list;
+					if ((arg_list != NULL) && (arg_list->next == NULL)
+					    && (arg_list->node_type == PT_VALUE))
 					  {
-					    PT_ERRORm (this_parser, node,
-						       MSGCAT_SET_PARSER_SYNTAX,
-						       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					    if (node->info.index.reverse || node->info.index.unique)
+					      {
+						PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+							   MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+					      }
+					    else
+					      {
+						PT_NODE *p = parser_new_node (this_parser, PT_NAME);
+						if (p)
+						  {
+						    p->info.name.original = expr->info.function.generic_name;
+						    expr->info.function.generic_name = NULL;
+						  }
+						node->info.index.prefix_length = expr->info.function.arg_list;
+						expr->info.function.arg_list = NULL;
+						parser_free_node (this_parser, expr);
+						col->info.sort_spec.expr = p;
+					      }
 					  }
 					else
 					  {
-					    PT_NODE *p = parser_new_node (this_parser, PT_NAME);
-					    if (p)
+					    char buf[512], *ptr;
+					    PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;
+					    ptr = (char*) fcode_get_lowercase_name (function_ptr->function_type);
+					    if (function_ptr->function_type == PT_GENERIC)
 					      {
-						p->info.name.original = expr->info.function.generic_name;
-                                                expr->info.function.generic_name = NULL;
+						snprintf (buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
+						ptr = buf;
 					      }
-					    node->info.index.prefix_length = expr->info.function.arg_list;
-
-                                            expr->info.function.arg_list = NULL;
-                                            parser_free_node (this_parser, expr);
-
-					    col->info.sort_spec.expr = p;
+					    PT_ERRORmf (this_parser, col->info.sort_spec.expr,
+							MSGCAT_SET_PARSER_SEMANTIC,
+							MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
 					  }
 				      }
-				    else
-				      {
-                                        char buf[512], *ptr;
-                                        PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
+				  }
 
-                                        ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
-                                        if(function_ptr->function_type == PT_GENERIC)
-                                        {
-                                           snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
-                                           ptr = buf;
-                                        }
-                                        
-					PT_ERRORmf (this_parser, col->info.sort_spec.expr,
-						    MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNCTION_CANNOT_BE_USED_FOR_INDEX, ptr);
-				      }
+				node->info.index.deduplicate_level = TO_NUMBER (CONTAINER_AT_1 ($14));
+				if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF
+					   && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
+				  {
+				    PT_ERRORf (this_parser, node, "%s",
+					       "UNIQUE and DEDUPLICATE cannot be specified together.");
+				  }
+
+				int with_online_ret = TO_NUMBER (CONTAINER_AT_0 ($14));
+				bool is_online = with_online_ret > 0;
+				bool is_invisible = $15;
+				if (is_online && is_invisible)
+				  {
+				    PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
+					       MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
+				  }
+				node->info.index.index_status = SM_NORMAL_INDEX;
+				if (is_invisible)
+				  node->info.index.index_status = SM_INVISIBLE_INDEX;
+				else if (is_online)
+				  {
+				    node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
+				    node->info.index.ib_threads = with_online_ret - 1;
 				  }
 			      }
-                       
-			    node->info.index.where = $12;
-			    node->info.index.column_names = col;
+			    else
+			      {
+				kv_pair *kvp = (kv_pair *) CONTAINER_AT_2 ($14);
 
-                            node->info.index.deduplicate_level =  TO_NUMBER(CONTAINER_AT_1($13));
-                             if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF && node->info.index.deduplicate_level <= DEDUPLICATE_KEY_LEVEL_MAX))
-                              {
-                                  PT_ERRORf (this_parser, node, "%s", "UNIQUE and DEDUPLICATE cannot be specified together.");
-                              }
+				if (!has_metric)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_METRIC);
+				if ($4)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_REVERSE);
+				if ($5)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_UNIQUE);
+				if ($13)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_VECTOR_INDEX_NO_PARTIAL);
+				if (kvp == NULL && TO_NUMBER (CONTAINER_AT_0 ($14)) != 0)
+				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
 
-			    node->info.index.comment = $15;
+				if (has_metric)
+				  {
+				    const char *metric_name = metric_node->info.name.original;
+				    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
+				    if (metric == METRIC_UNKNOWN)
+				      PT_ERRORm (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
+						 MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				    node->info.index.vector_index.metric = metric;
+				  }
 
-                            int with_online_ret = TO_NUMBER(CONTAINER_AT_0($13));  // 0 for normal, 1 for online no parallel,
-                                                        // thread_count + 1 for parallel
-                            bool is_online = with_online_ret > 0;
-                            bool is_invisible = $14;
+				node->info.index.vector_index.hnsw_m = HNSW_DEFAULT_M;
+				node->info.index.vector_index.hnsw_ef_construction = HNSW_DEFAULT_EF_CONSTRUCTION;
+				if (kvp)
+				  {
+				    PT_NODE *m_node = kv_pair_lookup (kvp, "m");
+				    if (m_node != NULL)
+				      node->info.index.vector_index.hnsw_m = m_node->info.value.data_value.i;
+				    PT_NODE *ef_node = kv_pair_lookup (kvp, "ef_construction");
+				    if (ef_node != NULL)
+				      node->info.index.vector_index.hnsw_ef_construction = ef_node->info.value.data_value.i;
+				  }
 
-                            if (is_online && is_invisible)
-                              {
-                                /* We do not allow invisible and online index at the same time. */
-                                PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SYNTAX,
-                                           MSGCAT_SYNTAX_INVALID_CREATE_INDEX);
-                              }
-                            node->info.index.index_status = SM_NORMAL_INDEX;
-                            if (is_invisible)
-                              {
-                                /* Invisible index. */
-                                node->info.index.index_status = SM_INVISIBLE_INDEX;
-                              }
-                            else if (is_online)
-                              {
-                                /* Online index. */
-                                node->info.index.index_status = SM_ONLINE_INDEX_BUILDING_IN_PROGRESS;
-                                node->info.index.ib_threads = with_online_ret - 1;
-                              }
+				node->info.index.index_status = SM_NORMAL_INDEX;
+				if ($15)
+				  node->info.index.index_status = SM_INVISIBLE_INDEX;
+			      }
 			  }
 		      $$ = node;
 		}}
@@ -5001,6 +5047,43 @@ index_column_name_list
 
 		      $$ = $2;
 		      PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	;
+
+/* Columns with an optional trailing distance metric -> container_2 (cols, metric or NULL).
+ * %dprec favors the metric reading, resolving the GLR ambiguity of "( name name )". */
+index_column_name_list_with_opt_metric
+	: '(' sort_spec_list ')' %dprec 1
+		{{
+			if (parser_get_is_reverse())
+			  {
+			    PT_NODE *node;
+			    for (node = $2; node != NULL; node = node->next)
+			      node->info.sort_spec.asc_or_desc = PT_DESC;
+			  }
+			container_2 c;
+			SET_CONTAINER_2 (c, $2, NULL);
+			$$ = c;
+			PARSER_SAVE_ERR_CONTEXT ($2, @$.buffer_pos)
+		}}
+	| '(' sort_spec identifier ')' %dprec 2
+		{{
+			container_2 c;
+			SET_CONTAINER_2 (c, $2, $3);
+			$$ = c;
+			PARSER_SAVE_ERR_CONTEXT ($2, @$.buffer_pos)
+		}}
+	;
+
+/* USING <algorithm>: a non-reserved identifier; the accepted set is checked in the action. */
+opt_using_index_algorithm
+	: /* empty */
+		{{
+			$$ = NULL;
+		}}
+	| USING identifier
+		{{
+			$$ = $2;
 		}}
 	;
 
@@ -20306,13 +20389,21 @@ opt_index_with_clause_no_online
 opt_index_with_clause
         : /* empty */
           {
-            container_2 ctn;
-            SET_CONTAINER_2(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO));
+            container_3 ctn;
+            SET_CONTAINER_3(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO), NULL);
             $$ = ctn; }
         | WITH index_with_item_list
           {
-             $$ = $2;
-          }
+            /* B-tree options; CONTAINER_AT_2 (vector opts) stays NULL */
+            container_3 ctn;
+            SET_CONTAINER_3(ctn, CONTAINER_AT_0($2), CONTAINER_AT_1($2), NULL);
+            $$ = ctn; }
+        | WITH '(' vector_index_with_item_list ')'
+          {
+            /* HNSW (m, ef_construction) ride in CONTAINER_AT_2 as a kv_pair* */
+            container_3 ctn;
+            SET_CONTAINER_3(ctn, FROM_NUMBER(0), FROM_NUMBER(DEDUPLICATE_OPTION_AUTO), (PT_NODE *) $3);
+            $$ = ctn; }
         ;
 
 opt_vector_index_with_clause

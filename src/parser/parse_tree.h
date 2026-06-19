@@ -1995,10 +1995,18 @@ typedef struct pt_vector_index_info
   enum DB_VECTOR_DISTANCE_METRIC metric;
 } PT_VECTOR_INDEX_INFO;
 
+/* Index implementation from the USING clause; is_vector_index == (algorithm != BTREE). */
+typedef enum
+{
+  PT_INDEX_ALGO_BTREE = 0,
+  PT_INDEX_ALGO_HNSW
+} PT_INDEX_ALGORITHM;
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
   bool is_vector_index;
+  PT_INDEX_ALGORITHM algorithm;
   PT_VECTOR_INDEX_INFO vector_index;
 
   PT_NODE *indexed_class;	/* PT_SPEC */

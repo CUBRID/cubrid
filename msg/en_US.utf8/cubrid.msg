@@ -1973,6 +1973,13 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
 334 Invalid vector distance metric specified.
+335 Unsupported index algorithm '%1$s'.
+336 A distance metric can be specified only for a vector index.
+337 A vector index requires a distance metric, for example (column COSINE).
+338 UNIQUE is not supported for a vector index.
+339 REVERSE is not supported for a vector index.
+340 ONLINE and DEDUPLICATE options are not supported for a vector index.
+341 A partial index (WHERE clause) is not supported for a vector index.
 
 
 
