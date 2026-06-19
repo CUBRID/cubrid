@@ -2026,7 +2026,9 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
 /*
  * pgbuf_monitor_sum_fix_req () - sum the per-thread page-fix-request shards (THREAD_ENTRY::pgbuf_fix_req_cnt);
  *                                reset them to 0 when reset==true. Feeds only a coarse LRU-quota heuristic, so
- *                                a non-atomic read concurrent with writers is acceptable.
+ *                                the data race with the owner-thread writers is accepted by design: a plain int
+ *                                read/write does not tear on our targets, and the few increments that may be lost
+ *                                between the read and the reset store are negligible against millions of fixes.
  */
 STATIC_INLINE int
 pgbuf_monitor_sum_fix_req (bool reset)
@@ -2038,7 +2040,11 @@ pgbuf_monitor_sum_fix_req (bool reset)
       return 0;
     }
   cubthread::entry *all_entries = mgr->get_all_entries ();
-  size_t n = thread_num_total_threads ();
+  /* Bound by the managed-entry array size (manager::get_max_thread_count == m_max_threads), NOT the free
+   * thread_num_total_threads() which adds +1 for the separate system thread (Main_entry_p) that is not part of
+   * m_all_entries - iterating that far would read/write one element past the array. The system entry's shard is
+   * intentionally not summed: it does negligible page fixing and this is only a coarse LRU-quota heuristic. */
+  size_t n = mgr->get_max_thread_count ();
   size_t i;
   for (i = 0; i < n; i++)
     {
@@ -2065,7 +2071,8 @@ pgbuf_monitor_sum_pg_unfix (bool reset)
       return 0;
     }
   cubthread::entry *all_entries = mgr->get_all_entries ();
-  size_t n = thread_num_total_threads ();
+  /* See pgbuf_monitor_sum_fix_req: bound by m_all_entries size, excluding the separate system thread entry. */
+  size_t n = mgr->get_max_thread_count ();
   size_t i;
   for (i = 0; i < n; i++)
     {
