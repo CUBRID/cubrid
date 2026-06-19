@@ -24,6 +24,7 @@
 #include "copy_session.hpp"
 #include "copy_binary_decoder.hpp"
 #include "copy_binary_format.hpp"
+#include "copy_csv_decoder.hpp"
 #include "btree.h"
 #include "dbtype.h"
 #include "error_manager.h"
@@ -46,6 +47,7 @@ copy_session::copy_session ()
   , m_col_types ()
   , m_attr_ids ()
   , m_num_cols (0)
+  , m_format (COPY_FORMAT_BINARY)
   , m_rows_loaded (0)
 {
 }
@@ -55,7 +57,7 @@ copy_session::~copy_session ()
 }
 
 int
-copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols)
+copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -63,6 +65,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
 
   COPY_OID (&m_class_oid, class_oid);
   m_num_cols = num_cols;
+  m_format = format;
   m_col_types.assign (col_types, col_types + num_cols);
   m_rows_loaded = 0;
 
@@ -176,7 +179,15 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   while (pos < buf_len)
     {
       int bytes_consumed = 0;
-      error = decode_binary_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals, &bytes_consumed);
+      if (m_format == COPY_FORMAT_CSV)
+	{
+	  error = decode_csv_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals,
+				  m_csv_fields, m_csv_quoted, &bytes_consumed);
+	}
+      else
+	{
+	  error = decode_binary_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals, &bytes_consumed);
+	}
 
       if (error == COPY_DECODE_FOOTER)
 	{
@@ -281,6 +292,19 @@ cleanup:
 int
 copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 {
+  /* CSV has no in-band footer; a final line without a trailing newline is held
+   * in m_leftover. Feed a synthetic newline so that last record is decoded and
+   * inserted before reporting the count. */
+  if (m_format == COPY_FORMAT_CSV && !m_leftover.empty ())
+    {
+      const char nl = '\n';
+      int error = receive_chunk (thread_p, &nl, 1);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   result->count = m_rows_loaded;
   return NO_ERROR;
 }

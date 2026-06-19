@@ -1164,6 +1164,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token CONTINUE
 %token CONVERT
 %token COPY_
+%token CSV_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -4368,6 +4369,20 @@ copy_stmt
 			    node->info.copy.column_list = $3;
 			    node->info.copy.direction = 0;  /* FROM */
 			    node->info.copy.format = 0;     /* BINARY */
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
+	| COPY_ class_spec_without_server_name opt_attr_list FROM STDIN_ WITH '(' FORMAT_ CSV_ ')'
+		{{
+			PT_NODE *node = parser_new_node (this_parser, PT_COPY);
+			if (node)
+			  {
+			    node->info.copy.table_name = $2;
+			    node->info.copy.column_list = $3;
+			    node->info.copy.direction = 0;  /* FROM */
+			    node->info.copy.format = 1;     /* CSV */
 			  }
 
 			$$ = node;

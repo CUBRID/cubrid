@@ -576,6 +576,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_session.cpp
   ${LOADDB_DIR}/load_worker_manager.cpp
   ${LOADDB_DIR}/copy_binary_decoder.cpp
+  ${LOADDB_DIR}/copy_csv_decoder.cpp
   ${LOADDB_DIR}/copy_session.cpp
   )
 

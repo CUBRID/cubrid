@@ -28,7 +28,12 @@
 #include "thread_compat.hpp"
 #include "stream_session.hpp"
 
+#include <string>
 #include <vector>
+
+/* COPY row formats (mirror PT_COPY_INFO.format: 0 = BINARY, 1 = CSV) */
+#define COPY_FORMAT_BINARY 0
+#define COPY_FORMAT_CSV    1
 
 class copy_session : public stream_session
 {
@@ -37,7 +42,7 @@ class copy_session : public stream_session
     ~copy_session () override;
 
     /* binding-specific open (not part of the stream_session seam) */
-    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols);
+    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
@@ -54,7 +59,13 @@ class copy_session : public stream_session
 					   call that form a partial row and need
 					   to be combined with the next chunk */
     int m_num_cols;
+    int m_format;			/* COPY_FORMAT_BINARY | COPY_FORMAT_CSV */
     int m_rows_loaded;
+
+    /* reused per-row scratch for CSV field strings; keeps VARCHAR bytes alive
+     * through the row insert (out_vals point into it) */
+    std::vector<std::string> m_csv_fields;
+    std::vector<char> m_csv_quoted;
 };
 
 #endif /* _COPY_SESSION_HPP_ */

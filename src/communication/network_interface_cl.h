@@ -412,7 +412,7 @@ extern int file_delete_target_file (const char *target_vfid_str);
 #endif
 
 /* copy from stdin */
-extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols);
+extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format);
 extern int copy_from_send_data (const char *data, int data_len);
 extern int copy_from_end (int *rows_loaded);
 

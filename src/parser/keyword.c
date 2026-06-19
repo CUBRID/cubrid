@@ -125,6 +125,7 @@ static KEYWORD_RECORD keywords[] = {
   {CONTINUE, "CONTINUE", 0},
   {CONVERT, "CONVERT", 0},
   {COPY_, "COPY", 0},
+  {CSV_, "CSV", 0},
   {CORRESPONDING, "CORRESPONDING", 0},
   {COST, "COST", 1},
   {COUNT, "COUNT", 0},

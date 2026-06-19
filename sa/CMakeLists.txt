@@ -588,6 +588,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_sa_loader.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/copy_binary_decoder.cpp
+  ${LOADDB_DIR}/copy_csv_decoder.cpp
   ${LOADDB_DIR}/copy_session.cpp
   )
 
