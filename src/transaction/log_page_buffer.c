@@ -6032,7 +6032,11 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
     {
       /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
        * removal this cycle so an archive it is about to read is not deleted underneath it and
-       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file(). */
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
       LOG_CS_EXIT (thread_p);
       return 0;
     }
@@ -6248,7 +6252,11 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
     {
       /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
        * removal this cycle so an archive it is about to read is not deleted underneath it and
-       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file(). */
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
       return;
     }
 
