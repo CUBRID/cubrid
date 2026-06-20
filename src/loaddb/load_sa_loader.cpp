@@ -2711,8 +2711,10 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
 {
   char *mem;
   int precision;
-  int err;
+  int err = NO_ERROR;
   DB_VALUE val;
+
+  db_make_null (&val);
 
   precision = att->domain->precision;
 
@@ -2772,6 +2774,7 @@ ldr_str_db_char (LDR_CONTEXT *context, const char *str, size_t len, SM_ATTRIBUTE
   CHECK_ERR (err, att->domain->type->setmem (mem, att->domain, &val));
 
 error_exit:
+  pr_clear_value (&val);
   return err;
 }
 

@@ -1015,6 +1015,10 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       is_buf_alloced = true;
     }
 
+  /* The actual data written can be smaller than the calculated size, leaving an
+   * unwritten tail in the buffer, so initialize it first. */
+  memset (buf_p, 0, size);
+
   buf = xts_process_arith_type (buf_p, arithmetic);
   if (buf == NULL)
     {

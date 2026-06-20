@@ -11719,6 +11719,7 @@ mr_getmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	{
 	  db_make_char (value, domain->precision, cur, mem_length, TP_DOMAIN_CODESET (domain),
 			TP_DOMAIN_COLLATION (domain));
+	  value->data.ch.medium.length = domain->precision;
 	  value->need_clear = false;
 	}
       else
@@ -11736,6 +11737,7 @@ mr_getmem_char (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	      new_[mem_length] = '\0';
 	      db_make_char (value, domain->precision, new_, mem_length, TP_DOMAIN_CODESET (domain),
 			    TP_DOMAIN_COLLATION (domain));
+	      value->data.ch.medium.length = domain->precision;
 	      value->need_clear = true;
 	    }
 	}
@@ -12349,6 +12351,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
       db_make_char (value, precision, decompressed_string, expected_decompressed_size,
 		    TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+      value->data.ch.medium.length = precision;
       value->need_clear = (decompressed_string != copy_buf) ? true : false;
 
 #if defined(CS_MODE)
@@ -12374,6 +12377,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	  assert (decompressed_string == NULL);
 	  db_make_char (value, precision, buf->ptr, expected_decompressed_size,
 			TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->data.ch.medium.length = precision;
 	  value->need_clear = false;
 	}
       else			/* if (!copy) */
@@ -12384,6 +12388,7 @@ mr_readval_char_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
 	  db_make_char (value, precision, decompressed_string, expected_decompressed_size,
 			TP_DOMAIN_CODESET (domain), TP_DOMAIN_COLLATION (domain));
+	  value->data.ch.medium.length = precision;
 	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
 	}
       db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
@@ -12691,6 +12696,7 @@ pr_pad_char_to_precision (DB_VALUE * value, const char *src, int src_size, int c
   collation = db_get_string_collation (value);
   pr_clear_value (value);
   db_make_char (value, precision, padded, new_size, codeset, collation);
+  value->data.ch.medium.length = precision;
   value->need_clear = true;
 
   return NO_ERROR;
