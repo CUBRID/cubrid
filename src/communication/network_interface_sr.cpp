@@ -12240,6 +12240,9 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   char *table_name = NULL;
   int num_cols = 0;
   int format = 0;
+  int delimiter = 0;
+  int quote = 0;
+  int header = 0;
   int error_code = NO_ERROR;
   DB_TYPE *col_types = NULL;
 
@@ -12247,8 +12250,11 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   ptr = or_unpack_string_nocopy (ptr, &table_name);
   /* unpack num columns */
   ptr = or_unpack_int (ptr, &num_cols);
-  /* unpack format (0 = BINARY, 1 = CSV) */
+  /* unpack format (0 = BINARY, 1 = CSV) + CSV options */
   ptr = or_unpack_int (ptr, &format);
+  ptr = or_unpack_int (ptr, &delimiter);
+  ptr = or_unpack_int (ptr, &quote);
+  ptr = or_unpack_int (ptr, &header);
 
   /* unpack column types */
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
@@ -12286,7 +12292,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 	goto reply;
       }
 
-    error_code = session->init (thread_p, &class_oid, col_types, num_cols, format);
+    error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header);
     if (error_code != NO_ERROR)
       {
 	delete session;

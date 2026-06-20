@@ -11611,7 +11611,8 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  *   ncols(in): number of columns
  */
 int
-copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format)
+copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
+		int header)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11619,8 +11620,8 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   char *request = NULL;
   char *ptr;
 
-  /* calculate request buffer size: string + int (ncols) + int (format) + ncols * int */
-  request_size = or_packed_string_length (table_name, NULL) + OR_INT_SIZE + OR_INT_SIZE + (ncols * OR_INT_SIZE);
+  /* size: string + ncols + format + delimiter + quote + header + ncols * int */
+  request_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 5) + (ncols * OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -11632,6 +11633,9 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   ptr = or_pack_string (request, table_name);
   ptr = or_pack_int (ptr, ncols);
   ptr = or_pack_int (ptr, format);
+  ptr = or_pack_int (ptr, delimiter);
+  ptr = or_pack_int (ptr, quote);
+  ptr = or_pack_int (ptr, header);
   for (int i = 0; i < ncols; i++)
     {
       ptr = or_pack_int (ptr, (int) col_types[i]);

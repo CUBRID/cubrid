@@ -156,7 +156,7 @@ bad_value:
 int
 decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 		DB_VALUE *out_vals, std::vector<std::string> &field_storage,
-		std::vector<char> &quoted, int *bytes_consumed)
+		std::vector<char> &quoted, char delimiter, char quote, bool skip_only, int *bytes_consumed)
 {
   /* 1. find the line terminator that is not inside a quoted field */
   bool in_quotes = false;
@@ -166,9 +166,9 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
       char c = buf[i];
       if (in_quotes)
 	{
-	  if (c == '"')
+	  if (c == quote)
 	    {
-	      if (i + 1 < buf_len && buf[i + 1] == '"')
+	      if (i + 1 < buf_len && buf[i + 1] == quote)
 		{
 		  i++;		/* escaped quote */
 		}
@@ -180,7 +180,7 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 	}
       else
 	{
-	  if (c == '"')
+	  if (c == quote)
 	    {
 	      in_quotes = true;
 	    }
@@ -200,6 +200,12 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 
   *bytes_consumed = line_end + 1;	/* consume through the '\n' */
 
+  if (skip_only)
+    {
+      /* header line: consume but do not parse/coerce */
+      return NO_ERROR;
+    }
+
   int content_end = line_end;
   if (content_end > 0 && buf[content_end - 1] == '\r')
     {
@@ -217,11 +223,11 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
       char c = buf[p];
       if (in_quotes)
 	{
-	  if (c == '"')
+	  if (c == quote)
 	    {
-	      if (p + 1 < content_end && buf[p + 1] == '"')
+	      if (p + 1 < content_end && buf[p + 1] == quote)
 		{
-		  cur.push_back ('"');
+		  cur.push_back (quote);
 		  p++;
 		}
 	      else
@@ -236,12 +242,12 @@ decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 	}
       else
 	{
-	  if (c == '"')
+	  if (c == quote)
 	    {
 	      in_quotes = true;
 	      cur_quoted = true;
 	    }
-	  else if (c == ',')
+	  else if (c == delimiter)
 	    {
 	      field_storage.push_back (cur);
 	      quoted.push_back (cur_quoted ? 1 : 0);

@@ -43,6 +43,7 @@
  */
 extern int decode_csv_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols,
 			   DB_VALUE *out_vals, std::vector<std::string> &field_storage,
-			   std::vector<char> &quoted, int *bytes_consumed);
+			   std::vector<char> &quoted, char delimiter, char quote, bool skip_only,
+			   int *bytes_consumed);
 
 #endif /* _COPY_CSV_DECODER_HPP_ */

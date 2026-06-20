@@ -22384,7 +22384,18 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format);
+  /* CSV-only options are rejected for the BINARY format (DDL-time error). */
+  if (statement->info.copy.format != 1
+      && (statement->info.copy.delimiter != 0 || statement->info.copy.quote != 0 || statement->info.copy.header != 0))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+	      "DELIMITER/QUOTE/HEADER are only valid with FORMAT CSV");
+      free_and_init (col_types);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
+  error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
+			  statement->info.copy.delimiter, statement->info.copy.quote, statement->info.copy.header);
 
   free_and_init (col_types);
 

@@ -42,7 +42,8 @@ class copy_session : public stream_session
     ~copy_session () override;
 
     /* binding-specific open (not part of the stream_session seam) */
-    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format);
+    int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
+	      int delimiter, int quote, int header);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
@@ -60,6 +61,9 @@ class copy_session : public stream_session
 					   to be combined with the next chunk */
     int m_num_cols;
     int m_format;			/* COPY_FORMAT_BINARY | COPY_FORMAT_CSV */
+    char m_delimiter;			/* CSV field delimiter (default ',') */
+    char m_quote;			/* CSV quote char (default '"') */
+    bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
     int m_rows_loaded;
 
     /* reused per-row scratch for CSV field strings; keeps VARCHAR bytes alive

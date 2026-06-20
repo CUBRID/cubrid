@@ -48,6 +48,9 @@ copy_session::copy_session ()
   , m_attr_ids ()
   , m_num_cols (0)
   , m_format (COPY_FORMAT_BINARY)
+  , m_delimiter (',')
+  , m_quote ('"')
+  , m_skip_header (false)
   , m_rows_loaded (0)
 {
 }
@@ -57,7 +60,8 @@ copy_session::~copy_session ()
 }
 
 int
-copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format)
+copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
+		    int delimiter, int quote, int header)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -66,6 +70,9 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   COPY_OID (&m_class_oid, class_oid);
   m_num_cols = num_cols;
   m_format = format;
+  m_delimiter = (delimiter != 0) ? (char) delimiter : ',';
+  m_quote = (quote != 0) ? (char) quote : '"';
+  m_skip_header = (header != 0);
   m_col_types.assign (col_types, col_types + num_cols);
   m_rows_loaded = 0;
 
@@ -181,8 +188,16 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       int bytes_consumed = 0;
       if (m_format == COPY_FORMAT_CSV)
 	{
+	  /* skip a leading header line (HEADER option) before decoding data rows */
+	  bool skip_only = m_skip_header;
 	  error = decode_csv_row (buf + pos, buf_len - pos, m_col_types.data (), m_num_cols, vals,
-				  m_csv_fields, m_csv_quoted, &bytes_consumed);
+				  m_csv_fields, m_csv_quoted, m_delimiter, m_quote, skip_only, &bytes_consumed);
+	  if (skip_only && error == NO_ERROR)
+	    {
+	      m_skip_header = false;
+	      pos += bytes_consumed;
+	      continue;
+	    }
 	}
       else
 	{
