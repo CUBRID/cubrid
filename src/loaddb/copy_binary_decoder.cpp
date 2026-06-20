@@ -152,8 +152,75 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       db_make_double (val, read_double (data));
       break;
 
+    case DB_TYPE_SHORT:
+      if (field_len != 2)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: SHORT expects 2 bytes");
+	  return ER_DB_UNIMPLEMENTED;
+	}
+      db_make_short (val, read_int16 (data));
+      break;
+
     case DB_TYPE_VARCHAR:
       db_make_varchar (val, field_len, data, field_len, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      break;
+
+    case DB_TYPE_CHAR:
+      db_make_char (val, field_len, data, field_len, INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
+      break;
+
+    case DB_TYPE_DATE:
+      /* body: 4-byte encoded DB_DATE (julian day), network order */
+      if (field_len != 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DATE expects 4 bytes");
+	  return ER_DB_UNIMPLEMENTED;
+	}
+      {
+	DB_DATE d = (DB_DATE) read_int32 (data);
+	db_value_put_encoded_date (val, &d);
+      }
+      break;
+
+    case DB_TYPE_TIME:
+      /* body: 4-byte encoded DB_TIME (seconds since midnight), network order */
+      if (field_len != 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: TIME expects 4 bytes");
+	  return ER_DB_UNIMPLEMENTED;
+	}
+      {
+	DB_TIME t = (DB_TIME) read_int32 (data);
+	db_value_put_encoded_time (val, &t);
+      }
+      break;
+
+    case DB_TYPE_TIMESTAMP:
+      /* body: 4-byte DB_TIMESTAMP (unix epoch seconds), network order */
+      if (field_len != 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: TIMESTAMP expects 4 bytes");
+	  return ER_DB_UNIMPLEMENTED;
+	}
+      {
+	DB_TIMESTAMP ts = (DB_TIMESTAMP) read_int32 (data);
+	db_make_timestamp (val, ts);
+      }
+      break;
+
+    case DB_TYPE_DATETIME:
+      /* body: 4-byte date (julian) + 4-byte time (milliseconds), network order */
+      if (field_len != 8)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DATETIME expects 8 bytes");
+	  return ER_DB_UNIMPLEMENTED;
+	}
+      {
+	DB_DATETIME dt;
+	dt.date = (unsigned int) read_int32 (data);
+	dt.time = (unsigned int) read_int32 (data + 4);
+	db_make_datetime (val, &dt);
+      }
       break;
 
     default:
