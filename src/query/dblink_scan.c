@@ -1304,58 +1304,44 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   p = sql;
   remaining = (int) sql_len;
 
-  ret = snprintf (p, remaining, "/* DBLINK INSERT */ INSERT INTO %s", table_name);
-  p += ret;
-  remaining -= ret;
+  /* Append to the SQL buffer; bail out if snprintf truncates (ret >= remaining) or errors
+   * (ret < 0). A data-change path must not prepare a malformed/over-run statement. The buffer
+   * is over-allocated (see DBLINK_INSERT_SQL_* estimates), so this is a defensive guard. */
+// *INDENT-OFF*
+#define DBLINK_INSERT_SQL_APPEND(...) \
+  do \
+    { \
+      ret = snprintf (p, remaining, __VA_ARGS__); \
+      if (ret < 0 || ret >= remaining) \
+        { \
+          goto sql_build_error; \
+        } \
+      p += ret; \
+      remaining -= ret; \
+    } \
+  while (0)
+// *INDENT-ON*
 
-  if (num_attrs > 0 && remaining > 0)
+  DBLINK_INSERT_SQL_APPEND ("/* DBLINK INSERT */ INSERT INTO %s", table_name);
+
+  if (num_attrs > 0)
     {
-      ret = snprintf (p, remaining, " (");
-      p += ret;
-      remaining -= ret;
-
-      for (i = 0; i < num_attrs && remaining > 0; i++)
+      DBLINK_INSERT_SQL_APPEND (" (");
+      for (i = 0; i < num_attrs; i++)
 	{
-	  ret = snprintf (p, remaining, "%s%s", attr_names[i], (i < num_attrs - 1) ? ", " : "");
-	  p += ret;
-	  remaining -= ret;
+	  DBLINK_INSERT_SQL_APPEND ("%s%s", attr_names[i], (i < num_attrs - 1) ? ", " : "");
 	}
-
-      if (remaining > 0)
-	{
-	  ret = snprintf (p, remaining, ")");
-	  p += ret;
-	  remaining -= ret;
-	}
+      DBLINK_INSERT_SQL_APPEND (")");
     }
 
-  if (remaining > 0)
+  DBLINK_INSERT_SQL_APPEND (" VALUES (");
+  for (i = 0; i < num_bind; i++)
     {
-      ret = snprintf (p, remaining, " VALUES (");
-      p += ret;
-      remaining -= ret;
+      DBLINK_INSERT_SQL_APPEND ("?%s", (i < num_bind - 1) ? ", " : "");
     }
+  DBLINK_INSERT_SQL_APPEND (")");
 
-  for (i = 0; i < num_bind && remaining > 0; i++)
-    {
-      ret = snprintf (p, remaining, "?%s", (i < num_bind - 1) ? ", " : "");
-      p += ret;
-      remaining -= ret;
-    }
-
-  if (remaining > 0)
-    {
-      (void) snprintf (p, remaining, ")");
-    }
-
-  /* verify SQL was not truncated - just check remaining; string is null-terminated by snprintf */
-  if (remaining <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL buffer overflow");
-      db_private_free (thread_p, sql);
-      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
-      return ER_DBLINK;
-    }
+#undef DBLINK_INSERT_SQL_APPEND
 
   /* prepare statement */
   state->stmt_handle = cci_prepare (state->conn_handle, sql, 0, &err_buf);
@@ -1369,6 +1355,12 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
     }
 
   return NO_ERROR;
+
+sql_build_error:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL assembly truncated");
+  db_private_free (thread_p, sql);
+  /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+  return ER_DBLINK;
 }
 
 /*
