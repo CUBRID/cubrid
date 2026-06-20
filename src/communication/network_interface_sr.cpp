@@ -12329,30 +12329,31 @@ scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
   error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
-      if (error_code == NO_ERROR)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_ERROR, 1, "no active COPY session");
+      error_code = ER_COPY_SESSION_ERROR;
+    }
+  else
+    {
+      error_code = session->receive_chunk (thread_p, request, reqlen);
+      if (error_code != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
-	  error_code = ER_DB_UNIMPLEMENTED;
+	  session->abort (thread_p);
+	  delete session;
+	  session_set_stream_session (thread_p, NULL);
 	}
-      goto reply;
     }
 
-  error_code = session->receive_chunk (thread_p, request, reqlen);
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
   if (error_code != NO_ERROR)
     {
-      session->abort (thread_p);
-      delete session;
-      session_set_stream_session (thread_p, NULL);
+      (void) return_error_to_client (thread_p, rid);
     }
 
-reply:
-  {
-    OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-    char *reply = OR_ALIGNED_BUF_START (a_reply);
-
-    or_pack_int (reply, error_code);
-    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
-  }
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -12370,25 +12371,29 @@ scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
-      if (error_code == NO_ERROR)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_ERROR, 1, "no active COPY session");
+      error_code = ER_COPY_SESSION_ERROR;
+    }
+  else
+    {
+      stream_result result;
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* may flush a trailing CSV record */
+      rows_loaded = (int) result.count;
+
+      if (error_code != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "No active COPY session");
-	  error_code = ER_DB_UNIMPLEMENTED;
+	  session->abort (thread_p);
 	}
-      goto reply;
+      delete session;
+      session_set_stream_session (thread_p, NULL);
     }
 
-  {
-    stream_result result;
-    result.count = 0;
-    error_code = session->finish (thread_p, &result);
-    rows_loaded = (int) result.count;
-  }
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
 
-  delete session;
-  session_set_stream_session (thread_p, NULL);
-
-reply:
   {
     OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
     char *reply = OR_ALIGNED_BUF_START (a_reply);

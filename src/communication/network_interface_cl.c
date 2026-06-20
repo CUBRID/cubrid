@@ -11774,6 +11774,16 @@ copy_from_send_data (const char *data, int data_len)
     {
       or_unpack_int (reply, &rc);
     }
+  else
+    {
+      /* server returned a standard error reply; propagate its code (and the
+       * message net_client_request placed in the error stack) to the caller */
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
+    }
 
   return rc;
 #else /* CS_MODE */
@@ -11802,6 +11812,14 @@ copy_from_end (int *rows_loaded)
       char *ptr;
       ptr = or_unpack_int (reply, &rc);
       ptr = or_unpack_int (ptr, rows_loaded);
+    }
+  else
+    {
+      rc = er_errid ();
+      if (rc == NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	}
     }
 
   return rc;
