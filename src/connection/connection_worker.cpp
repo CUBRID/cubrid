@@ -2094,6 +2094,58 @@ respond:
     m_watcher->cv.notify_one ();
   }
 
+  void worker::finalize_resources ()
+  {
+    message request;
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
+      {
+	while (m_queue[i].try_pop (request))
+	  {
+	    switch (request.type)
+	      {
+	      case message_type::SEND_PACKET:
+		if (request.deleter)
+		  {
+		    request.deleter ();
+		  }
+		[[fallthrough]];
+
+	      case message_type::SHUTDOWN_CLIENT:
+		this->wakeup_blocked_worker (request.waiter_handle);
+		break;
+
+	      case message_type::NEW_CLIENT:
+		css_free_conn (request.conn);
+		m_parent->retire_context (request.ctx);
+		break;
+
+	      case message_type::TAKEOVER_CLIENT:
+		css_free_conn (request.ctx->m_conn);
+		m_parent->retire_context (request.ctx);
+		break;
+
+	      case message_type::START:
+	      case message_type::HIBERNATE:
+	      case message_type::AWAKEN:
+	      case message_type::SHUTDOWN:
+	      case message_type::HANDOFF_CLIENT:
+	      case message_type::RELEASE_PACKET:
+	      case message_type::TYPE_COUNT:
+		break;
+	      }
+	  }
+      }
+
+    for (context *ctx : m_removed_context)
+      {
+	css_free_conn (ctx->m_conn);
+	m_parent->retire_context (ctx);
+      }
+    m_removed_context.clear ();
+  }
+
   bool worker::run ()
   {
     std::array<epoll_event, 512> events;
