@@ -32,7 +32,7 @@
 #include "method_struct_invoke.hpp"
 
 #if !defined (SERVER_MODE)
-#include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
+#include "authenticate.h"	/* AU_RESTORE, AU_SAVE_AND_DISABLE */
 #include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
 #include "object_accessor.h"	/* obj_ */
 #include "object_primitive.h"	/* pr_is_set_type() */
@@ -376,11 +376,11 @@ method_invoke_builtin_internal (DB_VALUE & result, std::vector<DB_VALUE> &args, 
     {
       /* methods must run with authorization turned on and database modifications turned off. */
       turn_on_auth = 0;
-      AU_ENABLE (turn_on_auth);
+      AU_RESTORE (turn_on_auth);
       db_disable_modification ();
       error = obj_send_array (db_get_object (arg_val_p[0]), sig.name, &result, &arg_val_p[1]);
       db_enable_modification ();
-      AU_DISABLE (turn_on_auth);
+      AU_SAVE_AND_DISABLE (turn_on_auth);
     }
 
   /* error handling */

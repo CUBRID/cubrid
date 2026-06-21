@@ -101,7 +101,7 @@ struct json_t;
 					NULL); \
 	(parser)->jmp_env_active = 0; \
 	if ((parser)->au_save) \
-	    AU_ENABLE((parser)->au_save); \
+	    AU_RESTORE((parser)->au_save); \
 	return NULL; \
       } \
         else (parser)->jmp_env_active = 1; \

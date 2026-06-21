@@ -1917,7 +1917,7 @@ boot_destroy_catalog_classes (void)
   cc_save = catcls_Enable;
   catcls_Enable = false;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* drop method of _db_authorization */
   error_code = db_drop_class_method (locator_find_class (CT_AUTHORIZATION_NAME), "check_authorization");
@@ -1961,7 +1961,7 @@ boot_destroy_catalog_classes (void)
 
 exit_on_error:
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   /* restore catcls_Enable */
   catcls_Enable = cc_save;

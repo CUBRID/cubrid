@@ -1247,7 +1247,7 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
 	      int dummy;
-	      AU_DISABLE (dummy);
+	      AU_SAVE_AND_DISABLE (dummy);
 	    }
 	  csql_Database_connected = true;
 
@@ -3334,7 +3334,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -3938,7 +3938,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
       int dummy;
-      AU_DISABLE (dummy);
+      AU_SAVE_AND_DISABLE (dummy);
     }
   csql_Database_connected = true;
 

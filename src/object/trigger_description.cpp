@@ -249,7 +249,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
   PT_NODE **action_node = nullptr, **condition_node = nullptr;
   char *query_action_result, *query_condition_result;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   trigger = tr_map_trigger (trigger_object, 1);
 
@@ -429,7 +429,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
       output_ctx (";\n\n");
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 

@@ -1044,7 +1044,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* clear existing group - clear group, direct group */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (db_get (dbuser, "groups", &val) < 0)
     {
       goto error_return;
@@ -1187,12 +1187,12 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       goto error_return;
     }
   db_shutdown ();
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return ERR_NO_ERROR;
 
 error_return:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1369,7 +1369,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
 	  goto error_return;
 	}
     }
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   temp = user_list;
   while (temp != NULL)
     {
@@ -1394,12 +1394,12 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       goto error_return;
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   db_shutdown ();
   return ERR_NO_ERROR;
 
 error_return:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -2819,7 +2819,7 @@ revoke_all_from_user (DB_OBJECT * user)
   DB_COLLECTION *col;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
@@ -2833,7 +2833,7 @@ revoke_all_from_user (DB_OBJECT * user)
       auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
       if (auth_obj == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return ERR_MEM_ALLOC;
 	}
       auth_obj[num_auth] = obj;
@@ -2845,7 +2845,7 @@ revoke_all_from_user (DB_OBJECT * user)
       db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
   FREE_MEM (auth_obj);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return ERR_NO_ERROR;
 }
 

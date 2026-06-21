@@ -818,9 +818,9 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
@@ -1108,9 +1108,9 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)

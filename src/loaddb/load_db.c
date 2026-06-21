@@ -852,10 +852,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_INDEX_NAME, STATS_WITH_FULLSCAN);
       sm_update_catalog_statistics (CT_INDEXKEY_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Index loading from %s finished.\n", args.index_file.c_str ());
       db_commit_transaction ();
@@ -885,9 +885,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	}
 
       /* update catalog statistics */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       sm_update_catalog_statistics (CT_TRIGGER_NAME, STATS_WITH_FULLSCAN);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       print_log_msg (1, "Trigger loading from %s finished.\n", args.trigger_file.c_str ());
       db_commit_transaction ();
@@ -1771,7 +1771,7 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
    */
   if (au_is_dba_group_member (Au_user))
     {
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   if (ldr_exec_query_from_file (args.schema_file.c_str (), schema_fp, &schema_file_start_line, &args) != NO_ERROR)
@@ -1788,15 +1788,15 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
 
   if (au_is_dba_group_member (Au_user))
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   print_log_msg (1, "Schema loading from %s finished.\n", args.schema_file.c_str ());
 
   /* update catalog statistics */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   sm_update_all_catalog_statistics (STATS_WITH_FULLSCAN);
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   print_log_msg (1, "Statistics for Catalog classes have been updated.\n\n");
 
