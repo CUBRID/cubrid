@@ -13313,9 +13313,6 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
 	}
     }
 
-
-  parser->au_save = save;
-
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
 
@@ -13363,7 +13360,6 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
 
   /* DO NOT RETURN FROM WITHIN THE BODY OF THIS PROCEDURE */
   AU_SAVE_AND_DISABLE (save);
-  parser->au_save = save;
 
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = "";	/* oid's have null string attr name */
