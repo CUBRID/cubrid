@@ -12243,6 +12243,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int delimiter = 0;
   int quote = 0;
   int header = 0;
+  int bulk = 0;
   int error_code = NO_ERROR;
   DB_TYPE *col_types = NULL;
 
@@ -12255,6 +12256,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   ptr = or_unpack_int (ptr, &delimiter);
   ptr = or_unpack_int (ptr, &quote);
   ptr = or_unpack_int (ptr, &header);
+  ptr = or_unpack_int (ptr, &bulk);
 
   /* unpack column types */
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
@@ -12276,7 +12278,9 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     OID class_oid;
     LC_FIND_CLASSNAME status;
 
-    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, NULL_LOCK);
+    /* bulk mode pre-acquires a class-level BU_LOCK (like loaddb) so the batch
+     * insert can skip per-row MVCC-id and per-row class/btree locks. */
+    status = xlocator_find_class_oid (thread_p, table_name, &class_oid, (bulk ? BU_LOCK : NULL_LOCK));
     if (status != LC_CLASSNAME_EXIST)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
@@ -12292,7 +12296,7 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 	goto reply;
       }
 
-    error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header);
+    error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header, bulk);
     if (error_code != NO_ERROR)
       {
 	delete session;

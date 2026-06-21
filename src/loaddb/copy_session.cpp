@@ -28,8 +28,10 @@
 #include "btree.h"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "connection_defs.h"	/* HA_DISABLED */
 #include "heap_file.h"
 #include "locator_sr.h"
+#include "lock_manager.h"	/* lock_has_lock_on_object */
 #include "log_manager.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
@@ -41,6 +43,10 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/* rows buffered before a batch flush to the heap (amortizes scancache open/close
+ * and enables the bulk multi-insert fast path) */
+static const std::size_t COPY_FLUSH_BATCH_ROWS = 4096;
+
 copy_session::copy_session ()
   : m_class_oid (OID_INITIALIZER)
   , m_hfid (HFID_INITIALIZER)
@@ -51,7 +57,9 @@ copy_session::copy_session ()
   , m_delimiter (',')
   , m_quote ('"')
   , m_skip_header (false)
+  , m_bulk (false)
   , m_rows_loaded (0)
+  , m_recdes_collected ()
 {
 }
 
@@ -61,7 +69,7 @@ copy_session::~copy_session ()
 
 int
 copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
-		    int delimiter, int quote, int header)
+		    int delimiter, int quote, int header, int bulk)
 {
   int error = NO_ERROR;
   HEAP_CACHE_ATTRINFO attrinfo;
@@ -73,6 +81,7 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   m_delimiter = (delimiter != 0) ? (char) delimiter : ',';
   m_quote = (quote != 0) ? (char) quote : '"';
   m_skip_header = (header != 0);
+  m_bulk = (bulk != 0);
   m_col_types.assign (col_types, col_types + num_cols);
   m_rows_loaded = 0;
 
@@ -134,9 +143,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
   int error = NO_ERROR;
   int pos = 0;
   HEAP_CACHE_ATTRINFO attrinfo;
-  HEAP_SCANCACHE scancache;
   bool attrinfo_started = false;
-  bool scancache_started = false;
 
   /* If a previous chunk ended mid-row, prepend the leftover bytes so the
    * combined buffer starts at a row boundary. */
@@ -169,19 +176,14 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
       db_make_null (&vals[i]);
     }
 
+  /* attrinfo is used only to transform each decoded row into an on-disk RECDES;
+   * the actual heap insert happens in flush_batch under its own scancache. */
   error = heap_attrinfo_start (thread_p, &m_class_oid, -1, NULL, &attrinfo);
   if (error != NO_ERROR)
     {
       goto cleanup;
     }
   attrinfo_started = true;
-
-  error = heap_scancache_start_modify (thread_p, &scancache, &m_hfid, &m_class_oid, SINGLE_ROW_MODIFY, NULL);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  scancache_started = true;
 
   while (pos < buf_len)
     {
@@ -226,32 +228,22 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 
       pos += bytes_consumed;
 
-      /* insert the row using heap_attrinfo + locator_insert_force */
+      /* pack the row into a record_descriptor and queue it for batch insert */
+      for (int i = 0; i < m_num_cols; i++)
+	{
+	  error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
+
       {
-	OID dummy_oid = OID_INITIALIZER;
-	int force_count = 0;
-
-	log_sysop_start (thread_p);
-
-	/* set each decoded value into the attribute info cache */
-	for (int i = 0; i < m_num_cols; i++)
-	  {
-	    error = heap_attrinfo_set (&m_class_oid, m_attr_ids[i], &vals[i], &attrinfo);
-	    if (error != NO_ERROR)
-	      {
-		log_sysop_abort (thread_p);
-		goto cleanup;
-	      }
-	  }
-
-	/* transform attribute info to a proper on-disk RECDES */
 	record_descriptor new_recdes (cubmem::STANDARD_BLOCK_ALLOCATOR);
 	RECDES *old_recdes = NULL;
 
-	if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes)
-	    != S_SUCCESS)
+	if (heap_attrinfo_transform_to_disk_except_lob (thread_p, &attrinfo, old_recdes, &new_recdes) != S_SUCCESS)
 	  {
-	    log_sysop_abort (thread_p);
 	    error = er_errid ();
 	    if (error == NO_ERROR)
 	      {
@@ -260,20 +252,7 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	    goto cleanup;
 	  }
 
-	RECDES local_record = new_recdes.get_recdes ();
-	error = locator_insert_force (thread_p, &m_hfid, &m_class_oid, &dummy_oid, &local_record, true,
-				      SINGLE_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
-				      NULL, NULL, UPDATE_INPLACE_NONE, NULL, false, true, false);
-
-	if (error != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    log_sysop_abort (thread_p);
-	    goto cleanup;
-	  }
-
-	log_sysop_attach_to_outer (thread_p);
-	m_rows_loaded++;
+	m_recdes_collected.push_back (std::move (new_recdes));
       }
 
       /* clear values for next row */
@@ -283,6 +262,15 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	  db_make_null (&vals[i]);
 	}
       heap_attrinfo_clear_dbvalues (&attrinfo);
+
+      if (m_recdes_collected.size () >= COPY_FLUSH_BATCH_ROWS)
+	{
+	  error = flush_batch (thread_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	}
     }
 
 cleanup:
@@ -292,15 +280,83 @@ cleanup:
     }
   db_private_free (thread_p, vals);
 
-  if (scancache_started)
-    {
-      heap_scancache_end_modify (thread_p, &scancache);
-    }
   if (attrinfo_started)
     {
       heap_attrinfo_end (thread_p, &attrinfo);
     }
 
+  return error;
+}
+
+int
+copy_session::flush_batch (THREAD_ENTRY *thread_p)
+{
+  if (m_recdes_collected.empty ())
+    {
+      return NO_ERROR;
+    }
+
+  HEAP_SCANCACHE scancache;
+  int error = NO_ERROR;
+  bool scancache_started = false;
+  /* BU_LOCK is pre-acquired at open when the BULK option is set (scopy_from_init). */
+  bool has_BU_lock = lock_has_lock_on_object (&m_class_oid, oid_Root_class_oid, BU_LOCK);
+  int force_count = 0;
+  OID dummy_oid = OID_INITIALIZER;
+
+  error = heap_scancache_start_modify (thread_p, &scancache, &m_hfid, &m_class_oid, MULTI_ROW_INSERT, NULL);
+  if (error != NO_ERROR)
+    {
+      goto done;
+    }
+  scancache_started = true;
+
+  if (has_BU_lock && HA_DISABLED ())
+    {
+      /* bulk fast path: one multi-row insert emits page-image redo (no per-row
+       * undo / MVCC insert-id / per-row class lock). Requires HA disabled, since
+       * the page-based log record has no accurate per-row LSA for replication. */
+      log_sysop_start (thread_p);
+      error = locator_multi_insert_force (thread_p, &m_hfid, &m_class_oid, m_recdes_collected, true,
+					  MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
+					  NULL, NULL, UPDATE_INPLACE_NONE, true);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  goto done;
+	}
+      log_sysop_attach_to_outer (thread_p);
+      m_rows_loaded += (int) m_recdes_collected.size ();
+    }
+  else
+    {
+      /* normal path: per-row insert (MVCC, per-row lock) grouped under one
+       * scancache. has_BU_lock is false here unless HA is enabled in bulk mode. */
+      for (std::size_t i = 0; i < m_recdes_collected.size (); ++i)
+	{
+	  log_sysop_start (thread_p);
+	  RECDES local_record = m_recdes_collected[i].get_recdes ();
+	  error = locator_insert_force (thread_p, &m_hfid, &m_class_oid, &dummy_oid, &local_record, true,
+					MULTI_ROW_INSERT, &scancache, &force_count, DB_NOT_PARTITIONED_CLASS,
+					NULL, NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock, true, false);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      log_sysop_abort (thread_p);
+	      goto done;
+	    }
+	  log_sysop_attach_to_outer (thread_p);
+	  m_rows_loaded++;
+	}
+    }
+
+done:
+  m_recdes_collected.clear ();
+  if (scancache_started)
+    {
+      heap_scancache_end_modify (thread_p, &scancache);
+    }
   return error;
 }
 
@@ -320,6 +376,13 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 	}
     }
 
+  /* flush any rows still queued from the last (sub-threshold) batch */
+  int error = flush_batch (thread_p);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
   result->count = m_rows_loaded;
   return NO_ERROR;
 }
@@ -327,5 +390,6 @@ copy_session::finish (THREAD_ENTRY *thread_p, stream_result *result)
 void
 copy_session::abort (THREAD_ENTRY *thread_p)
 {
+  m_recdes_collected.clear ();
   m_rows_loaded = 0;
 }

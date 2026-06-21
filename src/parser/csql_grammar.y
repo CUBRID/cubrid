@@ -1172,6 +1172,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token DELIMITER_
 %token QUOTE_
 %token HEADER_
+%token BULK_
 %token CORRESPONDING
 %token COUNT
 %token CREATE
@@ -4375,6 +4376,7 @@ copy_stmt
 			    container_4 opt = $10;
 			    PT_NODE *delim = CONTAINER_AT_0 (opt);
 			    PT_NODE *quote = CONTAINER_AT_1 (opt);
+			    PT_NODE *bulk = CONTAINER_AT_2 (opt);
 			    PT_NODE *hdr = CONTAINER_AT_3 (opt);
 
 			    node->info.copy.table_name = $2;
@@ -4384,6 +4386,11 @@ copy_stmt
 			    node->info.copy.delimiter = 0;
 			    node->info.copy.quote = 0;
 			    node->info.copy.header = 0;
+			    node->info.copy.bulk = 0;
+			    if (bulk != NULL)
+			      {
+				node->info.copy.bulk = 1;
+			      }
 
 			    if (delim != NULL && delim->info.value.data_value.str != NULL
 				&& delim->info.value.data_value.str->length >= 1)
@@ -4448,6 +4455,12 @@ copy_csv_option
 		{{
 			container_4 ctn;
 			SET_CONTAINER_4 (ctn, $2, NULL, NULL, NULL);
+			$$ = ctn;
+		}}
+	| BULK_		/* applies to all formats (not CSV-specific) — enables bulk-load mode */
+		{{
+			container_4 ctn;
+			SET_CONTAINER_4 (ctn, NULL, NULL, FROM_NUMBER (1), NULL);
 			$$ = ctn;
 		}}
 	| QUOTE_ char_string_literal

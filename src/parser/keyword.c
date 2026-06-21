@@ -129,6 +129,7 @@ static KEYWORD_RECORD keywords[] = {
   {DELIMITER_, "DELIMITER", 0},
   {QUOTE_, "QUOTE", 0},
   {HEADER_, "HEADER", 0},
+  {BULK_, "BULK", 0},
   {CORRESPONDING, "CORRESPONDING", 0},
   {COST, "COST", 1},
   {COUNT, "COUNT", 0},

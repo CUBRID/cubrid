@@ -22395,7 +22395,8 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
-			  statement->info.copy.delimiter, statement->info.copy.quote, statement->info.copy.header);
+			  statement->info.copy.delimiter, statement->info.copy.quote, statement->info.copy.header,
+			  statement->info.copy.bulk);
 
   free_and_init (col_types);
 

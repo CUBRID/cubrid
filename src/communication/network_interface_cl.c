@@ -11612,7 +11612,7 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
  */
 int
 copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
-		int header)
+		int header, int bulk)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11620,8 +11620,8 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   char *request = NULL;
   char *ptr;
 
-  /* size: string + ncols + format + delimiter + quote + header + ncols * int */
-  request_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 5) + (ncols * OR_INT_SIZE);
+  /* size: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
+  request_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE);
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -11636,6 +11636,7 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   ptr = or_pack_int (ptr, delimiter);
   ptr = or_pack_int (ptr, quote);
   ptr = or_pack_int (ptr, header);
+  ptr = or_pack_int (ptr, bulk);
   for (int i = 0; i < ncols; i++)
     {
       ptr = or_pack_int (ptr, (int) col_types[i]);

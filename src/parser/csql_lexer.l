@@ -281,6 +281,7 @@ IDL       [a-zA-Z0-9_]
 [dD][eE][lL][iI][mM][iI][tT][eE][rR]					{ begin_token(yytext);   return DELIMITER_; }
 [qQ][uU][oO][tT][eE]							{ begin_token(yytext);   return QUOTE_; }
 [hH][eE][aA][dD][eE][rR]						{ begin_token(yytext);   return HEADER_; }
+[bB][uU][lL][kK]							{ begin_token(yytext);   return BULK_; }
 [cC][oO][rR][rR][eE][sS][pP][oO][nN][dD][iI][nN][gG]			{ begin_token(yytext);   return CORRESPONDING; }
 [cC][oO][sS][tT]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);

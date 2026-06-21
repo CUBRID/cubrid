@@ -3503,6 +3503,7 @@ struct pt_copy_info
   int delimiter;		/* CSV field delimiter char; 0 = default ',' */
   int quote;			/* CSV quote char; 0 = default '"' */
   int header;			/* CSV: 1 = skip a leading header line */
+  int bulk;			/* 1 = bulk-load mode (BU_LOCK + batch insert); all formats */
 };
 
 /* Info field of the basic NODE

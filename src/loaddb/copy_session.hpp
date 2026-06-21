@@ -25,6 +25,7 @@
 #include "dbtype_def.h"
 #include "heap_file.h"
 #include "oid.h"
+#include "record_descriptor.hpp"
 #include "thread_compat.hpp"
 #include "stream_session.hpp"
 
@@ -43,7 +44,7 @@ class copy_session : public stream_session
 
     /* binding-specific open (not part of the stream_session seam) */
     int init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE *col_types, int num_cols, int format,
-	      int delimiter, int quote, int header);
+	      int delimiter, int quote, int header, int bulk);
 
     /* stream_session seam */
     int receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_len) override;
@@ -51,6 +52,8 @@ class copy_session : public stream_session
     void abort (THREAD_ENTRY *thread_p) override;
 
   private:
+    int flush_batch (THREAD_ENTRY *thread_p);	/* flush m_recdes_collected to the heap */
+
     OID m_class_oid;
     HFID m_hfid;
 
@@ -64,7 +67,11 @@ class copy_session : public stream_session
     char m_delimiter;			/* CSV field delimiter (default ',') */
     char m_quote;			/* CSV quote char (default '"') */
     bool m_skip_header;			/* CSV: a leading header line is still to be skipped */
+    bool m_bulk;			/* bulk-load mode requested (BU_LOCK acquired at open) */
     int m_rows_loaded;
+
+    /* rows packed and queued for batch insert (flushed every COPY_FLUSH_BATCH_ROWS) */
+    std::vector<record_descriptor> m_recdes_collected;
 
     /* reused per-row scratch for CSV field strings; keeps VARCHAR bytes alive
      * through the row insert (out_vals point into it) */
