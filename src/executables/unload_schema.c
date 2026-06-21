@@ -1180,7 +1180,6 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  // TODO: it should be moved to before db_compile_and_execute_local(). It can be returned without AU_RESTORE().
   AU_SAVE_AND_DISABLE (save);
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
@@ -1190,6 +1189,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
       if (uppercase_user == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1205,6 +1205,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 

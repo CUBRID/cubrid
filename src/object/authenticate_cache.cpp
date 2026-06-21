@@ -155,7 +155,8 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
   if (bits == NULL)
     {
       assert (false);
-      return er_errid ();
+      error = er_errid ();
+      goto end;
     }
 
   /* initialize the cache bits */

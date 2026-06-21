@@ -9727,6 +9727,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (err != NO_ERROR)
 		{
 		  parser_free_tree (parser, select_statement);
+		  AU_RESTORE (au_save);
 		  break;
 		}
 	    }

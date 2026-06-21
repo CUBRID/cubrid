@@ -1783,6 +1783,10 @@ ldr_load_schema_file (FILE * schema_fp, int schema_file_start_line, load_args ar
       print_log_msg (1, " done.\n\nRestart loaddb with '-%c %s:%d' option\n", LOAD_SCHEMA_FILE_S,
 		     args.schema_file.c_str (), schema_file_start_line);
       logddl_write_end ();
+      if (au_is_dba_group_member (Au_user))
+	{
+	  AU_RESTORE (au_save);
+	}
       return status;
     }
 

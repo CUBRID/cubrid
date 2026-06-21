@@ -3027,19 +3027,19 @@ trigger_table_add (const char *name, DB_OBJECT * trigger)
 
   if (Au_root == NULL)
     {
-      return NO_ERROR;
+      goto end;
     }
 
   error = obj_inst_lock (Au_root, 1);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   error = obj_get (Au_root, "triggers", &value);
   if (error != NO_ERROR)
     {
-      return error;
+      goto end;
     }
 
   if (DB_IS_NULL (&value))

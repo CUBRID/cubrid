@@ -265,6 +265,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  if (sm_qualifier_name (name, owner_name, DB_MAX_USER_LENGTH) == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error);
+	      AU_RESTORE (save);
 	      return error;
 	    }
 	  class_name = sm_remove_qualifier_name (name);
@@ -327,6 +328,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+	      AU_RESTORE (save);
 	      return error;
 	    }
 	  strcpy (text, EVAL_PREFIX);
@@ -338,6 +340,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	    {
 	      output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
 	      ASSERT_ERROR_AND_SET (error);
+	      AU_RESTORE (save);
 	      return error;
 	    }
 
@@ -357,6 +360,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 		{
 		  output_ctx ("/* ERROR : IF %s */\n", trigger->condition->source);
 		  ASSERT_ERROR_AND_SET (error);
+		  AU_RESTORE (save);
 		  return error;
 		}
 
@@ -385,6 +389,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 		{
 		  output_ctx ("\n/* ERROR : EXECUTE %s */\n", trigger->action->source);
 		  ASSERT_ERROR_AND_SET (error);
+		  AU_RESTORE (save);
 		  return error;
 		}
 

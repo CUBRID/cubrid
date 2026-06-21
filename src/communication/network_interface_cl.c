@@ -5922,6 +5922,7 @@ update_histogram_for_all_classes (void)
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
     {
+      AU_RESTORE (save);
       return ER_FAILED;
     }
 
