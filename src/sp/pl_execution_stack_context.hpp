@@ -37,6 +37,10 @@
 #include "mem_block.hpp"
 #include "packer.hpp"
 
+#if defined (SERVER_MODE)
+#include "thread_manager.hpp"
+#endif
+
 #include "network_callback_sr.hpp"
 #include "method_struct_invoke.hpp"
 #include "pl_connection.hpp"
@@ -162,7 +166,17 @@ namespace cubpl
 	  return interrupt_handler ();
 	};
 
-	return conn->receive_buffer (b, &interrupt_func, 500);
+#if defined (SERVER_MODE)
+	auto *holder = thread_concurrency_slot_release (m_thread_p);
+#endif
+
+	int error = conn->receive_buffer (b, &interrupt_func, 500);
+
+#if defined (SERVER_MODE)
+	thread_concurrency_slot_acquire (m_thread_p, holder);
+#endif
+
+	return error;
       }
 
       void

@@ -622,4 +622,55 @@ thread_clear_all_holder_anchor (void)
   return cubthread::get_manager ()->clear_all_holder_anchor ();
 }
 
+#if defined (SERVER_MODE)
+inline cubthread::concurrency_slot_pool *
+thread_concurrency_slot_release (cubthread::entry *thread_p)
+{
+  cubthread::concurrency_slot_pool *holder = nullptr;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  thread_p->lock ();
+  if (!thread_p->m_slot)
+    {
+      thread_p->unlock ();
+      return nullptr;
+    }
+
+  std::unique_ptr<cubthread::concurrency_slot> slot = std::move (thread_p->m_slot);
+  thread_p->m_slot = nullptr;
+  thread_p->unlock ();
+
+  holder = slot->get_holder_pool ();
+  assert (holder);
+
+  slot->return_to_pool (std::move (slot));
+  return holder;
+}
+
+inline void
+thread_concurrency_slot_acquire (cubthread::entry *thread_p, cubthread::concurrency_slot_pool *holder)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (holder)
+    {
+      thread_p->lock ();
+      cubthread::entry::status old_status = thread_p->m_status;
+      thread_p->m_status = cubthread::entry::status::TS_WAIT;
+
+      holder->acquire_slot (thread_p);
+
+      thread_p->m_status = old_status;
+      thread_p->unlock ();
+    }
+}
+#endif
+
 #endif  // _THREAD_MANAGER_HPP_
