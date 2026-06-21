@@ -217,8 +217,8 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
-    CAS_FC_COPY_SEND_DATA,
-    CAS_FC_COPY_END,
+    CAS_FC_STREAM_SEND_DATA,	/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+    CAS_FC_STREAM_END,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -229,6 +229,11 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2 = 42
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
+
+/* Compatibility aliases: COPY was the first consumer of the stream transport.
+ * The function-code values are unchanged (wire-compatible). */
+#define CAS_FC_COPY_SEND_DATA CAS_FC_STREAM_SEND_DATA
+#define CAS_FC_COPY_END       CAS_FC_STREAM_END
 
   enum t_cas_protocol
   {

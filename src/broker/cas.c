@@ -117,8 +117,8 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
   fn_set_cas_change_mode,	/* CAS_FC_SET_CAS_CHANGE_MODE */
-  fn_copy_send_data,		/* CAS_FC_COPY_SEND_DATA */
-  fn_copy_end			/* CAS_FC_COPY_END */
+  fn_stream_send_data,		/* CAS_FC_STREAM_SEND_DATA */
+  fn_stream_end			/* CAS_FC_STREAM_END */
 };
 
 static const char *server_func_name[] = {
@@ -166,8 +166,8 @@ static const char *server_func_name[] = {
   "fn_cursor_close",
   "fn_get_shard_info",
   "fn_set_cas_change_mode",
-  "fn_copy_send_data",
-  "fn_copy_end"
+  "fn_stream_send_data",
+  "fn_stream_end"
 };
 
 

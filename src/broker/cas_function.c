@@ -2173,7 +2173,7 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 }
 
 FN_RETURN
-fn_copy_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   char *data = NULL;
   int data_len = 0;
@@ -2187,17 +2187,17 @@ fn_copy_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T
 
   net_arg_get_str (&data, &data_len, argv[0]);
 
-  ux_copy_send_data (data, data_len, net_buf);
+  ux_stream_send_data (data, data_len, net_buf);
 
   return FN_KEEP_CONN;
 }
 
 FN_RETURN
-fn_copy_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 {
   int err_code;
 
-  err_code = ux_copy_end (net_buf);
+  err_code = ux_stream_end (net_buf);
   if (err_code >= 0)
     {
       req_info->need_auto_commit = TRAN_AUTOCOMMIT;

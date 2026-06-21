@@ -11759,13 +11759,13 @@ file_delete_target_file (const char *target_vfid_str)
 #endif
 
 /*
- * copy_from_send_data () - Send a chunk of binary data to the COPY session
+ * stream_from_send_data () - Send a chunk of binary data to the COPY session
  *   return: error code
  *   data(in): binary data buffer
  *   data_len(in): length of data in bytes
  */
 int
-copy_from_send_data (const char *data, int data_len)
+stream_from_send_data (const char *data, int data_len)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11773,7 +11773,7 @@ copy_from_send_data (const char *data, int data_len)
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request (NET_SERVER_COPY_SEND_DATA, (char *) data, data_len, reply,
+  int req_error = net_client_request (NET_SERVER_STREAM_SEND_DATA, (char *) data, data_len, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {
@@ -11797,12 +11797,12 @@ copy_from_send_data (const char *data, int data_len)
 }
 
 /*
- * copy_from_end () - Finalize COPY session and retrieve row count
+ * stream_from_end () - Finalize COPY session and retrieve row count
  *   return: error code
  *   rows_loaded(out): number of rows successfully loaded
  */
 int
-copy_from_end (int *rows_loaded)
+stream_from_end (int *rows_loaded)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11810,7 +11810,7 @@ copy_from_end (int *rows_loaded)
   OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  int req_error = net_client_request (NET_SERVER_COPY_END, NULL, 0, reply,
+  int req_error = net_client_request (NET_SERVER_STREAM_END, NULL, 0, reply,
 				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
   if (!req_error)
     {

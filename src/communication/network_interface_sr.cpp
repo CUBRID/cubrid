@@ -12326,12 +12326,12 @@ reply:
 }
 
 /*
- * scopy_from_send_data () - Receive binary data chunk for COPY session
+ * sstream_send_data () - Receive binary data chunk for COPY session
  *   request format: raw binary data
  *   reply format: error_code (int)
  */
 void
-scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error_code = NO_ERROR;
 
@@ -12367,12 +12367,12 @@ scopy_from_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, i
 }
 
 /*
- * scopy_from_end () - Finalize COPY session and return row count
+ * sstream_end () - Finalize COPY session and return row count
  *   request format: (empty)
  *   reply format: error_code (int), rows_loaded (int)
  */
 void
-scopy_from_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error_code = NO_ERROR;
   int rows_loaded = 0;

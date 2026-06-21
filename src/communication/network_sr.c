@@ -708,13 +708,13 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = scopy_from_init;
 
-  req_p = &net_Requests[NET_SERVER_COPY_SEND_DATA];
+  req_p = &net_Requests[NET_SERVER_STREAM_SEND_DATA];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = scopy_from_send_data;
+  req_p->processing_function = sstream_send_data;
 
-  req_p = &net_Requests[NET_SERVER_COPY_END];
+  req_p = &net_Requests[NET_SERVER_STREAM_END];
   req_p->action_attribute = IN_TRANSACTION;
-  req_p->processing_function = scopy_from_end;
+  req_p->processing_function = sstream_end;
 
   /* checksumdb replication */
   req_p = &net_Requests[NET_SERVER_CHKSUM_REPL];

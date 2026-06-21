@@ -10259,11 +10259,11 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 }
 
 int
-ux_copy_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
 {
   int err_code;
 
-  err_code = copy_from_send_data (data, data_len);
+  err_code = stream_from_send_data (data, data_len);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10277,12 +10277,12 @@ ux_copy_send_data (char *data, int data_len, T_NET_BUF * net_buf)
 }
 
 int
-ux_copy_end (T_NET_BUF * net_buf)
+ux_stream_end (T_NET_BUF * net_buf)
 {
   int err_code;
   int rows_loaded = 0;
 
-  err_code = copy_from_end (&rows_loaded);
+  err_code = stream_from_end (&rows_loaded);
   if (err_code < 0)
     {
       errors_in_transaction++;

@@ -246,8 +246,8 @@ extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *sessi
 
 /* copy from stdin */
 extern void scopy_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scopy_from_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
-extern void scopy_from_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

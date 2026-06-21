@@ -22287,8 +22287,8 @@ pt_is_allowed_result_cache ()
  *
  * Note: Initializes the server-side COPY session by resolving the table
  *       and column types and calling copy_from_init(). Actual binary data
- *       transfer is handled by the CAS broker via copy_from_send_data()
- *       and copy_from_end().
+ *       transfer is handled by the CAS broker via stream_from_send_data()
+ *       and stream_from_end().
  */
 int
 do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
