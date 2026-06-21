@@ -7534,7 +7534,8 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
       if (statement)
 	{
 	  /* This enables authorization checking during methods in queries */
-	  AU_RESTORE (parser->au_save);
+	  int au_save = 0;
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select_for_ins_upd (parser, statement) < NO_ERROR)
@@ -7543,7 +7544,7 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 	      statement = NULL;
 	    }
 
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	}
     }
 
@@ -9285,6 +9286,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
+  int au_save = 0;
   const char *savepoint_name = NULL;
   bool savepoint_started = false;
 
@@ -9292,7 +9294,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. DON'T return from the body of this
    * function. Break out of the loop if necessary. */
-  AU_SAVE_AND_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   /* savepoint for statement atomicity */
   if ((statement != NULL && statement->next != NULL)
@@ -9363,7 +9365,7 @@ end:
     }
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. */
-  AU_RESTORE (parser->au_save);
+  AU_RESTORE (au_save);
 
   return result;
 }
@@ -10093,7 +10095,8 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
       if (statement)
 	{
 	  /* This enables authorization checking during methods in queries */
-	  AU_RESTORE (parser->au_save);
+	  int au_save = 0;
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select (parser, statement) < NO_ERROR)
@@ -10102,7 +10105,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
 	      statement = NULL;
 	    }
 
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	}
     }
 
@@ -10677,6 +10680,7 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
+  int au_save = 0;
   PT_NODE *spec;
   const char *savepoint_name = NULL;
 
@@ -10686,7 +10690,7 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
    *
    * DON'T return from the body of this function. Break out of the loop if necessary. */
 
-  AU_SAVE_AND_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   /* savepoint for statement atomicity */
   if (statement != NULL && statement->next != NULL)
@@ -10753,7 +10757,7 @@ end:
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. */
 
-  AU_RESTORE (parser->au_save);
+  AU_RESTORE (au_save);
 
   return result;
 }
@@ -13935,8 +13939,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
+  /* DO NOT RETURN UNTIL AFTER AU_RESTORE! */
   AU_SAVE_AND_DISABLE (save);
-  parser->au_save = save;
 
   if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
     {
@@ -14573,7 +14577,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
-  int prev_parser_au_save;
   QUERY_FLAG query_flag;
   XASL_STREAM stream;
   bool query_trace = false;
@@ -14591,8 +14594,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
     }
 
   AU_SAVE_AND_DISABLE (save);
-  prev_parser_au_save = parser->au_save;
-  parser->au_save = save;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -14731,7 +14732,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
 
-  parser->au_save = prev_parser_au_save;
   AU_RESTORE (save);
   return error;
 }
@@ -16801,7 +16801,6 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_xasl_stream (&stream);
 
   AU_SAVE_AND_DISABLE (save);
-  parser->au_save = save;
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -17207,6 +17206,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   int result = 0;
+  int au_save = 0;
+  int outer_au_save = 0;
   bool insert_only = false;
   PT_NODE *copy_assigns, *save_assigns;
 
@@ -17225,7 +17226,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto exit;
     }
 
-  AU_SAVE_AND_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (outer_au_save);
 
   if (pt_false_where (parser, statement))
     {
@@ -17307,9 +17308,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.assignment, links, -1);
 
-	  AU_RESTORE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	  if (upd_select_stmt == NULL)
 	    {
 	      err = er_errid ();
@@ -17358,9 +17359,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (err >= NO_ERROR && (values_list = statement->info.merge.insert.value_clauses) != NULL)
 	{
 	  ins_select_stmt = pt_to_merge_insert_query (parser, values_list->info.node_list.list, &statement->info.merge);
-	  AU_RESTORE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (ins_select_stmt == NULL)
 	    {
@@ -17376,7 +17377,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_select_stmt->etc = NULL;
 
 	  /* enable authorization checking during methods in queries */
-	  AU_RESTORE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
@@ -17384,7 +17385,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (err < NO_ERROR)
 	    {
@@ -17432,7 +17433,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* enable authorization checking during methods in queries */
-	  AU_RESTORE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
@@ -17440,7 +17441,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  upd_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
-	  AU_SAVE_AND_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (err < NO_ERROR)
 	    {
@@ -17592,7 +17593,7 @@ exit:
       (void) db_abort_to_savepoint (savepoint_name);
     }
 
-  AU_RESTORE (parser->au_save);
+  AU_RESTORE (outer_au_save);
 
   return (err < NO_ERROR) ? err : result;
 }
