@@ -78,7 +78,9 @@
 
 #define TEMP_SETUP_COST 5.0
 #define QO_CPU_WEIGHT 0.0025
-#define ISCAN_OID_ACCESS_OVERHEAD 20	/* need to be adjusted */
+/* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
+ * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
+#define ISCAN_OID_ACCESS_OVERHEAD 5
 #define MJ_CPU_OVERHEAD_FACTOR 20
 #define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
@@ -232,6 +234,7 @@ static QO_PLAN *qo_combine_partitions (QO_PLANNER *, BITSET *);
 static int qo_generate_join_index_scan (QO_INFO *, JOIN_TYPE, QO_PLAN *, QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *,
 					BITSET *, BITSET *, BITSET *, BITSET *);
 static void qo_generate_seq_scan (QO_INFO *, QO_NODE *);
+static bool qo_node_using_index_forced (QO_NODE *);
 static int qo_generate_index_scan (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, int);
 static int qo_generate_loose_index_scan (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *);
 static int qo_generate_sort_limit_plan (QO_ENV *, QO_INFO *, QO_PLAN *);
@@ -8566,6 +8569,41 @@ qo_is_seq_scan (QO_PLAN * plan)
 }
 
 /*
+ * qo_node_using_index_forced () - check whether the node carries an explicit
+ *   USE INDEX / FORCE INDEX directive that points at a specific index
+ *   return: true if a positive index hint (USE or FORCE) is present
+ *   nodep(in): pointer to QO_NODE (node in the join graph)
+ *
+ * Note: IGNORE INDEX, USING INDEX ALL EXCEPT and USING INDEX NONE are not
+ *   positive directives and return false. Used to decide whether the
+ *   sequential scan plan may be skipped for a hinted node (CBRD-26906).
+ */
+static bool
+qo_node_using_index_forced (QO_NODE * nodep)
+{
+  QO_USING_INDEX *uip;
+  int j;
+
+  uip = QO_NODE_USING_INDEX (nodep);
+  if (uip == NULL)
+    {
+      return false;
+    }
+
+  for (j = 0; j < QO_UI_N (uip); j++)
+    {
+      int hint = QO_UI_FORCE (uip, j);
+
+      if (hint == PT_IDX_HINT_USE || hint == PT_IDX_HINT_FORCE)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_generate_seq_scan () - Generates sequential scan plan
  *   return: nothing
  *   infop(in): pointer to QO_INFO (environment info node which holds plans)
@@ -8870,7 +8908,7 @@ qo_search_planner (QO_PLANNER * planner)
   BITSET seg_terms;
   BITSET nodes, subqueries, remaining_subqueries;
   int join_info_bytes;
-  int n;
+  int n, normal_index_plan_n;
   int start_column = 0;
   PT_NODE *tree = NULL;
   bool special_index_scan = false;
@@ -9007,6 +9045,8 @@ qo_search_planner (QO_PLANNER * planner)
        *  There is no purpose looking for index scans for a node without
        *  indexes so skip the search in this case.
        */
+      normal_index_plan_n = 0;
+
       if (node_index != NULL)
 	{
 	  bitset_init (&seg_terms, planner->env);
@@ -9053,6 +9093,7 @@ qo_search_planner (QO_PLANNER * planner)
 		  assert (nsegs > 0);
 
 		  n = qo_generate_index_scan (info, node, ni_entry, nsegs);
+		  normal_index_plan_n += n;
 		}
 	      else if (index_entry->constraints->filter_predicate && index_entry->force > 0)
 		{
@@ -9068,12 +9109,14 @@ qo_search_planner (QO_PLANNER * planner)
 		    qo_check_plan_on_info (info,
 					   qo_index_scan_new (info, node, ni_entry, QO_SCANMETHOD_INDEX_SCAN,
 							      &seg_terms, NULL));
+		  normal_index_plan_n += n;
 		}
 	      else if (index_entry->ils_prefix_len > 0)
 		{
 		  assert (bitset_is_empty (&seg_terms));
 
 		  n = qo_generate_loose_index_scan (info, node, ni_entry);
+		  normal_index_plan_n += n;
 		}
 	      else
 		{
@@ -9115,14 +9158,35 @@ qo_search_planner (QO_PLANNER * planner)
 					       qo_index_scan_new (info, node, ni_entry,
 								  QO_SCANMETHOD_INDEX_ORDERBY_SCAN, &seg_terms, NULL));
 		    }
+
+		  /* CBRD-26906: an interesting-order (group-by / order-by skip) index
+		   * scan also means the hinted index is usable, so a positive index
+		   * hint that only provides ordering (no key-range) still suppresses
+		   * the sequential scan below. */
+		  normal_index_plan_n += n;
 		}
 	    }
 
 	  bitset_delset (&seg_terms);
 	}
 
-      /* Create a sequential scan plan for each node. */
-      qo_generate_seq_scan (info, node);
+      /* Create a sequential scan plan for each node.
+       *
+       * CBRD-26906: When the user explicitly directs an index with USE/FORCE
+       * INDEX and an index scan plan was generated for this node (a normal,
+       * filter, loose, or interesting-order group-by/order-by skip scan), skip
+       * the sequential scan so the cost model cannot override the hint. (Before
+       * CBRD-24044 the sequential scan was skipped whenever any normal index plan
+       * existed; here that skip is restricted to the explicitly hinted case.)
+       */
+      if (normal_index_plan_n > 0 && qo_node_using_index_forced (node))
+	{
+	  ;			/* honor the index hint; no sequential scan */
+	}
+      else
+	{
+	  qo_generate_seq_scan (info, node);
+	}
 
       if (QO_ENV_USE_SORT_LIMIT (planner->env) && QO_NODE_SORT_LIMIT_CANDIDATE (node))
 	{

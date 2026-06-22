@@ -8077,6 +8077,9 @@ loop:
 
   LOG_CS_ENTER (thread_p);
 
+  /* Flush before selecting archive logs. This may create a new archive and advance nxarv_num. */
+  logpb_flush_pages_direct (thread_p);
+
 #if defined(SERVER_MODE)
   /*
    * Determine the first log archive that will be needed to insure
