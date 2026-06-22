@@ -3779,22 +3779,12 @@ pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 
   for (attribute = attribute_list; attribute != NULL; attribute = attribute->next)
     {
-      PT_NODE *real_node = PT_IS_POINTER_REF_NODE (attribute) ? attribute->info.pointer.node : attribute;
       // init regu
       regu_alloc (dbval_list);
-
-      if (PT_IS_POINTER_REF_NODE (attribute))
-	{
-	  assert (attribute->etc != NULL);
-	  dbval_list->val = (DB_VALUE *) attribute->etc;
-	}
-      else
-	{
-	  regu_alloc (dbval_list->val);
-	}
+      regu_alloc (dbval_list->val);
       // init value with expected type
-      pt_data_type_init_value (real_node, dbval_list->val);
-      dbval_list->dom = pt_xasl_node_to_domain (parser, real_node);
+      pt_data_type_init_value (attribute, dbval_list->val);
+      dbval_list->dom = pt_xasl_node_to_domain (parser, attribute);
 
       value_list->val_cnt++;
       (*dbval_list_tail) = dbval_list;
@@ -4058,7 +4048,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
-	      arg_list = parser_walk_tree (parser, arg_list, NULL, NULL, pt_substitute_groupby_ref_post, info);
 
 	      regu_constant_list =
 		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
@@ -4793,12 +4782,6 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 	      info.flag_agg_optimize = true;
 	    }
 	}
-    }
-
-  if (out_list != NULL && value_list != NULL && regu_list != NULL)
-    {
-      (void) parser_walk_tree (parser, out_names, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
-      (void) parser_walk_tree (parser, select_list, pt_substitute_groupby_ref_pre, &info, NULL, NULL);
     }
 
   select_node->info.query.q.select.list =
@@ -9845,7 +9828,6 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 {
   REGU_VARIABLE_LIST regu_list = NULL;
   REGU_VARIABLE_LIST *tail = NULL;
-  TP_DOMAIN *domain = NULL;
   PT_NODE *node;
   int i = 0;
 
@@ -9859,14 +9841,7 @@ pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
        * regu variable and regu_variable_list bizarreness. */
       if (*tail)
 	{
-	  if (PT_IS_POINTER_REF_NODE (node))
-	    {
-	      domain = pt_xasl_node_to_domain (parser, node->info.pointer.node);
-	    }
-	  else
-	    {
-	      domain = pt_xasl_node_to_domain (parser, node);
-	    }
+	  TP_DOMAIN *domain = pt_xasl_node_to_domain (parser, node);
 
 	  (*tail)->value.type = TYPE_POSITION;
 	  (*tail)->value.domain = domain;
@@ -27676,13 +27651,11 @@ static PT_NODE *
 pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   PT_FUNCTION_INFO *func_info_p = NULL;
-  PT_NODE *sort_spec = NULL, *arg_list = NULL;
+  PT_NODE *sort_spec = NULL;
 
   assert (parser != NULL && node != NULL && node->node_type == PT_FUNCTION);
 
   func_info_p = &node->info.function;
-  arg_list =
-    PT_IS_POINTER_REF_NODE (func_info_p->arg_list) ? func_info_p->arg_list->info.pointer.node : func_info_p->arg_list;
   assert (!func_info_p->analytic.is_analytic);
 
   if (func_info_p->function_type == PT_GROUP_CONCAT || func_info_p->function_type == PT_CUME_DIST
@@ -27695,10 +27668,10 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 	   && func_info_p->order_by != NULL && func_info_p->order_by->info.sort_spec.pos_descr.pos_no == 0)
     {
       func_info_p->order_by->info.sort_spec.pos_descr.pos_no = 1;
-      func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, arg_list);
+      func_info_p->order_by->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
     }
-  else if (func_info_p->function_type == PT_MEDIAN && arg_list != NULL
-	   && !PT_IS_CONST (arg_list) && func_info_p->order_by == NULL)
+  else if (func_info_p->function_type == PT_MEDIAN && func_info_p->arg_list != NULL
+	   && !PT_IS_CONST (func_info_p->arg_list) && func_info_p->order_by == NULL)
     {
       /* generate the sort spec for median */
       sort_spec = parser_new_node (parser, PT_SORT_SPEC);
@@ -27718,7 +27691,7 @@ pt_fix_interpolation_aggregate_function_order_by (PARSER_CONTEXT * parser, PT_NO
 	}
 
       sort_spec->info.sort_spec.pos_descr.pos_no = 1;
-      sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, arg_list);
+      sort_spec->info.sort_spec.pos_descr.dom = pt_xasl_node_to_domain (parser, func_info_p->arg_list);
 
       func_info_p->order_by = sort_spec;
     }
