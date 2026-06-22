@@ -948,10 +948,9 @@ er_init (const char *msglog_filename, int exit_ask)
 	  msg = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_INTERNAL, i);
 	  if (msg && *msg)
 	    {
-	      tmp = (char *) malloc (std::strlen (msg) + 1);
+	      tmp = strdup (msg);
 	      if (tmp)
 		{
-		  strcpy (tmp, msg);
 		  er_Cached_msg[i] = tmp;
 		}
 	    }
