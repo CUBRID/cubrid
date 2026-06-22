@@ -130,8 +130,13 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 
   /* All participants XA-prepared and removed from dblink_entry.  Commit and disconnect any
    * remaining non-participant (SELECT-only) entries and reset is_dblink_autocommit.
-   * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point. */
-  qmgr_dblink_clear_conn_entry (thread_p, true);
+   * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point.
+   * If SELECT-only remote commit fails, force abort: _db_global_tran has not yet been
+   * updated and participants can still be rolled back. */
+  if (qmgr_dblink_clear_conn_entry (thread_p, true) != NO_ERROR)
+    {
+      return false;
+    }
   return true;
 }
 
@@ -163,7 +168,10 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
 #endif
     }
 
-  qmgr_dblink_clear_conn_entry (thread_p, is_commit);
+  /* Commit/abort and disconnect any remaining non-participant (SELECT-only) entries.
+   * The decision has already been delivered to participants; cleanup errors are
+   * logged inside dblink_end_tran but cannot change the outcome here. */
+  (void) qmgr_dblink_clear_conn_entry (thread_p, is_commit);
 }
 
 void

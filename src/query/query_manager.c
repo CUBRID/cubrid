@@ -3972,11 +3972,12 @@ qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p, bool * is_autocommit)
   return tran_entry_p->dblink_entry;
 }
 
-void
+int
 qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  int rc = NO_ERROR;
 
   tran_entry_p->is_dblink_autocommit = true;
 
@@ -3984,9 +3985,11 @@ qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
     {
       /* End and disconnect remaining entries (typically non-participant SELECT-only
        * connections left after dblink_2pc_send_prepare removed participant entries). */
-      dblink_end_tran (tran_entry_p->dblink_entry, !is_commit);
+      rc = dblink_end_tran (tran_entry_p->dblink_entry, !is_commit);
       tran_entry_p->dblink_entry = NULL;
     }
+
+  return rc;
 }
 
 /*
