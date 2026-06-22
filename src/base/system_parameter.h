@@ -531,8 +531,6 @@ enum param_id
 
   PRM_ID_LOG_POSTPONE_CACHE_SIZE,
 
-  PRM_ID_ENABLE_HEAP_FIXED_SCAN,
-
   /* change PRM_LAST_ID when adding new system parameters */
   PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
 
