@@ -3909,7 +3909,8 @@ error:
 }
 
 /*
- * fetch_peek_dbval () - returns a POINTER to an existing db_value
+ * fetch_peek_dbval_slow () - full fetch path for every regu_var type; the hot cached-attribute case is
+ *                            served by the inline fetch_peek_dbval () wrapper in fetch.h.
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable
  *   vd(in): Value Descriptor
@@ -3920,8 +3921,8 @@ error:
  *
  */
 int
-fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
-		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
+fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid,
+		       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
   const PR_TYPE *pr_type;
@@ -4521,6 +4522,19 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+
+  /* flag a stable regu_var (cached attr/literal/pos/const) so inline fetch_peek_dbval () peeks it directly */
+  if ((((regu_var->type == TYPE_ATTR_ID || regu_var->type == TYPE_SHARED_ATTR_ID
+	 || regu_var->type == TYPE_CLASS_ATTR_ID) && regu_var->value.attr_descr.cache_dbvalp != NULL)
+       || regu_var->type == TYPE_DBVAL || regu_var->type == TYPE_POS_VALUE
+       || (regu_var->type == TYPE_CONSTANT && regu_var->xasl == NULL && regu_var->value.dbvalptr != NULL))
+      && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION)
+      && regu_var->domain != NULL
+      && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE
+      && TP_DOMAIN_COLLATION_FLAG (regu_var->domain) == TP_DOMAIN_COLL_NORMAL)
+    {
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
+    }
 
   return NO_ERROR;
 
