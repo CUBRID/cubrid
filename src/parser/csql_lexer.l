@@ -1424,17 +1424,19 @@ _[uU][tT][fF]8[']		{
 
 <LINE_HINT>{
         [^\n]+   { csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext);  }
-        "\n"     {
+        "\n"    |
+        <<EOF>>  {
                      BEGIN(INITIAL);
                      if (parser_check_hint (csql_yylval.cptr))
                         {
 			  return SQL_HINT;
                         }
-                 }
+                  }
           }
 <LINE_COMMENT>{
         [^\n]    { /* no action */; }
-        "\n"     { BEGIN(INITIAL);  }
+        "\n"    |
+        <<EOF>>  { BEGIN(INITIAL);  }
              }
 
 \xa1\xef				{ return YEN_SIGN; }
