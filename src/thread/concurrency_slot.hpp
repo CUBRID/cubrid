@@ -176,6 +176,8 @@ namespace cubthread
       std::mutex *m_mutex;
 
       void check_surplus_slots ();
+      void wakeup_workers (std::unique_lock<std::mutex> &ulock);
+      bool has_queued_task (std::unique_lock<std::mutex> &ulock);
   };
 
   // concurrency_slot_daemon

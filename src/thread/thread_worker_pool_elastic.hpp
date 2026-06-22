@@ -123,6 +123,7 @@ namespace cubthread
 
       // execute task
       void execute_task (task_type *task_p) override;
+      bool has_queued_task (std::unique_lock<std::mutex> &ulock);
 
       // concurrency slot interface
       void release_slot (unique_slot slot);
@@ -462,6 +463,15 @@ namespace cubthread
 
     // enqueue the task until a slot is available
     this->m_task_queue.push_back (std::move (task_ref));
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_elastic<Stats>::core_elastic::has_queued_task (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    return !this->m_task_queue.empty ();
   }
 
   template <stats_t Stats>

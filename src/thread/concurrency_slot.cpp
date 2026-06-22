@@ -443,6 +443,7 @@ namespace cubthread
       {
 	if (m_wait_queue.empty ())
 	  {
+	    // store the slot
 	    m_available_slots.emplace (std::move (slot));
 	    break;
 	  }
@@ -483,11 +484,13 @@ namespace cubthread
 
     std::unique_lock<std::mutex> ulock (*m_mutex);
 
-    if ((m_available_slots.empty () && !m_wait_queue.empty ()) ||
+    if (has_queued_task (ulock) ||
+	(m_available_slots.empty () && !m_wait_queue.empty ()) ||
 	(slot->m_owner_pool == this && m_slot_count > m_target_count) ||
 	force)
       {
 	release_slot (std::move (slot), ulock);
+	wakeup_workers (ulock);
 
 	return nullptr;
       }
@@ -560,6 +563,38 @@ namespace cubthread
       {
 	m_surplus = false;
       }
+  }
+
+  void
+  concurrency_slot_pool::wakeup_workers (std::unique_lock<std::mutex> &ulock)
+  {
+    // wake the workers up if there are available slots
+    auto *base = static_cast<worker_pool::core *> (const_cast<void *> (m_parent));
+    if (dynamic_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base))
+      {
+	static_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base)->adjust_workers (ulock);
+      }
+    else if (dynamic_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base))
+      {
+	static_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base)->adjust_workers (ulock);
+      }
+  }
+
+  bool
+  concurrency_slot_pool::has_queued_task (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    auto *base = static_cast<worker_pool::core *> (const_cast<void *> (m_parent));
+    if (dynamic_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base))
+      {
+	return static_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base)->has_queued_task (ulock);
+      }
+    else if (dynamic_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base))
+      {
+	return static_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base)->has_queued_task (ulock);
+      }
+    return false;
   }
 
   //////////////////////////////////////////////////////////////////////////
