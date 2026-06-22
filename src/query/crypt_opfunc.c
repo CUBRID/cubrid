@@ -1267,6 +1267,7 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
   unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
   struct timeval check_time = { 0, 0 };
   struct tm tm_buf;
+  time_t sec;
   char empty_str[4] = { 0x00, };
 
   if (cipher_buf == NULL)
@@ -1301,7 +1302,8 @@ crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_
   length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
   passwd = confused;
 
-  if (localtime_r ((time_t *) & check_time.tv_sec, &tm_buf) == NULL)
+  sec = (time_t) check_time.tv_sec;
+  if (localtime_r (&sec, &tm_buf) == NULL)
     {
       sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
     }

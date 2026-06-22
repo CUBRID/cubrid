@@ -2227,10 +2227,16 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
 
-  if (tran_entry_p->is_dblink_autocommit)
+  /*
+   * End DBLink connections when:
+   *   (a) is_abort=true  - rollback ALL entries unconditionally; XA-prepare will not occur.
+   *   (b) is_abort=false, is_dblink_autocommit=true - commit SELECT-only entries (no 2PC participants).
+   * Skip when is_abort=false and is_dblink_autocommit=false: DML participants are committed
+   * through the 2PC path (dblink_2pc_send_prepare -> dblink_2pc_end_tran).
+   */
+  if (tran_entry_p->dblink_entry != NULL && (is_abort || tran_entry_p->is_dblink_autocommit))
     {
       int rc = dblink_end_tran (tran_entry_p->dblink_entry, is_abort);
-
 
       if (rc == ER_DBLINK_TRAN)
 	{
@@ -2245,6 +2251,7 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
 	}
 
       tran_entry_p->dblink_entry = NULL;
+      tran_entry_p->is_dblink_autocommit = true;
     }
 
   return status;
