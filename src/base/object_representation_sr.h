@@ -115,6 +115,7 @@ struct or_attribute
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
   unsigned is_invisible:1;	/* non-zero if att is invisible col */
+  unsigned oos_prefer_inline:1;	/* non-zero if att prefers inline storage (lower OOS demotion priority) */
 
   // Notice: Be sure to place "auto_increment" at the end of the structure.
   or_auto_increment auto_increment;

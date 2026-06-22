@@ -815,6 +815,9 @@ IDL       [a-zA-Z0-9_]
 										return PORT; }
 [pP][oO][sS][iI][tT][iI][oO][nN]					{ begin_token(yytext);   return POSITION; }
 [pP][rR][eE][cC][iI][sS][iI][oO][nN]					{ begin_token(yytext);   return PRECISION; }
+[pP][rR][eE][fF][eE][rR][_][iI][nN][lL][iI][nN][eE]			{ begin_token(yytext);
+											csql_yylval.cptr = pt_makename(yytext);
+											return PREFER_INLINE; }
 [pP][rR][eE][pP][aA][rR][eE]						{ begin_token(yytext);   return PREPARE; }
 [pP][rR][eE][sS][eE][rR][vV][eE]					{ begin_token(yytext);   return PRESERVE; }
 [pP][rR][iI][mM][aA][rR][yY]						{ begin_token(yytext);   return PRIMARY; }
@@ -1006,6 +1009,9 @@ IDL       [a-zA-Z0-9_]
 [sS][tT][dD][dD][eE][vV][_][sS][aA][mM][pP]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return STDDEV_SAMP; }
+[sS][tT][oO][rR][aA][gG][eE]						{ begin_token(yytext);
+									csql_yylval.cptr = pt_makename(yytext);
+									return STORAGE; }
 [sS][tT][rR][_][tT][oO][_][dD][aA][tT][eE]				{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return STR_TO_DATE; }
