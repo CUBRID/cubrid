@@ -2903,7 +2903,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while ((scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -12097,6 +12097,10 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 
       while (true)
 	{
+	  OID prev_oid;
+
+	  COPY_OID (&prev_oid, &oid);
+
 	  if (instance_lock && (*instance_lock != NULL_LOCK))
 	    {
 	      int lock_result = 0;
@@ -12128,6 +12132,14 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		heap_get_visible_version_expand_oos (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
 		{
+		  if (scan == S_DOESNT_FIT)
+		    {
+		      if (mobjs->num_objs == 0)
+			{
+			  COPY_OID (&oid, &prev_oid);
+			}
+		      break;
+		    }
 		  (*nfailed_instance_locks)++;
 		  continue;
 		}
@@ -12135,7 +12147,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	    }
 	  else
 	    {
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	      scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
 	      if (scan != S_SUCCESS)
 		{
 		  break;

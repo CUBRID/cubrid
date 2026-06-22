@@ -244,10 +244,16 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   RECDES *rec = context->recdes_p;
   const int dst_offset_size = BIG_VAR_OFFSET_SIZE;
 
-  const bool need_realloc = (context->ispeeking == PEEK) || (rec->area_size < state->new_length);
+  const bool need_copy_realloc = (rec->area_size < state->new_length);
+  const bool need_realloc = (context->ispeeking == PEEK) || need_copy_realloc;
   if (need_realloc)
     {
       if (context->scan_cache == NULL)
+	{
+	  rec->length = - (state->new_length);
+	  return S_DOESNT_FIT;
+	}
+      if (context->ispeeking != PEEK && need_copy_realloc && context->data_externally_positioned)
 	{
 	  rec->length = - (state->new_length);
 	  return S_DOESNT_FIT;
