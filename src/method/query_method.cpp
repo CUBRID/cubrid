@@ -125,8 +125,9 @@ method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 
   if (error == NO_ERROR)
     {
-      xs_set_conn_info (depth - 1, rc);
+      xs_set_method_eid (depth - 1, rc);
       error = method_dispatch_internal (unpacker);
+      xs_set_method_eid (depth - 1, 0);
     }
 
   tran_end_libcas_function ();
@@ -147,8 +148,9 @@ method_error (unsigned int rc, int error_id)
   int error = NO_ERROR;
   tran_begin_libcas_function();
   int depth = tran_get_libcas_depth ();
-  xs_set_conn_info (depth - 1, rc);
+  xs_set_method_eid (depth - 1, rc);
   error = xs_send_queue (METHOD_ERROR, error_id);
+  xs_set_method_eid (depth - 1, 0);
   tran_end_libcas_function();
   return error;
 }
