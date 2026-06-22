@@ -21,6 +21,7 @@
  */
 
 #include "concurrency_slot.hpp"
+#include "connection_globals.h"
 #include "thread_manager.hpp"
 #include "server_support.h"
 #include "system_parameter.h"
@@ -752,22 +753,10 @@ namespace cubthread
       std::size_t &max_request_worker)
   {
     std::size_t core_count = system_core_count ();
-    std::size_t max_clients = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
-    std::size_t clamp_min = max_clients < core_count ? core_count : max_clients;
+    std::size_t max_client_count = CSS_MAX_CLIENT_COUNT;
 
-    if (max_request_concurrency > max_clients)
-      {
-	max_request_concurrency = clamp_min;
-      }
-    if (max_request_concurrency < core_count)
-      {
-	max_request_concurrency = core_count;
-      }
-
-    if (max_request_worker > max_clients)
-      {
-	max_request_worker = clamp_min;
-      }
+    max_request_concurrency = std::min (std::max (max_request_concurrency, core_count), max_client_count);
+    max_request_worker = std::min (std::max (max_request_worker, core_count), max_client_count);
     if (max_request_worker < max_request_concurrency)
       {
 	max_request_worker = max_request_concurrency;
