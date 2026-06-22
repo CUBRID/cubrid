@@ -3904,6 +3904,7 @@ qmgr_dblink_find_conn_handle (THREAD_ENTRY * thread_p, char *conn_url, char *use
 	  if (set_participant)
 	    {
 	      dblink->is_2pc_participant = set_participant;
+	      tran_entry_p->is_dblink_autocommit = false;
 	    }
 	  conn_handle = dblink->conn_info.conn_handle;
 	  break;
