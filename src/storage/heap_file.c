@@ -25521,9 +25521,10 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
    * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through 
    * the heap_get_visible_version_internal() function.
    */
-  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
+  if (peeked_recdes->type == REC_HOME && (ispeeking == PEEK || ispeeking == COPY))
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+      bool shortcut_visible = false;
 
       assert (scan_cache != NULL);
       assert (recdes != NULL);
@@ -25541,27 +25542,51 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  assert (OID_EQ (class_oid, &scan_cache->node.class_oid));
 	  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
 	    {
-	      *recdes = *peeked_recdes;
-	      return scan;
+	      shortcut_visible = true;
 	    }
-	  if (!scan_cache->mvcc_disabled_class)
+	  else if (!scan_cache->mvcc_disabled_class)
 	    {
-	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL
+		  && scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+							      scan_cache->mvcc_snapshot) == SNAPSHOT_SATISFIED)
 		{
-		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
-		      SNAPSHOT_SATISFIED)
-		    {
-		      *recdes = *peeked_recdes;
-		      return scan;
-		    }
+		  shortcut_visible = true;
 		}
 	    }
 	  else
 	    {
 	      /* mvcc_disabled_class */
+	      shortcut_visible = true;
+	    }
+	}
+
+      if (shortcut_visible)
+	{
+	  if (ispeeking == PEEK)
+	    {
+	      /* recdes may point directly into the still-latched page */
 	      *recdes = *peeked_recdes;
 	      return scan;
 	    }
+
+	  /* COPY: the scan still holds the page (the caller sets cache_last_fix_page before this call), so copy the
+	   * already-peeked REC_HOME record straight into recdes. This skips heap_(init|prepare|clean)_get_context and,
+	   * in particular, avoids re-fixing the home page (pgbuf_ordered_fix / pgbuf_replace_watcher) that the scan
+	   * already has fixed. Per-row latch behavior is unchanged. */
+	  if (recdes->data == NULL
+	      && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache, recdes, DB_PAGESIZE * 2) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return S_ERROR;
+	    }
+	  if (peeked_recdes->length <= recdes->area_size)
+	    {
+	      memcpy (recdes->data, peeked_recdes->data, peeked_recdes->length);
+	      recdes->length = peeked_recdes->length;
+	      recdes->type = peeked_recdes->type;
+	      return scan;
+	    }
+	  /* recdes buffer too small (not expected for a single-page REC_HOME): fall through to the full path. */
 	}
       /* fall through.. */
     }
