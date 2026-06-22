@@ -12230,7 +12230,11 @@ pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)
 
   for (int i = 0; i < cols->get_attr_size (); i++)
     {
-      if (intl_identifier_casecmp (cols->get_name (i), col_name) == 0)
+      /* Match the DBLink column-name comparison used elsewhere (pt_mk_attr_def_node /
+       * pt_remake_dblink_select_list): the parse-tree column name may be a quoted
+       * identifier, so use the _for_dblink variant (dblink name first) to strip quotes;
+       * a plain casecmp would miss quoted keys and fall back to the declared codeset. */
+      if (intl_identifier_casecmp_for_dblink (col_name, cols->get_name (i)) == 0)
 	{
 	  return cols->get_attr (i)->charset;
 	}
