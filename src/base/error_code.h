@@ -1759,7 +1759,13 @@
 
 #define ER_SM_ATT_AT_LEAST_ONE_VISIBLE              -1371
 
-#define ER_LAST_ERROR                               -1372
+#define ER_METHOD_CALLBACK                          -1372
+
+#define ER_INVALID_SCALE                            -1373
+
+#define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
+
+#define ER_LAST_ERROR                               -1375
 
 
 

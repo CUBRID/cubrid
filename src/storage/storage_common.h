@@ -810,6 +810,10 @@ typedef enum
   T_LOB_LENGTH,
   T_TYPEOF,
   T_INDEX_CARDINALITY,
+  T_ESTIMATED_TABLE_ROWS,
+  T_ESTIMATED_AVG_ROW_LENGTH,
+  T_ESTIMATED_DATA_LENGTH,
+  T_ESTIMATED_DATA_FREE,
   T_EVALUATE_VARIABLE,
   T_DEFINE_VARIABLE,
   T_PREDICATE,
@@ -850,6 +854,7 @@ typedef enum
   T_CURRENT_DATE,
   T_CURRENT_TIME,
   T_CONV_TZ,
+  T_COLLECTION_TO_STRING,
 } OPERATOR_TYPE;		/* arithmetic operator types */
 
 /************************************************************************/

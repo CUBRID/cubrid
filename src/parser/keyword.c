@@ -659,6 +659,10 @@ static FUNCTION_MAP functions[] = {
   {0, "degrees", PT_DEGREES},
   {0, "drand", PT_DRAND},
   {0, "drandom", PT_DRANDOM},
+  {0, "estimated_table_rows", PT_ESTIMATED_TABLE_ROWS},
+  {0, "estimated_avg_row_length", PT_ESTIMATED_AVG_ROW_LENGTH},
+  {0, "estimated_data_length", PT_ESTIMATED_DATA_LENGTH},
+  {0, "estimated_data_free", PT_ESTIMATED_DATA_FREE},
   {0, "exec_stats", PT_EXEC_STATS},
   {0, "exp", PT_EXP},
   {0, "field", PT_FIELD},
@@ -771,6 +775,7 @@ static FUNCTION_MAP functions[] = {
   {0, "crc32", PT_CRC32},
   {0, "schema_def", PT_SCHEMA_DEF},
   {0, "conv_tz", PT_CONV_TZ},
+  {0, "collection_to_string", PT_COLLECTION_TO_STRING},
 };
 
 

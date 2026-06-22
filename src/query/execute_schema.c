@@ -20,6 +20,7 @@
  * execute_schema.c
  */
 
+#include "error_code.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -61,6 +62,7 @@
 #include "dbtype.h"
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
+#include "histogram_cl.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -141,6 +143,8 @@ enum
   ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG = 0x2000,
   /* type : upgrade : not supported */
   ATT_CHG_TYPE_NOT_SUPPORTED = 0x4000,
+  /* type : numeric precision increase (scale unchanged) : numeric(5,2) -> numeric(10,2) - domain cast only */
+  ATT_CHG_TYPE_NUMERIC_PREC_INCR = 0x8000,
   /* property was not checked needs to be the highest value in enum */
   ATT_CHG_PROPERTY_NOT_CHECKED = 0x10000
 };
@@ -266,6 +270,7 @@ static int do_alter_change_default_cs_coll (PARSER_CONTEXT * const parser, PT_NO
 
 static int do_alter_change_tbl_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
 static int do_alter_change_col_comment (PARSER_CONTEXT * const parser, PT_NODE * const alter);
+static int do_cache_empty_histogram (MOP class_obj);
 
 static int do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
 				      PT_NODE * old_name_node, PT_NODE * constraints, SM_ATTR_PROP_CHG * attr_chg_prop,
@@ -1585,6 +1590,15 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const al
   assert (alter_code == PT_RENAME_ENTITY);
   assert (alter->info.alter.super.resolution_list == NULL);
 
+  const char *old_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+  const char *new_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.alter_clause.rename.new_name);
+
+  if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error_code, ER_SM_RENAME_CANT_ALTER_OWNER);
+      goto error_exit;
+    }
+
   error_code = do_rename_internal (old_name, new_name);
   if (error_code != NO_ERROR)
     {
@@ -1792,7 +1806,8 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *crt_clause = NULL;
   bool do_semantic_checks = false;
   bool do_rollback = false;
-
+  int au_save = 0;
+  DB_OBJECT *histogram_obj = NULL;
   CHECK_MODIFICATION_ERROR ();
 
   /* Multiple alter operations in a single statement need to be atomic. */
@@ -1824,7 +1839,131 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  assert (crt_result == crt_clause);
 	}
+      AU_DISABLE (au_save);
+      /* HANDLE HISTOGRAM DROP WHILE COLUMN MODIFY, CHANGE, RENAME, DROP */
+      switch (alter_code)
+	{
+	case PT_DROP_ATTR_MTHD:
+	case PT_MODIFY_ATTR_MTHD:
+	case PT_CHANGE_ATTR:
+	  {
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_mthd_name_list != NULL)
+	      {
+		for (PT_NODE * attr_mthd_name = crt_clause->info.alter.alter_clause.attr_mthd.attr_mthd_name_list;
+		     attr_mthd_name != NULL; attr_mthd_name = attr_mthd_name->next)
+		  {
+		    const char *attr_mthd_name_str = attr_mthd_name->info.name.original;
+		    if (attr_mthd_name_str != NULL)
+		      {
+			error_code =
+			  db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_mthd_name_str,
+					    &histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+			if (histogram_obj != NULL)
+			  {
+			    error_code = db_drop (histogram_obj);
+			    if (error_code != NO_ERROR)
+			      {
+				AU_ENABLE (au_save);
+				goto error_exit;
+			      }
+			  }
+		      }
+		  }
+	      }
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_def_list != NULL)
+	      {
+		for (PT_NODE * attr_def = crt_clause->info.alter.alter_clause.attr_mthd.attr_def_list;
+		     attr_def != NULL; attr_def = attr_def->next)
+		  {
+		    const char *attr_def_name = attr_def->info.attr_def.attr_name->info.name.original;
+		    if (attr_def_name != NULL)
+		      {
+			error_code =
+			  db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_def_name,
+					    &histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+			if (histogram_obj != NULL)
+			  {
+			    error_code = db_drop (histogram_obj);
+			    if (error_code != NO_ERROR)
+			      {
+				AU_ENABLE (au_save);
+				goto error_exit;
+			      }
+			  }
+		      }
+		  }
+	      }
+	    if (crt_clause->info.alter.alter_clause.attr_mthd.attr_old_name != NULL)
+	      {
+		const char *attr_name = crt_clause->info.alter.alter_clause.attr_mthd.attr_old_name->info.name.original;
+		if (attr_name != NULL)
+		  {
+		    error_code = db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_name,
+						   &histogram_obj);
+		    if (error_code != NO_ERROR)
+		      {
+			AU_ENABLE (au_save);
+			goto error_exit;
+		      }
+		    if (histogram_obj != NULL)
+		      {
+			error_code = db_drop (histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+		      }
+		  }
+	      }
+	    break;
+	  }
+	case PT_RENAME_ATTR_MTHD:
+	  {
+	    /* Altering the column name does affect the histogram. Drop histogram before renaming the column. */
+	    if (alter->info.alter.alter_clause.rename.old_name != NULL)
+	      {
+		const char *attr_name = crt_clause->info.alter.alter_clause.rename.old_name->info.name.original;
+		if (attr_name != NULL)
+		  {
+		    error_code = db_get_histogram (crt_clause->info.alter.entity_name->info.name.db_object, attr_name,
+						   &histogram_obj);
+		    if (error_code != NO_ERROR)
+		      {
+			AU_ENABLE (au_save);
+			goto error_exit;
+		      }
+		    if (histogram_obj != NULL)
+		      {
+			error_code = db_drop (histogram_obj);
+			if (error_code != NO_ERROR)
+			  {
+			    AU_ENABLE (au_save);
+			    goto error_exit;
+			  }
+		      }
+		  }
+	      }
+	    break;
+	  }
+	case PT_RENAME_ENTITY:
+	  /* Altering the table name does not affect the histogram. */
 
+	  break;
+	default:
+	  break;
+	}
+      AU_ENABLE (au_save);
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
@@ -3446,6 +3585,86 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 }
 
 /*
+ * do_cache_empty_histogram () - Initialize an empty histogram cache for a newly-created class.
+ * return : error code or NO_ERROR
+ * class_obj (in) : class object
+ */
+static int
+do_cache_empty_histogram (MOP class_obj)
+{
+  SM_CLASS *smclass = NULL;
+  HIST_STATS *histogram = NULL;
+  SM_ATTRIBUTE *att = NULL;
+  int error = NO_ERROR;
+  int i;
+
+  if (class_obj == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  error = au_fetch_class (class_obj, &smclass, AU_FETCH_READ, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (smclass->histogram != NULL)
+    {
+      return NO_ERROR;
+    }
+
+  histogram = (HIST_STATS *) db_ws_alloc (sizeof (HIST_STATS));
+  if (histogram == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (histogram, 0, sizeof (HIST_STATS));
+
+  histogram->n_attrs = smclass->att_count;
+  if (histogram->n_attrs > 0)
+    {
+      histogram->histogram = (DB_VALUE **) db_ws_alloc (sizeof (DB_VALUE *) * histogram->n_attrs);
+      if (histogram->histogram == NULL)
+	{
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memset (histogram->histogram, 0, sizeof (DB_VALUE *) * histogram->n_attrs);
+
+      histogram->null_frequency = (double *) db_ws_alloc (sizeof (double) * histogram->n_attrs);
+      if (histogram->null_frequency == NULL)
+	{
+	  db_ws_free (histogram->histogram);
+	  db_ws_free (histogram);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      for (i = 0; i < histogram->n_attrs; i++)
+	{
+	  histogram->histogram[i] = NULL;
+	  histogram->null_frequency[i] = -1.0;
+	}
+    }
+
+  smclass->histogram = histogram;
+
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      DB_OBJECT *histogram_obj = NULL;
+      const char *attname = (const char *) att->header.name;
+      int warm_error = db_get_histogram (class_obj, attname, &histogram_obj);
+
+      if (warm_error != NO_ERROR)
+	{
+	  return warm_error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * do_alter_index_rebuild() - Alters an index on a class (drop and create).
  *                            INDEX REBUILD statement ignores any type of the
  *                            qualifier, column, and filter predicate (filtered
@@ -4043,6 +4262,390 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   return error;
 }
 
+
+
+/*
+ * update_or_drop_histogram_helper() - Creates or drops a histogram on a class.
+ *   return: Error code
+ *   parser(in): Parser context
+ *   obj(in): Class object
+ *   histogram_info(in): Histogram information
+*/
+int
+update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
+				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram)
+{
+  int error = NO_ERROR;
+  int bucket_count, nnames = 0, bucket_count_min, bucket_count_max;
+  bool with_fullscan = false;
+  char *attname = NULL;
+  PT_NODE *cur_column = NULL;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
+  DB_TYPE attr_type = DB_TYPE_NULL;
+
+  /* fill infos for catlaog table */
+  nnames = pt_length_of_list (histogram_info->target_columns);
+  bucket_count =
+    (histogram_info->bucket_count ==
+     0) ? prm_get_integer_value (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT) : histogram_info->bucket_count;
+
+  sysprm_get_range (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT, &bucket_count_min, &bucket_count_max);
+  if (bucket_count < bucket_count_min)
+    {
+      bucket_count = bucket_count_min;
+    }
+  else if (bucket_count > bucket_count_max)
+    {
+      bucket_count = bucket_count_max;
+    }
+
+  cur_column = histogram_info->target_columns;
+  with_fullscan = histogram_info->with_fullscan ? true : false;
+
+  /* update statistics for class first (only when creating/updating histograms) */
+  if (do_histogram == DO_HISTOGRAM_CREATE)
+    {
+      error = sm_update_statistics (obj, with_fullscan);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  if (locator_flush_all_instances (obj, DONT_DECACHE) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  if (nnames == 0)
+    {
+      SM_ATTRIBUTE *att;
+
+      for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	{
+
+	  attname = (char *) att->header.name;
+	  if (do_histogram == DO_HISTOGRAM_DROP)
+	    {
+	      error = sm_drop_histogram (obj, attname);
+	      if (error != NO_ERROR && error != ER_LC_UNKNOWN_CLASSNAME)
+		{
+		  return error;
+		}
+	    }
+	  else if (do_histogram == DO_HISTOGRAM_CREATE)
+	    {
+	      /* type check for the attribute */
+	      attr_type = TP_DOMAIN_TYPE (att->domain);
+	      if (!is_histogrammable_type (attr_type))
+		{
+		  error = ER_OBJ_INVALID_ARGUMENTS;
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  continue;
+		}
+
+	      /* create histogram catalog entry */
+	      error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
+	      if (error != NO_ERROR)
+		{
+		  if (error != ER_LC_CLASSNAME_EXIST)
+		    {
+		      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		      return error;
+		    }
+		}
+	      /* update the histogram */
+	      error = analyze_classes (NULL, db_get_class_name (obj), attname, bucket_count, with_fullscan, obj);
+	      if (error != NO_ERROR)
+		{
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  return error;
+		}
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	      if (error != NO_ERROR)
+		{
+		  assert (false);
+		  return error;
+		}
+	    }
+	  else if (do_histogram == DO_HISTOGRAM_SHOW)
+	    {
+	      attr_type = TP_DOMAIN_TYPE (att->domain);
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, true, error, stdout);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+    }
+  for (int i = 0; i < nnames; i++)
+    {
+      attname = (char *) cur_column->info.name.original;
+      if (do_histogram == DO_HISTOGRAM_DROP)
+	{
+	  error = sm_drop_histogram (obj, attname);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      else if (do_histogram == DO_HISTOGRAM_CREATE)
+	{
+	  /* type check for the attribute */
+	  DB_ATTRIBUTE *attribute;
+	  DB_DOMAIN *attr_domain;
+
+	  attribute = db_get_attribute (obj, attname);
+	  if (attribute == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      assert (false);
+	      return ER_OBJ_INVALID_ARGUMENTS;
+	    }
+	  attr_domain = db_attribute_domain (attribute);
+	  if (attr_domain == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	      assert (false);
+	      return ER_OBJ_INVALID_ARGUMENT;
+	    }
+
+	  attr_type = TP_DOMAIN_TYPE (attr_domain);
+
+	  if (!is_histogrammable_type (attr_type))
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	      continue;
+	    }
+	  /* create histogram catalog entry */
+	  error = sm_add_histogram (obj, attname, bucket_count, with_fullscan);
+	  if (error != NO_ERROR)
+	    {
+	      if (error != ER_LC_CLASSNAME_EXIST)
+		{
+		  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+		  return error;
+		}
+	    }
+	  /* update the histogram */
+	  error = analyze_classes (NULL, db_get_class_name (obj), attname, bucket_count, with_fullscan, obj);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+
+	  error = dump_histogram (obj, attname, attr_type, with_fullscan, false, error, stdout);
+	  if (error != NO_ERROR)
+	    {
+	      assert (false);
+	      return error;
+	    }
+	}
+      else if (do_histogram == DO_HISTOGRAM_SHOW)
+	{
+	  DB_ATTRIBUTE *attribute;
+	  DB_DOMAIN *attr_domain;
+
+	  attribute = db_get_attribute (obj, attname);
+	  if (attribute == NULL)
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      assert (false);
+	      return error;
+	    }
+	  attr_domain = db_attribute_domain (attribute);
+	  if (attr_domain == NULL)
+	    {
+	      error = ER_OBJ_INVALID_ARGUMENTS;
+	      assert (false);
+	      return error;
+	    }
+
+	  attr_type = TP_DOMAIN_TYPE (attr_domain);
+	  error = dump_histogram (obj, attname, attr_type, with_fullscan, true, error, stdout);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      cur_column = cur_column->next;
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (do_histogram == DO_HISTOGRAM_CREATE || do_histogram == DO_HISTOGRAM_DROP)
+    {
+      SM_CLASS *smclass;
+      /* only recache if the class itself is cached */
+      if (obj->object != NULL)
+	{
+	  error = au_fetch_class_force (obj, &smclass, AU_FETCH_READ);
+	  if (error == NO_ERROR)
+	    {
+	      if (smclass->stats != NULL)
+		{
+		  stats_free_statistics (smclass->stats);
+		  smclass->stats = NULL;
+		}
+
+	      if (smclass->histogram != NULL)
+		{
+		  stats_free_histogram_and_init (smclass->histogram);
+		  smclass->histogram = NULL;
+		}
+	      /* make sure the class is flushed before acquiring stats, see comments above in
+	       * sm_get_class_with_statistics */
+	      if (locator_flush_class (obj) != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  return (er_errid ());
+		}
+
+	      /* get the new ones, should do this at the same time as the update operation to avoid two server
+	       * calls */
+	      error = stats_get_statistics (WS_OID (obj), 0, &smclass->stats);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+
+/**
+ * do_update_histogram() - Create or Update a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a create histogram statement
+ */
+int
+do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  CHECK_MODIFICATION_ERROR ();
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+
+  AU_ENABLE (save);
+  return error;
+}
+
+/**
+ * do_drop_histogram () - drop a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a create histogram statement
+ */
+int
+do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  CHECK_MODIFICATION_ERROR ();
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+
+  AU_ENABLE (save);
+  return error;
+}
+
+/**
+ * do_show_histogram() - Show a histogram on a class.
+ *   return: Error code if it fails
+ *   parser(in): Parser context
+ *   statement(in): Parse tree of a show histogram statement
+ */
+int
+do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *cls;
+  DB_OBJECT *obj;
+  int error = NO_ERROR, save;
+  AU_DISABLE (save);
+
+  /* class should be already available */
+  assert (statement->info.histogram.target_table_spec);
+
+  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
+  obj = db_find_class (cls->info.name.original);
+  if (obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      AU_ENABLE (save);
+      return er_errid ();
+    }
+
+  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_SHOW);
+
+  if (error != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+      AU_ENABLE (save);
+      return error;
+    }
+  AU_ENABLE (save);
+
+  return NO_ERROR;
+}
+
 /*
  * do_create_partition() -  Creates partitions
  *   return: Error code if partitions are not created
@@ -4068,6 +4671,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   SM_CLASS *smclass;
   bool reuse_oid = false;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  int base_len = 0;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -4152,6 +4756,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   parttemp->info.create_entity.supclass_list->info.name.db_object = pinfo->root_op;
 
   error = NO_ERROR;
+  base_len = strlen (class_name) + PARTITIONED_SUB_CLASS_TAG_LEN;
   if (part_add == PT_PARTITION_HASH
       || (alter_info && alter_info->node_type != PT_VALUE && alter_info->info.partition.type == PT_PARTITION_HASH))
     {
@@ -4204,7 +4809,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  newpci->next = pci.next;
 	  pci.next = newpci;
 
-	  buf_size = strlen (class_name) + 5 + 13;
+	  buf_size = base_len + snprintf (NULL, 0, "p%d", pi + org_hashsize) + 1;
+	  if (buf_size > PARTITION_VARCHAR_LEN)
+	    {
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	      goto end_create;
+	    }
+
 	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
 	    {
@@ -4214,12 +4826,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	    }
 
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "p%d", class_name, pi + org_hashsize);
-	  if (strlen (newpci->pname) >= PARTITION_VARCHAR_LEN)
-	    {
-	      error = ER_INVALID_PARTITION_REQUEST;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto end_create;
-	    }
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
@@ -4240,8 +4846,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  newpci->temp->partition_parent_atts = smclass->attributes;
 
-	  hash_parts->info.parts.name->info.name.original =
-	    strstr (newpci->pname, PARTITIONED_SUB_CLASS_TAG) + strlen (PARTITIONED_SUB_CLASS_TAG);
+	  hash_parts->info.parts.name->info.name.original = newpci->pname + base_len;
 	  hash_parts->info.parts.values = NULL;
 
 	  newpci->temp->partition =
@@ -4341,7 +4946,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  pci.next = newpci;
 
 	  part_name = (char *) parts->info.parts.name->info.name.original;
-	  buf_size = strlen (class_name) + 5 + 1 + strlen (part_name);
+	  buf_size = base_len + strlen (part_name) + 1;
+	  if (buf_size > PARTITION_VARCHAR_LEN)
+	    {
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	      goto end_create;
+	    }
 
 	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
@@ -4351,13 +4962,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	      goto end_create;
 	    }
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, part_name);
-
-	  if (strlen (newpci->pname) >= PARTITION_VARCHAR_LEN)
-	    {
-	      error = ER_INVALID_PARTITION_REQUEST;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto end_create;
-	    }
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
@@ -4955,9 +5559,9 @@ do_rename_partition (MOP old_class, const char *newname)
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
-  int newlen;
+  int new_len;
   int error;
-  char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
+  char new_subname[PARTITION_VARCHAR_LEN];
   char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
@@ -4966,7 +5570,7 @@ do_rename_partition (MOP old_class, const char *newname)
       return ER_FAILED;
     }
 
-  newlen = strlen (newname);
+  new_len = strlen (newname) + PARTITIONED_SUB_CLASS_TAG_LEN;
 
   error = au_fetch_class (old_class, &smclass, AU_FETCH_UPDATE, AU_ALTER);
   if (error != NO_ERROR)
@@ -4994,21 +5598,13 @@ do_rename_partition (MOP old_class, const char *newname)
 	}
       if (subclass->partition)
 	{
-	  ptr = strstr ((char *) sm_ch_name ((MOBJ) subclass), PARTITIONED_SUB_CLASS_TAG);
-	  if (ptr == NULL)
+	  if ((new_len + strlen (subclass->partition->pname)) >= PARTITION_VARCHAR_LEN)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-	      error = ER_PARTITION_WORK_FAILED;
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	      goto end_rename;
 	    }
-
-	  if ((newlen + strlen (ptr)) >= PARTITION_VARCHAR_LEN)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-	      error = ER_PARTITION_WORK_FAILED;
-	      goto end_rename;
-	    }
-	  sprintf (new_subname, "%s%s", newname, ptr);
+	  sprintf (new_subname, "%s" PARTITIONED_SUB_CLASS_TAG "%s", newname, subclass->partition->pname);
 
 	  error = sm_rename_class (objs->op, new_subname);
 	  if (error != NO_ERROR)
@@ -5179,10 +5775,26 @@ do_set_auto_increment (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, const char
       return ER_AUTO_INCREMENT_SINGLE_COL_ONLY;
     }
 
+  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency.
+   * Guard against buffer overrun in do_create_auto_increment_serial when the
+   * parser node carries DB_DEFAULT_NUMERIC_PRECISION (= float-numeric default,
+   * exceeds the fixed-numeric buffer). Idempotent: no-op if precision was
+   * already adjusted by an earlier validation step (e.g. line 10980). */
+  if (attribute->type_enum == PT_TYPE_NUMERIC
+      && attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION)
+    {
+      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+    }
+
   error = do_create_auto_increment_serial (parser, &auto_increment_obj, ctemplate->name, attribute);
 
   if (error == NO_ERROR)
     {
+      if (TP_DOMAIN_TYPE ((*attr)->domain) == DB_TYPE_NUMERIC
+	  && (*attr)->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  (*attr)->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	}
       (*attr)->auto_increment = auto_increment_obj;
       (*attr)->flags |= SM_ATTFLAG_AUTO_INCREMENT;
     }
@@ -5203,8 +5815,7 @@ static int
 do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name)
 {
   MOP serial_class = NULL;
-  char *serial_name = NULL;
-  size_t serial_name_size;
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_IDENTIFIER serial_obj_id;
   int error = NO_ERROR;
 
@@ -5220,17 +5831,11 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
       goto end;
     }
 
-  serial_name_size = strlen (class_name) + strlen (attr_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1;
-
-  serial_name = (char *) malloc (serial_name_size);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, attr_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name_size);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
 
   *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
   if (*auto_increment_obj == NULL)
@@ -5241,11 +5846,6 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
     }
 
 end:
-  if (serial_name != NULL)
-    {
-      free_and_init (serial_name);
-    }
-
   return error;
 }
 
@@ -5664,20 +6264,8 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
 	       names->info.name.original);
-      classcata = sm_find_class (subclass_name);
-      if (classcata == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto exit;
-	}
+      assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
 
-      COPY_OID (&partitions[i], &classcata->oid_info.oid);
-    }
-
-  for (names = name_list, i = 0; names; names = names->next, i++)
-    {
-      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", smclass->header.ch_name, names->info.name.original);
       classcata = sm_find_class (subclass_name);
       if (classcata == NULL)
 	{
@@ -6458,6 +7046,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
   int names_count = 0, i = 0;
   int coalesce_count = 0, partitions_count = 0;
   OID *partitions = NULL;
+  int new_len = 0, buf_size = 0;
 
   /* sanity checks */
   assert (parser && alter && pinfo);
@@ -6512,17 +7101,27 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_return;
     }
+
+  new_len = strlen (sm_ch_name ((MOBJ) class_)) + PARTITIONED_SUB_CLASS_TAG_LEN + 1;
   for (i = partitions_count - 1, names_count = 0; i >= partitions_count - coalesce_count; i--)
     {
-      names[names_count] = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + 1);
+      buf_size = new_len + snprintf (NULL, 0, "p%d", i);
+      if (buf_size > PARTITION_VARCHAR_LEN)
+	{
+	  error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	  goto error_return;
+	}
+
+      names[names_count] = (char *) malloc (buf_size);
       if (names[names_count] == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (DB_MAX_IDENTIFIER_LENGTH + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
 	  error = ER_FAILED;
 	  goto error_return;
 	}
       sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d", sm_ch_name ((MOBJ) class_), i);
+
       subclass_op = sm_find_class (names[names_count]);
       if (subclass_op == NULL)
 	{
@@ -7031,6 +7630,8 @@ do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
 	       name->info.name.original);
 
+      assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
+
       /* Before promoting, make sure to recreate filter and function indexes because the expression used in these
        * indexes depends on the partitioned class name, not on the partition name */
       error = do_recreate_renamed_class_indexes (parser, sm_ch_name ((MOBJ) smclass), subclass_name);
@@ -7119,6 +7720,8 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
   assert (class_name != NULL && part_num != NULL);
   CHECK_2ARGS_ERROR (class_name, part_num);
   sprintf (name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, part_num);
+  assert (strlen (name) < PARTITION_VARCHAR_LEN);
+
   subclass = sm_find_class (name);
   if (subclass == NULL)
     {
@@ -7312,10 +7915,10 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		{
 		case PT_TYPE_FLOAT:
 		case PT_TYPE_DOUBLE:
-		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_NUMERIC_PRECISION))
+		  if (p != DB_DEFAULT_PRECISION && (p < 0 || p > DB_MAX_FIXED_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 
@@ -7324,7 +7927,7 @@ validate_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attribute, const b
 		      && (p < 0 || (p == 0 && check_zero_precision) || p > DB_MAX_NUMERIC_PRECISION))
 		    {
 		      PT_ERRORmf3 (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INV_PREC, p, 0,
-				   DB_MAX_NUMERIC_PRECISION);
+				   DB_MAX_FIXED_NUMERIC_PRECISION);
 		    }
 		  break;
 
@@ -9457,6 +10060,14 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	      do_flush_class_mop = true;
 	    }
 	}
+      error = do_cache_empty_histogram (class_obj);
+      if (error != NO_ERROR)
+	{
+	  /* histogram cache warm-up failed (e.g. _db_histogram missing, lock abort);
+	   * fail the statement cleanly instead of falling through to the
+	   * assert (error == NO_ERROR) below (CBRD-26895). */
+	  goto error_exit;
+	}
       break;
 
     default:
@@ -10121,8 +10732,9 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
       goto exit;
     }
 
-  is_srv_update_needed = ((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
-			  && attr_chg_prop.name_space == ID_ATTRIBUTE) ? true : false;
+  is_srv_update_needed = (((change_mode == SM_ATTR_CHG_WITH_ROW_UPDATE || change_mode == SM_ATTR_CHG_BEST_EFFORT)
+			   && attr_chg_prop.name_space == ID_ATTRIBUTE)
+			  || is_att_prop_set (attr_chg_prop.p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)) ? true : false;
   if (is_srv_update_needed)
     {
       COPY_OID (&class_oid, &(ctemplate->op->oid_info.oid));
@@ -10910,7 +11522,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	{
 	  assert (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_UNCHANGED)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT)
-		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR));
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR));
 	}
       else
 	{
@@ -10992,7 +11605,13 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  if (attribute->data_type->info.data_type.dec_precision == 0)
+	  if (attribute->data_type->info.data_type.precision == DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+	      attribute->data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+	      break;
+	    }
+	  else if (attribute->data_type->info.data_type.dec_precision == 0)
 	    {
 	      break;
 	    }
@@ -11089,12 +11708,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
@@ -11156,12 +11779,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, old_name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, old_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
@@ -11192,6 +11819,12 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  assert_release (auto_increment_obj != NULL);
 	  if (found_att != NULL)
 	    {
+	      if (TP_DOMAIN_TYPE (found_att->domain) == DB_TYPE_NUMERIC
+		  && found_att->domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  /* AUTO_INCREMENT NUMERIC defaults to NUMERIC(38,0) for _db_serial consistency */
+		  found_att->domain->precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		}
 	      found_att->auto_increment = auto_increment_obj;
 	      found_att->flags |= SM_ATTFLAG_AUTO_INCREMENT;
 	    }
@@ -11768,7 +12401,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  assert (attr_db_domain->precision < att->domain->precision
 			  || (TP_DOMAIN_COLLATION (attr_db_domain) != TP_DOMAIN_COLLATION (att->domain)));
 
-		  if (QSTR_IS_FIXED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
+		  if (QSTR_IS_PADDED_LENGTH (TP_DOMAIN_TYPE (attr_db_domain))
 		      && prm_get_bool_value (PRM_ID_ALTER_TABLE_CHANGE_TYPE_STRICT) == true)
 		    {
 		      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NOT_SUPPORTED_WITH_CFG;
@@ -11787,7 +12420,7 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 	{
 	  if (attr_db_domain->scale == att->domain->scale && attr_db_domain->precision > att->domain->precision)
 	    {
-	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_PREC_INCR;
+	      attr_chg_properties->p[P_TYPE] |= ATT_CHG_TYPE_NUMERIC_PREC_INCR;
 	    }
 	  else
 	    {
@@ -12861,6 +13494,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PSEUDO_UPGRADE)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_UPGRADE)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)
 		  || is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT));
 	}
       else
@@ -12878,6 +13512,7 @@ check_att_chg_allowed (const char *att_name, const PT_TYPE_ENUM t, const SM_ATTR
 	    }
 	  else if (is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_PROPERTY_DIFF)
 		   && !(is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_PREC_INCR)
+			|| is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_NUMERIC_PREC_INCR)
 			|| is_att_prop_set (attr_chg_prop->p[P_TYPE], ATT_CHG_TYPE_SET_CLS_COMPAT)))
 	    {
 	      error = ER_ALTER_CHANGE_TYPE_NOT_SUPP;
@@ -15583,7 +16218,7 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
       SM_FUNCTION_INFO *part_expr = NULL;
 
       p = (char *) node->info.partition.keycol->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, DB_MAX_IDENTIFIER_LENGTH, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &val);
       if (node->info.partition.type == PT_PARTITION_HASH)
 	{
