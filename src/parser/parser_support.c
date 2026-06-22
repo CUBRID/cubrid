@@ -1525,6 +1525,8 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_CREATE_SYNONYM:
 	case PT_DROP_SYNONYM:
 	case PT_RENAME_SYNONYM:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	  return true;
 	default:
 	  break;
@@ -10070,6 +10072,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
@@ -11956,11 +11964,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11968,6 +11971,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 

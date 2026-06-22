@@ -191,7 +191,10 @@ namespace cubconn::connection
       ~worker ();
 
       void initialize ();
+
       void finalize ();
+      void finalize_resources ();
+
       bool run ();
 
       void attach ();
@@ -301,6 +304,9 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* message queue based interface						     */
       /* --------------------------------------------------------------------------- */
+      bool validate_message_generation (const message &item, context *ctx) const;
+      bool forward_message_to_successor (queue_type type, message &item, context *ctx);
+
       bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
 
