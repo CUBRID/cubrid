@@ -1412,11 +1412,11 @@ _[uU][tT][fF]8[']		{
 			  return SQL_HINT;
                         }
                  }
-        "*"      {   csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext); }
+        "*"      {   csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "*"); }
               }
 
 <BLOCK_COMMENT>{
-        [^*\n]   {   /* no action */;  }
+        [^*\n]+  {   /* no action */;  }
         "\n"     {   /* no action */;  }
         "*/"     {   BEGIN(INITIAL);   }
         "*"      {   /* no action */;  }
@@ -1424,7 +1424,14 @@ _[uU][tT][fF]8[']		{
 
 <LINE_HINT>{
         [^\n]+   { csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext);  }
-        "\n"    |
+        "\n"     {
+                     csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\n");
+                     BEGIN(INITIAL);
+                     if (parser_check_hint (csql_yylval.cptr))
+                        {
+			  return SQL_HINT;
+                        }
+                  }
         <<EOF>>  {
                      BEGIN(INITIAL);
                      if (parser_check_hint (csql_yylval.cptr))
@@ -1434,8 +1441,8 @@ _[uU][tT][fF]8[']		{
                   }
           }
 <LINE_COMMENT>{
-        [^\n]    { /* no action */; }
-        "\n"    |
+        [^\n]+   { /* no action */; }
+        "\n"     { BEGIN(INITIAL);  }
         <<EOF>>  { BEGIN(INITIAL);  }
              }
 
