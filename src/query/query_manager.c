@@ -47,6 +47,7 @@
 #include "thread_entry.hpp"
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
+#include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -3972,18 +3973,20 @@ qmgr_dblink_get_conn_entry (THREAD_ENTRY * thread_p, bool * is_autocommit)
 }
 
 void
-qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p)
+qmgr_dblink_clear_conn_entry (THREAD_ENTRY * thread_p, bool is_commit)
 {
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
 
-  /* re-initialize */
   tran_entry_p->is_dblink_autocommit = true;
 
-  qmgr_deallocate_dblink_entries (tran_entry_p->dblink_entry);
-  tran_entry_p->dblink_entry = NULL;
-
-  return;
+  if (tran_entry_p->dblink_entry != NULL)
+    {
+      /* End and disconnect remaining entries (typically non-participant SELECT-only
+       * connections left after dblink_2pc_send_prepare removed participant entries). */
+      dblink_end_tran (tran_entry_p->dblink_entry, !is_commit);
+      tran_entry_p->dblink_entry = NULL;
+    }
 }
 
 /*

@@ -112,6 +112,11 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 
       if (cci_xa_prepare (dblink[i].conn_handle, &xid, &err_buf) != NO_ERROR)
 	{
+	  /* XA prepare failed; abort and disconnect all remaining entries: this failed
+	   * participant, any not-yet-attempted participants, and SELECT-only non-participants.
+	   * The daemon delivers the abort decision to already-prepared participants via fresh
+	   * connections using block_particps_ids, so ending existing handles here is safe. */
+	  qmgr_dblink_clear_conn_entry (thread_p, false);
 	  return false;
 	}
 
@@ -123,6 +128,10 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
+  /* All participants XA-prepared and removed from dblink_entry.  Commit and disconnect any
+   * remaining non-participant (SELECT-only) entries and reset is_dblink_autocommit.
+   * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point. */
+  qmgr_dblink_clear_conn_entry (thread_p, true);
   return true;
 }
 
@@ -154,7 +163,7 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
 #endif
     }
 
-  qmgr_dblink_clear_conn_entry (thread_p);
+  qmgr_dblink_clear_conn_entry (thread_p, is_commit);
 }
 
 void
