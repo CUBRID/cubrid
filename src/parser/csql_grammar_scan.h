@@ -79,6 +79,7 @@ extern "C"
 #define parser_column_position()    (yybuffer_pos - yyline_start_pos + 1)
   extern int yybuffer_pos;
   extern int yyline_start_pos;
+  extern int yylineno_prev;
 
 
 #ifdef __cplusplus

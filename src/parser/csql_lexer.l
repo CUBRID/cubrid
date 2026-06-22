@@ -62,6 +62,8 @@ static enum {
   enbacktick_quoted_string,
   enline_comment,
   enC_style_comment,
+  enhyphen,
+  enslash,
   enNone
 } g_yyinput_type = enNone;
 
@@ -77,14 +79,14 @@ static enum {
  * is currently being scanned; column = token_start - this + 1 */
 int yyline_start_pos = 0;
 static int yyline_start_pos_bk = 0;
-static int prev_yylineno = 0;
+int yylineno_prev = 0;
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
             yyline_start_pos = yyline_start_pos_bk; \
-            yylineno = prev_yylineno;               \
-            this_parser->line = yylineno;           \
             this_parser->column = parser_column_position(); \
             yyless((n));                            \
+            yylineno_prev = yylineno;               \
+            this_parser->line = yylineno;           \
         } while(0)
 
 #define YY_USER_ACTION  { parser_yy_user_action(); }
@@ -2000,9 +2002,8 @@ parser_yyinput_single_line (char *buff, int max_size)
 	  break;
 	case endouble_quoted_string:
 	  if ((prm_get_bool_value (PRM_ID_ANSI_QUOTES)
-	       ? parser_yyinput_identifier (buff, max_size, '\"', &i) : parser_yyinput_string_literal (buff, max_size,
-												      '\"',
-												      &i)) == false)
+	       ? parser_yyinput_identifier (buff, max_size, '\"', &i) : 
+                 parser_yyinput_string_literal (buff, max_size, '\"', &i)) == false)
 	    {
 	      buff[i] = '\0';	/* not required but to ease debugging */
 	      return i;
@@ -2037,6 +2038,17 @@ parser_yyinput_single_line (char *buff, int max_size)
 	      return i;
 	    }
 	  break;
+        case enhyphen:
+           c = pt_nextchar ();
+           buff[i++] = (char) c;
+           g_yyinput_type = ( c == '-') ? enline_comment : enNone;
+           break;
+
+        case enslash:
+           c = pt_nextchar ();
+           buff[i++] = (char) c;
+           g_yyinput_type = ( c == '/') ? enline_comment : (( c == '*') ? enC_style_comment : enNone);
+           break;
 
 	case enNone:
 	default:
@@ -2056,37 +2068,12 @@ parser_yyinput_single_line (char *buff, int max_size)
 	      case '\"':
 		g_yyinput_type = endouble_quoted_string;
 		break;
-
 	      case '-':
+                g_yyinput_type = enhyphen;
+                break;
 	      case '/':
-		if (i >= max_size - 1)
-		  {
-		    unput (c);
-		    buff[i] = '\0';	/* not required but to ease debugging */
-		    return i;
-		  }
-		else
-		  {
-		    int c2 = pt_nextchar ();
-		    if (c == c2)	// "--" or "//"
-		      {
-			buff[i++] = (char) c;
-			c = c2;
-			g_yyinput_type = enline_comment;
-		      }
-		    else if (c == '/' && c2 == '*')
-		      {
-			buff[i++] = (char) c;
-			c = c2;
-			g_yyinput_type = enC_style_comment;
-		      }
-		    else
-		      {
-			unput (c2);
-		      }
-		  }
-		break;
-
+                g_yyinput_type = enslash;
+                break;
 	      case ';':
 		buff[i++] = (char) c;
 		buff[i] = '\0';	/* not required but to ease debugging */
@@ -2168,7 +2155,7 @@ parser_yy_user_action (void)
   if (yybuffer_pos == 0)
     {
       yyline_start_pos = 0;
-      prev_yylineno = 0;
+      yylineno_prev = 0;
       this_parser->line = yylineno;
       this_parser->column = 0;
     }
@@ -2179,7 +2166,7 @@ parser_yy_user_action (void)
       csql_yylloc.first_column = parser_column_position();
     }
 
-  if (prev_yylineno < yylineno)
+  if (yylineno_prev < yylineno)
     {
       this_parser->line = yylineno;
 
@@ -2193,7 +2180,7 @@ parser_yy_user_action (void)
 	}
     }
 
-  prev_yylineno = yylineno;
+  yylineno_prev = yylineno;
 
   yybuffer_pos += csql_yyget_leng ();
   csql_yylloc.buffer_pos = yybuffer_pos;

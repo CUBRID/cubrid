@@ -23844,7 +23844,7 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv, yybuffer_pos_save, yyline_start_pos_save; 
+  int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save; 
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23861,6 +23861,7 @@ parser_main (PARSER_CONTEXT * parser)
   
   yybuffer_pos_save = yybuffer_pos;
   yyline_start_pos_save = yyline_start_pos; 
+  yylineno_prev_save = yylineno_prev;
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
@@ -23881,6 +23882,7 @@ parser_main (PARSER_CONTEXT * parser)
   // During the loaddb -s, the yybuffer_pos must not be currupted.
   yybuffer_pos = yybuffer_pos_save;
   yyline_start_pos = yyline_start_pos_save;
+  yylineno_prev = yylineno_prev_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
