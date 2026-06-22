@@ -13116,14 +13116,6 @@ sp_param_type
 			$$ = ctn;
 
 		DBG_PRINT}}
-        | SYS_REFCURSOR
-		{{ DBG_TRACE_GRAMMAR(sp_param_type, | SYS_REFCURSOR);
-
-			container_2 ctn;
-			SET_CONTAINER_2 (ctn, FROM_NUMBER (PT_TYPE_SYS_REFCURSOR), NULL);
-			$$ = ctn;
-
-		DBG_PRINT}}
         | table_column MOD TYPE
 		{{ DBG_TRACE_GRAMMAR(sp_param_type, | table_column MOD TYPE);
 

@@ -1157,12 +1157,13 @@ enum pt_type_enum
   PT_TYPE_DATETIMETZ,
   PT_TYPE_DATETIMELTZ,
 
+  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in PL/CSQL SP return types */
+
   PT_TYPE_MAX,
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
 
-  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in PL/CSQL SP parameter/return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 

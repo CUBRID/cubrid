@@ -9537,7 +9537,6 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
     case PT_TYPE_DATETIME:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_RESULTSET:
-    case PT_TYPE_SYS_REFCURSOR:
       return true;
 
     case PT_TYPE_OBJECT:
@@ -9769,7 +9768,8 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
 
-      if (pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type))
+      if (pt_is_type_supported_by_sp (parser, node->info.sp.ret_type, node->info.sp.ret_data_type) ||
+	  (is_plcsql && node->info.sp.ret_type == PT_TYPE_SYS_REFCURSOR))
 	{
 	  assert (node->info.sp.ret_type != PT_TYPE_NONE);
 	}
