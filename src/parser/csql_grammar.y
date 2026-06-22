@@ -10014,6 +10014,15 @@ attr_def_one
 			      {
 			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			      }
+			    if ((mask & COLUMN_CONSTRAINT_STORAGE)
+				&& (node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+					    node->info.attr_def.attr_name->info.name.original);
+				node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
+			      }
 			  }
 
 			$$ = node;

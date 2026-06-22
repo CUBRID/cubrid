@@ -160,6 +160,15 @@ TEST_F (OosSqlStorage, CreateTableLikeCopiesPreferInline)
   EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "cloned DDL was:\n" << ddl;
 }
 
+// STORAGE PREFER_INLINE is meaningful only for normal instance attributes; shared
+// attributes are not stored in each heap record and must not persist a no-op policy.
+TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_INLINE)");
+  EXPECT_LT (rc, 0);
+  db_abort_transaction ();
+}
+
 // ALTER TABLE ... MODIFY must add the option, and MODIFY ... STORAGE DEFAULT must drop
 // it. Covers the build_attr_change_map GAINED/LOST path plus persistence.
 TEST_F (OosSqlStorage, AlterModifyAddsAndDropsPreferInline)

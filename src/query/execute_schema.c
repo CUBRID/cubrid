@@ -8196,15 +8196,24 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
   if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
     {
-      /* skip finding attribute if att is already available */
-      if (att == NULL)
+      if (name_space != ID_ATTRIBUTE)
 	{
-	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE, attr_name);
+	  error = ER_PT_SEMANTIC;
 	}
-
-      if (error == NO_ERROR)
+      else
 	{
-	  att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+	  /* skip finding attribute if att is already available */
+	  if (att == NULL)
+	    {
+	      error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+	    }
 	}
     }
 
