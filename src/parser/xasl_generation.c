@@ -3921,7 +3921,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   PT_NODE *pointer = NULL;
   PT_NODE *pt_val = NULL;
   PT_NODE *percentile = NULL;
-  PT_NODE *arg_list = NULL;
 
   // it contains a list of positions
   REGU_VARIABLE_LIST regu_position_list = NULL;
@@ -4034,16 +4033,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_optimize_min_max_list (parser, tree, info->qo_plan, aggregate_list);
 	}
 
-      if (tree->info.function.arg_list != NULL)
-	{
-	  arg_list = parser_copy_tree_list (parser, tree->info.function.arg_list);
-	  if (arg_list == NULL)
-	    {
-	      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return NULL;
-	    }
-	}
-
       if (aggregate_list->function != PT_COUNT_STAR && aggregate_list->function != PT_GROUPBY_NUM)
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
@@ -4093,12 +4082,6 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
-		      /* trim the copied separator as well; arg_list must stay in sync with the original */
-		      if (arg_list != NULL && arg_list->next != NULL)
-			{
-			  parser_free_tree (parser, arg_list->next);
-			  arg_list->next = NULL;
-			}
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
