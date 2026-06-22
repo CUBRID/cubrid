@@ -10061,6 +10061,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       error = do_cache_empty_histogram (class_obj);
+      if (error != NO_ERROR)
+	{
+	  /* histogram cache warm-up failed (e.g. _db_histogram missing, lock abort);
+	   * fail the statement cleanly instead of falling through to the
+	   * assert (error == NO_ERROR) below (CBRD-26895). */
+	  goto error_exit;
+	}
       break;
 
     default:
