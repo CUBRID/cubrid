@@ -7535,7 +7535,6 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 	{
 	  /* This enables authorization checking during methods in queries */
 	  int au_save = 0;
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
@@ -9296,7 +9295,6 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* DON'T REMOVE this, correct authorization validation of views depends on this. DON'T return from the body of this
    * function. Break out of the loop if necessary. */
   AU_SAVE_AND_DISABLE (au_save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   /* savepoint for statement atomicity */
   if ((statement != NULL && statement->next != NULL)
@@ -10098,7 +10096,6 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
 	{
 	  /* This enables authorization checking during methods in queries */
 	  int au_save = 0;
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
@@ -10694,7 +10691,6 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
    * DON'T return from the body of this function. Break out of the loop if necessary. */
 
   AU_SAVE_AND_DISABLE (au_save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   /* savepoint for statement atomicity */
   if (statement != NULL && statement->next != NULL)
@@ -13945,7 +13941,6 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* DO NOT RETURN UNTIL AFTER AU_RESTORE! */
   AU_SAVE_AND_DISABLE (save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
     {
@@ -14599,7 +14594,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
     }
 
   AU_SAVE_AND_DISABLE (save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -16807,7 +16801,6 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
   init_xasl_stream (&stream);
 
   AU_SAVE_AND_DISABLE (save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -17234,7 +17227,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   AU_SAVE_AND_DISABLE (outer_au_save);
-  assert (!parser->jmp_env_active);	/* TEST(CBRD-26823): outside unwind range; REMOVE before commit */
 
   if (pt_false_where (parser, statement))
     {
@@ -17316,7 +17308,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.assignment, links, -1);
 
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
 	  AU_RESTORE (au_save);
@@ -17368,7 +17359,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (err >= NO_ERROR && (values_list = statement->info.merge.insert.value_clauses) != NULL)
 	{
 	  ins_select_stmt = pt_to_merge_insert_query (parser, values_list->info.node_list.list, &statement->info.merge);
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
 	  AU_RESTORE (au_save);
@@ -17387,7 +17377,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_select_stmt->etc = NULL;
 
 	  /* enable authorization checking during methods in queries */
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
@@ -17444,7 +17433,6 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* enable authorization checking during methods in queries */
-	  assert (parser->au_save == 0);	/* TEST(CBRD-26823): Feature-1 equivalence; REMOVE before commit */
 	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
