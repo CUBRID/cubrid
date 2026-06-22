@@ -191,7 +191,10 @@ namespace cubconn::connection
       ~worker ();
 
       void initialize ();
+
       void finalize ();
+      void finalize_resources ();
+
       bool run ();
 
       void attach ();
