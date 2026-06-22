@@ -24,6 +24,7 @@
 
 #include "config.h"
 
+#include <algorithm>
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
@@ -5218,7 +5219,7 @@ SYSPRM_PARAM prm_Def[] = {
    /* set the default to twice the value of MAX_REQUEST_CONCURRENCY */
    {false, {.i = (int) cubthread::system_core_count () * 6}},
    {false, {.i = (int) cubthread::system_core_count () * 6}},
-   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 1}},
@@ -5238,7 +5239,7 @@ SYSPRM_PARAM prm_Def[] = {
    /* adjusted based on CBRD-26636 */
    {false, {.i = (int) cubthread::system_core_count () * 3}},
    {false, {.i = (int) cubthread::system_core_count () * 3}},
-   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 1}},
@@ -5255,8 +5256,8 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   {false, {.i = (int) cubthread::system_core_count () / 2}},
-   {false, {.i = (int) cubthread::system_core_count () / 2}},
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 2}},
@@ -5272,11 +5273,13 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 4}},
-   {false, {.i = 4}},
 #if defined (SERVER_MODE)
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
+   {false, {.i = std::max ((int) cubthread::system_core_count () / 2, 1)}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
+   {false, {.i = 2}},
+   {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
 #endif
    {false, {.i = 1}},
@@ -9947,6 +9950,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
+  int max_value;
 #endif
   char newval[LINE_MAX];
   char host_name[CUB_MAXHOSTNAMELEN];
@@ -9998,12 +10002,33 @@ prm_tune_parameters (void)
 #if defined (SERVER_MODE)
       system_cpu_count = cubthread::system_core_count ();
 
+      /* request worker, request concurrency */
       max_request_worker_prm = GET_PRM (PRM_ID_MAX_REQUEST_WORKER);
       max_request_concurrency_prm = GET_PRM (PRM_ID_MAX_REQUEST_CONCURRENCY);
 
-      if (PRM_GET_INT (max_request_worker_prm->value) > PRM_GET_INT (max_clients_prm->value))
+      if (!PRM_IS_SET (max_request_worker_prm))
 	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_clients_prm->value));
+	  /* if not changed by user */
+	  max_value = std::min (PRM_GET_INT (max_clients_prm->value) * 2, CSS_MAX_CLIENT_COUNT);
+	  if (PRM_GET_INT (max_request_worker_prm->value) > max_value)
+	    {
+	      sprintf (newval, "%d", std::max (system_cpu_count, max_value));
+	      (void) prm_set (max_request_worker_prm, newval, false);
+	    }
+	}
+      if (!PRM_IS_SET (max_request_concurrency_prm))
+	{
+	  /* if not changed by user */
+	  max_value = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
+	  if (PRM_GET_INT (max_request_concurrency_prm->value) > max_value)
+	    {
+	      sprintf (newval, "%d", std::max (system_cpu_count, max_value));
+	      (void) prm_set (max_request_concurrency_prm, newval, false);
+	    }
+	}
+      if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
+	{
+	  sprintf (newval, "%d", PRM_GET_INT (max_request_concurrency_prm->value));
 	  if (prm_set (max_request_worker_prm, newval, false) != PRM_ERR_NO_ERROR)
 	    {
 	      sprintf (newval, "%d", system_cpu_count);
@@ -10011,16 +10036,7 @@ prm_tune_parameters (void)
 	    }
 	}
 
-      if (PRM_GET_INT (max_request_concurrency_prm->value) > PRM_GET_INT (max_request_worker_prm->value))
-	{
-	  sprintf (newval, "%d", PRM_GET_INT (max_request_worker_prm->value));
-	  if (prm_set (max_request_concurrency_prm, newval, false) != PRM_ERR_NO_ERROR)
-	    {
-	      sprintf (newval, "%d", system_cpu_count);
-	      (void) prm_set (max_request_concurrency_prm, newval, false);
-	    }
-	}
-
+      /* connection worker */
       max_connection_workers_prm = GET_PRM (PRM_ID_CSS_MAX_CONNECTION_WORKER);
       min_connection_workers_prm = GET_PRM (PRM_ID_CSS_MIN_CONNECTION_WORKER);
 
