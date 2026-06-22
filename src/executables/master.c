@@ -664,8 +664,8 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 /*
  * css_get_client_type_from_data_request() - unpack client type appended after server name
  *   return: client type if present and valid, DB_CLIENT_TYPE_UNKNOWN otherwise
- *   server_name(in):
- *   data_length(in):
+ *   payload(in):
+ *   payload_length(in):
  */
 static int
 css_get_client_type_from_data_request (const char *payload, int payload_length)

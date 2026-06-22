@@ -1088,11 +1088,6 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
       er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
       return INVALID_SOCKET;
     }
-  if (rc != (int) sizeof (unsigned short))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
-      return INVALID_SOCKET;
-    }
 
   for (cmsg = CMSG_FIRSTHDR (&msg); cmsg; cmsg = CMSG_NXTHDR (&msg, cmsg))
     {
@@ -1101,6 +1096,13 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 	  memcpy (&new_fd, CMSG_DATA (cmsg), sizeof (new_fd));
 	  break;
 	}
+    }
+  if (rc != (int) sizeof (unsigned short))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
+
+      css_shutdown_socket (new_fd);
+      return INVALID_SOCKET;
     }
 
   if (IS_INVALID_SOCKET (new_fd))
