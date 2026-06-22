@@ -21014,8 +21014,15 @@ key_type_to_string (char *buf, int buf_size, TP_DOMAIN * key_type)
       break;
 
     case DB_TYPE_NUMERIC:
-      snprintf (buf, buf_size, "%s(%d,%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision,
-		key_type->scale);
+      if (key_type->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (buf, buf_size, "%s", pr_type_name (TP_DOMAIN_TYPE (key_type)));
+	}
+      else
+	{
+	  snprintf (buf, buf_size, "%s(%d,%d)", pr_type_name (TP_DOMAIN_TYPE (key_type)), key_type->precision,
+		    key_type->scale);
+	}
       break;
 
     case DB_TYPE_MIDXKEY:
@@ -24784,7 +24791,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
        * do not create an MVCC snapshot so that it does not differ from the previous answer in the isolation test case.
        */
       if (oid_check_cached_class_oid (OID_CACHE_USER_CLASS_ID, class_oid)
-	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid))
+	  || oid_check_cached_class_oid (OID_CACHE_SYNONYM_CLASS_ID, class_oid)
+	  || oid_check_cached_class_oid (OID_CACHE_HISTOGRAM_CLASS_ID, class_oid))
 	{
 	  need_skip_mvcc_snapshot = true;
 	}

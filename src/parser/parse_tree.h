@@ -986,6 +986,9 @@ enum pt_node_type
   PT_REVOKE = CUBRID_STMT_REVOKE,
   PT_UPDATE_STATS = CUBRID_STMT_UPDATE_STATS,
   PT_GET_STATS = CUBRID_STMT_GET_STATS,
+  PT_UPDATE_HISTOGRAM = CUBRID_STMT_UPDATE_HISTOGRAM,
+  PT_SHOW_HISTOGRAM = CUBRID_STMT_SHOW_HISTOGRAM,
+  PT_DROP_HISTOGRAM = CUBRID_STMT_DROP_HISTOGRAM,
   PT_INSERT = CUBRID_STMT_INSERT,
   PT_SELECT = CUBRID_STMT_SELECT,
   PT_UPDATE = CUBRID_STMT_UPDATE,
@@ -1240,7 +1243,6 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
-#define  PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED	(1ULL << 46)	/* keep page fixed on nl join first table heap scan */
 
 /* Codes for error messages */
 typedef enum
@@ -1622,6 +1624,7 @@ typedef struct pt_auth_cmd_info PT_AUTH_CMD_INFO;
 typedef struct pt_commit_work_info PT_COMMIT_WORK_INFO;
 typedef struct pt_create_entity_info PT_CREATE_ENTITY_INFO;
 typedef struct pt_index_info PT_INDEX_INFO;
+typedef struct pt_histogram_info PT_HISTOGRAM_INFO;
 typedef struct pt_create_user_info PT_CREATE_USER_INFO;
 typedef struct pt_create_trigger_info PT_CREATE_TRIGGER_INFO;
 typedef struct pt_cte_info PT_CTE_INFO;
@@ -1989,6 +1992,15 @@ struct pt_create_entity_info
   unsigned if_not_exists:1;	/* IF NOT EXISTS clause for create table | class */
 };
 
+/* ANALYZE UPDATE/DROP HISTOGRAM INFO */
+struct pt_histogram_info
+{
+  PT_NODE *target_table_spec;	/* PT_SPEC */
+  PT_NODE *target_columns;	/* PT_COLUMN_LIST (PT_NAME) */
+  int bucket_count;		/* bucket count */
+  int with_fullscan;		/* with fullscan */
+};
+
 /* CREATE/DROP INDEX INFO */
 struct pt_index_info
 {
@@ -2105,6 +2117,8 @@ struct pt_parts_info
   PT_NODE *comment;		/* PT_VALUE */
 };
 #define PARTITIONED_SUB_CLASS_TAG "__p__"
+#define PARTITIONED_SUB_CLASS_TAG_LEN (sizeof(PARTITIONED_SUB_CLASS_TAG) - 1)
+
 
 /* Info for DATA_TYPE node */
 struct pt_data_type_info
@@ -2675,6 +2689,8 @@ struct pt_name_info
   int coll_modifier;		/* collation modifier = collation + 1 */
   PT_RESERVED_NAME_ID reserved_id;	/* used to identify reserved name */
   size_t json_table_column_index;	/* will be used only for json_table to gather attributes in the correct order */
+  DB_VALUE *histogram;		/* histogram value */
+  double null_frequency;	/* null frequency value */
 };
 
 /*
@@ -3577,6 +3593,7 @@ union pt_statement_info
   PT_TUPLE_VALUE_INFO tuple_value;
   PT_UPDATE_INFO update;
   PT_UPDATE_STATS_INFO update_stats;
+  PT_HISTOGRAM_INFO histogram;
 #if defined (ENABLE_UNUSED_FUNCTION)
   PT_USE_INFO use;
 #endif

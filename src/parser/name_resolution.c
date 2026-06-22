@@ -38,6 +38,7 @@
 #include "object_primitive.h"
 #include "memory_alloc.h"
 #include "intl_support.h"
+#include "language_support.h"
 #include "memory_hash.h"
 #include "system_parameter.h"
 #include "object_print.h"
@@ -3294,6 +3295,23 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       *continue_walk = PT_LIST_WALK;
       break;
 
+    case PT_UPDATE_HISTOGRAM:
+    case PT_DROP_HISTOGRAM:
+    case PT_SHOW_HISTOGRAM:
+      scopestack.specs = node->info.histogram.target_table_spec;
+      bind_arg->scopes = &scopestack;
+      spec_frame.next = bind_arg->spec_frames;
+      spec_frame.extra_specs = NULL;
+      bind_arg->spec_frames = &spec_frame;
+      pt_bind_scope (parser, bind_arg);
+
+      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
+
+      bind_arg->spec_frames = bind_arg->spec_frames->next;
+      bind_arg->scopes = bind_arg->scopes->next;
+
+      *continue_walk = PT_LIST_WALK;
+      break;
     case PT_METHOD_CALL:
       /*
        * We accept two different method call syntax:
@@ -5170,6 +5188,11 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
       dt->info.data_type.units = attr->charset;
+      /* CCI remote-column metadata carries a codeset (units) but no collation;
+       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
+       * pt_check_expr_collation invariant that equal collation_id implies equal
+       * codeset. Assign the codeset's binary collation to keep them consistent. */
+      dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
     }
 
   attr_def_node->data_type = dt;
@@ -6924,7 +6947,7 @@ pt_make_subclass_list (PARSER_CONTEXT * parser, DB_OBJECT * db, int line_num, in
       result->info.name.spec_id = id;
       result->info.name.meta_class = meta_class;
       result->info.name.partition = NULL;
-
+      result->info.name.histogram = NULL;
       if ((au_fetch_class_force (db, &smclass, AU_FETCH_READ) == NO_ERROR))
 	{
 	  if (smclass->partition != NULL && smclass->partition->pname == NULL)

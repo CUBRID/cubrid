@@ -213,7 +213,7 @@ const char *sm_define_view_columns_spec (void)
       ") AS [extra], "
       "NULL AS [privileges], "
       "[attr].[comment] AS [column_comment], "
-      "'NO' AS [is_generated], "
+      "'NEVER' AS [is_generated], "
       "NULL AS [generation_expression], "
       "'YES' AS [is_updatable], "
       "IF (([attr].[flags] & %d) = 0, 'YES', 'NO') AS [is_visible] "

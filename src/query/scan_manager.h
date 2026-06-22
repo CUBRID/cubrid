@@ -545,7 +545,7 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest,
 				SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-				regu_variable_list_node * regu_list_recordinfo, bool is_partition_table);
+				regu_variable_list_node * regu_list_recordinfo);
 extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, val_list_node * val_list,
 				     val_descr * vd, OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type,
 				     DB_VALUE ** cache_page_info, regu_variable_list_node * regu_list_page_info);
@@ -637,6 +637,7 @@ extern int scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+extern void scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

@@ -645,7 +645,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	  if (snprintf (abs_lob_path, PATH_MAX, "%s/%s", cwd, lob_path) >= PATH_MAX)
 	    {
 	      /* TODO:  Temporarily processed to clean up "-Wformat-truncation=" warning.
-	       * Additional review will be required.        
+	       * Additional review will be required.
 	       */
 	      goto error_exit;
 	    }
@@ -2614,14 +2614,13 @@ dumplocale (UTIL_FUNCTION_ARG * arg)
 			    err_status, true);
 	  goto error;
 	}
-      lf->locale_name = (char *) malloc (strlen (locale_str) + 1);
+      lf->locale_name = strdup (locale_str);
       if (lf->locale_name == NULL)
 	{
 	  err_status = ER_LOC_INIT;
 	  LOG_LOCALE_ERROR ("memory allocation failed", err_status, true);
 	  goto error;
 	}
-      strcpy (lf->locale_name, locale_str);
       err_status = locale_check_and_set_default_files (lf, true);
     }
   else
@@ -2924,9 +2923,7 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
 
   assert (db_collations != NULL);
 
-  strcpy (f_stmt_name, FILE_STMT_NAME);
-  strcat (f_stmt_name, db_name);
-  strcat (f_stmt_name, ".sql");
+  snprintf (f_stmt_name, PATH_MAX, FILE_STMT_NAME "%s.sql", db_name);
 
   f_stmt = fopen (f_stmt_name, "wt");
   if (f_stmt == NULL)
@@ -4973,14 +4970,13 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
 	      exit_status = EXIT_FAILURE;
 	      goto exit;
 	    }
-	  dir->name = (char *) calloc (strlen (db_name) + 1, sizeof (char));
+	  dir->name = strdup (db_name);
 	  if (dir->name == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (db_name) + 1);
 	      exit_status = EXIT_FAILURE;
 	      goto exit;
 	    }
-	  strcpy (dir->name, db_name);
 	  dir->next = NULL;
 	}
       else if (cfg_read_directory (&dir, false) != NO_ERROR)
