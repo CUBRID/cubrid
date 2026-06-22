@@ -12204,13 +12204,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
       // *INDENT-OFF*
-      struct oos_cand
-      {
-	int prefer_inline;	/* 0: normal (DEFAULT), 1: STORAGE PREFER_INLINE -> demote last */
-	int size;
-	int idx;
-      };
-      std::vector<oos_cand> oos_candidates;
+      std::vector<heap_oos_demote_candidate> oos_candidates;
       // *INDENT-ON*
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -12220,8 +12214,9 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      // *INDENT-OFF*
-	      int prefer_inline = attr_info->values[i].last_attrepr->oos_prefer_inline ? 1 : 0;
-	      oos_candidates.push_back ({ prefer_inline, column_size[i], i });
+	      heap_oos_demote_priority priority =
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_prefer_inline);
+	      oos_candidates.push_back ({ priority, column_size[i], i });
 	      // *INDENT-ON*
 	    }
 	}
@@ -12230,26 +12225,18 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       /* Demote order: columns flagged STORAGE PREFER_INLINE sink to the tail and are externalized
        * only as a last resort; within each priority class, largest first. The idx-descending
        * tiebreak preserves the legacy std::greater<std::pair> order for the no-hint (DEFAULT) case. */
-      std::sort (oos_candidates.begin (), oos_candidates.end (),
-		 [] (const oos_cand & a, const oos_cand & b)
-		 {
-		   if (a.prefer_inline != b.prefer_inline)
-		     return a.prefer_inline < b.prefer_inline;
-		   if (a.size != b.size)
-		     return a.size > b.size;
-		   return a.idx > b.idx;
-		 });
+      std::sort (oos_candidates.begin (), oos_candidates.end (), heap_oos_demote_candidate_precedes);
       // *INDENT-ON*
 
       // *INDENT-OFF*
-      for (auto & cand : oos_candidates)
+      for (auto& cand : oos_candidates)
 	// *INDENT-ON*
       {
 	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
 	  {
 	    break;
 	  }
-	(*oos_columns)[cand.idx] = true;
+	(*oos_columns)[cand.attr_index] = true;
 	payload_size -= cand.size;
 	payload_size += OR_OOS_INLINE_SIZE;
 	*has_oos = true;
