@@ -7217,13 +7217,31 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec, &remote_expr, &outer_expr);
 	      if (ncorr == 1)
 		{
-		  dinfo->corr_key_col_names[dinfo->corr_key_count] = mq_dblink_extract_col_name (parser, remote_expr);
-		  if (dinfo->corr_key_col_names[dinfo->corr_key_count] == NULL)
+		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
+
+		  /* Remote column's physical codeset, from the CCI column metadata.  This is
+		   * authoritative and unaffected by how the attr_def later declares the
+		   * column's codeset (e.g. redeclared with the local codeset for union/compat).
+		   * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		  int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
+		  if (remote_cs < 0)
 		    {
-		      mq_dblink_clear_corr_keys (parser, dinfo);
+		      remote_cs = (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
 		    }
-		  else
+
+		  /* Cross-codeset guard: a character key whose remote physical codeset differs
+		   * from the local outer codeset must not be pushed.  Pushing it would inject a
+		   * COLLATE <local>_bin clause the remote rejects (or, without binary-force, do
+		   * a wrong raw-byte comparison).  Local evaluation is correct instead: the
+		   * dblink fetch transcodes the remote value into the local codeset, so the
+		   * IN/EXISTS/JOIN comparison runs on matching codesets. */
+		  int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
+		  bool cross_codeset = (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum)
+					&& remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+
+		  if (corr_col != NULL && !cross_codeset)
 		    {
+		      dinfo->corr_key_col_names[dinfo->corr_key_count] = corr_col;
 		      dinfo->corr_key_outer_copy[dinfo->corr_key_count] = parser_copy_tree (parser, outer_expr);
 		      if (dinfo->corr_key_outer_copy[dinfo->corr_key_count] == NULL)
 			{
@@ -7231,14 +7249,13 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 			}
 		      else
 			{
-			  /* Capture the remote column's codeset (the COLLATE attaches to it).
-			   * -1 when not a character type / no data_type; the injector treats
-			   * that as "no codeset" and skips the codeset-based collation name. */
-			  dinfo->corr_key_remote_cs[dinfo->corr_key_count] =
-			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
+			  /* Authoritative remote codeset for the binary-force COLLATE name. */
+			  dinfo->corr_key_remote_cs[dinfo->corr_key_count] = remote_cs;
 			  dinfo->corr_key_count++;
 			}
 		    }
+		  /* else: cross-codeset key, or no column name -> leave keys cleared (already
+		   * done by mq_dblink_clear_corr_keys above) -> no push, evaluate locally. */
 		}
 	    }
 

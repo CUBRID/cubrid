@@ -12207,6 +12207,38 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
   return NO_ERROR;
 }
 
+/*
+ * pt_dblink_get_remote_col_charset () - physical remote codeset of a DBLink column
+ *   return: INTL_CODESET of the named remote column, or -1 if not found
+ *   remote_col_list(in): PT_DBLINK_INFO.remote_col_list (S_REMOTE_TBL_COLS *)
+ *   col_name(in): bare remote column name
+ *
+ * The CCI column metadata carries the remote column's true (physical) codeset, which
+ * is preserved here regardless of how the parse-tree attr_def later declares the
+ * column's codeset.  The correlated push-down guard uses this to detect a cross-codeset
+ * key (remote physical codeset != local outer codeset) and fall back to local evaluation.
+ */
+int
+pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)
+{
+  S_REMOTE_TBL_COLS *cols = (S_REMOTE_TBL_COLS *) remote_col_list;
+
+  if (cols == NULL || col_name == NULL)
+    {
+      return -1;
+    }
+
+  for (int i = 0; i < cols->get_attr_size (); i++)
+    {
+      if (intl_identifier_casecmp (cols->get_name (i), col_name) == 0)
+	{
+	  return cols->get_attr (i)->charset;
+	}
+    }
+
+  return -1;
+}
+
 void
 pt_free_dblink_remote_cols (PARSER_CONTEXT * parser)
 {
