@@ -12339,8 +12339,8 @@ sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_ERROR, 1, "no active COPY session");
-      error_code = ER_COPY_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
     }
   else
     {
@@ -12381,8 +12381,8 @@ sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen
   error_code = session_get_stream_session (thread_p, session);
   if (error_code != NO_ERROR || session == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_SESSION_ERROR, 1, "no active COPY session");
-      error_code = ER_COPY_SESSION_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
     }
   else
     {

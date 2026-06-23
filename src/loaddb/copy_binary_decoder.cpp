@@ -102,8 +102,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
 
   if (field_len < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: invalid field length");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "invalid field length");
+      return ER_COPY_BINARY_FORMAT_ERROR;
     }
 
   if (buf_remaining - (int) sizeof (int32_t) < field_len)
@@ -119,8 +119,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_INTEGER:
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: INT expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "INT expects 4 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       db_make_int (val, read_int32 (data));
       break;
@@ -128,8 +128,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_BIGINT:
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: BIGINT expects 8 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "BIGINT expects 8 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       db_make_bigint (val, read_int64 (data));
       break;
@@ -137,8 +137,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_FLOAT:
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: FLOAT expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "FLOAT expects 4 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       db_make_float (val, read_float (data));
       break;
@@ -146,8 +146,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_DOUBLE:
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DOUBLE expects 8 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DOUBLE expects 8 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       db_make_double (val, read_double (data));
       break;
@@ -155,8 +155,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
     case DB_TYPE_SHORT:
       if (field_len != 2)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: SHORT expects 2 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "SHORT expects 2 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       db_make_short (val, read_int16 (data));
       break;
@@ -173,8 +173,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       /* body: 4-byte encoded DB_DATE (julian day), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DATE expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATE expects 4 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
 	DB_DATE d = (DB_DATE) read_int32 (data);
@@ -186,8 +186,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       /* body: 4-byte encoded DB_TIME (seconds since midnight), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: TIME expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIME expects 4 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
 	DB_TIME t = (DB_TIME) read_int32 (data);
@@ -199,8 +199,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       /* body: 4-byte DB_TIMESTAMP (unix epoch seconds), network order */
       if (field_len != 4)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: TIMESTAMP expects 4 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "TIMESTAMP expects 4 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
 	DB_TIMESTAMP ts = (DB_TIMESTAMP) read_int32 (data);
@@ -212,8 +212,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       /* body: 4-byte date (julian) + 4-byte time (milliseconds), network order */
       if (field_len != 8)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: DATETIME expects 8 bytes");
-	  return ER_DB_UNIMPLEMENTED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "DATETIME expects 8 bytes");
+	  return ER_COPY_BINARY_FORMAT_ERROR;
 	}
       {
 	DB_DATETIME dt;
@@ -224,8 +224,8 @@ decode_field (const char *buf, int buf_remaining, DB_TYPE type, DB_VALUE *val, i
       break;
 
     default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1, "COPY binary: unsupported column type");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1, "unsupported column type");
+      return ER_COPY_BINARY_FORMAT_ERROR;
     }
 
   *consumed += field_len;
@@ -258,9 +258,9 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
 
   if (num_fields != (int16_t) ncols)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
-	      "COPY binary: field count mismatch");
-      return ER_DB_UNIMPLEMENTED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_BINARY_FORMAT_ERROR, 1,
+	      "field count mismatch");
+      return ER_COPY_BINARY_FORMAT_ERROR;
     }
 
   /* decode each field */
