@@ -75,6 +75,9 @@ static enum {
  * buffer is saved as part of the location information.
  */
 
+/* Stores the previous state (INITIAL or PL_LANG_SPEC) prior to handling hints/comments */
+int saved_yy_start = 0;  
+
 /* byte offset (in yybuffer_pos units) of the first character of the line that
  * is currently being scanned; column = token_start - this + 1 */
 int yyline_start_pos = 0;
@@ -1382,23 +1385,25 @@ _[uU][tT][fF]8[']		{
 }
 
 
-<INITIAL,PL_LANG_SPEC>"/*+"     {
+<INITIAL,PL_LANG_SPEC>{
+        "/*+"                  {
+                                  saved_yy_start = YY_START;
                                   BEGIN(BLOCK_HINT);
                                   csql_yylval.cptr = pt_append_string(this_parser, NULL, "+");
                                 }
-<INITIAL,PL_LANG_SPEC>"/*"      {  BEGIN(BLOCK_COMMENT); }
-
-<INITIAL,PL_LANG_SPEC>"//+"	{
+        "/*"                    {  saved_yy_start = YY_START; 
+                                   BEGIN(BLOCK_COMMENT); }
+                                   
+        "//+"  |	
+        "--+"	                {  saved_yy_start = YY_START;
                                    BEGIN(LINE_HINT);
                                    csql_yylval.cptr = pt_append_string(this_parser, NULL, "+");
                                 }
-<INITIAL,PL_LANG_SPEC>"//"	{  BEGIN(LINE_COMMENT);  }
 
-<INITIAL,PL_LANG_SPEC>"--+"	{
-                                   BEGIN(LINE_HINT);
-                                   csql_yylval.cptr = pt_append_string(this_parser, NULL, "+");
-                                }
-<INITIAL,PL_LANG_SPEC>"--"	{  BEGIN(LINE_COMMENT);  }
+        "//"   |
+        "--"	                {  saved_yy_start = YY_START;
+                                   BEGIN(LINE_COMMENT);  }
+                       }
 
 <BLOCK_HINT>{
         [^*\n]+  {   csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext); }
@@ -1406,7 +1411,7 @@ _[uU][tT][fF]8[']		{
                      csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\n");
                  }
         "*/"     {
-                     BEGIN(INITIAL);
+                     BEGIN(saved_yy_start);
                      if (parser_check_hint (csql_yylval.cptr))
                         {
 			  return SQL_HINT;
@@ -1418,7 +1423,7 @@ _[uU][tT][fF]8[']		{
 <BLOCK_COMMENT>{
         [^*\n]+  {   /* no action */;  }
         "\n"     {   /* no action */;  }
-        "*/"     {   BEGIN(INITIAL);   }
+        "*/"     {   BEGIN(saved_yy_start);   }
         "*"      {   /* no action */;  }
               }
 
@@ -1426,14 +1431,14 @@ _[uU][tT][fF]8[']		{
         [^\n]+   { csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, yytext);  }
         "\n"     {
                      csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "\n");
-                     BEGIN(INITIAL);
+                     BEGIN(saved_yy_start);
                      if (parser_check_hint (csql_yylval.cptr))
                         {
 			  return SQL_HINT;
                         }
                   }
         <<EOF>>  {
-                     BEGIN(INITIAL);
+                     BEGIN(saved_yy_start);
                      if (parser_check_hint (csql_yylval.cptr))
                         {
 			  return SQL_HINT;
@@ -1442,8 +1447,8 @@ _[uU][tT][fF]8[']		{
           }
 <LINE_COMMENT>{
         [^\n]+   { /* no action */; }
-        "\n"     { BEGIN(INITIAL);  }
-        <<EOF>>  { BEGIN(INITIAL);  }
+        "\n"     { BEGIN(saved_yy_start);  }
+        <<EOF>>  { BEGIN(saved_yy_start);  }
              }
 
 \xa1\xef				{ return YEN_SIGN; }
