@@ -78,7 +78,7 @@ namespace cubconn::connection
   {
     .m_state = state::HEADER,
     .m_receiver = receiver (capacity, &m_stats),
-    .m_header = { nullptr, 0 },
+    .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
     .m_command = false
   },
@@ -100,7 +100,7 @@ namespace cubconn::connection
   {
     .m_state = state::HEADER,
     .m_receiver = receiver (),
-    .m_header = { nullptr, 0 },
+    .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
     .m_command = false
   },
@@ -131,7 +131,7 @@ namespace cubconn::connection
 
     m_recv.m_state = state::HEADER;
     m_recv.m_receiver.reset ();
-    m_recv.m_header = { nullptr, 0 };
+    m_recv.m_header = DEFAULT_HEADER_DATA;
     m_recv.m_request_id = -1;
     m_recv.m_command = false;
 
