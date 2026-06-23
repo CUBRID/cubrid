@@ -85,6 +85,13 @@
   ((OID_ISTEMP(oid)) ? (unsigned int)(-((oid)->pageid) % htsize) :\
                        lock_get_hash_value(oid, htsize))
 
+/* Object-lock hash bucket count = num_trans * k * lock_escalation, clamped to
+ * [initial_object_locks, LK_OBJ_HASH_SIZE_MAX = 2^23 buckets = 64 MB at 8 B/slot].
+ * k = 3/1000 reproduces the legacy num_trans * 300 at the default lock_escalation. */
+#define LK_OBJ_HASH_SIZE_RATIO_NUM 3
+#define LK_OBJ_HASH_SIZE_RATIO_DEN 1000
+#define LK_OBJ_HASH_SIZE_MAX (1 << 23)
+
 /* thread is lock-waiting ? */
 #define LK_IS_LOCKWAIT_THREAD(thrd) \
   ((thrd)->lockwait != NULL \
@@ -130,7 +137,6 @@ struct lk_config
   int initial_object_locks;
   int object_res_block_count;
   int object_entry_block_count;
-  int min_object_locks;
   float object_res_ratio;
   float object_entry_ratio;
   int object_res_block_size;
@@ -1148,7 +1154,6 @@ lock_make_default_config (void)
   config.initial_object_locks = 10000;
   config.object_res_block_count = 2;
   config.object_entry_block_count = 1;
-  config.min_object_locks = MAX_NTRANS * 300;
   config.object_res_ratio = 0.1f;
   config.object_entry_ratio = 0.1f;
 
@@ -1193,7 +1198,6 @@ lock_make_runtime_config (void)
 
   /* Derived sizing. */
   runtime_config.max_twfg_edge_count = runtime_config.num_trans * runtime_config.num_trans;
-  runtime_config.min_object_locks = runtime_config.num_trans * 300;
   runtime_config.object_res_block_size =
     (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) /
 	       runtime_config.object_res_block_count, 1);
@@ -1246,14 +1250,19 @@ lock_make_runtime_config (void)
 static int
 lock_initialize_object_lock_structures (void)
 {
-  const int obj_hash_size = MAX (lk_Gl.config.initial_object_locks, lk_Gl.config.min_object_locks);
+  /* Size the bucket array from lock_escalation (CBRD-26960); 64-bit intermediate avoids
+   * overflow, the clamp keeps the result within int. */
+  const int lock_escalation = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  const INT64 scaled_buckets =
+    (INT64) lk_Gl.config.num_trans * lock_escalation * LK_OBJ_HASH_SIZE_RATIO_NUM / LK_OBJ_HASH_SIZE_RATIO_DEN;
+  const int obj_hash_size = (int) MAX (lk_Gl.config.initial_object_locks, MIN (scaled_buckets, LK_OBJ_HASH_SIZE_MAX));
 
-  lk_Obj_lock_res_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  lk_Obj_lock_res_desc.max_alloc_cnt = lock_escalation;
   lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
 			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
 			       lk_Obj_lock_res_desc);
 
-  obj_lock_entry_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  obj_lock_entry_desc.max_alloc_cnt = lock_escalation;
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
 			lk_Gl.config.object_entry_block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts) != NO_ERROR)
     {
