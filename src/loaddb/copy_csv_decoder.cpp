@@ -47,55 +47,55 @@ csv_coerce_field (const std::string &s, DB_TYPE type, DB_VALUE *val)
   switch (type)
     {
     case DB_TYPE_INTEGER:
-      {
-	long v = strtol (s.c_str (), &endp, 10);
-	if (endp == s.c_str () || *endp != '\0')
-	  {
-	    goto bad_value;
-	  }
-	db_make_int (val, (int) v);
-	break;
-      }
+    {
+      long v = strtol (s.c_str (), &endp, 10);
+      if (endp == s.c_str () || *endp != '\0')
+	{
+	  goto bad_value;
+	}
+      db_make_int (val, (int) v);
+      break;
+    }
     case DB_TYPE_BIGINT:
-      {
-	long long v = strtoll (s.c_str (), &endp, 10);
-	if (endp == s.c_str () || *endp != '\0')
-	  {
-	    goto bad_value;
-	  }
-	db_make_bigint (val, (DB_BIGINT) v);
-	break;
-      }
+    {
+      long long v = strtoll (s.c_str (), &endp, 10);
+      if (endp == s.c_str () || *endp != '\0')
+	{
+	  goto bad_value;
+	}
+      db_make_bigint (val, (DB_BIGINT) v);
+      break;
+    }
     case DB_TYPE_FLOAT:
-      {
-	float v = strtof (s.c_str (), &endp);
-	if (endp == s.c_str () || *endp != '\0')
-	  {
-	    goto bad_value;
-	  }
-	db_make_float (val, v);
-	break;
-      }
+    {
+      float v = strtof (s.c_str (), &endp);
+      if (endp == s.c_str () || *endp != '\0')
+	{
+	  goto bad_value;
+	}
+      db_make_float (val, v);
+      break;
+    }
     case DB_TYPE_DOUBLE:
-      {
-	double v = strtod (s.c_str (), &endp);
-	if (endp == s.c_str () || *endp != '\0')
-	  {
-	    goto bad_value;
-	  }
-	db_make_double (val, v);
-	break;
-      }
+    {
+      double v = strtod (s.c_str (), &endp);
+      if (endp == s.c_str () || *endp != '\0')
+	{
+	  goto bad_value;
+	}
+      db_make_double (val, v);
+      break;
+    }
     case DB_TYPE_SHORT:
-      {
-	long v = strtol (s.c_str (), &endp, 10);
-	if (endp == s.c_str () || *endp != '\0' || v < -32768 || v > 32767)
-	  {
-	    goto bad_value;
-	  }
-	db_make_short (val, (short) v);
-	break;
-      }
+    {
+      long v = strtol (s.c_str (), &endp, 10);
+      if (endp == s.c_str () || *endp != '\0' || v < -32768 || v > 32767)
+	{
+	  goto bad_value;
+	}
+      db_make_short (val, (short) v);
+      break;
+    }
     case DB_TYPE_VARCHAR:
       db_make_varchar (val, (int) s.size (), s.data (), (int) s.size (), INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
       break;
@@ -103,45 +103,45 @@ csv_coerce_field (const std::string &s, DB_TYPE type, DB_VALUE *val)
       db_make_char (val, (int) s.size (), s.data (), (int) s.size (), INTL_CODESET_UTF8, LANG_COLL_UTF8_BINARY);
       break;
     case DB_TYPE_DATE:
-      {
-	DB_DATE d;
-	if (db_string_to_date (s.c_str (), &d) != NO_ERROR)
-	  {
-	    goto bad_value;
-	  }
-	db_value_put_encoded_date (val, &d);
-	break;
-      }
+    {
+      DB_DATE d;
+      if (db_string_to_date (s.c_str (), &d) != NO_ERROR)
+	{
+	  goto bad_value;
+	}
+      db_value_put_encoded_date (val, &d);
+      break;
+    }
     case DB_TYPE_TIME:
-      {
-	DB_TIME t;
-	if (db_string_to_time (s.c_str (), &t) != NO_ERROR)
-	  {
-	    goto bad_value;
-	  }
-	db_value_put_encoded_time (val, &t);
-	break;
-      }
+    {
+      DB_TIME t;
+      if (db_string_to_time (s.c_str (), &t) != NO_ERROR)
+	{
+	  goto bad_value;
+	}
+      db_value_put_encoded_time (val, &t);
+      break;
+    }
     case DB_TYPE_TIMESTAMP:
-      {
-	DB_TIMESTAMP ts;
-	if (db_string_to_timestamp (s.c_str (), &ts) != NO_ERROR)
-	  {
-	    goto bad_value;
-	  }
-	db_make_timestamp (val, ts);
-	break;
-      }
+    {
+      DB_TIMESTAMP ts;
+      if (db_string_to_timestamp (s.c_str (), &ts) != NO_ERROR)
+	{
+	  goto bad_value;
+	}
+      db_make_timestamp (val, ts);
+      break;
+    }
     case DB_TYPE_DATETIME:
-      {
-	DB_DATETIME dt;
-	if (db_string_to_datetime (s.c_str (), &dt) != NO_ERROR)
-	  {
-	    goto bad_value;
-	  }
-	db_make_datetime (val, &dt);
-	break;
-      }
+    {
+      DB_DATETIME dt;
+      if (db_string_to_datetime (s.c_str (), &dt) != NO_ERROR)
+	{
+	  goto bad_value;
+	}
+      db_make_datetime (val, &dt);
+      break;
+    }
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_CSV_FORMAT_ERROR, 1, "unsupported column type");
       return ER_COPY_CSV_FORMAT_ERROR;
