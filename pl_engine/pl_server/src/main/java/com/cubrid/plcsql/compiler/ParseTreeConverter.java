@@ -313,7 +313,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -330,7 +330,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -2707,7 +2707,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static final int TYPE_VISIT_NORMAL = 0;
-    private static final int TYPE_VISIT_PARAM = 1; // IN parameter (and cursor parameter)
+    private static final int TYPE_VISIT_PARAM_IN = 1; // IN parameter (and cursor parameter)
     private static final int TYPE_VISIT_PARAM_OUT = 2; // OUT or IN OUT parameter
     private static final int TYPE_VISIT_RETURN = 3;
 
