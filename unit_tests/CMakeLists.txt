@@ -37,7 +37,6 @@ option (UNIT_TEST_PACKING "Unit testing: packing")
 option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
-option (UNIT_TEST_COPY "Unit testing: copy binary decoder")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 
 message("  unit_tests/...")
@@ -111,10 +110,6 @@ if (UNIT_TESTS OR UNIT_TEST_LOADDB)
   add_subdirectory(monitor)
 endif(UNIT_TESTS OR UNIT_TEST_LOADDB)
 ]]
-
-if (UNIT_TESTS OR UNIT_TEST_COPY)
-  message("    copy")
-endif(UNIT_TESTS OR UNIT_TEST_COPY)
 
 #[[
 TODO compilation fails
