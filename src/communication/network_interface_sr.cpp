@@ -12229,14 +12229,21 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
 #endif
 
 /*
- * scopy_from_init () - Initialize a COPY FROM STDIN session
- *   request format: table_name (string), num_cols (int), col_types (int[])
- *   reply format: error_code (int)
+ * create_copy_session_from_config () - Decode the COPY config blob and build a
+ *                                      copy_session.
+ *   config_ptr(in): pointer to the COPY config bytes (table/ncols/options/col_types)
+ *   config_len(in): length of the config blob (unused; the encoding is self-describing)
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened copy_session on success, NULL on error
+ *
+ * COPY config encoding (unchanged): table_name (string), num_cols (int),
+ * format (int), delimiter (int), quote (int), header (int), bulk (int),
+ * col_types (int[num_cols]).
  */
-void
-scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+static stream_session *
+create_copy_session_from_config (THREAD_ENTRY *thread_p, char *config_ptr, int config_len, int *error_code)
 {
-  char *ptr = request;
+  char *ptr = config_ptr;
   char *table_name = NULL;
   int num_cols = 0;
   int format = 0;
@@ -12244,8 +12251,10 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int quote = 0;
   int header = 0;
   int bulk = 0;
-  int error_code = NO_ERROR;
   DB_TYPE *col_types = NULL;
+  copy_session *session = NULL;
+
+  *error_code = NO_ERROR;
 
   ptr = or_unpack_string_nocopy (ptr, &table_name);
   ptr = or_unpack_int (ptr, &num_cols);
@@ -12259,8 +12268,8 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
   if (col_types == NULL)
     {
-      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-      goto reply;
+      *error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto exit;
     }
 
   for (int i = 0; i < num_cols; i++)
@@ -12280,37 +12289,84 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
     if (status != LC_CLASSNAME_EXIST)
       {
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LC_UNKNOWN_CLASSNAME, 1, table_name);
-	error_code = ER_LC_UNKNOWN_CLASSNAME;
-	goto reply;
+	*error_code = ER_LC_UNKNOWN_CLASSNAME;
+	goto exit;
       }
 
-    copy_session *session = new copy_session ();
+    session = new copy_session ();
     if (session == NULL)
       {
-	error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	goto reply;
+	*error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	goto exit;
       }
 
-    error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header, bulk);
-    if (error_code != NO_ERROR)
+    *error_code = session->init (thread_p, &class_oid, col_types, num_cols, format, delimiter, quote, header, bulk);
+    if (*error_code != NO_ERROR)
       {
 	delete session;
-	goto reply;
-      }
-
-    error_code = session_set_stream_session (thread_p, session);
-    if (error_code != NO_ERROR)
-      {
-	session->abort (thread_p);
-	delete session;
-	goto reply;
+	session = NULL;
+	goto exit;
       }
   }
 
-reply:
+exit:
   if (col_types != NULL)
     {
       db_private_free (thread_p, col_types);
+    }
+
+  return session;
+}
+
+/*
+ * create_stream_session () - Factory: build the stream_session for a stream_kind.
+ *   stream_kind(in): STREAM_KIND_* consumer tag
+ *   config_ptr(in): consumer-specific config blob
+ *   config_len(in): length of the config blob
+ *   error_code(out): NO_ERROR or the failure code
+ *   return: opened stream_session on success, NULL on error
+ *
+ * Add a new consumer by appending a case here (and a STREAM_KIND_* value);
+ * the transport and the SEND_DATA / END handlers stay unchanged.
+ */
+static stream_session *
+create_stream_session (THREAD_ENTRY *thread_p, int stream_kind, char *config_ptr, int config_len, int *error_code)
+{
+  switch (stream_kind)
+    {
+    case STREAM_KIND_COPY:
+      return create_copy_session_from_config (thread_p, config_ptr, config_len, error_code);
+
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "unknown stream kind");
+      *error_code = ER_STREAM_SESSION_ERROR;
+      return NULL;
+    }
+}
+
+/*
+ * sstream_from_init () - Open a client->server byte-stream session
+ *   request format: stream_kind (int), consumer config blob
+ *   reply format: error_code (int)
+ */
+void
+sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  int stream_kind = 0;
+  int error_code = NO_ERROR;
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+
+  stream_session *session = create_stream_session (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  if (session != NULL)
+    {
+      error_code = session_set_stream_session (thread_p, session);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	}
     }
 
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;

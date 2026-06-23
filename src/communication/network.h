@@ -285,8 +285,8 @@
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE) /* Debug only: unsafe, may break DB consistency */ \
-  /* copy from stdin */ \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_COPY_INIT) \
+  /* shared client->server byte-stream transport (COPY, internal-LOB, ...) */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_INIT) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_SEND_DATA) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_STREAM_END)
 
@@ -303,6 +303,10 @@ enum net_server_request
    */
   NET_SERVER_PING_WITH_HANDSHAKE = 999
 };
+
+/* Back-compat alias: COPY was the first consumer of the shared stream transport.
+ * Identical wire value as NET_SERVER_STREAM_INIT. */
+#define NET_SERVER_COPY_INIT NET_SERVER_STREAM_INIT
 
 /* Server/client capabilities */
 #define NET_CAP_BACKWARD_COMPATIBLE     0x80000000

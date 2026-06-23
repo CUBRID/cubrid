@@ -295,7 +295,7 @@ copy_session::flush_batch (THREAD_ENTRY *thread_p)
   HEAP_SCANCACHE scancache;
   int error = NO_ERROR;
   bool scancache_started = false;
-  /* BU_LOCK is pre-acquired at open when the BULK option is set (scopy_from_init). */
+  /* BU_LOCK is pre-acquired at open when the BULK option is set (sstream_from_init). */
   bool has_BU_lock = lock_has_lock_on_object (&m_class_oid, oid_Root_class_oid, BU_LOCK);
   int force_count = 0;
   OID dummy_oid = OID_INITIALIZER;

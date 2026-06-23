@@ -411,7 +411,8 @@ extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *b
 extern int file_delete_target_file (const char *target_vfid_str);
 #endif
 
-/* copy from stdin */
+/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+extern int stream_from_init (int stream_kind, const char *config, int config_len);
 extern int copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter,
 			   int quote, int header, int bulk);
 extern int stream_from_send_data (const char *data, int data_len);

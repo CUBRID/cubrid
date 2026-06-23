@@ -84,6 +84,7 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "stream_session.hpp"	/* STREAM_KIND_* */
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -11604,15 +11605,18 @@ file_dump_file_list (FILE * outfp, bool invalid_only)
 }
 
 /*
- * copy_from_init () - Initialize a COPY FROM STDIN session on the server
+ * stream_from_init () - Open a client->server byte-stream session on the server
  *   return: error code
- *   table_name(in): target table name
- *   col_types(in): array of column DB_TYPE values
- *   ncols(in): number of columns
+ *   stream_kind(in): STREAM_KIND_* consumer tag (e.g. STREAM_KIND_COPY)
+ *   config(in): consumer-specific config blob (already or_pack_*'d by the caller)
+ *   config_len(in): length of config in bytes
+ *
+ * Sends [int stream_kind][config bytes] to NET_SERVER_STREAM_INIT. The server
+ * factory dispatches on stream_kind to build the matching session. This entry is
+ * consumer-agnostic; the config blob is opaque here.
  */
 int
-copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
-		int header, int bulk)
+stream_from_init (int stream_kind, const char *config, int config_len)
 {
 #if defined(CS_MODE)
   int rc = ER_FAILED;
@@ -11620,8 +11624,8 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
   char *request = NULL;
   char *ptr;
 
-  /* size: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
-  request_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE);
+  /* size: stream_kind (int) + config blob */
+  request_size = OR_INT_SIZE + config_len;
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -11630,7 +11634,61 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  ptr = or_pack_string (request, table_name);
+  ptr = or_pack_int (request, stream_kind);
+  if (config_len > 0)
+    {
+      memcpy (ptr, config, config_len);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  int req_error = net_client_request (NET_SERVER_STREAM_INIT, request, request_size, reply,
+				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &rc);
+    }
+
+  free_and_init (request);
+
+  return rc;
+#else /* CS_MODE */
+  return NO_ERROR;
+#endif /* !CS_MODE */
+}
+
+/*
+ * copy_from_init () - Initialize a COPY FROM STDIN session on the server
+ *   return: error code
+ *   table_name(in): target table name
+ *   col_types(in): array of column DB_TYPE values
+ *   ncols(in): number of columns
+ *
+ * Thin COPY binding over stream_from_init(): packs the COPY config blob (table
+ * name + options + col_types, unchanged encoding) and opens with STREAM_KIND_COPY.
+ */
+int
+copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, int format, int delimiter, int quote,
+		int header, int bulk)
+{
+#if defined(CS_MODE)
+  int rc = ER_FAILED;
+  int config_size;
+  char *config = NULL;
+  char *ptr;
+
+  /* COPY config blob: string + ncols + format + delimiter + quote + header + bulk + ncols * int */
+  config_size = or_packed_string_length (table_name, NULL) + (OR_INT_SIZE * 6) + (ncols * OR_INT_SIZE);
+
+  config = (char *) malloc (config_size);
+  if (config == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) config_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  ptr = or_pack_string (config, table_name);
   ptr = or_pack_int (ptr, ncols);
   ptr = or_pack_int (ptr, format);
   ptr = or_pack_int (ptr, delimiter);
@@ -11642,17 +11700,9 @@ copy_from_init (const char *table_name, const DB_TYPE * col_types, int ncols, in
       ptr = or_pack_int (ptr, (int) col_types[i]);
     }
 
-  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
-  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  rc = stream_from_init (STREAM_KIND_COPY, config, config_size);
 
-  int req_error = net_client_request (NET_SERVER_COPY_INIT, request, request_size, reply,
-				      OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
-  if (!req_error)
-    {
-      or_unpack_int (reply, &rc);
-    }
-
-  free_and_init (request);
+  free_and_init (config);
 
   return rc;
 #else /* CS_MODE */

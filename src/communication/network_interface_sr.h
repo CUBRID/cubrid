@@ -244,8 +244,8 @@ extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
 
-/* copy from stdin */
-extern void scopy_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+/* shared client->server byte-stream transport (COPY, internal-LOB, ...) */
+extern void sstream_from_init (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_send_data (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sstream_end (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 

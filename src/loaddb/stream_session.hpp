@@ -35,6 +35,15 @@
 
 #include <cstdint>
 
+/* Consumer kind tag carried on the wire by the generic open path
+ * (NET_SERVER_STREAM_INIT). The server factory dispatches on this to build the
+ * matching session, so a new consumer is added by appending a value here plus a
+ * factory case -- the transport stays unchanged. */
+enum STREAM_KIND
+{
+  STREAM_KIND_COPY = 0		/* room for STREAM_KIND_LOB, etc. */
+};
+
 /* Result reported by finish(). The 64-bit count is interpreted by the binding:
  * rows_loaded for COPY, bytes written for internal-LOB. 64-bit so a 4GB LOB
  * value fits (CBRD-26780 wire length widening). */
