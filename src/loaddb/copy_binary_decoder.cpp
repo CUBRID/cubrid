@@ -239,7 +239,6 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
   int error = NO_ERROR;
   int pos = 0;
 
-  /* read num_fields */
   if (buf_len < (int) sizeof (int16_t))
     {
       /* not enough bytes even for the row header — caller should buffer */
@@ -249,7 +248,6 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
   int16_t num_fields = read_int16 (buf);
   pos += sizeof (int16_t);
 
-  /* check for footer sentinel */
   if (num_fields == COPY_BINARY_FOOTER_SENTINEL)
     {
       *bytes_consumed = pos;
@@ -263,7 +261,6 @@ decode_binary_row (const char *buf, int buf_len, const DB_TYPE *types, int ncols
       return ER_COPY_BINARY_FORMAT_ERROR;
     }
 
-  /* decode each field */
   for (int i = 0; i < ncols; i++)
     {
       int field_consumed = 0;

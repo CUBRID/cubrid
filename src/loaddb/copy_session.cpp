@@ -85,7 +85,6 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
   m_col_types.assign (col_types, col_types + num_cols);
   m_rows_loaded = 0;
 
-  /* get HFID from class OID */
   FILE_TYPE ftype;
   error = heap_get_class_info (thread_p, &m_class_oid, &m_hfid, &ftype, NULL);
   if (error != NO_ERROR)
@@ -93,9 +92,8 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
       return error;
     }
 
-  /* Open a temporary heap_attrinfo only to compute the attribute id mapping.
-   * We must release it within this request so the per-worker resource tracker
-   * does not flag the allocation as leaked when the task ends. */
+  /* This attrinfo only computes the attribute id mapping; it must be released
+   * within this request or the per-worker resource tracker flags it as leaked. */
   error = heap_attrinfo_start (thread_p, &m_class_oid, -1, NULL, &attrinfo);
   if (error != NO_ERROR)
     {
@@ -111,7 +109,6 @@ copy_session::init (THREAD_ENTRY *thread_p, const OID *class_oid, const DB_TYPE 
     int n_attrs = attrinfo.last_classrepr->n_attributes;
     OR_ATTRIBUTE *attrs = attrinfo.last_classrepr->attributes;
 
-    /* build sorted index array by def_order */
     std::vector<int> order (n_attrs);
     for (int i = 0; i < n_attrs; i++)
       {
@@ -255,7 +252,6 @@ copy_session::receive_chunk (THREAD_ENTRY *thread_p, const char *data, int data_
 	m_recdes_collected.push_back (std::move (new_recdes));
       }
 
-      /* clear values for next row */
       for (int i = 0; i < m_num_cols; i++)
 	{
 	  db_value_clear (&vals[i]);
