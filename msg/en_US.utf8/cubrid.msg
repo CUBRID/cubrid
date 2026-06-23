@@ -2,20 +2,20 @@
 $
 $  Copyright 2008 Search Solution Corporation
 $  Copyright 2016 CUBRID Corporation
-$ 
+$
 $   Licensed under the Apache License, Version 2.0 (the "License");
 $   you may not use this file except in compliance with the License.
 $   You may obtain a copy of the License at
-$ 
+$
 $       http://www.apache.org/licenses/LICENSE-2.0
-$ 
+$
 $   Unless required by applicable law or agreed to in writing, software
 $   distributed under the License is distributed on an "AS IS" BASIS,
 $   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 $   See the License for the specific language governing permissions and
 $   limitations under the License.
-$ 
-$ 
+$
+$
 $
 
 $
@@ -50,8 +50,8 @@ $set 4 MSGCAT_SET_PARAMETER
 7 HOME not set
 8 Required parameter "%1$s" has no value.
 9 Cannot open configuration file "%1$s": %2$s
-10 The '%1$s' parameter at line %2$d in file '%3$s' : 
-11 Environment variable %1$s: 
+10 The '%1$s' parameter at line %2$d in file '%3$s' :
+11 Environment variable %1$s:
 12 Unrecognized keyword.
 13 Value type does not match parameter type.
 14 Cannot allocate memory to store value.
@@ -515,7 +515,7 @@ $set 5 MSGCAT_SET_ERROR
 443 Tuple value index %1$d is out of range.
 444 Invalid attribute name: "%1$s".
 445 Value list index %1$d is out of range.
-446 There are query result structures closed by transaction manager but not closed by the application. 
+446 There are query result structures closed by transaction manager but not closed by the application.
 447 Attempted to operate a query result structure already closed.
 448 Tuple sizes are currently restricted to be no larger than a page.
 449 Unknown query identifier: %1$d.
@@ -528,7 +528,7 @@ $set 5 MSGCAT_SET_ERROR
 456 Data type references are incompatible.
 457 Invalid query result type.
 458 Overflow occurred in addition context.
-459 Query result contains more than a single tuple. 
+459 Query result contains more than a single tuple.
 460 Too few input host variables provided.
 461 More host variables are given than result columns.
 462 Result value is NULL, but there is no indicator variable.
@@ -651,7 +651,7 @@ $ LOADDB
 578 Reference to class %3$s is not compatible with the domain of argument %1$d \n of constructor %2$s.
 579 Target domain must include type "object" to allow references to classes.
 580 Attribute %1$s is not defined for class %2$s.
-581 Attempted to update the database when updates are disabled. 
+581 Attempted to update the database when updates are disabled.
 582 Unknown storage purpose %1$d. Valid range is from %2$d to %3$d.
 583 Trying to allocate an invalid number (%1$d) of pages.
 584 Internal Error: A loop was detected in the file table of file %1$d in volume "%2$s". The loop may be caused by page %3$d|%4$d.
@@ -921,7 +921,7 @@ $ LOADDB
 848 %1$s on an object(%2$d|%3$d|%4$d) is not found in the transaction(%5$d) non2pl list.
 849 Trying to abort a transaction(%1$d) twice.
 850 Tran(%1$d) is neither lock holder nor lock waiter of an object(%2$d|%3$d|%4$d).
-851 Failed to allocate lock resource (%1$s). 
+851 Failed to allocate lock resource (%1$s).
 852 Total holders mode(%1$d) of an empty lock holder list is not NULL_LOCK.
 853 For an object(%1$d|%2$d|%3$d), tran(%4$d) of Uncommitted Read held fault lock(%5$s).
 854 WARNING: No lock holder, but lock waiters exist. refer to %1$s.
@@ -1056,7 +1056,7 @@ $ LOADDB
 983 Instances of a reusable OID class are non-referable. This operation is not permitted on non-referable instances.
 984 Cannot set %3$s to "%6$s" in the "[%5$s]" section when it is set to "%4$s" in the "[%2$s]" section of the configuration file "%1$s".
 985 The hostname on the database connection string should be specified when multihost is set in "databases.txt". ex) csql demodb@localhost
-986 CUBRID heartbeat feature started. 
+986 CUBRID heartbeat feature started.
 987 CUBRID heartbeat feature stopped.
 988 Node event: %1$s.
 989 Process event: %1$s. %2$s
@@ -1101,7 +1101,7 @@ $ LOADDB
 1028 log applier: unexpected EOF record in archive log. LSA: %1$lld|%2$d.
 1029 log applier: invalid replication log page/offset. page HDR: %1$1lld|%2$d, final: %3$lld|%4$d, append LSA: %5$lld|%6$d, EOF LSA: %7$lld|%8$d, ha file status: %9$d, is end-of-log: %10$d.
 1030 log applier: invalid replication record. LSA: %1$lld|%2$d, forw LSA: %3$lld|%4$d, backw LSA: %5$lld|%6$d, Trid: %7$d, prev tran LSA: %8$lld|%9$d, type: %10$d.
-1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s. 
+1031 log applier: failed to apply the following statement. class: "%1$s", statement: "%2$s", server error: %3$d, %4$s.
 1032 log applier: failed to apply insert replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1033 log applier: failed to apply update replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
 1034 log applier: failed to apply delete replication log. class: "%1$s", key: "%2$s", server error: %3$d, %4$s
@@ -1110,7 +1110,7 @@ $ LOADDB
 1037 log writer: log writer shut itself down by signal.
 1038 log applier: log applier started. required LSA: %1$lld|%2$d. last committed LSA: %3$lld|%4$d. last committed repl LSA: %5$lld|%6$d.
 1039 log writer: log writer started. mode: %1$d.
-1040 HA generic: %1$s. 
+1040 HA generic: %1$s.
 1041 A string was truncated in context of "%1$s".
 1042 Trying to create a string requiring %1$d bytes of memory, while the maximum allowed is %2$d bytes.
 1043 Cannot change attribute "%1$s". CUBRID cannot change the requested attribute's properties if the class has subclasses.
@@ -1175,7 +1175,7 @@ $ LOADDB
 1102 Unknown system parameter or bad value.
 1103 Cannot change system parameter.
 1104 Slow query (%1$d msec)\n%2$s
-1105 Internal error: partially failed to flush dirty object. 
+1105 Internal error: partially failed to flush dirty object.
 1106 Multiple rows in source table match the same row in destination table.
 1107 Invalid bucket number for NTILE. Should be greater than zero and no more than 2,147,483,647.
 1108 Invalid bucket number for WIDTH_BUCKET. Should be greater than zero and less than 2,147,483,647.
@@ -1189,11 +1189,11 @@ $ LOADDB
 1116 Finished to update statistics (class "%1$s", oid : %2$d|%3$d|%4$d, error code : %5$d).
 1117 Cannot change attribute "%1$s". CUBRID cannot change an attribute as a SHARED and vice versa.
 1118 The argument of "%1$s" can not be coerced to desired domain "%2$s".
-1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file. 
+1119 Internal error: Page id %1$d is allocated according to the allocation map of volume "%2$s", but it does not belong to any file.
 1120 Internal error: Page id %1$d of volume "%2$s" is currently being used, but it is not allocated according to the allocation map of volume.
 1121 NOT NULL constraints do not allow NULL value.
 1122 Time out in receiving data.
-1123 pthread_cond_timedwait() timed out. 
+1123 pthread_cond_timedwait() timed out.
 1124 Query execution error. ERROR_CODE = %1$d, /* SQL_ID: %2$s */ %3$s
 1125 Create the overflow key file. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
 1126 Create a new overflow page. INDEX %1$s%2$s ON CLASS %3$s%4$s. key: %5$s%6$s.
@@ -1473,12 +1473,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
-1374 COPY FROM is not supported for "%1$s".
-1375 COPY binary format error: %1$s.
-1376 stream session error: %1$s.
-1377 COPY CSV format error: %1$s.
+1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
 
-1378 Last Error
+1375 COPY FROM is not supported for "%1$s".
+1376 COPY binary format error: %1$s.
+1377 stream session error: %1$s.
+1378 COPY CSV format error: %1$s.
+
+1379 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1545,7 +1547,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 36 invalid groups\n  groups spec: GROUPS identifier {, identifier}*
 37 invalid members\n  member spec: MEMBERS identifier {, identifier}*
 38 invalid password\n  password spec: PASSWORD 'STRING'
-39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL 
+39 missing authorized command list\n  authorized command = SELECT, INSERT, INDEX, DELETE, UPDATE, ALTER, ADD, DROP, EXECUTE, REFERENCES, ALL PRIVILEGES, ALL
 40 missing class spec list
 41 missing identifier list
 42 missing expression
@@ -1988,6 +1990,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 334 An attribute of virtual class cannot set column's visibility.
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
+337 The partition name is too long.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

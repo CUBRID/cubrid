@@ -10150,7 +10150,7 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	  const char *proc_name = procs->info.name.original;
 	  if (jsp_is_exist_stored_procedure (proc_name) == false)
 	    {
-	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSTCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
+	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SP_NOT_EXIST, proc_name);
 	      break;
 	    }
 	}

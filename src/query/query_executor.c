@@ -606,7 +606,6 @@ static int qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TY
 
 static int qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				     bool * empty_result);
-static void qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock);
 static int qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					     UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 static DEL_LOB_INFO *qexec_create_delete_lob_info (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
@@ -1514,6 +1513,8 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
   /* clear run-time setting info */
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
   REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+  /* pair with FETCH_*_CONST: clear so a reused (pooled) XASL clone rebuilds it via the slow path next time */
+  REGU_VARIABLE_CLEAR_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 
   switch (regu_var->type)
     {
@@ -12559,6 +12560,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   int flag;
   TP_DOMAIN *result_domain;
   bool has_user_format;
+  char auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
+  int auto_incr_pos = -1;
 
   thread_p->no_logging = (bool) insert->no_logging;
 
@@ -12658,6 +12661,17 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
   attr_info_inited = true;
   n_indexes = attr_info.last_classrepr->n_indexes;
+
+
+  // find auto_increment column position if exists
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      if (attr_info.last_classrepr->attributes[i].is_autoincrement)
+	{
+	  auto_incr_pos = i;
+	  break;
+	}
+    }
 
   /* first values should be the results of default expressions */
   num_default_expr = insert->num_default_expr;
@@ -12990,6 +13004,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+
 	      for (k = 0; k < val_no; ++k)
 		{
 		  if (DB_IS_NULL (insert->vals[k]))
@@ -13007,7 +13022,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		    }
 
-
 		  rc = heap_attrinfo_set (NULL, insert->att_id[k], insert->vals[k], &attr_info);
 		  if (rc != NO_ERROR)
 		    {
@@ -13015,9 +13029,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 		}
 
-	      if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
+	      if (auto_incr_pos >= 0)
 		{
-		  GOTO_EXIT_ON_ERROR;
+		  if (heap_set_autoincrement_value
+		      (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos,
+		       auto_incr_serial_name) != NO_ERROR)
+		    {
+		      GOTO_EXIT_ON_ERROR;
+		    }
 		}
 
 	      if (insert->do_replace && insert->has_uniques)
@@ -13186,9 +13205,14 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	    }
 
-	  if (heap_set_autoincrement_value (thread_p, &attr_info, &scan_cache, &is_autoincrement_set) != NO_ERROR)
+	  if (auto_incr_pos >= 0)
 	    {
-	      GOTO_EXIT_ON_ERROR;
+	      if (heap_set_autoincrement_value
+		  (thread_p, &attr_info, &scan_cache, &is_autoincrement_set, auto_incr_pos,
+		   auto_incr_serial_name) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	    }
 
 	  if (insert->do_replace && insert->has_uniques)
@@ -15290,102 +15314,6 @@ qexec_execute_dblink_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STAT
 }
 
 /*
- * qexec_setup_fixed_scan () - Decide and apply fixed heap scan flags for every access spec in the pipeline.
- *   xasl(in/out): top-level XASL node; specp->fixed_scan is written on every spec reachable via scan_ptr,
- *                 spec_list and merge_spec.
- *   force_select_lock(in): true if the top-level select forces instance locking (e.g. selupd reevaluation)
- *
- * Fixed scan keeps the last fetched heap page latched between rows (PEEK mode), avoiding repeated fix/unfix overhead.
- * Two independent paths can enable it for a spec:
- *   - It is the innermost TARGET_CLASS in the pipeline (the natural fixed_scan_xasl). Disabled globally when
- *     composite locking is required, any index scan is present, a correlated subquery exists, a HAVING subquery
- *     exists, an uncorrelated subquery linked to a regu variable exists, or the XASL_NO_FIXED_SCAN flag was set
- *     at compile time.
- *   - The spec carries ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN (e.g. PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED or the
- *     enable_heap_fixed_scan default). Honored only when no per-row locking happens anywhere in the pipeline
- *     and there is no composite locking — otherwise an inner scan suspending on a row lock while an outer scan
- *     keeps a page latched would violate lock_suspend ()'s no-perm-latch invariant (CBRD-26840). The natural
- *     fixed_scan_xasl stays safe under locking because it releases its own page during the lock retry.
- */
-static void
-qexec_setup_fixed_scan (XASL_NODE * xasl, bool force_select_lock)
-{
-  XASL_NODE *xptr;
-  ACCESS_SPEC_TYPE *spec_ptr[2];
-  ACCESS_SPEC_TYPE *specp;
-  XASL_NODE *fixed_scan_xasl = NULL;
-  bool has_index_scan = false;
-  bool scan_needs_obj_lock = force_select_lock;
-  bool composite_lock = COMPOSITE_LOCK (xasl->scan_op_type);
-  bool force_fixed_scan_allowed;
-  int spec_level;
-
-  /* First pass: walk pipeline to find the innermost fixed-scan candidate, detect any per-row locks, and detect
-   * any index scan. Do not early-break on has_index_scan — a FOR_UPDATE spec may still appear deeper. */
-  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
-    {
-      spec_ptr[0] = xptr->spec_list;
-      spec_ptr[1] = xptr->merge_spec;
-      for (spec_level = 0; spec_level < 2; ++spec_level)
-	{
-	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
-	    {
-	      if (ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FOR_UPDATE))
-		{
-		  scan_needs_obj_lock = true;
-		}
-	      if (specp->type == TARGET_CLASS && !has_index_scan)
-		{
-		  fixed_scan_xasl = xptr;
-		  if (IS_ANY_INDEX_ACCESS (specp->access))
-		    {
-		      has_index_scan = true;
-		    }
-		}
-	    }
-	}
-    }
-
-  /* Disqualify the natural fixed_scan_xasl if any global condition forbids fixed scan. */
-  if (composite_lock || has_index_scan || XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN) || xasl->dptr_list != NULL)
-    {
-      fixed_scan_xasl = NULL;
-    }
-  else if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
-    {
-      fixed_scan_xasl = NULL;
-    }
-  else
-    {
-      for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
-	{
-	  if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
-	    {
-	      fixed_scan_xasl = NULL;
-	      break;
-	    }
-	}
-    }
-
-  force_fixed_scan_allowed = !composite_lock && !scan_needs_obj_lock;
-
-  /* Second pass: apply the decision to every spec. */
-  for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
-    {
-      spec_ptr[0] = xptr->spec_list;
-      spec_ptr[1] = xptr->merge_spec;
-      for (spec_level = 0; spec_level < 2; ++spec_level)
-	{
-	  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
-	    {
-	      specp->fixed_scan = (xptr == fixed_scan_xasl)
-		|| (force_fixed_scan_allowed && ACCESS_SPEC_IS_FLAGED (specp, ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN));
-	    }
-	}
-    }
-}
-
-/*
  * qexec_execute_mainblock_internal () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15408,7 +15336,9 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
+  XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
+  bool has_index_scan = false;
   int old_wait_msecs, wait_msecs;
   int error;
   bool empty_result = false;
@@ -15927,7 +15857,84 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
       /* iterative processing is done only for XASL blocks that has access specification list blocks. */
       if (xasl->spec_list)
 	{
-	  qexec_setup_fixed_scan (xasl, force_select_lock);
+	  /* Decide which scan will use fixed flags and which won't. There are several cases here: 1. Do not use fixed
+	   * scans if locks on objects are required. 2. Disable all fixed scans if any index scan is used (this is
+	   * legacy and should be reconsidered). 3. Disable fixed scan for outer scans. Fixed cannot be allowed while
+	   * new scans start which also need to fix pages. This may lead to page deadlocks. NOTE: Only the innermost
+	   * scans are allowed fixed scans. */
+	  if (COMPOSITE_LOCK (xasl->scan_op_type))
+	    {
+	      /* Do locking on each instance instead of composite locking */
+	      /* Fall through */
+	    }
+	  else
+	    {
+	      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+		{
+		  specp = xptr->spec_list;
+		  for (; specp; specp = specp->next)
+		    {
+		      if (specp->type == TARGET_CLASS)
+			{
+			  /* Update fixed scan XASL */
+			  fixed_scan_xasl = xptr;
+			  if (IS_ANY_INDEX_ACCESS (specp->access))
+			    {
+			      has_index_scan = true;
+			      break;
+			    }
+			}
+		    }
+		  if (has_index_scan)
+		    {
+		      /* Stop search */
+		      break;
+		    }
+		  specp = xptr->merge_spec;
+		  for (; specp; specp = specp->next)
+		    {
+		      if (specp->type == TARGET_CLASS)
+			{
+			  /* Update fixed scan XASL */
+			  fixed_scan_xasl = xptr;
+			  if (IS_ANY_INDEX_ACCESS (specp->access))
+			    {
+			      has_index_scan = true;
+			      break;
+			    }
+			}
+		    }
+		}
+	    }
+	  if (has_index_scan)
+	    {
+	      /* Index found, no fixed is allowed */
+	      fixed_scan_xasl = NULL;
+	    }
+	  if (XASL_IS_FLAGED (xasl, XASL_NO_FIXED_SCAN))
+	    {
+	      /* no fixed scan if it was decided so during compilation */
+	      fixed_scan_xasl = NULL;
+	    }
+	  if (xasl->dptr_list != NULL)
+	    {
+	      /* correlated subquery found, no fixed is allowed */
+	      fixed_scan_xasl = NULL;
+	    }
+	  if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.eptr_list != NULL)
+	    {
+	      /* subquery in HAVING clause, can't have fixed scan */
+	      fixed_scan_xasl = NULL;
+	    }
+	  for (xptr = xasl->aptr_list; xptr != NULL; xptr = xptr->next)
+	    {
+	      if (XASL_IS_FLAGED (xptr, XASL_LINK_TO_REGU_VARIABLE))
+		{
+		  /* uncorrelated query that is not pre-executed, but evaluated in a reguvar; no fixed scan in this
+		   * case */
+		  fixed_scan_xasl = NULL;
+		}
+	    }
 
 	  /* open all the scans that are involved within the query, for SCAN blocks */
 	  for (xptr = xasl, level = 0; xptr; xptr = xptr->scan_ptr, level++)
@@ -15939,6 +15946,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
+		      specp->fixed_scan = (xptr == fixed_scan_xasl);
+
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
 			{
@@ -18355,6 +18364,13 @@ qexec_check_for_cycle (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, QFILE
  *  tpl(in):
  *  type_list(in):
  *  are_equal(out):
+ *
+ *  Note: User columns in CONNECT BY outptr_list are normally TYPE_CONSTANT regu_variables
+ *  whose dbvalptr points to a val_list DB_VALUE filled by the current scan. Derived sort-key
+ *  columns injected for ORDER SIBLINGS BY may be other regu types (e.g. TYPE_INARITH) where
+ *  reading .value.dbvalptr would mis-interpret an active union field. Those columns are
+ *  deterministic functions of the original TYPE_CONSTANT columns, so skipping them does not
+ *  weaken cycle detection.
  */
 static int
 qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -18369,6 +18385,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
   TP_DOMAIN *domp;
   int length1, length2, equal, i;
   bool copy = false;
+  bool compare_this;
 
   *are_equal = 1;
 
@@ -18380,8 +18397,7 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
     {
       /* compare regulist->value.value.dbvalptr to the DB_VALUE from tuple */
 
-      dbvalp2 = regulist->value.value.dbvalptr;
-      length2 = (dbvalp2->domain.general_info.is_null != 0) ? 0 : -1;
+      compare_this = (regulist->value.type == TYPE_CONSTANT);
 
       domp = type_list->domp[i];
       type = TP_DOMAIN_TYPE (domp);
@@ -18404,21 +18420,32 @@ qexec_compare_valptr_with_tuple (OUTPTR_LIST * outptr_list, QFILE_TUPLE tpl, QFI
 	    }
 	}
 
-      if (length1 == 0 && length2 == 0)
+      if (compare_this)
 	{
-	  equal = 1;
-	}
-      else if (length1 == 0)
-	{
-	  equal = 0;
-	}
-      else if (length2 == 0)
-	{
-	  equal = 0;
+	  dbvalp2 = regulist->value.value.dbvalptr;
+	  length2 = (dbvalp2->domain.general_info.is_null != 0) ? 0 : -1;
+
+	  if (length1 == 0 && length2 == 0)
+	    {
+	      equal = 1;
+	    }
+	  else if (length1 == 0)
+	    {
+	      equal = 0;
+	    }
+	  else if (length2 == 0)
+	    {
+	      equal = 0;
+	    }
+	  else
+	    {
+	      equal = pr_type_p->cmpval (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ;
+	    }
 	}
       else
 	{
-	  equal = pr_type_p->cmpval (&dbval1, dbvalp2, 0, 1, NULL, domp->collation_id) == DB_EQ;
+	  /* derived column injected for ORDER SIBLINGS BY; skip comparison */
+	  equal = 1;
 	}
 
       if (copy || DB_NEED_CLEAR (&dbval1))
@@ -20049,7 +20076,6 @@ static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
-  char *str1, *str2;
   int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
   int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
@@ -20057,40 +20083,22 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   char *string1 = NULL, *string2 = NULL;
   bool alloced_string1 = false, alloced_string2 = false;
 
-  str1 = (char *) mem1;
-  str2 = (char *) mem2;
-
-  /* generally, data is short enough */
-  str_length1 = OR_GET_BYTE (str1);
-  str_length2 = OR_GET_BYTE (str2);
-  if (str_length1 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && str_length2 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  /* String 1: parse the string header (TINY / SMALL / MEDIUM / LARGE) and decompress if needed. */
+  or_init (&buf1, (char *) mem1, 0);
+  rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+  if (rc != NO_ERROR)
     {
-      str1 += OR_BYTE_SIZE;
-      str2 += OR_BYTE_SIZE;
-      return bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
+      goto cleanup;
     }
 
-  assert (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
-	  || str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
-
-  /* String 1 */
-  or_init (&buf1, str1, 0);
-  if (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str1_compressed_length > 0)
     {
-      rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
-	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
-
       alloced_string1 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
@@ -20098,40 +20106,30 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-
-      str_length1 = str1_decompressed_length;
-      string1[str_length1] = '\0';
+      string1[str1_decompressed_length] = '\0';
     }
   else
     {
-      /* Skip the size byte */
-      string1 = str1 + OR_BYTE_SIZE;
+      string1 = buf1.ptr;	/* peek into disk image */
     }
+  str_length1 = str1_decompressed_length;
 
+  /* String 2 */
+  or_init (&buf2, (char *) mem2, 0);
+  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
   if (rc != NO_ERROR)
     {
-      ASSERT_ERROR ();
       goto cleanup;
     }
 
-  /* String 2 */
-  or_init (&buf2, str2, 0);
-  if (str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+  if (str2_compressed_length > 0)
     {
-      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
-      if (rc != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
-	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
-
       alloced_string2 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
@@ -20139,49 +20137,26 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-
-      str_length2 = str2_decompressed_length;
-      string2[str_length2] = '\0';
+      string2[str2_decompressed_length] = '\0';
     }
   else
     {
-      /* Skip the size byte */
-      string2 = str2 + OR_BYTE_SIZE;
+      string2 = buf2.ptr;	/* peek into disk image */
     }
+  str_length2 = str2_decompressed_length;
 
-  if (rc != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-
-  /* Compare the strings */
   c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
-  /* Clean up the strings */
-  if (string1 != NULL && alloced_string1 == true)
-    {
-      db_private_free_and_init (NULL, string1);
-    }
-
-  if (string2 != NULL && alloced_string2 == true)
-    {
-      db_private_free_and_init (NULL, string2);
-    }
-
-  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
     {
       db_private_free_and_init (NULL, string1);
     }
-
   if (string2 != NULL && alloced_string2 == true)
     {
       db_private_free_and_init (NULL, string2);
     }
-
-  return DB_UNK;
+  return c;
 }
 
 /*
