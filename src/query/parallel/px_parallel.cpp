@@ -134,14 +134,12 @@ namespace parallel_query
 	/* hint first, ignore the parallelism parameter */
 	if (num_pages < (UINT64) hint_degree)
 	  {
-	    degree = (UINT32) num_pages;
+	    return num_pages;
 	  }
 	else
 	  {
-	    degree = (UINT32) hint_degree;
+	    return hint_degree;
 	  }
-
-	return (degree < start_degree) ? 0 : degree;
       }
     else
       {
