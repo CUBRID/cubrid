@@ -4383,9 +4383,9 @@ copy_stmt
 			    node->info.copy.column_list = $3;
 			    node->info.copy.direction = 0;	/* FROM */
 			    node->info.copy.format = $9;	/* 0 = BINARY, 1 = CSV */
-			    node->info.copy.delimiter = 0;
-			    node->info.copy.quote = 0;
-			    node->info.copy.header = 0;
+			    node->info.copy.fmt.csv.delimiter = 0;
+			    node->info.copy.fmt.csv.quote = 0;
+			    node->info.copy.fmt.csv.header = 0;
 			    node->info.copy.bulk = 0;
 			    if (bulk != NULL)
 			      {
@@ -4395,16 +4395,16 @@ copy_stmt
 			    if (delim != NULL && delim->info.value.data_value.str != NULL
 				&& delim->info.value.data_value.str->length >= 1)
 			      {
-				node->info.copy.delimiter = delim->info.value.data_value.str->bytes[0];
+				node->info.copy.fmt.csv.delimiter = delim->info.value.data_value.str->bytes[0];
 			      }
 			    if (quote != NULL && quote->info.value.data_value.str != NULL
 				&& quote->info.value.data_value.str->length >= 1)
 			      {
-				node->info.copy.quote = quote->info.value.data_value.str->bytes[0];
+				node->info.copy.fmt.csv.quote = quote->info.value.data_value.str->bytes[0];
 			      }
 			    if (hdr != NULL)
 			      {
-				node->info.copy.header = 1;
+				node->info.copy.fmt.csv.header = 1;
 			      }
 			  }
 

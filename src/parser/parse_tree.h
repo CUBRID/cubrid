@@ -3501,10 +3501,16 @@ struct pt_copy_info
   PT_NODE *column_list;		/* PT_NAME (list): column names, or NULL for all */
   int direction;		/* 0 = FROM, 1 = TO */
   int format;			/* 0 = BINARY, 1 = CSV, 2 = LOADDB */
-  int delimiter;		/* CSV field delimiter char; 0 = default ',' */
-  int quote;			/* CSV quote char; 0 = default '"' */
-  int header;			/* CSV: 1 = skip a leading header line */
   int bulk;			/* 1 = bulk-load mode (BU_LOCK + batch insert); all formats */
+  union				/* format-specific options, selected by `format` */
+  {
+    struct
+    {
+      int delimiter;		/* field delimiter char; 0 = default ',' */
+      int quote;		/* quote char; 0 = default '"' */
+      int header;		/* 1 = skip a leading header line */
+    } csv;
+  } fmt;
 };
 
 /* Info field of the basic NODE
