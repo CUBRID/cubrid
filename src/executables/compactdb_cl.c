@@ -228,13 +228,11 @@ get_name_from_class_oid (OID * class_oid)
       return NULL;
     }
 
-  result = (char *) malloc (sizeof (char) * (strlen (temp_class_name) + 1));
+  result = strdup (temp_class_name);
   if (result == NULL)
     {
       return NULL;
     }
-
-  strcpy (result, temp_class_name);
 
   return result;
 }
