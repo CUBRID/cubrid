@@ -47,6 +47,9 @@ static XASL_NODE *make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE *
 				       BITSET * rght_exprs, PT_NODE * rght_elist);
 static XASL_NODE *make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_NODE * inner_xasl,
 				      PROJECTION_INFO * projection_info);
+static VAL_LIST *make_hashjoin_listfile_val_list (PARSER_CONTEXT * parser, VAL_LIST * outer_val_list,
+						  int outer_name_count, VAL_LIST * inner_val_list,
+						  int inner_name_count);
 static XASL_NODE *make_fetch_proc (QO_ENV * env, QO_PLAN * plan);
 static XASL_NODE *make_buildlist_proc (QO_ENV * env, PT_NODE * namelist);
 
@@ -545,6 +548,55 @@ exit_on_error:
 }
 
 /*
+ * make_hashjoin_listfile_val_list () - build the listfile value_list used to bind the hash join's
+ *   during/after-join predicate columns. It holds the two inputs' name columns (outer then inner),
+ *   sharing the inputs' buildlist DB_VALUEs so a bound column reads the slot regu_list_pred fetches.
+ *   return: combined VAL_LIST; NULL on allocation error.
+ */
+static VAL_LIST *
+make_hashjoin_listfile_val_list (PARSER_CONTEXT * parser, VAL_LIST * outer_val_list, int outer_name_count,
+				 VAL_LIST * inner_val_list, int inner_name_count)
+{
+  VAL_LIST *val_list;
+  QPROC_DB_VALUE_LIST *tail, src, node;
+  VAL_LIST *src_val_list;
+  int count, i, k;
+
+  val_list = (VAL_LIST *) parser_alloc (parser, sizeof (VAL_LIST));
+  if (val_list == NULL)
+    {
+      return NULL;
+    }
+  val_list->valp = NULL;
+  val_list->val_cnt = 0;
+  tail = &val_list->valp;
+
+  for (i = 0; i < 2; i++)
+    {
+      src_val_list = (i == 0) ? outer_val_list : inner_val_list;
+      count = (i == 0) ? outer_name_count : inner_name_count;
+      src = (src_val_list != NULL) ? src_val_list->valp : NULL;
+
+      for (k = 0; k < count && src != NULL; k++, src = src->next)
+	{
+	  node = (QPROC_DB_VALUE_LIST) parser_alloc (parser, sizeof (struct qproc_db_value_list));
+	  if (node == NULL)
+	    {
+	      return NULL;
+	    }
+	  node->val = src->val;	/* share the input's DB_VALUE */
+	  node->dom = src->dom;
+	  node->next = NULL;
+	  *tail = node;
+	  tail = &node->next;
+	  val_list->val_cnt++;
+	}
+    }
+
+  return val_list;
+}
+
+/*
  * make_hashjoin_proc() -
  *   return: XASL node for hash join execution; NULL on error.
  *   env(in): Optimization environment.
@@ -558,6 +610,13 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 		    PROJECTION_INFO * projection_info)
 {
   PARSER_CONTEXT *parser = NULL;
+  SYMBOL_INFO *symbols = NULL;
+  VAL_LIST *combined_val_list = NULL;
+  PT_NODE *combined_name_list = NULL, *combined_name_tail = NULL, *save_name_tail_next = NULL;
+  PT_NODE *save_current_listfile = NULL, *save_current_class = NULL;
+  VAL_LIST *save_listfile_value_list = NULL;
+  int save_listfile_attr_offset = 0;
+  bool listfile_ctx_set = false;
   PT_NODE *during_join_pred = NULL, *after_join_pred = NULL, *pred;
 
   PROJECTION_PART_INFO *outer_info, *inner_info;
@@ -682,6 +741,53 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	}
     }
 
+  /* The during/after-join predicates reference columns from both hash join inputs. A column's
+   * value lives in its input buildlist_proc's val_list at its name_list position - the slot
+   * proc.regu_list_pred fetches into - which the column's own table_info may not resolve to (e.g.
+   * a nested input whose val_list is no spec's value_list). Bind through a combined listfile
+   * context (outer ++ inner name_list / value_list, sharing the inputs' DB_VALUEs) so each column
+   * resolves to that slot. Restored below. */
+  if (!bitset_is_empty (&plan->plan_un.join.during_join_terms)
+      || !bitset_is_empty (&projection_info->after_join_pred_set))
+    {
+      symbols = parser->symbols;
+
+      combined_val_list =
+	make_hashjoin_listfile_val_list (parser, outer_xasl->val_list, outer_info->name_count, inner_xasl->val_list,
+					 inner_info->name_count);
+      if (combined_val_list == NULL)
+	{
+	  goto error_exit;
+	}
+
+      /* combined name_list: splice outer ++ inner (unspliced on restore) */
+      combined_name_list = outer_info->name_list;
+      if (combined_name_list != NULL)
+	{
+	  for (combined_name_tail = combined_name_list; combined_name_tail->next != NULL;
+	       combined_name_tail = combined_name_tail->next)
+	    ;
+	  save_name_tail_next = combined_name_tail->next;
+	  combined_name_tail->next = inner_info->name_list;
+	}
+      else
+	{
+	  combined_name_list = inner_info->name_list;
+	}
+
+      save_current_listfile = symbols->current_listfile;
+      save_listfile_value_list = symbols->listfile_value_list;
+      save_listfile_attr_offset = symbols->listfile_attr_offset;
+      save_current_class = symbols->current_class;
+
+      symbols->current_listfile = combined_name_list;
+      symbols->listfile_value_list = combined_val_list;
+      symbols->listfile_attr_offset = 0;
+      symbols->current_class = NULL;
+
+      listfile_ctx_set = true;
+    }
+
   /* during join predicate */
   if (!bitset_is_empty (&plan->plan_un.join.during_join_terms))
     {
@@ -706,6 +812,19 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
       parser_free_tree (parser, after_join_pred);
     }
 
+  if (listfile_ctx_set)
+    {
+      if (combined_name_tail != NULL)
+	{
+	  combined_name_tail->next = save_name_tail_next;	/* unsplice name_list */
+	}
+      symbols->current_listfile = save_current_listfile;
+      symbols->listfile_value_list = save_listfile_value_list;
+      symbols->listfile_attr_offset = save_listfile_attr_offset;
+      symbols->current_class = save_current_class;
+      listfile_ctx_set = false;
+    }
+
   /* merge_info */
   error = qo_init_merge_info (env, plan, projection_info, &proc->merge_info);
   if (error != NO_ERROR)
@@ -719,6 +838,18 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
   return xasl;
 
 error_exit:
+  if (listfile_ctx_set)
+    {
+      if (combined_name_tail != NULL)
+	{
+	  combined_name_tail->next = save_name_tail_next;	/* unsplice name_list */
+	}
+      symbols->current_listfile = save_current_listfile;
+      symbols->listfile_value_list = save_listfile_value_list;
+      symbols->listfile_attr_offset = save_listfile_attr_offset;
+      symbols->current_class = save_current_class;
+    }
+
   if (error == NO_ERROR && pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
