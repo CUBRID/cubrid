@@ -38,7 +38,6 @@
 #include <signal.h>
 #include <fcntl.h>
 #include <time.h>
-#include <execinfo.h>
 #else
 #include <signal.h>
 #include <time.h>
@@ -530,32 +529,11 @@ cas_sig_handler (int signo)
     }
   is_doing_signal_handler = 1;
 
-  /* DEBUG: write backtrace on SIGABRT for assert debugging */
-  if (signo == SIGABRT)
-    {
-      void *bt_buf[64];
-      int bt_size;
-      int bt_fd;
-      char bt_path[256];
-      snprintf (bt_path, sizeof (bt_path), "/tmp/cas_bt_%d.txt", (int) getpid ());
-      bt_size = backtrace (bt_buf, 64);
-      bt_fd = open (bt_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-      if (bt_fd >= 0)
-	{
-	  backtrace_symbols_fd (bt_buf, bt_size, bt_fd);
-	  close (bt_fd);
-	}
-      cas_log_write_and_end (0, true, "CAS SIGABRT - backtrace written to %s (%d frames)", bt_path, bt_size);
-      signal (SIGABRT, SIG_DFL);
-      raise (SIGABRT);
-      return;
-    }
-
   signal (signo, SIG_IGN);
 
   er_print_crash_callstack (signo);
 
-  if (signo == SIGTERM || signo == SIGINT)
+  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
     {
       cas_free (true);
     }

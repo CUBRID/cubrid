@@ -42,7 +42,6 @@
  *   DB_TYPE_FLOAT:    4 bytes, IEEE 754
  *   DB_TYPE_DOUBLE:   8 bytes, IEEE 754
  *   DB_TYPE_VARCHAR:  raw UTF-8 bytes (no NUL terminator)
- *   DB_TYPE_VECTOR:   4-byte dimension count (network order) + dim * 4 bytes float32
  *   NULL:             field_len = -1, no data bytes
  */
 
