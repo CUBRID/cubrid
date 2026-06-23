@@ -86,6 +86,9 @@
 #include "authenticate.h"
 #include "stream_session.hpp"	/* STREAM_KIND_* */
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
  */

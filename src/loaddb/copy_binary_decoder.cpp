@@ -32,6 +32,9 @@
 #include <arpa/inet.h>
 #include <cstring>
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* read int16 from buffer in network byte order */
 static inline int16_t
 read_int16 (const char *buf)

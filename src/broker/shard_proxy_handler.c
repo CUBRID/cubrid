@@ -43,6 +43,9 @@
 #include "shard_parser.h"
 #include "shard_proxy_function.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 #define PROXY_MAX_IGNORE_TIMER_CHECK 	10
 #define PROXY_TIMER_CHECK_INTERVAL 	1	/* sec */
 

@@ -58,6 +58,9 @@
 #include "db_session.h"
 #include "object_primitive.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* ========================================================================
  * Forward Function Declarations
  * ======================================================================== */
