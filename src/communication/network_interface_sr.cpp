@@ -12247,18 +12247,15 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
   int error_code = NO_ERROR;
   DB_TYPE *col_types = NULL;
 
-  /* unpack table name */
   ptr = or_unpack_string_nocopy (ptr, &table_name);
-  /* unpack num columns */
   ptr = or_unpack_int (ptr, &num_cols);
-  /* unpack format (0 = BINARY, 1 = CSV) + CSV options */
+  /* format: 0 = BINARY, 1 = CSV */
   ptr = or_unpack_int (ptr, &format);
   ptr = or_unpack_int (ptr, &delimiter);
   ptr = or_unpack_int (ptr, &quote);
   ptr = or_unpack_int (ptr, &header);
   ptr = or_unpack_int (ptr, &bulk);
 
-  /* unpack column types */
   col_types = (DB_TYPE *) db_private_alloc (thread_p, num_cols * sizeof (DB_TYPE));
   if (col_types == NULL)
     {
@@ -12273,7 +12270,6 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
       col_types[i] = (DB_TYPE) type_val;
     }
 
-  /* resolve class OID from table name */
   {
     OID class_oid;
     LC_FIND_CLASSNAME status;
@@ -12288,7 +12284,6 @@ scopy_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 	goto reply;
       }
 
-    /* create copy session */
     copy_session *session = new copy_session ();
     if (session == NULL)
       {

@@ -22285,10 +22285,9 @@ pt_is_allowed_result_cache ()
  *   parser(in): Parser context
  *   statement(in): Parse tree node for COPY statement
  *
- * Note: Initializes the server-side COPY session by resolving the table
- *       and column types and calling copy_from_init(). Actual binary data
- *       transfer is handled by the CAS broker via stream_from_send_data()
- *       and stream_from_end().
+ * Resolves the table and column types, then calls copy_from_init(). Actual
+ * binary data transfer is handled by the CAS broker via stream_from_send_data()
+ * and stream_from_end().
  */
 int
 do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -22326,7 +22325,6 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* find class */
   class_obj = db_find_class (table_name);
   if (class_obj == NULL)
     {
@@ -22336,7 +22334,6 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (statement->info.copy.column_list != NULL)
     {
-      /* count specified columns */
       for (col = statement->info.copy.column_list; col != NULL; col = col->next)
 	{
 	  ncols++;
@@ -22364,7 +22361,7 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      /* use all columns in schema order */
+      /* no column list: use all columns in schema order */
       for (attr = db_get_attributes (class_obj); attr != NULL; attr = db_attribute_next (attr))
 	{
 	  ncols++;
