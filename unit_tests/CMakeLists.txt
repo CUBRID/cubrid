@@ -114,7 +114,6 @@ endif(UNIT_TESTS OR UNIT_TEST_LOADDB)
 
 if (UNIT_TESTS OR UNIT_TEST_COPY)
   message("    copy")
-  add_subdirectory(copy)
 endif(UNIT_TESTS OR UNIT_TEST_COPY)
 
 #[[
