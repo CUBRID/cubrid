@@ -8722,11 +8722,21 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 		    }
 		  if (xs_scan == S_SUCCESS)
 		    {
-		      /* single-fetch (QPROC_SINGLE_INNER) inner yields at most one qualifying row, so this first
-		         S_SUCCESS already settles the match -- no drain needed (a second scan_next_scan would just
-		         short-circuit to S_END without touching the physical scan, so it releases no latch).
-		         TODO(composite-RHS): a composite/derived inner can yield many rows; it would then need to
-		         drain (or short-circuit) the subtree explicitly (side effects / instnum / CONNECT BY). */
+		      /* Drain the single-fetch inner to S_END so its scan-block bookkeeping terminates:
+		         qexec_next_scan_block_iterations () needs the inner ended, else the outer scan-block
+		         loop never reaches S_END (CBRD-26872). For QPROC_SINGLE_INNER this is one short-circuit
+		         call (no physical scan, no latch).
+		         TODO(composite-RHS): a composite/derived inner can yield many rows; it would then need
+		         to drain (or short-circuit) the subtree explicitly (side effects / instnum / CONNECT BY). */
+		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
+							  next_scan_fnc + 1)) == S_SUCCESS)
+			{
+			  ;
+			}
+		      if (xs_scan == S_ERROR)
+			{
+			  return S_ERROR;
+			}
 		      qualified = false;	/* inner matched -> anti suppresses this outer row */
 		    }
 		  else
