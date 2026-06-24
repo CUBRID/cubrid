@@ -252,6 +252,15 @@ public class TypeChecker extends AstVisitor<Type> {
         if (node.staticSql != null) {
             assert node.staticSql.intoTargetList == null; // by earlier check
             typeCheckHostExprs(node.staticSql); // s400
+        } else {
+            // forward declaration
+            assert node.recordTypeSpec != null;
+            visitTypeSpec(node.recordTypeSpec);
+
+            if (node.bodyDecl != null) {
+                assert node.bodyDecl instanceof DeclCursor;
+                visitDeclCursor((DeclCursor) node.bodyDecl);
+            }
         }
         return null;
     }
@@ -1392,6 +1401,11 @@ public class TypeChecker extends AstVisitor<Type> {
         }
 
         routineDefNestLevel--;
+
+        if (node.bodyDecl != null) {
+            assert node.body == null;
+            visit(node.bodyDecl);
+        }
 
         return null;
     }
