@@ -4144,13 +4144,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		    {
 		      for (PT_NODE * args = info->args; args != NULL; args = args->next)
 			{
-			  PT_NODE *out_name = args;
-			  while (out_name != NULL && out_name->node_type == PT_NODE_POINTER)
-			    {
-			      out_name = out_name->info.pointer.node;
-			    }
-
-			  if (pt_aggregate_arg_eq (parser, arg, out_name))
+			  if (pt_aggregate_arg_eq (parser, arg, args))
 			    {
 			      shared_value = (DB_VALUE *) args->etc;
 			      break;
@@ -4215,8 +4209,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 			  return NULL;
 			}
 
-		      error_code =
-			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
 		      if (error_code != NO_ERROR)
 			{
 			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
@@ -4705,24 +4698,12 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   int i = 0;
   for (out_name = out_names; out_name; out_name = out_name->next, i++)
     {
-      PT_NODE *name = out_name;
-      while (name && name->node_type == PT_NODE_POINTER)
-	{
-	  name = name->info.pointer.node;
-	}
-
-      bool can_share = pt_is_shareable_groupby_ref (parser, name);
+      bool can_share = pt_is_shareable_groupby_ref (parser, out_name);
       bool is_exists = false;
 
       for (PT_NODE * args = info.args; args; args = args->next)
 	{
-	  PT_NODE *arg = args;
-	  while (arg != NULL && arg->node_type == PT_NODE_POINTER)
-	    {
-	      arg = arg->info.pointer.node;
-	    }
-
-	  if (pt_aggregate_arg_eq (parser, name, arg))
+	  if (pt_aggregate_arg_eq (parser, out_name, args))
 	    {
 	      is_exists = true;
 	      break;
@@ -4731,7 +4712,7 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 
       if (can_share && !is_exists)
 	{
-	  PT_NODE *reg = pt_point (parser, name);
+	  PT_NODE *reg = pt_point (parser, out_name);
 	  if (reg != NULL)
 	    {
 	      reg->etc = (void *) pt_index_value (value_list, i);
@@ -28703,8 +28684,7 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
  * pt_is_shareable_groupby_ref () - determine whether an expression is built only
  *				  from the allowed (shareable) node types listed
  *				  in pt_is_shareable_groupby_ref_pre ()
- *   return: true if every node in node's subtree is an allowed type, false
- *	     otherwise (an empty tree trivially returns true).
+ *   return: true if every node in node's subtree is an allowed type, false otherwise.
  *   parser(in):
  *   node(in): root of the (sub)expression to inspect. Only this node and its
  *	       descendants are checked; the sibling list (node->next) is not
@@ -28718,7 +28698,13 @@ pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (node == NULL)
     {
-      return true;
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (node);
+  if (node == NULL)
+    {
+      return false;
     }
 
   /* restrict the walk to this node's own subtree, not its siblings */
