@@ -28628,9 +28628,11 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 /*
  * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
  *				     the result flag when it visits a node that
- *				     cannot be shared: a disallowed node type, or
- *				     a non-deterministic / side-effecting PT_EXPR
- *				     operator
+ *				     cannot be shared: a disallowed node type, a
+ *				     non-deterministic / side-effecting PT_EXPR
+ *				     operator, or a PT_FUNCTION that is aggregate /
+ *				     analytic / order-dependent / foreign (UDF) /
+ *				     object / benchmark
  *   return: node (unchanged)
  *   parser(in):
  *   node(in):
@@ -28652,8 +28654,25 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
     case PT_NAME:
     case PT_DOT_:
     case PT_VALUE:
-    case PT_FUNCTION:
       /* allowed (shareable) node types */
+      break;
+
+    case PT_FUNCTION:
+      {
+	FUNC_CODE ftype = node->info.function.function_type;
+
+	/* only deterministic, side-effect-free functions may share a slot. exclude aggregate / analytic /
+	 * order-dependent functions, foreign (UDF) functions, and object / benchmark functions that read
+	 * external state or have side effects. */
+	if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node)
+	    || node->info.function.is_order_dependent
+	    || ftype == PT_GENERIC || ftype == F_GENERIC || ftype == F_VID || ftype == F_CLASS_OF
+	    || ftype == F_BENCHMARK)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
       break;
 
     case PT_EXPR:
@@ -28717,6 +28736,9 @@ pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
  *   parser(in):
  *   p(in):
  *   q(in):
+ *   note: besides node structure, the result type/domain (precision, scale, codeset, collation)
+ *	   must also match, so that two expressions over the same operands but with different
+ *	   result domains (e.g. CAST(c AS CHAR(1)) vs CAST(c AS CHAR(10))) are not treated as equal.
  */
 static bool
 pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
@@ -28741,6 +28763,24 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
   if (p->node_type != q->node_type)
     {
       return false;
+    }
+
+  /* The two expressions must also produce the same result type/domain.
+   * Matching operands are not sufficient: e.g. CAST(c AS CHAR(1)) and CAST(c AS CHAR(10))
+   * share operands but yield different DB_VALUEs, so they must not share an input slot. */
+  if (p->type_enum != q->type_enum)
+    {
+      return false;
+    }
+  if (p->data_type != NULL || q->data_type != NULL)
+    {
+      TP_DOMAIN *dp = pt_xasl_node_to_domain (parser, p);
+      TP_DOMAIN *dq = pt_xasl_node_to_domain (parser, q);
+
+      if (dp == NULL || dq == NULL || tp_domain_match (dp, dq, TP_EXACT_MATCH) == 0)
+	{
+	  return false;
+	}
     }
 
   switch (p->node_type)
