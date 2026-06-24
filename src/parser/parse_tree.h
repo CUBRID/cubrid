@@ -3403,18 +3403,6 @@ typedef struct host_vars_info
 
 #define PT_DBLINK_MAX_CORR_KEYS 8	/* max correlated push-down keys; currently only [0] is used (single equality) */
 
-/* Normalized remote DBMS kind for correlated push-down. Mapped from the raw
- * cci_get_dbms_type() value at name resolution (which folds the CCI/broker
- * CAS_*_DBMS_* integers, including the proxy variants), so view_transform need
- * not know the wire integers. */
-typedef enum
-{
-  PT_DBLINK_DBMS_OTHER = 0,
-  PT_DBLINK_DBMS_CUBRID,
-  PT_DBLINK_DBMS_MYSQL,
-  PT_DBLINK_DBMS_ORACLE
-} PT_DBLINK_DBMS_KIND;
-
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
@@ -3435,21 +3423,11 @@ typedef struct pt_dblink_info
 
   void *remote_col_list;	/* remote table's column list */
 
-  /* normalized remote DBMS kind, mapped from cci_get_dbms_type() at name
-   * resolution; used to pick the binary-force syntax for push-down. */
-  PT_DBLINK_DBMS_KIND dbms_kind;
-
   /* Correlated equality push-down (single equality: count == 1).
    * corr_key_col_names: stable copy for SQL; corr_key_outer_copy: owning copy for XASL (parser_copy_tree). */
   int corr_key_count;
   PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];
   const char *corr_key_col_names[PT_DBLINK_MAX_CORR_KEYS];
-  /* remote column's codeset (INTL_CODESET) per corr key, captured at detection.
-   * Authoritative source for the CUBRID binary collation name (<codeset>_bin): the
-   * COLLATE attaches to the remote column, so its codeset governs.  For a pushable
-   * equality the remote and local outer codesets coincide, but keying off the remote
-   * column is the principled choice. */
-  int corr_key_remote_cs[PT_DBLINK_MAX_CORR_KEYS];
 
   /* true once mq_dblink_append_corr_pred_sql has written "col = ?" into rewritten.
    * Replaces the rewritten==NULL sentinel so the pure-corr check in
