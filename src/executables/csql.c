@@ -233,7 +233,7 @@ static void display_buffer (void);
 static void start_csql (CSQL_ARGUMENT * csql_arg);
 static void csql_read_file (const char *file_name);
 static void csql_write_file (const char *file_name, int append_flag);
-static void display_error (DB_SESSION * session, int stmt_start_line_no);
+static void display_error (DB_SESSION * session);
 static void free_attr_spec (DB_QUERY_TYPE ** attr_spec);
 static void csql_print_database (void);
 static void csql_set_sys_param (const char *arg_str);
@@ -245,7 +245,7 @@ static void csql_print_buffer (void);
 static void csql_change_working_directory (const char *dirname);
 static void csql_exit_session (int error, bool exit_flag);
 
-static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no);
+static int csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no);
 
 static char *csql_get_external_command (SESSION_CMD cmd_no);
 static int csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg);
@@ -761,7 +761,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
-  for (line_no = 1;; line_no++)
+  line_no = 0;
+  do
     {
       if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
 	{
@@ -817,6 +818,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
+	  line_no++;
+
 	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n' character in it. So, read_whole_line
 	   * will be remained as false. */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -867,12 +870,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
 
       /* skip UTF-8 BOM if present */
-      if (is_first_read_line && intl_is_bom_magic (line_read, line_length))
+      if (is_first_read_line)
 	{
-	  line_read += 3;
-	  line_length -= 3;
+	  if (intl_is_bom_magic (line_read, line_length))
+	    {
+	      line_read += 3;
+	      line_length -= 3;
+	    }
+	  is_first_read_line = false;
 	}
-      is_first_read_line = false;
 
       for (ptr = line_read + line_length - 1; line_length > 0; ptr--)
 	{
@@ -914,10 +920,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
-	  if (csql_Is_interactive)
-	    {
-	      line_no = 0;
-	    }
 	  continue;
 	}
       else
@@ -956,23 +958,16 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
 	      csql_edit_contents_clear ();
-	      if (csql_Is_interactive)
-		{
-		  line_no = 0;
-		}
+	      csql_yyset_lineno (csql_Is_interactive ? 1 : (line_no + 1));
 	    }
 	}
 
       continue;
 
     error_continue:
-
-      if (csql_Is_interactive)
-	{
-	  line_no = 0;
-	}
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
+  while (true);
 
 fatal_error:
   csql_edit_contents_finalize ();
@@ -2011,14 +2006,13 @@ csql_change_working_directory (const char *dirname)
  * display_error()
  *   return: none
  *   session(in)
- *   stmt_start_line_no(in)
  */
 static void
-display_error (DB_SESSION * session, int stmt_start_line_no)
+display_error (DB_SESSION * session)
 {
   if (csql_Error_code == CSQL_ERR_SQL_ERROR)
     {
-      csql_display_session_err (session, stmt_start_line_no);
+      csql_display_session_err (session);
       csql_check_server_down ();
     }
   else
@@ -2112,11 +2106,11 @@ csql_print_server_output (const CSQL_ARGUMENT * csql_arg)
  *   buffer.
  */
 static int
-csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, int line_no)
+csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *stream, const int line_no)
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
-  int stmt_start_line_no = 0;	/* starting line no of each stmt */
+  int stmt_start_line_no = line_no;	/* starting line no of each stmt */
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
@@ -2256,7 +2250,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  /* Do not continue if there are no statments in the buffer */
 	  if (csql_arg->continue_on_error && (db_error_code () != ER_IT_EMPTY_STATEMENT))
 	    {
-	      display_error (session, 0);
+	      display_error (session);
 	      /* do_abort_transaction() should be called after display_error() because in some cases it deallocates the
 	       * parser containing the error message */
 	      if (do_abort_transaction)
@@ -2279,10 +2273,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	{
 	  stmt_start_line_no = db_get_start_line (session, stmt_id);
 	}
-      else
-	{
-	  stmt_start_line_no = line_no;
-	}
+
       attr_spec = db_get_query_type_list (session, stmt_id);
       stmt_type = (CUBRID_STMT_TYPE) db_get_statement_type (session, stmt_id);
 
@@ -2303,7 +2294,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	  if (csql_arg->continue_on_error)
 	    {
-	      display_error (session, stmt_start_line_no);
+	      display_error (session);
 	      if (do_abort_transaction)
 		{
 		  db_abort_transaction ();
@@ -2428,7 +2419,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 	      if (csql_arg->continue_on_error)
 		{
-		  display_error (session, stmt_start_line_no);
+		  display_error (session);
 		  if (do_abort_transaction)
 		    {
 		      db_abort_transaction ();
@@ -2532,7 +2523,7 @@ error:
       do_abort_transaction = true;
     }
 
-  display_error (session, stmt_start_line_no);
+  display_error (session);
   if (csql_arg->pl_server_output)
     {
       csql_print_server_output (csql_arg);

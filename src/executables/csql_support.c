@@ -625,14 +625,14 @@ csql_display_csql_err (int line_no, int col_no)
  * csql_display_session_err() - display all query compilation errors
  *                            for this session
  *   return: none
- *   session(in): context of query compilation
- *   line_no(in): statement starting line number
+ *   session(in): context of query compilation 
  */
 void
-csql_display_session_err (DB_SESSION * session, int line_no)
+csql_display_session_err (DB_SESSION * session)
 {
   DB_SESSION_ERROR *err;
   int col_no = 0;
+  int line_no = 0;
 
   csql_Error_code = CSQL_ERR_SQL_ERROR;
 
@@ -640,6 +640,7 @@ csql_display_session_err (DB_SESSION * session, int line_no)
 
   do
     {
+      csql_Scratch_text[0] = '\0';
       err = db_get_next_error (err, &line_no, &col_no);
       if (line_no > 0)
 	{
