@@ -3929,7 +3929,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	}
       else if (len < 0xFFU)
 	{
-	  assert (len != 0);
+	  assert (len != 0 || *(attr + 1) == '\0');
 	  attr += 1;
 	  *string = attr;
 	}

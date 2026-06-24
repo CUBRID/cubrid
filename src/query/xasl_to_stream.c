@@ -1015,10 +1015,6 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       is_buf_alloced = true;
     }
 
-  /* The actual data written can be smaller than the calculated size, leaving an
-   * unwritten tail in the buffer, so initialize it first. */
-  memset (buf_p, 0, size);
-
   buf = xts_process_arith_type (buf_p, arithmetic);
   if (buf == NULL)
     {
@@ -1026,6 +1022,11 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
       goto end;
     }
   assert (buf <= buf_p + size);
+
+  /* xts_sizeof_arith_type reserves space for next, but xts_process_arith_type
+   * does not write it, leaving an unwritten tail. Zero only that tail to avoid
+   * copying uninitialized bytes. */
+  memset (buf, 0, size - (buf - buf_p));
 
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 

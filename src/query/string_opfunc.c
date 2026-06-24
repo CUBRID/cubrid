@@ -6591,13 +6591,10 @@ db_bit_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DA
       int dest_prec;
       int dest_length;
 
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_bit_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
@@ -6702,13 +6699,10 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	}
 
       /* Initialize the memory manager of the destination */
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
