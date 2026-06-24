@@ -632,7 +632,16 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
     }
 
   /* update connection counters for reserved connections */
-  if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
+  if (thread_p->conn_entry->client_type != DB_CLIENT_TYPE_UNKNOWN)
+    {
+      if (thread_p->conn_entry->client_type != (BOOT_CLIENT_TYPE) client_type)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
+	  (void) return_error_to_client (thread_p, rid);
+	  status = CSS_UNPLANNED_SHUTDOWN;
+	}
+    }
+  else if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       (void) return_error_to_client (thread_p, rid);
