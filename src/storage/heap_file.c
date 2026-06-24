@@ -26594,6 +26594,31 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 }
 
 /*
+ * heap_prepare_recdes_copy_area () - Prepare storage for a COPY fetch through a heap get context.
+ *
+ * return: NO_ERROR or error code
+ *
+ * When recdes_p points to caller-owned storage, only reserve scan-cache area so
+ * that the caller buffer is not replaced.  When recdes_p is empty or already
+ * scan-cache-owned, bind recdes_p to the scan-cache area so later COPY and OOS
+ * expansion code can safely grow and refresh recdes_p->data.
+ */
+static int
+heap_prepare_recdes_copy_area (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  assert (context != NULL);
+  assert (context->scan_cache != NULL);
+  assert (context->recdes_p != NULL);
+
+  if (context->data_externally_positioned)
+    {
+      return heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2);
+    }
+
+  return heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE * 2);
+}
+
+/*
  * heap_get_visible_version_internal () - Retrieve the visible version of an object according to snapshot
  *
  *  return SCAN_CODE.
@@ -26621,7 +26646,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -26834,7 +26859,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->scan_cache && context->ispeeking == COPY)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -27003,7 +27028,10 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
   context->expand_oos = false;
-  context->data_externally_positioned = (recdes != NULL && recdes->data != NULL);
+  const bool data_is_scan_cache_area =
+    scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
+  context->data_externally_positioned =
+    recdes != NULL && recdes->data != NULL && recdes->area_size >= 0 && !data_is_scan_cache_area;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
