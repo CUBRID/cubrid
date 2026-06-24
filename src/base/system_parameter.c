@@ -5216,9 +5216,8 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   /* set the default to twice the value of MAX_REQUEST_CONCURRENCY */
-   {false, {.i = (int) cubthread::system_core_count () * 6}},
-   {false, {.i = (int) cubthread::system_core_count () * 6}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
+   {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
@@ -10006,16 +10005,6 @@ prm_tune_parameters (void)
       max_request_worker_prm = GET_PRM (PRM_ID_MAX_REQUEST_WORKER);
       max_request_concurrency_prm = GET_PRM (PRM_ID_MAX_REQUEST_CONCURRENCY);
 
-      if (!PRM_IS_SET (max_request_worker_prm))
-	{
-	  /* if not changed by user */
-	  max_value = std::min (PRM_GET_INT (max_clients_prm->value) * 2, CSS_MAX_CLIENT_COUNT);
-	  if (PRM_GET_INT (max_request_worker_prm->value) > max_value)
-	    {
-	      sprintf (newval, "%d", std::max (system_cpu_count, max_value));
-	      (void) prm_set (max_request_worker_prm, newval, false);
-	    }
-	}
       if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
 	  /* if not changed by user */
