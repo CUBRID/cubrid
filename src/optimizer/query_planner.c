@@ -140,7 +140,6 @@ static void qo_scan_fprint (QO_PLAN *, FILE *, int);
 static void qo_sort_fprint (QO_PLAN *, FILE *, int);
 static void qo_join_fprint (QO_PLAN *, FILE *, int);
 static void qo_hjoin_fprint (QO_PLAN *, FILE *, int);
-static PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN *);
 static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
@@ -3106,12 +3105,13 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 /*
  * qo_plan_semi_anti_join_type () - return PT_JOIN_SEMI/PT_JOIN_ANTI if the inner
  *      plan's representative scan node carries that join type, else PT_JOIN_NONE.
- *      Used only for plan dump labelling; semi/anti are modelled structurally as
- *      JOIN_INNER, so this recovers the real intent from the scan node spec.
+ *      semi/anti are modelled structurally as JOIN_INNER, so this recovers the
+ *      real intent from the scan node spec. Shared by plan_generation.c (single-fetch
+ *      NL inner tagging) and the optimizer plan-dump labelling here.
  *   return: PT_JOIN_TYPE
  *   plan(in): the inner plan of an NL join
  */
-static PT_JOIN_TYPE
+PT_JOIN_TYPE
 qo_plan_semi_anti_join_type (QO_PLAN * plan)
 {
   PT_NODE *spec;

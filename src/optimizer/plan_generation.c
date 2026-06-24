@@ -779,43 +779,6 @@ mark_access_as_outer_join (PARSER_CONTEXT * parser, XASL_NODE * xasl)
 }
 
 /*
- * qo_plan_get_semi_anti_join_type () - return PT_JOIN_SEMI/PT_JOIN_ANTI if the plan's
- *      representative inner node carries that join type, else PT_JOIN_NONE.
- *   return: PT_JOIN_TYPE
- *   plan(in): the inner plan of an NL join
- */
-static PT_JOIN_TYPE
-qo_plan_get_semi_anti_join_type (QO_PLAN * plan)
-{
-  PT_NODE *spec;
-
-  while (plan != NULL)
-    {
-      switch (plan->plan_type)
-	{
-	case QO_PLANTYPE_SCAN:
-	  spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
-	  if (spec != NULL && (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI))
-	    {
-	      return spec->info.spec.join_type;
-	    }
-	  return PT_JOIN_NONE;
-	case QO_PLANTYPE_SORT:
-	  plan = plan->plan_un.sort.subplan;
-	  continue;
-	case QO_PLANTYPE_FOLLOW:
-	  plan = plan->plan_un.follow.head;
-	  continue;
-	default:
-	  /* v1: SEMI/ANTI inner is scan-like; default also hit by ordinary inner joins so no assert.
-	     TODO(composite-RHS): recover the flag explicitly, not silent NONE. */
-	  return PT_JOIN_NONE;
-	}
-    }
-  return PT_JOIN_NONE;
-}
-
-/*
  * mark_access_as_semi_anti_join () - mark an inner scan proc's access spec as a
  *      single-fetch NL semi/anti inner and tag the xasl with the semi/anti flag.
  *   return: void
@@ -2268,7 +2231,7 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      else
 		{
 		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
-		  PT_JOIN_TYPE sa_type = qo_plan_get_semi_anti_join_type (inner);
+		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
 		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
 		    {
 		      mark_access_as_semi_anti_join (scan, sa_type);

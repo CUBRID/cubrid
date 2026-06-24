@@ -463,4 +463,6 @@ extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
 
+extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
+
 #endif /* _QUERY_PLANNER_H_ */
