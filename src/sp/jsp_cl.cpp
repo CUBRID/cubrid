@@ -1255,7 +1255,9 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 
   assert (pkg_code_mop);
 
-  //
+  // check whether the spec code exists or not.
+  // if exists, then recompile the spec without the body
+  // if not exists, then drop the _db_package_code record
   {
     err = db_get (pkg_code_mop, PKG_CODE_ATTR_SCODE_SPEC, &scode_spec_value);
     if (err != NO_ERROR)
