@@ -1508,6 +1508,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token COMP_LE
 %token PARAM_HEADER
 
+/* The UNEXPECTED_EOF token should not appear in the grammar rules. 
+ * It signifies that the lexer reached the EOF before completing a valid token, 
+ * and its purpose is to intentionally induce a parsing error */
+%token UNEXPECTED_EOF
+
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
 %token <cptr> AES

@@ -1418,6 +1418,10 @@ _[uU][tT][fF]8[']		{
                         }
                  }
         "*"      {   csql_yylval.cptr = pt_append_string(this_parser, csql_yylval.cptr, "*"); }
+        <<EOF>>  { 
+                     BEGIN(saved_yy_start);
+                     return UNEXPECTED_EOF;                     
+                 }
               }
 
 <BLOCK_COMMENT>{
@@ -1425,6 +1429,10 @@ _[uU][tT][fF]8[']		{
         "\n"     {   /* no action */;  }
         "*/"     {   BEGIN(saved_yy_start);   }
         "*"      {   /* no action */;  }
+        <<EOF>>  {   
+                     BEGIN(saved_yy_start); 
+                     return UNEXPECTED_EOF;  
+                 }
               }
 
 <LINE_HINT>{
