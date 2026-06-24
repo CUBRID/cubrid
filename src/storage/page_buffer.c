@@ -6517,9 +6517,14 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
    * lets a concurrent fixer re-grab it first and defer the flush again -- under sustained writes on a hot
    * page this starves the checkpoint flush forever, blocking archive-log reclamation. The post-unlatch
    * flush below remains a fallback for the no-longer-held case. */
-  if (pgbuf_bcb_is_async_flush_request (bufptr))
+  if (pgbuf_bcb_is_async_flush_request (bufptr)
+      && pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, false) != NO_ERROR)
     {
-      (void) pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, false);
+      /* The in-place flush failed (e.g. a write error). force_lock releases the bcb mutex on error, but the
+       * rest of this function requires it held (it unlocks exactly once on the way out). Re-acquire it and
+       * leave the page dirty; the post-unlatch fallback below, or a later flusher, retries the flush. */
+      er_clear ();
+      PGBUF_BCB_LOCK (bufptr);
     }
 #endif /* SERVER_MODE */
 
