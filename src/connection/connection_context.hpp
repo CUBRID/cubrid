@@ -87,6 +87,7 @@ namespace cubconn::master
 
     state m_state { state::SendInHandshake };
     bool m_has_error;
+    int m_pending_client_type;
 
     context ();
     ~context ();
