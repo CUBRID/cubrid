@@ -4037,12 +4037,11 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	{
 	  if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 	    {
+	      regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
+							     NULL, NULL);
 
-	      regu_constant_list =
-		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
-
-	      scan_regu_constant_list =
-		pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE, NULL, NULL);
+	      scan_regu_constant_list = pt_to_regu_variable_list (parser, tree->info.function.arg_list, UNBOX_AS_VALUE,
+								  NULL, NULL);
 
 	      if (!regu_constant_list || !scan_regu_constant_list)
 		{
@@ -4216,8 +4215,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 			  return NULL;
 			}
 
-		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list,
-									     &aggregate_list->operands);
+		      error_code =
+			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
 		      if (error_code != NO_ERROR)
 			{
 			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
