@@ -1738,18 +1738,24 @@ csql_yyerror (const char *s)
 				   MSGCAT_SET_PARSER_SYNTAX,
 				   MSGCAT_SYNTAX_UNEXPECTED));
       int len = 0;
+      int len_s = strlen (s);
+      int len_cmp_str = strlen (cmp_str);
       PT_NODE *dummy;
-
-      if ((strlen (s) > strlen (cmp_str)) &&
-	  (strcmp (&s[strlen (s) - strlen (cmp_str)], cmp_str) == 0))
+      
+      if ((len_s > len_cmp_str) &&
+	  (strcmp (&s[len_s - len_cmp_str], cmp_str) == 0))
 	{
-	  *(char *) &s[strlen (s) - strlen (cmp_str)] = 0;
+	  *(char *) &s[len_s - len_cmp_str] = 0;
 	}
-      else if ((strlen (s) > strlen (cmp_str2)) &&
-	       (strcmp (&s[strlen (s) - strlen (cmp_str2)], cmp_str2) == 0))
-	{
-	  *(char *) &s[strlen (s) - strlen (cmp_str2)] = 0;
-	}
+      else 
+        {
+          len_cmp_str = strlen (cmp_str2);
+          if ((len_s > len_cmp_str) &&
+	       (strcmp (&s[len_s - len_cmp_str], cmp_str2) == 0))
+	    {
+	      *(char *) &s[len_s - len_cmp_str] = 0;
+	    }
+        }
 
       if (strlen (token_val) == 0)
 	{
