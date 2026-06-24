@@ -141,6 +141,11 @@ public class ValueUtilities {
                 val = new NullValue();
             } else {
                 val = new ResultSetValue(query.rs);
+                // NOTE: query.close() does not close server-side resource, especially query
+                // results, of query.rs
+                // because CUBRIDServerSideResultSet.close() does nothing in the current
+                // implementation.
+                query.close();
             }
         } else if (o instanceof byte[]) {
             val = new StringValue((byte[]) o);
