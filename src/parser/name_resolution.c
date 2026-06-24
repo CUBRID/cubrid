@@ -59,6 +59,7 @@
 #endif
 
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
 
 extern "C"
 {
@@ -12178,6 +12179,42 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_dblink_get_remote_col_charset () - physical remote codeset of a DBLink column
+ *   return: INTL_CODESET of the named remote column, or -1 if not found
+ *   remote_col_list(in): PT_DBLINK_INFO.remote_col_list (S_REMOTE_TBL_COLS *)
+ *   col_name(in): bare remote column name
+ *
+ * The CCI column metadata carries the remote column's true (physical) codeset, which
+ * is preserved here regardless of how the parse-tree attr_def later declares the
+ * column's codeset.  The correlated push-down guard uses this to detect a cross-codeset
+ * key (remote physical codeset != local outer codeset) and fall back to local evaluation.
+ */
+int
+pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)
+{
+  S_REMOTE_TBL_COLS *cols = (S_REMOTE_TBL_COLS *) remote_col_list;
+
+  if (cols == NULL || col_name == NULL)
+    {
+      return -1;
+    }
+
+  for (int i = 0; i < cols->get_attr_size (); i++)
+    {
+      /* Match the DBLink column-name comparison used elsewhere (pt_mk_attr_def_node /
+       * pt_remake_dblink_select_list): the parse-tree column name may be a quoted
+       * identifier, so use the _for_dblink variant (dblink name first) to strip quotes;
+       * a plain casecmp would miss quoted keys and fall back to the declared codeset. */
+      if (intl_identifier_casecmp_for_dblink (col_name, cols->get_name (i)) == 0)
+	{
+	  return cols->get_attr (i)->charset;
+	}
+    }
+
+  return -1;
 }
 
 void
