@@ -68,6 +68,9 @@
 #endif
 
 /* constants for rehash */
+/* obstack chunk size for HASH LIST SCAN entry payloads (tuple copies / positions) */
+#define HASH_LIST_SCAN_DATA_CHUNK_SIZE (64 * 1024)
+
 static const float MHT_REHASH_TRESHOLD = 0.7f;
 static const float MHT_REHASH_FACTOR = 1.3f;
 
@@ -956,6 +959,33 @@ mht_calculate_htsize_for_pow2 (unsigned int ht_size)
 }
 
 /*
+ * mht_next_power_of_2 - smallest power of two that is >= n
+ *   return: power of two (>= 4, capped at 2^31)
+ *   n(in): requested minimum number of buckets
+ *
+ * Note: Used by HASH LIST SCAN tables so that bucket indexing can use a
+ *       bit-mask (hash & (size - 1)) instead of a modulo. Hash values stored
+ *       in these tables are already avalanche-mixed (see mht_get_shiftmult32),
+ *       so the low bits are well distributed and a power-of-two mask keeps
+ *       the buckets evenly filled.
+ */
+static unsigned int
+mht_next_power_of_2 (unsigned int n)
+{
+  unsigned int p = 4;		/* minimum number of buckets */
+
+  if (n >= (1U << 31))
+    {
+      return (1U << 31);
+    }
+  while (p < n)
+    {
+      p <<= 1;
+    }
+  return p;
+}
+
+/*
  * mht_create - create a hash table
  *   return: hash table
  *   name(in): name of hash table
@@ -1075,7 +1105,7 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
     }
 
   ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
-  ht_estsize = mht_calculate_htsize_for_pow2 ((unsigned int) ht_estsize);
+  ht_estsize = mht_next_power_of_2 ((unsigned int) ht_estsize);
 
   /* Allocate the header information for hash table */
   ht = (MHT_HLS_TABLE *) malloc (DB_SIZEOF (MHT_HLS_TABLE));
@@ -1096,6 +1126,18 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
       return NULL;
     }
 
+  /* obstack (arena) for variable-size entry payloads (tuple copy / position).
+   * The payloads are freed all at once in mht_destroy_hls, instead of one by one. */
+  ht->data_heap_id = db_create_ostk_heap (HASH_LIST_SCAN_DATA_CHUNK_SIZE);
+  if (ht->data_heap_id == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, HASH_LIST_SCAN_DATA_CHUNK_SIZE);
+
+      db_destroy_fixed_heap (ht->heap_id);
+      free_and_init (ht);
+      return NULL;
+    }
+
   /* Allocate the hash table entry pointers */
   size = ht_estsize * DB_SIZEOF (*hvector);
   hvector = (HENTRY_HLS_PTR *) malloc (size);
@@ -1103,6 +1145,7 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
 
+      db_destroy_ostk_heap (ht->data_heap_id);
       db_destroy_fixed_heap (ht->heap_id);
       free_and_init (ht);
       return NULL;
@@ -1242,6 +1285,9 @@ mht_destroy_hls (MHT_HLS_TABLE * ht)
   assert (ht != NULL);
 
   free_and_init (ht->table);
+
+  /* release entry payloads (tuple copies / positions) all at once */
+  db_destroy_ostk_heap (ht->data_heap_id);
 
   /* release hash table entry storage */
   db_destroy_fixed_heap (ht->heap_id);
@@ -1637,17 +1683,11 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   assert (ht != NULL && key != NULL);
 
   /*
-   * Hash the key and make sure that the return value is between 0 and size of hash table
+   * Hash the key and make sure that the return value is between 0 and size of hash table.
+   * The table size is a power of two, so a bit-mask replaces the modulo.
    */
   hash = *((unsigned int *) key);
-  if (hash >= ht->size)
-    {
-      hash_idx = hash % ht->size;
-    }
-  else
-    {
-      hash_idx = hash;
-    }
+  hash_idx = hash & (ht->size - 1);
 
   /* In HASH LIST SCAN, only hash key comparison is performed. */
   for (hentry = ht->table[hash_idx]; hentry != NULL; hentry = hentry->next)
@@ -2735,12 +2775,10 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
 
   assert (ht != NULL && key != NULL);
 
-  /* Hash the key and make sure that the return value is between 0 and size of hash table. */
+  /* Hash the key and make sure that the return value is between 0 and size of hash table.
+   * The table size is a power of two, so a bit-mask replaces the modulo. */
   hash = *((unsigned int *) key);
-  if (hash >= ht->size)
-    {
-      hash %= ht->size;
-    }
+  hash &= (ht->size - 1);
 
   /* This is a new entry */
   if (ht->nprealloc_entries > 0)

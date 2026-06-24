@@ -2740,7 +2740,7 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
     case HASH_METH_HYBRID:
       if (hash_scan->memory.hash_table != NULL)
 	{
-	  mht_clear_hls (hash_scan->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_clear_hls (hash_scan->memory.hash_table, NULL, NULL);
 	  mht_destroy_hls (hash_scan->memory.hash_table);
 	  hash_scan->memory.hash_table = NULL;
 	}
@@ -3201,7 +3201,7 @@ static int
 hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		 QFILE_TUPLE_RECORD * tuple_record)
 {
-  HASH_SCAN_VALUE *hash_value = NULL;
+  void *hash_value = NULL;
   TFTID tftid;
 
   assert (thread_p != NULL);
@@ -3214,7 +3214,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
     case HASH_METH_IN_MEM:
       assert (hash_scan->memory.hash_table != NULL);
 
-      hash_value = qdata_alloc_hscan_value (thread_p, tuple_record->tpl);
+      hash_value = qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->data_heap_id, tuple_record->tpl);
       if (hash_value == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -3223,8 +3223,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
-	  qdata_free_hscan_value (thread_p, hash_value);
-
+	  /* payload lives in the table obstack; reclaimed when the table is destroyed */
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
@@ -3233,7 +3232,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
     case HASH_METH_HYBRID:
       assert (hash_scan->memory.hash_table != NULL);
 
-      hash_value = qdata_alloc_hscan_value_OID (thread_p, list_scan_id);
+      hash_value = qdata_alloc_hscan_value_OID (thread_p, hash_scan->memory.hash_table->data_heap_id, list_scan_id);
       if (hash_value == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -3242,8 +3241,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
 	{
-	  qdata_free_hscan_value (thread_p, hash_value);
-
+	  /* payload lives in the table obstack; reclaimed when the table is destroyed */
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
@@ -3938,7 +3936,7 @@ int
 hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		 QFILE_TUPLE_RECORD * tuple_record)
 {
-  HASH_SCAN_VALUE *hash_value = NULL;
+  void *hash_value = NULL;
   TFTID tftid;
   EH_SEARCH eh_search;
   QFILE_TUPLE_POSITION tuple_position;
@@ -3957,19 +3955,19 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       if (tuple_record->tpl == NULL)
 	{
 	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
 					     (void **) &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
 	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+	    mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
 						  (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
       if (hash_value != NULL)
 	{
-	  tuple_record->tpl = hash_value->tuple;
+	  tuple_record->tpl = (QFILE_TUPLE) hash_value;
 	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
 	}
       else
@@ -3986,20 +3984,20 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       if (tuple_record->tpl == NULL)
 	{
 	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
 					     (void **) &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
 	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_scan->memory.hash_table,
+	    mht_get_next_hls (hash_scan->memory.hash_table,
 						  (void *) &hash_scan->curr_hash_key,
 						  (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
       if (hash_value != NULL)
 	{
-	  MAKE_TUPLE_POSTION (tuple_position, hash_value->pos, list_scan_id);
+	  MAKE_TUPLE_POSTION (tuple_position, (QFILE_TUPLE_SIMPLE_POS *) hash_value, list_scan_id);
 	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
 	  if (scan_code != S_SUCCESS)
 	    {

@@ -5523,7 +5523,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 #endif
 
-	  mht_clear_hls (llsidp->hlsid.memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
+	  mht_clear_hls (llsidp->hlsid.memory.hash_table, NULL, NULL);
 	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
 	}
       else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
@@ -8783,7 +8783,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   HASH_SCAN_KEY *key, *new_key;
-  HASH_SCAN_VALUE *new_value;
+  void *new_value;
   unsigned int hash_key;
   TFTID tftid;
 
@@ -8835,7 +8835,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	case HASH_METH_IN_MEM:
 	  /* create new value */
-	  new_value = qdata_alloc_hscan_value (thread_p, tplrec.tpl);
+	  new_value = qdata_alloc_hscan_value (thread_p, llsidp->hlsid.memory.hash_table->data_heap_id, tplrec.tpl);
 	  if (new_value == NULL)
 	    {
 	      return S_ERROR;
@@ -8848,7 +8848,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  break;
 	case HASH_METH_HYBRID:
 	  /* create new value */
-	  new_value = qdata_alloc_hscan_value_OID (thread_p, &llsidp->lsid);
+	  new_value = qdata_alloc_hscan_value_OID (thread_p, llsidp->hlsid.memory.hash_table->data_heap_id, &llsidp->lsid);
 	  if (new_value == NULL)
 	    {
 	      return S_ERROR;
@@ -8996,7 +8996,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 {
   LLIST_SCAN_ID *llsidp;
   HASH_SCAN_KEY *key;
-  HASH_SCAN_VALUE *hvalue;
+  void *hvalue;
   QFILE_LIST_SCAN_ID *scan_id_p;
   QFILE_TUPLE_POSITION tuple_pos;
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
@@ -9028,7 +9028,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  llsidp->hlsid.memory.curr_hash_entry = NULL;
 	  /* get value from hash table */
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key,
+	    mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key,
 					     (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
@@ -9036,11 +9036,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	    {
-	      *tuple = hvalue->tuple;
+	      *tuple = (QFILE_TUPLE) hvalue;
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION (tuple_pos, hvalue->pos, scan_id_p);
+	      MAKE_TUPLE_POSTION (tuple_pos, (QFILE_TUPLE_SIMPLE_POS *) hvalue, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -9086,7 +9086,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	case HASH_METH_IN_MEM:
 	case HASH_METH_HYBRID:
 	  hvalue =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (llsidp->hlsid.memory.hash_table,
+	    mht_get_next_hls (llsidp->hlsid.memory.hash_table,
 						  (void *) &llsidp->hlsid.curr_hash_key,
 						  (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
@@ -9100,11 +9100,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	    {
-	      *tuple = ((HASH_SCAN_VALUE *) llsidp->hlsid.memory.curr_hash_entry->data)->tuple;
+	      *tuple = (QFILE_TUPLE) llsidp->hlsid.memory.curr_hash_entry->data;
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	    {
-	      simple_pos = ((HASH_SCAN_VALUE *) llsidp->hlsid.memory.curr_hash_entry->data)->pos;
+	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) llsidp->hlsid.memory.curr_hash_entry->data;
 	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)

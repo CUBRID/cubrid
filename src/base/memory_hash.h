@@ -154,11 +154,12 @@ struct mht_hls_table
   const char *name;
   HENTRY_HLS_PTR *table;	/* The hash table (entries) */
   HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
-  unsigned int size;		/* Better if prime number */
+  unsigned int size;		/* power of two */
   unsigned int nentries;	/* Actual number of entries */
   unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  HL_HEAPID heap_id;		/* Id of heap allocator */
+  HL_HEAPID heap_id;		/* Id of heap allocator for the hash entries */
+  HL_HEAPID data_heap_id;	/* obstack (arena) for the entry payloads (tuple copy / position) */
   bool build_lru_list;		/* true if LRU list must be built */
 };
 

@@ -24,6 +24,7 @@
 #define _QUERY_HASH_SCAN_H_
 
 #include "regu_var.hpp"
+#include "system.h"		/* HL_HEAPID */
 
 #define HASH_LIST_SCAN_DUMP_HASH_TABLE 0
 #define HASH_LIST_SCAN_DUMP_FILE_HASH 0
@@ -78,14 +79,11 @@ struct qfile_tuple_simple_pos
   int offset;			/* Tuple offset inside the page */
 };
 
-/* hash scan value */
-typedef union hash_scan_value HASH_SCAN_VALUE;
-union hash_scan_value
-{
-  void *data;			/* for free() */
-  QFILE_TUPLE_SIMPLE_POS *pos;	/* tuple position of temp file */
-  QFILE_TUPLE tuple;		/* tuple data */
-};
+/* hash scan value
+ * NOTE: The hash entry stores the payload pointer directly in HENTRY_HLS.data
+ * (the tuple copy for IN_MEM, the tuple position for HYBRID). There is no
+ * wrapper object, so probing dereferences one level less and building does one
+ * allocation less per row. */
 
 /* hash scan key */
 typedef struct hash_scan_key HASH_SCAN_KEY;
@@ -134,12 +132,11 @@ struct hash_list_scan
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
-HASH_SCAN_VALUE *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, QFILE_TUPLE tpl);
-HASH_SCAN_VALUE *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p);
+QFILE_TUPLE qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID data_heap_id, QFILE_TUPLE tpl);
+QFILE_TUPLE_SIMPLE_POS *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID data_heap_id,
+						     QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
-void qdata_free_hscan_value (THREAD_ENTRY * thread_p, HASH_SCAN_VALUE * value);
-int qdata_free_hscan_entry (const void *key, void *data, void *args);
 
 int qdata_hscan_key_eq (const void *key1, const void *key2);
 
