@@ -9787,14 +9787,16 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
       /* PL/CSQL must use SYS_REFCURSOR, not CURSOR for cursor return type */
       if (is_plcsql && node->info.sp.ret_type == PT_TYPE_RESULTSET)
 	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE);
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE,
+		      pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
 	  goto end;
 	}
 
       /* Java SP must use CURSOR, not SYS_REFCURSOR for cursor return type */
       if (!is_plcsql && node->info.sp.ret_type == PT_TYPE_SYS_REFCURSOR)
 	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE);
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_SP_RET_TYPE,
+		      pt_get_type_name (node->info.sp.ret_type, node->info.sp.ret_data_type));
 	  goto end;
 	}
     }

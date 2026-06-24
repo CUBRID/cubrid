@@ -31,6 +31,8 @@
 
 package com.cubrid.jsp.value;
 
+import static com.cubrid.plcsql.predefined.sp.SpLib.Query;
+
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -133,10 +135,13 @@ public class ValueUtilities {
             val = new OidValue((CUBRIDOID) o);
         } else if (o instanceof ResultSet) {
             val = new ResultSetValue((ResultSet) o);
-        } else if (o instanceof com.cubrid.plcsql.predefined.sp.SpLib.Query) {
-            com.cubrid.plcsql.predefined.sp.SpLib.Query query =
-                    (com.cubrid.plcsql.predefined.sp.SpLib.Query) o;
-            val = new ResultSetValue(query.rs);
+        } else if (o instanceof Query) {
+            Query query = (Query) o;
+            if (query.rs == null) {
+                val = new NullValue();
+            } else {
+                val = new ResultSetValue(query.rs);
+            }
         } else if (o instanceof byte[]) {
             val = new StringValue((byte[]) o);
         } else if (o instanceof short[]) {
