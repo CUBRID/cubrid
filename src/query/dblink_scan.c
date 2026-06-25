@@ -1215,6 +1215,14 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	}
       else
 	{
+	  /* DBLINK CODESET CONVERSION (remote -> local):
+	   * cci_value holds the value in the REMOTE codeset (it was built with
+	   * col_info[].charset above). The cast below coerces it into the output
+	   * slot's domain, which carries the LOCAL DB codeset -- so the run-time
+	   * value's codeset is CHANGED here from remote to local.
+	   * INVARIANT: the parse-tree column type (pt_dblink_table_fill_attr_def in
+	   * name_resolution.c) must be declared with this SAME local codeset/collation,
+	   * or compile-time type/collation checks diverge from this run-time value. */
 	  TP_DOMAIN dom;
 	  TP_DOMAIN_STATUS status;
 
