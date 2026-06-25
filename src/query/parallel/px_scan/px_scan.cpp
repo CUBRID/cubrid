@@ -433,7 +433,8 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
@@ -863,7 +864,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }
@@ -1319,7 +1321,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }
@@ -1697,6 +1700,7 @@ namespace parallel_scan
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
 					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
+	m_result_handler->set_trace_handler (&m_trace_handler);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {

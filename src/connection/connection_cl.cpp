@@ -98,6 +98,42 @@
 #define TRACE(string, arg1)
 #endif /* PACKET_TRACE */
 
+static bool
+css_pack_client_type_info (const char *server_name, int server_name_length, int client_type, char **packed_data,
+			   int *packed_data_length)
+{
+  char *ptr;
+  int value;
+
+  assert (packed_data != NULL);
+  assert (packed_data_length != NULL);
+
+  *packed_data = NULL;
+  *packed_data_length = server_name_length;
+
+  if (server_name == NULL || server_name_length <= 0
+      || client_type < DB_CLIENT_TYPE_DEFAULT || client_type >= DB_CLIENT_TYPE_MAX)
+    {
+      return true;
+    }
+
+  *packed_data_length = server_name_length + CSS_CLIENT_TYPE_INFO_SIZE;
+  *packed_data = (char *) malloc (*packed_data_length);
+  if (*packed_data == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) *packed_data_length);
+      return false;
+    }
+
+  memcpy (*packed_data, server_name, server_name_length);
+  ptr = *packed_data + server_name_length;
+
+  value = htonl (client_type);
+  memcpy (ptr, &value, sizeof (value));
+
+  return true;
+}
+
 /* the queue anchor for all the connection structures */
 static CSS_CONN_ENTRY *css_Conn_anchor = NULL; // TODO: Let's define it as a member variable of the connection_cl class
 
@@ -734,9 +770,12 @@ begin:
 CSS_CONN_ENTRY *
 connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY *conn, int connect_type,
 				   const char *server_name, int server_name_length, int port, int timeout,
-				   unsigned short *rid, bool send_magic)
+				   unsigned short *rid, bool send_magic, int client_type)
 {
   SOCKET fd;
+  const char *request_data = server_name;
+  int request_data_length = server_name_length;
+  char *packed_data = NULL;
 
 #if !defined (WINDOWS)
   if (timeout > 0)
@@ -761,9 +800,30 @@ connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY *conn, 
 	  return NULL;
 	}
 
-      if (css_send_request (conn, connect_type, rid, server_name, server_name_length) == NO_ERRORS)
+      if (connect_type == DATA_REQUEST
+	  && !css_pack_client_type_info (server_name, server_name_length, client_type, &packed_data,
+					 &request_data_length))
 	{
+	  return NULL;
+	}
+
+      if (packed_data != NULL)
+	{
+	  request_data = packed_data;
+	}
+
+      if (css_send_request (conn, connect_type, rid, request_data, request_data_length) == NO_ERRORS)
+	{
+	  if (packed_data != NULL)
+	    {
+	      free_and_init (packed_data);
+	    }
 	  return conn;
+	}
+
+      if (packed_data != NULL)
+	{
+	  free_and_init (packed_data);
 	}
     }
 #if !defined (WINDOWS)
@@ -789,7 +849,8 @@ connection_cl::css_common_connect (const char *host_name, CSS_CONN_ENTRY *conn, 
  *   rid(out):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *server_name, unsigned short *rid)
+connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *server_name, unsigned short *rid,
+				   int client_type)
 {
   int length;
 
@@ -804,7 +865,7 @@ connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *
 
   /* timeout in second in css_common_connect() */
   return (css_common_connect (host_name, conn, DATA_REQUEST, server_name, length, m_service_port_id,
-			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true));
+			      prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT), rid, true, client_type));
 }
 
 /* New style server connection function that uses an explicit port id */
@@ -818,7 +879,8 @@ connection_cl::css_server_connect (char *host_name, CSS_CONN_ENTRY *conn, char *
  *   rid(in):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY *conn, int port_id, unsigned short *rid)
+connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY *conn, int port_id, unsigned short *rid,
+    int client_type)
 {
   int reason = -1, buffer_size;
   char *buffer = NULL;
@@ -834,7 +896,7 @@ connection_cl::css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY *con
    */
 
   /* timeout in second in css_common_connect() */
-  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false) == NULL)
+  if (css_common_connect (host_name, conn, DATA_REQUEST, NULL, 0, port_id, timeout, rid, false, client_type) == NULL)
     {
       return NULL;
     }
@@ -868,7 +930,7 @@ connection_cl::css_connect_to_log_server (const char *host_name, CSS_CONN_ENTRY 
     const char *server_name, int port, int timeout, unsigned short *rid)
 {
   return css_common_connect (host_name, conn, DATA_REQUEST, server_name, (int) strlen (server_name) + 1, port, timeout,
-			     rid, true);
+			     rid, true, DB_CLIENT_TYPE_UNKNOWN);
 
 };
 
@@ -912,8 +974,8 @@ connection_cl::css_connect_to_master_server (int master_port_id, const char *ser
   /* select the connection protocol, for PC's this will always be new */
   connection_protocol = ((css_Server_use_new_connection_protocol) ? SERVER_REQUEST_NEW : SERVER_REQUEST_FROM_CLIENT);
 
-  if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true)
-      == NULL)
+  if (css_common_connect (hname, conn, connection_protocol, server_name, name_length, master_port_id, 0, &rid, true,
+			  DB_CLIENT_TYPE_UNKNOWN) == NULL)
     {
       goto fail_end;
     }
@@ -1028,7 +1090,7 @@ fail_end:
  *   server_name(in):
  */
 CSS_CONN_ENTRY *
-connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name)
+connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name, int client_type)
 {
   CSS_CONN_ENTRY *conn;
   CSS_QUEUE_ENTRY *buffer_q_entry_p;
@@ -1052,7 +1114,7 @@ connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name)
   timeout = prm_get_integer_value (PRM_ID_TCP_CONNECTION_TIMEOUT) * 1000;
 
   retry_count = 0;
-  if (css_server_connect (host_name, conn, server_name, &rid) == NULL)
+  if (css_server_connect (host_name, conn, server_name, &rid, client_type) == NULL)
     {
       goto exit;
     }
@@ -1113,7 +1175,7 @@ connection_cl::css_connect_to_cubrid_server (char *host_name, char *server_name)
 	      free_and_init (buffer);
 	    }
 
-	  if (css_server_connect_part_two (host_name, conn, port_id, &rid))
+	  if (css_server_connect_part_two (host_name, conn, port_id, &rid, client_type))
 	    {
 	      return conn;
 	    }
@@ -1210,7 +1272,8 @@ connection_cl::css_connect_to_master_timeout (const char *host_name, int port_id
 
   time = ceil (time / 1000);
 
-  return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0, port_id, (int) time, rid, true));
+  return (css_common_connect (host_name, conn, INFO_REQUEST, NULL, 0, port_id, (int) time, rid, true,
+			      DB_CLIENT_TYPE_UNKNOWN));
 }
 
 /*

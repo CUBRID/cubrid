@@ -245,6 +245,7 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 					      PT_NODE * new_query, FIND_ID_INFO * infop);
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * subquery, FIND_ID_INFO * infop);
+static bool mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec, bool remove_sel_list);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -4177,14 +4178,34 @@ pt_copypush_terms (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * query, PT_
 	  rewritten = pt_append_bytes (parser, rewritten, ")", 1);
 	}
 #endif
+      query->info.dblink_table.rewritten_has_where = false;
       if (pushed_pred != NULL)
 	{
 	  /* where predicate */
 	  rewritten = pt_append_bytes (parser, rewritten, " WHERE ", 7);
 	  rewritten = pt_append_varchar (parser, rewritten, pushed_pred);
+	  query->info.dblink_table.rewritten_has_where = true;
 	}
 
       query->info.dblink_table.rewritten = rewritten;
+
+      /* Mixed path (non-corr + corr both active): pt_copypush_terms just built rewritten with
+       * "SELECT * FROM (...) cublink WHERE non_corr_pred".  Append corr pred as "AND col = ?".
+       * Pure-corr path (no non-corr terms): handled in mq_copypush_sargable_terms_helper. */
+      if (query->info.dblink_table.corr_key_count > 0 && query->info.dblink_table.corr_key_col_names[0] != NULL)
+	{
+	  /* Save the non-corr push-down SQL: a corr-append failure (e.g. OOM) must not discard it,
+	   * since mq_dblink_clear_corr_keys resets rewritten to NULL (which would fall back to a full
+	   * table scan and lose the already-built non-corr predicate). */
+	  PARSER_VARCHAR *saved_rewritten = query->info.dblink_table.rewritten;
+	  bool saved_has_where = query->info.dblink_table.rewritten_has_where;
+	  if (!mq_dblink_append_corr_pred_sql (parser, &query->info.dblink_table))
+	    {
+	      mq_dblink_clear_corr_keys (parser, &query->info.dblink_table);
+	      query->info.dblink_table.rewritten = saved_rewritten;
+	      query->info.dblink_table.rewritten_has_where = saved_has_where;
+	    }
+	}
 
       parser->custom_print = save_custom;
 
@@ -4577,6 +4598,508 @@ mq_is_dblink_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term)
     }
 }
 
+/* mq_detect_dblink_corr_eq helpers — correlated DBLink equality push-down
+ * mq_dblink_corr_classify_side() returns one of these for each side of an equality term.
+ * Currently only the REMOTE+OUTER pair triggers push-down.  _LOCAL (a column from a
+ * non-DBLink table in the same FROM clause) and _CONST (a literal constant) are kept
+ * distinct from _OTHER to preserve their semantics for future extensions such as join
+ * push-down or constant-predicate push-down into the remote SQL. */
+#define MQ_DBLINK_CORR_SIDE_ERR     (-1)
+#define MQ_DBLINK_CORR_SIDE_OTHER    0
+#define MQ_DBLINK_CORR_SIDE_REMOTE   1
+#define MQ_DBLINK_CORR_SIDE_OUTER    2
+#define MQ_DBLINK_CORR_SIDE_LOCAL    3	/* non-DBLink column in the same FROM clause */
+#define MQ_DBLINK_CORR_SIDE_CONST    4	/* literal constant */
+
+/*
+ * mq_dblink_sid_in_from () - true if spec_id belongs to the given FROM spec list
+ */
+static bool
+mq_dblink_sid_in_from (UINTPTR sid, PT_NODE * from)
+{
+  PT_NODE *s;
+
+  for (s = from; s != NULL; s = s->next)
+    {
+      if (s->info.spec.id == sid)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * mq_dblink_corr_dot_to_leaf_name () - rightmost name in a path (a.b.c -> c)
+ */
+static PT_NODE *
+mq_dblink_corr_dot_to_leaf_name (PT_NODE * expr)
+{
+  PT_NODE *e = expr;
+
+  while (e && e->node_type == PT_DOT_)
+    {
+      e = e->info.dot.arg2;
+    }
+  return e;
+}
+
+/*
+ * mq_dblink_corr_classify_side () - classify one side of a potential corr eq
+ *   return: MQ_DBLINK_CORR_SIDE_*; ERR on host var
+ *   subquery_from: FROM list of the scalar subquery containing the DBLink
+ */
+static int
+mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subquery_from)
+{
+  PT_NODE *leaf;
+  UINTPTR sid;
+
+  if (expr == NULL)
+    {
+      return MQ_DBLINK_CORR_SIDE_ERR;
+    }
+  if (expr->node_type == PT_HOST_VAR)
+    {
+      return MQ_DBLINK_CORR_SIDE_ERR;
+    }
+  if (pt_is_const (expr))
+    {
+      return MQ_DBLINK_CORR_SIDE_CONST;
+    }
+  if (expr->node_type == PT_NAME)
+    {
+      if (PT_IS_OID_NAME (expr))
+	{
+	  return MQ_DBLINK_CORR_SIDE_OTHER;
+	}
+      sid = expr->info.name.spec_id;
+      if (expr->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, subquery_from))
+	{
+	  /* corr_level > 0: classic outer ref; spec_id not in subquery FROM: derived-table outer ref */
+	  if (sid == dblink_sid)
+	    {
+	      return MQ_DBLINK_CORR_SIDE_REMOTE;
+	    }
+	  return MQ_DBLINK_CORR_SIDE_OUTER;
+	}
+      if (sid == dblink_sid)
+	{
+	  return MQ_DBLINK_CORR_SIDE_REMOTE;
+	}
+      return MQ_DBLINK_CORR_SIDE_LOCAL;
+    }
+  if (expr->node_type == PT_DOT_)
+    {
+      leaf = mq_dblink_corr_dot_to_leaf_name (expr);
+      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf))
+	{
+	  sid = leaf->info.name.spec_id;
+	  if (leaf->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, subquery_from))
+	    {
+	      if (sid == dblink_sid)
+		{
+		  return MQ_DBLINK_CORR_SIDE_REMOTE;
+		}
+	      return MQ_DBLINK_CORR_SIDE_OUTER;
+	    }
+	  if (sid == dblink_sid)
+	    {
+	      return MQ_DBLINK_CORR_SIDE_REMOTE;
+	    }
+	  return MQ_DBLINK_CORR_SIDE_LOCAL;
+	}
+    }
+  return MQ_DBLINK_CORR_SIDE_OTHER;
+}
+
+
+/*
+ * mq_dblink_corr_forbidden_pre () - forbid OR, NOT, host var, method, query block in predicate
+ */
+static PT_NODE *
+mq_dblink_corr_forbidden_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *bad = (bool *) arg;
+
+  (void) parser;
+  switch (node->node_type)
+    {
+    case PT_HOST_VAR:
+      *bad = true;
+      break;
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+      *bad = true;
+      break;
+    case PT_METHOD_CALL:
+      *bad = true;
+      break;
+    case PT_EXPR:
+      if (node->info.expr.op == PT_OR || node->info.expr.op == PT_NOT)
+	{
+	  *bad = true;
+	}
+      break;
+    default:
+      break;
+    }
+  if (*bad)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+typedef struct
+{
+  bool found;
+  PT_NODE *subquery_from;
+} MQ_DBLINK_OUTER_REF_ARG;
+
+/*
+ * mq_dblink_corr_outer_ref_pre () - mark if any outer column ref exists
+ *   Detects both classic (correlation_level > 0) and derived-table outer refs
+ *   (spec_id not in subquery_from).
+ */
+static PT_NODE *
+mq_dblink_corr_outer_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  MQ_DBLINK_OUTER_REF_ARG *ctx = (MQ_DBLINK_OUTER_REF_ARG *) arg;
+  PT_NODE *leaf;
+  UINTPTR sid;
+
+  (void) parser;
+  if (node->node_type == PT_NAME && !PT_IS_OID_NAME (node))
+    {
+      sid = node->info.name.spec_id;
+      if (node->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, ctx->subquery_from))
+	{
+	  ctx->found = true;
+	}
+    }
+  else if (node->node_type == PT_DOT_)
+    {
+      leaf = mq_dblink_corr_dot_to_leaf_name (node);
+      if (leaf && leaf->node_type == PT_NAME && !PT_IS_OID_NAME (leaf))
+	{
+	  sid = leaf->info.name.spec_id;
+	  if (leaf->info.name.correlation_level > 0 || !mq_dblink_sid_in_from (sid, ctx->subquery_from))
+	    {
+	      ctx->found = true;
+	    }
+	}
+    }
+  if (ctx->found)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * mq_dblink_corr_term_has_outer_ref () - true if term references any outer column
+ *   (classic corr_level > 0 or derived-table outer ref with spec_id not in subquery_from)
+ */
+static bool
+mq_dblink_corr_term_has_outer_ref (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * subquery_from)
+{
+  MQ_DBLINK_OUTER_REF_ARG ctx;
+
+  ctx.found = false;
+  ctx.subquery_from = subquery_from;
+  parser_walk_tree (parser, term, mq_dblink_corr_outer_ref_pre, &ctx, NULL, NULL);
+  return ctx.found;
+}
+
+/*
+ * mq_detect_dblink_corr_eq () - find a single correlated equality (remote = outer) in subquery WHERE,
+ *   and fill remote_out / outer_out when exactly one is found.
+ *
+ *   return:
+ *     1   : exactly one remote=outer PT_EQ found; *remote_out and *outer_out are set
+ *     0   : no correlated equality found
+ *     -1  : not applicable (host var, OR/NOT, query block, outer ref without corr eq, etc.)
+ *     >=2 : more than one correlated equality (not yet supported; remote_out/outer_out cleared)
+ */
+static int
+mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * dblink_spec,
+			  PT_NODE ** remote_out, PT_NODE ** outer_out)
+{
+  PT_NODE *where, *term;
+  bool forbidden;
+  UINTPTR dblink_sid;
+  int corr_eq_count;
+
+  assert (parser != NULL && subquery != NULL && dblink_spec != NULL);
+  assert (remote_out != NULL && outer_out != NULL);
+
+  *remote_out = NULL;
+  *outer_out = NULL;
+
+  if (!PT_IS_SELECT (subquery))
+    {
+      return 0;
+    }
+
+  where = subquery->info.query.q.select.where;
+  if (where == NULL)
+    {
+      return 0;
+    }
+
+  dblink_sid = dblink_spec->info.spec.id;
+  corr_eq_count = 0;
+
+  PT_NODE *subquery_from = subquery->info.query.q.select.from;
+
+  for (term = where; term; term = term->next)
+    {
+      PT_NODE *save_next;
+
+      if (term->node_type == PT_EXPR && term->info.expr.location > 0)
+	{
+	  continue;
+	}
+      else if (term->node_type == PT_VALUE && term->info.value.location > 0)
+	{
+	  continue;
+	}
+
+      /* or_next indicates OR condition in CNF representation — forbidden for push-down */
+      if (term->or_next != NULL)
+	{
+	  return -1;
+	}
+
+      /* Temporarily unlink ->next so parser_walk_tree does not spill into sibling terms. */
+      save_next = term->next;
+      term->next = NULL;
+
+      forbidden = false;
+      parser_walk_tree (parser, term, mq_dblink_corr_forbidden_pre, &forbidden, NULL, NULL);
+
+      if (!forbidden)
+	{
+	  int c1 = MQ_DBLINK_CORR_SIDE_OTHER;
+	  int c2 = MQ_DBLINK_CORR_SIDE_OTHER;
+	  bool is_corr_eq = false;
+
+	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ
+	      && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
+	    {
+	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
+	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
+	      is_corr_eq = ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+			    || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
+	    }
+
+	  if (is_corr_eq)
+	    {
+	      corr_eq_count++;
+	      if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE)
+		{
+		  *remote_out = term->info.expr.arg1;
+		  *outer_out = term->info.expr.arg2;
+		}
+	      else
+		{
+		  *remote_out = term->info.expr.arg2;
+		  *outer_out = term->info.expr.arg1;
+		}
+	    }
+	  else if (mq_dblink_corr_term_has_outer_ref (parser, term, subquery_from))
+	    {
+	      term->next = save_next;
+	      return -1;
+	    }
+	}
+
+      term->next = save_next;
+
+      if (forbidden)
+	{
+	  return -1;
+	}
+    }
+
+  if (corr_eq_count != 1)
+    {
+      *remote_out = NULL;
+      *outer_out = NULL;
+    }
+
+  return corr_eq_count;
+}
+
+/* Clear correlated key slots; free owning corr_key_outer_copy trees. */
+void
+mq_dblink_clear_corr_keys (PARSER_CONTEXT * parser, PT_DBLINK_INFO * dinfo)
+{
+  int i;
+
+  assert (parser != NULL && dinfo != NULL);
+
+  for (i = 0; i < dinfo->corr_key_count; i++)
+    {
+      if (dinfo->corr_key_outer_copy[i] != NULL)
+	{
+	  parser_free_tree (parser, dinfo->corr_key_outer_copy[i]);
+	  dinfo->corr_key_outer_copy[i] = NULL;
+	}
+      dinfo->corr_key_col_names[i] = NULL;
+    }
+  dinfo->corr_key_count = 0;
+  dinfo->corr_sql_built = false;
+  dinfo->rewritten = NULL;
+}
+
+/* Extract column name string from remote_col (PT_NAME / PT_DOT_). */
+static const char *
+mq_dblink_extract_col_name (PARSER_CONTEXT * parser, PT_NODE * remote_col)
+{
+  const char *original;
+
+  if (remote_col == NULL)
+    {
+      return NULL;
+    }
+  if (remote_col->node_type == PT_NAME)
+    {
+      original = remote_col->info.name.original;
+    }
+  else if (remote_col->node_type == PT_DOT_ && remote_col->info.dot.arg2 != NULL
+	   && remote_col->info.dot.arg2->node_type == PT_NAME)
+    {
+      original = remote_col->info.dot.arg2->info.name.original;
+    }
+  else
+    {
+      assert (false);
+      return NULL;
+    }
+  if (original == NULL || original[0] == '\0')
+    {
+      return NULL;
+    }
+  return pt_append_string (parser, NULL, original);
+}
+
+/* Build base PARSER_VARCHAR for di->rewritten when NULL.
+ * Always wraps the original SQL as a subquery so that WHERE can be safely appended
+ * regardless of ORDER BY / GROUP BY / HAVING / LIMIT in the original SQL.
+ * Result: "SELECT * FROM (original_sql) cublink"
+ * This mirrors the wrapping done by pt_copypush_terms for the mixed-case path. */
+static PARSER_VARCHAR *
+mq_dblink_build_rewritten_base_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
+{
+  PARSER_VARCHAR *v = NULL;
+  PARSER_VARCHAR *inner;
+  unsigned int save;
+
+  assert (di->rewritten == NULL);
+  if (di->qstr == NULL)
+    {
+      return NULL;
+    }
+  if (di->qstr->node_type == PT_VALUE && di->qstr->info.value.data_value.str != NULL)
+    {
+      inner = di->qstr->info.value.data_value.str;
+    }
+  else
+    {
+      save = parser->custom_print;
+      parser->custom_print |= PT_SUPPRESS_RESOLVED | PT_PRINT_SUPPRESS_FOR_DBLINK;
+      inner = pt_print_bytes (parser, di->qstr);
+      parser->custom_print = save;
+      if (inner == NULL)
+	{
+	  return NULL;
+	}
+    }
+  v = pt_append_bytes (parser, NULL, "SELECT * FROM (", 15);
+  v = pt_append_varchar (parser, v, inner);
+  v = pt_append_bytes (parser, v, ") cublink", 9);
+  return v;
+}
+
+/* Append corr pred ("col = ?") to di->rewritten.  Called from two sites:
+ *  (1) pt_copypush_terms [mixed path]: non-corr terms were pushed, rewritten != NULL
+ *      → appends "AND col = ?" to the already-present WHERE clause.
+ *  (2) mq_copypush_sargable_terms_helper [pure-corr path]: no non-corr terms pushed
+ *      → builds "SELECT * FROM (...) cublink WHERE col = ?" from scratch.
+ * di->rewritten != NULL → appends AND.  di->rewritten == NULL → builds base SQL + WHERE.
+ *
+ * TODO: Column name is appended unquoted.  Quoting makes identifiers case-sensitive, but
+ *       unquoted identifiers are normalized differently by DB (Oracle: uppercase, CUBRID/PostgreSQL:
+ *       lowercase).  Remote DB type is unknown at XASL generation, so proper quoting is deferred. */
+static bool
+mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
+{
+  PARSER_VARCHAR *base;
+  const char *col_name = di->corr_key_col_names[0];
+
+  assert (col_name != NULL);
+  if (col_name[0] == '\0')
+    {
+      return false;
+    }
+
+  if (di->rewritten != NULL)
+    {
+      base = di->rewritten;
+      if (di->rewritten_has_where)
+	{
+	  base = pt_append_bytes (parser, base, " AND ", 5);
+	}
+      else
+	{
+	  base = pt_append_bytes (parser, base, " WHERE ", 7);
+	}
+    }
+  else
+    {
+      base = mq_dblink_build_rewritten_base_sql (parser, di);
+      if (base == NULL)
+	{
+	  return false;
+	}
+      base = pt_append_bytes (parser, base, " WHERE ", 7);
+    }
+  if (base == NULL)
+    {
+      return false;
+    }
+  /* Emit the bare correlated key as "<col> = ?": no collation is forced on the pushed
+   * comparison.  The remote evaluates it with the remote column's own collation, while
+   * the no-push baseline (IN/JOIN, or EXISTS with DBLINK_NO_PUSH_DOWN_SUBQ) compares
+   * locally, where the remote string column is represented with its codeset's binary
+   * collation (CBRD-26870).  The two paths therefore agree only when the remote column's
+   * collation has binary equality semantics - the documented assumption (manual: DBLink
+   * Common Restrictions, "remote string column collation is assumed binary").  A remote
+   * collation whose equality differs from binary (case/accent-insensitive, or expansion/
+   * normalization collations that merge distinct strings) is out of spec: results may
+   * differ by query form (push vs no-push).  (A case-sensitive collation that only retailors
+   * sort order keeps binary equality and is safe.)  We cannot guard it here because the
+   * remote collation is not available in the CCI column metadata (only its codeset). */
+  base = pt_append_nulstring (parser, base, col_name);
+  if (base == NULL)
+    {
+      return false;
+    }
+
+  base = pt_append_bytes (parser, base, " = ?", 4);
+  if (base == NULL)
+    {
+      return false;
+    }
+  di->rewritten = base;
+  di->corr_sql_built = true;
+  return true;
+}
+
 /*
  * mq_copypush_sargable_terms_helper() -
  *   return:
@@ -4739,6 +5262,17 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 
       /* free alloced */
       parser_free_tree (parser, push_term_list);
+    }
+  /* Pure-corr DBLink: no non-corr pushable terms found, but corr push-down is active.
+   * Finalize conn_sql here so pt_to_dblink_table_spec_list only reads the completed string. */
+  else if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE
+	   && subquery != NULL
+	   && subquery->info.dblink_table.corr_key_count > 0 && !subquery->info.dblink_table.corr_sql_built)
+    {
+      if (!mq_dblink_append_corr_pred_sql (parser, &subquery->info.dblink_table))
+	{
+	  mq_dblink_clear_corr_keys (parser, &subquery->info.dblink_table);
+	}
     }
 
   return push_cnt;
@@ -6608,17 +7142,74 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 {
   PT_NODE *spec, *derived = NULL;
   PT_NODE *derived_table;
+  PT_DBLINK_INFO *dinfo;
+  PT_NODE *remote_expr = NULL;
+  PT_NODE *outer_expr = NULL;
+  int ncorr;
+  bool hint_no_push;
 
   if (node->node_type != PT_SELECT)
     {
       return node;
     }
 
+  hint_no_push = (node->info.query.q.select.hint & PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ) != 0;
+
   for (spec = node->info.query.q.select.from; spec; spec = spec->next)
     {
       if ((derived_table = spec->info.spec.derived_table)
 	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
+	  dinfo = &derived_table->info.dblink_table;
+	  mq_dblink_clear_corr_keys (parser, dinfo);
+
+	  /* comment out this block to disable correlated push-down */
+	  if (!hint_no_push)
+	    {
+	      ncorr = mq_detect_dblink_corr_eq (parser, node, spec, &remote_expr, &outer_expr);
+	      if (ncorr == 1)
+		{
+		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
+
+		  /* Remote column's physical codeset, from the CCI column metadata.  This is
+		   * authoritative and unaffected by how the attr_def later declares the
+		   * column's codeset (e.g. redeclared with the local codeset for union/compat).
+		   * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		  int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
+		  if (remote_cs < 0)
+		    {
+		      remote_cs = (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
+		    }
+
+		  /* Cross-codeset guard: a character key whose remote physical codeset differs
+		   * from the local outer codeset must not be pushed.  The outer value is bound as
+		   * a host variable in the local codeset, so a remote comparison against a
+		   * different-codeset column does a wrong raw-byte comparison and silently drops
+		   * rows.  Local evaluation is correct instead: the dblink fetch transcodes the
+		   * remote value into the local codeset, so the IN/EXISTS/JOIN comparison runs on
+		   * matching codesets. */
+		  int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
+		  bool cross_codeset = (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum)
+					&& remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+
+		  if (corr_col != NULL && !cross_codeset)
+		    {
+		      dinfo->corr_key_col_names[dinfo->corr_key_count] = corr_col;
+		      dinfo->corr_key_outer_copy[dinfo->corr_key_count] = parser_copy_tree (parser, outer_expr);
+		      if (dinfo->corr_key_outer_copy[dinfo->corr_key_count] == NULL)
+			{
+			  mq_dblink_clear_corr_keys (parser, dinfo);
+			}
+		      else
+			{
+			  dinfo->corr_key_count++;
+			}
+		    }
+		  /* else: cross-codeset key, or no column name -> leave keys cleared (already
+		   * done by mq_dblink_clear_corr_keys above) -> no push, evaluate locally. */
+		}
+	    }
+
 	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
 	  if (derived == NULL)
 	    {

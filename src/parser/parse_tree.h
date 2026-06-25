@@ -1243,6 +1243,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_MATERIALIZE_CTE		(1ULL << 43)	/* materialize CTE */
 #define  PT_HINT_NO_PARALLEL_SUBQUERY		(1ULL << 44)	/* disable parallel subquery */
 #define  PT_HINT_NO_PARALLEL_HASH_JOIN		(1ULL << 45)	/* disable parallel hash join */
+#define  PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ	(1ULL << 47)	/* disable correlated push-down for DBLink remote SQL */
 
 /* Codes for error messages */
 typedef enum
@@ -3400,6 +3401,8 @@ typedef struct host_vars_info
   int *index;
 } PT_HOST_VAR_IDX_INFO;
 
+#define PT_DBLINK_MAX_CORR_KEYS 8	/* max correlated push-down keys; currently only [0] is used (single equality) */
+
 typedef struct pt_dblink_info
 {
   PT_NODE *conn;		/* name for DBLINK */
@@ -3419,6 +3422,21 @@ typedef struct pt_dblink_info
   PT_NODE *owner_list;
 
   void *remote_col_list;	/* remote table's column list */
+
+  /* Correlated equality push-down (single equality: count == 1).
+   * corr_key_col_names: stable copy for SQL; corr_key_outer_copy: owning copy for XASL (parser_copy_tree). */
+  int corr_key_count;
+  PT_NODE *corr_key_outer_copy[PT_DBLINK_MAX_CORR_KEYS];
+  const char *corr_key_col_names[PT_DBLINK_MAX_CORR_KEYS];
+
+  /* true once mq_dblink_append_corr_pred_sql has written "col = ?" into rewritten.
+   * Replaces the rewritten==NULL sentinel so the pure-corr check in
+   * mq_copypush_sargable_terms_helper does not depend on rewritten's NULL-ness. */
+  bool corr_sql_built;
+
+  /* true when pt_copypush_terms successfully appended " WHERE pushed_pred" to rewritten.
+   * mq_dblink_append_corr_pred_sql uses this to decide AND vs WHERE. */
+  bool rewritten_has_where;
 
 } PT_DBLINK_INFO;
 
