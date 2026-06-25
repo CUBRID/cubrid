@@ -9779,6 +9779,17 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				}
 			      else
 				{
+				  if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
+				    {
+				      /* anti: a matching inner row suppresses this outer row.  Skip inst_num and
+				         emit here; inst_num is applied only to rows anti actually emits (the
+				         zero-match branch below), otherwise rownum/inst_num would count and
+				         early-stop on suppressed (matched) outer rows (CBRD-26872).  The
+				         single-fetch inner returns S_END on the next call, ending the drain. */
+				      scan_ptr_qualified = true;
+				      continue;
+				    }
+
 				  /* evaluate inst_num predicate */
 				  if (xasl->instnum_val)
 				    {
@@ -9807,32 +9818,21 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				  qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
 				  if (qualified)
 				    {
-				      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
+				      /* SEMI rides this path with no dedicated branch: single_fetch inner stops at first
+				         qualifying row so the outer emits once; plain inner join emits once per inner row */
+				      assert (!XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_SEMIJOIN)
+					      || xasl->scan_ptr->curr_spec == NULL
+					      || xasl->scan_ptr->curr_spec->single_fetch == QPROC_SINGLE_INNER);
+				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 					{
-					  /* anti: qualifying inner row suppresses this outer; record match, loop drains
-					     inner to S_END. v1 invariant: scan-like single-fetch inner, drain bounded.
-					     TODO(composite-RHS): composite/derived inner must not blind-drain the subtree
-					     (side effects / instnum / CONNECT BY). */
-					  scan_ptr_qualified = true;
+					  return S_ERROR;
 					}
-				      else
+				      /* only one row is need for exists OP */
+				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
 					{
-					  /* SEMI rides this path with no dedicated branch: single_fetch inner stops at first
-					     qualifying row so the outer emits once; plain inner join emits once per inner row */
-					  assert (!XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_SEMIJOIN)
-						  || xasl->scan_ptr->curr_spec == NULL
-						  || xasl->scan_ptr->curr_spec->single_fetch == QPROC_SINGLE_INNER);
-					  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
-					    {
-					      return S_ERROR;
-					    }
-					  /* only one row is need for exists OP */
-					  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-					    {
-					      return S_SUCCESS;
-					    }
-					  scan_ptr_qualified = true;
+					  return S_SUCCESS;
 					}
+				      scan_ptr_qualified = true;
 				    }
 				}
 			    }
@@ -9843,15 +9843,42 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				{
 				  if (!scan_ptr_qualified)
 				    {
-				      /* anti zero-match: emit the outer row (inner columns are not projected) */
-				      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+				      /* anti zero-match: this outer row is emitted (inner columns not projected).
+				         inst_num is applied HERE -- only to rows anti actually emits -- not during
+				         the inner drain, so rownum/inst_num counts and stops on emitted rows only.
+				         Mirrors the normal/SEMI inst_num + emit path above. */
+				      if (xasl->instnum_val)
 					{
-					  return S_ERROR;
+					  ev_res = qexec_eval_instnum_pred (thread_p, xasl, xasl_state);
+					  if (ev_res == V_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+					  if ((xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_LAST_STOP))
+					    {
+					      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+						{
+						  return S_ERROR;
+						}
+					      return S_SUCCESS;
+					    }
+					  if (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP)
+					    {
+					      return S_SUCCESS;
+					    }
 					}
-				      /* only one row is need for exists OP (mirror normal/SEMI success path above) */
-				      if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+				      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
+				      if (qualified)
 					{
-					  return S_SUCCESS;
+					  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+					    {
+					      return S_ERROR;
+					    }
+					  /* only one row is need for exists OP (mirror normal/SEMI success path above) */
+					  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+					    {
+					      return S_SUCCESS;
+					    }
 					}
 				    }
 				  else
