@@ -20992,11 +20992,14 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  return NO_ERROR;
 	}
 
-      /* An appended slot (slot_id == slot_count) has a fresh OID no one can lock, so skip the per-row
-       * lock; reused slots still take the conditional lock below to guard an uncommitted deleter. */
-      if (slot_id == slot_count)
+      /* An appended slot (slot_id == slot_count) has a fresh OID no one can lock. For an MVCC class the
+       * transaction self-lock (taken above) protects the unique/FK check, so skip the per-row lock. A
+       * non-MVCC class (e.g. catalog/serial) takes no self-lock, so it must still take the per-row X-lock
+       * here to satisfy the unique-insert lock invariant. Reused slots always take the conditional lock
+       * below to guard an uncommitted deleter. */
+      if (slot_id == slot_count && !mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
-	  /* appended slot: fresh OID, no live lock can exist -> skip. */
+	  /* MVCC-class appended slot: covered by the transaction self-lock -> skip the per-row lock. */
 	  return NO_ERROR;
 	}
 
