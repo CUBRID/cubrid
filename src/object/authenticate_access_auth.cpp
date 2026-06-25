@@ -508,6 +508,12 @@ au_auth_accessor::delete_all_auth (void)
     }
 
   list = sm_fetch_all_objects (m_au_class_mop, DB_FETCH_CLREAD_INSTREAD);
+  if (list == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
   for (mop = list; mop != NULL; mop = mop->next)
     {
       error = obj_delete (mop->op);
