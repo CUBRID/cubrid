@@ -164,9 +164,20 @@ typedef enum
 typedef struct lk_res_key LK_RES_KEY;
 struct lk_res_key
 {
-  LOCK_RESOURCE_TYPE type;	/* type of resource: class,instance */
-  OID oid;
-  OID class_oid;
+  LOCK_RESOURCE_TYPE type;	/* type of resource: class, instance, root_class or transaction */
+  /* The payload is interpreted by type. Object-typed resources (INSTANCE/CLASS/ROOT_CLASS) use the OID
+   * overlay; a TRANSACTION self-lock stores the inserter's full 64-bit MVCCID natively (no OID packing).
+   * The lock table is a pure hash map, so the key needs no OID structure of its own - hash/compare/copy
+   * (lock_res_key_*) interpret the active member by type. */
+  union
+  {
+    struct
+    {
+      OID oid;
+      OID class_oid;
+    };
+    MVCCID mvccid;
+  };
 };
 
 /*
