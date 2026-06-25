@@ -176,6 +176,7 @@ static UTIL_SERVICE_OPTION_MAP_T us_Service_map[] = {
   {ADMIN, UTIL_OPTION_OPTIMIZEDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_INSTALLDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_DIAGDB, MASK_ADMIN},
+  {ADMIN, UTIL_OPTION_CLEANFILEDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_PATCHDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_CHECKDB, MASK_ADMIN},
   {ADMIN, UTIL_OPTION_ALTERDBHOST, MASK_ADMIN},
@@ -2847,7 +2848,7 @@ process_pl_restart (const char *db_name, bool suppress_message)
 	}
     }
 
-  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  status = sysprm_reload_and_init (db_name, NULL);
   const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
   if (is_sp_on == false)
     {
@@ -2915,7 +2916,7 @@ process_pl_status (const char *db_name)
   int waited_secs = 0;
   UTIL_PL_SERVER_STATUS_E pl_status;
 
-  status = sysprm_load_and_init (db_name, NULL, SYSPRM_IGNORE_INTL_PARAMS);
+  status = sysprm_reload_and_init (db_name, NULL);
   const bool is_sp_on = prm_get_bool_value (PRM_ID_STORED_PROCEDURE);
 
   do

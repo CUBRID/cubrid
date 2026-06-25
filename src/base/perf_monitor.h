@@ -990,8 +990,7 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
+  if ((tran_index >= 0 && tran_index < pstat_Global.n_trans) && pstat_Global.is_watching[tran_index])
     {
       if (thread_p != NULL && thread_p->m_uses_px_stats)
 	{

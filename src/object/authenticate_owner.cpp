@@ -75,10 +75,10 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   DB_OBJECT *serial_obj = NULL;
   DB_IDENTIFIER serial_obj_id;
   DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE value;
+  DB_VALUE value, str_value;
+  char new_class_name[DB_MAX_IDENTIFIER_LENGTH];
   const char *serial_name = NULL;
-  char serial_new_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
-  const char *att_name = NULL;
+  char serial_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char *owner_name = NULL;
   char downcase_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   bool is_abort = false;
@@ -98,6 +98,9 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
       ERROR_SET_WARNING_1ARG (error, ER_AU_DBA_ONLY, "change_serial_owner");
       return error;
     }
+
+  db_make_null (&value);
+  db_make_null (&str_value);
 
   AU_DISABLE (save);
 
@@ -139,6 +142,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
 	  ERROR_SET_WARNING (error, ER_AU_CANT_ALTER_OWNER_OF_AUTO_INCREMENT);
 	  goto end;
 	}
+      db_value_clear (&value);
     }
 
   /* Check if the owner to be changed is the same. */
@@ -184,7 +188,36 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   sm_downcase_name (owner_name, downcase_owner_name, DB_MAX_USER_LENGTH);
   db_ws_free_and_init (owner_name);
 
-  sprintf (serial_new_name, "%s.%s", downcase_owner_name, serial_name);
+  error = obj_get (serial_mop, SERIAL_ATTR_CLASS_NAME, &str_value);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto end;
+    }
+
+  if (DB_IS_NULL (&str_value) || db_get_string (&str_value) == NULL)
+    {
+      assert (strlen (serial_name) < DB_MAX_SERIAL_NAME_LENGTH);
+      snprintf (serial_new_name, DB_MAX_IDENTIFIER_LENGTH, "%s.%s", downcase_owner_name, serial_name);
+    }
+  else
+    {
+      snprintf (new_class_name, sizeof (new_class_name), "%s.%s", downcase_owner_name, db_get_string (&str_value));
+      db_value_clear (&str_value);
+      error = obj_get (serial_mop, SERIAL_ATTR_ATTR_NAME, &str_value);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+
+      error = set_auto_increment_serial_name (serial_new_name, new_class_name, db_get_string (&str_value));
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto end;
+	}
+    }
 
   serial_class_mop = sm_find_class (CT_SERIAL_NAME);
   if (serial_class_mop == NULL)
@@ -207,6 +240,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     }
 
   /* unique_name */
+  db_value_clear (&value);
   db_make_string (&value, serial_new_name);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_UNIQUE_NAME, &value);
   if (error != NO_ERROR)
@@ -217,6 +251,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
     }
 
   /* owner */
+  db_value_clear (&value);
   db_make_object (&value, owner_mop);
   error = dbt_put_internal (obj_tmpl, SERIAL_ATTR_OWNER, &value);
   if (error != NO_ERROR)
@@ -250,6 +285,8 @@ end:
     }
 
   AU_ENABLE (save);
+  db_value_clear (&value);
+  db_value_clear (&str_value);
 
   return error;
 }
@@ -265,8 +302,10 @@ int
 au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
 {
   DB_OBJECT *trigger_owner_obj = NULL;
+#if 0
   DB_OBJECT *target_class_obj = NULL;
   SM_CLASS *target_class = NULL;
+#endif
   DB_VALUE value;
   const char *trigger_old_name = NULL;
   char trigger_new_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };

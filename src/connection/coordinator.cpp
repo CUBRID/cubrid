@@ -52,6 +52,8 @@
 
 namespace cubconn::connection
 {
+  REGISTER_CONNECTION (coordinator, 1);
+
   coordinator::coordinator (pool *pool, std::shared_ptr<thread_watcher> watcher, std::size_t core,
 			    std::uint32_t max_worker, std::uint32_t min_worker) :
     m_parent (pool),
@@ -66,6 +68,7 @@ namespace cubconn::connection
   {
     std::size_t i;
 
+#if defined (ENABLE_CONTROLLER)
     /* external controller */
     if (!m_controller.open ("/tmp/cub_server_" + std::to_string (getpid ()) + "_coordinator.sock",
 			    SOCK_NONBLOCK | SOCK_CLOEXEC))
@@ -74,6 +77,8 @@ namespace cubconn::connection
 	assert_release (false);
       }
     m_ctrlfd = m_controller.get_fd ();
+#endif
+
     /* notifier */
     m_eventfd = eventfd (0, EFD_NONBLOCK | EFD_CLOEXEC);
     m_timerfd = timerfd_create (CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
@@ -84,12 +89,19 @@ namespace cubconn::connection
       }
 
     if (!this->eventfd_register (m_eventfd) ||
-	!this->eventfd_register (m_timerfd) ||
-	!this->eventfd_register (m_ctrlfd))
+	!this->eventfd_register (m_timerfd))
       {
 	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
 	assert_release (false);
       }
+
+#if defined (ENABLE_CONTROLLER)
+    if (!this->eventfd_register (m_ctrlfd))
+      {
+	er_log_conn (__FILE__, __LINE__, "connection::coordinator: failed to register fd\n");
+	assert_release (false);
+      }
+#endif
 
     /* timer */
     for (i = 0; i < static_cast<std::size_t> (timer_type::TYPE_COUNT); i++)
@@ -936,6 +948,17 @@ namespace cubconn::connection
     std::vector<std::unique_ptr<worker>> &workers = m_parent->get_workers ();
     connection::worker::message request;
     std::size_t worker;
+    context *ctx;
+
+    ctx = m_parent->claim_context ();
+    if (!ctx)
+      {
+	/* failed to allocate the resources */
+	css_free_conn (item.conn);
+
+	/* just ignore */
+	return true;
+      }
 
     std::tie (worker, std::ignore) = statistics_find_score_extremes ();
 
@@ -948,7 +971,7 @@ namespace cubconn::connection
     m_statistics[worker].m_client_num++;
 
     request.type = connection::worker::message_type::NEW_CLIENT;
-    request.ctx = m_parent->claim_context ();
+    request.ctx = ctx;
     request.ctx->m_worker = worker;
     request.ctx->m_id = id++;
     request.conn = item.conn;
@@ -1105,6 +1128,7 @@ not_transferred:
     return true;
   }
 
+#if defined (ENABLE_CONTROLLER)
   bool coordinator::handle_controller_request (control_recv &rx, control_send &tx)
   {
     const char *name_table[] =
@@ -1186,6 +1210,7 @@ not_transferred:
 
     return true;
   }
+#endif
 
   void coordinator::initialize ()
   {
@@ -1233,6 +1258,32 @@ not_transferred:
     m_watcher->mtx.unlock ();
 
     m_watcher->cv.notify_one ();
+  }
+
+  void coordinator::finalize_resources ()
+  {
+    message request;
+
+    while (m_queue.try_pop (request))
+      {
+	switch (request.type)
+	  {
+	  case message_type::NEW_CLIENT:
+	    css_free_conn (request.conn);
+	    break;
+
+	  case message_type::RETURN_TO_POOL:
+	    handle_message_queue_return_to_pool (request);
+	    break;
+
+	  case message_type::START:
+	  case message_type::HANDOFF_REPLY:
+	  case message_type::STATISTICS:
+	  case message_type::SHUTDOWN:
+	  case message_type::TYPE_COUNT:
+	    break;
+	  }
+      }
   }
 
   bool coordinator::run ()
@@ -1298,10 +1349,12 @@ not_transferred:
 			return false;
 		      }
 		  }
+#if defined (ENABLE_CONTROLLER)
 		else if (events[i].data.fd == m_ctrlfd)
 		  {
 		    this->handle_controller ();
 		  }
+#endif
 	      }
 	  }
       }

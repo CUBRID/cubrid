@@ -242,6 +242,7 @@ extern int stats_get_statistics_from_server (OID * classoid, unsigned int timest
 					     char **stats_buffer);
 extern int stats_update_statistics (MOP classop, int with_fullscan);
 extern int stats_update_all_statistics (int with_fullscan);
+extern int update_histogram_for_all_classes (void);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk,
 			    int deduplicate_key_pos);
@@ -403,5 +404,11 @@ extern void tdes_reset_query_start_info (PT_NODE * node);
 /* lob dir */
 extern int lob_create_dir (HFID * hfid, int *attrid_arr, int attrid_arr_length);
 extern int lob_remove_dir (HFID * hfid, int attrid);
+
+extern int file_dump_file_list (FILE * outfp, bool invalid_only);
+extern int file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf);
+#if !defined(NDEBUG)
+extern int file_delete_target_file (const char *target_vfid_str);
+#endif
 
 #endif /* _NETWORK_INTERFACE_CL_H_ */

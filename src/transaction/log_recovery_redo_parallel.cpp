@@ -606,7 +606,7 @@ namespace cublog
     assert (a_task_count > 0);
 
     const thread_type tt = TT_RECOVERY;
-    m_pool_context_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
+    m_pool_entry_manager = std::make_unique<cubthread::system_worker_entry_manager> (tt);
 
     do_init_worker_pool (a_task_count);
     do_init_tasks (a_task_count, a_do_monitor_min_unapplied_log_lsa, copy_context);
@@ -659,12 +659,9 @@ namespace cublog
     assert (a_task_count > 0);
     assert (m_worker_pool == nullptr);
 
-    // NOTE: already initialized globally (probably during boot)
-    cubthread::manager *thread_manager = cubthread::get_manager ();
-
-    m_worker_pool = thread_manager->create_worker_pool (a_task_count, a_task_count, "recovery-redo",
-		    m_pool_context_manager.get (),
-		    a_task_count, false /*debug_logging*/);
+    m_worker_pool = thread_create_worker_pool (a_task_count, a_task_count, "recovery-redo",
+		    *m_pool_entry_manager.get ());
+    // m_log = false
   }
 
   void

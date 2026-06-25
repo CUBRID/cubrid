@@ -31,7 +31,6 @@
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
 #include "thread_manager.hpp"
-#include "thread_worker_pool.hpp"
 #include "master_connector.hpp"
 #include "connection_pool.hpp"
 
@@ -140,7 +139,7 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::entry_workpool *css_Server_request_worker_pool = NULL;
+static cubthread::stats_worker_pool_type *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -211,8 +210,9 @@ static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool i
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
 static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
-// cubthread::entry_workpool::core confuses indent
-static void css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+
+// cubthread::stats_worker_pool_type::core_impl confuses indent
+static void css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
 static void
@@ -546,6 +546,10 @@ css_start_shutdown_server ()
  *       server/scheduler is stopped. Please call
  *       css_initialize_server_interfaces before calling this function.
  */
+// *INDENT-OFF*
+REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+// *INDENT-ON*
+
 int
 css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_id)
 {
@@ -574,22 +578,26 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 
   // create request worker pool
   css_Server_request_worker_pool =
-    cubthread::get_manager ()->create_worker_pool (task_worker, MAX_TASK_COUNT, "transaction", NULL,
-						   task_group,
-						   cubthread::is_logging_configured
-						   (cubthread::LOG_WORKER_POOL_TRAN_WORKERS),
-						   css_get_server_request_thread_pooling_configuration (),
-						   css_get_server_request_thread_timeout_configuration ());
+    thread_create_stats_worker_pool (task_worker, task_group, "transaction", thread_get_entry_manager (),
+				     css_get_server_request_thread_pooling_configuration (),
+				     css_get_server_request_thread_timeout_configuration ());
+  // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
+
   if (css_Server_request_worker_pool == NULL)
     {
-      assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       status = ER_FAILED;
       goto shutdown;
     }
 
   /* initialize epoll worker pool */
-  connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers);
+  if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
+    {
+      _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
+      status = ER_FAILED;
+      goto shutdown;
+    }
 
   /* attach thread entry */
   connector.attach (*thread_p);
@@ -620,7 +628,7 @@ shutdown:
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);
 
-#if !defined(NDEBUG)
+#if !defined (NDEBUG)
   /* All active transaction and vacuum workers should have been stopped. Only system transactions are still running. */
   assert (!log_prior_has_worker_log_records (thread_p));
 #endif
@@ -632,7 +640,12 @@ shutdown:
     {
       perfmon_er_log_current_stats (thread_p);
     }
-  css_Server_request_worker_pool->er_log_stats ();
+#if !defined (NDEBUG)
+  if (css_Server_request_worker_pool)
+    {
+      css_Server_request_worker_pool->er_log_stats ();
+    }
+#endif
 
   // destroy thread worker pools
   thread_get_manager ()->destroy_worker_pool (css_Server_request_worker_pool);
@@ -655,6 +668,7 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
 			int wait_time)
 {
   CSS_CONN_ENTRY * conn;
+  cubconn::connection::context *ctx;
   int r;
 
   assert (item.conn);
@@ -677,6 +691,10 @@ css_enqueue_and_notify (cubconn::connection::worker::queue_type type, cubconn::c
 
       return 0;
     }
+
+  ctx = static_cast<cubconn::connection::context *> (conn->context);
+  item.ctx = ctx;
+  item.id = ctx->m_id;
 
   auto func =[conn] ()noexcept {
     /* unlock */
@@ -1511,10 +1529,9 @@ css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_stri
     {
       if (conn->version_string == NULL)
 	{
-	  ver_str = (char *) malloc (strlen (version_string) + 1);
+	  ver_str = strdup (version_string);
 	  if (ver_str != NULL)
 	    {
-	      strcpy (ver_str, version_string);
 	      conn->version_string = ver_str;
 	    }
 	  else
@@ -2643,7 +2660,7 @@ css_get_thread_stats (UINT64 *stats_out)
 void
 css_get_task_stats (UINT64 *stats_out)
 {
-  css_Server_request_worker_pool->get_task_stats (stats_out);
+//  css_Server_request_worker_pool->get_task_stats (stats_out);
 }
 
 //
@@ -2652,7 +2669,7 @@ css_get_task_stats (UINT64 *stats_out)
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_max_count ();
+  return css_Server_request_worker_pool->get_worker_count ();
 }
 
 //
@@ -2689,7 +2706,7 @@ css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapp
 // error_code (out)     : output error_code if any errors occur
 //
 static void
-css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bool & stop_mapper,
+css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {
@@ -2707,7 +2724,7 @@ css_wp_core_job_scan_mapper (const cubthread::entry_workpool::core & wp_core, bo
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
   // add max worker count; it used to be max thread workers per job queue
-  (void) db_make_int (&vals[val_index++], (int) wp_core.get_max_worker_count ());
+  (void) db_make_int (&vals[val_index++], (int) wp_core.get_worker_count ());
 
   // number of busy workers; core does not keep it, we need to count them manually
   int busy_count = 0;
@@ -2762,7 +2779,7 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_max_count ())
+  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
     {
       // all threads are suspended
       return true;
@@ -2898,7 +2915,7 @@ css_start_all_threads (void)
 
   if (start_workers)
     {
-      css_Server_request_worker_pool->start_all_workers ();
+      css_Server_request_worker_pool->warmup ();
     }
 
   clock_type::time_point end_time = clock_type::now ();

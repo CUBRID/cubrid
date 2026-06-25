@@ -43,6 +43,7 @@
 #include "parser.h"
 #include "trigger_manager.h"
 #include "schema_manager.h"
+#include "histogram_cl.hpp"
 #include "dbi.h"
 #if defined(WINDOWS)
 #include "misc_string.h"
@@ -6555,6 +6556,7 @@ error_exit:
  * classobj_copy_attribute_like() - Copies an attribute from an existing class
  *                                  to a new class template.
  *    Potential NOT NULL constraints on the attribute are copied also.
+ *    INVISIBLE option on the attribute are copied also.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   ctemplate(in): the template to copy to
  *   attribute(in): the attribute to be duplicated
@@ -6598,6 +6600,18 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
       if (error != NO_ERROR)
 	{
 	  return error;
+	}
+    }
+
+  if (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+    {
+      SM_ATTRIBUTE *att;
+      error =
+	smt_find_attribute (ctemplate, attribute->header.name,
+			    attribute->header.name_space == ID_CLASS_ATTRIBUTE ? 1 : 0, &att);
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
 	}
     }
 
@@ -6889,6 +6903,7 @@ classobj_make_class (const char *name)
 
   class_->new_ = NULL;
   class_->stats = NULL;
+  class_->histogram = NULL;
   class_->owner = NULL;
   class_->collation_id = LANG_SYS_COLLATION;
   class_->auth_cache = NULL;
@@ -6961,6 +6976,11 @@ classobj_free_class (SM_CLASS * class_)
   if (class_->stats != NULL)
     {
       stats_free_statistics_and_init (class_->stats);
+    }
+
+  if (class_->histogram != NULL)
+    {
+      stats_free_histogram_and_init_and_set_null (class_->histogram);
     }
 
   if (class_->properties != NULL)
@@ -8088,13 +8108,12 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
   if (comp != NULL)
     {
       /* save the component name so we can rebuild the map cache after schema/transaction changes */
-      desc->name = (char *) malloc (strlen (comp->name) + 1);
+      desc->name = strdup (comp->name);
       if (desc->name == NULL)
 	{
 	  free_and_init (desc);
 	  return NULL;
 	}
-      strcpy (desc->name, comp->name);
       desc->name_space = comp->name_space;
     }
 

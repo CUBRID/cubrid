@@ -49,4 +49,6 @@
 #define PROXY_ID_ENV_STR            "PROXY_ID"
 #define AS_ID_ENV_STR               "AS_ID"
 
+#define CUBRID_CONF_FOR_BROKER      "CUBRID_CONF_FOR_BROKER"
+
 #endif /* _BROKER_ENV_DEF_H_ */

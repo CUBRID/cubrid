@@ -28,7 +28,9 @@
 #include "double_write_buffer.hpp"
 
 #include "system_parameter.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry_task.hpp"
 #include "thread_lockfree_hash_map.hpp"
 #include "thread_manager.hpp"
@@ -4065,6 +4067,8 @@ dwb_file_sync_helper_execute (cubthread::entry &thread_ref)
 /*
  * dwb_flush_block_daemon_init () - initialize DWB flush block daemon thread
  */
+REGISTER_DAEMON (dwb_flush_block);
+
 void
 dwb_flush_block_daemon_init ()
 {
@@ -4077,6 +4081,8 @@ dwb_flush_block_daemon_init ()
 /*
  * dwb_file_sync_helper_daemon_init () - initialize DWB file sync helper daemon thread
  */
+REGISTER_DAEMON (dwb_file_sync_helper);
+
 void
 dwb_file_sync_helper_daemon_init ()
 {
