@@ -10005,14 +10005,6 @@ prm_tune_parameters (void)
       max_request_worker_prm = GET_PRM (PRM_ID_MAX_REQUEST_WORKER);
       max_request_concurrency_prm = GET_PRM (PRM_ID_MAX_REQUEST_CONCURRENCY);
 
-      if (!PRM_IS_SET (max_request_worker_prm))
-	{
-	  /* if not changed by user */
-	  sprintf (newval, "%d",
-		   std::min (std::max (PRM_GET_INT (max_clients_prm->value) + /* twice the max depth of SP */ 16 * 2,
-				       system_cpu_count), CSS_MAX_CLIENT_COUNT));
-	  (void) prm_set (max_request_worker_prm, newval, false);
-	}
       if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
 	  /* if not changed by user */
