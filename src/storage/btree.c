@@ -36463,7 +36463,7 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
 
   /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
    * per-row X_LOCK on the appended object; that self-lock serializes the unique insert, so accept it here. */
-  MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
       return true;
@@ -36502,7 +36502,7 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
   /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
    * per-row X_LOCK on the appended object. Rollback deletes that object while the self-lock is still held
    * (released only at end-of-transaction), so accept it here. */
-  MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
       return true;

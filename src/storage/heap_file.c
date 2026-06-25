@@ -20960,9 +20960,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 #if defined (SERVER_MODE)
   if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
-      /* Key the self-lock by the MAIN transaction MVCCID (never a transient sub-transaction MVCCID), so the
-       * lock is stable for the whole transaction and released only at end-of-transaction. */
-      MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
+      /* Key the self-lock by the SAME MVCCID stamped on the row's insert id (logtb_get_current_mvccid),
+       * i.e. the sub-transaction MVCCID when one is active, otherwise the main transaction MVCCID. A unique/FK
+       * checker reads the row's insert MVCCID and waits on exactly that key, so the two must match. (A
+       * sub-transaction self-lock is released at sub-transaction end by logtb_complete_sub_mvcc.) */
+      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
       if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -23982,11 +23984,12 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /* the update in place concept should be changed in terms of mvcc */
 
   /* An MVCC update creates a new version (and possibly new index keys) that unique/FK checkers may observe as
-   * INSERT_IN_PROGRESS; hold the same transaction self-lock the insert path takes (keyed by the MAIN transaction
-   * MVCCID), so those checkers serialize on this transaction instead of a per-row X-lock that is no longer taken. */
+   * INSERT_IN_PROGRESS; hold the same transaction self-lock the insert path takes, keyed by the row's insert
+   * MVCCID (logtb_get_current_mvccid -- the sub-transaction MVCCID when one is active, e.g. a click-counter
+   * increment), so those checkers serialize on this transaction instead of a per-row X-lock that is no longer taken. */
   if (is_mvcc_op)
     {
-      MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
+      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
       if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (rc);

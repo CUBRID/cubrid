@@ -4634,6 +4634,16 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+
+#if defined (SERVER_MODE)
+  /* Rows appended/updated inside this sub-transaction were stamped with mvcc_sub_id and protected by a
+   * transaction self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock / heap_update_logical),
+   * which unique/FK checkers wait on. The sub-transaction has just committed (rows are now visible above), so
+   * release that self-lock here -- at sub-transaction end rather than main-transaction end -- to wake those
+   * waiters; holding it until the main transaction commits is what previously caused a hang. */
+  lock_unlock_transaction_mvccid (thread_p, mvcc_sub_id, X_LOCK);
+#endif /* SERVER_MODE */
+
   curr_mvcc_info->sub_ids.pop_back ();
 
   if (tdes->mvccinfo.snapshot.valid)
