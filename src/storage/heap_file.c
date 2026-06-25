@@ -18499,7 +18499,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
     }
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  /* use IS_LOCK so that DML (IX_LOCK) can run concurrently with SHOW HEAP HEADER/CAPACITY */
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, IS_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
