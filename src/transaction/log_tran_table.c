@@ -3962,38 +3962,6 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_get_current_tran_mvccid - return the MAIN transaction MVCCID, ignoring any sub-transaction MVCCID.
- *				   Assign a new ID if not previously set.
- *
- * return: the main transaction MVCCID
- *
- *   thread_p(in):
- *
- * Note: unlike logtb_get_current_mvccid, this never returns a (transient) sub-transaction MVCCID. Used by the
- *	 insert MVCCID self-lock so the lock is keyed by a value that is stable for the whole transaction (it is
- *	 released only at end-of-transaction), independent of serial/auto_increment sub-transaction churn.
- */
-MVCCID
-logtb_get_current_tran_mvccid (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
-
-#if defined (SA_MODE)
-  /* We shouldn't be here */
-  assert (false);
-#endif /* SA_MODE */
-  assert (tdes != NULL && curr_mvcc_info != NULL);
-
-  if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
-    {
-      curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
-    }
-
-  return curr_mvcc_info->id;
-}
-
-/*
  * logtb_is_current_mvccid - check whether given mvccid is current mvccid
  *
  * return: bool
