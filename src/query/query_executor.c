@@ -65,6 +65,7 @@
 #include "db_date.h"
 #include "btree_load.h"
 #include "query_dump.h"
+#include "dblink_scan.h"
 #if defined (SERVER_MODE)
 #include "jansson.h"
 #endif /* defined (SERVER_MODE) */
@@ -1563,13 +1564,6 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
 		  /* regu_var->xasl not cleared yet. Clear the values allocated during execution. */
 		  pg_cnt += qexec_clear_xasl (thread_p, regu_var->xasl, is_final, for_parallel_aptr);
 		}
-	      else
-		{
-		  /* xcache clone reuse: XASL already cleared this run (status reset to XASL_INITIALIZED),
-		   * so skip full qexec_clear_xasl. But CCI handles must still be released — safe no-op if
-		   * qexec_clear_xasl already ran qexec_final_close_dblink_specs (stmt_handle = -1 sentinel). */
-		  qexec_final_close_dblink_specs (regu_var->xasl);
-		}
 	    }
 	  else if (regu_var->xasl->status != XASL_CLEARED)
 	    {
@@ -2460,7 +2454,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (dbg_spec->type == TARGET_DBLINK)
 	  {
 	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
-	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	    assert (!dbg_spec->s_id.s.dblid.scan_info.cursor_rewind);
 	  }
       }
     for (dbg_spec = xasl->merge_spec; dbg_spec != NULL; dbg_spec = dbg_spec->next)
@@ -2468,7 +2462,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	if (dbg_spec->type == TARGET_DBLINK)
 	  {
 	    assert (dbg_spec->s_id.s.dblid.scan_info.stmt_handle <= 0);
-	    assert (dbg_spec->s_id.s.dblid.scan_info.cursor_rewind == 0);
+	    assert (!dbg_spec->s_id.s.dblid.scan_info.cursor_rewind);
 	  }
       }
   }
@@ -7833,7 +7827,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 
 	/* inject reuse flag before open: scan_init_scan_id does not touch s.dblid.scan_info,
 	 * so the flag survives across open/close cycles. */
-	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl) ? 1 : 0;
+	s_id->s.dblid.scan_info.cursor_rewind = IS_DBLINK_CURSOR_REWIND_XASL (xasl);
 
 	error_code = scan_open_dblink_scan (thread_p, s_id, curr_spec, vd, val_list, &host_vars);
 	if (error_code != NO_ERROR)
@@ -15156,6 +15150,45 @@ qexec_clear_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_prep_exec_corr_dblink () - cci_prepare once + cci_execute per outer row before the DBLink aptr
+ *   mainblock (open_scan then skips re-prepare when stmt_handle is already valid).
+ */
+static int
+qexec_prep_exec_corr_dblink (THREAD_ENTRY * thread_p, XASL_NODE * aptr, XASL_STATE * xasl_state)
+{
+  ACCESS_SPEC_TYPE *spec;
+  int err;
+
+  assert (IS_CORR_DBLINK_XASL (aptr));
+  for (spec = aptr->spec_list; spec != NULL; spec = spec->next)
+    {
+      DBLINK_SCAN_INFO *scan_info;
+
+      if (spec->type != TARGET_DBLINK)
+	{
+	  continue;
+	}
+      scan_info = &spec->s_id.s.dblid.scan_info;
+      if (scan_info->stmt_handle <= 0)
+	{
+	  err = dblink_corr_prepare (thread_p, spec, scan_info);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+	}
+      assert (scan_info->stmt_handle > 0);
+      err = dblink_corr_execute (thread_p, scan_info, &xasl_state->vd);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      return NO_ERROR;		/* corr DBLink XASL has exactly one TARGET_DBLINK spec */
+    }
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_mainblock () -
  *   return: NO_ERROR, or ER_code
  *   xasl(in)   : XASL Tree pointer
@@ -15370,6 +15403,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      scan_immediately_stop = true;
 	    }
+	}
+    }
+
+  /* Correlated DBLink aptr: bind outer-row keys and re-execute before opening the scan.
+   * xasl_state->vd already reflects the current outer row at every entry to this function. */
+  if (IS_CORR_DBLINK_XASL (xasl))
+    {
+      if (qexec_prep_exec_corr_dblink (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 
