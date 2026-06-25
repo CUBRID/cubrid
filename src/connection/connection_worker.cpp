@@ -327,7 +327,7 @@ namespace cubconn::connection
       }
   }
 
-  bool worker::is_wait_required (context *ctx)
+  bool worker::requires_client_info (context *ctx)
   {
     if (ctx->m_conn->fd == cdc_Gl.conn.fd)
       {
@@ -335,6 +335,11 @@ namespace cubconn::connection
       }
 
     return true;
+  }
+
+  bool worker::is_registering_client (context *ctx)
+  {
+    return ctx->m_conn->has_pending_request () || ctx->m_conn->has_working_task ();
   }
 
   bool worker::has_remaining_tasks (context *ctx)
@@ -383,10 +388,37 @@ namespace cubconn::connection
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool worker::handle_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
+  bool worker::retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
+  {
+    message request;
+
+    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
+		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
+
+    request.type = message_type::SHUTDOWN_CLIENT;
+    request.conn = ctx->m_conn;
+    request.ctx = ctx;
+    request.id = ctx->m_id;
+    request.ignore = ctx->m_ignore;
+    request.retry = is_retry;
+    request.waiter_handle = handle;
+
+    /* this request must be handled as lazily */
+    this->enqueue (queue_type::LAZY, std::move (request));
+
+    /* lazily notified */
+    m_has_retry = true;
+
+    return this->eventfd_addtimer (
+		   timer_type::QUEUE,
+		   timer_latency::LOW_LATENCY,
+		   std::bind (&worker::handle_message_queue, this)
+	   );
+  }
+
+  bool worker::handle_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
-    message request;
     int tran_index, client_id;
     int status;
 
@@ -401,6 +433,23 @@ namespace cubconn::connection
       }
 
     assert_release (ctx->m_conn);
+
+    /* during shutdown, boot_client_register cannot be expected to finish */
+    if (m_status != status::TERMINATING && !css_is_shutdowning_server ()
+	&& this->requires_client_info (ctx)
+	&& ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
+	&& this->is_registering_client (ctx))
+      {
+	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
+	ctx->m_conn->stop_talk = true;
+	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
+
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_connection_close: retry for transaction index. conn = %p, fd = %d\n",
+		     ctx->m_conn, ctx->m_conn->fd);
+
+	return this->retry_connection_close (ctx, is_retry, handle);
+      }
 
     /* change status */
 
@@ -422,22 +471,10 @@ namespace cubconn::connection
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
-	if (this->is_wait_required (ctx))
+	if (this->requires_client_info (ctx))
 	  {
-	    pthread_mutex_unlock (&m_entry->tran_index_lock);
-
-	    er_log_conn (__FILE__, __LINE__,
-			 "connection::worker->handle_connection_close: wait for transaction index. conn = %p, fd = %d\n", ctx->m_conn,
-			 ctx->m_conn->fd);
-
-	    /* the connected client does not yet finished boot_client_register */
-	    /* this case is unusual */
-	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
-	    thread_sleep (50);
-
-	    pthread_mutex_lock (&m_entry->tran_index_lock);
-
-	    tran_index = ctx->m_conn->get_tran_index ();
+	    /* retry was skipped, so boot_client_register is not expected to publish a transaction index. */
+	    /* close without retry. */
 	    client_id = ctx->m_conn->client_id;
 	  }
       }
@@ -454,7 +491,7 @@ namespace cubconn::connection
 	ssession_stop_attached_threads (m_entry, ctx->m_conn->session_p);
       }
 
-    if (!retry)
+    if (!is_retry)
       {
 	/* interrupt and wake up */
 
@@ -535,30 +572,9 @@ namespace cubconn::connection
     return true;
 
 retry:
-    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
-		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
-
     this->end_connection_close ();
 
-    request.type = message_type::SHUTDOWN_CLIENT;
-    request.conn = ctx->m_conn;
-    request.ctx = ctx;
-    request.id = ctx->m_id;
-    request.ignore = ctx->m_ignore;
-    request.retry = true;
-    request.waiter_handle = handle;
-
-    /* this request must be handled as razily */
-    this->enqueue (queue_type::LAZY, std::move (request));
-
-    /* rezily notified */
-    m_has_retry = true;
-
-    return this->eventfd_addtimer (
-		   timer_type::QUEUE,
-		   timer_latency::LOW_LATENCY,
-		   std::bind (&worker::handle_message_queue, this)
-	   );
+    return this->retry_connection_close (ctx, true, handle);
   }
 
   bool worker::statistics_metrics_to_coordinator ()
