@@ -20960,7 +20960,9 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 #if defined (SERVER_MODE)
   if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
-      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+      /* Key the self-lock by the MAIN transaction MVCCID (never a transient sub-transaction MVCCID), so the
+       * lock is stable for the whole transaction and released only at end-of-transaction. */
+      MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
       if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);

@@ -36465,7 +36465,7 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
    *  an X_LOCK on its own MVCCID (the transaction self-lock) that unique/FK checkers wait on. That self-lock
    *  is what now serializes the unique insert, so accept it here as well.
    */
-  MVCCID my_mvccid = logtb_find_current_mvccid (thread_p);
+  MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
       return true;
@@ -36505,7 +36505,7 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
    *  X_LOCK on the appended object. Rolling back the insert deletes that object from the index while the
    *  self-lock is still held (it is released only at end-of-transaction), so accept it here as well.
    */
-  MVCCID my_mvccid = logtb_find_current_mvccid (thread_p);
+  MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
       return true;
