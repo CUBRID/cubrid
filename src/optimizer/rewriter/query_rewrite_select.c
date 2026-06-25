@@ -3414,8 +3414,11 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
       /* traverse spec list */
       for (spec = node->info.query.q.select.from; spec; spec = spec->next)
 	{
-	  /* check outer join spec. */
-	  is_outer_joined = mq_is_outer_join_spec (parser, spec);
+	  /* check outer join spec.  SEMI/ANTI specs report as outer-joined for the view-merge freeze, but
+	     they are NL-inner only and never convert to inner here; including them lets a null-intolerant
+	     WHERE predicate on the inner set rewrite_again with no conversion -> infinite loop (CBRD-26872). */
+	  is_outer_joined = mq_is_outer_join_spec (parser, spec)
+	    && spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI;
 	  if (is_outer_joined)
 	    {
 	      info.id = info_spec.id = spec->info.spec.id;
