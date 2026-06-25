@@ -43,10 +43,24 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
-
 using namespace cubpl;
+
+static PT_NODE *
+pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
+{
+  bool *has_table_access;
+
+  has_table_access = (bool *) arg;
+  assert (has_table_access != NULL);
+
+  if (tree && tree->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (tree))
+    {
+      *has_table_access = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
 
 namespace cubmethod
 {
@@ -543,6 +557,7 @@ namespace cubmethod
 	error = handler->prepare_compile (s);
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
+	    bool has_table_access;
 	    DB_SESSION *db_session = handler->get_db_session ();
 	    const prepare_info &info = handler->get_prepare_info ();
 
@@ -553,6 +568,10 @@ namespace cubmethod
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+
+	    has_table_access = false;
+	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
+	    semantics.has_table_access = has_table_access ? 1 : 0;
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)
@@ -1129,6 +1148,30 @@ exit:
     m_deferred_query_free_handler.clear();
   }
 
+  void
+  callback_handler::clear_all_query_handlers ()
+  {
+    /* must run before ws_final(); query_handler dtor walks ws_heap-allocated host_variables */
+    for (auto it = m_deferred_query_free_handler.begin (); it != m_deferred_query_free_handler.end (); it++)
+      {
+	delete *it;
+      }
+    m_deferred_query_free_handler.clear ();
+
+    for (size_t i = 0; i < m_query_handlers.size (); i++)
+      {
+	if (m_query_handlers[i] != nullptr)
+	  {
+	    delete m_query_handlers[i];
+	    m_query_handlers[i] = nullptr;
+	  }
+      }
+    m_query_handlers.clear ();
+
+    m_sql_handler_map.clear ();
+    m_qid_handler_map.clear ();
+  }
+
   query_handler *
   callback_handler::get_query_handler_by_query_id (const uint64_t qid)
   {
@@ -1175,4 +1218,15 @@ exit:
   {
     return &handler;
   }
+}
+
+/* called from boot_client_all_finalize() before ws_final() */
+void
+method_callback_final (void)
+{
+  cubmethod::callback_handler *h = cubmethod::get_callback_handler ();
+  if (h != NULL)
+    {
+      h->clear_all_query_handlers ();
+    }
 }

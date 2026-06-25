@@ -38,6 +38,7 @@
 #include "schema_system_catalog.hpp"
 #include "thread_manager.hpp"
 #include "xserver_interface.h"
+#include "schema_system_catalog_constants.h"
 
 #include <cstring>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -871,7 +872,7 @@ namespace cubload
 	  }
 	else
 	  {
-	    class_name = cons->type == LDR_SYS_USER ? "db_user" : "*system class*";
+	    class_name = cons->type == LDR_SYS_USER ? CT_USER_NAME : "*system class*";
 	  }
 
 	error_code = ER_FAILED;

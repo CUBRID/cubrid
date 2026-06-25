@@ -53,13 +53,18 @@ namespace cubconn::connection
 	}
 
 	~freelist () = default;
+
+	bool prepare ()
+	{
+	  return m_context.prepare ();
+	}
       };
 
     public:
       pool ();
       ~pool ();
 
-      void initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers);
+      bool initialize (std::uint32_t max_connections, int max_connection_workers, int min_connection_workers);
       void finalize ();
 
       void dispatch (css_conn_entry *conn);
@@ -100,9 +105,11 @@ namespace cubconn::connection
 	std::size_t m_claim;
       } m_freelist;
 
+      void drain_contexts ();
+
       void try_to_lock_resource ();
 
-      void initialize_freelist (std::uint32_t max_connections);
+      bool initialize_freelist (std::uint32_t max_connections);
       void finalize_freelist ();
 
       std::uint32_t initialize_topology (std::uint32_t max_connection_workers);

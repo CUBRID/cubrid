@@ -66,6 +66,27 @@
 #error Does not belong to cs module
 #endif /* !defined (CS_MODE) */
 
+/* RAII guard: flush callback_handler's deferred query_handler queue on every return
+   path of method callback helpers. PL/SP execution pushes handlers into the process-wide
+   singleton; early-return paths would otherwise leak stale handlers that a later client
+   request frees. er_stack_push/pop keeps handler dtor er_set()s from clobbering the outer error. */
+namespace
+{
+  struct deferred_flush_guard
+  {
+    ~deferred_flush_guard ()
+    {
+      cubmethod::callback_handler * h = cubmethod::get_callback_handler ();
+      if (h->has_deferred_query_handler () && !tran_is_in_libcas ())
+	{
+	  er_stack_push ();
+	  h->free_deferred_query_handler ();
+	  er_stack_pop ();
+	}
+    }
+  };
+}
+
 /*
  * To check for errors from the comm system. Note that if we get any error
  * other than RECORD_TRUNCATED or CANT_ALLOC_BUFFER, we will call it a
@@ -88,14 +109,6 @@
 
 /* avoid truncation when dumping large plans */
 #define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
-
-#if defined(CS_MODE)
-#if !defined(MULTI_CONN_TO_A_SERVER)
-unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
-#else
-unsigned short method_request_id;
-#endif
-#endif /* CS_MODE */
 
 /* Contains the name of the current sever host machine.  */
 static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
@@ -1134,6 +1147,8 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				  char **replydata_listid, int *replydatasize_listid, char **replydata_page,
 				  int *replydatasize_page, char **replydata_plan, int *replydatasize_plan)
 {
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int size, error;
   int reply_datasize_listid, reply_datasize_page, reply_datasize_plan, remaining_size;
@@ -1366,14 +1381,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      }
 		    else
 		      {
-#if defined(CS_MODE)
-			bool need_to_reset = false;
-			if (method_request_id == 0)
-			  {
-			    method_request_id = CSS_RID_FROM_EID (rc);
-			    need_to_reset = true;
-			  }
-#endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 			if (error == NO_ERROR)
@@ -1393,13 +1400,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
 			  }
-#if defined(CS_MODE)
-			if (need_to_reset == true)
-			  {
-			    method_request_id = 0;
-			    need_to_reset = false;
-			  }
-#endif /* CS_MODE */
 		      }
 		  }
 		else
@@ -1710,15 +1710,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 	}
       while (server_request != END_CALLBACK && server_request != QUERY_END);
 
-      /*
-       * delete deferred query handlers during PL execution
-       * TODO: move it to proper place
-       */
-      if (!tran_is_in_libcas ())
-	{
-	  cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-	}
-
       if (histo_is_collecting ())
 	{
 	  int recevied = replysize
@@ -1735,6 +1726,8 @@ int
 net_client_request_method_callback (int request, char *argbuf, int argsize, char *replybuf, int replysize,
 				    char **replydata_ptr, int *replydatasize_ptr)
 {
+  deferred_flush_guard _flush_guard;
+
   unsigned int rc;
   int error;
   QUERY_SERVER_REQUEST server_request;
@@ -1805,14 +1798,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		  }
 		else
 		  {
-#if defined(CS_MODE)
-		    bool need_to_reset = false;
-		    if (method_request_id == 0)
-		      {
-			method_request_id = CSS_RID_FROM_EID (rc);
-			need_to_reset = true;
-		      }
-#endif /* CS_MODE */
 		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 		    if (error == NO_ERROR)
@@ -1832,13 +1817,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			  }
 		      }
-#if defined(CS_MODE)
-		    if (need_to_reset == true)
-		      {
-			method_request_id = 0;
-			need_to_reset = false;
-		      }
-#endif /* CS_MODE */
 		  }
 	      }
 	    else
@@ -1911,15 +1889,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 	}
     }
   while (server_request != END_CALLBACK);
-
-  /*
-   * delete deferred query handlers during PL execution
-   * TODO: move it to proper place
-   */
-  if (!tran_is_in_libcas ())
-    {
-      cubmethod::get_callback_handler ()->free_deferred_query_handler ();
-    }
 
   if (histo_is_collecting ())
     {
@@ -3647,13 +3616,13 @@ net_client_shutdown_server (void)
  *    communications. It sets up CSS and verifies connection with the server.
  */
 int
-net_client_init (const char *dbname, const char *hostname)
+net_client_init (const char *dbname, const char *hostname, int client_type)
 {
   int error = NO_ERROR;
 
   /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
-  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
+  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname, client_type);
   if (error != NO_ERROR)
     {
       goto end;
@@ -3697,7 +3666,7 @@ end:
 int
 net_client_sub_init ()
 {
-  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host);
+  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
 }
 
 void

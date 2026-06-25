@@ -404,10 +404,9 @@ extern "C"
   extern int pt_str_compare (const char *p, const char *q, CASE_SENSITIVENESS case_flag);
   extern int pt_user_specified_name_compare (const char *p, const char *q);
 
-  extern void pt_to_regu_resolve_domain (int *p_precision, int *p_scale, const PT_NODE * node);
   extern SORT_NULLS pt_to_null_ordering (PT_NODE * sort_spec);
 
-  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser, int prec, int scale);
+  extern PT_NODE *pt_make_prim_data_type_fortonum (PARSER_CONTEXT * parser);
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
@@ -720,6 +719,7 @@ extern "C"
 
   extern void pt_free_dblink_remote_cols (PARSER_CONTEXT * parser);
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
+  extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 #ifdef __cplusplus
 }
