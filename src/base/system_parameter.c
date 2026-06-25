@@ -966,6 +966,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
+#define PRM_REQUEST_WORKER_ELASTIC_HEADROOM 32
 
 /* initial error and integer lists */
 static const int int_list_initial[1] = { 0 };
@@ -10013,6 +10014,20 @@ prm_tune_parameters (void)
 	    {
 	      sprintf (newval, "%d", std::max (system_cpu_count, max_value));
 	      (void) prm_set (max_request_concurrency_prm, newval, false);
+	    }
+	}
+      if (!PRM_IS_SET (max_request_worker_prm))
+	{
+	  /* waiting request workers keep their threads while returning concurrency slots.  */
+	  /* keep a bounded worker headroom for nested callback/method requests without     */
+	  /* opening the default cap up to CSS_MAX_CLIENT_COUNT.                            */
+	  max_value = std::min (std::max (PRM_GET_INT (max_clients_prm->value),
+					  PRM_GET_INT (max_request_concurrency_prm->value))
+				+ PRM_REQUEST_WORKER_ELASTIC_HEADROOM, CSS_MAX_CLIENT_COUNT);
+	  if (PRM_GET_INT (max_request_worker_prm->value) > max_value)
+	    {
+	      sprintf (newval, "%d", max_value);
+	      (void) prm_set (max_request_worker_prm, newval, false);
 	    }
 	}
       if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
