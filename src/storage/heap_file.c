@@ -23980,6 +23980,19 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert ((!is_mvcc_op && HEAP_IS_UPDATE_INPLACE (context->update_in_place))
 	  || (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place)));
   /* the update in place concept should be changed in terms of mvcc */
+
+  /* An MVCC update creates a new version (and possibly new index keys) that unique/FK checkers may observe as
+   * INSERT_IN_PROGRESS; hold the same transaction self-lock the insert path takes (keyed by the MAIN transaction
+   * MVCCID), so those checkers serialize on this transaction instead of a per-row X-lock that is no longer taken. */
+  if (is_mvcc_op)
+    {
+      MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
+      if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
+	}
+    }
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
