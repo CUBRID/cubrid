@@ -79,12 +79,15 @@ static enum {
 int saved_yy_start = 0;  
 
 /* byte offset (in yybuffer_pos units) of the first character of the line that
- * is currently being scanned; column = token_start - this + 1 */
+ * is currently being scanned; column = yybuffer_pos - yyline_start_pos + 1 */
 int yyline_start_pos = 0;
 static int yyline_start_pos_bk = 0;
+int yyleng_last = 0;
+static int yyleng_last_bk = 0;
 int yylineno_prev = 0;
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
+            yyleng_last = ((n) > 0) ? (n) : yyleng_last; \
             yyline_start_pos = yyline_start_pos_bk; \
             this_parser->column = parser_column_position(); \
             yyless((n));                            \
@@ -2178,8 +2181,6 @@ parser_check_hint (char *hint_string)
 static void
 parser_yy_user_action (void)
 {
-  yyline_start_pos_bk = yyline_start_pos;
-
   if (yybuffer_pos == 0)
     {
       yyline_start_pos = 0;
@@ -2187,6 +2188,10 @@ parser_yy_user_action (void)
       this_parser->line = yylineno;
       this_parser->column = 0;
     }
+    
+  yyline_start_pos_bk = yyline_start_pos;
+  yyleng_last_bk = yyleng_last;
+  yyleng_last = yyleng;
 
   if (YY_START == INITIAL)	/* token start (not a continuation) */
     {

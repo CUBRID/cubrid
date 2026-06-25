@@ -253,7 +253,7 @@ pt_parser_line_col (PT_NODE * node)
     return;
 
   node->line_number = csql_yyget_lineno ();
-  node->column_number = parser_column_position ();
+  node->column_number = node_column_position ();
 }
 
 /*

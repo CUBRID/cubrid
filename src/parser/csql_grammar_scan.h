@@ -77,9 +77,11 @@ extern "C"
   extern bool pt_check_hostname (char *p);
 
 #define parser_column_position()    (yybuffer_pos - yyline_start_pos + 1)
+#define node_column_position()      (parser_column_position() - yyleng_last)
   extern int yybuffer_pos;
   extern int yyline_start_pos;
   extern int yylineno_prev;
+  extern int yyleng_last;
 
 
 #ifdef __cplusplus

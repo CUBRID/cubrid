@@ -24533,7 +24533,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	  /* no parse-tree location available here; keep the scanner's current position 
            * (the previous behavior when the arguments were ignored). */
-	  csql_yyerror_explicit (csql_yyget_lineno (), parser_column_position());
+	  csql_yyerror_explicit (csql_yyget_lineno (), node_column_position ());
 	  return NULL;
 	}
 
