@@ -3048,6 +3048,9 @@ is_dependent_table (PT_NODE * entity)
     case PT_DERIVED_DBLINK_TABLE:
       return true;
 
+    case PT_DERIVED_TABLE_FUNC:
+      return true;
+
     case PT_IS_SUBQUERY:
     default:
       // what else?

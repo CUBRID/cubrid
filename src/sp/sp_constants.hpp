@@ -19,15 +19,18 @@
 #ifndef _SP_CONSTASNTS_HPP_
 #define _SP_CONSTASNTS_HPP_
 
-#define SP_CLASS_NAME           "_db_stored_procedure"
-#define SP_ARG_CLASS_NAME       "_db_stored_procedure_args"
-#define SP_CODE_CLASS_NAME      "_db_stored_procedure_code"
+#define SP_CLASS_NAME               "_db_stored_procedure"
+#define SP_ARG_CLASS_NAME           "_db_stored_procedure_args"
+#define SP_CODE_CLASS_NAME          "_db_stored_procedure_code"
+#define SP_RETURN_COL_CLASS_NAME    "_db_stored_procedure_return_cols"
 
 #define SP_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
     MAP_LIST_ITEM(SP_NAME) \
     MAP_LIST_ITEM(SP_TYPE) \
     MAP_LIST_ITEM(RETURN_TYPE) \
+    MAP_LIST_ITEM(RETURN_COLS_CNT) \
+    MAP_LIST_ITEM(RETURN_COLS) \
     MAP_LIST_ITEM(ARG_COUNT) \
     MAP_LIST_ITEM(ARGS) \
     MAP_LIST_ITEM(LANG) \
@@ -46,6 +49,8 @@
 #define SP_ATTR_SP_NAME                 "sp_name"
 #define SP_ATTR_SP_TYPE                 "sp_type"
 #define SP_ATTR_RETURN_TYPE             "return_type"
+#define SP_ATTR_RETURN_COLS_CNT         "return_cols_cnt"
+#define SP_ATTR_RETURN_COLS             "return_cols"
 #define SP_ATTR_ARG_COUNT               "arg_count"
 #define SP_ATTR_ARGS                    "args"
 #define SP_ATTR_LANG                    "lang"
@@ -95,6 +100,32 @@ enum index_sp_arg_attr
   SP_ARG_ATTR_LIST
 #undef MAP_LIST_ITEM
   NUM_SP_ARG_ATTR
+};
+
+/* _db_stored_procedure_return_cols attributes */
+#define SP_RET_COL_ATTR_LIST    \
+    MAP_LIST_ITEM(SP_OF) \
+    MAP_LIST_ITEM(INDEX_OF) \
+    MAP_LIST_ITEM(COL_NAME) \
+    MAP_LIST_ITEM(DATA_TYPE) \
+    MAP_LIST_ITEM(PRECISION) \
+    MAP_LIST_ITEM(SCALE) \
+    MAP_LIST_ITEM(COLLATION)
+
+#define SP_RET_COL_ATTR_SP_OF       "sp_of"
+#define SP_RET_COL_ATTR_INDEX_OF    "index_of"
+#define SP_RET_COL_ATTR_COL_NAME    "col_name"
+#define SP_RET_COL_ATTR_DATA_TYPE   "data_type"
+#define SP_RET_COL_ATTR_PRECISION   "precision"
+#define SP_RET_COL_ATTR_SCALE       "scale"
+#define SP_RET_COL_ATTR_COLLATION   "collation"
+
+enum index_sp_ret_col_attr
+{
+#define MAP_LIST_ITEM(item)     INDEX_SP_RET_COL_ATTR_##item,
+  SP_RET_COL_ATTR_LIST
+#undef MAP_LIST_ITEM
+  NUM_SP_RET_COL_ATTR
 };
 
 #define SP_CODE_ATTR_LIST    \

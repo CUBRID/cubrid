@@ -9590,6 +9590,8 @@ pt_is_type_supported_by_sp (PARSER_CONTEXT * parser, PT_TYPE_ENUM & type_enum, P
     case PT_TYPE_DATETIME:
     case PT_TYPE_TIMESTAMP:
     case PT_TYPE_RESULTSET:
+    case PT_TYPE_SYS_REFCURSOR:
+    case PT_TYPE_TABLE_COLUMNS:
       return true;
 
     case PT_TYPE_OBJECT:

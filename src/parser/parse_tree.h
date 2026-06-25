@@ -1159,6 +1159,8 @@ enum pt_type_enum
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
+  PT_TYPE_TABLE_COLUMNS,	/* RETURNS TABLE(col_def_list) — used only in SP return type */
+  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in SP parameter/return types */
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -2128,6 +2130,7 @@ struct pt_data_type_info
   PT_NODE *enumeration;		/* values list for PT_TYPE_ENUMERATION */
   DB_OBJECT *virt_object;	/* virt class object if a vclass */
   PT_NODE *table_column;	/* for type specification of the form <table>.<column>%TYPE */
+  PT_NODE *col_list;		/* column definitions for PT_TYPE_TABLE_COLUMNS (RETURNS TABLE) */
   PT_TYPE_ENUM virt_type_enum;	/* type enumeration tage PT_TYPE_??? */
   int precision;		/* for float and int, length of char */
   int dec_precision;		/* decimal precision for float */
@@ -3282,6 +3285,7 @@ struct pt_stored_proc_info
   unsigned or_replace:1;	/* OR REPLACE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
+  PT_NODE *ret_column_list;	/* column list for RETURNS TABLE(col_def_list) */
   int recompile;
 };
 

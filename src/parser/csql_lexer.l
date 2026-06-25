@@ -1024,6 +1024,8 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return SYNONYM; }
 [sS][yY][sS][_][cC][oO][nN][nN][eE][cC][tT][_][bB][yY][_][pP][aA][tT][hH]	{ begin_token(yytext);   return SYS_CONNECT_BY_PATH; }
+[sS][yY][sS]_[rR][eE][fF][cC][uU][rR][sS][oO][rR]			{ begin_token(yytext);   return SYS_REFCURSOR; }
+[sS][yY][sS][rR][eE][fF][cC][uU][rR][sS][oO][rR]			{ begin_token(yytext);   return SYS_REFCURSOR; }
 [sS][yY][sS]_[dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
 [sS][yY][sS][dD][aA][tT][eE]						{ begin_token(yytext);   return SYS_DATE; }
 [sS][yY][sS]_[tT][iI][mM][eE]						{ begin_token(yytext);   return SYS_TIME_; }

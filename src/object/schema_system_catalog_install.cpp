@@ -286,6 +286,7 @@ catcls_init (void)
   ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_args ());
+  ADD_TABLE_DEFINITION (CT_STORED_PROC_RETURN_COLS_NAME, system_catalog_initializer::get_stored_procedure_return_cols ());
   ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code ());
   ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial ());
   ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info ());
@@ -313,6 +314,8 @@ catcls_init (void)
   ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
   ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_args ());
+  ADD_VIEW_DEFINITION (CTV_STORED_PROC_RETURN_COLS_NAME,
+		       system_catalog_initializer::get_view_stored_procedure_return_cols ());
   ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
   ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
   ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
@@ -884,6 +887,8 @@ namespace cubschema
       {SP_ATTR_SP_NAME, format_varchar (255)},
       {SP_ATTR_SP_TYPE, "integer"},
       {SP_ATTR_RETURN_TYPE, "integer"},
+      {SP_ATTR_RETURN_COLS_CNT, "integer"},
+      {SP_ATTR_RETURN_COLS, format_sequence (CT_STORED_PROC_RETURN_COLS_NAME)},
       {SP_ATTR_ARG_COUNT, "integer"},
       {SP_ATTR_ARGS, format_sequence (CT_STORED_PROC_ARGS_NAME)},
       {SP_ATTR_LANG, "integer"},
@@ -929,6 +934,36 @@ namespace cubschema
       {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)}, // TODO: CBRD-25261
       {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
       {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
+    },
+// constraints
+    {
+      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false},
+    },
+// authorization
+    {
+      // owner, grants
+      Au_dba_user, {{Au_information_schema_user, AU_SELECT, false}}
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_stored_procedure_return_cols ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CT_STORED_PROC_RETURN_COLS_NAME,
+		   // columns
+    {
+      {SP_RET_COL_ATTR_SP_OF, CT_STORED_PROC_NAME},
+      {SP_RET_COL_ATTR_INDEX_OF, "integer"},
+      {SP_RET_COL_ATTR_COL_NAME, format_varchar (255)},
+      {SP_RET_COL_ATTR_DATA_TYPE, "integer"},
+      {SP_RET_COL_ATTR_PRECISION, "integer"},
+      {SP_RET_COL_ATTR_SCALE, "integer"},
+      {SP_RET_COL_ATTR_COLLATION, "integer"},
     },
 // constraints
     {
@@ -1850,6 +1885,7 @@ namespace cubschema
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"code", format_varchar (1073741823)},
       {"sql_data_access", format_varchar (17)},
+      {"return_cols_cnt", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
@@ -1892,6 +1928,41 @@ namespace cubschema
       {"comment", format_varchar (1024)},
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
+    },
+// constraint
+    {},
+// authorization
+    {
+      // owner
+      Au_dba_user,
+      // grants
+      {
+	{Au_public_user, AU_SELECT, false}
+      }
+    },
+// initializer
+    nullptr
+	   );
+  }
+
+  system_catalog_definition
+  system_catalog_initializer::get_view_stored_procedure_return_cols ()
+  {
+    return system_catalog_definition (
+		   // name
+		   CTV_STORED_PROC_RETURN_COLS_NAME,
+		   // columns
+    {
+      {"sp_name", format_varchar (255)},
+      {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
+      {"index_of", "integer"},
+      {"col_name", format_varchar (255)},
+      {"data_type", format_varchar (16)},
+      {"precision", "integer"},
+      {"scale", "integer"},
+      {"collation", "integer"},
+      // query specs
+      {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_return_cols_spec ()}
     },
 // constraint
     {},

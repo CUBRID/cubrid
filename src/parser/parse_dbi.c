@@ -2394,6 +2394,11 @@ pt_type_enum_to_db (const PT_TYPE_ENUM t)
       break;
 
     case PT_TYPE_RESULTSET:
+    case PT_TYPE_SYS_REFCURSOR:
+      db_type = DB_TYPE_RESULTSET;
+      break;
+
+    case PT_TYPE_TABLE_COLUMNS:
       db_type = DB_TYPE_RESULTSET;
       break;
 

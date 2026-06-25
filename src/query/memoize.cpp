@@ -82,6 +82,7 @@ namespace memoize
 	case TARGET_REGUVAL_LIST:
 	case TARGET_SHOWSTMT:
 	case TARGET_DBLINK:
+	case TARGET_TABLE_FUNC:
 	  return false;
 	  break;
 

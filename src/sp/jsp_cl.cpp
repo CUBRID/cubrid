@@ -410,11 +410,7 @@ jsp_check_return_type_supported (DB_TYPE type)
     case DB_TYPE_DATETIME:
       return NO_ERROR;
     case DB_TYPE_RESULTSET:
-      if (!jsp_is_prepare_call ())
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_CANNOT_RETURN_RESULTSET, 0);
-	}
-      break;
+      return NO_ERROR;
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_RETURN_TYPE, 1, pr_type_name (type));
@@ -1054,6 +1050,28 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       sp_info.return_type = pt_type_enum_to_db (statement->info.sp.ret_type);
       // check the deterministic_type of function
       sp_info.directive = jsp_map_pt_to_sp_dtrm_type (PT_NODE_SP_DETERMINISTIC_TYPE (statement), sp_info.directive);
+
+      // populate return_cols for RETURNS TABLE(...)
+      if (statement->info.sp.ret_type == PT_TYPE_TABLE_COLUMNS && statement->info.sp.ret_data_type != NULL)
+	{
+	  PT_NODE *col_list = statement->info.sp.ret_data_type->info.data_type.col_list;
+	  int col_index = 0;
+	  for (PT_NODE *col = col_list; col != NULL; col = col->next)
+	    {
+	      SP_RETURN_COL_INFO col_info;
+	      col_info.sp_name = sp_info.sp_name;
+	      col_info.index_of = col_index++;
+	      col_info.col_name = col->info.sp_param.name ? col->info.sp_param.name->info.name.original : "";
+	      col_info.data_type = pt_type_enum_to_db (col->type_enum);
+	      if (col->data_type)
+		{
+		  col_info.precision = col->data_type->info.data_type.precision;
+		  col_info.scale = col->data_type->info.data_type.dec_precision;
+		  col_info.collation = col->data_type->info.data_type.collation_id;
+		}
+	      sp_info.return_cols.push_back (col_info);
+	    }
+	}
     }
   else
     {

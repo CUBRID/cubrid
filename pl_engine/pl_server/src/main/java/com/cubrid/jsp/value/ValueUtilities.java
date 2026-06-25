@@ -133,6 +133,10 @@ public class ValueUtilities {
             val = new OidValue((CUBRIDOID) o);
         } else if (o instanceof ResultSet) {
             val = new ResultSetValue((ResultSet) o);
+        } else if (o instanceof com.cubrid.plcsql.predefined.sp.SpLib.Query) {
+            com.cubrid.plcsql.predefined.sp.SpLib.Query query =
+                    (com.cubrid.plcsql.predefined.sp.SpLib.Query) o;
+            val = new ResultSetValue(query.rs);
         } else if (o instanceof byte[]) {
             val = new StringValue((byte[]) o);
         } else if (o instanceof short[]) {

@@ -189,6 +189,8 @@ typedef enum
 
   PT_DERIVED_DBLINK_TABLE,	// dblink table spec derivation
 
+  PT_DERIVED_TABLE_FUNC,	// table-valued function call (RETURNS TABLE)
+
   PT_PRIVATE,
   PT_PUBLIC,
   PT_SYNONYM,

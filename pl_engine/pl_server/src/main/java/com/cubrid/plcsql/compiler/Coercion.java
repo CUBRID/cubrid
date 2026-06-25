@@ -114,6 +114,10 @@ public abstract class Coercion {
 
         if (src == dst) {
             return Identity.getInstance(iStore, src);
+        } else if ((src == Type.CURSOR || src == Type.SYS_REFCURSOR)
+                && (dst == Type.CURSOR || dst == Type.SYS_REFCURSOR)) {
+            // CURSOR and SYS_REFCURSOR are both SpLib.Query — treat as compatible
+            return Identity.getInstance(iStore, src, dst);
         } else if (src == Type.NULL) {
             // cast NULL: in order for Javac dst pick the right version among operator function
             // overloads when all the arguments are nulls

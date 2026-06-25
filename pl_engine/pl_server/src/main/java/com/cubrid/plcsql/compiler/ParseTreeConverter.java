@@ -2915,16 +2915,22 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 TypeSpec retTypeSpec;
                 try {
                     typeVisitMode = TYPE_VISIT_RETURN;
-                    retTypeSpec = (TypeSpec) visit(ctx.type_spec());
+                    Return_type_specContext retCtx = ctx.return_type_spec();
+                    if (retCtx.TABLE_() != null) {
+                        // RETURN TABLE(...) — treat as SYS_REFCURSOR internally
+                        retTypeSpec = new TypeSpec(retCtx, Type.SYS_REFCURSOR);
+                    } else {
+                        retTypeSpec = (TypeSpec) visit(retCtx.type_spec());
+                    }
                 } finally {
                     typeVisitMode = TYPE_VISIT_NORMAL;
                 }
 
                 Type retType = retTypeSpec.type;
                 if (scopeLevel == SymbolStack.LEVEL_MAIN) { // at top level
-                    if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                    if (retType == Type.BOOLEAN) {
                         throw new SemanticError(
-                                Misc.getLineColumnOf(ctx.type_spec()), // s065
+                                Misc.getLineColumnOf(ctx.return_type_spec()), // s065
                                 "type "
                                         + retType.plcName
                                         + " cannot be used as a return type of stored functions");

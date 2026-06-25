@@ -1256,6 +1256,7 @@ sm_define_view_stored_procedure_spec (void)
           "WHEN 3 THEN 'MODIFIES SQL DATA' "
           "ELSE NULL "
         "END AS [sql_data_access], "
+	  "[sp].[return_cols_cnt] AS [return_cols_cnt], "
 	  "[sp].[comment] AS [comment], "
 	  "[sp].[created_time] AS [created_time], "
 	  "[sp].[updated_time] AS [updated_time] "
@@ -1389,6 +1390,82 @@ sm_define_view_stored_procedure_args_spec (void)
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME,
         AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
+	AU_USER_CLASS_NAME);
+  // *INDENT-ON*
+
+  return stmt;
+}
+
+const char *
+sm_define_view_stored_procedure_return_cols_spec (void)
+{
+  static char stmt [2048];
+
+  // *INDENT-OFF*
+  sprintf (stmt,
+	"SELECT "
+	  "[rc].[sp_of].[sp_name] AS [sp_name], "
+	  "[rc].[sp_of].[owner].[name] AS [owner_name], "
+	  "[rc].[index_of] AS [index_of], "
+	  "[rc].[col_name] AS [col_name], "
+	  "CASE [rc].[data_type] "
+	    "WHEN 28 THEN 'CURSOR' "
+	    /* CT_DATATYPE_NAME */
+	    "ELSE (SELECT [t].[type_name] FROM [%s] AS [t] WHERE [rc].[data_type] = [t].[type_id]) "
+	    "END AS [data_type], "
+	  "[rc].[precision] AS [precision], "
+	  "[rc].[scale] AS [scale], "
+	  "[rc].[collation] AS [collation] "
+	"FROM "
+	  /* CT_STORED_PROC_RETURN_COLS_NAME */
+	  "[%s] AS [rc] "
+	"WHERE "
+	  "("
+	    "{'DBA'} SUBSETEQ ("
+		"SELECT "
+		  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		"FROM "
+		  /* AU_USER_CLASS_NAME */
+		  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		"WHERE "
+		  "[u].[name] = CURRENT_USER"
+	    ") "
+	    "OR {[rc].[sp_of].[owner].[name]} SUBSETEQ ("
+		"SELECT "
+		  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		"FROM "
+		  /* AU_USER_CLASS_NAME */
+		  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		"WHERE "
+		  "[u].[name] = CURRENT_USER"
+	    ") "
+	    "OR {[rc].[sp_of]} SUBSETEQ ("
+		"SELECT "
+		  "SUM (SET {[au].[object_of]}) "
+		"FROM "
+		  /* CT_CLASSAUTH_NAME */
+		  "[%s] AS [au] "
+		"WHERE "
+		  "{[au].[grantee].[name]} SUBSETEQ ("
+		      "SELECT "
+			"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		      "FROM "
+			/* AU_USER_CLASS_NAME */
+			"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		      "WHERE "
+			"[u].[name] = CURRENT_USER"
+		  ") "
+		"AND [au].[auth_type] = 'EXECUTE'"
+	    ")"
+	  ") "
+	"ORDER BY "
+	  "[rc].[sp_of].[sp_name], "
+	  "[rc].[index_of]",
+	CT_DATATYPE_NAME,
+	CT_STORED_PROC_RETURN_COLS_NAME,
+	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);

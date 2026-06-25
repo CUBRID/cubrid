@@ -93,6 +93,7 @@ typedef enum
   S_INDX_KEY_INFO_SCAN,		/* scans b-tree and queries for key info */
   S_INDX_NODE_INFO_SCAN,	/* scans b-tree nodes for info */
   S_DBLINK_SCAN,		/* scans dblink */
+  S_TABLE_FUNC_SCAN,		/* scans table-valued function result */
   S_HEAP_SAMPLING_SCAN		/* scans sampling data */
 } SCAN_TYPE;
 
@@ -425,6 +426,18 @@ struct regu_values_scan_id
   int value_cnt;
 };
 
+typedef struct table_func_scan_id TABLE_FUNC_SCAN_ID;
+struct table_func_scan_id
+{
+  PL_SIGNATURE_ARRAY_TYPE *sig_array;	/* function signature */
+  REGU_VARIABLE_LIST arg_list;	/* function argument regu variables */
+  QFILE_LIST_ID *cursor_list_id;	/* materialized cursor result list */
+  QFILE_LIST_SCAN_ID cursor_scan_id;	/* scan state for cursor list */
+  bool cursor_opened;		/* whether cursor scan is opened */
+  int num_cols;			/* number of output columns */
+  SCAN_PRED scan_pred;		/* scan predicates(filters) */
+};
+
 typedef struct set_scan_id SET_SCAN_ID;
 struct set_scan_id
 {
@@ -519,6 +532,7 @@ struct scan_id_struct
     SHOWSTMT_SCAN_ID stsid;	/* show stmt identifier */
     JSON_TABLE_SCAN_ID jtid;
     METHOD_SCAN_ID msid;
+    TABLE_FUNC_SCAN_ID tfsid;
   } s;
 
   SCAN_STATS scan_stats;
@@ -628,6 +642,11 @@ extern int scan_open_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  val_list_node * val_list, val_descr * vd,
 				  /* */
 				  QFILE_LIST_ID * list_id, PL_SIGNATURE_ARRAY_TYPE * meth_sig_list);
+
+extern int scan_open_table_func_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
+				      int grouped, QPROC_SINGLE_FETCH single_fetch, DB_VALUE * join_dbval,
+				      val_list_node * val_list, val_descr * vd,
+				      PL_SIGNATURE_ARRAY_TYPE * sig_array, REGU_VARIABLE_LIST arg_list, PRED_EXPR * pr);
 
 extern int scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				  struct access_spec_node *spec,
