@@ -6447,6 +6447,65 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
 }
 
 /*
+ * lock_has_lock_on_transaction_mvccid - Does the current transaction hold its MVCCID self-lock?
+ *
+ * return: 1 if the current transaction holds a lock >= `lock` on the transaction self-lock keyed by
+ *	   `mvccid`, 0 otherwise.
+ *
+ *   mvccid(in): the inserter's (own) MVCCID
+ *   lock(in): the lock mode to check for (typically X_LOCK)
+ *
+ * Note: mirrors lock_has_lock_on_object for the LOCK_RESOURCE_TRANSACTION key. Used by the unique-index
+ *	 insert lock check: appended rows take no per-row X-lock, so the inserter's self-lock is what
+ *	 guarantees serialization against unique/FK checkers.
+ */
+int
+lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock)
+{
+#if !defined (SERVER_MODE)
+  return 1;
+#else /* !SERVER_MODE */
+  int tran_index;
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *entry_ptr;
+  LOCK granted_lock_mode = NULL_LOCK;
+
+  if (!MVCCID_IS_VALID (mvccid))
+    {
+      return 0;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  search_key = lock_create_mvccid_search_key (mvccid);
+  assert (search_key.type == LOCK_RESOURCE_TRANSACTION);
+
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      /* not found -- not held */
+      return 0;
+    }
+  /* find() leaves the resource mutex locked. */
+
+  entry_ptr = res_ptr->holder;
+  for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
+    {
+      if (entry_ptr->tran_index == tran_index)
+	{
+	  granted_lock_mode = entry_ptr->granted_mode;
+	  break;
+	}
+    }
+
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+
+  return (lock_conv (lock, granted_lock_mode) == granted_lock_mode) ? 1 : 0;
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_subclass () - Lock a class in a class hierarchy
  *
  * return: one of following values)

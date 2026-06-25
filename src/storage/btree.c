@@ -36461,6 +36461,16 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
       return true;
     }
 
+  /*  An MVCC-class inserter no longer takes a per-row X_LOCK on the freshly appended object; instead it holds
+   *  an X_LOCK on its own MVCCID (the transaction self-lock) that unique/FK checkers wait on. That self-lock
+   *  is what now serializes the unique insert, so accept it here as well.
+   */
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+  if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
+    {
+      return true;
+    }
+
   return false;
 }
 
