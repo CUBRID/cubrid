@@ -23675,14 +23675,18 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
  * insert_mvccid (in)  : MVCCID of the in-progress inserter to wait on.
  * find_unique_helper (in/out) : Find-unique state; any object it has locked is released first.
  * leaf_page (in/out)  : Leaf node page latch; unfixed before suspending and left NULL.
+ * overflow_page (in/out) : Optional overflow node page latch (..._of_non_unique () scans overflow pages);
+ *			    unfixed before suspending and left NULL. NULL when there is no overflow page.
  * restart (out)       : Set to true so the caller re-reads the key from root.
  *
  * Note: shared by ..._of_unique () and ..._of_non_unique (); blocks on the inserter transaction
  *	 (S_LOCK then release) since appended rows take no per-row X-lock, then restarts from root.
+ *	 All page latches must be released before blocking on the lock (never wait while holding a latch).
  */
 static int
 btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
-				  BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page, bool * restart)
+				  BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
+				  PAGE_PTR * overflow_page, bool * restart)
 {
   int error_code = NO_ERROR;
 
@@ -23693,7 +23697,11 @@ btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
 					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
-  /* Release the leaf page latch before blocking on the lock (never wait while holding a latch). */
+  /* Release every page latch before blocking on the lock (never wait while holding a latch). */
+  if (overflow_page != NULL && *overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, *overflow_page);
+    }
   pgbuf_unfix_and_init (thread_p, *leaf_page);
   error_code = lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK);
   if (error_code != LK_GRANTED)
@@ -23845,7 +23853,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 		  && log_Gl.mvcc_table.is_active (insert_mvccid))
 		{
 		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   restart);
+							   NULL, restart);
 		}
 	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
 	    }
@@ -24169,7 +24177,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 		  && log_Gl.mvcc_table.is_active (insert_mvccid))
 		{
 		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   restart);
+							   &overflow_page, restart);
 		}
 	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
 	    }
