@@ -10956,7 +10956,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
       if (spec->info.spec.join_type == PT_JOIN_ANTI)
 	{
 	  PT_SEMI_ANTI_REF_INFO info;
-	  PT_NODE *targets[7];
+	  PT_NODE *targets[8];
 	  PT_NODE *other;
 	  int i;
 
@@ -10973,8 +10973,9 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  targets[4] = select->info.query.order_by;
 	  targets[5] = select->info.query.q.select.connect_by;
 	  targets[6] = select->info.query.q.select.start_with;
+	  targets[7] = select->info.query.orderby_for;
 
-	  for (i = 0; i < 7 && !info.found_inner; i++)
+	  for (i = 0; i < 8 && !info.found_inner; i++)
 	    {
 	      if (targets[i] != NULL)
 		{
