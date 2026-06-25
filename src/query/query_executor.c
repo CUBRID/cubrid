@@ -547,6 +547,7 @@ static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spe
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
 static SCAN_CODE qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static SCAN_CODE qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static SCAN_CODE qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner);
 static SCAN_CODE qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_succeed,
 						    XASL_NODE * xasl, XASL_STATE * xasl_state,
 						    QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
@@ -8200,7 +8201,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   XASL_NODE *xptr2, *xptr3;
 
   /* first find the last scan block to be moved */
-  for (last_xptr = xasl; last_xptr->scan_ptr; last_xptr = last_xptr->scan_ptr)
+  for (last_xptr = xasl; last_xptr->scan_ptr && !XASL_IS_NL_SEMI_OR_ANTI (last_xptr->scan_ptr);
+       last_xptr = last_xptr->scan_ptr)
     {
       if (!last_xptr->next_scan_block_on
 	  || (last_xptr->curr_spec && last_xptr->curr_spec->s_id.status == S_STARTED
@@ -8349,6 +8351,66 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_reset_sa_inner_scan_block () -
+ *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
+ *   inner(in) : candidate semi/anti inner scan
+ *
+ * Rewind a partitioned nested-loop SEMI/ANTI inner to its first partition for
+ * the next outer row.  Plain inners keep the normal current-block reset.
+ */
+static SCAN_CODE
+qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
+{
+  if (XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
+    {
+      ACCESS_SPEC_TYPE *spec = inner->curr_spec;
+      SCAN_CODE part_scan;
+
+      if (spec == NULL)
+	{
+	  spec = inner->spec_list;
+	  while (spec != NULL && QEXEC_EMPTY_ACCESS_SPEC_SCAN (spec))
+	    {
+	      spec = spec->next;
+	    }
+
+	  if (spec == NULL)
+	    {
+	      inner->curr_spec = NULL;
+	      inner->next_scan_block_on = false;
+	      return S_SUCCESS;
+	    }
+
+	  inner->curr_spec = spec;
+	}
+
+      spec->curent = NULL;
+      spec->s_id.single_fetched = false;
+      inner->spec_list->s_id.single_fetched = false;
+
+      part_scan = qexec_init_next_partition (thread_p, spec, inner);
+      if (part_scan == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (part_scan == S_END)
+	{
+	  inner->curr_spec = NULL;
+	  inner->next_scan_block_on = false;
+	  return S_SUCCESS;
+	}
+      /* qexec_init_next_partition () already scan_start_scan'd the first partition on its S_SUCCESS
+         path; do not restart it here (a double start re-acquires the partition IS_LOCK per outer row). */
+      spec->s_id.single_fetched = false;
+      inner->next_scan_block_on = false;
+
+      return S_SUCCESS;
+    }
+
+  return scan_reset_scan_block (thread_p, &inner->curr_spec->s_id);
+}
+
+/*
  * qexec_execute_nljoin_with_memoize () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   thread_p(in)           : Thread entry
@@ -8417,7 +8479,7 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 
 		  /* start following scan procedure */
 		  xasl->scan_ptr->next_scan_on = false;
-		  if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		  if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
 		    {
 		      return S_ERROR;
 		    }
@@ -8547,6 +8609,27 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	}
     }
 
+  if (XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec == NULL && xasl->spec_list != NULL
+      && xasl->spec_list->parts != NULL)
+    {
+      SCAN_CODE sb_init;
+
+      if (xasl->spec_list->s_id.single_fetched)
+	{
+	  return S_END;
+	}
+
+      sb_init = qexec_next_scan_block (thread_p, xasl);
+      if (sb_init == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (sb_init == S_END)
+	{
+	  return S_END;
+	}
+    }
+
   /* execute scan */
   do
     {
@@ -8560,6 +8643,81 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    }
 	}
 
+
+      if (sc_scan == S_END && XASL_IS_NL_SEMI_OR_ANTI (xasl) && xasl->curr_spec != NULL
+	  && xasl->curr_spec->parts != NULL && !xasl->curr_spec->s_id.single_fetched)
+	{
+	  ACCESS_SPEC_TYPE *sa_curr_spec = xasl->curr_spec;
+	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  if (sb_scan == S_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (sb_scan == S_SUCCESS)
+	    {
+	      continue;
+	    }
+
+	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
+	    {
+	      sa_curr_spec->s_id.single_fetched = true;
+	      xasl->spec_list->s_id.single_fetched = true;
+
+	      if (xasl->scan_ptr)
+		{
+		  sa_curr_spec->s_id.qualified_block = true;
+		  xasl->scan_ptr->next_scan_on = false;
+		  if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  if (xasl->scan_ptr->memoize_storage)
+		    {
+		      xasl->scan_ptr->memoize_storage->set_key_changed ();
+		    }
+		  xasl->next_scan_on = true;
+		  xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+		  if (xs_scan == S_END)
+		    {
+		      xasl->next_scan_on = false;
+		    }
+		  return xs_scan;
+		}
+
+	      return S_SUCCESS;
+	    }
+
+	  return S_END;
+	}
+      if (sc_scan == S_END && XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN) && !xasl->curr_spec->s_id.single_fetched)
+	{
+	  /* ANTI inner: the scan exhausted with no qualifying row, so this outer passes the NOT-EXISTS
+	     filter (survive).  Mark single_fetched so a re-entry for the same outer ends, then descend
+	     into the following join (the next filter), or emit the surviving outer once when this anti
+	     join is the last in the chain (CBRD-26872). */
+	  xasl->curr_spec->s_id.single_fetched = true;
+	  xasl->curr_spec->s_id.qualified_block = true;
+	  if (xasl->scan_ptr)
+	    {
+	      xasl->scan_ptr->next_scan_on = false;
+	      if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
+		{
+		  return S_ERROR;
+		}
+	      if (xasl->scan_ptr->memoize_storage)
+		{
+		  xasl->scan_ptr->memoize_storage->set_key_changed ();
+		}
+	      xasl->next_scan_on = true;
+	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+	      if (xs_scan == S_END)
+		{
+		  xasl->next_scan_on = false;
+		}
+	      return xs_scan;
+	    }
+	  return S_SUCCESS;
+	}
       if (sc_scan != S_SUCCESS)
 	{
 	  return sc_scan;
@@ -8673,6 +8831,21 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
       if (qualified)
 	{
+	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
+	    {
+	      /* ANTI inner matched a qualifying row: this outer fails the NOT-EXISTS filter and is suppressed.
+	         Drain the single-fetch inner to S_END so its scan-block bookkeeping terminates, then return
+	         S_END so the parent advances the outer without emitting or descending into a following join. */
+	      while ((sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id)) == S_SUCCESS)
+		{
+		  ;
+		}
+	      if (sc_scan == S_ERROR)
+		{
+		  return S_ERROR;
+		}
+	      return S_END;
+	    }
 	  if (xasl->memoize_storage)
 	    {
 	      memoize_err_code = memoize_put (thread_p, xasl, &memoize_put_success);
@@ -8693,7 +8866,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 
 	      /* start following scan procedure */
 	      xasl->scan_ptr->next_scan_on = false;
-	      if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+	      if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
 		{
 		  return S_ERROR;
 		}
@@ -8706,39 +8879,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	      xasl->next_scan_on = true;
 	      /* execute following scan procedure */
 	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-	      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
-		{
-		  /* anti: emit outer iff inner produced no qualifying row (single_fetch yields at most one) */
-		  xasl->next_scan_on = false;
-		  if (xs_scan == S_ERROR)
-		    {
-		      return S_ERROR;
-		    }
-		  if (xs_scan == S_SUCCESS)
-		    {
-		      /* Drain the single-fetch inner to S_END so its scan-block bookkeeping terminates:
-		         qexec_next_scan_block_iterations () needs the inner ended, else the outer scan-block
-		         loop never reaches S_END (CBRD-26872). For QPROC_SINGLE_INNER this is one short-circuit
-		         call (no physical scan, no latch).
-		         TODO(composite-RHS): a composite/derived inner can yield many rows; it would then need
-		         to drain (or short-circuit) the subtree explicitly (side effects / instnum / CONNECT BY). */
-		      while ((xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore,
-							  next_scan_fnc + 1)) == S_SUCCESS)
-			{
-			  ;
-			}
-		      if (xs_scan == S_ERROR)
-			{
-			  return S_ERROR;
-			}
-		      qualified = false;	/* inner matched -> anti suppresses this outer row */
-		    }
-		  else
-		    {
-		      return S_SUCCESS;	/* S_END: zero match -> emit outer (inner columns not projected) */
-		    }
-		}
-	      else if (xs_scan == S_END)
+	      if (xs_scan == S_END)
 		{
 		  xasl->next_scan_on = false;
 		  qualified = false;
@@ -9746,7 +9887,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 			  /* handle the scan procedure */
 			  xasl->scan_ptr->next_scan_on = false;
-			  if (scan_reset_scan_block (thread_p, &xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+			  if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
 			    {
 			      return S_ERROR;
 			    }
@@ -9773,16 +9914,6 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 				}
 			      else
 				{
-				  if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
-				    {
-				      /* anti: a matching inner row suppresses this outer row.  Skip inst_num and
-				         emit here; inst_num is applied only to rows anti actually emits (the
-				         zero-match branch below), otherwise rownum/inst_num would count and
-				         early-stop on suppressed (matched) outer rows (CBRD-26872).  The
-				         single-fetch inner returns S_END on the next call, ending the drain. */
-				      scan_ptr_qualified = true;
-				      continue;
-				    }
 
 				  /* evaluate inst_num predicate */
 				  if (xasl->instnum_val)
@@ -9833,54 +9964,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 			  if (xs_scan == S_END)
 			    {
-			      if (XASL_IS_FLAGED (xasl->scan_ptr, XASL_NL_ANTIJOIN))
-				{
-				  if (!scan_ptr_qualified)
-				    {
-				      /* anti zero-match: this outer row is emitted (inner columns not projected).
-				         inst_num is applied HERE -- only to rows anti actually emits -- not during
-				         the inner drain, so rownum/inst_num counts and stops on emitted rows only.
-				         Mirrors the normal/SEMI inst_num + emit path above. */
-				      if (xasl->instnum_val)
-					{
-					  ev_res = qexec_eval_instnum_pred (thread_p, xasl, xasl_state);
-					  if (ev_res == V_ERROR)
-					    {
-					      return S_ERROR;
-					    }
-					  if ((xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_LAST_STOP))
-					    {
-					      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
-						{
-						  return S_ERROR;
-						}
-					      return S_SUCCESS;
-					    }
-					  if (xasl->instnum_flag & XASL_INSTNUM_FLAG_SCAN_STOP)
-					    {
-					      return S_SUCCESS;
-					    }
-					}
-				      qualified = (xasl->instnum_pred == NULL || ev_res == V_TRUE);
-				      if (qualified)
-					{
-					  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
-					    {
-					      return S_ERROR;
-					    }
-					  /* only one row is need for exists OP (mirror normal/SEMI success path above) */
-					  if (XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
-					    {
-					      return S_SUCCESS;
-					    }
-					}
-				    }
-				  else
-				    {
-				      qualified = false;
-				    }
-				}
-			      else if (!scan_ptr_qualified)
+			      if (!scan_ptr_qualified)
 				{
 				  qualified = false;
 				}
