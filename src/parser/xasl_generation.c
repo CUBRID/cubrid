@@ -4209,7 +4209,8 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 			  return NULL;
 			}
 
-		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		      error_code =
+			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
 		      if (error_code != NO_ERROR)
 			{
 			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
@@ -28751,24 +28752,6 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
       return false;
     }
 
-  /* The two expressions must also produce the same result type/domain.
-   * Matching operands are not sufficient: e.g. CAST(c AS CHAR(1)) and CAST(c AS CHAR(10))
-   * share operands but yield different DB_VALUEs, so they must not share an input slot. */
-  if (p->type_enum != q->type_enum)
-    {
-      return false;
-    }
-  if (p->data_type != NULL || q->data_type != NULL)
-    {
-      TP_DOMAIN *dp = pt_xasl_node_to_domain (parser, p);
-      TP_DOMAIN *dq = pt_xasl_node_to_domain (parser, q);
-
-      if (dp == NULL || dq == NULL || tp_domain_match (dp, dq, TP_EXACT_MATCH) == 0)
-	{
-	  return false;
-	}
-    }
-
   switch (p->node_type)
     {
     case PT_NAME:
@@ -28777,6 +28760,8 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
       return (pt_check_path_eq (parser, p, q) == 0);
 
     case PT_VALUE:
+    case PT_EXPR:
+    case PT_FUNCTION:
       {
 	char *p_str, *q_str;
 	unsigned int save_custom = parser->custom_print;
@@ -28790,55 +28775,7 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 	  {
 	    return false;
 	  }
-	/* literal values must match exactly, including letter case */
 	return (pt_str_compare (p_str, q_str, CASE_SENSITIVE) == 0);
-      }
-
-    case PT_EXPR:
-      if (p->info.expr.op != q->info.expr.op)
-	{
-	  return false;
-	}
-      return (pt_aggregate_arg_eq (parser, p->info.expr.arg1, q->info.expr.arg1)
-	      && pt_aggregate_arg_eq (parser, p->info.expr.arg2, q->info.expr.arg2)
-	      && pt_aggregate_arg_eq (parser, p->info.expr.arg3, q->info.expr.arg3));
-
-    case PT_FUNCTION:
-      {
-	PT_NODE *a1, *a2;
-
-	if (p->info.function.function_type != q->info.function.function_type
-	    || p->info.function.all_or_distinct != q->info.function.all_or_distinct)
-	  {
-	    return false;
-	  }
-
-	/* generic (user-defined / named) functions must have the same name */
-	if (p->info.function.function_type == PT_GENERIC
-	    && pt_str_compare (p->info.function.generic_name, q->info.function.generic_name, CASE_INSENSITIVE) != 0)
-	  {
-	    return false;
-	  }
-
-	/* order_by (GROUP_CONCAT) and percentile (PERCENTILE_*) make the result depend on more
-	 * than the plain argument list; be conservative and do not share those. */
-	if (p->info.function.order_by != NULL || q->info.function.order_by != NULL
-	    || p->info.function.percentile != NULL || q->info.function.percentile != NULL)
-	  {
-	    return false;
-	  }
-
-	/* compare the argument lists element by element */
-	for (a1 = p->info.function.arg_list, a2 = q->info.function.arg_list;
-	     a1 != NULL && a2 != NULL; a1 = a1->next, a2 = a2->next)
-	  {
-	    if (!pt_aggregate_arg_eq (parser, a1, a2))
-	      {
-		return false;
-	      }
-	  }
-	/* a leftover element on either side means different argument counts */
-	return (a1 == NULL && a2 == NULL);
       }
 
     default:
