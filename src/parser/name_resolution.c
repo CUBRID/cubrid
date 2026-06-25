@@ -5188,12 +5188,21 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
-      dt->info.data_type.units = attr->charset;
-      /* CCI remote-column metadata carries a codeset (units) but no collation;
-       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
-       * pt_check_expr_collation invariant that equal collation_id implies equal
-       * codeset. Assign the codeset's binary collation to keep them consistent. */
-      dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
+      if (PT_HAS_COLLATION (attr_def_node->type_enum))
+	{
+	  /* DBLink converts the remote string to the LOCAL DB codeset at run time
+	   * (the codeset conversion in dblink_scan.c). Declare the column with that
+	   * local codeset/collation so compile-time type/collation checks match the
+	   * run-time value; attr->charset (remote) diverges and breaks UNION/IN. */
+	  dt->info.data_type.units = LANG_SYS_CODESET;
+	  dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET);
+	}
+      else
+	{
+	  /* non-string (BIT/VARBIT/NUMERIC/...): codeset/collation are not semantically
+	   * used; keep the prior assignment. */
+	  dt->info.data_type.units = attr->charset;
+	}
     }
 
   attr_def_node->data_type = dt;
