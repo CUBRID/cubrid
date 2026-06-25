@@ -92,7 +92,6 @@ struct lk_entry
   LK_ENTRY *tran_prev;		/* list of locks that trans. holds */
   LK_ENTRY *class_entry;	/* ptr. to class lk_entry */
   int ngranules;		/* number of finer granules */
-  int instant_lock_count;	/* number of instant lock requests */
   int bind_index_in_tran;
   XASL_ID xasl_id;
 #else				/* not SERVER_MODE */
@@ -154,7 +153,7 @@ typedef enum
   LOCK_RESOURCE_INSTANCE,	/* An instance resource */
   LOCK_RESOURCE_CLASS,		/* A class resource */
   LOCK_RESOURCE_ROOT_CLASS,	/* A root class resource */
-  LOCK_RESOURCE_TRANSACTION,	/* A transaction self-lock keyed by the inserter's MVCCID; allows unique-key/FK checks to wait for an in-progress inserter (which takes no per-row X-lock) */
+  LOCK_RESOURCE_TRANSACTION,	/* A transaction self-lock keyed by the inserter's MVCCID */
   LOCK_RESOURCE_OBJECT		/* An object resource. Obsolete */
 } LOCK_RESOURCE_TYPE;
 
@@ -237,9 +236,6 @@ extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
-extern void lock_start_instant_lock_mode (int tran_index);
-extern void lock_stop_instant_lock_mode (THREAD_ENTRY * thread_p, int tran_index, bool need_unlock);
-extern bool lock_is_instant_lock_mode (int tran_index);
 extern void lock_clear_deadlock_victim (int tran_index);
 extern unsigned int lock_get_number_object_locks (void);
 extern int lock_initialize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock);

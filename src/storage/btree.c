@@ -23697,7 +23697,7 @@ btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
 					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
       OID_SET_NULL (&find_unique_helper->locked_oid);
     }
-  /* Release every page latch before blocking on the lock (never wait while holding a latch). */
+  /* Release page latches before blocking on the lock. */
   if (overflow_page != NULL && *overflow_page != NULL)
     {
       pgbuf_unfix_and_init (thread_p, *overflow_page);
@@ -36461,10 +36461,8 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
       return true;
     }
 
-  /*  An MVCC-class inserter no longer takes a per-row X_LOCK on the freshly appended object; instead it holds
-   *  an X_LOCK on its own MVCCID (the transaction self-lock) that unique/FK checkers wait on. That self-lock
-   *  is what now serializes the unique insert, so accept it here as well.
-   */
+  /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
+   * per-row X_LOCK on the appended object; that self-lock serializes the unique insert, so accept it here. */
   MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
@@ -36501,10 +36499,9 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
       return true;
     }
 
-  /*  An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a per-row
-   *  X_LOCK on the appended object. Rolling back the insert deletes that object from the index while the
-   *  self-lock is still held (it is released only at end-of-transaction), so accept it here as well.
-   */
+  /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
+   * per-row X_LOCK on the appended object. Rollback deletes that object while the self-lock is still held
+   * (released only at end-of-transaction), so accept it here. */
   MVCCID my_mvccid = logtb_get_current_tran_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {
