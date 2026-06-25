@@ -521,6 +521,22 @@ namespace cubthread
     return slots;
   }
 
+  bool
+  concurrency_slot_pool::needs_slot ()
+  {
+    std::unique_lock<std::mutex> ulock (*m_mutex);
+
+    return needs_slot (ulock);
+  }
+
+  bool
+  concurrency_slot_pool::needs_slot (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    return !m_wait_queue.empty () || (m_available_slots.empty () && has_queued_task (ulock));
+  }
+
   std::size_t
   concurrency_slot_pool::available_slots ()
   {
@@ -610,6 +626,8 @@ namespace cubthread
       void execute (entry &thread_ref) override;
 
     private:
+      bool has_slot_demand (std::vector<concurrency_slot_subscriber *> &subs);
+
       void steal_from_entries_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots, void *identifier);
       void steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots,
 				       std::vector<concurrency_slot_subscriber *> &subs);
@@ -662,7 +680,10 @@ namespace cubthread
       steal_from_entries_if_excess (slots, identifier);
 
       // 3.
-      steal_from_cores_if_excess (slots, subs);
+      if (has_slot_demand (subs))
+	{
+	  steal_from_cores_if_excess (slots, subs);
+	}
 
       // 4.
       distribute_slots (slots, subs);
@@ -671,6 +692,20 @@ namespace cubthread
       // 5.
       wakeup_workers (identifier, subs);
     });
+  }
+
+  bool
+  concurrency_slot_daemon_task::has_slot_demand (std::vector<concurrency_slot_subscriber *> &subs)
+  {
+    for (auto &sub : subs)
+      {
+	if (static_cast<concurrency_slot_pool *> (sub)->needs_slot ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 
   void
