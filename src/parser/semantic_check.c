@@ -10918,6 +10918,15 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	  continue;
 	}
 
+      /* v1: SEMI/ANTI JOIN is NL-inner only and does not compose with CONNECT BY -- the hierarchical
+         traversal bypasses the NL semi/anti inner handling and yields wrong results, so reject it here
+         instead of silently producing them. */
+      if (select->info.query.q.select.connect_by != NULL)
+	{
+	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NOT_WITH_CONNECT_BY);
+	  continue;
+	}
+
       /* (1) ON must reference a local-outer from-list spec (matches the optimizer's local dep-set freeze) */
       {
 	PT_SEMI_ANTI_REF_INFO info;

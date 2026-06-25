@@ -1987,6 +1987,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 파티션 이름이 너무 깁니다.
 338 ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 339 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
+340 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

@@ -1988,6 +1988,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 337 The partition name is too long.
 338 Column '%1$s' of the ANTI JOIN inner table cannot be referenced.
 339 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
+340 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
