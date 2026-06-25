@@ -246,6 +246,7 @@ namespace parallel_scan
 			     xasl_node *xasl_p);
       bool write (THREAD_ENTRY *thread_p);
       void write_finalize (THREAD_ENTRY *thread_p);
+      void signal_worker_done ();
     private:
       int m_parallelism;
       std::mutex m_result_mutex;
