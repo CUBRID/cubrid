@@ -85,10 +85,6 @@
   ((OID_ISTEMP(oid)) ? (unsigned int)(-((oid)->pageid) % htsize) :\
                        lock_get_hash_value(oid, htsize))
 
-/* volid sentinel tagging an MVCCID-packed OID as a transaction self-lock key (see
- * lock_create_search_key); -2 aliases no real volume, NULL_VOLID, or pseudo OID. */
-#define LK_TRANSACTION_LOCK_VOLID ((short) -2)
-
 /* thread is lock-waiting ? */
 #define LK_IS_LOCKWAIT_THREAD(thrd) \
   ((thrd)->lockwait != NULL \
@@ -552,9 +548,9 @@ static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
 static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
 						   const OID * class_oid, LOCK lock);
-static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid,
-					      const OID * class_oid, LOCK lock, int wait_msecs,
-					      LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry);
+static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key,
+					      LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr,
+					      LK_ENTRY * class_entry);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
@@ -588,8 +584,8 @@ static void lock_event_log_blocking_locks (THREAD_ENTRY * thread_p, FILE * log_f
 static void lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * entry);
 static void lock_event_set_tran_wait_entry (int tran_index, LK_ENTRY * entry);
 static void lock_event_set_xasl_id_to_entry (int tran_index, LK_ENTRY * entry);
-static LK_RES_KEY lock_create_search_key (OID * oid, OID * class_oid);
-static void lock_pack_mvccid_to_oid (MVCCID mvccid, OID * oid);
+static LK_RES_KEY lock_create_search_key (const OID * oid, const OID * class_oid);
+static LK_RES_KEY lock_create_mvccid_search_key (MVCCID mvccid);
 #if defined (SERVER_MODE)
 static bool lock_is_safe_lock_with_page (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 #endif /* SERVER_MODE */
@@ -670,7 +666,7 @@ LF_ENTRY_DESCRIPTOR lk_Obj_lock_res_desc = {
 
 #if defined(SERVER_MODE)
 static LK_RES_KEY
-lock_create_search_key (OID * oid, OID * class_oid)
+lock_create_search_key (const OID * oid, const OID * class_oid)
 {
   LK_RES_KEY search_key;
 
@@ -693,13 +689,9 @@ lock_create_search_key (OID * oid, OID * class_oid)
       OID_SET_NULL (&search_key.class_oid);
     }
 
-  /* set correct type */
-  if (oid != NULL && class_oid == NULL && oid->volid == LK_TRANSACTION_LOCK_VOLID)
-    {
-      /* MVCCID-packed transaction self-lock key. */
-      search_key.type = LOCK_RESOURCE_TRANSACTION;
-    }
-  else if (oid != NULL && OID_IS_ROOTOID (oid))
+  /* set correct type (object-typed resources only; a transaction self-lock key is built explicitly by
+   * lock_create_mvccid_search_key, never inferred here). */
+  if (oid != NULL && OID_IS_ROOTOID (oid))
     {
       search_key.type = LOCK_RESOURCE_ROOT_CLASS;
     }
@@ -720,17 +712,23 @@ lock_create_search_key (OID * oid, OID * class_oid)
 }
 
 /*
- * lock_pack_mvccid_to_oid - Pack an MVCCID into an OID for use as a transaction self-lock key.
+ * lock_create_mvccid_search_key - Build a TRANSACTION-typed lock resource key from an MVCCID.
  *
- *   mvccid(in): the inserter's MVCCID
- *   oid(out): OID stamped with LK_TRANSACTION_LOCK_VOLID and the packed MVCCID
+ *   mvccid(in): the inserter's MVCCID, stored natively (full 64-bit, no OID packing)
+ *
+ * Note: the transaction self-lock lets unique-key/FK checks wait for an in-progress inserter that takes
+ *	 no per-row X-lock. lock_res_key_{hash,compare,copy} treat the MVCCID as the active key member.
  */
-static void
-lock_pack_mvccid_to_oid (MVCCID mvccid, OID * oid)
+static LK_RES_KEY
+lock_create_mvccid_search_key (MVCCID mvccid)
 {
-  oid->pageid = (int) (mvccid & 0xFFFFFFFFULL);
-  oid->slotid = (short) ((mvccid >> 32) & 0xFFFFULL);
-  oid->volid = LK_TRANSACTION_LOCK_VOLID;
+  LK_RES_KEY search_key;
+
+  search_key.type = LOCK_RESOURCE_TRANSACTION;
+  search_key.mvccid = mvccid;
+  /* keep the inactive overlay deterministic (mvccid and class_oid do not overlap) */
+  OID_SET_NULL (&search_key.class_oid);
+  return search_key;
 }
 
 static void *
@@ -877,9 +875,13 @@ lock_res_key_copy (void *src, void *dest)
 
     case LOCK_RESOURCE_CLASS:
     case LOCK_RESOURCE_ROOT_CLASS:
-    case LOCK_RESOURCE_TRANSACTION:
       COPY_OID (&dest_k->oid, &src_k->oid);
       OID_SET_NULL (&dest_k->class_oid);
+      break;
+
+    case LOCK_RESOURCE_TRANSACTION:
+      /* transaction self-lock: the MVCCID is the active key member */
+      dest_k->mvccid = src_k->mvccid;
       break;
 
     case LOCK_RESOURCE_OBJECT:
@@ -903,26 +905,23 @@ lock_res_key_compare (void *k1, void *k2)
       return 1;
     }
 
+  if (k1_k->type != k2_k->type)
+    {
+      /* different resource types never alias (type is part of the key identity) */
+      return 1;
+    }
+
   switch (k1_k->type)
     {
     case LOCK_RESOURCE_INSTANCE:
     case LOCK_RESOURCE_CLASS:
     case LOCK_RESOURCE_ROOT_CLASS:
-    case LOCK_RESOURCE_TRANSACTION:
       /* fast and dirty oid comparison */
-      if (OID_EQ (&k1_k->oid, &k2_k->oid))
-	{
-	  assert (k1_k->type == k2_k->type);
+      return OID_EQ (&k1_k->oid, &k2_k->oid) ? 0 : 1;
 
-	  /* equal */
-	  return 0;
-	}
-      else
-	{
-	  /* not equal */
-	  return 1;
-	}
-      break;
+    case LOCK_RESOURCE_TRANSACTION:
+      /* transaction self-lock: compare the full 64-bit MVCCID */
+      return (k1_k->mvccid == k2_k->mvccid) ? 0 : 1;
 
     case LOCK_RESOURCE_OBJECT:
     default:
@@ -938,15 +937,19 @@ lock_res_key_hash (void *key, int htsize)
 {
   LK_RES_KEY *key_k = (LK_RES_KEY *) key;
 
-  if (key_k != NULL)
-    {
-      return LK_OBJ_LOCK_HASH (&key_k->oid, htsize);
-    }
-  else
+  if (key_k == NULL)
     {
       assert (false);
       return 0;
     }
+
+  if (key_k->type == LOCK_RESOURCE_TRANSACTION)
+    {
+      /* transaction self-lock: hash the inserter's MVCCID (sequential, so it spreads across buckets) */
+      return (unsigned int) (key_k->mvccid % (unsigned int) htsize);
+    }
+
+  return LK_OBJ_LOCK_HASH (&key_k->oid, htsize);
 }
 
 /* initialize lock entry as free state */
@@ -3193,8 +3196,10 @@ lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tr
        * 1. hold a lock on the class with the escalated lock mode
        */
       wait_msecs = LK_FORCE_ZERO_WAIT;	/* Conditional Locking */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, &class_entry->res_head->key.oid, NULL,
-						   max_class_lock, wait_msecs, &class_entry, NULL);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index,
+					   lock_create_search_key (&class_entry->res_head->key.oid, NULL),
+					   max_class_lock, wait_msecs, &class_entry, NULL);
       if (granted != LK_GRANTED)
 	{
 	  /* The reason of the lock request failure: 1. interrupt 2. shortage of lock resource entries 3. shortage of
@@ -3363,25 +3368,28 @@ lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int tran_index,
  *              LK_NOTGRANTED_DUE_ERROR
  *
  *   tran_index(in):
- *   oid(in):
- *   class_oid(in):
+ *   search_key(in): pre-built lock resource key (object OID/class_oid, or a TRANSACTION self-lock MVCCID)
  *   lock(in):
  *   wait_msecs(in):
  *   entry_addr_ptr(in):
  *   class_entry(in):
  *
- * Note:lock an object whose id is pointed by oid with given lock mode 'lock'.
+ * Note:lock the resource identified by search_key with given lock mode 'lock'.
  *
  *     If cond_flag is true and the object has already been locked
  *     by other transaction, then return LK_NOTGRANTED;
  *     else this transaction is suspended until it can acquire the lock.
  */
 static int
-lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, const OID * oid, const OID * class_oid,
-				   LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
+lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key, LOCK lock,
+				   int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
-  LK_RES_KEY search_key;
+  /* The caller passes a pre-built key. oid/class_oid are recovered from it for object-typed resources;
+   * a TRANSACTION self-lock (keyed by MVCCID) has neither. */
+  const bool is_transaction_lock = (search_key.type == LOCK_RESOURCE_TRANSACTION);
+  const OID *oid = is_transaction_lock ? NULL : &search_key.oid;
+  const OID *class_oid = (is_transaction_lock || OID_ISNULL (&search_key.class_oid)) ? NULL : &search_key.class_oid;
   int ret_val;
   LOCK group_mode, old_mode, new_mode;	/* lock mode */
   LK_RES *res_ptr;
@@ -3403,7 +3411,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
   const OID *oid_for_marker_p;
 #endif /* ENABLE_SYSTEMTAP */
 
-  assert (!OID_ISNULL (oid));
+  assert (is_transaction_lock || !OID_ISNULL (oid));
   assert (class_oid == NULL || !OID_ISNULL (class_oid));
 
 #if defined(ENABLE_SYSTEMTAP)
@@ -3460,7 +3468,12 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 start:
   assert (!is_res_mutex_locked);
 
-  if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
+  if (is_transaction_lock)
+    {
+      /* Transaction self-lock: no class/instance escalation and no class-entry shortcut (the MVCCID key
+       * never aliases a class the transaction holds). Fall through to find_or_insert below. */
+    }
+  else if (class_oid != NULL && !OID_IS_ROOTOID (class_oid))
     {
       /* instance lock request */
 
@@ -3495,8 +3508,7 @@ start:
 	}
     }
 
-  /* find or add the lockable object in the lock table */
-  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
+  /* find or add the lockable object in the lock table (search_key was built by the caller) */
   (void) lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
   if (res_ptr == NULL)
     {
@@ -5619,6 +5631,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	    }
 	}
       break;
+    case LOCK_RESOURCE_TRANSACTION:
+      fprintf (outfp, "  Transaction self-lock (inserter MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      break;
     default:
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
     }
@@ -6214,8 +6229,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     {
       /* case 1 : resource type is LOCK_RESOURCE_ROOT_CLASS acquire a lock on the root class oid. NOTE that in case of
        * acquiring a lock on a class object, the higher lock granule of the class object must not be given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs,
-						   &root_class_entry, NULL);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, NULL), lock, wait_msecs,
+					   &root_class_entry, NULL);
       goto end;
     }
 
@@ -6238,8 +6254,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     {
       if (old_class_lock < new_class_lock)
 	{
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock,
-						       wait_msecs, &root_class_entry, NULL);
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (class_oid, NULL),
+					       new_class_lock, wait_msecs, &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      goto end;
@@ -6250,8 +6267,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not
        * be given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, NULL, lock, wait_msecs, &class_entry,
-						   root_class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, NULL), lock, wait_msecs,
+					   &class_entry, root_class_entry);
       goto end;
     }
   else
@@ -6270,8 +6288,8 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 	    }
 
 	  granted =
-	    lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, new_class_lock, wait_msecs,
-					       &class_entry, superclass_entry);
+	    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (class_oid, NULL),
+					       new_class_lock, wait_msecs, &class_entry, superclass_entry);
 	  if (granted != LK_GRANTED)
 	    {
 	      goto end;
@@ -6290,8 +6308,9 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 
       /* NOTE that in case of acquiring a lock on an instance object, the class oid of the instance object must be
        * given. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, oid, class_oid, lock, wait_msecs, &inst_entry,
-						   class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, class_oid), lock,
+					   wait_msecs, &inst_entry, class_entry);
       goto end;
     }
 
@@ -6338,7 +6357,6 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
   int tran_index;
   int wait_msecs;
   int granted;
-  OID tran_oid;
   LK_ENTRY *tran_entry = NULL;
 
   if (!MVCCID_IS_VALID (mvccid))
@@ -6352,8 +6370,6 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
       return LK_GRANTED;
     }
 
-  lock_pack_mvccid_to_oid (mvccid, &tran_oid);
-
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (cond_flag == LK_COND_LOCK)
     {
@@ -6364,9 +6380,9 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
 
-  /* class_oid == NULL, but stamped LOCK_RESOURCE_TRANSACTION so it never aliases a real class. */
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, &tran_oid, NULL, lock, wait_msecs,
-					       &tran_entry, NULL);
+  /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
+  granted = lock_internal_perform_lock_object (thread_p, tran_index, lock_create_mvccid_search_key (mvccid), lock,
+					       wait_msecs, &tran_entry, NULL);
   return granted;
 #endif /* !SERVER_MODE */
 }
@@ -6389,7 +6405,6 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
   return;
 #else /* !SERVER_MODE */
   int tran_index;
-  OID tran_oid;
   LK_RES_KEY search_key;
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
@@ -6399,11 +6414,10 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
       return;
     }
 
-  lock_pack_mvccid_to_oid (mvccid, &tran_oid);
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  /* Build the TRANSACTION-typed search key directly (lock_find_tran_hold_entry would force INSTANCE). */
-  search_key = lock_create_search_key (&tran_oid, NULL);
+  /* Build the TRANSACTION-typed search key directly from the MVCCID (full 64-bit, no OID packing). */
+  search_key = lock_create_mvccid_search_key (mvccid);
   assert (search_key.type == LOCK_RESOURCE_TRANSACTION);
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
@@ -6516,8 +6530,9 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   if (old_superclass_lock < new_superclass_lock)
     {
       /* superclass is already locked, just promote to the new lock */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, superclass_oid, NULL, new_superclass_lock,
-						   wait_msecs, &superclass_entry, NULL);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (superclass_oid, NULL),
+					   new_superclass_lock, wait_msecs, &superclass_entry, NULL);
       if (granted != LK_GRANTED)
 	{
 	  goto end;
@@ -6529,8 +6544,9 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object must not be
    * given. */
 
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, subclass_oid, NULL, lock, wait_msecs,
-					       &subclass_entry, superclass_entry);
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (subclass_oid, NULL), lock,
+				       wait_msecs, &subclass_entry, superclass_entry);
 end:
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
@@ -6638,8 +6654,9 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   /* acquire the lock on the class */
   /* NOTE that in case of acquiring a lock on a class object, the higher lock granule of the class object is not given. */
   root_class_entry = lock_get_class_lock (thread_p, oid_Root_class_oid);
-  granted = lock_internal_perform_lock_object (thread_p, tran_index, class_oid, NULL, class_lock, wait_msecs,
-					       &class_entry, root_class_entry);
+  granted =
+    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (class_oid, NULL), class_lock,
+				       wait_msecs, &class_entry, root_class_entry);
   assert (granted == LK_GRANTED || cond_flag == LK_COND_LOCK || er_errid () != NO_ERROR);
 
 #if defined (EnableThreadMonitoring)
@@ -6765,8 +6782,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	  root_lock = lockhint->classes[i].lock;
 
 	  /* hold an explicit lock on the root class */
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, root_oidp, NULL, root_lock, wait_msecs,
-						       &root_class_entry, NULL);
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (root_oidp, NULL),
+					       root_lock, wait_msecs, &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      if (lockhint->quit_on_errors == (int) true || granted != LK_NOTGRANTED_DUE_TIMEOUT)
@@ -6814,8 +6832,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 
       if (root_class_entry == NULL || root_class_entry->granted_mode < intention_mode)
 	{
-	  granted = lock_internal_perform_lock_object (thread_p, tran_index, oid_Root_class_oid, NULL, intention_mode,
-						       wait_msecs, &root_class_entry, NULL);
+	  granted =
+	    lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid_Root_class_oid, NULL),
+					       intention_mode, wait_msecs, &root_class_entry, NULL);
 	  if (granted != LK_GRANTED)
 	    {
 	      if (lockhint->quit_on_errors == false && granted == LK_NOTGRANTED_DUE_TIMEOUT)
@@ -6828,8 +6847,9 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 	}
 
       /* hold the lock on the given class. */
-      granted = lock_internal_perform_lock_object (thread_p, tran_index, &cls_lockinfo[i].oid, NULL,
-						   cls_lockinfo[i].lock, wait_msecs, &class_entry, root_class_entry);
+      granted =
+	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (&cls_lockinfo[i].oid, NULL),
+					   cls_lockinfo[i].lock, wait_msecs, &class_entry, root_class_entry);
 
       if (granted != LK_GRANTED)
 	{
@@ -8554,10 +8574,10 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      r =
-	lock_internal_perform_lock_object (thread_p, tran_index, &acqlocks->obj[i].oid,
-					   OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid,
-					   acqlocks->obj[i].lock, LK_INFINITE_WAIT, &dummy_ptr, NULL);
+      const OID *class_oidp = OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid;
+      LK_RES_KEY obj_key = lock_create_search_key (&acqlocks->obj[i].oid, class_oidp);
+      r = lock_internal_perform_lock_object (thread_p, tran_index, obj_key, acqlocks->obj[i].lock, LK_INFINITE_WAIT,
+					     &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8923,9 +8943,9 @@ lock_add_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_lock,
 
       /* initialize lockcomp_class */
       COPY_OID (&lockcomp_class->class_oid, class_oid);
-      if (lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, class_oid, NULL, IX_LOCK,
-					     lockcomp->wait_msecs, &lockcomp_class->class_lock_ptr,
-					     lockcomp->root_class_ptr) != LK_GRANTED)
+      if (lock_internal_perform_lock_object
+	  (thread_p, lockcomp->tran_index, lock_create_search_key (class_oid, NULL), IX_LOCK, lockcomp->wait_msecs,
+	   &lockcomp_class->class_lock_ptr, lockcomp->root_class_ptr) != LK_GRANTED)
 	{
 	  ret = ER_FAILED;
 	  goto exit_on_error;
@@ -9050,8 +9070,10 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
 	  || lockcomp_class->num_inst_oids == prm_get_integer_value (PRM_ID_LK_ESCALATION_AT))
 	{
 	  /* hold X_LOCK on the class object */
-	  value = lock_internal_perform_lock_object (thread_p, lockcomp->tran_index, &lockcomp_class->class_oid, NULL,
-						     X_LOCK, lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
+	  value =
+	    lock_internal_perform_lock_object (thread_p, lockcomp->tran_index,
+					       lock_create_search_key (&lockcomp_class->class_oid, NULL), X_LOCK,
+					       lockcomp->wait_msecs, &dummy, lockcomp->root_class_ptr);
 	  if (value != LK_GRANTED)
 	    {
 	      break;
@@ -9063,9 +9085,9 @@ lock_finalize_composite_lock (THREAD_ENTRY * thread_p, LK_COMPOSITE_LOCK * comp_
 	  for (i = 0; i < lockcomp_class->num_inst_oids; i++)
 	    {
 	      value = lock_internal_perform_lock_object (thread_p, lockcomp->tran_index,
-							 &lockcomp_class->inst_oid_space[i],
-							 &lockcomp_class->class_oid, X_LOCK, lockcomp->wait_msecs,
-							 &dummy, lockcomp_class->class_lock_ptr);
+							 lock_create_search_key (&lockcomp_class->inst_oid_space[i],
+										 &lockcomp_class->class_oid), X_LOCK,
+							 lockcomp->wait_msecs, &dummy, lockcomp_class->class_lock_ptr);
 	      if (value != LK_GRANTED)
 		{
 		  break;
@@ -9927,6 +9949,10 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	}
       break;
 
+    case LOCK_RESOURCE_TRANSACTION:
+      fprintf (log_fp, ", transaction self-lock, mvccid=%llu", (unsigned long long) res_ptr->key.mvccid);
+      break;
+
     default:
       break;
     }
@@ -10025,8 +10051,9 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
       wait_msecs = logtb_find_wait_msecs (tran_index);
     }
 
-  if (lock_internal_perform_lock_object (thread_p, tran_index, rep_read_oid, NULL, lock, wait_msecs, &entry_addr,
-					 NULL) != LK_GRANTED)
+  if (lock_internal_perform_lock_object
+      (thread_p, tran_index, lock_create_search_key (rep_read_oid, NULL), lock, wait_msecs, &entry_addr,
+       NULL) != LK_GRANTED)
     {
       return ER_FAILED;
     }
