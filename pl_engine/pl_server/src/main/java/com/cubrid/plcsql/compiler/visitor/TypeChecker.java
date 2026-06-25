@@ -1241,16 +1241,55 @@ public class TypeChecker extends AstVisitor<Type> {
         return null; // nothing to do
     }
 
-    @Override
-    public Type visitStmtOpenFor(StmtOpenFor node) {
+    private Type visitStmtOpenFor(StmtOpenFor node) {
+
         Type ty = visitExprId(node.id);
         assert ty == Type.SYS_REFCURSOR; // by earlier check
 
-        assert node.staticSql != null;
-        assert node.staticSql.intoTargetList == null; // by earlier check
+        // check types of used expressions (
+        if (node.usedExprList != null) {
 
-        typeCheckHostExprs(node.staticSql); // s407
+            for (Expr e : node.usedExprList) {
+
+                Type tyUsedExpr = visit(e);
+                switch (tyUsedExpr.idx) {
+                    case Type.IDX_RECORD:
+                        if (!node.dynamic) {
+                            break;
+                        }
+                    case Type.IDX_CURSOR:
+                    case Type.IDX_BOOLEAN:
+                    case Type.IDX_SYS_REFCURSOR:
+                        throw new SemanticError(
+                                Misc.getLineColumnOf(e.ctx), // s242
+                                "expressions in a USING clause cannot be of "
+                                        + tyUsedExpr.plcName
+                                        + " type");
+                    default:; // OK
+                }
+            }
+        }
+
         return null;
+    }
+
+    @Override
+    public Type visitStmtOpenForStatic(StmtOpenForStatic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    @Override
+    public Type visitStmtOpenForDynamic(StmtOpenForDynamic node) {
+
+        // type of sql must be STRING
+        Type sqlType = visit(node.sql);
+        if (sqlType.idx != Type.IDX_STRING) {
+            throw new SemanticError(
+                    Misc.getLineColumnOf(node.sql.ctx), // s241
+                    "SQL in the OPEN-FOR statement must be of a string type");
+        }
+
+        return visitStmtOpenFor(node);
     }
 
     @Override
@@ -1457,10 +1496,16 @@ public class TypeChecker extends AstVisitor<Type> {
         LinkedHashMap<Expr, Type> hostExprs = staticSql.hostExprs;
         for (Expr e : hostExprs.keySet()) {
             Type ty = visit(e);
-            if (ty == Type.BOOLEAN || ty == Type.CURSOR || ty == Type.SYS_REFCURSOR) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(e.ctx),
-                        "host expressions cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+            switch (ty.idx) {
+                    // NOTE: Type.IDX_RECORD is allowed
+                case Type.IDX_CURSOR:
+                case Type.IDX_BOOLEAN:
+                case Type.IDX_SYS_REFCURSOR:
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(e.ctx),
+                            "host expressions cannot be of either BOOLEAN, CURSOR or SYS_REFCURSOR type");
+
+                default:; // OK
             }
 
             /* TODO

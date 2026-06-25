@@ -2471,8 +2471,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtOpenForWithHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%);",
                 "  %'REF-CURSOR'%.open(conn, null,",
                 "    %'+HOST-EXPRS'%);",
                 "}"
@@ -2480,28 +2481,30 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtOpenForWithoutHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%);",
                 "  %'REF-CURSOR'%.open(conn, null);",
                 "}"
             };
 
-    @Override
-    public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
+    private CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
 
-        if (node.staticSql.hostExprs.size() == 0) {
+        if (node.usedExprList == null || node.usedExprList.size() == 0) {
             return new CodeTemplate(
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithoutHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"');
+                    "%'+QUERY'%",
+                    visit(node.sql));
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
-            for (Expr e : node.staticSql.hostExprs.keySet()) {
+            for (Expr e : node.usedExprList) {
                 hostExprs.addElement((CodeTemplate) visit(e));
             }
 
@@ -2509,14 +2512,30 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"',
+                    "%'+QUERY'%",
+                    visit(node.sql),
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }
     }
+
+    @Override
+    public CodeToResolve visitStmtOpenForStatic(StmtOpenForStatic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    @Override
+    public CodeToResolve visitStmtOpenForDynamic(StmtOpenForDynamic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    // -------------------------------------------------------------------------
+    // StmtRaise
+    //
 
     @Override
     public CodeToResolve visitStmtRaise(StmtRaise node) {
