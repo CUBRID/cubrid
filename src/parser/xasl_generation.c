@@ -28610,11 +28610,12 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 /*
  * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
  *				     the result flag when it visits a node that
- *				     cannot be shared: a disallowed node type, a
- *				     non-deterministic / side-effecting PT_EXPR
- *				     operator, or a PT_FUNCTION that is aggregate /
- *				     analytic / order-dependent / foreign (UDF) /
- *				     object / benchmark
+ *				     cannot be shared. Only a whitelist of node
+ *				     types is allowed (PT_NAME / PT_DOT_ / PT_VALUE /
+ *				     PT_DATA_TYPE, a deterministic / side-effect-free
+ *				     PT_EXPR, and a pure PT_FUNCTION); every other
+ *				     node type (subqueries, method calls, etc.) is
+ *				     rejected by default
  *   return: node (unchanged)
  *   parser(in):
  *   node(in):
@@ -28636,6 +28637,7 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
     case PT_NAME:
     case PT_DOT_:
     case PT_VALUE:
+    case PT_DATA_TYPE:
       /* allowed (shareable) node types */
       break;
 
@@ -28675,6 +28677,9 @@ pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
       break;
 
     default:
+      /* subqueries, method calls, and any other node type: conservatively not shareable */
+      *only_allowed = false;
+      *continue_walk = PT_STOP_WALK;
       break;
     }
 
@@ -28718,14 +28723,15 @@ pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_aggregate_arg_eq () - structural equality test used for aggregate-argument sharing
+ * pt_aggregate_arg_eq () - equality test used for aggregate-argument sharing
  *   return: true if the two expressions compute the exact same value, false otherwise
  *   parser(in):
  *   p(in):
  *   q(in):
- *   note: besides node structure, the result type/domain (precision, scale, codeset, collation)
- *	   must also match, so that two expressions over the same operands but with different
- *	   result domains (e.g. CAST(c AS CHAR(1)) vs CAST(c AS CHAR(10))) are not treated as equal.
+ *   note: identifiers are compared by path (case-insensitive); every other shareable node is compared
+ *	   by its canonical printed form. The printed form captures the full tree, including result
+ *	   type/domain modifiers (CAST target type, COLLATE), so e.g. CAST(c AS CHAR(1)) and
+ *	   CAST(c AS CHAR(10)) are not treated as equal.
  */
 static bool
 pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
@@ -28759,9 +28765,7 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
       /* identifiers are case-insensitive; reuse the existing path comparison */
       return (pt_check_path_eq (parser, p, q) == 0);
 
-    case PT_VALUE:
-    case PT_EXPR:
-    case PT_FUNCTION:
+    default:
       {
 	char *p_str, *q_str;
 	unsigned int save_custom = parser->custom_print;
@@ -28777,9 +28781,5 @@ pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
 	  }
 	return (pt_str_compare (p_str, q_str, CASE_SENSITIVE) == 0);
       }
-
-    default:
-      /* unknown / unsupported node: conservatively treat as different */
-      return false;
     }
 }
