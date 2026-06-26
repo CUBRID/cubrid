@@ -482,7 +482,12 @@ struct pgbuf_holder_anchor
   int num_hold_cnt;		/* # of used BCB holder entries */
   PGBUF_HOLDER *thrd_free_list;	/* free BCB holder list */
   PGBUF_HOLDER *thrd_hold_list;	/* used(or hold) BCB holder list */
+  /* Pad to a full cache line: num_hold_cnt/thrd_hold_list are written on every fix/unfix, so an
+   * unpadded entry false-shares with adjacent threads'. alignof stays 8 -> plain malloc still valid. */
+  char m_pad[64 - 2 * sizeof (int) - 2 * sizeof (PGBUF_HOLDER *)];
 };
+
+static_assert (sizeof (PGBUF_HOLDER_ANCHOR) == 64, "pgbuf_holder_anchor must be exactly one 64B cache line; fix m_pad");
 
 /* the entry(array structure) of free BCB holder list shared by threads */
 struct pgbuf_holder_set
