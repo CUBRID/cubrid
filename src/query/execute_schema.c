@@ -12130,10 +12130,10 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
   else if (attr_chg_properties->p[P_OOS_PREFER_INLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
     {
       /*
-       * attr_storage == PT_ATTR_STORAGE_DEFAULT -> NOW DEFAULT (size-order OOS)
-       * P_OOS_PREFER_INLINE & PRESENT_OLD       -> WAS prefer-inline
+       * attr_storage == PT_ATTR_STORAGE_DEFAULT/PREFER_OUTLINE -> NOW size-order OOS
+       * P_OOS_PREFER_INLINE & PRESENT_OLD                      -> WAS prefer-inline
        *
-       * it changed from prefer-inline to default; the attribute lost its prefer-inline state
+       * it changed from prefer-inline to default/prefer-outline; the attribute lost its prefer-inline state
        */
       attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
       attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;

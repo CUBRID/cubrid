@@ -818,6 +818,9 @@ IDL       [a-zA-Z0-9_]
 [pP][rR][eE][fF][eE][rR][_][iI][nN][lL][iI][nN][eE]			{ begin_token(yytext);
 											csql_yylval.cptr = pt_makename(yytext);
 											return PREFER_INLINE; }
+[pP][rR][eE][fF][eE][rR][_][oO][uU][tT][lL][iI][nN][eE]			{ begin_token(yytext);
+											csql_yylval.cptr = pt_makename(yytext);
+											return PREFER_OUTLINE; }
 [pP][rR][eE][pP][aA][rR][eE]						{ begin_token(yytext);   return PREPARE; }
 [pP][rR][eE][sS][eE][rR][vV][eE]					{ begin_token(yytext);   return PRESERVE; }
 [pP][rR][iI][mM][aA][rR][yY]						{ begin_token(yytext);   return PRIMARY; }

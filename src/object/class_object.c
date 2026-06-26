@@ -6603,6 +6603,12 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
 	}
     }
 
+  if (attribute->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+    {
+      assert (attribute->header.name_space != ID_CLASS_ATTRIBUTE);
+      assert (attribute->header.name_space != ID_SHARED_ATTRIBUTE);
+    }
+
   if (attribute->flags & (SM_ATTFLAG_INVISIBLE_COLUMN | SM_ATTFLAG_OOS_PREFER_INLINE))
     {
       SM_ATTRIBUTE *att;

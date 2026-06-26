@@ -1569,6 +1569,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
 %token <cptr> PREFER_INLINE
+%token <cptr> PREFER_OUTLINE
 %token <cptr> STORAGE
 %token <cptr> ISNULL
 %token <cptr> KEYLIMIT
@@ -10632,6 +10633,11 @@ column_storage_def
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_DEFAULT;
+		}}
+	| STORAGE PREFER_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_OUTLINE;
 		}}
 	;
 
@@ -20834,6 +20840,7 @@ identifier
 	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PREFER_INLINE          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PREFER_OUTLINE         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
