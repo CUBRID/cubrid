@@ -382,6 +382,7 @@ struct heap_get_context
 				 * (like serial increment) require WRITE mode */
 
   bool expand_oos;		/* if true, replace inline OOS OID slots with actual values */
+  bool keep_recdes_buffer;	/* true if recdes_p->data must not be rebound to scan cache */
 };
 
 typedef struct sampling_info SAMPLING_INFO;
@@ -428,6 +429,8 @@ extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+extern SCAN_CODE heap_next_expand_oos (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
+				       OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern SCAN_CODE heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 				     sampling_info * sampling);

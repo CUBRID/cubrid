@@ -812,7 +812,12 @@ static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, R
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
-				     bool reversed_direction, DB_VALUE ** cache_recordinfo, sampling_info * sampling);
+				     bool expand_oos, bool reversed_direction, DB_VALUE ** cache_recordinfo,
+				     sampling_info * sampling);
+static SCAN_CODE heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+						     RECDES * recdes, RECDES * peeked_recdes,
+						     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+						     bool expand_oos);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
@@ -7940,8 +7945,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
-		    sampling_info * sampling)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool expand_oos, bool reversed_direction,
+		    DB_VALUE ** cache_recordinfo, sampling_info * sampling)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -8210,8 +8215,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  scan_cache->cache_last_fix_page = true;
 
 	  scan =
-	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					   NULL_CHN);
+	    heap_scan_get_visible_version_impl (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache,
+						ispeeking, NULL_CHN, expand_oos);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 	}
 
@@ -20243,7 +20248,19 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false, NULL,
+			     NULL);
+}
+
+/*
+ * heap_next_expand_oos () - Retrieve or peek next object, expanding inline OOS OIDs.
+ */
+SCAN_CODE
+heap_next_expand_oos (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
+		      HEAP_SCANCACHE * scan_cache, int ispeeking)
+{
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, false, NULL,
+			     NULL);
 }
 
 /*
@@ -20265,7 +20282,8 @@ SCAN_CODE
 heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, int ispeeking, sampling_info * sampling)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, sampling);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false, NULL,
+			     sampling);
 }
 
 /*
@@ -20291,7 +20309,7 @@ SCAN_CODE
 heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false,
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false,
 			     cache_recordinfo, NULL);
 }
 
@@ -20314,7 +20332,8 @@ SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, true, NULL,
+			     NULL);
 }
 
 /*
@@ -20340,8 +20359,8 @@ SCAN_CODE
 heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, cache_recordinfo,
-			     NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, true,
+			     cache_recordinfo, NULL);
 }
 
 /*
@@ -26487,7 +26506,8 @@ heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, O
 */
 static SCAN_CODE
 heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+				    bool expand_oos)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
@@ -26506,11 +26526,11 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
    * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through
    * the heap_get_visible_version_internal() function.
    *
-   * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots.
-   * The scan path never expands OOS (callers that need expanded records use
-   * heap_get_visible_version_expand_oos instead), so no OOS guard is needed here.
+   * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots. Skip it when callers
+   * explicitly need an expanded raw record.
    */
-  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
+  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK
+      && (!expand_oos || !heap_recdes_contains_oos (peeked_recdes)))
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
 
@@ -26556,6 +26576,7 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.expand_oos = expand_oos;
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -26569,7 +26590,32 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
-					     old_chn);
+					     old_chn, false);
+}
+
+/*
+ * heap_prepare_recdes_copy_area () - Prepare storage for a COPY fetch through a heap get context.
+ *
+ * return: NO_ERROR or error code
+ *
+ * When recdes_p points to caller-owned storage, only reserve scan-cache area so
+ * that the caller buffer is not replaced.  When recdes_p is empty or already
+ * scan-cache-owned, bind recdes_p to the scan-cache area so later COPY and OOS
+ * expansion code can safely grow and refresh recdes_p->data.
+ */
+static int
+heap_prepare_recdes_copy_area (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  assert (context != NULL);
+  assert (context->scan_cache != NULL);
+  assert (context->recdes_p != NULL);
+
+  if (context->keep_recdes_buffer)
+    {
+      return heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2);
+    }
+
+  return heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE * 2);
 }
 
 /*
@@ -26600,7 +26646,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -26813,7 +26859,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->scan_cache && context->ispeeking == COPY)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -26982,6 +27028,10 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
   context->expand_oos = false;
+  const bool data_is_scan_cache_area =
+    scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
+  context->keep_recdes_buffer =
+    recdes != NULL && recdes->data != NULL && recdes->area_size >= 0 && !data_is_scan_cache_area;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
