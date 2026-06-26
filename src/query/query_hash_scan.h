@@ -80,10 +80,10 @@ struct qfile_tuple_simple_pos
 };
 
 /* hash scan value
- * NOTE: The hash entry stores the payload pointer directly in HENTRY_HLS.data
- * (the tuple copy for IN_MEM, the tuple position for HYBRID). There is no
- * wrapper object, so probing dereferences one level less and building does one
- * allocation less per row. */
+ * NOTE: The hash table stores the payload pointer directly in the entry slot
+ * (MHT_HLS_SLOT.data) - the tuple copy for IN_MEM, the tuple position for HYBRID.
+ * There is no wrapper object, so probing dereferences one level less and building
+ * does one allocation less per row. */
 
 /* hash scan key */
 typedef struct hash_scan_key HASH_SCAN_KEY;

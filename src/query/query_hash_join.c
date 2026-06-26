@@ -2696,6 +2696,8 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   hash_scan->curr_hash_key = 0;
   hash_scan->need_coerce_type = false;
+  /* default off; hjoin_build() decides per build whether the build key can be cached */
+  hash_scan->cache_build_key = false;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;

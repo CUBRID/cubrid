@@ -134,7 +134,11 @@ extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * h
  * 4. Since hash size is fixed, rehashing the hash table is not necessary.
  */
 
-/* Hash Table Entry for HASH LIST SCAN - linked list, keyless hash entry */
+/* Hash Table Entry for HASH LIST SCAN.
+ * NOTE: HASH LIST SCAN now uses open addressing (MHT_HLS_SLOT); this struct is no
+ * longer a storage type. It is kept only because the IN_MEM/HYBRID/HASH_FILE method
+ * selection heuristic estimates per-row memory as sizeof(HENTRY_HLS) + sizeof
+ * (QFILE_TUPLE_SIMPLE_POS). The tail/next fields are unused. */
 typedef struct hentry_hls HENTRY_HLS;
 typedef struct hentry_hls *HENTRY_HLS_PTR;
 struct hentry_hls
