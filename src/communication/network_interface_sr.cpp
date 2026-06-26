@@ -10887,6 +10887,7 @@ ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
   session_stop_attached_threads (thread_p, session);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool
 cdc_check_client_connection ()
 {
@@ -10900,6 +10901,7 @@ cdc_check_client_connection ()
       return false;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
@@ -11142,23 +11144,41 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
-  /* scdc_start_session more than once without scdc_end_session */
+  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
   if (cdc_Gl.conn.fd != -1)
     {
-      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
-	{
-	  /* check if existing connection is alive */
-	  if (cdc_check_client_connection ())
-	    {
-	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
 
-	      error_code = ER_CDC_NOT_AVAILABLE;
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-	      goto error;
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+
+		  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
+		  css_request_shutdown_conn (prev_conn, 0, false, 0);
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
 	    }
 	}
 
-      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
       if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
 	{
 	  cdc_pause_producer ();
@@ -11169,6 +11189,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -11433,6 +11454,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
 
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.conn.client_id = -1;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
