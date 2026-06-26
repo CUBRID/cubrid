@@ -20997,8 +20997,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       /* For an MVCC class the transaction self-lock (taken above) covers the unique/FK check, so skip the
        * per-row lock on every slot -- appended or reused. A non-MVCC class (e.g. catalog/serial) takes no
        * self-lock and must still take the per-row X-lock below to satisfy the unique-insert lock invariant.
-       * Reused slots also skip the lock here; the prior conditional lock guarded OID reuse (CBRD-26942,
-       * under validation). */
+       * Skipping it on reused (REUSE_OID) slots is safe for concurrent DML: a slot becomes reusable only
+       * after the old row's deleter committed, and the deleter's X-lock blocks any conflicting S/X holder, so
+       * no such holder survives to reuse time; and every normal-DML instance-OID lock consumer re-validates
+       * the row's MVCCID after locking, so a reissued OID is detected and re-evaluated, never mis-operated. */
       if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
 	  return NO_ERROR;
