@@ -399,6 +399,7 @@ struct pgbuf_status
   unsigned long long num_pages_read;
   unsigned int num_flusher_waiting_threads;
   unsigned int dummy;
+  char m_pad[64 - 5 * sizeof (unsigned long long) - 2 * sizeof (unsigned int)];
 };
 
 struct pgbuf_status_snapshot
@@ -1777,14 +1778,14 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (MAX_NTRANS + 1));
+  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
   if (pgbuf_Pool.show_status == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (MAX_NTRANS + 1));
+  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
 
   pgbuf_Pool.show_status_old.print_out_time = time (NULL);
 
@@ -2137,8 +2138,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
   bool maybe_deallocated;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
@@ -7997,8 +7997,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 #if defined (SERVER_MODE)
   struct timespec to;
@@ -8215,8 +8214,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   PAGE_PTR pgptr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
   PGBUF_ATOMIC_LATCH_IMPL impl;
 
 #if defined (ENABLE_SYSTEMTAP)
@@ -10548,8 +10546,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 
   PGBUF_BCB_CHECK_OWN (bufptr);
@@ -16906,7 +16903,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   pgbuf_scan_bcb_table ();
 
-  for (i = 0; i <= MAX_NTRANS; i++)
+  for (i = 0; i <= (int) thread_num_total_threads (); i++)
     {
       status_accumulated.num_hit += pgbuf_Pool.show_status[i].num_hit;
       status_accumulated.num_page_request += pgbuf_Pool.show_status[i].num_page_request;
