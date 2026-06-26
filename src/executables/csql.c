@@ -233,7 +233,7 @@ static void display_buffer (void);
 static void start_csql (CSQL_ARGUMENT * csql_arg);
 static void csql_read_file (const char *file_name);
 static void csql_write_file (const char *file_name, int append_flag);
-static void display_error (DB_SESSION * session);
+static void display_error (DB_SESSION * session, int stmt_start_line_no);
 static void free_attr_spec (DB_QUERY_TYPE ** attr_spec);
 static void csql_print_database (void);
 static void csql_set_sys_param (const char *arg_str);
@@ -2008,11 +2008,11 @@ csql_change_working_directory (const char *dirname)
  *   session(in)
  */
 static void
-display_error (DB_SESSION * session)
+display_error (DB_SESSION * session, int stmt_start_line_no)
 {
   if (csql_Error_code == CSQL_ERR_SQL_ERROR)
     {
-      csql_display_session_err (session);
+      csql_display_session_err (session, stmt_start_line_no);
       csql_check_server_down ();
     }
   else
@@ -2250,7 +2250,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	  /* Do not continue if there are no statments in the buffer */
 	  if (csql_arg->continue_on_error && (db_error_code () != ER_IT_EMPTY_STATEMENT))
 	    {
-	      display_error (session);
+	      display_error (session, 0);
 	      /* do_abort_transaction() should be called after display_error() because in some cases it deallocates the
 	       * parser containing the error message */
 	      if (do_abort_transaction)
@@ -2294,7 +2294,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 	    }
 	  if (csql_arg->continue_on_error)
 	    {
-	      display_error (session);
+	      display_error (session, stmt_start_line_no);
 	      if (do_abort_transaction)
 		{
 		  db_abort_transaction ();
@@ -2419,7 +2419,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 
 	      if (csql_arg->continue_on_error)
 		{
-		  display_error (session);
+		  display_error (session, stmt_start_line_no);
 		  if (do_abort_transaction)
 		    {
 		      db_abort_transaction ();
@@ -2523,7 +2523,7 @@ error:
       do_abort_transaction = true;
     }
 
-  display_error (session);
+  display_error (session, stmt_start_line_no);
   if (csql_arg->pl_server_output)
     {
       csql_print_server_output (csql_arg);

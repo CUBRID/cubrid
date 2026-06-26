@@ -628,11 +628,10 @@ csql_display_csql_err (int line_no, int col_no)
  *   session(in): context of query compilation 
  */
 void
-csql_display_session_err (DB_SESSION * session)
+csql_display_session_err (DB_SESSION * session, int line_no)
 {
   DB_SESSION_ERROR *err;
   int col_no = 0;
-  int line_no = 0;
 
   csql_Error_code = CSQL_ERR_SQL_ERROR;
 

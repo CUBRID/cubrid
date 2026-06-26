@@ -346,7 +346,7 @@ extern "C"
   extern FILE *csql_popen (const char *cmd, FILE * fd);
   extern void csql_pclose (FILE * pf, FILE * fd);
   extern void csql_display_csql_err (int line_no, int col_no);
-  extern void csql_display_session_err (DB_SESSION * session);
+  extern void csql_display_session_err (DB_SESSION * session, int line_no);
   extern int csql_append_more_line (int indent, const char *line);
   extern void csql_display_more_lines (const char *title);
   extern void csql_free_more_lines (void);
