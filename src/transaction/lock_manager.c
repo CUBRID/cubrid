@@ -3451,12 +3451,23 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 #if defined(LK_DUMP)
   if (lk_Gl.config.dump_level >= 1)
     {
-      fprintf (stderr,
-	       "LK_DUMP::lk_internal_lock_object()\n"
-	       "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n", tran_index,
-	       oid->volid, oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1,
-	       class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, lock_to_lockmode_string (lock),
-	       wait_msecs);
+      if (is_transaction_lock)
+	{
+	  /* Transaction self-lock has no OID; dump the MVCCID key instead (oid is NULL here). */
+	  fprintf (stderr,
+		   "LK_DUMP::lk_internal_lock_object()\n"
+		   "  tran(%2d) : mvccid(%llu), LOCK(%7s) wait_msecs(%d)\n", tran_index,
+		   (unsigned long long) search_key.mvccid, lock_to_lockmode_string (lock), wait_msecs);
+	}
+      else
+	{
+	  fprintf (stderr,
+		   "LK_DUMP::lk_internal_lock_object()\n"
+		   "  tran(%2d) : oid(%2d|%3d|%3d), class_oid(%2d|%3d|%3d), LOCK(%7s) wait_msecs(%d)\n", tran_index,
+		   oid->volid, oid->pageid, oid->slotid, class_oid ? class_oid->volid : -1,
+		   class_oid ? class_oid->pageid : -1, class_oid ? class_oid->slotid : -1, lock_to_lockmode_string (lock),
+		   wait_msecs);
+	}
     }
 #endif /* LK_DUMP */
 
