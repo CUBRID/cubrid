@@ -45,6 +45,7 @@ namespace parallel_scan
   class xasl_snapshot_variables;
   class mergeable_list_tls;
   class xasl_snapshot_tls;
+  class trace_handler;
 
   template <RESULT_TYPE result_type>
   class result_handler
@@ -65,6 +66,7 @@ namespace parallel_scan
       void write_initialize (THREAD_ENTRY *thread_p, OUTPTR_LIST *outptr_list, XASL_NODE *curr_xasl, VAL_DESCR *vd);
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
+      void set_trace_handler (trace_handler *trace_handler_p);
 
     private:
       void get_valid_read_spec ();
@@ -84,7 +86,8 @@ namespace parallel_scan
       mergeable_list_variables()
 	: orig_xasl (nullptr),
 	  active_results (0),
-	  is_list_id_domain_resolved (false) {}
+	  is_list_id_domain_resolved (false),
+	  trace_handler_p (nullptr) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
@@ -93,6 +96,7 @@ namespace parallel_scan
       bool is_list_id_domain_resolved;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      trace_handler *trace_handler_p;
   };
 
   class xasl_snapshot_variables
@@ -117,7 +121,8 @@ namespace parallel_scan
 	  xasl (nullptr),
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
-	  g_agg_domains_resolved (TRUE) {}
+	  g_agg_domains_resolved (TRUE),
+	  is_topn (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -127,6 +132,8 @@ namespace parallel_scan
       bool val_list_domain_resolved;
       AGGREGATE_HASH_STATE agg_hash_state;
       int g_agg_domains_resolved;
+      /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
+      bool is_topn;
   };
 
   class xasl_snapshot_tls
@@ -239,6 +246,7 @@ namespace parallel_scan
 			     xasl_node *xasl_p);
       bool write (THREAD_ENTRY *thread_p);
       void write_finalize (THREAD_ENTRY *thread_p);
+      void signal_worker_done ();
     private:
       int m_parallelism;
       std::mutex m_result_mutex;
