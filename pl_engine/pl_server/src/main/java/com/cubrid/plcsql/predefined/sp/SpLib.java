@@ -628,6 +628,8 @@ public class SpLib {
                     throw new CURSOR_ALREADY_OPEN();
                 }
 
+                assert myStmt == null;
+
                 PreparedStatement pstmt;
 
                 // using pstmtRef is for the loop optimization:
@@ -648,6 +650,11 @@ public class SpLib {
                 if (dynamic) {
                     ResultSetMetaData rsmd = pstmt.getMetaData();
                     if (rsmd == null || rsmd.getColumnCount() < 1) {
+                        // the query is not a SELECT statement
+                        pstmt.close();
+                        if (pstmtRef == null) {
+                            myStmt = null;
+                        }
                         throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
                     }
                 }
