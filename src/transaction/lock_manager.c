@@ -724,7 +724,9 @@ lock_create_mvccid_search_key (MVCCID mvccid)
 {
   /* Value-initialize (also zeroes reserved), then set mvccid; do not write the OID member afterwards.
    * lock_res_key_{hash,compare,copy} dispatch on type and read only mvccid for this key. */
+  /* *INDENT-OFF* */
   LK_RES_KEY search_key = {};
+  /* *INDENT-ON* */
 
   search_key.type = LOCK_RESOURCE_TRANSACTION;
   search_key.mvccid = mvccid;
