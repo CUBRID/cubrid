@@ -445,7 +445,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
+                        "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
                         node.name,
                         StringEscapeUtils.escapeJava(node.staticSql.rewritten),
                         Arrays.toString(node.paramRefCounts),
@@ -2473,7 +2473,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // %'KIND'% open-for statement",
                 "  %'REF-CURSOR'% = new Query(",
-                "    %'+QUERY'%);",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
                 "  %'REF-CURSOR'%.open(conn, null,",
                 "    %'+HOST-EXPRS'%);",
                 "}"
@@ -2483,7 +2484,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             new String[] {
                 "{ // %'KIND'% open-for statement",
                 "  %'REF-CURSOR'% = new Query(",
-                "    %'+QUERY'%);",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
                 "  %'REF-CURSOR'%.open(conn, null);",
                 "}"
             };
@@ -2500,7 +2502,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
                     "%'+QUERY'%",
-                    visit(node.sql));
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false");
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
@@ -2518,6 +2522,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     node.id.javaCode(),
                     "%'+QUERY'%",
                     visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false",
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }

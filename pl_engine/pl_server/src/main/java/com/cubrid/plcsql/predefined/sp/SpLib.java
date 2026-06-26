@@ -608,13 +608,15 @@ public class SpLib {
 
     public static class Query {
         public final String query;
+        public final boolean dynamic;
         public ResultSet rs;
         public int rowCount = -1;
 
         private PreparedStatement myStmt;
 
-        public Query(String query) {
+        public Query(String query, boolean dynamic) {
             this.query = query;
+            this.dynamic = dynamic;
         }
 
         public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
@@ -640,6 +642,13 @@ public class SpLib {
                     if (pstmt == null) {
                         pstmt = conn.prepareStatement(query);
                         pstmtRef[0] = pstmt; // store it for the later loop iterations
+                    }
+                }
+
+                if (dynamic) {
+                    ResultSetMetaData rsmd = pstmt.getMetaData();
+                    if (rsmd == null || rsmd.getColumnCount() < 1) {
+                        throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
                     }
                 }
 
