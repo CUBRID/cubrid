@@ -117,6 +117,14 @@ namespace parallel_scan
 		continue;
 	      }
 	    DB_VALUE *slot = clone_subq->single_tuple->valp->val;
+	    /* the back-pointer must still resolve to this subquery after unpack and clone; otherwise the
+	       slot rewrite below would clobber an unrelated operand, so report a malformed node up front. */
+	    if (regu->xasl != clone_subq)
+	      {
+		assert (false);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		return ER_QPROC_INVALID_XASLNODE;
+	      }
 	    /* release clone's stale operand value, unless it already aliases the target slot. */
 	    if (regu->value.dbvalptr != nullptr && regu->value.dbvalptr != slot)
 	      {
@@ -126,14 +134,16 @@ namespace parallel_scan
 	    pr_clone_value (map_val, slot);
 	    /* alias the predicate operand to that slot -- no second copy. */
 	    regu->value.dbvalptr = slot;
-	    /* single_tuple clear loop in qexec_clear_xasl is sole owner -- avoid double clear. */
+	    /* regu operand now aliases single_tuple->valp->val (one DB_VALUE). On clone teardown the
+	       single_tuple clear loop (qexec_clear_xasl_head) always clears that slot, and the
+	       TYPE_CONSTANT regu cleanup may pr_clear_value the same pointer again; pr_clear_value is
+	       idempotent (DB_IS_NULL guard makes the second call a no-op), so there is no double free
+	       regardless of this flag. Normalize the marker to unset for consistency across clone kinds. */
 	    REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
 	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution. */
 	    clone_subq->status = XASL_SUCCESS;
 	    /* force non-cache fetch branch so the worker uses the redirected dbvalptr. */
 	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
-	    assert (regu->xasl == clone_subq && regu->value.dbvalptr == clone_subq->single_tuple->valp->val
-		    && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE));
 	  }
       }
 
