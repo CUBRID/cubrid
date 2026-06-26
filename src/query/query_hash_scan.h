@@ -129,6 +129,9 @@ struct hash_list_scan
   HASH_METHOD hash_list_scan_type;	/* IN_MEM, HYBRID or HASH_FILE */
   unsigned int curr_hash_key;	/* current hash key */
   bool need_coerce_type;	/* Are the types of probe and build different? */
+  bool cache_build_key;		/* P4: cache the build key in the entry payload (IN_MEM, single hash join,
+				 * fixed-size keys, no coercion) so the probe compares without re-parsing the
+				 * build tuple. See hjoin_build_key()/hjoin_inner_probe(). */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
