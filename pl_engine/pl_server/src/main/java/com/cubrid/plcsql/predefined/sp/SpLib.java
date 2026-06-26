@@ -623,14 +623,14 @@ public class SpLib {
 
             assert val != null;
 
+            if (isOpen()) {
+                throw new CURSOR_ALREADY_OPEN();
+            }
+
+            assert myStmt == null;
+
             PreparedStatement pstmt = null;
             try {
-                if (isOpen()) {
-                    throw new CURSOR_ALREADY_OPEN();
-                }
-
-                assert myStmt == null;
-
                 // using pstmtRef is for the loop optimization:
                 //  preparing the statement once and closing it once for the whole iterations
                 if (pstmtRef == null) {
@@ -649,7 +649,7 @@ public class SpLib {
                 if (dynamic) {
                     ResultSetMetaData rsmd = pstmt.getMetaData();
                     if (rsmd == null || rsmd.getColumnCount() < 1) {
-                        throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
+                        throw new RuntimeException("dynamic SQL must be a SELECT statement");
                     }
                 }
 
