@@ -626,6 +626,7 @@ public class SpLib {
             }
 
             assert myStmt == null;
+            assert rs == null;
 
             PreparedStatement pstmt = null;
             try {
@@ -647,7 +648,7 @@ public class SpLib {
                 if (dynamic) {
                     ResultSetMetaData rsmd = pstmt.getMetaData();
                     if (rsmd == null || rsmd.getColumnCount() < 1) {
-                        throw new RuntimeException("dynamic SQL must be a SELECT statement");
+                        throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
                     }
                 }
 
@@ -655,55 +656,52 @@ public class SpLib {
                     pstmt.setObject(i + 1, val[i]);
                 }
                 rs = pstmt.executeQuery();
-            } catch (Exception e) {
-                if (pstmt != null) {
-                    try {
-                        pstmt.close();
-                    } catch (Exception ee) {
-                        // ignore ee
+            } catch (SQLException e) {
+                throw new SQL_ERROR(e.getMessage());
+            } finally {
+                if (rs == null) {
+                    // exception case
+                    if (pstmt != null) {
+                        try {
+                            pstmt.close();
+                        } catch (Exception ee) {
+                            // ignore ee
+                        }
                     }
-                }
 
-                if (pstmtRef == null) {
-                    myStmt = null;
-                }
-
-                if (e instanceof SQLException) {
-                    throw new SQL_ERROR(e.getMessage());
-                } else {
-                    throw new RuntimeException(e);
+                    if (pstmtRef == null) {
+                        myStmt = null;
+                    }
                 }
             }
         }
 
         public void close() {
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("attempted to close an unopened cursor");
+            }
+
             try {
-                if (!isOpen()) {
-                    throw new INVALID_CURSOR("attempted to close an unopened cursor");
-                }
                 if (myStmt == null) {
                     // no need to close the statement because it was declared and is closed outside
                     // of this Query
                     // close only the result set.
                     rs.close();
-                    rs = null;
                 } else {
-                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
-                    // on Statement.close()
-                    myStmt = null;
-                    rs = null;
+                    // it also closes rs according to the JDBC spec: see Javadoc on
+                    // Statement.close()
+                    myStmt.close();
                 }
             } catch (SQLException e) {
                 throw new SQL_ERROR(e.getMessage());
+            } finally {
+                rs = null;
+                myStmt = null;
             }
         }
 
         public boolean isOpen() {
-            try {
-                return (rs != null && !rs.isClosed());
-            } catch (SQLException e) {
-                throw new SQL_ERROR(e.getMessage());
-            }
+            return (rs != null);
         }
 
         public boolean fetch() {
