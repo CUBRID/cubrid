@@ -33,10 +33,12 @@ package com.cubrid.plcsql.predefined.sp;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
@@ -613,6 +615,10 @@ public class SpLib {
         private PreparedStatement myStmt;
 
         public Query(String query, boolean dynamic) {
+
+            if (query == null) {
+                throw new SQL_ERROR("SQL part was evaluated to NULL");
+            }
             this.query = query;
             this.dynamic = dynamic;
         }
@@ -646,8 +652,11 @@ public class SpLib {
                 }
 
                 if (dynamic) {
-                    ResultSetMetaData rsmd = pstmt.getMetaData();
-                    if (rsmd == null || rsmd.getColumnCount() < 1) {
+                    byte stmtType =
+                            ((CUBRIDServerSideStatement) pstmt)
+                                    .getStatementHandler()
+                                    .getStatementType();
+                    if (stmtType != ServerConstants.CUBRID_STMT_SELECT) {
                         throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
                     }
                 }

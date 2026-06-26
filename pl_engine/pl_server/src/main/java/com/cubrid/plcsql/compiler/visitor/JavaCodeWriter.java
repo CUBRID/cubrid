@@ -2475,8 +2475,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "  %'REF-CURSOR'% = new Query(",
                 "    %'+QUERY'%,",
                 "    %'DYNAMIC'%);",
-                "  %'REF-CURSOR'%.open(conn, null,",
-                "    %'+HOST-EXPRS'%);",
+                "  %'REF-CURSOR'%.open(conn, null, new Object[] {",
+                "    %'+HOST-EXPRS'% });",
                 "}"
             };
 
