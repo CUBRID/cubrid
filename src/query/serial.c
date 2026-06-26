@@ -53,20 +53,25 @@ static int rc;
 #endif /* !SERVER_MODE */
 
 /* attribute of _db_serial class */
+#define SERIAL_ATTR_LIST \
+  MAP_LIST_ITEM (UNIQUE_NAME) \
+  MAP_LIST_ITEM (NAME) \
+  MAP_LIST_ITEM (OWNER) \
+  MAP_LIST_ITEM (CURRENT_VAL) \
+  MAP_LIST_ITEM (INCREMENT_VAL) \
+  MAP_LIST_ITEM (MAX_VAL) \
+  MAP_LIST_ITEM (MIN_VAL) \
+  MAP_LIST_ITEM (CYCLIC) \
+  MAP_LIST_ITEM (STARTED) \
+  MAP_LIST_ITEM (CLASS_NAME) \
+  MAP_LIST_ITEM (ATTR_NAME) \
+  MAP_LIST_ITEM (CACHED_NUM)
+
 typedef enum
 {
-  SERIAL_ATTR_UNIQUE_NAME_INDEX,
-  SERIAL_ATTR_NAME_INDEX,
-  SERIAL_ATTR_OWNER_INDEX,
-  SERIAL_ATTR_CURRENT_VAL_INDEX,
-  SERIAL_ATTR_INCREMENT_VAL_INDEX,
-  SERIAL_ATTR_MAX_VAL_INDEX,
-  SERIAL_ATTR_MIN_VAL_INDEX,
-  SERIAL_ATTR_CYCLIC_INDEX,
-  SERIAL_ATTR_STARTED_INDEX,
-  SERIAL_ATTR_CLASS_NAME_INDEX,
-  SERIAL_ATTR_ATTR_NAME_INDEX,
-  SERIAL_ATTR_CACHED_NUM_INDEX,
+#define MAP_LIST_ITEM(item)     SERIAL_ATTR_##item##_INDEX,
+  SERIAL_ATTR_LIST
+#undef MAP_LIST_ITEM
   SERIAL_ATTR_MAX_INDEX
 } SR_ATTRIBUTES;
 
@@ -1239,77 +1244,26 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  error = or_get_attrid (&class_record, SERIAL_ATTR_UNIQUE_NAME, &serial_Attrs_id[SERIAL_ATTR_UNIQUE_NAME_INDEX]);
-  if (error != NO_ERROR)
+  static const char *const serial_attr_names[] = {
+#define MAP_LIST_ITEM(item)     SERIAL_ATTR_##item,
+    SERIAL_ATTR_LIST
+#undef MAP_LIST_ITEM
+  };
+
+  for (int i = 0; i < SERIAL_ATTR_MAX_INDEX; i++)
     {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_NAME, &serial_Attrs_id[SERIAL_ATTR_NAME_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_OWNER, &serial_Attrs_id[SERIAL_ATTR_OWNER_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_CURRENT_VAL, &serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_INCREMENT_VAL, &serial_Attrs_id[SERIAL_ATTR_INCREMENT_VAL_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_MAX_VAL, &serial_Attrs_id[SERIAL_ATTR_MAX_VAL_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_MIN_VAL, &serial_Attrs_id[SERIAL_ATTR_MIN_VAL_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_CYCLIC, &serial_Attrs_id[SERIAL_ATTR_CYCLIC_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_STARTED, &serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_CLASS_NAME, &serial_Attrs_id[SERIAL_ATTR_CLASS_NAME_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_ATTR_NAME, &serial_Attrs_id[SERIAL_ATTR_ATTR_NAME_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
-    }
-  error = or_get_attrid (&class_record, SERIAL_ATTR_CACHED_NUM, &serial_Attrs_id[SERIAL_ATTR_CACHED_NUM_INDEX]);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto exit_on_error;
+      error = or_get_attrid (&class_record, serial_attr_names[i], &serial_Attrs_id[i]);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      if (serial_Attrs_id[i] == NULL_ATTRID)
+	{
+	  assert (false);
+	  error = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
 
   serial_Num_attrs = SERIAL_ATTR_MAX_INDEX;

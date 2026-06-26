@@ -223,6 +223,12 @@ sp_load_sp_code_attribute_info (THREAD_ENTRY *thread_p)
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
+      if (spcode_Attrs_id[attr_idx] == NULL_ATTRID)
+	{
+	  assert (false);
+	  error = ER_FAILED;
+	  goto exit_on_error;
+	}
     }
   spcode_Num_attrs = attr_info.num_values;
 

@@ -2405,6 +2405,12 @@ css_make_access_status_exist_user (THREAD_ENTRY *thread_p, OID *class_oid, LAST_
       ASSERT_ERROR ();
       goto end;
     }
+  if (attr_idx == NULL_ATTRID)
+    {
+      assert (false);
+      error = ER_FAILED;
+      goto end;
+    }
   heap_scancache_end (thread_p, &scan_cache);
   scan_cache_inited = false;
 
