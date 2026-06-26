@@ -97,6 +97,12 @@ namespace
   {
     return ddl.find ("STORAGE PREFER_OUTLINE") != std::string::npos;
   }
+
+  bool
+  ddl_has_storage_default (const std::string &ddl)
+  {
+    return ddl.find ("STORAGE DEFAULT") != std::string::npos;
+  }
 }
 
 class OosSqlStorage : public ::testing::Test
@@ -147,11 +153,15 @@ TEST_F (OosSqlStorage, DefaultColumnHasNoStorageClause)
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "DDL was:\n" << ddl;
 }
 
-// STORAGE PREFER_OUTLINE is the current default policy, so it must parse but does
-// not persist a separate schema flag.
-TEST_F (OosSqlStorage, PreferOutlineActsAsDefault)
+// STORAGE PREFER_OUTLINE and STORAGE DEFAULT are the current default policy, so
+// both clauses must parse through the SQL path but neither persists a separate
+// schema flag.
+TEST_F (OosSqlStorage, ExplicitDefaultStorageClausesActAsDefault)
 {
-  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT PRIMARY KEY, cold VARCHAR(4096) STORAGE PREFER_OUTLINE)");
+  int rc = exec_sql ("CREATE TABLE t_oos_stg ("
+		     "  id INT PRIMARY KEY,"
+		     "  cold VARCHAR(4096) STORAGE PREFER_OUTLINE,"
+		     "  warm VARCHAR(4096) STORAGE DEFAULT)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -160,6 +170,7 @@ TEST_F (OosSqlStorage, PreferOutlineActsAsDefault)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "DDL was:\n" << ddl;
   EXPECT_FALSE (ddl_has_prefer_outline (ddl)) << "DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_storage_default (ddl)) << "DDL was:\n" << ddl;
 }
 
 // CREATE TABLE ... LIKE must copy the option onto the cloned column. The option can
@@ -191,6 +202,10 @@ TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
   db_abort_transaction ();
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE PREFER_OUTLINE)");
+  EXPECT_LT (rc, 0);
+  db_abort_transaction ();
+
+  rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE DEFAULT)");
   EXPECT_LT (rc, 0);
   db_abort_transaction ();
 }
@@ -225,6 +240,8 @@ TEST_F (OosSqlStorage, AlterModifyAddsAndDropsPreferInline)
   rc = get_create_table_ddl ("t_oos_stg", ddl);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_outline (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_storage_default (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
 
   rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(4096) STORAGE PREFER_INLINE");
   ASSERT_GE (rc, 0);
@@ -243,6 +260,7 @@ TEST_F (OosSqlStorage, AlterModifyAddsAndDropsPreferInline)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
   EXPECT_FALSE (ddl_has_prefer_outline (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_storage_default (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
 }
 
 // Functional non-regression: a PREFER_INLINE column round-trips a large value through

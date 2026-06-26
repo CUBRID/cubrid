@@ -12215,7 +12215,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	    {
 	      // *INDENT-OFF*
 	      heap_oos_demote_priority priority =
-		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_prefer_inline);
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->is_oos_prefer_inline);
 	      oos_candidates.push_back ({ priority, column_size[i], i });
 	      // *INDENT-ON*
 	    }
