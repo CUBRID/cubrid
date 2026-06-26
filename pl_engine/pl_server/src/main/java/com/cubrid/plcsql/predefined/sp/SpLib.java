@@ -657,18 +657,24 @@ public class SpLib {
                     pstmt.setObject(i + 1, val[i]);
                 }
                 rs = pstmt.executeQuery();
-            } catch (Throwable e) {
+            } catch (Exception e) {
                 if (pstmt != null) {
                     try {
                         pstmt.close();
-                    } catch (Throwable ee) {
+                    } catch (Exception ee) {
                         // ignore ee
                     }
                 }
+
                 if (pstmtRef == null) {
                     myStmt = null;
                 }
-                throw new SQL_ERROR(e.getMessage());
+
+                if (e instanceof SQLException) {
+                    throw new SQL_ERROR(e.getMessage());
+                } else {
+                    throw new RuntimeException(e);
+                }
             }
         }
 
