@@ -3196,7 +3196,7 @@ create_stmt
                                 if (body->info.sp_body.lang != SP_LANG_PLCSQL) {
                                     PT_ERROR (this_parser, node, "SYS_REFCURSOR return type can be used only in PL/CSQL functions");
                                 }
-                                // In PL/CSQL, CURSOR is not a type name, and hence one cannot use it as the return type a function.
+                                // In PL/CSQL, CURSOR is not a type name, and hence one cannot use it as the return type of a function.
                                 // But, the return type CURSOR of JSP and the return type SYS_REFCURSOR of PL/CSQL
                                 // indicate the same kind of function results, the result of a SELECT query done in the SP.
                                 // So, unify them as PT_TYPE_RESULTSET to simplify later processes of semantic check and execution.
