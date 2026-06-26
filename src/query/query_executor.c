@@ -7863,7 +7863,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
     }
 
-  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned) // 여긴 없어도 되나?
+  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
     {
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
@@ -10485,7 +10485,15 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       }
     if (all_no_key && class_oid_cnt > 0)
       {
-	aptr->scan_op_type = S_UPDATE_NO_KEY;
+	XASL_NODE *xptr;
+
+	/* Propagate to the whole scan_ptr chain: for MERGE the target (FOR_UPDATE) spec can be a nested scan that
+	 * is opened with xptr->scan_op_type rather than aptr->scan_op_type. Only FOR_UPDATE specs consume
+	 * scan_op_type for locking (others use S_SELECT), so setting it on every node in the chain is safe. */
+	for (xptr = aptr; xptr != NULL; xptr = xptr->scan_ptr)
+	  {
+	    xptr->scan_op_type = S_UPDATE_NO_KEY;
+	  }
       }
   }
 

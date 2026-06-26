@@ -13380,8 +13380,9 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 	}
       else
 	{
-	  /* S_SELECT and non-mvcc class || S_SELECT_WITH_LOCK || S_SELECT_WITH_KEY_SHARE_LOCK */
-	  assert (op_type == S_SELECT || op_type == S_SELECT_WITH_LOCK || op_type == S_SELECT_WITH_KEY_SHARE_LOCK); // ???
+	  /* S_SELECT and non-mvcc class || S_SELECT_WITH_LOCK.
+	   * S_SELECT_WITH_KEY_SHARE_LOCK never reaches here (consumed as WS_LOCK inside xbtree_find_unique). */
+	  assert (op_type == S_SELECT || op_type == S_SELECT_WITH_LOCK);
 	  if (lock_mode > S_LOCK)
 	    {
 	      assert (false);
