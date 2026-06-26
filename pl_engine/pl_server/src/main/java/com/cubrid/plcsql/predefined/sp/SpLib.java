@@ -405,14 +405,12 @@ public class SpLib {
                 throw new PROGRAM_ERROR(); // unreachable
             }
         } catch (SQLException e) {
-            Server.log(e);
             throw new SQL_ERROR(e.getMessage());
         } finally {
             if (pstmtRef == null && pstmt != null) {
                 try {
                     pstmt.close();
                 } catch (SQLException e) {
-                    Server.log(e);
                     throw new SQL_ERROR(e.getMessage());
                 }
             }
@@ -696,7 +694,6 @@ public class SpLib {
                     rs = null;
                 }
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -705,7 +702,6 @@ public class SpLib {
             try {
                 return (rs != null && !rs.isClosed());
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -728,7 +724,6 @@ public class SpLib {
                     return false;
                 }
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -741,7 +736,6 @@ public class SpLib {
                 }
                 return rowCount < 0 ? null : (rs.getRow() > 0);
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -754,7 +748,6 @@ public class SpLib {
                 }
                 return rowCount < 0 ? null : (rs.getRow() == 0);
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -770,7 +763,6 @@ public class SpLib {
             try {
                 rowCount = rs.getRow();
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
