@@ -117,7 +117,7 @@ struct hash_list_scan
     struct
     {
       MHT_HLS_TABLE *hash_table;	/* memory hash table for hash list scan */
-      HENTRY_HLS_PTR curr_hash_entry;	/* current hash entry */
+      MHT_HLS_SLOT *curr_hash_entry;	/* opaque resume handle for get_next (open-addressing slot) */
     } memory;
     struct
     {

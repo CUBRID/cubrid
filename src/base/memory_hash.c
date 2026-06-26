@@ -1094,9 +1094,7 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
 		int (*cmp_func) (const void *key1, const void *key2))
 {
   MHT_HLS_TABLE *ht;
-  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
   unsigned int ht_estsize;
-  size_t size;
 
   /* Get a good number of entries for hash table */
   if (est_size <= 0)
@@ -1116,16 +1114,6 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
       return NULL;
     }
 
-  /* Initialize the chunky memory manager */
-  ht->heap_id = db_create_fixed_heap (DB_SIZEOF (HENTRY_HLS), MAX (2, ht_estsize / 2 + 1));
-  if (ht->heap_id == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (HENTRY_HLS));
-
-      free_and_init (ht);
-      return NULL;
-    }
-
   /* obstack (arena) for variable-size entry payloads (tuple copy / position).
    * The payloads are freed all at once in mht_destroy_hls, instead of one by one. */
   ht->data_heap_id = db_create_ostk_heap (HASH_LIST_SCAN_DATA_CHUNK_SIZE);
@@ -1133,20 +1121,19 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, HASH_LIST_SCAN_DATA_CHUNK_SIZE);
 
-      db_destroy_fixed_heap (ht->heap_id);
       free_and_init (ht);
       return NULL;
     }
 
-  /* Allocate the hash table entry pointers */
-  size = ht_estsize * DB_SIZEOF (*hvector);
-  hvector = (HENTRY_HLS_PTR *) malloc (size);
-  if (hvector == NULL)
+  /* Allocate the open-addressing slot array.
+   * calloc zeroes every slot, so data == NULL marks each slot empty. */
+  ht->slots = (MHT_HLS_SLOT *) calloc (ht_estsize, sizeof (MHT_HLS_SLOT));
+  if (ht->slots == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) ht_estsize * sizeof (MHT_HLS_SLOT));
 
       db_destroy_ostk_heap (ht->data_heap_id);
-      db_destroy_fixed_heap (ht->heap_id);
       free_and_init (ht);
       return NULL;
     }
@@ -1154,19 +1141,10 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   ht->hash_func = hash_func;
   ht->cmp_func = cmp_func;
   ht->name = name;
-  ht->table = hvector;
-  ht->prealloc_entries = NULL;
   ht->size = ht_estsize;
   ht->nentries = 0;
-  ht->nprealloc_entries = 0;
   ht->ncollisions = 0;
   ht->build_lru_list = false;
-
-  /* Initialize each of the hash entries */
-  for (; ht_estsize > 0; ht_estsize--)
-    {
-      *hvector++ = NULL;
-    }
 
   return ht;
 }
@@ -1284,13 +1262,11 @@ mht_destroy_hls (MHT_HLS_TABLE * ht)
 {
   assert (ht != NULL);
 
-  free_and_init (ht->table);
+  /* release the open-addressing slot array */
+  free_and_init (ht->slots);
 
   /* release entry payloads (tuple copies / positions) all at once */
   db_destroy_ostk_heap (ht->data_heap_id);
-
-  /* release hash table entry storage */
-  db_destroy_fixed_heap (ht->heap_id);
 
   free_and_init (ht);
 }
@@ -1363,42 +1339,30 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
 int
 mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
-  HENTRY_HLS_PTR next_hentry = NULL;	/* Next element in linked list */
   unsigned int i, error_code;
 
   assert (ht != NULL);
 
   /*
-   * Go over the hash table, removing all entries and setting the vector
-   * entries to NULL.
+   * Go over the open-addressing slots, calling rem_func on each occupied slot.
    */
-  for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
+  if (rem_func)
     {
-      /* Go over the linked list for this hash table entry */
-      for (hentry = *hvector; hentry != NULL; hentry = next_hentry)
+      for (i = 0; i < ht->size; i++)
 	{
-	  /* free */
-	  if (rem_func)
+	  if (ht->slots[i].data != NULL)
 	    {
-	      error_code = (*rem_func) (NULL, hentry->data, func_args);
+	      error_code = (*rem_func) (NULL, ht->slots[i].data, func_args);
 	      if (error_code != NO_ERROR)
 		{
 		  return error_code;
 		}
-
-	      hentry->data = NULL;
 	    }
-
-	  next_hentry = hentry->next;
-	  /* Save the entries for future insertions */
-	  ht->nprealloc_entries++;
-	  hentry->next = ht->prealloc_entries;
-	  ht->prealloc_entries = hentry;
 	}
-      *hvector = NULL;
     }
+
+  /* clear every slot (data == NULL marks each slot empty again) */
+  memset (ht->slots, 0, (size_t) ht->size * sizeof (MHT_HLS_SLOT));
 
   ht->ncollisions = 0;
   ht->nentries = 0;
@@ -1496,8 +1460,6 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 	      int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args), const void *type_list, void *func_args)
 {
-  HENTRY_HLS_PTR *hvector;	/* Entries of hash table */
-  HENTRY_HLS_PTR hentry;	/* A hash table entry. linked list */
   unsigned int i;
   int cont = TRUE;
 
@@ -1509,25 +1471,19 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
     }
 
   fprintf (out_fp,
-	   "\nHTABLE NAME = %s, SIZE = %d," "NENTRIES = %d, NPREALLOC = %d, NCOLLISIONS = %d\n\n",
-	   ht->name, ht->size, ht->nentries, ht->nprealloc_entries, ht->ncollisions);
+	   "\nHTABLE NAME = %s, SIZE = %d," "NENTRIES = %d, NCOLLISIONS = %d\n\n",
+	   ht->name, ht->size, ht->nentries, ht->ncollisions);
 
   if (print_id_opt)
     {
-      /* Need to print the index vector id. Therefore, scan the whole table */
-      for (hvector = ht->table, i = 0; i < ht->size; hvector++, i++)
+      /* Need to print the slot id. Therefore, scan the whole table */
+      for (i = 0; cont == TRUE && i < ht->size; i++)
 	{
-	  if (*hvector != NULL)
+	  if (ht->slots[i].data != NULL)
 	    {
 	      fprintf (out_fp, "HASH AT %d\n", i);
-
-	      /* Go over the linked list */
-	      for (hentry = *hvector; cont == TRUE && hentry != NULL; hentry = hentry->next)
-		{
-		  fprintf (out_fp, "  KEY %10u, ", hentry->key);
-		  cont = (*print_func) (thread_p, out_fp, hentry->data, type_list, func_args);
-		}
-
+	      fprintf (out_fp, "  KEY %10u, ", ht->slots[i].hash);
+	      cont = (*print_func) (thread_p, out_fp, ht->slots[i].data, type_list, func_args);
 	      fprintf (out_fp, "\n");
 	    }
 	}
@@ -1677,26 +1633,31 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 void *
 mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash, hash_idx;
-  HENTRY_HLS_PTR hentry;
+  unsigned int hash, mask, idx, i;
 
   assert (ht != NULL && key != NULL);
 
   /*
-   * Hash the key and make sure that the return value is between 0 and size of hash table.
-   * The table size is a power of two, so a bit-mask replaces the modulo.
+   * Hash the key. The table size is a power of two, so a bit-mask replaces the modulo.
+   * Open addressing (linear probing): scan from the home slot until the probe hash matches
+   * or an empty slot is reached. The size-bounded loop is a defensive guard against a full table.
    */
   hash = *((unsigned int *) key);
-  hash_idx = hash & (ht->size - 1);
+  mask = ht->size - 1;
+  idx = hash & mask;
 
-  /* In HASH LIST SCAN, only hash key comparison is performed. */
-  for (hentry = ht->table[hash_idx]; hentry != NULL; hentry = hentry->next)
+  for (i = 0; i < ht->size; i++)
     {
-      if (hentry->key == hash)
+      if (ht->slots[idx].data == NULL)
 	{
-	  *((HENTRY_HLS_PTR *) last) = hentry;
-	  return hentry->data;
+	  return NULL;
 	}
+      if (ht->slots[idx].hash == hash)
+	{
+	  *((MHT_HLS_SLOT **) last) = &ht->slots[idx];
+	  return ht->slots[idx].data;
+	}
+      idx = (idx + 1) & mask;
     }
   return NULL;
 }
@@ -1713,25 +1674,31 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 void *
 mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash;
-  HENTRY_HLS_PTR hentry;
+  unsigned int hash, mask, idx, i;
+  MHT_HLS_SLOT *cur;
 
   assert (ht != NULL && key != NULL && last != NULL);
 
-  if ((*(HENTRY_HLS_PTR *) last)->next == NULL)
-    {
-      return NULL;
-    }
-  /* Hash the key and make sure that the return value is between 0 and size of hash table */
   hash = *((unsigned int *) key);
+  mask = ht->size - 1;
 
-  for (hentry = (*(HENTRY_HLS_PTR *) last)->next; hentry != NULL; hentry = hentry->next)
+  /* Resume linear probing from the slot after the last result. */
+  cur = *((MHT_HLS_SLOT **) last);
+  idx = (unsigned int) (cur - ht->slots);
+  idx = (idx + 1) & mask;
+
+  for (i = 0; i < ht->size; i++)
     {
-      if (hentry->key == hash)
+      if (ht->slots[idx].data == NULL)
 	{
-	  *((HENTRY_HLS_PTR *) last) = hentry;
-	  return hentry->data;
+	  return NULL;
 	}
+      if (ht->slots[idx].hash == hash)
+	{
+	  *((MHT_HLS_SLOT **) last) = &ht->slots[idx];
+	  return ht->slots[idx].data;
+	}
+      idx = (idx + 1) & mask;
     }
   return NULL;
 }
@@ -2770,47 +2737,31 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
 static const void *
 mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
-  unsigned int hash;
-  HENTRY_HLS_PTR hentry;
+  unsigned int hash, mask, idx;
 
   assert (ht != NULL && key != NULL);
 
-  /* Hash the key and make sure that the return value is between 0 and size of hash table.
-   * The table size is a power of two, so a bit-mask replaces the modulo. */
+  /* Hash the key. The table size is a power of two, so a bit-mask replaces the modulo. */
   hash = *((unsigned int *) key);
-  hash &= (ht->size - 1);
+  mask = ht->size - 1;
+  idx = hash & mask;
 
-  /* This is a new entry */
-  if (ht->nprealloc_entries > 0)
+  /* defensive: open addressing requires a free slot; sizing guarantees nentries < size */
+  if (ht->nentries >= ht->size)
     {
-      ht->nprealloc_entries--;
-      hentry = ht->prealloc_entries;
-      ht->prealloc_entries = ht->prealloc_entries->next;
-    }
-  else
-    {
-      hentry = (HENTRY_HLS_PTR) db_fixed_alloc (ht->heap_id, DB_SIZEOF (HENTRY_HLS));
-      if (hentry == NULL)
-	{
-	  return NULL;
-	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (MHT_HLS_SLOT));
+      return NULL;
     }
 
-  hentry->data = data;
-  hentry->key = *((unsigned int *) key);
-
-  /* To input in order, use the tail node. */
-  if (ht->table[hash] == NULL)
+  /* linear probing: walk to the first free slot */
+  while (ht->slots[idx].data != NULL)
     {
-      ht->table[hash] = hentry;
-    }
-  else
-    {
-      ht->table[hash]->tail->next = hentry;
       ht->ncollisions++;
+      idx = (idx + 1) & mask;
     }
-  hentry->next = NULL;
-  ht->table[hash]->tail = hentry;
+
+  ht->slots[idx].data = data;
+  ht->slots[idx].hash = hash;
   ht->nentries++;
 
   return key;

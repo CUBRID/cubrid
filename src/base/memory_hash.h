@@ -145,6 +145,14 @@ struct hentry_hls
   unsigned int key;		/* hash key */
 };
 
+/* Open-addressing slot for HASH LIST SCAN. data == NULL means an empty slot. */
+typedef struct mht_hls_slot MHT_HLS_SLOT;
+struct mht_hls_slot
+{
+  void *data;			/* Data associated with key entry; NULL means empty slot */
+  unsigned int hash;		/* full 32-bit hash key */
+};
+
 /* Memory Hash Table for HASH LIST SCAN*/
 typedef struct mht_hls_table MHT_HLS_TABLE;
 struct mht_hls_table
@@ -152,13 +160,10 @@ struct mht_hls_table
   unsigned int (*hash_func) (const void *key, unsigned int htsize);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
-  HENTRY_HLS_PTR *table;	/* The hash table (entries) */
-  HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
+  MHT_HLS_SLOT *slots;		/* The hash table (open-addressing slots) */
   unsigned int size;		/* power of two */
   unsigned int nentries;	/* Actual number of entries */
-  unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  HL_HEAPID heap_id;		/* Id of heap allocator for the hash entries */
   HL_HEAPID data_heap_id;	/* obstack (arena) for the entry payloads (tuple copy / position) */
   bool build_lru_list;		/* true if LRU list must be built */
 };

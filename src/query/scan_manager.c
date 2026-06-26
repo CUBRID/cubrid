@@ -9124,11 +9124,11 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	    {
-	      *tuple = (QFILE_TUPLE) llsidp->hlsid.memory.curr_hash_entry->data;
+	      *tuple = (QFILE_TUPLE) hvalue;
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	    {
-	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) llsidp->hlsid.memory.curr_hash_entry->data;
+	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) hvalue;
 	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
