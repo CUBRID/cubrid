@@ -20954,16 +20954,15 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
-  /* Self-lock keyed by the inserter's MVCCID: unique/FK checkers wait on it instead of a per-row
-   * X-lock on appended rows. Only MVCC-class inserts carry an insert-MVCCID a checker can observe
-   * as INSERT_IN_PROGRESS, so only those can have a waiter. */
+  /* Replace the per-row X-lock on appended rows with a self-lock keyed by the inserter's MVCCID; unique/FK
+   * checkers that see the row INSERT_IN_PROGRESS wait on it. Only MVCC classes carry an observable insert
+   * MVCCID, so only they take it. */
 #if defined (SERVER_MODE)
   if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
-      /* Key the self-lock by the SAME MVCCID stamped on the row's insert id (logtb_get_current_mvccid),
-       * i.e. the sub-transaction MVCCID when one is active, otherwise the main transaction MVCCID. A unique/FK
-       * checker reads the row's insert MVCCID and waits on exactly that key, so the two must match. (A
-       * sub-transaction self-lock is released at sub-transaction end by logtb_complete_sub_mvcc.) */
+      /* Invariant: key by the same MVCCID stamped on the row's insert id, since the checker waits on exactly
+       * this key. logtb_get_current_mvccid is sub-transaction aware; a sub self-lock is released at sub end
+       * by logtb_complete_sub_mvcc. */
       MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
       if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 	{
@@ -20994,13 +20993,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  return NO_ERROR;
 	}
 
-      /* For an MVCC class the transaction self-lock (taken above) covers the unique/FK check, so skip the
-       * per-row lock on every slot -- appended or reused. A non-MVCC class (e.g. catalog/serial) takes no
-       * self-lock and must still take the per-row X-lock below to satisfy the unique-insert lock invariant.
-       * Skipping it on reused (REUSE_OID) slots is safe for concurrent DML: a slot becomes reusable only
-       * after the old row's deleter committed, and the deleter's X-lock blocks any conflicting S/X holder, so
-       * no such holder survives to reuse time; and every normal-DML instance-OID lock consumer re-validates
-       * the row's MVCCID after locking, so a reissued OID is detected and re-evaluated, never mis-operated. */
+      /* MVCC class: the self-lock above covers the unique/FK check, so skip the per-row lock on every slot,
+       * appended or reused. Reused-slot skip is safe -- a slot is reusable only after the old deleter committed
+       * (its X-lock bars any surviving conflicting holder), and DML consumers re-validate the row's MVCCID
+       * after locking. Non-MVCC classes take no self-lock and still need the per-row X-lock below. */
       if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
 	  return NO_ERROR;
@@ -23985,10 +23981,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	  || (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place)));
   /* the update in place concept should be changed in terms of mvcc */
 
-  /* An MVCC update creates a new version (and possibly new index keys) that unique/FK checkers may observe as
-   * INSERT_IN_PROGRESS; hold the same transaction self-lock the insert path takes, keyed by the row's insert
-   * MVCCID (logtb_get_current_mvccid -- the sub-transaction MVCCID when one is active, e.g. a click-counter
-   * increment), so those checkers serialize on this transaction instead of a per-row X-lock that is no longer taken. */
+  /* An MVCC update's new version may be seen INSERT_IN_PROGRESS by unique/FK checkers, so take the same
+   * self-lock the insert path takes, keyed by the row's insert MVCCID (logtb_get_current_mvccid, sub-aware). */
   if (is_mvcc_op)
     {
       MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);

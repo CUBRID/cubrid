@@ -36499,17 +36499,13 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
       return true;
     }
 
-  /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a per-row
-   * X_LOCK on the appended object; a rollback that deletes that object is accepted via the self-lock here.
-   * The key is the CURRENT MVCCID, which equals the deleted row's insert MVCCID at every reachable undo-delete:
-   *  - main-MVCCID inserts: the self-lock is held until end-of-transaction, covering the rollback delete.
-   *  - sub-MVCCID inserts (the only sub-MVCCID source is the selupd INCR/DECR increment): the sub-transaction
-   *    commits autonomously and survives the outer/savepoint rollback, so its row is never undo-deleted by the
-   *    outer transaction. The only undo-delete that reaches here for such a row is the sub-transaction's own
-   *    abort, which runs before logtb_complete_sub_mvcc releases the sub self-lock and pops sub_ids -- so the
-   *    current MVCCID still equals the row's sub insert MVCCID and the self-lock is still held.
-   * Invariant: if a future change ever lets a sub-MVCCID row be undo-deleted by the outer transaction, this
-   * check must key on the deleted record's insert MVCCID instead of the current MVCCID. */
+  /* An MVCC inserter holds an X self-lock on its MVCCID instead of a per-row X_LOCK, so accept that here for a
+   * rollback that deletes the row. Keyed on the CURRENT MVCCID, which equals the deleted row's insert MVCCID at
+   * every reachable undo-delete: a main-MVCCID insert holds the self-lock to end-of-transaction; a sub-MVCCID
+   * insert (only from selupd INCR/DECR) commits autonomously and is never undo-deleted by the outer transaction,
+   * so its only undo-delete is the sub's own abort -- which runs before logtb_complete_sub_mvcc releases the lock
+   * and pops sub_ids. Invariant: if a sub-MVCCID row could ever be undo-deleted by the outer transaction, key
+   * this on the deleted record's insert MVCCID instead. */
   MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
   if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
     {

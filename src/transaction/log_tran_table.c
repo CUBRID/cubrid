@@ -4604,14 +4604,10 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
 
 #if defined (SERVER_MODE)
-  /* Rows appended/updated inside this sub-transaction were stamped with mvcc_sub_id and protected by a
-   * transaction self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock / heap_update_logical),
-   * which unique/FK checkers wait on. This runs at sub-transaction completion for BOTH outcomes: the sole
-   * producer (qexec_execute_selupd_list) funnels its commit path and its exit_on_error (sysop-abort) path
-   * through here, so release the self-lock unconditionally -- at sub-transaction end rather than main-
-   * transaction end -- to wake those waiters (on commit the rows are now visible; on abort they are undone).
-   * Holding it until the main transaction commits is what previously caused a hang. The unlock fully releases
-   * the hold regardless of acquire count; see lock_unlock_transaction_mvccid. */
+  /* Release the inserter self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock) to wake
+   * unique/FK checkers at sub-transaction end, not main-transaction end -- holding it to main end was the
+   * original hang. Runs for both commit and abort (the selupd producer funnels both here) and fully releases
+   * regardless of acquire count, since a multi-row INCR re-takes the same key once per row. */
   lock_unlock_transaction_mvccid (thread_p, mvcc_sub_id, X_LOCK);
 #endif /* SERVER_MODE */
 
