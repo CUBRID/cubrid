@@ -4606,9 +4606,12 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 #if defined (SERVER_MODE)
   /* Rows appended/updated inside this sub-transaction were stamped with mvcc_sub_id and protected by a
    * transaction self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock / heap_update_logical),
-   * which unique/FK checkers wait on. The sub-transaction has just committed (rows are now visible above), so
-   * release that self-lock here -- at sub-transaction end rather than main-transaction end -- to wake those
-   * waiters; holding it until the main transaction commits is what previously caused a hang. */
+   * which unique/FK checkers wait on. This runs at sub-transaction completion for BOTH outcomes: the sole
+   * producer (qexec_execute_selupd_list) funnels its commit path and its exit_on_error (sysop-abort) path
+   * through here, so release the self-lock unconditionally -- at sub-transaction end rather than main-
+   * transaction end -- to wake those waiters (on commit the rows are now visible; on abort they are undone).
+   * Holding it until the main transaction commits is what previously caused a hang. The unlock fully releases
+   * the hold regardless of acquire count; see lock_unlock_transaction_mvccid. */
   lock_unlock_transaction_mvccid (thread_p, mvcc_sub_id, X_LOCK);
 #endif /* SERVER_MODE */
 
