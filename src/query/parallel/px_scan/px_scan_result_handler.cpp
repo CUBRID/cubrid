@@ -1046,17 +1046,37 @@ namespace parallel_scan
       }
   }
 
+  void clear_agg_accumulators_on_0_heap_id (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_list)
+  {
+    HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
+    for (AGGREGATE_TYPE *agg_node = agg_list; agg_node != NULL; agg_node = agg_node->next)
+      {
+	if (agg_node->accumulator.value != nullptr)
+	  {
+	    pr_clear_value (agg_node->accumulator.value);
+	  }
+	if (agg_node->accumulator.value2 != nullptr)
+	  {
+	    pr_clear_value (agg_node->accumulator.value2);
+	  }
+      }
+    db_change_private_heap (thread_p, save_heap);
+  }
+
   SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
   {
     std::unique_lock<std::mutex> lock (m_result_mutex);
     while (m_result_completed < m_parallelism)
       {
 	m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return S_ERROR;
-	  }
       }
+
+    if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+      {
+	clear_agg_accumulators_on_0_heap_id (thread_p, m_orig_agg_list);
+	return S_ERROR;
+      }
+
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
 	/* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
@@ -1584,11 +1604,6 @@ namespace parallel_scan
 	}
     }
 
-    {
-      std::lock_guard<std::mutex> lock (m_result_mutex);
-      m_result_completed++;
-      m_result_cv.notify_all ();
-    }
     tl_outptr_list_p = nullptr;
     tl_agg_p = nullptr;
     tl_vd = nullptr;
@@ -1599,6 +1614,13 @@ namespace parallel_scan
 	tl_tpl_buf.tpl = nullptr;
       }
     tl_tpl_buf.size = 0;
+  }
+
+  void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::signal_worker_done ()
+  {
+    std::lock_guard<std::mutex> lock (m_result_mutex);
+    m_result_completed++;
+    m_result_cv.notify_all ();
   }
 
   /* Explicit template instantiations */
