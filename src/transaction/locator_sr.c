@@ -12017,9 +12017,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
   int round_length;		/* Length of object rounded to integer alignment */
   int copyarea_length;
   OID oid;
+  OID prev_oid;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
   int error_code = NO_ERROR;
+  bool retry_current_oid;
 
   if (fetch_area == NULL)
     {
@@ -12094,11 +12096,10 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
       obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
       mobjs->num_objs = 0;
       offset = 0;
+      retry_current_oid = false;
 
       while (true)
 	{
-	  OID prev_oid;
-
 	  COPY_OID (&prev_oid, &oid);
 
 	  if (instance_lock && (*instance_lock != NULL_LOCK))
@@ -12134,10 +12135,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		{
 		  if (scan == S_DOESNT_FIT)
 		    {
-		      if (mobjs->num_objs == 0)
-			{
-			  COPY_OID (&oid, &prev_oid);
-			}
+		      retry_current_oid = true;
 		      break;
 		    }
 		  (*nfailed_instance_locks)++;
@@ -12177,6 +12175,12 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	{
 	  break;
 	}
+
+      if (retry_current_oid)
+	{
+	  COPY_OID (&oid, &prev_oid);
+	}
+
       /*
        * The first object does not fit into given copy area
        * Get a larger area
