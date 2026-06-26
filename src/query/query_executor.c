@@ -2102,6 +2102,11 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.probe_regu_list, is_final,
 				   for_parallel_aptr);
+	  /* defensive: a torn-down spec may skip scan_close_scan's normal cleanup, which would
+	   * leak the hash list scan table and the obstack holding its entry payloads. This is
+	   * idempotent (the table pointer is nulled on destroy), so it is a no-op when
+	   * scan_close_scan already ran. */
+	  scan_free_hash_list_scan (thread_p, &p->s_id.s.llsid.hlsid);
 	  break;
 	case S_PARALLEL_LIST_SCAN:
 #if SERVER_MODE

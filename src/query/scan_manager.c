@@ -5341,6 +5341,41 @@ scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_free_hash_list_scan () - free the hash list scan hash table (and its entry
+ *                               payloads) idempotently.
+ *   return:
+ *   thread_p(in): thread
+ *   hlsidp(in/out): hash list scan descriptor
+ *
+ * Note: The hash table holds the build-side entry payloads (tuple copies / positions)
+ *       in its own obstack, which is reclaimed only here. Calling this is safe to
+ *       repeat: the hash_table pointer is nulled after destroy, so teardown paths
+ *       that skip scan_close_scan() (see qexec_clear_access_spec_list) can free it
+ *       defensively without risking a double free.
+ */
+void
+scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsidp)
+{
+  if (hlsidp->hash_list_scan_type == HASH_METH_IN_MEM || hlsidp->hash_list_scan_type == HASH_METH_HYBRID)
+    {
+      if (hlsidp->memory.hash_table != NULL)
+	{
+	  mht_clear_hls (hlsidp->memory.hash_table, NULL, NULL);
+	  mht_destroy_hls (hlsidp->memory.hash_table);
+	  hlsidp->memory.hash_table = NULL;
+	}
+    }
+  else if (hlsidp->hash_list_scan_type == HASH_METH_HASH_FILE)
+    {
+      if (hlsidp->file.hash_table != NULL)
+	{
+	  fhs_destroy (thread_p, hlsidp->file.hash_table);
+	  db_private_free_and_init (thread_p, hlsidp->file.hash_table);
+	}
+    }
+}
+
+/*
  * scan_close_scan () - The scan identifier is closed and allocated areas and page buffers are freed.
  *   return:
  *   scan_id(in/out): Scan identifier
@@ -5509,28 +5544,17 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
       /* clear hash list scan table */
-      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
-	  || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
-	{
 #if HASH_LIST_SCAN_DUMP_HASH_TABLE
-	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
-	    {
-	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-				   (void *) &(llsidp->list_id->type_list),
-				   (void *) &(llsidp->hlsid.hash_list_scan_type));
-	      printf ("temp file : tuple count = %ld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
-		      llsidp->list_id->page_cnt * 16);
-	    }
-#endif
-
-	  mht_clear_hls (llsidp->hlsid.memory.hash_table, NULL, NULL);
-	  mht_destroy_hls (llsidp->hlsid.memory.hash_table);
-	}
-      else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
+      if ((llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM
+	   || llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID) && llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
 	{
-	  fhs_destroy (thread_p, llsidp->hlsid.file.hash_table);
-	  db_private_free_and_init (thread_p, llsidp->hlsid.file.hash_table);
+	  (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
+			       (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+	  printf ("temp file : tuple count = %ld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
+		  llsidp->list_id->page_cnt * 16);
 	}
+#endif
+      scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
