@@ -1317,8 +1317,12 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
   assert (min_tuple_cnt >= 0);
 
+  /* per-row in-memory cost of the open-addressing table: slot array (amortized:
+   * load factor 1/0.7 * power-of-two rounding ~= 2x the slot) + one tuple position.
+   * Linear estimate is used here because min_tuple_cnt is INT64 and only an
+   * approximate partition count is needed (each partition re-selects its method). */
   part_cnt =
-    CEIL_PTVDIV ((sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) * min_tuple_cnt,
+    CEIL_PTVDIV ((2 * sizeof (MHT_HLS_SLOT) + sizeof (QFILE_TUPLE_SIMPLE_POS)) * min_tuple_cnt,
 		 mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
@@ -2626,7 +2630,11 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   if (list_id != NULL)
     {
-      if ((UINT64) list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+      /* IN_MEM keeps the tuple copies plus the open-addressing slot array in memory.
+       * The in-memory hash table is int-indexed; larger builds are partitioned, so a
+       * count beyond INT_MAX cannot use an in-memory method. */
+      if (list_id->tuple_cnt <= INT_MAX
+	  && (UINT64) list_id->page_cnt * DB_PAGESIZE + mht_get_hls_table_size ((int) list_id->tuple_cnt) <= mem_limit)
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: In Memory\n");
@@ -2643,13 +2651,16 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
 	  hash_scan->memory.curr_hash_entry = NULL;
 	}
-      else if ((UINT64) list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+      /* HYBRID keeps the slot array plus one tuple position per row in memory
+       * (tuples stay on the temp file). */
+      else if (list_id->tuple_cnt <= INT_MAX
+	       && mht_get_hls_table_size ((int) list_id->tuple_cnt)
+	       + (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS) <= mem_limit)
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: Hybrid\n");
 	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-	  fprintf (stdout, "  - Tuple Count: %ld <= %lu\n", list_id->tuple_cnt,
-		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+	  fprintf (stdout, "  - Tuple Count: %ld\n", list_id->tuple_cnt);
 #endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
@@ -2667,8 +2678,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: File\n");
 	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-	  fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id->tuple_cnt,
-		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+	  fprintf (stdout, "  - Tuple Count: %ld\n", list_id->tuple_cnt);
 #endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;

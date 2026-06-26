@@ -1150,6 +1150,32 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
 }
 
 /*
+ * mht_get_hls_table_size - exact byte size of the HASH LIST SCAN slot array that
+ *                          mht_create_hls() allocates for est_size entries.
+ *   return: slot array size in bytes
+ *   est_size(in): expected number of entries (per table / per partition; int range)
+ *
+ * Note: mirrors the sizing in mht_create_hls so callers can predict the
+ *       open-addressing table footprint accurately (load factor + power-of-two
+ *       rounding) for IN_MEM/HYBRID/HASH_FILE method selection, instead of a rough
+ *       per-row constant.
+ */
+size_t
+mht_get_hls_table_size (int est_size)
+{
+  unsigned int ht_estsize;
+
+  if (est_size <= 0)
+    {
+      est_size = 2;
+    }
+  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
+  ht_estsize = mht_next_power_of_2 (ht_estsize);
+
+  return (size_t) ht_estsize * sizeof (MHT_HLS_SLOT);
+}
+
+/*
  * mht_rehash - rehash all entires of a hash table
  *   return: error code
  *   ht(in/out): hash table to rehash

@@ -9258,15 +9258,21 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     {
       return HASH_METH_NOT_USE;
     }
-  else if ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+  /* In-memory methods use an int-indexed open-addressing table; a count beyond
+   * INT_MAX must use the file method. */
+  else if (llsidp->list_id->tuple_cnt <= INT_MAX
+	   && (UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE
+	   + mht_get_hls_table_size ((int) llsidp->list_id->tuple_cnt) <= mem_limit)
     {
+      /* IN_MEM: tuple copies + open-addressing slot array fit in memory */
       return HASH_METH_IN_MEM;
     }
-  else if ((UINT64) llsidp->list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if (llsidp->list_id->tuple_cnt <= INT_MAX
+	   && mht_get_hls_table_size ((int) llsidp->list_id->tuple_cnt)
+	   + (UINT64) llsidp->list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS) <= mem_limit)
     {
-      /* bytes of 1 row = sizeof(HENTRY_HLS) + sizeof(QFILE_TUPLE_SIMPLE_POS) = 44 bytes (64bit) */
-      /* HENTRY_HLS = pointer(8bytes) * 4 = 32 bytes */
-      /* SIMPLE_POS = pageid(4bytes) + volid(2bytes) + padding(2bytes) + offset(4bytes) = 12 bytes */
+      /* HYBRID: slot array + one tuple position per row in memory (tuples stay on temp file).
+       * position = pageid(4) + volid(2) + padding(2) + offset(4) = 12 bytes. */
       return HASH_METH_HYBRID;
     }
   else

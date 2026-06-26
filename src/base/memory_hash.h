@@ -136,9 +136,10 @@ extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * h
 
 /* Hash Table Entry for HASH LIST SCAN.
  * NOTE: HASH LIST SCAN now uses open addressing (MHT_HLS_SLOT); this struct is no
- * longer a storage type. It is kept only because the IN_MEM/HYBRID/HASH_FILE method
- * selection heuristic estimates per-row memory as sizeof(HENTRY_HLS) + sizeof
- * (QFILE_TUPLE_SIMPLE_POS). The tail/next fields are unused. */
+ * longer a storage type and its tail/next fields are unused. The executor sizes the
+ * table accurately via mht_get_hls_table_size(); this struct is retained only because
+ * a disabled (#if 0) optimizer cost estimate in query_planner.c still references
+ * sizeof(HENTRY_HLS). */
 typedef struct hentry_hls HENTRY_HLS;
 typedef struct hentry_hls *HENTRY_HLS_PTR;
 struct hentry_hls
@@ -181,6 +182,7 @@ extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
 extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args),
 			  void *func_args);
 extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
+extern size_t mht_get_hls_table_size (int est_size);
 extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
 			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 					    void *args), const void *type_list, void *func_args);
