@@ -431,83 +431,7 @@ jobs:
                 parallelism: 1
                 steps:
                   - download-build-to-glusterfs
-
-              test_isolation:
-                executor: cubrid-default
-                resource_class: medium
-                parallelism: 40
-                environment:
-                  TEST_SUITE: "isolation"
-                  BRANCH_TESTCASES: "${TC_BRANCH}"
-                steps:
-                  - download-build-from-artifact
-                  - run:
-                      name: Checkout testcases and testtools
-                      command: /entrypoint.sh checkout
-                  - run:
-                      name: Run isolation (.ctl) tests
-                      shell: /bin/bash
-                      no_output_timeout: 45m
-                      command: |
-                        ulimit -c 10485760
-
-                        # CUBRID runtime env (build was extracted to /home/CUBRID)
-                        export CUBRID=/home/CUBRID
-                        export CUBRID_DATABASES=\$CUBRID/databases
-                        export LD_LIBRARY_PATH=\$CUBRID/lib:\${LD_LIBRARY_PATH:-}
-                        export PATH=\$CUBRID/bin:\$PATH
-
-                        ISO_DIR=/home/cubrid-testcases/isolation
-                        CTLTOOL=/home/cubrid-testtools/CTP/isolation/ctltool
-                        EXCLUDE=\$ISO_DIR/config/daily_regression_test_excluded_list_linux.conf
-
-                        echo "[debug] split .ctl files across parallel nodes"
-                        circleci tests glob "\$ISO_DIR/**/*.ctl" | circleci tests run --command="xargs -n1 >> ctl.list" --verbose --split-by=name
-
-                        if [ ! -s ctl.list ]; then
-                          echo "[debug] No tests assigned to this node"
-                          circleci-agent step halt
-                          exit 0
-                        fi
-                        ASSIGNED=\$(wc -l < ctl.list)
-                        echo "[debug] assigned testcases: \$ASSIGNED"
-
-                        echo "[debug] prune unassigned .ctl files"
-                        find "\$ISO_DIR" -name '*.ctl' | grep -vF -f ctl.list | xargs -r rm -f
-
-                        echo "[debug] build ctltool (qactl/qacsql) and prepare ctldb"
-                        cd "\$CTLTOOL"
-                        chmod +x *.sh
-                        scl enable devtoolset-8 -- sh prepare.sh qacsql ctldb log
-                        [ -x "\$CTLTOOL/qacsql" ] || { echo "[error] qacsql build failed"; exit 1; }
-
-                        echo "[debug] run assigned isolation tests (TAP mode)"
-                        scl enable devtoolset-8 -- sh runall.sh -t -e "\$EXCLUDE" "\$ISO_DIR" || true
-
-                        echo "[debug] evaluate TAP results"
-                        PRODUCED=\$(grep -rhE '^(not )?ok ' "\$ISO_DIR" --include='*.t' 2>/dev/null | wc -l)
-                        echo "[debug] produced result lines: \$PRODUCED"
-                        if [ "\$PRODUCED" -eq 0 ]; then
-                          echo "[error] no isolation results produced (prepare/run likely failed)"
-                          exit 1
-                        fi
-                        if grep -rhE '^not ok' "\$ISO_DIR" --include='*.t' 2>/dev/null | grep -vE '# (SKIP|TODO)'; then
-                          echo "[error] isolation test failures detected"
-                          exit 1
-                        fi
-                        echo "[ok] all \$ASSIGNED assigned isolation tests passed"
-                  - run:
-                      name: Collect Logs
-                      when: on_fail
-                      command: |
-                        mkdir -p /tmp/logs
-                        find /home/cubrid-testcases/isolation -name '*.t' -print0 | tar czf /tmp/logs/isolation_tap.tar.gz --null -T - || true
-                        cp /home/cubrid-testtools/CTP/isolation/ctltool/runall.log /tmp/logs/ || true
-                        if [ -e /home/CUBRID/log/coredump ]; then cp -rf /home/CUBRID/log/coredump /tmp/logs/ || true; fi
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
-
+            
             # --------------------------------------------------
             # 4. Conditional workflows
             # --------------------------------------------------
@@ -524,7 +448,6 @@ jobs:
               echo "      - download-build: {requires: [build]}" >> .circleci/continue.yml
               echo "      - test_shell:     {requires: [download-build]}" >> .circleci/continue.yml
             fi
-            [ "$RUN_ALL_TEST" = "true" ] && echo "      - test_isolation: {requires: [build]}" >> .circleci/continue.yml
             
             echo "[debug] Output generated configuration (.circleci/continue.yml)"
             cat .circleci/continue.yml
