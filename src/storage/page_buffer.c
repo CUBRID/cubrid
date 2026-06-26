@@ -1606,7 +1606,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-  pgbuf_latch_timeout_msecs = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT);
+  pgbuf_latch_timeout_msecs = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS);
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
