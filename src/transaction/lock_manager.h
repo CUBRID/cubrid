@@ -165,9 +165,10 @@ typedef struct lk_res_key LK_RES_KEY;
 struct lk_res_key
 {
   LOCK_RESOURCE_TYPE type;	/* type of resource: class, instance, root_class or transaction */
-  /* Payload interpreted by type: object resources (INSTANCE/CLASS/ROOT_CLASS) use the OID overlay; a
-   * TRANSACTION self-lock stores the inserter's 64-bit MVCCID natively. lock_res_key_* hash/compare/copy
-   * the active member by type. */
+  /* Payload selected by type: object resources (INSTANCE/CLASS/ROOT_CLASS) use the OID pair; a TRANSACTION
+   * self-lock uses mvccid. The payload is a fixed 16-byte union; reserved pads the mvccid member to that size
+   * (asserted below) so the key has no partial member. lock_res_key_* hash/compare/copy read only the member
+   * selected by type. */
   union
   {
     struct
@@ -175,9 +176,17 @@ struct lk_res_key
       OID oid;
       OID class_oid;
     };
-    MVCCID mvccid;
+    struct
+    {
+      MVCCID mvccid;
+      UINT64 reserved;		/* unused padding; no MVCC meaning */
+    };
   };
 };
+
+/* The key payload is a fixed 16-byte union; both members must fill it (no partial overlay). */
+static_assert (sizeof (OID) * 2 == 16, "LK_RES_KEY: OID pair must be 16 bytes");
+static_assert (sizeof (MVCCID) + sizeof (UINT64) == 16, "LK_RES_KEY: mvccid + reserved must be 16 bytes");
 
 /*
  * Lock Resource Entry Structure

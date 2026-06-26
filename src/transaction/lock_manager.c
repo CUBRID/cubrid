@@ -722,12 +722,12 @@ lock_create_search_key (const OID * oid, const OID * class_oid)
 static LK_RES_KEY
 lock_create_mvccid_search_key (MVCCID mvccid)
 {
-  LK_RES_KEY search_key;
+  /* Value-initialize (also zeroes reserved), then set mvccid; do not write the OID member afterwards.
+   * lock_res_key_{hash,compare,copy} dispatch on type and read only mvccid for this key. */
+  LK_RES_KEY search_key = {};
 
   search_key.type = LOCK_RESOURCE_TRANSACTION;
   search_key.mvccid = mvccid;
-  /* keep the inactive overlay deterministic (mvccid and class_oid do not overlap) */
-  OID_SET_NULL (&search_key.class_oid);
   return search_key;
 }
 
