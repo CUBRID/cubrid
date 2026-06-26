@@ -6378,7 +6378,13 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
 
   if (entry_ptr != NULL)
     {
-      lock_internal_perform_unlock_object (thread_p, entry_ptr, false, true);
+      /* Fully release (release_flag=true), not decrement: the holder count can be > 1 because the
+       * inserter re-acquires this same MVCCID self-lock once per row/version (heap insert/update). A
+       * decrement would leave count > 0 for a multi-row (sub-)transaction, so logtb_complete_sub_mvcc's
+       * single unlock would not drop the lock and unique/FK S_LOCK waiters would stay blocked until
+       * end-of-transaction. The self-lock is the transaction's own synthetic lock, so releasing the
+       * whole hold (and waking waiters) is the correct semantics for every caller. */
+      lock_internal_perform_unlock_object (thread_p, entry_ptr, true, true);
     }
 #endif /* !SERVER_MODE */
 }
