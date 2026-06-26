@@ -48,6 +48,6 @@ public class StmtOpenForStatic extends StmtOpenFor {
                 false,
                 id,
                 new ExprStr(staticSql.ctx, staticSql.rewritten),
-                new ArrayList(staticSql.hostExprs.keySet()));
+                new ArrayList<>(staticSql.hostExprs.keySet()));
     }
 }

@@ -1246,7 +1246,7 @@ public class TypeChecker extends AstVisitor<Type> {
         Type ty = visitExprId(node.id);
         assert ty == Type.SYS_REFCURSOR; // by earlier check
 
-        // check types of used expressions (
+        // check types of used expressions
         if (node.usedExprList != null) {
 
             for (Expr e : node.usedExprList) {
@@ -1257,6 +1257,7 @@ public class TypeChecker extends AstVisitor<Type> {
                         if (!node.dynamic) {
                             break;
                         }
+                        // fall-through
                     case Type.IDX_CURSOR:
                     case Type.IDX_BOOLEAN:
                     case Type.IDX_SYS_REFCURSOR:
