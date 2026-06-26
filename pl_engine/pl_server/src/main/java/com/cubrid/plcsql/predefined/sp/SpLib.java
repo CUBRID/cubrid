@@ -684,8 +684,7 @@ public class SpLib {
             try {
                 if (myStmt == null) {
                     // no need to close the statement because it was declared and is closed outside
-                    // of this Query
-                    // close only the result set.
+                    // of this Query close only the result set.
                     rs.close();
                 } else {
                     // it also closes rs according to the JDBC spec: see Javadoc on
