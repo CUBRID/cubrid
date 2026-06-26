@@ -253,7 +253,7 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
 	  rec->length = - (state->new_length);
 	  return S_DOESNT_FIT;
 	}
-      if (context->ispeeking != PEEK && need_copy_realloc && context->data_externally_positioned)
+      if (context->ispeeking != PEEK && need_copy_realloc && context->keep_recdes_buffer)
 	{
 	  rec->length = - (state->new_length);
 	  return S_DOESNT_FIT;

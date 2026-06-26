@@ -26610,7 +26610,7 @@ heap_prepare_recdes_copy_area (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * conte
   assert (context->scan_cache != NULL);
   assert (context->recdes_p != NULL);
 
-  if (context->data_externally_positioned)
+  if (context->keep_recdes_buffer)
     {
       return heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2);
     }
@@ -27030,7 +27030,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->expand_oos = false;
   const bool data_is_scan_cache_area =
     scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
-  context->data_externally_positioned =
+  context->keep_recdes_buffer =
     recdes != NULL && recdes->data != NULL && recdes->area_size >= 0 && !data_is_scan_cache_area;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
