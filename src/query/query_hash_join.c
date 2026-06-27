@@ -118,8 +118,6 @@ static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HAS
 static int hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 static int hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan,
 			    QFILE_LIST_SCAN_ID * list_scan_id, QFILE_TUPLE_RECORD * tuple_record);
-static bool hjoin_key_cache_type_ok (DB_TYPE type);
-static int hjoin_key_cache_block_size (int val_count);
 
 /* Probe Phase */
 static int hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -2706,8 +2704,6 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   hash_scan->curr_hash_key = 0;
   hash_scan->need_coerce_type = false;
-  /* default off; hjoin_build() decides per build whether the build key can be cached */
-  hash_scan->cache_build_key = false;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -3081,27 +3077,6 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   key = hash_scan->temp_key;
   assert (key != NULL);
 
-  /* P4: decide once whether build keys can be cached in the entry payload, so the
-   * probe compares against them without re-parsing each matched build tuple. Only
-   * the single in-memory join with fixed/inline key types and no domain coercion
-   * qualifies (partition/parallel build does not extract the key here). */
-  hash_scan->cache_build_key = false;
-  if (manager->context_cnt == 0 && hash_method == HASH_METH_IN_MEM && !build->need_coerce_domains)
-    {
-      int i;
-
-      hash_scan->cache_build_key = true;
-      for (i = 0; i < key->val_count; i++)
-	{
-	  if (build->input->domains[i] == NULL
-	      || !hjoin_key_cache_type_ok (TP_DOMAIN_TYPE (build->input->domains[i])))
-	    {
-	      hash_scan->cache_build_key = false;
-	      break;
-	    }
-	}
-    }
-
   if (thread_is_on_trace (thread_p))
     {
       hjoin_trace_start (thread_p, &start_stats);
@@ -3225,50 +3200,6 @@ error_exit:
 }
 
 /*
- * hjoin_key_cache_type_ok() - whether a key column type can be cached in the hash
- *                             entry as a copied DB_VALUE.
- *   return: true if the type stores its value inline in DB_VALUE (no external
- *           pointer and nothing to pr_clear), so a struct copy persisted in the
- *           table obstack is self-contained and freed in bulk safely.
- *   type(in): key column type
- *
- * Note: whitelist (not pr_is_variable_type) on purpose -- types like ENUM/JSON are
- *       fixed-ish but keep a pointer inside DB_VALUE, which must not be cached.
- */
-static bool
-hjoin_key_cache_type_ok (DB_TYPE type)
-{
-  switch (type)
-    {
-    case DB_TYPE_INTEGER:
-    case DB_TYPE_BIGINT:
-    case DB_TYPE_SHORT:
-    case DB_TYPE_FLOAT:
-    case DB_TYPE_DOUBLE:
-    case DB_TYPE_MONETARY:
-    case DB_TYPE_NUMERIC:
-    case DB_TYPE_DATE:
-    case DB_TYPE_TIME:
-    case DB_TYPE_TIMESTAMP:
-    case DB_TYPE_DATETIME:
-      return true;
-    default:
-      return false;
-    }
-}
-
-/*
- * hjoin_key_cache_block_size() - byte size reserved before the cached build tuple
- *                                to hold the copied key DB_VALUEs (8-byte aligned
- *                                so the tuple that follows stays aligned).
- */
-static int
-hjoin_key_cache_block_size (int val_count)
-{
-  return DB_ALIGN (val_count * (int) sizeof (DB_VALUE), MAX_ALIGNMENT);
-}
-
-/*
  * hjoin_build_key() -
  *   return: Error code (NO_ERROR if successful, error code otherwise)
  *   thread_p(in): Thread entry.
@@ -3293,38 +3224,7 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
     case HASH_METH_IN_MEM:
       assert (hash_scan->memory.hash_table != NULL);
 
-      if (hash_scan->cache_build_key)
-	{
-	  /* P4: store [copied key DB_VALUEs][tuple copy] in one obstack block. The probe
-	   * reaches the cached key at (tuple - keyblock) and compares without re-parsing.
-	   * Only fixed/inline key types are cached (see hjoin_build()), so the copied
-	   * DB_VALUEs are self-contained and freed in bulk with the obstack. */
-	  HASH_SCAN_KEY *build_key = hash_scan->temp_key;
-	  int keyblock = hjoin_key_cache_block_size (build_key->val_count);
-	  int tuple_size = QFILE_GET_TUPLE_LENGTH (tuple_record->tpl);
-	  char *block = (char *) db_ostk_alloc (hash_scan->memory.hash_table->data_heap_id, keyblock + tuple_size);
-	  DB_VALUE *cached;
-	  int i;
-
-	  if (block == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, keyblock + tuple_size);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-
-	  cached = (DB_VALUE *) block;
-	  for (i = 0; i < build_key->val_count; i++)
-	    {
-	      cached[i] = *build_key->values[i];
-	    }
-
-	  hash_value = (QFILE_TUPLE) (block + keyblock);
-	  memcpy (hash_value, tuple_record->tpl, tuple_size);
-	}
-      else
-	{
-	  hash_value = qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->data_heap_id, tuple_record->tpl);
-	}
+      hash_value = qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->data_heap_id, tuple_record->tpl);
       if (hash_value == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -3622,29 +3522,8 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 
 	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
-	  if (hash_scan->cache_build_key)
-	    {
-	      /* P4: compare the probe key against the build key cached in the entry payload
-	       * (at tuple - keyblock), avoiding a re-parse of the matched build tuple. Both
-	       * keys are non-NULL here (NULL-key rows are skipped during build and probe). */
-	      int keyblock = hjoin_key_cache_block_size (key->val_count);
-	      DB_VALUE *cached = (DB_VALUE *) (build->tuple_record.tpl - keyblock);
-	      int key_index;
-
-	      for (key_index = 0; key_index < key->val_count; key_index++)
-		{
-		  if (tp_value_compare (&cached[key_index], key->values[key_index], 0, 0) != DB_EQ)
-		    {
-		      need_skip_next = true;
-		      break;
-		    }
-		}
-	    }
-	  else
-	    {
-	      error = hjoin_fetch_key (thread_p, build, &build->tuple_record, found_key, key /* compare_key */ ,
-				       &need_skip_next);
-	    }
+	  error = hjoin_fetch_key (thread_p, build, &build->tuple_record, found_key, key /* compare_key */ ,
+				   &need_skip_next);
 	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (error != NO_ERROR)
