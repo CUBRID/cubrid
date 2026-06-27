@@ -18124,7 +18124,7 @@ heap_object_upgrade_domain (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scanca
     locator_attribute_info_force (thread_p, &upd_scancache->node.hfid, oid, attr_info, atts_id, updated_n_attrs_id,
 				  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, upd_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-				  UPDATE_INPLACE_OLD_MVCCID, NULL, false);
+				  UPDATE_INPLACE_OLD_MVCCID, NULL, false, NULL_LOCK);
   if (error != NO_ERROR)
     {
       if (error == ER_MVCC_NOT_SATISFIED_REEVALUATION)

@@ -151,7 +151,7 @@ static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 				 REPL_INFO_TYPE repl_info_type, int pruning_type, PRUNING_CONTEXT * pcontext,
 				 MVCC_REEV_DATA * mvcc_reev_data, UPDATE_INPLACE_STYLE force_in_place,
-				 bool need_locking);
+				 bool need_locking, LOCK update_lock);
 static int locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_oid, OID * obj_oid,
 				OID * new_class_oid, HFID * new_class_hfid, RECDES * recdes,
 				HEAP_SCANCACHE * scan_cache, int op_type, int has_index, int *force_count,
@@ -4500,7 +4500,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						      LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count,
 						      false, REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL,
-						      NULL, NULL, UPDATE_INPLACE_NONE, &recdes, false);
+						      NULL, NULL, UPDATE_INPLACE_NONE, &recdes, false, NULL_LOCK);
 		      if (error_code != NO_ERROR)
 			{
 			  if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -4841,7 +4841,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    locator_attribute_info_force (thread_p, &hfid, oid_ptr, &attr_info, attr_ids, index->n_atts,
 						  LC_FLUSH_UPDATE, SINGLE_ROW_UPDATE, &scan_cache, &force_count, false,
 						  REPL_INFO_TYPE_RBR_NORMAL, DB_NOT_PARTITIONED_CLASS, NULL, NULL, NULL,
-						  UPDATE_INPLACE_NONE, &recdes, false);
+						  UPDATE_INPLACE_NONE, &recdes, false, NULL_LOCK);
 		  if (error_code != NO_ERROR)
 		    {
 		      if (error_code == ER_MVCC_NOT_SATISFIED_REEVALUATION)
@@ -5453,6 +5453,8 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
  *			 and the update style will be decided in this function.
  *			 Otherwise the update of the instance will be made in
  *			 place and according to provided style.
+ *   need_locking(in): true, if need locking
+ *   update_lock(in): lock mode the caller decided once per class (NULL_LOCK = not yet decided)
  *
  * Note: The given object is updated on this heap and all appropriate
  *              index entries are updated.
@@ -5462,7 +5464,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      RECDES * recdes, int has_index, ATTR_ID * att_id, int n_att_id, int op_type,
 		      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk, REPL_INFO_TYPE repl_info_type,
 		      int pruning_type, PRUNING_CONTEXT * pcontext, MVCC_REEV_DATA * mvcc_reev_data,
-		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking)
+		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, LOCK update_lock)
 {
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
@@ -5783,7 +5785,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (need_locking)
 		{
-		  LOCK lock_mode = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
+		  LOCK lock_mode = (update_lock != NULL_LOCK)
+		    ? update_lock : locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, lock_mode, COPY, NULL_CHN,
 								      mvcc_reev_data, LOG_ERROR_IF_DELETED);
@@ -5913,7 +5916,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 
 	  {
-	    LOCK lock_mode = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
+	    LOCK lock_mode = (update_lock != NULL_LOCK)
+	      ? update_lock : locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
 	    if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	      {
 		ASSERT_ERROR_AND_SET (error_code);
@@ -6730,7 +6734,7 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
-				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true, NULL_LOCK);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -7101,7 +7105,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	      error_code =
 		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,
 				      NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
-				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true,
+				      NULL_LOCK);
 
 	      if (error_code == NO_ERROR)
 		{
@@ -7296,7 +7301,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
-				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true);
+				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true,
+				  NULL_LOCK);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7520,7 +7526,8 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
  *			 forced and the update style will be decided in this
  *			 function. Otherwise the update of the instance will be
  *			 made in place and according to provided style.
- *  need_locking(in): true, if need locking
+ *   need_locking(in): true, if need locking
+ *   update_lock(in): lock mode the caller decided once per class (NULL_LOCK = not yet decided)
  *
  * Note: Force an object represented by an attribute information structure.
  *       For insert the oid is set as a side effect.
@@ -7532,7 +7539,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 			      HEAP_SCANCACHE * scan_cache, int *force_count, bool not_check_fk,
 			      REPL_INFO_TYPE repl_info, int pruning_type, PRUNING_CONTEXT * pcontext,
 			      FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
-			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking)
+			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking,
+			      LOCK update_lock)
 {
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
@@ -7592,8 +7600,13 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  {
-	    LOCK lock_mode = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
-	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, lock_mode, COPY,
+	    /* qexec pre-decides this lock once per class; other callers (e.g. ODKU) pass NULL_LOCK,
+	     * so decide it here per row. The result is reused below by locator_update_force () via fallthrough. */
+	    if (update_lock == NULL_LOCK)
+	      {
+		update_lock = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
+	      }
+	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, update_lock, COPY,
 						NULL_CHN, LOG_ERROR_IF_DELETED);
 	  }
 
@@ -7675,7 +7688,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  error_code =
 	    locator_update_force (thread_p, &class_hfid, &class_oid, oid, old_recdes, &new_recdes, has_index,
 				  att_id, n_att_id, op_type, scan_cache, force_count, not_check_fk, repl_info,
-				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking);
+				  pruning_type, pcontext, mvcc_reev_data, force_update_inplace, need_locking,
+				  update_lock);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
