@@ -5365,20 +5365,10 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 /*
  * locator_decide_update_lock () - Decide the row-level lock mode for an UPDATE.
  *
- * return: WX_LOCK — table has a PK and no PK column is being changed.
- *                     Concurrent FK existence checks (WS_LOCK) are safe
- *                     because the key will not change.
- *         X_LOCK    — all other cases:
- *                       · no PK: FK references impossible, NK_X optimisation
- *                         is meaningless; keep original X_LOCK behaviour so
- *                         test answer keys are not disturbed.
- *                       · PK column is changing: concurrent FK checks must be
- *                         blocked until the key change commits.
- *                       · att_id unknown or classrepr unavailable: conservative.
- *
+ * return: WX_LOCK if the class has a PK and no PK column is updated, X_LOCK otherwise.
  * thread_p(in): thread context
  * class_oid(in): OID of the class being updated
- * att_id(in):   array of attribute IDs being updated (NULL means "all")
+ * att_id(in): array of attribute IDs being updated (NULL means "all")
  * n_att_id(in): number of entries in att_id (0 means "all")
  */
 LOCK
@@ -5405,11 +5395,14 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
   for (i = 0; i < classrepr->n_indexes; i++)
     {
       index = &classrepr->indexes[i];
+
       if (index->type != BTREE_PRIMARY_KEY)
 	{
 	  continue;
 	}
+
       has_pk = true;
+
       for (j = 0; j < index->n_atts; j++)
 	{
 	  for (k = 0; k < n_att_id; k++)
@@ -5422,6 +5415,9 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
 		}
 	    }
 	}
+
+      /* only one PK per class; no need to scan the remaining indexes */
+      break;
     }
 
   heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
@@ -5787,9 +5783,9 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      if (need_locking)
 		{
-		  LOCK upd_lock = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
+		  LOCK lock_mode = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
-								      local_scan_cache, upd_lock, COPY, NULL_CHN,
+								      local_scan_cache, lock_mode, COPY, NULL_CHN,
 								      mvcc_reev_data, LOG_ERROR_IF_DELETED);
 		}
 	      else
@@ -5917,8 +5913,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 
 	  {
-	    LOCK row_lock_mode = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
-	    if (lock_object (thread_p, oid, class_oid, row_lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+	    LOCK lock_mode = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
+	    if (lock_object (thread_p, oid, class_oid, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
 	      {
 		ASSERT_ERROR_AND_SET (error_code);
 		goto error;
@@ -7596,10 +7592,11 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  {
-	    LOCK row_lock = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
-	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, row_lock, COPY,
+	    LOCK lock_mode = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
+	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, lock_mode, COPY,
 						NULL_CHN, LOG_ERROR_IF_DELETED);
 	  }
+
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
@@ -13163,14 +13160,13 @@ error:
  * class_oid (in)      : Class OID.
  * recdes (out)	       : Record descriptor.
  * scan_cache (in)     : Heap scan cache.
+ * lock_mode (in)      : Lock to acquire on the object.
  * ispeeking (in)      : PEEK or COPY.
  * old_chn (in)	       : CHN of known record data.
  * mvcc_reev_data (in) : MVCC reevaluation data.
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
- *
- * Note: The caller supplies lock_mode (X_LOCK for DELETE or key-changing UPDATE; WX_LOCK for non-key UPDATE).
  */
 SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
@@ -13381,7 +13377,8 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
       else
 	{
 	  /* S_SELECT and non-mvcc class || S_SELECT_WITH_LOCK.
-	   * S_SELECT_WITH_KEY_SHARE_LOCK never reaches here (consumed as WS_LOCK inside xbtree_find_unique). */
+	   * S_SELECT_WITH_KEY_SHARE_LOCK is used only on the FK-check path,
+	   * where xbtree_find_unique resolves it to WS_LOCK, so it never reaches here. */
 	  assert (op_type == S_SELECT || op_type == S_SELECT_WITH_LOCK);
 	  if (lock_mode > S_LOCK)
 	    {
@@ -13841,8 +13838,8 @@ locator_get_lock_mode_from_op_type (SCAN_OPERATION_TYPE op_type)
       return S_LOCK;
     case S_SELECT_WITH_KEY_SHARE_LOCK:
       return WS_LOCK;
-    case S_UPDATE:
     case S_DELETE:
+    case S_UPDATE:
       return X_LOCK;
     case S_UPDATE_NO_KEY:
       return WX_LOCK;

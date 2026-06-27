@@ -65,25 +65,6 @@
  *   SCH-M |    N/A    N/A   True  False  False  False  False  False  False  False    N/A  False  False  False
  * ---------------------------------------------------------------------------------------------------------------
  * N/A : not applicable
- *
- * WS (Weak Shared Lock): FK existence check — used when a child INSERT verifies that the referenced parent key exists.
- *                        Compatible with WX (core FK deadlock fix: non-key UPDATE does not change the key,
- *                        so a concurrent FK check is safe).
- *                        Compatible with WS (multiple FK checks on the same row are harmless).
- *                        U_LOCK asymmetry is intentional (mirrors S vs U pattern):
- *                          U + WS = YES : an update-in-progress (U) can coexist with an existing FK check.
- *                                         If U upgrades to WX it stays compatible; if it upgrades to X,
- *                                         WS+X=NO blocks the upgrade until the FK check completes — no deadlock.
- *                          WS + U = NO  : while U is held, no new FK checks can start.
- *                                         This is also necessary to prevent a deadlock cycle:
- *                                         TX1: WS(A) → U(B), TX2: WS(B) → U(A), then both try X upgrade
- *                                         → circular wait.  WS+U=NO breaks the cycle at entry.
- *                        Incompatible with X / IX / SIX / BU / SCH-M (key could be changed or deleted).
- * WX (Weak eXclusive Lock): non-key column UPDATE — signals that the primary key will NOT change.
- *                           Acquired directly (without prior U_LOCK) in locator_update_force() once it is
- *                           known which columns are modified.  U_LOCK is a cursor-stability protocol for
- *                           scan-then-update; WX is used when the write is already determined.
- *                           Compatible with WS only.  Incompatible with all shared/exclusive locks.
  */
 
 /* *INDENT-OFF* */
@@ -123,7 +104,7 @@ const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
     /* SIX */ LOCK_COMPAT_YES, /* U */ LOCK_COMPAT_UNKNOWN, /* WX */ LOCK_COMPAT_NO,
     /* X */ LOCK_COMPAT_NO, /* SCH-M */ LOCK_COMPAT_NO},
 
-  /* WS — FK existence check: compatible with WS and WX, incompatible with X and U */
+  /* WS */
   { /* N/A */ LOCK_COMPAT_UNKNOWN, /* NON2PL */ LOCK_COMPAT_UNKNOWN, /* NULL */ LOCK_COMPAT_YES,
     /* SCH-S */ LOCK_COMPAT_YES, /* IS */ LOCK_COMPAT_YES, /* WS */ LOCK_COMPAT_YES,
     /* S */ LOCK_COMPAT_YES, /* IX */ LOCK_COMPAT_NO, /* BU */ LOCK_COMPAT_NO,
@@ -165,7 +146,7 @@ const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
     /* SIX */ LOCK_COMPAT_UNKNOWN, /* U */ LOCK_COMPAT_NO, /* WX */ LOCK_COMPAT_NO,
     /* X */ LOCK_COMPAT_NO, /* SCH-M */ LOCK_COMPAT_UNKNOWN},
 
-  /* WX — non-key UPDATE: compatible with WS only, blocks all shared locks */
+  /* WX */
   { /* N/A */ LOCK_COMPAT_UNKNOWN, /* NON2PL */ LOCK_COMPAT_UNKNOWN, /* NULL */ LOCK_COMPAT_YES,
     /* SCH-S */ LOCK_COMPAT_YES, /* IS */ LOCK_COMPAT_NO, /* WS */ LOCK_COMPAT_YES,
     /* S */ LOCK_COMPAT_NO, /* IX */ LOCK_COMPAT_NO, /* BU */ LOCK_COMPAT_NO,
@@ -255,7 +236,7 @@ const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
     /* IS */ IS_LOCK, /* WS */ WS_LOCK, /* S */ S_LOCK, /* IX */ IX_LOCK, /* BU */ X_LOCK,
     /* SIX */ SIX_LOCK, /* U */ NA_LOCK, /* WX */ WX_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},
 
-  /* WS — requesting WS while holding various locks */
+  /* WS */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ WS_LOCK, /* SCH-S */ WS_LOCK,
     /* IS */ S_LOCK, /* WS */ WS_LOCK, /* S */ S_LOCK, /* IX */ SIX_LOCK, /* BU */ X_LOCK,
     /* SIX */ SIX_LOCK, /* U */ U_LOCK, /* WX */ WX_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},
@@ -285,7 +266,7 @@ const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
     /* IS */ NA_LOCK, /* WS */ U_LOCK, /* S */ U_LOCK, /* IX */ NA_LOCK, /* BU */ NA_LOCK,
     /* SIX */ NA_LOCK, /* U */ U_LOCK, /* WX */ X_LOCK, /* X */ X_LOCK, /* SCH-M */ NA_LOCK},
 
-  /* WX — requesting WX while holding various locks */
+  /* WX */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ WX_LOCK, /* SCH-S */ WX_LOCK,
     /* IS */ X_LOCK, /* WS */ WX_LOCK, /* S */ X_LOCK, /* IX */ X_LOCK, /* BU */ X_LOCK,
     /* SIX */ X_LOCK, /* U */ X_LOCK, /* WX */ WX_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},

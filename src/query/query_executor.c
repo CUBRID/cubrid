@@ -10458,34 +10458,36 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       p_class_instance_lock_info = &class_instance_lock_info;
     }
 
-  /* Determine if all updated classes are non-key updates; if so, use S_UPDATE_NO_KEY (WX_LOCK) to allow concurrent FK
-   * existence checks (WS_LOCK) to proceed without deadlock. */
+  /* If no class updates a key column, use S_UPDATE_NO_KEY (WX_LOCK)
+   * so that concurrent FK existence checks (WS_LOCK) can proceed without deadlock. */
   {
-    int ci;
-    bool all_no_key = true;
+    int class_index;
+    bool is_key_update = false;
 
-    for (ci = 0; ci < class_oid_cnt && all_no_key; ci++)
+    for (class_index = 0; class_index < class_oid_cnt && !is_key_update; class_index++)
       {
-	UPDDEL_CLASS_INFO *cls = &update->classes[ci];
+	UPDDEL_CLASS_INFO *class_info = &update->classes[class_index];
 
-	if (cls->num_subclasses < 1 || cls->class_oid == NULL)
+	if (class_info->num_subclasses < 1 || class_info->class_oid == NULL)
 	  {
-	    all_no_key = false;
+	    is_key_update = true;
 	    break;
 	  }
-	if (locator_decide_update_lock (thread_p, &cls->class_oid[0], (ATTR_ID *) cls->att_id, cls->num_attrs)
-	    != WX_LOCK)
+
+	if (locator_decide_update_lock
+	    (thread_p, &class_info->class_oid[0], (ATTR_ID *) class_info->att_id, class_info->num_attrs) != WX_LOCK)
 	  {
-	    all_no_key = false;
+	    is_key_update = true;
 	  }
       }
-    if (all_no_key && class_oid_cnt > 0)
+
+    if (!is_key_update && class_oid_cnt > 0)
       {
 	XASL_NODE *xptr;
 
-	/* Propagate to the whole scan_ptr chain: for MERGE the target (FOR_UPDATE) spec can be a nested scan that
-	 * is opened with xptr->scan_op_type rather than aptr->scan_op_type. Only FOR_UPDATE specs consume
-	 * scan_op_type for locking (others use S_SELECT), so setting it on every node in the chain is safe. */
+	/* Propagate along the whole scan_ptr chain to cover the MERGE target,
+	 * which is a nested scan opened with xptr->scan_op_type.
+	 * Safe to set on all: a non-FOR_UPDATE spec ignores scan_op_type and locks as S_SELECT. */
 	for (xptr = aptr; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
 	    xptr->scan_op_type = S_UPDATE_NO_KEY;

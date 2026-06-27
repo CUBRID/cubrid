@@ -41,13 +41,13 @@ typedef enum
   NULL_LOCK = 2,		/* NULL LOCK */
   SCH_S_LOCK = 3,		/* Schema Stability Lock */
   IS_LOCK = 4,			/* Intention Shared lock */
-  WS_LOCK = 5,			/* Weak Shared Lock — FK existence check (PG: FOR KEY SHARE) */
+  WS_LOCK = 5,			/* Weak Shared Lock — FK existence check */
   S_LOCK = 6,			/* Shared lock */
   IX_LOCK = 7,			/* Intention exclusive lock */
   BU_LOCK = 8,			/* Bulk Update Lock */
   SIX_LOCK = 9,			/* Shared and intention exclusive lock */
   U_LOCK = 10,			/* Update lock */
-  WX_LOCK = 11,			/* Weak eXclusive Lock — non-key column UPDATE (PG: FOR NO KEY UPDATE) */
+  WX_LOCK = 11,			/* Weak eXclusive Lock — non-key UPDATE */
   X_LOCK = 12,			/* Exclusive lock */
   SCH_M_LOCK = 13,		/* Schema Modification Lock */
 
@@ -82,28 +82,28 @@ lock_to_lockmode_string (LOCK lock)
     {
     case NULL_LOCK:
       return "NULL_LOCK";
+    case SCH_S_LOCK:
+      return "SCH_S_LOCK";
     case IS_LOCK:
       return "IS_LOCK";
+    case WS_LOCK:
+      return "WS_LOCK";
     case S_LOCK:
       return "S_LOCK";
     case IX_LOCK:
       return "IX_LOCK";
+    case BU_LOCK:
+      return "BU_LOCK";
     case SIX_LOCK:
       return "SIX_LOCK";
     case U_LOCK:
       return "U_LOCK";
-    case BU_LOCK:
-      return "BU_LOCK";
-    case SCH_S_LOCK:
-      return "SCH_S_LOCK";
-    case SCH_M_LOCK:
-      return "SCH_M_LOCK";
-    case X_LOCK:
-      return "X_LOCK";
-    case WS_LOCK:
-      return "WS_LOCK";
     case WX_LOCK:
       return "WX_LOCK";
+    case X_LOCK:
+      return "X_LOCK";
+    case SCH_M_LOCK:
+      return "SCH_M_LOCK";
     default:			// NA_LOCK,
       return "UNKNOWN";
     }

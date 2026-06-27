@@ -6399,8 +6399,8 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   OID_SET_NULL (&find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
-  /* Use WS_LOCK: FK existence check only needs to verify the row exists,
-   * not prevent non-key updates on the child row. */
+  /* Use WS_LOCK: an FK existence check only needs the referenced row to keep existing,
+   * not to block non-key updates on that row. */
   find_fk_object.lock_mode = WS_LOCK;
 #endif /* SERVER_MODE */
   /* Prepare scan. */
