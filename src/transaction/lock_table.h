@@ -47,7 +47,7 @@ typedef enum
   BU_LOCK = 8,			/* Bulk Update Lock */
   SIX_LOCK = 9,			/* Shared and intention exclusive lock */
   U_LOCK = 10,			/* Update lock */
-  WX_LOCK = 11,		/* Weak eXclusive Lock — non-key column UPDATE (PG: FOR NO KEY UPDATE) */
+  WX_LOCK = 11,			/* Weak eXclusive Lock — non-key column UPDATE (PG: FOR NO KEY UPDATE) */
   X_LOCK = 12,			/* Exclusive lock */
   SCH_M_LOCK = 13,		/* Schema Modification Lock */
 

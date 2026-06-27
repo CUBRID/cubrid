@@ -4143,7 +4143,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 		}
 	    }
 	  ret =
-	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_KEY_SHARE_LOCK, key_dbvalue, &part_oid, &unique_oid, true);
+	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_KEY_SHARE_LOCK, key_dbvalue, &part_oid,
+				&unique_oid, true);
 	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
@@ -5788,8 +5789,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  LOCK upd_lock = locator_decide_update_lock (thread_p, class_oid, att_id, n_att_id);
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
-								      local_scan_cache, upd_lock, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED);
+								      local_scan_cache, upd_lock, COPY, NULL_CHN,
+								      mvcc_reev_data, LOG_ERROR_IF_DELETED);
 		}
 	      else
 		{
@@ -7597,7 +7598,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  {
 	    LOCK row_lock = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
 	    scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, row_lock, COPY,
-					       NULL_CHN, LOG_ERROR_IF_DELETED);
+						NULL_CHN, LOG_ERROR_IF_DELETED);
 	  }
 	  if (saved_mvcc_snapshot != NULL)
 	    {
@@ -13048,8 +13049,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       lock_acquired = true;
     }
 
-  assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK
-	  || lock_mode == WX_LOCK);
+  assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK || lock_mode == WX_LOCK);
 
   /* Lock should be aquired now -> get recdes */
   if (context->recdes_p != NULL)

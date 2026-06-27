@@ -22732,7 +22732,8 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
-  ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_KEY_SHARE_LOCK, keyval, &part_oid, &unique_oid, true);
+  ret_search =
+    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_KEY_SHARE_LOCK, keyval, &part_oid, &unique_oid, true);
   if (ret_search == BTREE_KEY_NOTFOUND)
     {
       char *val_print = NULL;
@@ -24779,8 +24780,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
       /* First key object must be locked and returned. */
       find_unique_helper.lock_mode = (scan_op_type == S_SELECT_WITH_KEY_SHARE_LOCK) ? WS_LOCK
-				     : (scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK
-				     : (scan_op_type == S_UPDATE_NO_KEY) ? WX_LOCK : X_LOCK;
+	: (scan_op_type == S_SELECT_WITH_LOCK) ? S_LOCK : (scan_op_type == S_UPDATE_NO_KEY) ? WX_LOCK : X_LOCK;
       key_function = btree_key_find_and_lock_unique;
     }
 

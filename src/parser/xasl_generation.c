@@ -20556,7 +20556,8 @@ pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * 
 
       statement->info.query.q.select.where = parser_copy_tree_list (parser, where);
 
-      if ((scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY) && statement->info.query.q.select.from->next != NULL)
+      if ((scan_op_type == S_UPDATE || scan_op_type == S_UPDATE_NO_KEY)
+	  && statement->info.query.q.select.from->next != NULL)
 	{
 	  /* this is a multi-table update statement */
 	  for (spec = statement->info.query.q.select.from; spec; spec = spec->next)
