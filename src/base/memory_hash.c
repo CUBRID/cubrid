@@ -986,6 +986,29 @@ mht_next_power_of_2 (unsigned int n)
 }
 
 /*
+ * mht_hls_slot_count - number of open-addressing slots mht_create_hls allocates
+ *                      for est_size entries (load factor + power-of-two rounding).
+ *   return: slot count (power of two)
+ *   est_size(in): expected number of entries
+ *
+ * Note: single source of the HASH LIST SCAN table sizing rule, shared by
+ *       mht_create_hls (allocation) and mht_get_hls_table_size (footprint
+ *       prediction for method selection) so the two cannot diverge.
+ */
+static unsigned int
+mht_hls_slot_count (int est_size)
+{
+  unsigned int ht_estsize;
+
+  if (est_size <= 0)
+    {
+      est_size = 2;
+    }
+  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
+  return mht_next_power_of_2 (ht_estsize);
+}
+
+/*
  * mht_create - create a hash table
  *   return: hash table
  *   name(in): name of hash table
@@ -1096,14 +1119,8 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   MHT_HLS_TABLE *ht;
   unsigned int ht_estsize;
 
-  /* Get a good number of entries for hash table */
-  if (est_size <= 0)
-    {
-      est_size = 2;
-    }
-
-  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
-  ht_estsize = mht_next_power_of_2 ((unsigned int) ht_estsize);
+  /* power-of-two slot count for est_size entries (shared sizing rule) */
+  ht_estsize = mht_hls_slot_count (est_size);
 
   /* Allocate the header information for hash table */
   ht = (MHT_HLS_TABLE *) malloc (DB_SIZEOF (MHT_HLS_TABLE));
@@ -1155,24 +1172,14 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
  *   return: slot array size in bytes
  *   est_size(in): expected number of entries (per table / per partition; int range)
  *
- * Note: mirrors the sizing in mht_create_hls so callers can predict the
- *       open-addressing table footprint accurately (load factor + power-of-two
- *       rounding) for IN_MEM/HYBRID/HASH_FILE method selection, instead of a rough
- *       per-row constant.
+ * Note: uses the shared mht_hls_slot_count() sizing rule so the predicted
+ *       footprint (load factor + power-of-two rounding) matches exactly what
+ *       mht_create_hls allocates, for IN_MEM/HYBRID/HASH_FILE method selection.
  */
 size_t
 mht_get_hls_table_size (int est_size)
 {
-  unsigned int ht_estsize;
-
-  if (est_size <= 0)
-    {
-      est_size = 2;
-    }
-  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
-  ht_estsize = mht_next_power_of_2 (ht_estsize);
-
-  return (size_t) ht_estsize * sizeof (MHT_HLS_SLOT);
+  return (size_t) mht_hls_slot_count (est_size) * sizeof (MHT_HLS_SLOT);
 }
 
 /*
@@ -1349,47 +1356,6 @@ mht_clear (MHT_TABLE * ht, int (*rem_func) (const void *key, void *data, void *a
   ht->act_tail = NULL;
   ht->lru_head = NULL;
   ht->lru_tail = NULL;
-  ht->ncollisions = 0;
-  ht->nentries = 0;
-
-  return NO_ERROR;
-}
-
-/*
- * mht_hls_clear - remove and free all entries of hash table
- *   return: error code
- *   ht(in/out): hash table
- *   rem_func(in): removal function
- *   func_args(in): removal function arguments
- */
-int
-mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args), void *func_args)
-{
-  unsigned int i, error_code;
-
-  assert (ht != NULL);
-
-  /*
-   * Go over the open-addressing slots, calling rem_func on each occupied slot.
-   */
-  if (rem_func)
-    {
-      for (i = 0; i < ht->size; i++)
-	{
-	  if (ht->slots[i].data != NULL)
-	    {
-	      error_code = (*rem_func) (NULL, ht->slots[i].data, func_args);
-	      if (error_code != NO_ERROR)
-		{
-		  return error_code;
-		}
-	    }
-	}
-    }
-
-  /* clear every slot (data == NULL marks each slot empty again) */
-  memset (ht->slots, 0, (size_t) ht->size * sizeof (MHT_HLS_SLOT));
-
   ht->ncollisions = 0;
   ht->nentries = 0;
 
@@ -1659,7 +1625,7 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 void *
 mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash, mask, idx, i;
+  unsigned int hash, mask, idx, probes;
 
   assert (ht != NULL && key != NULL);
 
@@ -1672,7 +1638,7 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   mask = ht->size - 1;
   idx = hash & mask;
 
-  for (i = 0; i < ht->size; i++)
+  for (probes = 0; probes < ht->size; probes++)
     {
       if (ht->slots[idx].data == NULL)
 	{
@@ -1700,20 +1666,21 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 void *
 mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 {
-  unsigned int hash, mask, idx, i;
-  MHT_HLS_SLOT *cur;
+  unsigned int hash, mask, idx, probes;
+  MHT_HLS_SLOT *prev_slot;
 
   assert (ht != NULL && key != NULL && last != NULL);
+  assert (*last != NULL);	/* mht_get_next_hls resumes after a successful mht_get_hls */
 
   hash = *((unsigned int *) key);
   mask = ht->size - 1;
 
   /* Resume linear probing from the slot after the last result. */
-  cur = *((MHT_HLS_SLOT **) last);
-  idx = (unsigned int) (cur - ht->slots);
+  prev_slot = *((MHT_HLS_SLOT **) last);
+  idx = (unsigned int) (prev_slot - ht->slots);
   idx = (idx + 1) & mask;
 
-  for (i = 0; i < ht->size; i++)
+  for (probes = 0; probes < ht->size; probes++)
     {
       if (ht->slots[idx].data == NULL)
 	{

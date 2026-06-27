@@ -2750,7 +2750,6 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
     case HASH_METH_HYBRID:
       if (hash_scan->memory.hash_table != NULL)
 	{
-	  mht_clear_hls (hash_scan->memory.hash_table, NULL, NULL);
 	  mht_destroy_hls (hash_scan->memory.hash_table);
 	  hash_scan->memory.hash_table = NULL;
 	}

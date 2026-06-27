@@ -5360,7 +5360,6 @@ scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsidp)
     {
       if (hlsidp->memory.hash_table != NULL)
 	{
-	  mht_clear_hls (hlsidp->memory.hash_table, NULL, NULL);
 	  mht_destroy_hls (hlsidp->memory.hash_table);
 	  hlsidp->memory.hash_table = NULL;
 	}
