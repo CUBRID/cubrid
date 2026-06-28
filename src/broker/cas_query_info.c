@@ -82,6 +82,29 @@ query_info_clear (T_QUERY_INFO * qi)
 }
 
 void
+query_info_clear_array (void)
+{
+
+  for (int i = 0; i < num_query_info; i++)
+    {
+      query_info_clear (&query_info_arr[i]);
+    }
+
+  FREE_MEM (query_info_arr);
+  num_query_info = 0;
+
+#ifdef TEST
+  for (int i = 0; i < num_query_info_ne; i++)
+    {
+      query_info_clear (&query_info_arr_ne[i]);
+    }
+
+  FREE_MEM (query_info_arr_ne);
+  num_query_info_ne = 0;
+#endif
+}
+
+void
 query_info_print (void)
 {
   int i;

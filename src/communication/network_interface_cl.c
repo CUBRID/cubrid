@@ -82,6 +82,8 @@
 #include "utility.h"
 #include "sp_constants.hpp"
 #include "locator_cl.h"
+#include "execute_schema.h"
+#include "authenticate.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -817,7 +819,6 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
   char *reply;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
   char *request;
-  static int eid;
   char *packed = NULL;
   int packed_size;
   int send_size;
@@ -840,10 +841,9 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       ptr = or_pack_int (request, send_size);
 
       req_error =
-	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request,
-					   OR_ALIGNED_BUF_SIZE (a_request), reply,
-					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-					   packed_size, fetch_copyarea, &eid);
+	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed, packed_size,
+					   fetch_copyarea, &lockset->eid);
     }
   else
     {
@@ -851,8 +851,8 @@ locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea)
       packed = lockset->packed;
       packed_size = lockset->packed_size;
       req_error =
-	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply),
-				  packed, packed_size, fetch_copyarea, eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKSET, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
+				  packed_size, fetch_copyarea, lockset->eid);
     }
 
   if (!req_error)
@@ -1560,7 +1560,6 @@ int
 locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_copyarea)
 {
 #if defined(CS_MODE)
-  static int eid;		/* TODO: remove static */
   int success = ER_FAILED;
   int req_error;
   char *ptr;
@@ -1593,9 +1592,8 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
 
       req_error =
 	net_client_request_2recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, request,
-					   OR_ALIGNED_BUF_SIZE (a_request), reply,
-					   OR_ALIGNED_BUF_SIZE (a_reply), packed, send_size, packed,
-					   packed_size, fetch_copyarea, &eid);
+					   OR_ALIGNED_BUF_SIZE (a_request), reply, OR_ALIGNED_BUF_SIZE (a_reply),
+					   packed, send_size, packed, packed_size, fetch_copyarea, &lockhint->eid);
     }
   else
     {
@@ -1603,8 +1601,8 @@ locator_fetch_lockhint_classes (LC_LOCKHINT * lockhint, LC_COPYAREA ** fetch_cop
       packed = lockhint->packed;
       packed_size = lockhint->packed_size;
       req_error =
-	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply,
-				  OR_ALIGNED_BUF_SIZE (a_reply), packed, packed_size, fetch_copyarea, eid);
+	net_client_recv_copyarea (NET_SERVER_LC_FETCH_LOCKHINT_CLASSES, reply, OR_ALIGNED_BUF_SIZE (a_reply), packed,
+				  packed_size, fetch_copyarea, lockhint->eid);
     }
 
   if (!req_error)
@@ -5909,6 +5907,51 @@ stats_update_all_statistics (int with_fullscan)
 
   return error;
 }
+
+int
+update_histogram_for_all_classes (void)
+{
+  int error = NO_ERROR;
+  MOP class_mop = NULL;
+  LIST_MOPS *lmops = NULL;
+  PT_HISTOGRAM_INFO histogram_info;
+  DB_OBJECT *obj;
+  int save;
+  AU_DISABLE (save);
+
+  lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
+  if (lmops == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  for (int i = 0; i < lmops->num; i++)
+    {
+      class_mop = lmops->mops[i];
+
+      obj = db_find_class (sm_get_ch_name (class_mop));
+      if (obj == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  AU_ENABLE (save);
+	  return er_errid ();
+	}
+
+      histogram_info.target_columns = NULL;
+      histogram_info.bucket_count = -1;
+      histogram_info.with_fullscan = false;
+      error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+      if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+	{
+	  AU_ENABLE (save);
+	  return error;
+	}
+    }
+  AU_ENABLE (save);
+
+  return error;
+}
+
 
 /*
  * btree_add_index () -
@@ -11513,3 +11556,147 @@ lob_remove_dir (HFID * hfid, int attrid)
   return error;
 #endif /* CS_MODE */
 }
+
+/*
+ * file_dump_file_list -
+ *
+ * return:
+ *
+ *   outfp(in):
+ *   invalid_file_only(in):
+ */
+int
+file_dump_file_list (FILE * outfp, bool invalid_only)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_pack_int (request, (int) invalid_only);
+
+  req_error =
+    net_client_request_recv_stream (NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST, request, OR_ALIGNED_BUF_SIZE (a_request),
+				    reply, OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, outfp);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_dump_file_list (thread_p, outfp, invalid_only);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+/*
+ * file_clean_invalid_file -
+ *
+ * return:
+ *
+ *   heap(out):
+ *   heap_ovf(out):
+ *   btree(out):
+ *   btree_ovf(out):
+ */
+int
+file_clean_invalid_file (int *heap, int *heap_ovf, int *btree, int *btree_ovf)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply, *ptr;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  req_error =
+    net_client_request (NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE, NULL, 0, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+			NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      ptr = or_unpack_errcode (reply, &error);
+      ptr = or_unpack_int (ptr, heap);
+      ptr = or_unpack_int (ptr, heap_ovf);
+      ptr = or_unpack_int (ptr, btree);
+      ptr = or_unpack_int (ptr, btree_ovf);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_clean_invalid_file (thread_p, heap, heap_ovf, btree, btree_ovf);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+
+#if !defined(NDEBUG)
+/*
+ * file_delete_target_file -
+ *
+ * return:
+ */
+int
+file_delete_target_file (const char *target_vfid_str)
+{
+#if defined(CS_MODE)
+  int error = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, request_size;
+  OR_ALIGNED_BUF (32) a_request;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+
+  request_size = length_const_string (target_vfid_str, NULL);
+  if (request_size > 32)
+    {
+      return ER_QPROC_INVALID_PARAMETER;
+    }
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) pack_const_string (request, target_vfid_str);
+
+  req_error =
+    net_client_request (NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE, request, request_size, reply,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      (void) or_unpack_errcode (reply, &error);
+    }
+
+  return error;
+#else /* CS_MODE */
+  int success;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  success = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
+
+  exit_server (*thread_p);
+
+  return success;
+#endif /* !CS_MODE */
+}
+#endif

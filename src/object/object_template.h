@@ -212,7 +212,7 @@ extern bool obt_Last_insert_id_generated;
 
 /* OBJECT TEMPLATE FUNCTIONS */
 
-extern OBJ_TEMPLATE *obt_def_object (MOP class_);
+extern OBJ_TEMPLATE *obt_def_object (MOP class_, bool is_read_only);
 extern OBJ_TEMPLATE *obt_edit_object (MOP object);
 extern int obt_quit (OBJ_TEMPLATE * template_ptr);
 

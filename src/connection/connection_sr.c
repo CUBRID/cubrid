@@ -2983,6 +2983,7 @@ void
 css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, int wait_time)
 {
   cubconn::connection::worker::message request;
+  cubconn::connection::context * ctx;
   int r;
 
   assert (conn);
@@ -3009,6 +3010,10 @@ css_request_shutdown_conn (css_conn_entry * conn, uint8_t ignore, bool retry, in
       return;
     }
 
+  ctx = static_cast < cubconn::connection::context * >(conn->context);
+  request.ctx = ctx;
+  request.id = ctx->m_id;
+
   auto func =[conn] ()noexcept {
     /* unlock */
     rmutex_unlock (NULL, &conn->cmutex);
@@ -3025,6 +3030,7 @@ void
 css_request_release_packet (css_conn_entry * conn, void *buffer)
 {
   cubconn::connection::worker::message request;
+  cubconn::connection::context * ctx;
   int r;
 
   assert (conn && buffer);
@@ -3049,6 +3055,10 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
 
       return;
     }
+
+  ctx = static_cast < cubconn::connection::context * >(conn->context);
+  request.ctx = ctx;
+  request.id = ctx->m_id;
 
   conn->worker->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
 

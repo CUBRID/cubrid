@@ -31,6 +31,10 @@
 #include <sys/types.h>
 #include <assert.h>
 #include <signal.h>
+#if !defined(SERVER_MODE)
+#include <atomic>
+#include <mutex>
+#endif
 
 #if defined(WINDOWS)
 #include <winsock2.h>
@@ -687,10 +691,20 @@ int
 hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE type)
 {
 #if !defined(SERVER_MODE)
-  int error;
-  static bool is_first = true;
+// *INDENT-OFF*
+  static std::atomic <bool> is_first{true};
+  static std::mutex init_mtx;
+  int error = NO_ERROR;
+  
+  if (is_first.load (std::memory_order_acquire) == false)
+    {
+      return (NO_ERROR);
+    }
 
-  if (is_first == false)
+  std::lock_guard <std::mutex> lock (init_mtx);
+// *INDENT-ON*  
+
+  if (is_first.load (std::memory_order_relaxed) == false)
     {
       return (NO_ERROR);
     }
@@ -722,7 +736,8 @@ hb_process_init (const char *server_name, const char *log_path, HB_PROC_TYPE typ
       return (error);
     }
 
-  is_first = false;
+  is_first.store (false, std::memory_order_release);
+
   return (NO_ERROR);
 #else
   return (ER_FAILED);

@@ -41,10 +41,9 @@
 #include "memory_alloc.h"
 #include "server_interface.h"
 #endif /* !SERVER_MODE */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-#include "thread_worker_pool.hpp"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
-#endif // SERVER_MODE || SA_MODE
+#endif // SERVER_MODE
 #if defined (SERVER_MODE) || defined (SA_MODE)
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #endif // SERVER_MODE or SA_MODE
@@ -81,9 +80,9 @@
 #include "heap_file.h"
 #include "vacuum.h"
 #include "xasl_cache.h"
-#include "load_worker_manager.hpp"
 
 #if defined (SERVER_MODE)
+#include "load_worker_manager.hpp"
 #include "connection_error.h"
 #endif
 
@@ -4171,19 +4170,19 @@ static size_t
 thread_stats_count (void)
 {
 #if defined (SERVER_MODE)
-  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::wp_worker_statset_get_count ());
+  assert (PERFMON_PORTABLE_WORKER_STAT_COUNT == cubthread::stats_worker_pool_type::stats::get_count ());
   static bool check_names = true;
   if (check_names)
     {
       for (size_t index = 0; index < PERFMON_PORTABLE_WORKER_STAT_COUNT; index++)
         {
-          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index)) != 0)
+          if (std::strcmp (perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index)) != 0)
             {
               assert (false);
               _er_log_debug (ARG_FILE_LINE,
                              "Warning - Monitoring thread worker statistics; statistics name not matching for %zu\n"
                              "\t\tperfmon name = %s\n" "\t\tdaemon name = %s\n", index,
-                             perfmon_Portable_worker_stat_names[index], cubthread::wp_worker_statset_get_name (index));
+                             perfmon_Portable_worker_stat_names[index], cubthread::stats_worker_pool_type::stats::get_name (index));
             }
         }
       check_names = false;

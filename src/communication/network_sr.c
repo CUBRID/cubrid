@@ -660,6 +660,7 @@ net_server_init (void)
   req_p->processing_function = slogin_user;
 
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
+  req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_find_multi_uniques;
 
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
@@ -764,6 +765,18 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_TDES_RESET_QUERY_START_INFO];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = stdes_reset_query_start_info;
+
+  /* file manager */
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST];
+  req_p->processing_function = sfile_tracker_dump_file_list;
+
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE];
+  req_p->processing_function = sfile_tracker_clean_invalid_file;
+
+#if !defined(NDEBUG)
+  req_p = &net_Requests[NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE];
+  req_p->processing_function = sfile_tracker_delete_target_file;
+#endif
 }
 
 /*
@@ -955,6 +968,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_ALLOC_BCB_SUSPENDED:
 		    case THREAD_DWB_QUEUE_SUSPENDED:
 		    case THREAD_PGBUF_SUSPENDED:
+		    case THREAD_SLEEP_FUNC_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 

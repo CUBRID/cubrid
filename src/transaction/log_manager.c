@@ -85,9 +85,12 @@
 #include "mem_block.hpp"
 #include "string_buffer.hpp"
 #include "boot_sr.h"
+#if defined (SERVER_MODE)
 #include "thread_daemon.hpp"
+#endif
 #include "thread_entry.hpp"
 #include "thread_entry_task.hpp"
+#include "thread_looper.hpp"
 #include "thread_manager.hpp"
 #include "transaction_transient.hpp"
 #include "vacuum.h"
@@ -10398,6 +10401,8 @@ log_flush_execute (cubthread::entry & thread_ref)
 /*
  * log_checkpoint_daemon_init () - initialize checkpoint daemon
  */
+REGISTER_DAEMON (log_checkpoint);
+
 void
 log_checkpoint_daemon_init ()
 {
@@ -10415,6 +10420,8 @@ log_checkpoint_daemon_init ()
 /*
  * log_remove_log_archive_daemon_init () - initialize remove log archive daemon
  */
+REGISTER_DAEMON (log_remove_log_archive);
+
 void
 log_remove_log_archive_daemon_init ()
 {
@@ -10438,6 +10445,8 @@ log_remove_log_archive_daemon_init ()
 /*
  * log_clock_daemon_init () - initialize log clock daemon
  */
+REGISTER_DAEMON (log_clock);
+
 void
 log_clock_daemon_init ()
 {
@@ -10445,8 +10454,7 @@ log_clock_daemon_init ()
 
   cubthread::looper looper = cubthread::looper (std::chrono::milliseconds (200));
   log_Clock_daemon =
-    cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute),
-                                              "log-clock");
+    cubthread::get_manager ()->create_daemon (looper, new cubthread::entry_callable_task (log_clock_execute), "log-clock");
 }
 #endif /* SERVER_MODE */
 
@@ -10454,6 +10462,8 @@ log_clock_daemon_init ()
 /*
  * log_check_ha_delay_info_daemon_init () - initialize check ha delay info daemon
  */
+REGISTER_DAEMON (ha_delay_check);
+
 void
 log_check_ha_delay_info_daemon_init ()
 {
@@ -10477,6 +10487,8 @@ log_check_ha_delay_info_daemon_init ()
 /*
  * log_flush_daemon_init () - initialize log flush daemon
  */
+REGISTER_DAEMON (log_flush);
+
 void
 log_flush_daemon_init ()
 {
@@ -14012,6 +14024,8 @@ cdc_min_log_pageid_to_keep ()
 }
 
 #if defined (SERVER_MODE)
+REGISTER_DAEMON (cdc_loginfo_producer);
+
 void
 cdc_loginfo_producer_daemon_init ()
 {
@@ -14944,6 +14958,9 @@ cdc_initialize ()
 {
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+#if defined(SERVER_MODE)
+  cdc_Gl.conn.client_id = -1;
+#endif
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;

@@ -1525,6 +1525,8 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_CREATE_SYNONYM:
 	case PT_DROP_SYNONYM:
 	case PT_RENAME_SYNONYM:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	  return true;
 	default:
 	  break;
@@ -4151,63 +4153,34 @@ pt_chop_trailing_dots (PARSER_CONTEXT * parser, const char *msg)
 /*
  * pt_get_proxy_spec_name () - return a proxy query_spec's "from" entity name
  *   return: qspec's from entity name if all OK, NULL otherwise
+ *   parser(in): the parser context
  *   qspec(in): a proxy's SELECT query specification
  */
 
 const char *
-pt_get_proxy_spec_name (const char *qspec)
+pt_get_proxy_spec_name (PARSER_CONTEXT * parser, const char *qspec)
 {
   PT_NODE **qtree;
-  PARSER_CONTEXT *parser = NULL;
-  const char *from_name = NULL, *result;
-  size_t newlen;
+  const char *from_name = NULL;
 
-  /* the parser and its strings go away upon return, but the caller probably wants the proxy_spec_name to remain, so */
-  static char tblname[256], *name;
-  static size_t namelen = 256;
-
-  name = tblname;
-
-  if (qspec && (parser = parser_create_parser ()) && (qtree = parser_parse_string (parser, qspec))
-      && !pt_has_error (parser) && qtree[0])
+  assert (parser != NULL);
+  if (qspec)
     {
-      from_name = pt_get_spec_name (parser, qtree[0]);
-    }
-
-  if (from_name == NULL)
-    {
-      result = NULL;		/* no, it failed */
-    }
-  else
-    {
-      /* copy from_name into tblname but do not overrun it! */
-      newlen = strlen (from_name) + 1;
-      if (newlen + 1 > namelen)
+      qtree = parser_parse_string (parser, qspec);
+      if (qtree && qtree[0])
 	{
-	  /* get a bigger name buffer */
-	  if (name != tblname)
+	  if (!pt_has_error (parser))
 	    {
-	      free_and_init (name);
+	      from_name = pt_get_spec_name (parser, qtree[0]);
 	    }
-	  name = (char *) malloc (newlen);
-	  namelen = newlen;
+	  parser_free_tree (parser, qtree[0]);
 	}
 
-
-      if (name)
-	{
-	  strcpy (name, from_name);
-	}
-
-      result = name;
+      /* remove error which is occured in this function */
+      pt_reset_error (parser);
+      parser->flag.has_internal_error = 0;
     }
-
-  if (parser != NULL)
-    {
-      parser_free_parser (parser);
-    }
-
-  return result;
+  return from_name;
 }
 
 /*
@@ -7565,7 +7538,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
  *				 groups to which a DB user belongs to.
  *
  *    SELECT SUM(SET{t.g.name})
- *    FROM db_user U, TABLE(groups) AS t(g)
+ *    FROM _db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7616,8 +7589,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_USER_NAME, "U", DB_AUTH_SELECT);
 
 
   {
@@ -7764,7 +7737,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7791,7 +7764,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -10099,6 +10072,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
@@ -10749,6 +10728,7 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 	      PT_NODE *name = node->info.expr.arg1;
 
 	      original_name = name->info.name.original;
+	      resolved_name = name->info.name.resolved;
 	    }
 	  else
 	    {
@@ -10904,6 +10884,26 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
           || (node->node_type == PT_EXPR && PT_IS_SERIAL (node->info.expr.op)));
   // *INDENT-ON*
   assert (original_name && original_name[0] != '\0');
+
+  /* DBLink remote SQL: do not merge current schema into SERIAL names that were unqualified in SQL.
+   * path_id_list (owner.serial.nextval) is PT_DOT_ without USER_SPECIFIED — still explicit; do not strip here.
+   * object_name sets resolved (qualifier) but may not set USER_SPECIFIED — do not strip when resolved is set.
+   * pt_compile/name binding has not run yet, so unqualified identifiers still have resolved == NULL. */
+  if (parser->flag.dblink_skip_implicit_serial_qualifier && node->node_type == PT_EXPR
+      && PT_IS_SERIAL (node->info.expr.op))
+    {
+      if (PT_IS_NAME_NODE (node->info.expr.arg1))
+	{
+	  PT_NODE *nm = node->info.expr.arg1;
+
+	  if (!PT_NAME_INFO_IS_FLAGED (nm, PT_NAME_INFO_USER_SPECIFIED)
+	      && (nm->info.name.resolved == NULL || nm->info.name.resolved[0] == '\0'))
+	    {
+	      nm->info.name.resolved = NULL;
+	      return node;
+	    }
+	}
+    }
 
   if (strchr (original_name, '.'))
     {
@@ -11756,9 +11756,6 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
-
-      /* alias is not needed for remote table */
-      spec->info.spec.range_var = NULL;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -11788,12 +11785,6 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 	  if (spec->info.spec.range_var)
 	    {
 	      a_name = (char *) spec->info.spec.range_var->info.name.original;
-	      /* to skip aliased name at rewriting for mariadb and etc. */
-	      if (spec->info.spec.entity_name
-		  && strcasecmp (a_name, spec->info.spec.entity_name->info.name.original) == 0)
-		{
-		  spec->info.spec.range_var = NULL;
-		}
 	    }
 
 	  t_name = (char *) target->info.name.original;
@@ -11973,11 +11964,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11985,6 +11971,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 
@@ -12077,6 +12072,44 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
     PT_PRINT_SUPPRESS_FOR_DBLINK;
+
+  /* strip redundant aliases (alias == entity_name) from remote specs before printing;
+   * without this, "t1@srv1 t1" would be printed as "t1 t1" after server name suppression */
+  {
+    PT_NODE *s;
+    PT_NODE *spec_list;
+    const char *a_name, *e_name;
+
+    /* for update incuding merge node */
+    spec_list = upd_spec;
+    for (s = spec_list; s; s = s->next)
+      {
+	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
+	  {
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
+	      {
+		s->info.spec.range_var = NULL;
+	      }
+	  }
+      }
+
+    /* for insert incuding merge node */
+    spec_list = into_spec;
+    for (s = spec_list; s; s = s->next)
+      {
+	if (s->info.spec.range_var && s->info.spec.entity_name && s->info.spec.remote_server_name)
+	  {
+	    a_name = s->info.spec.range_var->info.name.original;
+	    e_name = s->info.spec.entity_name->info.name.original;
+	    if (a_name && e_name && strcasecmp (a_name, e_name) == 0)
+	      {
+		s->info.spec.range_var = NULL;
+	      }
+	  }
+      }
+  }
 
   dml = pt_print_bytes (parser, node);
 
@@ -12261,6 +12294,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
   SERVER_NAME_LIST snl;
 
   memset (&snl, 0x00, sizeof (SERVER_NAME_LIST));
+  parser->flag.dblink_skip_implicit_serial_qualifier = 0;
 
   parser_walk_tree (parser, stmt, pt_set_print_in_value_for_dblink, NULL, NULL, NULL);
 
@@ -12319,10 +12353,20 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_CREATE_ENTITY:
     case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
+      if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	{
+	  parser->flag.dblink_skip_implicit_serial_qualifier = 1;
+	}
+
       return;
     default:
       /* no action */
       return;
+    }
+
+  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+    {
+      parser->flag.dblink_skip_implicit_serial_qualifier = 1;
     }
 
   switch (stmt->node_type)

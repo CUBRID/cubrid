@@ -915,6 +915,8 @@ numeric_to_string (DB_VALUE * value, bool commas)
   char *return_string;
   int comma_length = 0;
   int str_length = 0;
+  int prec, scale;
+  int digits;
 
   do
     {
@@ -927,7 +929,10 @@ numeric_to_string (DB_VALUE * value, bool commas)
 
   numeric_db_value_print (value, str_buf);
 
-  comma_length = COMMAS_OFFSET (commas, DB_VALUE_PRECISION (value));
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+  digits = (scale < 0) ? (prec - scale) : (scale > prec ? scale : prec);
+
+  comma_length = COMMAS_OFFSET (commas, digits);
   str_length = strlen (str_buf) + 1;	// include '\0'
 
 
@@ -1132,11 +1137,7 @@ duplicate_string (const char *string)
       return NULL;
     }
 
-  new_string = (char *) malloc (strlen (string) + 1);
-  if (new_string)
-    {
-      strcpy (new_string, string);
-    }
+  new_string = strdup (string);
 
   return (new_string);
 
@@ -1536,12 +1537,12 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
     case DB_TYPE_VARCHAR:
     case DB_TYPE_CHAR:
       {
-	int dummy, bytes_size, decomp_size;
+	int bytes_size, decomp_size;
 	bool need_decomp = false;
 	const char *str;
 	char *decomposed = NULL;
 
-	str = db_get_char (value, &dummy);
+	str = db_get_char (value);
 	bytes_size = db_get_string_size (value);
 	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
 	  {

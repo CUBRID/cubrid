@@ -632,7 +632,16 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
     }
 
   /* update connection counters for reserved connections */
-  if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
+  if (thread_p->conn_entry->client_type != DB_CLIENT_TYPE_UNKNOWN)
+    {
+      if (thread_p->conn_entry->client_type != (BOOT_CLIENT_TYPE) client_type)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
+	  (void) return_error_to_client (thread_p, rid);
+	  status = CSS_UNPLANNED_SHUTDOWN;
+	}
+    }
+  else if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       (void) return_error_to_client (thread_p, rid);
@@ -5306,7 +5315,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (pr_type->id == DB_TYPE_VARCHAR)
+      if (TP_IS_CHAR_TYPE (pr_type->id))
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5346,7 +5355,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
 
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR))
+	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
 	    {
 	      buf.ptr = tuple_p;
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
@@ -10878,6 +10887,7 @@ ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
   session_stop_attached_threads (thread_p, session);
 }
 
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool
 cdc_check_client_connection ()
 {
@@ -10891,6 +10901,7 @@ cdc_check_client_connection ()
       return false;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
@@ -11133,23 +11144,41 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
-  /* scdc_start_session more than once without scdc_end_session */
+  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
   if (cdc_Gl.conn.fd != -1)
     {
-      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
-	{
-	  /* check if existing connection is alive */
-	  if (cdc_check_client_connection ())
-	    {
-	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
 
-	      error_code = ER_CDC_NOT_AVAILABLE;
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-	      goto error;
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+
+		  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
+		  css_request_shutdown_conn (prev_conn, 0, false, 0);
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
 	    }
 	}
 
-      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
       if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
 	{
 	  cdc_pause_producer ();
@@ -11160,6 +11189,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -11424,6 +11454,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
 
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.conn.client_id = -1;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -12077,3 +12108,152 @@ slob_remove_dir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int re
 
   return;
 }
+
+/*
+ * sfile_tracker_dump_file_list -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_dump_file_list (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  FILE *outfp;
+  int file_size;
+  char *buffer;
+  int buffer_size;
+  int send_size;
+  int invalid_only;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_int (request, &buffer_size);
+  ptr = or_unpack_int (ptr, &invalid_only);
+
+  buffer = (char *) db_private_alloc (thread_p, buffer_size);
+  if (buffer == NULL)
+    {
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      return;
+    }
+
+  outfp = tmpfile ();
+  if (outfp == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      db_private_free_and_init (thread_p, buffer);
+      return;
+    }
+
+  xfile_tracker_dump_file_list (thread_p, outfp, (bool) invalid_only);
+  file_size = ftell (outfp);
+
+  /*
+   * Send the file in pieces
+   */
+  rewind (outfp);
+
+  (void) or_pack_int (reply, (int) file_size);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+
+  while (file_size > 0)
+    {
+      if (file_size > buffer_size)
+	{
+	  send_size = buffer_size;
+	}
+      else
+	{
+	  send_size = file_size;
+	}
+
+      file_size -= send_size;
+      if (fread (buffer, 1, send_size, outfp) == 0)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  css_send_abort_to_client (thread_p->conn_entry, rid);
+	  /*
+	   * Continue sending the stuff that was prmoised to client. In this case
+	   * junk (i.e., whatever it is in the buffers) is sent.
+	   */
+	}
+      css_send_data_to_client (thread_p->conn_entry, rid, buffer, send_size);
+    }
+  fclose (outfp);
+  db_private_free_and_init (thread_p, buffer);
+}
+
+/*
+ * sfile_tracker_clean_invalid_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_clean_invalid_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int heap = 0, heap_ovf = 0, btree = 0, btree_ovf = 0;
+  int error;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  error = xfile_tracker_clean_invalid_file (thread_p, &heap, &heap_ovf, &btree, &btree_ovf);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_errcode (reply, error);
+  ptr = or_pack_int (ptr, heap);
+  ptr = or_pack_int (ptr, heap_ovf);
+  ptr = or_pack_int (ptr, btree);
+  ptr = or_pack_int (ptr, btree_ovf);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+#if !defined(NDEBUG)
+/*
+ * sfile_tracker_delete_target_file -
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in):
+ *   reqlen(in):
+ *
+ * NOTE:
+ */
+void
+sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error;
+  char *target_vfid_str;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  (void) or_unpack_string_nocopy (request, &target_vfid_str);
+
+  error = xfile_tracker_delete_target_file (thread_p, target_vfid_str);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  (void) or_pack_errcode (reply, error);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+#endif

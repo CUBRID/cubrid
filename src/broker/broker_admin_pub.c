@@ -360,6 +360,8 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
       return -1;
     }
 
+  COPY_CUBRID_CONF;
+
   for (i = 0; i < br_num; i++)
     {
       if (br_info[i].shard_flag == OFF)
@@ -569,6 +571,8 @@ admin_stop_cmd (int master_shm_id)
   uw_shm_detach (shm_br);
 #endif /* WINDOWS */
   uw_shm_destroy (master_shm_id);
+
+  REMOVE_CUBRID_CONF;
 
   return 0;
 }
@@ -961,6 +965,8 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
       putenv (shard_db_password_env_str[i]);
     }
 
+  ENABLE_CUBRID_CONF_ENV;
+
   for (i = 0; i < shm_br->num_broker; i++)
     {
       shm_proxy_p = NULL;
@@ -1103,6 +1109,8 @@ admin_off_cmd (int master_shm_id, const char *broker_name)
       return -1;
     }
 #endif /* !WINDOWS */
+
+  DISABLE_CUBRID_CONF_ENV;
 
   for (i = 0; i < shm_br->num_broker; i++)
     {

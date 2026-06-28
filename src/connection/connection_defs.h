@@ -38,6 +38,7 @@
 #include "memory_alloc.h"
 #include "porting.h"
 #include "thread_compat.hpp"
+#include "db_multi_threads_connections.h"
 
 #if defined(WINDOWS)
 #include <dos.h>
@@ -73,6 +74,16 @@ enum css_command_type
   SERVER_REQUEST_NEW = 5,	/* new-style server request */
   MAX_REQUEST
 };
+
+#define CSS_CLIENT_TYPE_INFO_SIZE ((int) sizeof (int))
+#define CSS_SERVER_REQUEST_CODE_MASK 0x0000ffff
+#define CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT 16
+#define CSS_PACK_SERVER_REQUEST(request, client_type) \
+  ((((unsigned int) ((client_type) + 1)) << CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) \
+   | ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CODE(request) ((int) ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CLIENT_TYPE(request) \
+  ((int) (((unsigned int) (request)) >> CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) - 1)
 
 /*
  * These are the responses from the master to a server
@@ -503,6 +514,7 @@ struct css_conn_entry
   // working task count manipulation
   void add_working_task ();
   size_t end_working_task ();
+  bool has_working_task () const;
   void init_working_task ();
 
   void release_packet (void *buffer);
@@ -540,9 +552,6 @@ typedef struct css_mapping_entry CSS_MAP_ENTRY;
 struct css_mapping_entry
 {
   char *key;			/* host name (or some such) */
-#if defined(MULTI_CONN_TO_A_SERVER)
-  pthread_t owner_tid;
-#endif
   CSS_CONN_ENTRY *conn;		/* the connection */
   CSS_MAP_ENTRY *next;
   unsigned short id;		/* host id to help identify the connection */
