@@ -3761,44 +3761,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, cons
 
 	      lock_join_existing_wait_train (thrd_entry, tran_index, wait_entry_ptr, res_ptr, &is_res_mutex_locked,
 					     &retry_from_start);
-	      if (retry_from_start)
-		{
-		  state = LK_S_FIND_RESOURCE;
-		  break;
-		}
-
-	      /* entry_ptr is NULL on this branch, so the block below is unreachable; left in place to keep the
-	       * post-suspend resume_status handling co-located with the conversion path. */
-	      if (entry_ptr)
-		{
-		  if (entry_ptr->thrd_entry->resume_status == THREAD_RESUME_DUE_TO_INTERRUPT)
-		    {
-		      /* a shutdown thread wakes me up */
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-
-		      ret_val = LK_NOTGRANTED_DUE_ERROR;
-		      state = LK_S_DONE;
-		      break;
-		    }
-		  else if (entry_ptr->thrd_entry->resume_status != THREAD_LOCK_RESUMED)
-		    {
-		      /* wake up with other reason */
-		      assert (0);
-
-		      if (er_errid () == NO_ERROR)
-			{
-			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-			}
-		      ret_val = LK_NOTGRANTED_DUE_ERROR;
-		      state = LK_S_DONE;
-		      break;
-		    }
-		  else
-		    {
-		      assert (entry_ptr->thrd_entry->resume_status == THREAD_LOCK_RESUMED);
-		    }
-		}
-
+	      /* A brand-new requester owns no blocked entry of its own, so - unlike the conversion path - there
+	       * is no post-suspend resume_status to inspect here: whether lock_join_existing_wait_train restarted
+	       * us early or suspended and woke us, the next step is the same - re-evaluate from the beginning. */
 	      state = LK_S_FIND_RESOURCE;
 	      break;
 	    }
