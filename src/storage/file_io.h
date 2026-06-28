@@ -39,6 +39,9 @@
 
 #include <stdio.h>
 #include <time.h>
+#if !defined(WINDOWS)
+#include <aio.h>		/* struct aiocb for the parallel-write staging ring (file_io.c) */
+#endif /* !WINDOWS */
 #include <map>
 
 #define NULL_VOLDES   (-1)	/* Value of a null (invalid) vol descriptor */
@@ -335,6 +338,20 @@ struct fileio_backup_buffer
   char *ptr;			/* Pointer to the first buffered byte when reading and pointer to the next byte to
 				 * buffer when writing */
   FILEIO_BACKUP_HEADER *bkuphdr;	/* pointer to header information */
+
+  /* parallel-write (PW): writer-private async double-buffer.
+   * Owned ONLY by the single inline writer thread. When async_enabled is true, the writer
+   * packs into buffer_ring[active_slot], issues aio_write of a full slot, flips to the other
+   * slot, and reaps the in-flight write before reusing a slot / at rollover / at teardown.
+   * When async_enabled is false (default), bkup.buffer simply aliases buffer_ring[active_slot]
+   * (== buffer_ring[0]) and the synchronous flush path runs, preserving current behavior. */
+  char *buffer_ring[2];		/* two iosize-sized staging slots; bkup.buffer aliases buffer_ring[active_slot] */
+  int active_slot;		/* slot currently being packed (0/1) */
+  bool slot_in_flight[2];	/* an aio_write was issued for this slot and not yet reaped */
+#if !defined(WINDOWS)
+  struct aiocb aiocb[2];	/* one control block per slot; reaped in submission order */
+#endif /* !WINDOWS */
+  bool async_enabled;		/* GATE result: operator opt-in AND output not on same device as DB */
 };
 
 typedef struct fileio_backup_db_buffer FILEIO_BACKUP_DB_BUFFER;

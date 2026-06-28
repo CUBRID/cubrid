@@ -543,6 +543,14 @@ static FILEIO_LOCKF_TYPE fileio_get_lockf_type (int vdes);
 
 static int fileio_get_primitive_way_max (const char *path, long int *filename_max, long int *pathname_max);
 static int fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_flush_backup_issue (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+static int fileio_flush_backup_reap_slot (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int which);
+static int fileio_flush_backup_quiesce (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
+#if !defined(WINDOWS)
+static int fileio_emit_slot_positional (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int which,
+					INT64 count, off_t offset);
+#endif /* !WINDOWS */
 static ssize_t fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid,
 				      FILEIO_BACKUP_PAGE * area);
 static ssize_t fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid);
@@ -6860,13 +6868,36 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 
   size = MAX (io_page_size + FILEIO_BACKUP_PAGE_OVERHEAD, FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE);
 
-  session_p->bkup.buffer = (char *) malloc (session_p->bkup.iosize);
-  if (session_p->bkup.buffer == NULL)
+  /* Allocate the writer-private 2-slot staging ring (PW Step 3). Each slot is iosize
+   * bytes, identical to the single buffer used before. bkup.buffer aliases the active
+   * slot; while async_enabled is false (always, this round) only buffer_ring[0] is used
+   * and behavior is byte-identical to the prior single-buffer code. */
+  session_p->bkup.buffer_ring[0] = NULL;
+  session_p->bkup.buffer_ring[1] = NULL;
+  session_p->bkup.active_slot = 0;
+  session_p->bkup.slot_in_flight[0] = false;
+  session_p->bkup.slot_in_flight[1] = false;
+#if !defined(WINDOWS)
+  memset (session_p->bkup.aiocb, 0, sizeof (session_p->bkup.aiocb));
+#endif /* !WINDOWS */
+
+  session_p->bkup.buffer_ring[0] = (char *) malloc (session_p->bkup.iosize);
+  if (session_p->bkup.buffer_ring[0] == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
 
       goto error;
     }
+
+  session_p->bkup.buffer_ring[1] = (char *) malloc (session_p->bkup.iosize);
+  if (session_p->bkup.buffer_ring[1] == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
+
+      goto error;
+    }
+
+  session_p->bkup.buffer = session_p->bkup.buffer_ring[session_p->bkup.active_slot];
 
   session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) malloc (size);
   if (session_p->dbfile.area == NULL)
@@ -6888,6 +6919,83 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.count = 0;
   session_p->bkup.voltotalio = 0;
   session_p->bkup.alltotalio = 0;
+
+  /*
+   * parallel-write (PW Step 4): compute the async gate, then act on it via the
+   * issue/reap path in fileio_flush_backup. With CUBRID_BACKUP_ASYNC_WRITE unset
+   * (the default) async_enabled is false and behavior is byte-identical to the
+   * prior synchronous code. SERVER_MODE only; in SA mode it is always false.
+   *
+   * Gate (do-no-harm, MEDIUM-1 fix): the async double-buffer is enabled ONLY on
+   * POSITIVE proof that the -D output target is on a different physical device
+   * than the DB. Concretely:
+   *
+   *   async_enabled = opt_in
+   *                   AND stat(out) == 0 AND stat(db_dir) == 0
+   *                   AND out.st_dev != db.st_dev
+   *
+   * If either stat() fails OR the two devices are equal, async stays OFF and we
+   * use the unchanged synchronous path (do no harm). The same-device server-log
+   * line is emitted ONLY when the devices are actually proven equal.
+   *
+   * Opt-in values:
+   *   "1" / "yes" / "true" -> normal opt-in; the different-device requirement
+   *                           above must hold for async to engage.
+   *   "force"              -> TEST-ONLY. Enables async_enabled = true REGARDLESS
+   *                           of st_dev (bypasses the different-device check). This
+   *                           exists solely so write byte-correctness can be tested
+   *                           on a single-disk box; it must NOT be used to ship a
+   *                           perf claim, since same-device async is write-bandwidth
+   *                           bound and gives no benefit.
+   */
+  session_p->bkup.async_enabled = false;
+#if defined(SERVER_MODE)
+  {
+    const char *async_env_p = envvar_get ("BACKUP_ASYNC_WRITE");
+    bool async_force = (async_env_p != NULL && strcmp (async_env_p, "force") == 0);
+    bool async_opt_in = (async_env_p != NULL
+			 && (async_force || strcmp (async_env_p, "1") == 0 || strcmp (async_env_p, "yes") == 0
+			     || strcmp (async_env_p, "true") == 0));
+
+    if (async_force)
+      {
+	/* TEST-ONLY: bypass the different-device requirement so correctness can be
+	 * validated on a single-disk box. */
+	session_p->bkup.async_enabled = true;
+      }
+    else if (async_opt_in)
+      {
+	struct stat out_stat, db_stat;
+	char db_dir[PATH_MAX];
+
+	/* The -D output directory (where backup volumes land) and the DB volume directory. */
+	fileio_get_directory_path (db_dir, db_full_name_p);
+
+	if (stat (session_p->bkup.current_path, &out_stat) == 0 && stat (db_dir, &db_stat) == 0)
+	  {
+	    if (out_stat.st_dev != db_stat.st_dev)
+	      {
+		/* positive proof of different devices: enable async double-buffer. */
+		session_p->bkup.async_enabled = true;
+	      }
+	    else
+	      {
+		/* devices proven equal -> write-bandwidth bound; do no harm, stay synchronous. */
+		er_log_debug (ARG_FILE_LINE,
+			      "backup output on same physical device as DB; parallel-write disabled "
+			      "(write-bandwidth bound)\n");
+		session_p->bkup.async_enabled = false;
+	      }
+	  }
+	else
+	  {
+	    /* could not prove different devices (stat failed) -> do no harm, stay synchronous. */
+	    session_p->bkup.async_enabled = false;
+	  }
+      }
+  }
+#endif /* SERVER_MODE */
+
   session_p->bkup.bkuphdr->unit_num = FILEIO_INITIAL_BACKUP_UNITS;
   session_p->bkup.bkuphdr->level = level;
   session_p->bkup.bkuphdr->bkup_iosize = session_p->bkup.iosize;
@@ -6949,10 +7057,16 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   return session_p;
 
 error:
-  if (session_p->bkup.buffer != NULL)
+  /* free both staging-ring slots (PW Step 3); bkup.buffer is only an alias of one of them. */
+  if (session_p->bkup.buffer_ring[0] != NULL)
     {
-      free_and_init (session_p->bkup.buffer);
+      free_and_init (session_p->bkup.buffer_ring[0]);
     }
+  if (session_p->bkup.buffer_ring[1] != NULL)
+    {
+      free_and_init (session_p->bkup.buffer_ring[1]);
+    }
+  session_p->bkup.buffer = NULL;
   if (session_p->dbfile.area != NULL)
     {
       free_and_init (session_p->dbfile.area);
@@ -7135,6 +7249,15 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
   FILEIO_ZIP_METHOD zip_method;
 
   zip_method = backup_header_p ? backup_header_p->zip_method : FILEIO_ZIP_NONE_METHOD;
+
+  /* parallel-write teardown (abort): reap any outstanding async write(s) before vdes is
+   * dismounted, so no in-flight positional write targets a closing fd. No-op when
+   * async_enabled is false or no slot is in flight. Errors are ignored on the abort path. */
+  if (session_p->bkup.async_enabled && session_p->bkup.vdes != NULL_VOLDES)
+    {
+      (void) fileio_flush_backup_quiesce (thread_p, session_p);
+    }
+
   /* Remove the currently created backup */
   if (session_p->bkup.vdes != NULL_VOLDES)
     {
@@ -7180,11 +7303,18 @@ fileio_abort_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p,
       session_p->verbose_fp = NULL;
     }
 
-  /* Deallocate memory space */
-  if (session_p->bkup.buffer != NULL)
+  /* Deallocate memory space. bkup.buffer only aliases buffer_ring[active_slot], so we free
+   * the two ring slots and clear the alias (PW Step 3). Freeing bkup.buffer separately would
+   * double-free the active slot. */
+  if (session_p->bkup.buffer_ring[0] != NULL)
     {
-      free_and_init (session_p->bkup.buffer);
+      free_and_init (session_p->bkup.buffer_ring[0]);
     }
+  if (session_p->bkup.buffer_ring[1] != NULL)
+    {
+      free_and_init (session_p->bkup.buffer_ring[1]);
+    }
+  session_p->bkup.buffer = NULL;
 
   if (session_p->dbfile.area != NULL)
     {
@@ -7460,6 +7590,18 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
       session_p->bkup.count = session_p->bkup.iosize;
       /* Flush any buffered information */
       if (fileio_flush_backup (thread_p, session_p) != NO_ERROR)
+	{
+	  return NULL;
+	}
+    }
+
+  /* parallel-write teardown: reap the last outstanding async write(s) so the tail of the
+   * backup lands before vdes is synchronized and before the end-time header is rewritten
+   * via lseek (which would otherwise race an in-flight positional write). No-op when
+   * async_enabled is false. */
+  if (session_p->bkup.async_enabled)
+    {
+      if (fileio_flush_backup_quiesce (thread_p, session_p) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -8763,7 +8905,415 @@ error:
 #endif /* !CS_MODE */
 
 /*
- * fileio_flush_backup () - Flush any buffered data
+ * fileio_flush_backup () - Flush any buffered data (dispatcher)
+ *   return:
+ *   session(in/out): The session array
+ *
+ * Note: Thin dispatcher. When bkup.async_enabled is false -- the default whenever
+ *       CUBRID_BACKUP_ASYNC_WRITE is unset -- it forwards to the unchanged synchronous
+ *       implementation fileio_flush_backup_sync, so behavior is byte-for-byte identical
+ *       to the prior code (do no harm). When async_enabled is true it routes through the
+ *       writer-private kernel-async double-buffer (fileio_flush_backup_issue +
+ *       fileio_flush_backup_reap_slot), which produces byte-identical output because a
+ *       single thread issues and reaps writes in submission order.
+ */
+static int
+fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+  if (!session_p->bkup.async_enabled)
+    {
+      return fileio_flush_backup_sync (thread_p, session_p);
+    }
+
+  /* Async path: issue the just-filled active slot (reaping the other slot first). */
+  return fileio_flush_backup_issue (thread_p, session_p);
+}
+
+#if !defined(WINDOWS)
+/*
+ * fileio_emit_slot_positional () - Synchronously emit a ring slot's bytes positionally,
+ *                                  mirroring the synchronous flush volume-boundary loop.
+ *   return: error code
+ *   session(in/out): The session array
+ *   which(in): ring slot index (0/1) whose buffer_ring[which] holds the bytes
+ *   count(in): number of bytes still to write (from the start of the slot + offset already done)
+ *   offset(in): positional file offset at which the next byte lands
+ *
+ * Note: This is the positional (pwrite) analogue of the synchronous fileio_flush_backup_sync
+ *       inner do-loop. It must be used (never sequential write()) because in async mode prior
+ *       slots were written with aio_write at explicit offsets and the fd's implicit position is
+ *       NOT tracking voltotalio. The OFF_T_MAX / MAX_VOLUME_SIZE branch, the
+ *       EINTR/EAGAIN/EDQUOT/EFBIG/EIO/EINVAL/ENXIO/ENOSPC/EPIPE/default classification, and the
+ *       restart_newvol repeat-of-the-entire-current-block (the FULL slot, aiocb[which].aio_nbytes)
+ *       are byte-for-byte identical to the synchronous path.
+ */
+static int
+fileio_emit_slot_positional (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int which, INT64 count,
+			     off_t offset)
+{
+  char *buffer_p = session_p->bkup.buffer_ring[which] + ((INT64) session_p->bkup.aiocb[which].aio_nbytes - count);
+  ssize_t nbytes;
+  int ret;
+  bool is_interactive_need_new = false;
+  bool is_force_new_bkvol = false;
+
+restart_newvol:
+  /* Cap the writeable count to the per-volume max, identical to the sync path. */
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
+    {
+      count = MIN (count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) - session_p->bkup.voltotalio);
+    }
+
+  while (count > 0 || is_interactive_need_new || is_force_new_bkvol)
+    {
+      if (count > 0 && !is_interactive_need_new && !is_force_new_bkvol)
+	{
+	  if (session_p->bkup.voltotalio >= OFF_T_MAX && session_p->bkup.dtype == FILEIO_BACKUP_VOL_DIRECTORY)
+	    {
+	      is_force_new_bkvol = true;
+	    }
+	  else
+	    {
+	      nbytes = pwrite (session_p->bkup.vdes, buffer_p, count, offset);
+	      if (nbytes <= 0)
+		{
+		  if (nbytes == 0)
+		    {
+		      is_interactive_need_new = true;	/* For raw partitions */
+		    }
+		  else
+		    {
+		      switch (errno)
+			{
+			case EINTR:
+			case EAGAIN:
+			  continue;
+#if !defined(WINDOWS)
+			case EDQUOT:
+#endif /* !WINDOWS */
+			case EFBIG:
+			case EIO:
+			case EINVAL:
+			  is_force_new_bkvol = true;
+			  break;
+			case ENXIO:
+			case ENOSPC:
+			case EPIPE:
+			  is_interactive_need_new = true;
+			  break;
+			default:
+			  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+					       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE),
+					       session_p->bkup.vlabel);
+			  return ER_FAILED;
+			}
+		    }
+		}
+	      else
+		{
+		  session_p->bkup.voltotalio += nbytes;
+		  count -= (INT64) nbytes;
+		  buffer_p += nbytes;
+		  offset += nbytes;
+		}
+	    }
+	}
+
+      if (is_interactive_need_new || is_force_new_bkvol
+	  || (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+	      && ((UINT64) session_p->bkup.voltotalio >= prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))))
+	{
+	  /* Volume rollover. At most one slot is ever in flight (issue reaps the other slot
+	   * before issuing) so no in-flight write targets the old fd here; reassign vdes and
+	   * write the header on the NEW fd, then repeat the entire current block immediately
+	   * after it (the restart_newvol repeat-of-current-block, identical to the sync path). */
+	  ret = fileio_get_next_backup_volume (thread_p, session_p, is_interactive_need_new);
+	  if (ret != NO_ERROR || fileio_write_backup_header (session_p) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+
+	  /* Repeat the WHOLE slot block on the new volume, after the header. voltotalio now
+	   * equals FILEIO_BACKUP_HEADER_IO_SIZE, exactly where this block must land. */
+	  buffer_p = session_p->bkup.buffer_ring[which];
+	  count = (INT64) session_p->bkup.aiocb[which].aio_nbytes;
+	  offset = session_p->bkup.voltotalio;
+	  is_interactive_need_new = false;
+	  is_force_new_bkvol = false;
+	  goto restart_newvol;
+	}
+    }
+
+  return NO_ERROR;
+}
+#endif /* !WINDOWS */
+
+/*
+ * fileio_flush_backup_reap_slot () - Reap an in-flight async write of a ring slot.
+ *   return: error code
+ *   session(in/out): The session array
+ *   which(in): ring slot index (0/1) to reap
+ *
+ * Note: If slot `which` has an aio_write in flight, aio_suspend until it completes,
+ *       then aio_return to get bytes/errno. On success run the IDENTICAL post-write
+ *       bookkeeping the synchronous path runs (voltotalio += nbytes; the
+ *       OFF_T_MAX / MAX_VOLUME_SIZE volume-boundary branch; fileio_get_next_backup_volume
+ *       + fileio_write_backup_header; the restart_newvol repeat-of-current-block). On
+ *       error it runs the IDENTICAL EINTR/EAGAIN (re-issue), EDQUOT/EFBIG/EIO/EINVAL
+ *       (force new vol), ENXIO/ENOSPC/EPIPE (interactive new vol), default (ER_IO_WRITE)
+ *       handling. Byte-identity holds because a single thread emits in submission order
+ *       and reaps in that same order from buffer_ring[which].
+ *
+ *       This operates on buffer_ring[which] (the in-flight slot), NOT on bkup.buffer,
+ *       which by the time of reap aliases the *other* (now-active) slot being packed.
+ *       The slot's append offset is carried in aiocb[which].aio_offset.
+ */
+static int
+fileio_flush_backup_reap_slot (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int which)
+{
+#if !defined(WINDOWS)
+  struct aiocb *cb;
+  const struct aiocb *cblist[1];
+  INT64 count;
+  off_t offset;
+  ssize_t nbytes;
+  int aio_err, ret;
+  bool is_interactive_need_new;
+  bool is_force_new_bkvol;
+
+  if (!session_p->bkup.slot_in_flight[which])
+    {
+      return NO_ERROR;
+    }
+
+  cb = &session_p->bkup.aiocb[which];
+
+  /* Wait for the in-flight write to complete, then collect its result. */
+  while ((aio_err = aio_error (cb)) == EINPROGRESS)
+    {
+      cblist[0] = cb;
+      if (aio_suspend (cblist, 1, NULL) != 0 && errno != EINTR)
+	{
+	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+			       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
+	  session_p->bkup.slot_in_flight[which] = false;
+	  return ER_FAILED;
+	}
+    }
+
+  nbytes = aio_return (cb);
+
+  /* The slot is no longer in flight regardless of the result below; clear the flag now
+   * so error paths and re-issues do not double-reap it. */
+  session_p->bkup.slot_in_flight[which] = false;
+
+  /* Reconstruct the bytes the slot must land and the volume append offset. */
+  count = (INT64) cb->aio_nbytes;
+  offset = cb->aio_offset;
+
+  is_interactive_need_new = false;
+  is_force_new_bkvol = false;
+
+  if (aio_err == 0 && nbytes >= 0)
+    {
+      /* Account for the bytes the kernel already wrote via aio_write, then emit any
+       * remainder positionally with full volume-boundary handling. */
+      session_p->bkup.voltotalio += nbytes;
+      count -= (INT64) nbytes;
+      offset += nbytes;
+      if (count > 0)
+	{
+	  return fileio_emit_slot_positional (thread_p, session_p, which, count, offset);
+	}
+      return NO_ERROR;
+    }
+
+  /* aio_return failed: errno is in aio_err (the value aio_error returned). The kernel wrote
+   * nothing for this slot; classify exactly as the synchronous write() loop, then emit the
+   * full slot positionally. */
+  switch (aio_err)
+    {
+    case EINTR:
+    case EAGAIN:
+      /* try again: emit the full slot positionally below. */
+      break;
+#if !defined(WINDOWS)
+    case EDQUOT:
+#endif /* !WINDOWS */
+    case EFBIG:
+    case EIO:
+    case EINVAL:
+      is_force_new_bkvol = true;
+      break;
+    case ENXIO:
+    case ENOSPC:
+    case EPIPE:
+      is_interactive_need_new = true;
+      break;
+    default:
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
+			   CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
+      return ER_FAILED;
+    }
+
+  if (is_force_new_bkvol || is_interactive_need_new)
+    {
+      /* Force a new volume up front, then emit the full slot on it. */
+      ret = fileio_get_next_backup_volume (thread_p, session_p, is_interactive_need_new);
+      if (ret != NO_ERROR || fileio_write_backup_header (session_p) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      count = (INT64) cb->aio_nbytes;
+      offset = session_p->bkup.voltotalio;
+    }
+
+  return fileio_emit_slot_positional (thread_p, session_p, which, count, offset);
+#else /* !WINDOWS */
+  /* No POSIX AIO on Windows; async_enabled is never set there. */
+  assert (false);
+  (void) thread_p;
+  (void) session_p;
+  (void) which;
+  return NO_ERROR;
+#endif /* !WINDOWS */
+}
+
+/*
+ * fileio_flush_backup_issue () - Issue an async write of the just-filled active slot.
+ *   return: error code
+ *   session(in/out): The session array
+ *
+ * Note: The active_slot buffer is full (count bytes). To keep at most one write in flight
+ *       and preserve submission order, first reap the OTHER slot (which makes the active
+ *       slot's append offset, bkup.voltotalio, final). Then issue aio_write of the active
+ *       slot at that offset (positional, never lseek -- backup devices may not seek), mark
+ *       it in flight, flip active_slot to the now-free slot, and reset
+ *       bkup.buffer = bkup.ptr = buffer_ring[active_slot], bkup.count = 0.
+ */
+static int
+fileio_flush_backup_issue (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+#if !defined(WINDOWS)
+  int cur = session_p->bkup.active_slot;
+  int other = cur ^ 1;
+  struct aiocb *cb;
+
+  /* Guard against the max-volume-size sanity check that the sync path also performs. */
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0
+      && (UINT64) session_p->bkup.count > prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE))
+    {
+      er_log_debug (ARG_FILE_LINE, "Backup_flush: Backup aborted because count %d larger than max volume size %ld\n",
+		    session_p->bkup.count, prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE));
+      return ER_FAILED;
+    }
+
+  if (session_p->bkup.count <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* Reap the other slot first: at most one write in flight, submission order preserved,
+   * and bkup.voltotalio becomes final so we can capture the active slot's append offset. */
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, other) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  /* Set up the slot's control block: positional append at the current offset, full count. */
+  cb = &session_p->bkup.aiocb[cur];
+  memset (cb, 0, sizeof (*cb));
+  cb->aio_fildes = session_p->bkup.vdes;
+  cb->aio_buf = session_p->bkup.buffer_ring[cur];
+  cb->aio_nbytes = (size_t) session_p->bkup.count;
+  cb->aio_offset = (off_t) session_p->bkup.voltotalio;
+
+  if (prm_get_bigint_value (PRM_ID_IO_BACKUP_MAX_VOLUME_SIZE) > 0)
+    {
+      /* A max-volume-size is set: this chunk may straddle a volume boundary and require the
+       * cap + rollover + repeat-block split. Emit it synchronously (positionally) so the
+       * boundary handling is byte-identical to the sync path; a single in-flight aio cannot
+       * be split mid-slot across two volumes. The async overlap targets the no-volume-limit
+       * (split-disk perf) case; forced-rollover is the rare correctness case. */
+      session_p->bkup.slot_in_flight[cur] = false;
+      if (fileio_emit_slot_positional (thread_p, session_p, cur, (INT64) cb->aio_nbytes, cb->aio_offset) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+
+      session_p->bkup.active_slot = other;
+      session_p->bkup.buffer = session_p->bkup.buffer_ring[other];
+      session_p->bkup.ptr = session_p->bkup.buffer;
+      session_p->bkup.count = 0;
+      return NO_ERROR;
+    }
+
+  if (aio_write (cb) != 0)
+    {
+      /* aio_write submission failed (e.g. EAGAIN: the system aio queue is momentarily full).
+       * This is near-impossible here -- the single-owner design keeps at most one aio
+       * outstanding -- but dropping the slot would lose backup bytes. The cb is fully
+       * populated (offset = current append position, nbytes = count), so emit the slot
+       * positionally with the same volume-boundary handling the reap path uses. We cannot
+       * fall back to the sequential-write() sync path: prior slots were written at explicit
+       * offsets and the fd position does not track voltotalio. */
+      session_p->bkup.slot_in_flight[cur] = false;
+      if (fileio_emit_slot_positional (thread_p, session_p, cur, (INT64) cb->aio_nbytes, cb->aio_offset) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      session_p->bkup.slot_in_flight[cur] = true;
+    }
+
+  /* Flip to the now-free slot and reset packing state onto it. */
+  session_p->bkup.active_slot = other;
+  session_p->bkup.buffer = session_p->bkup.buffer_ring[other];
+  session_p->bkup.ptr = session_p->bkup.buffer;
+  session_p->bkup.count = 0;
+
+  return NO_ERROR;
+#else /* !WINDOWS */
+  /* No POSIX AIO on Windows; async_enabled is never set there. */
+  assert (false);
+  return fileio_flush_backup_sync (thread_p, session_p);
+#endif /* !WINDOWS */
+}
+
+/*
+ * fileio_flush_backup_quiesce () - Reap all outstanding async writes (both slots) in
+ *                                  submission order, leaving no aio in flight.
+ *   return: error code
+ *   session(in/out): The session array
+ *
+ * Note: Used at teardown (normal completion and abort) before vdes is closed or the
+ *       header is rewritten via lseek, so no in-flight write races a close/seek. Slots are
+ *       reaped in submission order. Because issue reaps the other slot before issuing, at
+ *       most one slot is ever in flight, but this reaps both defensively and order-correctly.
+ */
+static int
+fileio_flush_backup_quiesce (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+{
+  int active = session_p->bkup.active_slot;
+  int other = active ^ 1;
+
+  /* The other (older) slot was issued first; reap it first to preserve submission order. */
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, other) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (fileio_flush_backup_reap_slot (thread_p, session_p, active) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * fileio_flush_backup_sync () - Flush any buffered data (synchronous, unchanged)
  *   return:
  *   session(in/out): The session array
  *
@@ -8771,9 +9321,12 @@ error:
  *       Incomplete blocks are repeated at the start of the following archive,
  *       in order to insure that we do not try to read from incomplete tape
  *       blocks.
+ *
+ *       This is the original fileio_flush_backup body, moved verbatim under a new
+ *       name (PW Step 2). It is the default path and produces byte-identical output.
  */
 static int
-fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
+fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
   char *buffer_p;
   ssize_t nbytes;
@@ -9871,11 +10424,16 @@ fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, IN
    */
   if (backup_header_p->bkup_iosize > session_p->bkup.iosize)
     {
-      session_p->bkup.buffer = (char *) realloc (session_p->bkup.buffer, backup_header_p->bkup_iosize);
-      if (session_p->bkup.buffer == NULL)
+      /* restore only ever uses the active slot (== buffer_ring[0]); realloc through the
+       * ring slot so the slot pointer stays valid for teardown (no double-free / dangling). */
+      char *resized = (char *) realloc (session_p->bkup.buffer_ring[session_p->bkup.active_slot],
+					backup_header_p->bkup_iosize);
+      if (resized == NULL)
 	{
 	  return NULL;
 	}
+      session_p->bkup.buffer_ring[session_p->bkup.active_slot] = resized;
+      session_p->bkup.buffer = resized;
       session_p->bkup.ptr = session_p->bkup.buffer;	/* reinit in case it moved */
     }
   /* Always use the saved size from the backup to restore with */
