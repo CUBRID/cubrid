@@ -786,6 +786,12 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   exit_server (*thread_p);
 
+  /* unset start_multi_update flag after first request containing it set */
+  if (locator_manyobj_flag_is_set (LC_MANYOBJS_PTR_IN_COPYAREA (copy_area), START_MULTI_UPDATE))
+    {
+      locator_manyobj_flag_remove (LC_MANYOBJS_PTR_IN_COPYAREA (copy_area), START_MULTI_UPDATE);
+    }
+
   if (error_code != NO_ERROR)
     {
       /* Restore copy_area */
