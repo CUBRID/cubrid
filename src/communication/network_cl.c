@@ -3616,13 +3616,13 @@ net_client_shutdown_server (void)
  *    communications. It sets up CSS and verifies connection with the server.
  */
 int
-net_client_init (const char *dbname, const char *hostname)
+net_client_init (const char *dbname, const char *hostname, int client_type)
 {
   int error = NO_ERROR;
 
   /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
-  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
+  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname, client_type);
   if (error != NO_ERROR)
     {
       goto end;
@@ -3666,7 +3666,7 @@ end:
 int
 net_client_sub_init ()
 {
-  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host);
+  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
 }
 
 void
