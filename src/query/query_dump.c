@@ -2776,6 +2776,12 @@ qdump_print_xasl (xasl_node * xasl_p)
       qdump_print_xasl (xasl_p->proc.buildlist.eptr_list);
     }
 
+  if (xasl_p->type == CTE_PROC)
+    {
+      qdump_print_xasl (xasl_p->proc.cte.non_recursive_part);
+      qdump_print_xasl (xasl_p->proc.cte.recursive_part);
+    }
+
   qdump_print_xasl (xasl_p->next);
   fprintf (foutput, "creator OID:");
   qdump_print_oid (&xasl_p->creator_oid);
