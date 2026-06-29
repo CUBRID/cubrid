@@ -614,6 +614,10 @@ public class SpLib {
 
         private PreparedStatement myStmt;
 
+        public Query(String query) {
+            this(query, false);
+        }
+
         public Query(String query, boolean dynamic) {
 
             if (query == null) {
