@@ -1273,6 +1273,8 @@ public class TypeChecker extends AstVisitor<Type> {
                 switch (tyUsedExpr.idx) {
                     case Type.IDX_RECORD:
                         if (!node.dynamic) {
+                            // in static case, query is rewritten for records and records are
+                            // allowed.
                             break;
                         }
                         // fall-through

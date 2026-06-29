@@ -700,6 +700,8 @@ public class SpLib {
 
                     if (pstmtRef == null) {
                         myStmt = null;
+                    } else {
+                        pstmtRef[0] = null;
                     }
                 }
             }
@@ -729,7 +731,21 @@ public class SpLib {
         }
 
         public boolean isOpen() {
-            return (rs != null);
+
+            if (rs == null) {
+                return false;
+            }
+
+            try {
+                if (rs.isClosed()) {
+                    rs = null;
+                    return false;
+                } else {
+                    return true;
+                }
+            } catch (SQLException e) {
+                throw new SQL_ERROR(e.getMessage());
+            }
         }
 
         public boolean fetch() {
