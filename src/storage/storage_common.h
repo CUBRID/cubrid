@@ -1083,7 +1083,8 @@ typedef enum
   SM_ATTFLAG_AUTO_INCREMENT = 256,	/* auto increment attribute 0x0100 */
   SM_ATTFLAG_FOREIGN_KEY = 512,	/* attribute has a primary key 0x200 */
   SM_ATTFLAG_PARTITION_KEY = 1024,	/* attribute is the partitioning key for the class 0x400 */
-  SM_ATTFLAG_INVISIBLE_COLUMN = 2048	/* attribute is invisible 0x800 */
+  SM_ATTFLAG_INVISIBLE_COLUMN = 2048,	/* attribute is invisible 0x800 */
+  SM_ATTFLAG_OOS_PREFER_INLINE = 4096	/* attribute prefers inline storage: lower OOS demotion priority 0x1000 */
 } SM_ATTRIBUTE_FLAG;
 
 /* delete or update action type for foreign key */

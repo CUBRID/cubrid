@@ -1763,11 +1763,15 @@
 
 #define ER_INVALID_SCALE                            -1373
 
-#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1374
+#define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
 
-#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1375
+#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1375
 
-#define ER_LAST_ERROR                               -1376
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1376
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1377
+
+#define ER_LAST_ERROR                               -1378
 
 
 

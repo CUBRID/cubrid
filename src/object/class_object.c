@@ -6603,7 +6603,15 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
 	}
     }
 
-  if (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+#if !defined (NDEBUG)
+  if (attribute->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+    {
+      assert (attribute->header.name_space != ID_CLASS_ATTRIBUTE);
+      assert (attribute->header.name_space != ID_SHARED_ATTRIBUTE);
+    }
+#endif
+
+  if (attribute->flags & (SM_ATTFLAG_INVISIBLE_COLUMN | SM_ATTFLAG_OOS_PREFER_INLINE))
     {
       SM_ATTRIBUTE *att;
       error =
@@ -6611,7 +6619,7 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
 			    attribute->header.name_space == ID_CLASS_ATTRIBUTE ? 1 : 0, &att);
       if (error == NO_ERROR)
 	{
-	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	  att->flags |= (attribute->flags & (SM_ATTFLAG_INVISIBLE_COLUMN | SM_ATTFLAG_OOS_PREFER_INLINE));
 	}
     }
 
@@ -8108,13 +8116,12 @@ classobj_make_descriptor (MOP class_mop, SM_CLASS * classobj, SM_COMPONENT * com
   if (comp != NULL)
     {
       /* save the component name so we can rebuild the map cache after schema/transaction changes */
-      desc->name = (char *) malloc (strlen (comp->name) + 1);
+      desc->name = strdup (comp->name);
       if (desc->name == NULL)
 	{
 	  free_and_init (desc);
 	  return NULL;
 	}
-      strcpy (desc->name, comp->name);
       desc->name_space = comp->name_space;
     }
 

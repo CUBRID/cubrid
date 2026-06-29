@@ -2903,7 +2903,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while ((scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -12017,9 +12017,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
   int round_length;		/* Length of object rounded to integer alignment */
   int copyarea_length;
   OID oid;
+  OID prev_oid;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
   int error_code = NO_ERROR;
+  bool retry_current_oid;
 
   if (fetch_area == NULL)
     {
@@ -12094,9 +12096,12 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
       obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
       mobjs->num_objs = 0;
       offset = 0;
+      retry_current_oid = false;
 
       while (true)
 	{
+	  COPY_OID (&prev_oid, &oid);
+
 	  if (instance_lock && (*instance_lock != NULL_LOCK))
 	    {
 	      int lock_result = 0;
@@ -12128,6 +12133,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		heap_get_visible_version_expand_oos (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
 		{
+		  if (scan == S_DOESNT_FIT)
+		    {
+		      retry_current_oid = true;
+		      break;
+		    }
 		  (*nfailed_instance_locks)++;
 		  continue;
 		}
@@ -12135,7 +12145,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	    }
 	  else
 	    {
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	      scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
 	      if (scan != S_SUCCESS)
 		{
 		  break;
@@ -12165,6 +12175,12 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	{
 	  break;
 	}
+
+      if (retry_current_oid)
+	{
+	  COPY_OID (&oid, &prev_oid);
+	}
+
       /*
        * The first object does not fit into given copy area
        * Get a larger area

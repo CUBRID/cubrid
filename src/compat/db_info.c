@@ -1364,6 +1364,24 @@ db_attribute_is_invisible_column (DB_ATTRIBUTE * attribute)
   return (status);
 }
 
+/*
+ * db_attribute_is_oos_prefer_inline() - This function tests if attribute prefers
+ *     inline storage (lower OOS demotion priority)
+ * return : non-zero if the STORAGE PREFER_INLINE option is set.
+ * attribute(in): attribute descriptor
+ */
+int
+db_attribute_is_oos_prefer_inline (DB_ATTRIBUTE * attribute)
+{
+  int status = 0;
+  if (attribute != NULL)
+    {
+      status = (attribute->flags & SM_ATTFLAG_OOS_PREFER_INLINE) ? 1 : 0;
+    }
+
+  return (status);
+}
+
 
 /*
  * db_attribute_is_reverse_unique() - This function tests the status of the

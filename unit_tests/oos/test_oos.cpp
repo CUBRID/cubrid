@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include <cstdio>
+#include <climits>
 
 #include "page_buffer.h"
 #include "slotted_page.h"
@@ -38,6 +39,38 @@ const auto_unfix_page_ptr bridge_oos_find_best_page (THREAD_ENTRY *thread_p, con
 int bridge_oos_get_max_chunk_size_within_page ();
 int bridge_oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args);
 /* bridge_oos_get_recently_inserted_oos_vpid removed — oos_recently_inserted_oos_vpid_map replaced by bestspace */
+
+// bridge to the static inline-OOS reader in heap_file.c (CBRD-26769)
+int bridge_heap_attrvalue_read_oos_inline (RECDES *recdes, RECDES *raw, char *oos_scratch, int oos_scratch_size,
+    bool *oos_owned_buffer);
+
+namespace
+{
+  /* Drive the static heap_attrvalue_read_oos_inline through the bridge with a
+   * synthetic inline-OOS payload region. `inline_len` is the byte length of the
+   * variable region the reader sees (recdes->length); when < 16 the [OID|bigint]
+   * header is treated as truncated. oos_owned_buffer is pre-poisoned to true so the
+   * Case 1-4 contract (reset to false) is actually exercised. */
+  int probe_oos_inline (char *payload, int inline_len, bool *oos_owned_buffer)
+  {
+    RECDES recdes{};
+    recdes.data = payload;
+    recdes.length = inline_len;
+
+    RECDES raw{};
+    raw.data = payload;
+
+    *oos_owned_buffer = true;
+    er_clear ();
+    int err = bridge_heap_attrvalue_read_oos_inline (&recdes, &raw, nullptr, 0, oos_owned_buffer);
+    if (err != NO_ERROR)
+      {
+	// Contract: every error path nulls the disk pointer so the caller never reads stale data.
+	EXPECT_EQ (raw.data, nullptr);
+      }
+    return err;
+  }
+}
 
 TEST (OosTest, OosCreateAndDestroy)
 {
@@ -723,6 +756,58 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
 
       recdes_free_data_area (&rec_out);
       recdes_free_data_area (&rec_in);
+    }
+}
+
+// CBRD-26769: a corrupt inline-OOS header must surface as ER_HEAP_OOS_BAD_INLINE_HEADER
+// (not a silent NULL), and the allocator-untouched paths must report no owned buffer.
+TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
+{
+  constexpr int kInlineHeaderSize = OR_OID_SIZE + OR_BIGINT_SIZE;	// 16 bytes
+  alignas (MAX_ALIGNMENT) char payload[64];
+
+  // ---- Case 1: variable region shorter than the [OID|bigint] header ----
+  {
+    bool owned = false;
+    int err = probe_oos_inline (payload, kInlineHeaderSize - 1, &owned);
+    EXPECT_EQ (err, ER_HEAP_OOS_BAD_INLINE_HEADER);
+    EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+    EXPECT_FALSE (owned);
+  }
+
+  // ---- Case 2: full 16-byte header but the forwarder OID is NULL ----
+  {
+    OR_BUF ob;
+    or_init (&ob, payload, sizeof (payload));
+    or_put_oid (&ob, NULL);		// writes a NULL OID
+    or_put_bigint (&ob, 100);		// otherwise-valid length, so only the NULL OID triggers
+
+    bool owned = false;
+    int err = probe_oos_inline (payload, kInlineHeaderSize, &owned);
+    EXPECT_EQ (err, ER_HEAP_OOS_BAD_INLINE_HEADER);
+    EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER);
+    EXPECT_FALSE (owned);
+  }
+
+  // ---- Case 3: valid OID but a length outside the (0, INT_MAX] range ----
+  const DB_BIGINT bad_lengths[] = { 0, -1, (DB_BIGINT) INT_MAX + 1 };
+  for (DB_BIGINT bad_len : bad_lengths)
+    {
+      OID valid_oid;
+      valid_oid.volid = 0;
+      valid_oid.pageid = 1;
+      valid_oid.slotid = 1;
+
+      OR_BUF ob;
+      or_init (&ob, payload, sizeof (payload));
+      or_put_oid (&ob, &valid_oid);
+      or_put_bigint (&ob, bad_len);
+
+      bool owned = false;
+      int err = probe_oos_inline (payload, kInlineHeaderSize, &owned);
+      EXPECT_EQ (err, ER_HEAP_OOS_BAD_INLINE_HEADER) << "bad_len=" << bad_len;
+      EXPECT_EQ (er_errid (), ER_HEAP_OOS_BAD_INLINE_HEADER) << "bad_len=" << bad_len;
+      EXPECT_FALSE (owned) << "bad_len=" << bad_len;
     }
 }
 

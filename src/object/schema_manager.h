@@ -318,6 +318,7 @@ extern int classobj_drop_foreign_key_ref (DB_SEQ ** properties, const BTID * bti
 extern int sc_set_current_schema (MOP user);
 extern const char *sc_current_schema_name (void);
 extern MOP sc_current_schema_owner (void);
+extern void sc_clear_current_schema (void);
 /* Obtain (pointer to) current schema name. */
 
 extern int sm_has_non_null_attribute (SM_ATTRIBUTE ** attrs);

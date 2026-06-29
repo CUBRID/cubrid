@@ -35,6 +35,8 @@
 #include "query_aggregate.hpp"
 #include "xasl_aggregate.hpp"
 #include "object_domain.h"
+#include "query_executor.h"
+#include "px_scan_trace_handler.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -123,6 +125,15 @@ namespace parallel_scan
     else
       {
 	assert (false);
+      }
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::set_trace_handler (trace_handler *trace_handler_p)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	m_.trace_handler_p = trace_handler_p;
       }
   }
 
@@ -284,6 +295,25 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    tl.g_agg_domains_resolved = FALSE;
 	  }
+	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
+	tl.is_topn = false;
+	if (m_.orig_xasl->topn_items != nullptr && curr_xasl->type == BUILDLIST_PROC)
+	  {
+	    if (qexec_setup_topn_proc (thread_p, curr_xasl, vd) != NO_ERROR)
+	      {
+		/* clear stale error so subsequent worker handling reports its own. */
+		er_clear ();
+		assert (curr_xasl->topn_items == nullptr);
+	      }
+	    else if (curr_xasl->topn_items != nullptr)
+	      {
+		tl.is_topn = true;
+		if (m_.trace_handler_p != nullptr)
+		  {
+		    m_.trace_handler_p->set_topnsort_used ();
+		  }
+	      }
+	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -326,6 +356,18 @@ namespace parallel_scan
 	      {
 		qfile_close_list (thread_p, context->part_list_id);
 	      }
+	  }
+	/* small-input case: heap survived all writes without overflow, flush before close. */
+	if (tl.is_topn)
+	  {
+	    if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
+					      tl.writer_result_p) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	      }
+	    tl.is_topn = false;
+	    assert (tl.xasl->topn_items == nullptr);
 	  }
 	qfile_close_list (thread_p, tl.writer_result_p);
 
@@ -591,6 +633,9 @@ namespace parallel_scan
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
 
+	/* main heap empty under parallel concat; falls through to qexec_orderby_distinct_by_sorting on worker concat list_id at qexec_orderby_distinct:4049 (orderby_topnsort intentionally not set). */
+	qexec_clear_topn_items (thread_p, m_.orig_xasl);
+
 	return S_END;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -800,6 +845,42 @@ namespace parallel_scan
 	      }
 	    if (output_tuple)
 	      {
+		if (tl.is_topn)
+		  {
+		    TOPN_STATUS topn_status = qexec_add_tuple_to_topn (thread_p, tl.xasl->topn_items,
+					      &tl.writer_result_p->tpl_descr);
+		    if (topn_status == TOPN_SUCCESS)
+		      {
+			return true;
+		      }
+		    if (topn_status == TOPN_FAILURE)
+		      {
+			m_err_messages_p->move_top_error_message_to_this();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			/* heap left a tuple with NULL values; abandon top-N so write_finalize does not flush it. topn_items is reclaimed by qexec_clear_xasl. */
+			tl.is_topn = false;
+			return false;
+		      }
+		    /* OVERFLOW: write current row before flush; flush frees topn tuples and invalidates tpl_descr.f_valp. */
+		    if (unlikely (qfile_generate_tuple_into_list (thread_p, tl.writer_result_p, T_NORMAL) != NO_ERROR))
+		      {
+			m_err_messages_p->move_top_error_message_to_this();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			return false;
+		      }
+		    if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
+						      tl.writer_result_p) != NO_ERROR)
+		      {
+			m_err_messages_p->move_top_error_message_to_this();
+			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			/* the failed flush already freed topn_items; clear flag so write_finalize does not re-enter on NULL. */
+			tl.is_topn = false;
+			return false;
+		      }
+		    tl.is_topn = false;
+		    assert (tl.xasl->topn_items == nullptr);
+		    return true;
+		  }
 		if (unlikely (qfile_generate_tuple_into_list (thread_p, tl.writer_result_p, T_NORMAL) != NO_ERROR))
 		  {
 		    m_err_messages_p->move_top_error_message_to_this();
@@ -816,6 +897,21 @@ namespace parallel_scan
 	  }
 	else if (unlikely (status == QPROC_TPLDESCR_RETRY_SET_TYPE || status == QPROC_TPLDESCR_RETRY_BIG_REC))
 	  {
+	    /* RETRY path: tpldescr incomplete; drain residual heap to list before plain insertion. */
+	    if (tl.is_topn)
+	      {
+		if (qexec_topn_tuples_to_list_id (thread_p, tl.xasl, tl.vd->xasl_state, false,
+						  tl.writer_result_p) != NO_ERROR)
+		  {
+		    m_err_messages_p->move_top_error_message_to_this();
+		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    /* the failed flush already freed topn_items; clear flag so write_finalize does not re-enter on NULL. */
+		    tl.is_topn = false;
+		    return false;
+		  }
+		tl.is_topn = false;
+		assert (tl.xasl->topn_items == nullptr);
+	      }
 	    err_code = qdata_copy_valptr_list_to_tuple (thread_p, input, tl.vd, &tl.tpl_buf);
 	    if (err_code != NO_ERROR)
 	      {
@@ -950,17 +1046,37 @@ namespace parallel_scan
       }
   }
 
+  void clear_agg_accumulators_on_0_heap_id (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_list)
+  {
+    HL_HEAPID save_heap = db_change_private_heap (thread_p, 0);
+    for (AGGREGATE_TYPE *agg_node = agg_list; agg_node != NULL; agg_node = agg_node->next)
+      {
+	if (agg_node->accumulator.value != nullptr)
+	  {
+	    pr_clear_value (agg_node->accumulator.value);
+	  }
+	if (agg_node->accumulator.value2 != nullptr)
+	  {
+	    pr_clear_value (agg_node->accumulator.value2);
+	  }
+      }
+    db_change_private_heap (thread_p, save_heap);
+  }
+
   SCAN_CODE result_handler<RESULT_TYPE::BUILDVALUE_OPT>::read (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *dest)
   {
     std::unique_lock<std::mutex> lock (m_result_mutex);
     while (m_result_completed < m_parallelism)
       {
 	m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return S_ERROR;
-	  }
       }
+
+    if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+      {
+	clear_agg_accumulators_on_0_heap_id (thread_p, m_orig_agg_list);
+	return S_ERROR;
+      }
+
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
 	/* COUNT_STAR/DISTINCT already finalized upstream; COUNT needs curr_cnt→BIGINT, others need value clone. */
@@ -1488,11 +1604,6 @@ namespace parallel_scan
 	}
     }
 
-    {
-      std::lock_guard<std::mutex> lock (m_result_mutex);
-      m_result_completed++;
-      m_result_cv.notify_all ();
-    }
     tl_outptr_list_p = nullptr;
     tl_agg_p = nullptr;
     tl_vd = nullptr;
@@ -1503,6 +1614,13 @@ namespace parallel_scan
 	tl_tpl_buf.tpl = nullptr;
       }
     tl_tpl_buf.size = 0;
+  }
+
+  void result_handler<RESULT_TYPE::BUILDVALUE_OPT>::signal_worker_done ()
+  {
+    std::lock_guard<std::mutex> lock (m_result_mutex);
+    m_result_completed++;
+    m_result_cv.notify_all ();
   }
 
   /* Explicit template instantiations */

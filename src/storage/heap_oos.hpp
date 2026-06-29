@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,7 +17,7 @@
  */
 
 /*
- * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion
+ * heap_oos.hpp - Heap-level OOS (Out-of-row Overflow Storage) expansion and eager cleanup
  */
 
 #ifndef _HEAP_OOS_HPP_
@@ -25,6 +26,44 @@
 #include "heap_file.h"
 #include "storage_common.h"
 
+enum heap_oos_demote_priority
+{
+  HEAP_OOS_DEMOTE_NORMAL = 0,
+  HEAP_OOS_DEMOTE_PREFER_INLINE = 1
+};
+
+struct heap_oos_demote_candidate
+{
+  heap_oos_demote_priority priority;
+  int size;
+  int attr_index;
+};
+
+inline heap_oos_demote_priority
+heap_oos_get_demote_priority (bool prefer_inline)
+{
+  return prefer_inline ? HEAP_OOS_DEMOTE_PREFER_INLINE : HEAP_OOS_DEMOTE_NORMAL;
+}
+
+inline bool
+heap_oos_demote_candidate_precedes (const heap_oos_demote_candidate &a, const heap_oos_demote_candidate &b)
+{
+  if (a.priority != b.priority)
+    {
+      return a.priority < b.priority;
+    }
+  if (a.size != b.size)
+    {
+      return a.size > b.size;
+    }
+  return a.attr_index > b.attr_index;
+}
+
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
+
+/* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
+ * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
+extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
+    const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx);
 
 #endif /* _HEAP_OOS_HPP_ */

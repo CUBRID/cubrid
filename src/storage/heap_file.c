@@ -39,6 +39,7 @@
 #include "heap_file.h"
 #include "heap_oos.hpp"
 #include "oos_file.hpp"
+#include "oos_util.hpp"
 
 #include "deduplicate_key.h"
 #include "porting.h"
@@ -701,10 +702,11 @@ static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_in
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
-static void heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size);
-static void heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					   RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
-					   int oos_scratch_size);
+static int heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+					   bool * oos_owned_buffer);
+static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
+					  RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
+					  int oos_scratch_size);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
@@ -810,7 +812,12 @@ static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, R
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
-				     bool reversed_direction, DB_VALUE ** cache_recordinfo, sampling_info * sampling);
+				     bool expand_oos, bool reversed_direction, DB_VALUE ** cache_recordinfo,
+				     sampling_info * sampling);
+static SCAN_CODE heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+						     RECDES * recdes, RECDES * peeked_recdes,
+						     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+						     bool expand_oos);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
@@ -860,9 +867,6 @@ static int heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERA
 					     bool is_mvcc_class);
 static int heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * update_context,
 					     bool is_mvcc_class);
-#if !defined (NDEBUG)
-static bool heap_recdes_compute_oos_flag_debug (const RECDES * recdes);
-#endif /* !NDEBUG */
 static int heap_insert_handle_multipage_record (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context);
 static int heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 					       PGBUF_WATCHER * home_hint_p);
@@ -881,7 +885,7 @@ static int heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 static int heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
 static int heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p);
 static void heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p,
-				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa);
+				      RECDES * recdes_p, bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex);
 
 /* heap update related functions */
 static int heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, bool is_mvcc_op);
@@ -5887,7 +5891,13 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	int error = oos_remove_file (thread_p, oos_vfid);
 	if (error != NO_ERROR)
@@ -5945,7 +5955,13 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   /* OOS file cleanup */
   {
     VFID oos_vfid;
-    if (heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
+    if (!VFID_ISNULL (&oos_vfid))
       {
 	ret = oos_remove_file (thread_p, oos_vfid);
 	if (ret != NO_ERROR)
@@ -7929,8 +7945,8 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
-		    sampling_info * sampling)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool expand_oos, bool reversed_direction,
+		    DB_VALUE ** cache_recordinfo, sampling_info * sampling)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -8199,8 +8215,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  scan_cache->cache_last_fix_page = true;
 
 	  scan =
-	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					   NULL_CHN);
+	    heap_scan_get_visible_version_impl (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache,
+						ispeeking, NULL_CHN, expand_oos);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 	}
 
@@ -10463,38 +10479,64 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 /*
  * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
  *   Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ *
+ *   return: NO_ERROR, or an error code when the inline header / OOS page is
+ *           corrupted or the payload buffer cannot be obtained. On every error
+ *           path raw->data is set to NULL so the caller never reads stale data.
+ *   oos_owned_buffer(out): true iff raw->data must be cleaned up by the caller
+ *           (success, or Case 5 where it is freed here but the caller's
+ *           NULL-tolerant free is a harmless no-op). false on Cases 1-4 where
+ *           neither the scratch nor the heap allocator was engaged.
+ *
  *   On success raw->data is either the caller scratch (when oos_len fits) or a
  *   heap-allocated buffer the caller must free via recdes_free_data_area.
- *   On failure raw->data is set to NULL.
  */
-static void
-heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size)
+static int
+heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+				bool * oos_owned_buffer)
 {
   OR_BUF buf;
   OID oos_oid;
   DB_BIGINT oos_len;
   int rc = NO_ERROR;
+  int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
+
+  /* Keep the OID well-defined before any er_set: Case 1 reports it before it is read. */
+  OID_SET_NULL (&oos_oid);
 
   buf.ptr = raw->data;
   buf.endptr = recdes->data + recdes->length;
-  /* Writer invariant: the OOS-marked variable region always starts with [OID | bigint]. */
-  assert (buf.endptr - buf.ptr >= OR_OID_SIZE + OR_BIGINT_SIZE);
+
+  /* Case 1: the OOS-marked variable region must start with [OID | bigint]. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      raw->data = NULL;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
 
   or_get_oid (&buf, &oos_oid);
   oos_len = or_get_bigint (&buf, &rc);
 
-  if (rc != NO_ERROR)
+  /* Case 2: bigint read failed or the forwarder OID is NULL. */
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
       raw->data = NULL;
-      assert_release_error (er_errid () != NO_ERROR);
-      return;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  /* Writer invariants: non-null OID, length fits int. */
-  assert (!OID_ISNULL (&oos_oid));
-  assert (oos_len > 0 && oos_len <= (DB_BIGINT) INT_MAX);
+  /* Case 3: full length out of the (0, INT_MAX] range a single record can hold. */
+  if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      raw->data = NULL;
+      *oos_owned_buffer = false;
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
 
   thread_p = thread_get_thread_entry_info ();
 
@@ -10505,30 +10547,40 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       raw->data = oos_scratch;
       raw->area_size = oos_scratch_size;
     }
+  /* Case 4: heap allocation failed. recdes_allocate_data_area does not er_set itself. */
   else if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
     {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
       raw->data = NULL;
-      assert_release (false);
-      return;
+      *oos_owned_buffer = false;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  if (oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len)) != NO_ERROR)
+  /* Case 5: oos_read failed. It has already er_set; just propagate its code.
+   * raw->data is a live buffer here, so free it (scratch is stack-backed) and NULL it. */
+  error = oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len));
+  if (error != NO_ERROR)
     {
+      ASSERT_ERROR ();
       if (raw->data != oos_scratch)
 	{
 	  recdes_free_data_area (raw);
 	}
       raw->data = NULL;
-      assert_release (false);
-      return;
+      *oos_owned_buffer = true;
+      return error;
     }
+
   raw->length = (int) oos_len;
+  *oos_owned_buffer = true;
+  return NO_ERROR;
 }
 
 /*
  * heap_attrvalue_point_variable () -
  *
- *   return: NO_ERROR
+ *   return: NO_ERROR, or an error code propagated from the inline-OOS read or
+ *           raised when the variable offset table header is inconsistent.
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
@@ -10538,17 +10590,19 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
  *                          recdes_free_data_area unless raw->data == oos_scratch.
  *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
  */
-static void
+static int
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
 			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
 {
   int offset;
   int offset_size;
 
+  *oos_owned_buffer = false;
+
   if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
       /* nothing to do */
-      return;
+      return NO_ERROR;
     }
 
   /* the variable attribute is bound. */
@@ -10570,16 +10624,16 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
       break;
     default:
-      assert_release (false);
-      break;
+      /* Case D: corrupt offset_size. Return now so the indeterminate `offset` below is never read. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      /* Flag set before the call so every helper exit leaves caller in OOS-owned state. */
-      *oos_owned_buffer = true;
-      heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size);
+      /* The helper owns oos_owned_buffer from here: false on Cases 1-4, true on success / Case 5. */
+      return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
     }
   else
     {
@@ -10596,6 +10650,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 	  raw->length = -1;	/* remains can read without disk_length */
 	}
     }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10712,8 +10768,19 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-					 IO_MAX_PAGE_SIZE);
+	  error = heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
+						 IO_MAX_PAGE_SIZE);
+	  if (error != NO_ERROR)
+	    {
+	      /* Contract: only oos_owned_buffer (Case 5) leaves a buffer to reclaim; the free is
+	       * NULL-tolerant so it is a no-op on Cases 1-4. Do not fall through to transform,
+	       * which would otherwise turn the corruption into a silent NULL dbvalue. */
+	      if (oos_owned_buffer && raw.data != oos_scratch)
+		{
+		  recdes_free_data_area (&raw);
+		}
+	      return error;
+	    }
 	}
     }
 
@@ -10746,6 +10813,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int i;
+  int error = NO_ERROR;
 
   /* Initialize disk value information */
   db_make_null (value);
@@ -10785,8 +10853,17 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-					     IO_MAX_PAGE_SIZE);
+	      error = heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
+						     IO_MAX_PAGE_SIZE);
+	      if (error != NO_ERROR)
+		{
+		  /* value is already db_make_null at entry; only Case 5 leaves a buffer (NULL-tolerant free). */
+		  if (oos_owned_buffer && raw.data != oos_scratch)
+		    {
+		      recdes_free_data_area (&raw);
+		    }
+		  return error;
+		}
 	    }
 	}
     }
@@ -10872,12 +10949,25 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
 
   buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, att->location);
   buf.endptr = recdes->data + recdes->length;
+
+  /* CBRD-26769: validate the inline header exactly as heap_attrvalue_read_oos_inline does.
+   * A corrupt header must never be cast into a midxkey size: a negative/huge (int) length
+   * would mis-size midxkey.buf and let the legitimate columns overrun it before the read path
+   * raises ER_HEAP_OOS_BAD_INLINE_HEADER.  Return 0 so the buffer is sized from recdes->length
+   * alone; the corruption is then surfaced when the value is actually read. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      return 0;
+    }
+
   or_get_oid (&buf, &oos_oid);
-  assert (!OID_ISNULL (&oos_oid));
 
   /* Read OOS length directly from recdes inline data (no I/O needed) */
   DB_BIGINT length = or_get_bigint (&buf, &rc);
-  assert (rc == NO_ERROR);
+  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+    {
+      return 0;
+    }
 
   return (int) length;
 }
@@ -12119,7 +12209,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
       // *INDENT-OFF*
-      std::vector<std::pair<int, int>> oos_candidates;	/* {column_size, attr index} */
+      std::vector<heap_oos_demote_candidate> oos_candidates;
       // *INDENT-ON*
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -12128,24 +12218,31 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
 	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
-	      oos_candidates.emplace_back (column_size[i], i);
+	      // *INDENT-OFF*
+	      heap_oos_demote_priority priority =
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->is_oos_prefer_inline);
+	      oos_candidates.push_back ({ priority, column_size[i], i });
+	      // *INDENT-ON*
 	    }
 	}
 
       // *INDENT-OFF*
-      std::sort (oos_candidates.begin (), oos_candidates.end (), std::greater<std::pair<int, int>> ());
+      /* Demote order: columns flagged STORAGE PREFER_INLINE sink to the tail and are externalized
+       * only as a last resort; within each priority class, largest first. The idx-descending
+       * tiebreak preserves the legacy std::greater<std::pair> order for the no-hint (DEFAULT) case. */
+      std::sort (oos_candidates.begin (), oos_candidates.end (), heap_oos_demote_candidate_precedes);
       // *INDENT-ON*
 
       // *INDENT-OFF*
-      for (auto & cand : oos_candidates)
+      for (auto& cand : oos_candidates)
 	// *INDENT-ON*
       {
 	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
 	  {
 	    break;
 	  }
-	(*oos_columns)[cand.second] = true;
-	payload_size -= cand.first;
+	(*oos_columns)[cand.attr_index] = true;
+	payload_size -= cand.size;
 	payload_size += OR_OOS_INLINE_SIZE;
 	*has_oos = true;
       }
@@ -12157,6 +12254,19 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   return header_size + payload_size;
 }
 
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
 bool
 heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
 {
@@ -12168,6 +12278,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   bool success;
 
   success = true;
+  VFID_SET_NULL (oos_vfid);
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -12198,9 +12309,25 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
     {
       if (docreate == true)
 	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
 	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Apply TDE to the new OOS file atomically with its creation.
+	   * Pattern mirrors heap_ovf_find_vfid */
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
@@ -12216,7 +12343,8 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	}
       else
 	{
-	  goto exit_on_error;
+	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  goto end;
 	}
     }
   else
@@ -13690,6 +13818,14 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised (e.g. ER_HEAP_OOS_BAD_INLINE_HEADER) and any OOS buffer released
+	       * inside heap_midxkey_get_value. */
+	      goto error;
+	    }
 	}
 
       if (key_domain != NULL)
@@ -13889,6 +14025,14 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 		  assert (or_multi_is_null (nullmap_ptr, k));
 		}
 	    }
+	  else
+	    {
+	      /* CBRD-26769: a corrupt inline-OOS value must abort key generation, not
+	       * silently leave the column NULL in the index key.  The error was already
+	       * raised and any OOS buffer released inside heap_midxkey_get_value; the
+	       * previous iteration's value was cleared in-loop. */
+	      return NULL;
+	    }
 	}
     }
 
@@ -13975,6 +14119,9 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       /* Single column index. */
       if (heap_attrinfo_read_dbvalues (thread_p, cur_oid, recdes, attr_info) != NO_ERROR)
 	{
+	  /* CBRD-26769: db_valuep may hold a function-index result stored above; clear it before the
+	   * error return (mirroring the multi-column path), since callers do not clean up on NULL. */
+	  (void) pr_clear_value (db_valuep);
 	  return NULL;
 	}
     }
@@ -14041,6 +14188,16 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
 				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
 	{
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_valuep holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_valuep is NULL on entry). */
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
+	  (void) pr_clear_value (db_valuep);
 	  return NULL;
 	}
 
@@ -14227,6 +14384,16 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       if (heap_midxkey_key_get
 	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
 	{
+	  /* CBRD-26769: clean up everything this function owns before the error return, since
+	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
+	   *   - midxkey.buf is caller-owned when it was heap-allocated;
+	   *   - db_value holds a function-index result that heap_eval_function_index stored
+	   *     above (a no-op clear otherwise, since db_value is NULL on entry). */
+	  if (midxkey_size > DBVAL_BUFSIZE)
+	    {
+	      db_private_free_and_init (thread_p, midxkey.buf);
+	    }
+	  (void) pr_clear_value (db_value);
 	  return NULL;
 	}
 
@@ -17914,212 +18081,60 @@ heap_get_class_repr_id (THREAD_ENTRY * thread_p, OID * class_oid)
   return id;
 }
 
-/*
- * heap_set_autoincrement_value () -
- *   return: NO_ERROR, or ER_code
- *   attr_info(in):
- *   scan_cache(in):
- *   is_set(out): 1 if at least one autoincrement value has been set
- */
-int
-heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
-			      int *is_set)
+static int
+build_auto_increment_serial_name (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
+				  OR_ATTRIBUTE * att, char *serial_name)
 {
-  int i, idx_in_cache;
-  char *classname = NULL;
-  char *attr_name = NULL;
-  RECDES recdes;		/* Used to obtain attribute name */
-  char serial_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
-  HEAP_ATTRVALUE *value;
-  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
-  OR_ATTRIBUTE *att;
-  OID serial_class_oid;
-  LC_FIND_CLASSNAME status;
-  OR_CLASSREP *classrep;
-  BTID serial_btid;
-  DB_DATA_STATUS data_stat;
-  HEAP_SCANCACHE local_scan_cache;
-  bool use_local_scan_cache = false;
   int ret = NO_ERROR;
   int alloced_string = 0;
-  char *string = NULL;
-
-  if (!attr_info || !scan_cache)
-    {
-      return ER_FAILED;
-    }
-
-  *is_set = 0;
+  char *attr_name = NULL;
+  char *classname = NULL;	/* Used to obtain attribute name */
+  HEAP_SCANCACHE local_scan_cache;
+  bool use_local_scan_cache = false;
+  RECDES recdes;
 
   recdes.data = NULL;
   recdes.area_size = 0;
 
-  for (i = 0; i < attr_info->num_values; i++)
+  if (scan_cache->cache_last_fix_page == false)
     {
-      value = &attr_info->values[i];
-      dbvalue = &value->dbvalue;
-      att = &attr_info->last_classrepr->attributes[i];
+      scan_cache = &local_scan_cache;
+      (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
+      use_local_scan_cache = true;
+    }
 
-      if (att->is_autoincrement && (value->state == HEAP_UNINIT_ATTRVALUE))
-	{
-	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
-	    {
-	      memset (serial_name, '\0', sizeof (serial_name));
-	      recdes.data = NULL;
-	      recdes.area_size = 0;
+  if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
 
-	      if (scan_cache->cache_last_fix_page == false)
-		{
-		  scan_cache = &local_scan_cache;
-		  (void) heap_scancache_quick_start_root_hfid (thread_p, scan_cache);
-		  use_local_scan_cache = true;
-		}
+  if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      goto error_serial_name;
+    }
 
-	      if (heap_get_class_record (thread_p, &(attr_info->class_oid), &recdes, scan_cache, PEEK) != S_SUCCESS)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
+  ret = or_get_attrname (&recdes, att->id, &attr_name, &alloced_string);
+  if (ret != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error_serial_name;
+    }
 
-	      if (heap_get_class_name (thread_p, &(att->classoid), &classname) != NO_ERROR || classname == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (ret);
-		  goto exit_on_error;
-		}
+  if (attr_name == NULL)
+    {
+      ret = ER_FAILED;
+      goto error_serial_name;
+    }
 
-	      string = NULL;
-	      alloced_string = 0;
+  ret = set_auto_increment_serial_name (serial_name, classname, attr_name);
 
-	      ret = or_get_attrname (&recdes, att->id, &string, &alloced_string);
-	      if (ret != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto exit_on_error;
-		}
-
-	      attr_name = string;
-	      if (attr_name == NULL)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, classname, attr_name);
-
-	      if (OID_ISNULL (&serial_obj_oid))
-		{
-		  if (string != NULL && alloced_string == 1)
-		    {
-		      db_private_free_and_init (thread_p, string);
-		    }
-
-		  free_and_init (classname);
-
-		  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
-				       LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
-		  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
-		  if (classrep == NULL)
-		    {
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-
-		  if (classrep->indexes)
-		    {
-		      BTREE_SEARCH search_result;
-		      OID serial_oid;
-
-		      BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		      search_result =
-			xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
-					    &serial_oid, false);
-		      heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		      if (search_result != BTREE_KEY_FOUND)
-			{
-			  ret = ER_FAILED;
-			  goto exit_on_error;
-			}
-
-		      assert (!OID_ISNULL (&serial_oid));
-		      or_aligned_oid null_aligned_oid = { oid_Null_oid };
-		      or_aligned_oid serial_aligned_oid = { serial_oid };
-		      att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
-		    }
-		  else
-		    {
-		      heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		      ret = ER_FAILED;
-		      goto exit_on_error;
-		    }
-		}
-	    }
-
-	  thread_p->no_supplemental_log = true;
-
-	  if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	      if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
-					  1,	/* generate one value */
-					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      if (numeric_db_value_coerce_from_num (&dbvalue_numeric, dbvalue, &data_stat) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-	    }
-	  else if (att->type == DB_TYPE_NUMERIC)
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	      if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
-					  1,	/* generate one value */
-					  GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-	    }
-
-	  *is_set = 1;
-	  value->state = HEAP_READ_ATTRVALUE;
-
-	  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
-	    {
-	      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-
-	      LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-
-	      assert (tdes != NULL);
-
-	      if (!tdes->has_supplemental_log)
-		{
-		  log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
-						strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
-		  tdes->has_supplemental_log = true;
-		}
-
-	      log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
-	      thread_p->no_supplemental_log = false;
-	    }
-	}
+error_serial_name:
+  free_and_init (classname);
+  if (attr_name != NULL && alloced_string == 1)
+    {
+      db_private_free_and_init (thread_p, attr_name);
     }
 
   if (use_local_scan_cache)
@@ -18128,17 +18143,168 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
     }
 
   return ret;
+}
+
+/*
+ * heap_set_autoincrement_value () -
+ *   return: NO_ERROR, or ER_code
+ *   attr_info(in):
+ *   scan_cache(in):
+ *   is_set(out): 1 if at least one autoincrement value has been set
+ *   auto_incr_pos(in): Position of autoincrement attribute in cache
+ *   serial_name(in/out): Buffer to store the generated serial name if needed
+ */
+int
+heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache,
+			      int *is_set, int auto_incr_pos, char *serial_name)
+{
+  int idx_in_cache;
+  HEAP_ATTRVALUE *value;
+  DB_VALUE dbvalue_numeric, *dbvalue, key_val;
+  OR_ATTRIBUTE *att;
+  OID serial_class_oid;
+  LC_FIND_CLASSNAME status;
+  OR_CLASSREP *classrep;
+  BTID serial_btid;
+  DB_DATA_STATUS data_stat;
+  int ret = NO_ERROR;
+
+  if (!attr_info || !scan_cache)
+    {
+      return ER_FAILED;
+    }
+
+  *is_set = 0;
+
+  att = &attr_info->last_classrepr->attributes[auto_incr_pos];
+  assert (att->is_autoincrement == true);
+
+  value = &attr_info->values[auto_incr_pos];
+  dbvalue = &value->dbvalue;
+
+  if (value->state == HEAP_UNINIT_ATTRVALUE)
+    {
+      OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+      if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+	{
+	  if (serial_name[0] == '\0')
+	    {
+	      ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+
+	  if (OID_ISNULL (&serial_obj_oid))
+	    {
+	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
+				   LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
+	      if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
+	      if (classrep == NULL)
+		{
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+
+	      if (classrep->indexes)
+		{
+		  BTREE_SEARCH search_result;
+		  OID serial_oid;
+
+		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
+		  search_result =
+		    xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
+					&serial_oid, false);
+		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  if (search_result != BTREE_KEY_FOUND)
+		    {
+		      ret = ER_FAILED;
+		      goto exit_on_error;
+		    }
+
+		  assert (!OID_ISNULL (&serial_oid));
+		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
+		  or_aligned_oid serial_aligned_oid = { serial_oid };
+		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+		}
+	      else
+		{
+		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  ret = ER_FAILED;
+		  goto exit_on_error;
+		}
+	    }
+	}
+
+      thread_p->no_supplemental_log = true;
+
+      if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, 0,	/* no cache */
+				      1,	/* generate one value */
+				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (numeric_db_value_coerce_from_num (&dbvalue_numeric, dbvalue, &data_stat) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	}
+      else if (att->type == DB_TYPE_NUMERIC)
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, 0,	/* no cache */
+				      1,	/* generate one value */
+				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+	}
+
+      *is_set = 1;
+      value->state = HEAP_READ_ATTRVALUE;
+
+      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+	{
+	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+
+	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+
+	  assert (tdes != NULL);
+
+	  if (!tdes->has_supplemental_log)
+	    {
+	      log_append_supplemental_info (thread_p, LOG_SUPPLEMENT_TRAN_USER,
+					    strlen (tdes->client.get_db_user ()), tdes->client.get_db_user ());
+	      tdes->has_supplemental_log = true;
+	    }
+
+	  log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
+	  thread_p->no_supplemental_log = false;
+	}
+    }
 
 exit_on_error:
-  if (classname != NULL)
-    {
-      free_and_init (classname);
-    }
 
-  if (use_local_scan_cache)
-    {
-      heap_scancache_end (thread_p, scan_cache);
-    }
   return ret;
 }
 
@@ -19164,7 +19330,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
     }
   memset (ctx, 0, sizeof (HEAP_SHOW_SCAN_CTX));
 
-  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, S_LOCK);
+  /* use IS_LOCK so that DML (IX_LOCK) can run concurrently with SHOW HEAP HEADER/CAPACITY */
+  status = xlocator_find_class_oid (thread_p, class_name, &class_oid, IS_LOCK);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
       error = ER_LC_UNKNOWN_CLASSNAME;
@@ -20100,7 +20267,19 @@ SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false, NULL,
+			     NULL);
+}
+
+/*
+ * heap_next_expand_oos () - Retrieve or peek next object, expanding inline OOS OIDs.
+ */
+SCAN_CODE
+heap_next_expand_oos (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
+		      HEAP_SCANCACHE * scan_cache, int ispeeking)
+{
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, false, NULL,
+			     NULL);
 }
 
 /*
@@ -20122,7 +20301,8 @@ SCAN_CODE
 heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, int ispeeking, sampling_info * sampling)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, sampling);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false, NULL,
+			     sampling);
 }
 
 /*
@@ -20148,7 +20328,7 @@ SCAN_CODE
 heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false,
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, false,
 			     cache_recordinfo, NULL);
 }
 
@@ -20171,7 +20351,8 @@ SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 	   HEAP_SCANCACHE * scan_cache, int ispeeking)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, true, NULL,
+			     NULL);
 }
 
 /*
@@ -20197,8 +20378,8 @@ SCAN_CODE
 heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, true, cache_recordinfo,
-			     NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, true,
+			     cache_recordinfo, NULL);
 }
 
 /*
@@ -21322,6 +21503,18 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE insert): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -21529,6 +21722,18 @@ heap_update_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
+      if (has_oos)
+	{
+	  /* TEMP (CBRD-26668, ovf+oos spec change): OOS and REC_BIGONE are mutually exclusive overflow
+	   * strategies -- a record carrying OOS attributes must never also spill its whole body to overflow
+	   * pages, because vacuum's REC_BIGONE path deletes the overflow chain without reclaiming the OOS
+	   * chunks it references (silent data loss). assert() is compiled out under NDEBUG and assert_release()
+	   * only logs an ER_NOTIFICATION, so neither halts a release server; abort() hard-fails in BOTH builds
+	   * so CI surfaces the violation as a core dump at creation time. REVERT BEFORE MERGE. */
+	  fprintf (stderr, "HEAP ABORT (OOS+REC_BIGONE update): record_size=%d\n", record_size);
+	  fflush (stderr);
+	  abort ();
+	}
       /* for multipage records, set MVCC header size to maximum size */
       HEAP_MVCC_SET_HEADER_MAXIMUM_SIZE (&mvcc_rec_header);
     }
@@ -22257,7 +22462,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       /* log operation */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -22728,7 +22933,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        */
 
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
-				&context->home_recdes, is_reusable, NULL);
+				&context->home_recdes, is_reusable, NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -22751,6 +22956,21 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	      return ER_FAILED;
 	    }
 	}
+
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the forward
+       * REC_NEWHOME record before the destructive physical delete below removes the forward slot.
+       * There is no new image on DELETE and OOS OIDs are never shared across rows, so every OOS OID
+       * is reclaimed. MVCC mode keeps the old OOS alive for concurrent readers; that path is
+       * reclaimed by vacuum. */
+      if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, NULL, "delete relocation");
+	  if (rc != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return rc;
+	    }
+	}
       /*
        * Delete forward record
        */
@@ -22760,10 +22980,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        * should not be referenced anywhere in the database.
        */
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				&forward_recdes, true, context->do_supplemental_log ? &context->supp_undo_lsa : NULL,
+				RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23083,11 +23304,25 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
-      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last. 
+      /* For non-MVCC deletes (SA_MODE), eagerly delete the OOS records referenced by the home record
+       * before the destructive physical delete below removes the slot. There is no new image on
+       * DELETE and OOS OIDs are never shared across rows, so every OOS OID is reclaimed. MVCC mode
+       * keeps the old OOS alive for concurrent readers; that path is reclaimed by vacuum. */
+      if (!is_mvcc_op && context->record_type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+	{
+	  error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, NULL, "delete home");
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+
+      /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 				&context->home_recdes, is_reusable,
-				context->do_supplemental_log ? &context->supp_undo_lsa : NULL);
+				context->do_supplemental_log ? &context->supp_undo_lsa : NULL, RVHF_DELETE);
 
       HEAP_PERF_TRACK_LOGGING (thread_p, context);
 
@@ -23152,10 +23387,13 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
  *   recdes_p(in): record descriptor of deleted record
  *   mark_reusable(in): if true, will mark the slot as reusable
  *   undo_lsa(out): lsa to the undo record; needed to set previous version lsa of record at update
+ *   rcvindex(in): recovery index for the delete log record. Normally RVHF_DELETE; pass
+ *                 RVHF_DELETE_NEWHOME_NOTIFY_VACUUM for the MVCC remove_old_forward forward
+ *                 REC_NEWHOME delete so vacuum's forward-walk reclaims the old OOS records.
  */
 static void
 heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_p, OID * oid_p, RECDES * recdes_p,
-			  bool mark_reusable, LOG_LSA * undo_lsa)
+			  bool mark_reusable, LOG_LSA * undo_lsa, LOG_RCVINDEX rcvindex)
 {
   LOG_DATA_ADDR log_addr;
 
@@ -23182,12 +23420,12 @@ heap_log_delete_physical (THREAD_ENTRY * thread_p, PAGE_PTR page_p, VFID * vfid_
       bytes_reserved = (INT16) recdes_p->length;
       temp_recdes.data = (char *) &bytes_reserved;
 
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, &temp_recdes, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, &temp_recdes, NULL);
     }
   else
     {
       /* log record descriptor */
-      log_append_undoredo_recdes (thread_p, RVHF_DELETE, &log_addr, recdes_p, NULL);
+      log_append_undoredo_recdes (thread_p, rcvindex, &log_addr, recdes_p, NULL);
     }
 
   if (undo_lsa)
@@ -23497,6 +23735,23 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
+  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records referenced only by the
+   * old forward record (REC_NEWHOME). All 4 sub-paths below either overwrite or remove the
+   * forward slot, so OOS attached to the old forward becomes unreachable. In MVCC mode
+   * (SERVER_MODE) the old OOS is preserved for concurrent readers; vacuum's forward-walk
+   * reclaims it from the undo image of both MVCC sub-paths: update_old_forward is tagged
+   * RVHF_UPDATE_NOTIFY_VACUUM and remove_old_forward is tagged
+   * RVHF_DELETE_NEWHOME_NOTIFY_VACUUM (see the log calls below). */
+  if (!is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+    {
+      rc = heap_oos_delete_unreferenced (thread_p, context, &forward_recdes, context->recdes_p, "update relocation");
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
   /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
   if (heap_is_big_length (context->recdes_p->length))
     {
@@ -23643,11 +23898,20 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  HEAP_PERF_TRACK_PREPARE (thread_p, context);
 	}
 
-      /* log operation */
+      /* log operation. In MVCC mode the old forward REC_NEWHOME survives only in this delete's undo
+       * record (its LSA becomes the new version's prev_version_lsa). Tag an OOS-bearing forward delete
+       * with RVHF_DELETE_NEWHOME_NOTIFY_VACUUM so vacuum's forward-walk reclaims the old OOS records
+       * from the undo image; otherwise (non-OOS, or SA mode handled by the eager-delete path above)
+       * use the plain RVHF_DELETE — no behavior change. */
+      LOG_RCVINDEX delete_rcvindex = RVHF_DELETE;
+      if (is_mvcc_op && forward_recdes.type == REC_NEWHOME && heap_recdes_contains_oos (&forward_recdes))
+	{
+	  delete_rcvindex = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM;
+	}
       heap_log_delete_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, true, &prev_version_lsa);
+				&forward_recdes, true, &prev_version_lsa, delete_rcvindex);
 
-      /* undo lsa for SUPPLEMENT_UPDATE log 
+      /* undo lsa for SUPPLEMENT_UPDATE log
        * case : 1. relocation to home
        *        2. relocation to bigone
        *        3. relocation to relocation (new forward recdes doesn't fit in existing forward page) */
@@ -23675,9 +23939,13 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    */
   if (update_old_forward)
     {
-      /* log operation */
+      /* log operation. In MVCC mode use RVHF_UPDATE_NOTIFY_VACUUM so the vacuum forward-walk
+       * picks up the old forward recdes and reclaims any OOS records it referenced. The home
+       * page log above (line ~24028) carries REC_RELOCATION (8-byte pointer, no OOS); this
+       * forward page log is the one that actually carries the old REC_NEWHOME with OOS. */
       heap_log_update_physical (thread_p, context->forward_page_watcher_p->pgptr, &context->hfid.vfid, &forward_oid,
-				&forward_recdes, context->recdes_p, RVHF_UPDATE);
+				&forward_recdes, context->recdes_p,
+				(is_mvcc_op ? RVHF_UPDATE_NOTIFY_VACUUM : RVHF_UPDATE));
 
       /* undo, redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation (forward recdes fits in existing page) */
       if (context->do_supplemental_log)
@@ -23949,6 +24217,20 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       /* the updated record needs the prev version lsa to the undo log record where the old record can be found */
       error_code = heap_update_set_prev_version (thread_p, &context->oid, context->home_page_watcher_p,
 						 newhome_pg_watcher_p, &prev_version_lsa);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit;
+	}
+    }
+
+  /* For non-MVCC updates (SA_MODE), eagerly delete old OOS records that were replaced.
+   * In MVCC mode (SERVER_MODE), old OOS is preserved for concurrent readers and cleaned
+   * by vacuum via a forward walk of the log block (vacuum_process_log_block). */
+  if (!is_mvcc_op && context->home_recdes.type == REC_HOME && heap_recdes_contains_oos (&context->home_recdes))
+    {
+      error_code = heap_oos_delete_unreferenced (thread_p, context, &context->home_recdes, context->recdes_p,
+						 "update home");
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -26243,7 +26525,8 @@ heap_get_visible_version_expand_oos (THREAD_ENTRY * thread_p, const OID * oid, O
 */
 static SCAN_CODE
 heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+				    bool expand_oos)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
@@ -26262,13 +26545,19 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
    * or the mvcc_snapshot does not satisfy, then carry out the necessary steps through
    * the heap_get_visible_version_internal() function.
    *
-   * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots.
-   * The scan path never expands OOS (callers that need expanded records use
-   * heap_get_visible_version_expand_oos instead), so no OOS guard is needed here.
+   * Note: this shortcut returns peeked_recdes as-is, preserving any inline OOS OID slots. Skip it when callers
+   * explicitly need an expanded raw record.
    */
-  if (peeked_recdes->type == REC_HOME && ispeeking == PEEK)
+  const bool is_normal_home_record = peeked_recdes->type == REC_HOME;
+  const bool is_supported_fast_path_mode = ispeeking == PEEK || ispeeking == COPY;
+  const bool can_try_peeked_record_shortcut = is_normal_home_record && is_supported_fast_path_mode;
+  const bool shortcut_would_skip_oos_expansion =
+    can_try_peeked_record_shortcut && expand_oos && heap_recdes_contains_oos (peeked_recdes);
+
+  if (can_try_peeked_record_shortcut && !shortcut_would_skip_oos_expansion)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+      bool shortcut_visible = false;
 
       assert (scan_cache != NULL);
       assert (recdes != NULL);
@@ -26286,32 +26575,57 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
 	  assert (OID_EQ (class_oid, &scan_cache->node.class_oid));
 	  if (MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
 	    {
-	      *recdes = *peeked_recdes;
-	      return scan;
+	      shortcut_visible = true;
 	    }
-	  if (!scan_cache->mvcc_disabled_class)
+	  else if (!scan_cache->mvcc_disabled_class)
 	    {
-	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+	      if (scan_cache->mvcc_snapshot != NULL && scan_cache->mvcc_snapshot->snapshot_fnc != NULL
+		  && scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header,
+							      scan_cache->mvcc_snapshot) == SNAPSHOT_SATISFIED)
 		{
-		  if (scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot) ==
-		      SNAPSHOT_SATISFIED)
-		    {
-		      *recdes = *peeked_recdes;
-		      return scan;
-		    }
+		  shortcut_visible = true;
 		}
 	    }
 	  else
 	    {
 	      /* mvcc_disabled_class */
+	      shortcut_visible = true;
+	    }
+	}
+
+      if (shortcut_visible)
+	{
+	  if (ispeeking == PEEK)
+	    {
+	      /* recdes may point directly into the still-latched page */
 	      *recdes = *peeked_recdes;
 	      return scan;
 	    }
+
+	  /* COPY: the scan still holds the page (the caller sets cache_last_fix_page before this call), so copy the
+	   * already-peeked REC_HOME record straight into recdes. This skips heap_(init|prepare|clean)_get_context and,
+	   * in particular, avoids re-fixing the home page (pgbuf_ordered_fix / pgbuf_replace_watcher) that the scan
+	   * already has fixed. Per-row latch behavior is unchanged. */
+	  if (recdes->data == NULL
+	      && heap_scan_cache_allocate_recdes_data (thread_p, scan_cache, recdes, DB_PAGESIZE * 2) != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return S_ERROR;
+	    }
+	  if (peeked_recdes->length <= recdes->area_size)
+	    {
+	      memcpy (recdes->data, peeked_recdes->data, peeked_recdes->length);
+	      recdes->length = peeked_recdes->length;
+	      recdes->type = peeked_recdes->type;
+	      return scan;
+	    }
+	  /* recdes buffer too small (not expected for a single-page REC_HOME): fall through to the full path. */
 	}
       /* fall through.. */
     }
 
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.expand_oos = expand_oos;
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -26325,7 +26639,32 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
 {
   return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
-					     old_chn);
+					     old_chn, false);
+}
+
+/*
+ * heap_prepare_recdes_copy_area () - Prepare storage for a COPY fetch through a heap get context.
+ *
+ * return: NO_ERROR or error code
+ *
+ * When recdes_p points to caller-owned storage, only reserve scan-cache area so
+ * that the caller buffer is not replaced.  When recdes_p is empty or already
+ * scan-cache-owned, bind recdes_p to the scan-cache area so later COPY and OOS
+ * expansion code can safely grow and refresh recdes_p->data.
+ */
+static int
+heap_prepare_recdes_copy_area (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
+{
+  assert (context != NULL);
+  assert (context->scan_cache != NULL);
+  assert (context->recdes_p != NULL);
+
+  if (context->keep_recdes_buffer)
+    {
+      return heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2);
+    }
+
+  return heap_scan_cache_allocate_recdes_data (thread_p, context->scan_cache, context->recdes_p, DB_PAGESIZE * 2);
 }
 
 /*
@@ -26356,7 +26695,7 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
   if (context->scan_cache && context->ispeeking == COPY && context->recdes_p != NULL)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -26569,7 +26908,7 @@ heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
   if (context->scan_cache && context->ispeeking == COPY)
     {
       /* Allocate an area to hold the object. Assume that the object will fit in two pages for not better estimates. */
-      if (heap_scan_cache_allocate_area (thread_p, context->scan_cache, DB_PAGESIZE * 2) != NO_ERROR)
+      if (heap_prepare_recdes_copy_area (thread_p, context) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -26738,6 +27077,10 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
   context->expand_oos = false;
+  const bool data_is_scan_cache_area =
+    scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
+  context->keep_recdes_buffer =
+    recdes != NULL && recdes->data != NULL && recdes->area_size >= 0 && !data_is_scan_cache_area;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
@@ -27631,92 +27974,17 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
   return ER_FAILED;
 }
 
-#if !defined (NDEBUG)
+#if defined(CUBRID_UNIT_TEST_ENABLED)
 /*
- * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_MVCC_FLAG_HAS_OOS
- *                                      against the on-disk VOT
- *    return: true if the VOT contains any OOS-flagged entry, false otherwise
- *    recdes(in): heap record being written
- *
- * Note:
- *    Debug-only sanity check used by heap_update_adjust_recdes_header () to
- *    verify the upstream builder (heap_attrinfo_transform_header_to_disk)
- *    stamped HAS_OOS consistently with the VOT contents. The production path
- *    trusts the bit; this walker is the assert that catches divergence.
- *
- *    Defense against non-object-instance records: the heap can hold records
- *    with layouts other than the object-instance VOT format (class records,
- *    root records, etc.). For those, the bytes read as a VOT offset are
- *    arbitrary and could spuriously satisfy OR_IS_OOS.
- *
- *    The caller of this function asserts !OID_IS_ROOTOID() upstream, but we
- *    still validate the first VOT entry as a cheap belt-and-suspenders check:
- *    a real first offset must fall inside [0, recdes->length] (after masking
- *    the two flag bits). Anything outside that range means we are not looking
- *    at a real VOT, and we return false rather than walking arbitrary bytes.
- *
- *    Only index 0 needs the bound check — once the first entry validates,
- *    the loop is self-terminating via OR_IS_OOS or OR_IS_LAST_ELEMENT, and
- *    max_var_count is a backstop against malformed data.
+ * bridge_heap_attrvalue_read_oos_inline () - Unit-test seam exposing the static
+ *   inline-OOS reader so unit_tests/oos can drive the corrupt-header paths
+ *   (Cases 1-3) and assert the error code + cleanup contract. See
+ *   unit_tests/oos/test_oos.cpp.
  */
-static bool
-heap_recdes_compute_oos_flag_debug (const RECDES * recdes)
+int
+bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+				       bool * oos_owned_buffer)
 {
-  if (recdes == NULL || recdes->data == NULL)
-    {
-      return false;
-    }
-
-  const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  void *var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
-  const int max_var_count = (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size;
-
-  for (int index = 0;; ++index)
-    {
-      if (index == max_var_count)
-	{
-	  assert (false && "LAST_ELEMENT flag not found within record bounds");
-	  return false;
-	}
-
-      int offset;
-      switch (offset_size)
-	{
-	case OR_BYTE_SIZE:
-	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_SHORT_SIZE:
-	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	case OR_INT_SIZE:
-	  offset = OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size));
-	  break;
-	default:
-	  assert (false && "unexpected variable offset size");
-	  return false;
-	}
-
-      /* First-entry bound check — see the function header for the rationale. */
-      if (index == 0)
-	{
-	  const int clean = offset & ~OR_VAR_FLAG_MASK;
-	  if (clean < 0 || clean > recdes->length)
-	    {
-	      return false;
-	    }
-	}
-
-      if (OR_IS_OOS (offset))
-	{
-	  return true;
-	}
-
-      if (OR_IS_LAST_ELEMENT (offset))
-	{
-	  return false;
-	}
-    }
-
-  return false;
+  return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
 }
-#endif /* !NDEBUG */
+#endif /* CUBRID_UNIT_TEST_ENABLED */

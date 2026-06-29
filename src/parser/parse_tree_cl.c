@@ -6853,6 +6853,11 @@ pt_print_attr_def (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " invisible ");
     }
 
+  if (p->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      q = pt_append_nulstring (parser, q, " storage prefer_inline ");
+    }
+
   if (p->info.attr_def.data_default)
     {
       r1 = pt_print_bytes (parser, p->info.attr_def.data_default);
@@ -14892,11 +14897,6 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, "(");
 	      q = pt_append_nulstring (parser, q, buffer);
 	      q = pt_append_nulstring (parser, q, ") ");
-	    }
-
-	  if (p->info.query.q.select.hint & PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED)
-	    {
-	      q = pt_append_nulstring (parser, q, "NLJ_KEEP_HEAP_PAGE_PINNED ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)

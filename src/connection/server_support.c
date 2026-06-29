@@ -1529,10 +1529,9 @@ css_add_client_version_string (THREAD_ENTRY * thread_p, const char *version_stri
     {
       if (conn->version_string == NULL)
 	{
-	  ver_str = (char *) malloc (strlen (version_string) + 1);
+	  ver_str = strdup (version_string);
 	  if (ver_str != NULL)
 	    {
-	      strcpy (ver_str, version_string);
 	      conn->version_string = ver_str;
 	    }
 	  else
