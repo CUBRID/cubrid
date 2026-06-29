@@ -1473,11 +1473,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1373 Given scale of %1$d is invalid; it should be greater than or equal to %2$d and no greater than %3$d.
 
-1374 Vacuum master daemon is not running; the server may be still booting or already shut down.
+1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
 
-1375 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1375 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1376 Last Error
+1376 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+
+1377 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1987,7 +1989,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 334 An attribute of virtual class cannot set column's visibility.
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
-337 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
+337 The partition name is too long.
+338 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
