@@ -4,8 +4,8 @@
 	branch = develop
 [submodule "cubrid-jdbc"]
 	path = cubrid-jdbc
-	url = https://github.com/cubrid/cubrid-jdbc
-	branch = develop
+	url = https://github.com/Srltas/cubrid-jdbc.git
+	branch = APIS-1083
 [submodule "cubrid-cci"]
 	path = cubrid-cci
 	url = https://github.com/CUBRID/cubrid-cci.git
