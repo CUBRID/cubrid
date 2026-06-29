@@ -399,6 +399,7 @@ struct pgbuf_status
   unsigned long long num_pages_read;
   unsigned int num_flusher_waiting_threads;
   unsigned int dummy;
+  char m_pad[64 - 5 * sizeof (unsigned long long) - 2 * sizeof (unsigned int)];
 };
 
 struct pgbuf_status_snapshot
@@ -482,7 +483,12 @@ struct pgbuf_holder_anchor
   int num_hold_cnt;		/* # of used BCB holder entries */
   PGBUF_HOLDER *thrd_free_list;	/* free BCB holder list */
   PGBUF_HOLDER *thrd_hold_list;	/* used(or hold) BCB holder list */
+  /* Pad to a full cache line: num_hold_cnt/thrd_hold_list are written on every fix/unfix, so an
+   * unpadded entry false-shares with adjacent threads'. alignof stays 8 -> plain malloc still valid. */
+  char m_pad[64 - 2 * sizeof (int) - 2 * sizeof (PGBUF_HOLDER *)];
 };
+
+static_assert (sizeof (PGBUF_HOLDER_ANCHOR) == 64, "pgbuf_holder_anchor must be exactly one 64B cache line; fix m_pad");
 
 /* the entry(array structure) of free BCB holder list shared by threads */
 struct pgbuf_holder_set
@@ -684,6 +690,18 @@ struct pgbuf_seq_flusher
   bool burst_mode;		/* config : flush in burst or flush one page and wait */
 };
 
+/* Per-thread sharded fix/unfix counters (indexed by thread_entry::index, 0 = no-thread): replaces a
+ * shared atomic that true-shared the fix hot path. Feed only coarse quota heuristics -> relaxed bumps. */
+typedef struct pgbuf_monitor_thread_counter PGBUF_MONITOR_THREAD_COUNTER;
+struct pgbuf_monitor_thread_counter
+{
+  std::atomic_int fix_req_cnt;	/* number of fix requests (this thread) */
+  std::atomic_int pg_unfix_cnt;	/* number of page unfixes (this thread) */
+  char m_pad[64 - 2 * sizeof (std::atomic_int)];	/* isolate each shard to its own cache line */
+};
+
+static_assert (sizeof (PGBUF_MONITOR_THREAD_COUNTER) == 64, "shard must be exactly one 64B cache line; fix m_pad");
+
 typedef struct pgbuf_page_monitor PGBUF_PAGE_MONITOR;
 struct pgbuf_page_monitor
 {
@@ -694,9 +712,8 @@ struct pgbuf_page_monitor
 
   /* Overall counters */
   volatile int lru_shared_pgs_cnt;	/* count of BCBs in all shared LRUs */
-    std::atomic_int pg_unfix_cnt;	/* Count of page unfixes; used for refreshing quota adjustment */
   int lru_victim_req_cnt;	/* number of victim requests from all LRUs */
-    std::atomic_int fix_req_cnt;	/* number of fix requests */
+  PGBUF_MONITOR_THREAD_COUNTER *thread_counters;	/* per-thread fix_req/pg_unfix shards (see above) */
 
 #if defined (SERVER_MODE)
   PGBUF_MONITOR_BCB_MUTEX *bcb_locks;	/* track bcb mutex usage. */
@@ -1547,9 +1564,8 @@ pgbuf_initialize (void)
   pgbuf_Pool.monitor.lru_hits = NULL;
   pgbuf_Pool.monitor.lru_activity = NULL;
   pgbuf_Pool.monitor.lru_shared_pgs_cnt = 0;
-  pgbuf_Pool.monitor.pg_unfix_cnt.store (0);
   pgbuf_Pool.monitor.lru_victim_req_cnt = 0;
-  pgbuf_Pool.monitor.fix_req_cnt.store (0);
+  pgbuf_Pool.monitor.thread_counters = NULL;
 #if defined (SERVER_MODE)
   pgbuf_Pool.monitor.bcb_locks = NULL;
 #endif
@@ -1762,14 +1778,14 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (MAX_NTRANS + 1));
+  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
   if (pgbuf_Pool.show_status == NULL)
     {
       ASSERT_ERROR ();
       goto error;
     }
 
-  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (MAX_NTRANS + 1));
+  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
 
   pgbuf_Pool.show_status_old.print_out_time = time (NULL);
 
@@ -1855,6 +1871,11 @@ pgbuf_finalize (void)
   if (pgbuf_Pool.thrd_holder_info != NULL)
     {
       free_and_init (pgbuf_Pool.thrd_holder_info);
+    }
+
+  if (pgbuf_Pool.monitor.thread_counters != NULL)
+    {
+      free_and_init (pgbuf_Pool.monitor.thread_counters);
     }
 
   if (pgbuf_Pool.thrd_reserved_holder != NULL)
@@ -2025,6 +2046,64 @@ pgbuf_fix_with_retry (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MOD
 }
 
 /*
+ * pgbuf_monitor_inc_fix_req () - bump this thread's sharded fix-request counter (uncontended).
+ */
+STATIC_INLINE void
+pgbuf_monitor_inc_fix_req (THREAD_ENTRY * thread_p)
+{
+  int idx = (thread_p != NULL) ? thread_p->index : 0;
+  pgbuf_Pool.monitor.thread_counters[idx].fix_req_cnt.fetch_add (1, std::memory_order_relaxed);
+}
+
+/*
+ * pgbuf_monitor_inc_pg_unfix () - bump this thread's sharded page-unfix counter (uncontended).
+ */
+STATIC_INLINE void
+pgbuf_monitor_inc_pg_unfix (THREAD_ENTRY * thread_p)
+{
+  int idx = (thread_p != NULL) ? thread_p->index : 0;
+  pgbuf_Pool.monitor.thread_counters[idx].pg_unfix_cnt.fetch_add (1, std::memory_order_relaxed);
+}
+
+/*
+ * pgbuf_monitor_sum_fix_req () - sum per-thread fix-request shards (reset: exchange-to-0, exact).
+ */
+STATIC_INLINE int
+pgbuf_monitor_sum_fix_req (bool reset)
+{
+  int total = 0;
+  size_t n = thread_num_total_threads ();
+  size_t i;
+  for (i = 0; i < n; i++)
+    {
+      if (reset)
+	total += pgbuf_Pool.monitor.thread_counters[i].fix_req_cnt.exchange (0, std::memory_order_seq_cst);
+      else
+	total += pgbuf_Pool.monitor.thread_counters[i].fix_req_cnt.load (std::memory_order_seq_cst);
+    }
+  return total;
+}
+
+/*
+ * pgbuf_monitor_sum_pg_unfix () - sum the per-thread page-unfix shards; reset them when reset==true.
+ */
+STATIC_INLINE int
+pgbuf_monitor_sum_pg_unfix (bool reset)
+{
+  int total = 0;
+  size_t n = thread_num_total_threads ();
+  size_t i;
+  for (i = 0; i < n; i++)
+    {
+      if (reset)
+	total += pgbuf_Pool.monitor.thread_counters[i].pg_unfix_cnt.exchange (0, std::memory_order_seq_cst);
+      else
+	total += pgbuf_Pool.monitor.thread_counters[i].pg_unfix_cnt.load (std::memory_order_seq_cst);
+    }
+  return total;
+}
+
+/*
  * pgbuf_fix () -
  *   return: Pointer to the page or NULL
  *   vpid(in): Complete Page identifier
@@ -2059,8 +2138,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
   bool maybe_deallocated;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
@@ -2076,7 +2154,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
       return NULL;
     }
 
-  pgbuf_Pool.monitor.fix_req_cnt.fetch_add (1, std::memory_order_relaxed);
+  pgbuf_monitor_inc_fix_req (thread_p);
 
   if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_FETCH) && fetch_mode != RECOVERY_PAGE)
     {
@@ -3711,7 +3789,7 @@ pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio, PERF_
   check_count_lru = 0;
 
   lru_victim_req_cnt = ATOMIC_TAS_32 (&pgbuf_Pool.monitor.lru_victim_req_cnt, 0);
-  fix_req_cnt = pgbuf_Pool.monitor.fix_req_cnt.exchange (0, std::memory_order_seq_cst);
+  fix_req_cnt = pgbuf_monitor_sum_fix_req (true);
 
   if (fix_req_cnt > lru_victim_req_cnt)
     {
@@ -6484,7 +6562,7 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	}
       else if (blocked_reader_writer == false)
 	{
-	  pgbuf_Pool.monitor.pg_unfix_cnt.fetch_add (1, std::memory_order_relaxed);
+	  pgbuf_monitor_inc_pg_unfix (thread_p);
 
 	  if (PGBUF_THREAD_HAS_PRIVATE_LRU (thread_p))
 	    {
@@ -7919,8 +7997,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 #if defined (SERVER_MODE)
   struct timespec to;
@@ -8137,8 +8214,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   PAGE_PTR pgptr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
   PGBUF_ATOMIC_LATCH_IMPL impl;
 
 #if defined (ENABLE_SYSTEMTAP)
@@ -10470,8 +10546,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[tran_index];
+  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 
   PGBUF_BCB_CHECK_OWN (bufptr);
@@ -13471,9 +13546,28 @@ pgbuf_initialize_page_monitor (void)
     }
 
   monitor->lru_victim_req_cnt = 0;
-  monitor->fix_req_cnt.store (0);
-  monitor->pg_unfix_cnt.store (0);
   monitor->lru_shared_pgs_cnt = 0;
+
+  {
+    size_t thrd_num = thread_num_total_threads ();
+    size_t k;
+    monitor->thread_counters =
+      (PGBUF_MONITOR_THREAD_COUNTER *) malloc (thrd_num * sizeof (PGBUF_MONITOR_THREAD_COUNTER));
+    if (monitor->thread_counters == NULL)
+      {
+	error_status = ER_OUT_OF_VIRTUAL_MEMORY;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY,
+		1, thrd_num * sizeof (PGBUF_MONITOR_THREAD_COUNTER));
+	goto exit;
+      }
+    for (k = 0; k < thrd_num; k++)
+      {
+	/* begin the lifetime of the malloc'ed array element (incl. its std::atomic members) before use */
+	placement_new (&monitor->thread_counters[k]);
+	monitor->thread_counters[k].fix_req_cnt.store (0);
+	monitor->thread_counters[k].pg_unfix_cnt.store (0);
+      }
+  }
 
 #if defined (SERVER_MODE)
   if (pgbuf_Monitor_locks)
@@ -13694,13 +13788,12 @@ pgbuf_adjust_quotas (THREAD_ENTRY * thread_p)
    * - or more than 5 min since last adjustment and activity is more 1% of threshold
    * Activity of page buffer is measured in number of page unfixes
    */
-  if (pgbuf_Pool.monitor.pg_unfix_cnt.load (std::memory_order_seq_cst) < PGBUF_TRAN_THRESHOLD_ACTIVITY
-      && diff_usec < 500000LL)
+  if (pgbuf_monitor_sum_pg_unfix (false) < PGBUF_TRAN_THRESHOLD_ACTIVITY && diff_usec < 500000LL)
     {
       quota->is_adjusting = 0;
       return;
     }
-  if (monitor->pg_unfix_cnt.exchange (0) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
+  if (pgbuf_monitor_sum_pg_unfix (true) < PGBUF_TRAN_THRESHOLD_ACTIVITY / 100)
     {
       low_overall_activity = true;
     }
@@ -16016,7 +16109,7 @@ pgbuf_is_hit_ratio_low (void)
 
   return (pgbuf_Pool.monitor.lru_victim_req_cnt > PGBUF_MIN_VICTIM_REQ
 	  && pgbuf_Pool.monitor.lru_victim_req_cnt * PGBUF_DESIRED_HIT_VS_MISS_RATE >
-	  pgbuf_Pool.monitor.fix_req_cnt.load (std::memory_order_seq_cst));
+	  pgbuf_monitor_sum_fix_req (false));
 
 #undef PGBUF_DESIRED_HIT_VS_MISS_RATE
 #undef PGBUF_MIN_VICTIM_REQ
@@ -16810,7 +16903,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   pgbuf_scan_bcb_table ();
 
-  for (i = 0; i <= MAX_NTRANS; i++)
+  for (i = 0; i <= (int) thread_num_total_threads (); i++)
     {
       status_accumulated.num_hit += pgbuf_Pool.show_status[i].num_hit;
       status_accumulated.num_page_request += pgbuf_Pool.show_status[i].num_page_request;

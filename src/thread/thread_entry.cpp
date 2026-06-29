@@ -996,6 +996,8 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "CONCURRENCY_SLOT_SUSPENDED";
     case THREAD_CONCURRENCY_SLOT_RESUMED:
       return "CONCURRENCY_SLOT_RESUMED";
+    case THREAD_SLEEP_FUNC_SUSPENDED:
+      return "SLEEP_FUNC_SUSPENDED";
     }
   return "UNKNOWN";
 }

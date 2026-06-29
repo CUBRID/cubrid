@@ -1260,6 +1260,32 @@ not_transferred:
     m_watcher->cv.notify_one ();
   }
 
+  void coordinator::finalize_resources ()
+  {
+    message request;
+
+    while (m_queue.try_pop (request))
+      {
+	switch (request.type)
+	  {
+	  case message_type::NEW_CLIENT:
+	    css_free_conn (request.conn);
+	    break;
+
+	  case message_type::RETURN_TO_POOL:
+	    handle_message_queue_return_to_pool (request);
+	    break;
+
+	  case message_type::START:
+	  case message_type::HANDOFF_REPLY:
+	  case message_type::STATISTICS:
+	  case message_type::SHUTDOWN:
+	  case message_type::TYPE_COUNT:
+	    break;
+	  }
+      }
+  }
+
   bool coordinator::run ()
   {
     std::array<epoll_event, 4> events;

@@ -50,6 +50,13 @@
 #if defined(SOLARIS)
 #include <ieeefp.h>
 #endif
+
+#if defined (SERVER_MODE)
+#include "log_impl.h"		// for logtb_is_interrupted
+#include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "thread_entry.hpp"	// for thread suspend/wakeup primitives
+#endif /* SERVER_MODE */
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4996,7 +5003,8 @@ int
 db_sleep (DB_VALUE * result, DB_VALUE * value)
 {
   int error = NO_ERROR;
-  long million_sec = 0;
+  long msec = 0;
+  double msec_d;
 
   assert (result != NULL && value != NULL);
   assert (DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NULL || DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_DOUBLE);
@@ -5011,20 +5019,51 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
       goto end;
     }
 
-  million_sec = (long) (db_get_double (value) * 1000L);
+  msec_d = db_get_double (value) * 1000.0;
 
-  /* NOTE: Casting a very large input to long may overflow into a negative
-   * value. In debug builds this triggers an assert in msleep(); release
-   * builds return 1 immediately via select(EINVAL).
-   *
-   * A previous attempt clamped overflow to LONG_MAX, but that effectively
-   * caused the call to sleep indefinitely. It is removed here.
-   *
-   * TODO: Revisit once the valid input range for sleep is formally
-   * defined, and handle overflow accordingly.
-   */
+  /* clamp to LONG_MAX when the value is out of the long range */
+  msec = !(msec_d < (double) LONG_MAX) ? LONG_MAX : (long) msec_d;
 
-  error = msleep (million_sec);
+#if defined (SERVER_MODE)
+  {
+    /* Wait until the deadline; a query cancel wakes this thread at once via logtb_set_tran_index_interrupt(). */
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+    bool dummy_continue = true;	/* out-arg of logtb_is_interrupted (), unused here */
+    struct timeval now;
+    struct timespec deadline;
+    int wait_result = NO_ERROR;
+
+    gettimeofday (&now, NULL);
+    deadline.tv_sec = now.tv_sec + msec / 1000L;
+    deadline.tv_nsec = now.tv_usec * 1000L + (msec % 1000L) * 1000000L;
+    deadline.tv_sec += deadline.tv_nsec / 1000000000L;
+    deadline.tv_nsec %= 1000000000L;
+
+    for (;;)
+      {
+	thread_lock_entry (thread_p);
+
+	if (logtb_get_check_interrupt (thread_p) && logtb_is_interrupted (thread_p, true, &dummy_continue))
+	  {
+	    thread_unlock_entry (thread_p);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    error = ER_INTERRUPTED;
+	    goto end;
+	  }
+
+	if (wait_result == ER_CSS_PTHREAD_COND_TIMEDOUT)
+	  {
+	    thread_unlock_entry (thread_p);
+	    break;
+	  }
+
+	wait_result = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &deadline, THREAD_SLEEP_FUNC_SUSPENDED);
+      }
+
+    db_make_int (result, 0);
+  }
+#else /* SA_MODE or client */
+  error = msleep (msec);
   if (error == NO_ERROR)
     {
       db_make_int (result, 0);
@@ -5035,6 +5074,7 @@ db_sleep (DB_VALUE * result, DB_VALUE * value)
 
       error = NO_ERROR;
     }
+#endif /* SA_MODE or client */
 
 end:
 
