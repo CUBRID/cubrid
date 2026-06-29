@@ -604,6 +604,87 @@ dblink_end_tran (DBLINK_CONN_ENTRY * dblink, bool is_abort)
   return (tran_error == NO_ERROR) ? rc : tran_error;
 }
 
+/*
+ * dblink_acquire_pooled_conn () - shared helper: build the gateway connection URL, reuse a pooled
+ *   remote connection within the local transaction (non-autocommit) or open a fresh one, and set
+ *   its autocommit mode.  Unifies the connection acquisition duplicated across
+ *   dblink_execute_query / dblink_connect_and_prepare / dblink_insert_open.
+ *
+ *   autocommit_mode : CCI autocommit to set on a freshly opened connection. CCI_AUTOCOMMIT_FALSE
+ *                     → the connection is pooled (qmgr) and committed/rolled back with the local
+ *                     transaction; otherwise a fresh connection is returned and the caller is
+ *                     responsible for disconnecting it.
+ *   is_dml          : passed as set_participant to qmgr_dblink_{find,add}_conn_handle so DML
+ *                     connections join 2PC (committed/rolled back with the local transaction).
+ *   errctx          : short operation context (e.g. "remote INSERT SELECT", "remote DELETE",
+ *                     "dblink scan") prefixed to helper-generated error messages so the call
+ *                     site is identifiable.
+ *   conn_handle_out : set to the acquired CCI connection handle on success, -1 on failure.
+ *
+ * Note: the caller still performs cci_prepare, col_info population, and any cursor-specific
+ *   autocommit adjustment.
+ */
+static int
+dblink_acquire_pooled_conn (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
+			    CCI_AUTOCOMMIT_MODE autocommit_mode, bool is_dml, const char *errctx, int *conn_handle_out)
+{
+  int ret, conn_handle = -1;
+  T_CCI_ERROR err_buf;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  char errmsg[256];
+  const char *find;
+
+  *conn_handle_out = -1;
+
+  /* build connection URL with gateway flag. checked snprintf: a truncated URL would connect to
+   * the wrong target, so fail explicitly instead. */
+  find = strstr (url, ":?");
+  ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, find ? "&__gateway=true" : "?__gateway=true");
+  if (ret < 0 || ret >= MAX_LEN_CONNECTION_URL)
+    {
+      snprintf (errmsg, sizeof (errmsg), "%s: connection URL too long (truncated)", errctx);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+      return ER_DBLINK;
+    }
+
+  /* reuse a pooled connection only when it lives across statements (non-autocommit) */
+  if (autocommit_mode == CCI_AUTOCOMMIT_FALSE)
+    {
+      conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, is_dml);
+    }
+
+  if (conn_handle < 0)
+    {
+      conn_handle = cci_connect_with_url_ex (conn_url, (char *) user, (char *) pwd, &err_buf);
+      if (conn_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return ER_DBLINK;
+	}
+
+      ret = cci_set_autocommit (conn_handle, autocommit_mode);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
+	  (void) cci_disconnect (conn_handle, &err_buf);
+	  return ER_DBLINK;
+	}
+
+      if (autocommit_mode == CCI_AUTOCOMMIT_FALSE)
+	{
+	  ret = qmgr_dblink_add_conn_handle (thread_p, conn_handle, (char *) url, (char *) user, (char *) pwd, is_dml);
+	  if (ret < 0)
+	    {
+	      (void) cci_disconnect (conn_handle, &err_buf);
+	      return ER_DBLINK;
+	    }
+	}
+    }
+
+  *conn_handle_out = conn_handle;
+  return NO_ERROR;
+}
+
 int
 dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VAL_DESCR * vd,
 		      DBLINK_HOST_VARS * host_vars)
@@ -611,56 +692,16 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
   int ret = NO_ERROR, result, conn_handle, stmt_handle;
   T_CCI_ERROR err_buf;
-  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
   char *user_name = spec->s.dblink_node.conn_user;
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
 
-  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
-
-  if (find)
+  /* acquire pooled remote connection (honors DBLINK_AUTO_COMMIT; DML = 2PC participant when pooled) */
+  ret = dblink_acquire_pooled_conn (thread_p, spec->s.dblink_node.conn_url, user_name, password,
+				    (CCI_AUTOCOMMIT_MODE) auto_commit, true, "dblink query", &conn_handle);
+  if (ret != NO_ERROR)
     {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
-    }
-  else
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
-    }
-
-  conn_handle = -1;
-
-  if (!auto_commit)
-    {
-      conn_handle = qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, true);
-    }
-
-  if (conn_handle < 0)
-    {
-      conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-      if (conn_handle < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  goto error_exit;
-	}
-
-      ret = cci_set_autocommit (conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
-      if (ret < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
-	  goto error_exit;
-	}
-
-      if (!auto_commit)
-	{
-	  ret =
-	    qmgr_dblink_add_conn_handle (thread_p, conn_handle, spec->s.dblink_node.conn_url, user_name, password,
-					 true);
-	  if (ret < 0)
-	    {
-	      /* malloc error */
-	      goto error_exit;
-	    }
-	}
+      return ret;
     }
 
   stmt_handle = cci_prepare (conn_handle, sql_text, 0, &err_buf);
@@ -720,61 +761,17 @@ dblink_connect_and_prepare (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, DB
   static bool auto_commit = prm_get_bool_value (PRM_ID_DBLINK_AUTO_COMMIT);
   int ret;
   T_CCI_ERROR err_buf;
-  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
   char *user_name = spec->s.dblink_node.conn_user;
   char *password = spec->s.dblink_node.conn_password;
   char *sql_text = spec->s.dblink_node.conn_sql;
   T_CCI_CUBRID_STMT stmt_type;
 
-  char *find = strstr (spec->s.dblink_node.conn_url, ":?");
-  if (find)
+  /* acquire pooled remote connection (honors DBLINK_AUTO_COMMIT; scan = not a 2PC participant) */
+  ret = dblink_acquire_pooled_conn (thread_p, spec->s.dblink_node.conn_url, user_name, password,
+				    (CCI_AUTOCOMMIT_MODE) auto_commit, false, "dblink scan", &scan_info->conn_handle);
+  if (ret != NO_ERROR)
     {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "&__gateway=true");
-    }
-  else
-    {
-      snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", spec->s.dblink_node.conn_url, "?__gateway=true");
-    }
-
-  scan_info->conn_handle = -1;
-
-  if (!auto_commit)
-    {
-      scan_info->conn_handle =
-	qmgr_dblink_find_conn_handle (thread_p, spec->s.dblink_node.conn_url, user_name, password, false);
-    }
-
-  if (scan_info->conn_handle < 0)
-    {
-      /* Fresh connection — owned exclusively until added to the pool or closed on error. */
-      scan_info->conn_handle = cci_connect_with_url_ex (conn_url, user_name, password, &err_buf);
-      if (scan_info->conn_handle < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return ER_DBLINK;
-	}
-
-      ret = cci_set_autocommit (scan_info->conn_handle, (CCI_AUTOCOMMIT_MODE) auto_commit);
-      if (ret < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit mode");
-	  (void) cci_disconnect (scan_info->conn_handle, &err_buf);
-	  scan_info->conn_handle = -1;
-	  return ER_DBLINK;
-	}
-
-      if (!auto_commit)
-	{
-	  ret =
-	    qmgr_dblink_add_conn_handle (thread_p, scan_info->conn_handle, spec->s.dblink_node.conn_url, user_name,
-					 password, false);
-	  if (ret < 0)
-	    {
-	      (void) cci_disconnect (scan_info->conn_handle, &err_buf);
-	      scan_info->conn_handle = -1;
-	      return ER_DBLINK;
-	    }
-	}
+      return ret;
     }
 
   /* Force autocommit OFF only for cursor_rewind: the same cci_execute result must
@@ -1326,12 +1323,10 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 {
   int ret, i, remaining;
   T_CCI_ERROR err_buf;
-  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
   char *sql = NULL;
   size_t sql_len, table_name_len;
   int *attr_name_lens = NULL;
   char *p;
-  const char *find;
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
@@ -1362,56 +1357,15 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       return ER_DBLINK;
     }
 
-  /* build connection URL with gateway flag */
-  find = strstr (url, ":?");
-  if (find)
+  /* Acquire pooled remote connection: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT) + DML 2PC
+   * participant, for all-or-nothing.  Shared with the scan/push paths via dblink_acquire_pooled_conn;
+   * the connection is committed/rolled back + disconnected by qmgr_check_dblink_trans() at local txn end. */
+  ret = dblink_acquire_pooled_conn (thread_p, url, user, pwd, CCI_AUTOCOMMIT_FALSE, true, "remote INSERT SELECT",
+				    &state->conn_handle);
+  if (ret != NO_ERROR)
     {
-      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
-    }
-  else
-    {
-      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
-    }
-  /* snprintf returns the length that WOULD have been written (excluding the null terminator);
-   * ret >= buffer size means the URL was truncated. This is a data-modifying path, so fail
-   * explicitly instead of connecting with a truncated (wrong) URL. */
-  if (ret < 0 || ret >= MAX_LEN_CONNECTION_URL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote INSERT SELECT: connection URL too long (truncated)");
-      return ER_DBLINK;
-    }
-
-  /* Reuse remote conn from dblink pool within the same local transaction */
-  state->conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, true);
-
-  if (state->conn_handle < 0)
-    {
-      state->conn_handle = cci_connect_with_url_ex (conn_url, (char *) user, (char *) pwd, &err_buf);
-      if (state->conn_handle < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
-	  return ER_DBLINK;
-	}
-
-      /* Remote: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT; partial insert prevention) */
-      ret = cci_set_autocommit (state->conn_handle, CCI_AUTOCOMMIT_FALSE);
-      if (ret < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
-	  (void) cci_disconnect (state->conn_handle, &err_buf);
-	  state->conn_handle = -1;
-	  return ER_DBLINK;
-	}
-
-      /* Register remote conn in dblink pool for qmgr_check_dblink_trans() at local txn end */
-      ret = qmgr_dblink_add_conn_handle (thread_p, state->conn_handle, (char *) url, (char *) user, (char *) pwd, true);
-      if (ret < 0)
-	{
-	  (void) cci_disconnect (state->conn_handle, &err_buf);
-	  state->conn_handle = -1;
-	  return ER_DBLINK;
-	}
+      /* er_set done in helper; a partially opened conn (if any) is cleaned up by the helper */
+      return ret;
     }
 
   /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
