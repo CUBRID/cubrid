@@ -188,7 +188,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
                     throw new SemanticError( // s438
                             Misc.getLineColumnOf(node.ctx),
-                            "a function that returns SYS_REFCURSOR cannot be called from PL/CSQL."
+                            "a function that returns a query result set cannot be called from PL/CSQL."
                                     + " Use JDBC CallableStatement to call it");
                 }
 
@@ -1659,7 +1659,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
                         throw new SemanticError( // s439
                                 Misc.getLineColumnOf(ctx),
-                                "a function that returns SYS_REFCURSOR cannot be called from PL/CSQL."
+                                "a function that returns a query result set cannot be called from PL/CSQL."
                                         + " Use JDBC CallableStatement to call it");
                     }
 
