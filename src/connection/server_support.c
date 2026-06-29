@@ -548,9 +548,7 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() {
-    return css_get_max_connections ();
-});
+REGISTER_WORKERPOOL (transaction, CSS_MAX_CLIENT_COUNT);
 // *INDENT-ON*
 
 int
@@ -584,7 +582,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
   // create request worker pool
   //*INDENT-OFF*
   css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
-      css_get_max_connections (),
+      CSS_MAX_CLIENT_COUNT,
       cubthread::system_core_count (),
       max_request_concurrency,
       max_request_worker,

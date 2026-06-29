@@ -21,6 +21,7 @@
  */
 
 #include "concurrency_slot.hpp"
+#include "connection_globals.h"
 #include "thread_manager.hpp"
 #include "server_support.h"
 #include "system_parameter.h"
@@ -442,6 +443,7 @@ namespace cubthread
       {
 	if (m_wait_queue.empty ())
 	  {
+	    // store the slot
 	    m_available_slots.emplace (std::move (slot));
 	    break;
 	  }
@@ -482,11 +484,13 @@ namespace cubthread
 
     std::unique_lock<std::mutex> ulock (*m_mutex);
 
-    if ((m_available_slots.empty () && !m_wait_queue.empty ()) ||
+    if (has_queued_task (ulock) ||
+	(m_available_slots.empty () && !m_wait_queue.empty ()) ||
 	(slot->m_owner_pool == this && m_slot_count > m_target_count) ||
 	force)
       {
 	release_slot (std::move (slot), ulock);
+	wakeup_workers (ulock);
 
 	return nullptr;
       }
@@ -515,6 +519,22 @@ namespace cubthread
       }
 
     return slots;
+  }
+
+  bool
+  concurrency_slot_pool::needs_slot ()
+  {
+    std::unique_lock<std::mutex> ulock (*m_mutex);
+
+    return needs_slot (ulock);
+  }
+
+  bool
+  concurrency_slot_pool::needs_slot (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    return !m_wait_queue.empty () || (m_available_slots.empty () && has_queued_task (ulock));
   }
 
   std::size_t
@@ -561,6 +581,38 @@ namespace cubthread
       }
   }
 
+  void
+  concurrency_slot_pool::wakeup_workers (std::unique_lock<std::mutex> &ulock)
+  {
+    // wake the workers up if there are available slots
+    auto *base = static_cast<worker_pool::core *> (const_cast<void *> (m_parent));
+    if (dynamic_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base))
+      {
+	static_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base)->adjust_workers (ulock);
+      }
+    else if (dynamic_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base))
+      {
+	static_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base)->adjust_workers (ulock);
+      }
+  }
+
+  bool
+  concurrency_slot_pool::has_queued_task (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    auto *base = static_cast<worker_pool::core *> (const_cast<void *> (m_parent));
+    if (dynamic_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base))
+      {
+	return static_cast<worker_pool_elastic<stats_t::on>::core_elastic *> (base)->has_queued_task (ulock);
+      }
+    else if (dynamic_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base))
+      {
+	return static_cast<worker_pool_elastic<stats_t::off>::core_elastic *> (base)->has_queued_task (ulock);
+      }
+    return false;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // concurrency_slot_daemon task
   //////////////////////////////////////////////////////////////////////////
@@ -574,6 +626,8 @@ namespace cubthread
       void execute (entry &thread_ref) override;
 
     private:
+      bool has_slot_demand (std::vector<concurrency_slot_subscriber *> &subs);
+
       void steal_from_entries_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots, void *identifier);
       void steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots,
 				       std::vector<concurrency_slot_subscriber *> &subs);
@@ -626,7 +680,10 @@ namespace cubthread
       steal_from_entries_if_excess (slots, identifier);
 
       // 3.
-      steal_from_cores_if_excess (slots, subs);
+      if (has_slot_demand (subs))
+	{
+	  steal_from_cores_if_excess (slots, subs);
+	}
 
       // 4.
       distribute_slots (slots, subs);
@@ -635,6 +692,20 @@ namespace cubthread
       // 5.
       wakeup_workers (identifier, subs);
     });
+  }
+
+  bool
+  concurrency_slot_daemon_task::has_slot_demand (std::vector<concurrency_slot_subscriber *> &subs)
+  {
+    for (auto &sub : subs)
+      {
+	if (static_cast<concurrency_slot_pool *> (sub)->needs_slot ())
+	  {
+	    return true;
+	  }
+      }
+
+    return false;
   }
 
   void
@@ -752,22 +823,10 @@ namespace cubthread
       std::size_t &max_request_worker)
   {
     std::size_t core_count = system_core_count ();
-    std::size_t max_clients = prm_get_integer_value (PRM_ID_CSS_MAX_CLIENTS);
-    std::size_t clamp_min = max_clients < core_count ? core_count : max_clients;
+    std::size_t max_client_count = CSS_MAX_CLIENT_COUNT;
 
-    if (max_request_concurrency > max_clients)
-      {
-	max_request_concurrency = clamp_min;
-      }
-    if (max_request_concurrency < core_count)
-      {
-	max_request_concurrency = core_count;
-      }
-
-    if (max_request_worker > max_clients)
-      {
-	max_request_worker = clamp_min;
-      }
+    max_request_concurrency = std::min (std::max (max_request_concurrency, core_count), max_client_count);
+    max_request_worker = std::min (std::max (max_request_worker, core_count), max_client_count);
     if (max_request_worker < max_request_concurrency)
       {
 	max_request_worker = max_request_concurrency;

@@ -616,6 +616,16 @@ thread_prepare_suspension (cubthread::entry *thread_p, cubthread::entry::status 
       switch (suspended_reason)
 	{
 	case THREAD_CSS_QUEUE_SUSPENDED:
+	  // this entry belongs to an elastic worker pool
+	  holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
+	  assert (holder);
+	  {
+	    std::unique_ptr<cubthread::concurrency_slot> slot = std::move (thread_p->m_slot);
+	    thread_p->m_slot = nullptr;
+	    slot->return_to_pool (std::move (slot));
+	  }
+	  break;
+
 	case THREAD_LOCK_SUSPENDED:
 	  // this entry belongs to an elastic worker pool
 	  holder = static_cast<void *> (thread_p->m_slot->get_holder_pool ());
