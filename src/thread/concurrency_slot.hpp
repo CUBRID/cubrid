@@ -149,6 +149,8 @@ namespace cubthread
       std::vector<std::unique_ptr<concurrency_slot>>
 	  borrow_surplus_slots (const std::chrono::time_point<std::chrono::steady_clock> &now);
 
+      bool needs_slot ();
+      bool needs_slot (std::unique_lock<std::mutex> &ulock);
       std::size_t available_slots ();
 
       const void *get_parent ();
@@ -176,6 +178,8 @@ namespace cubthread
       std::mutex *m_mutex;
 
       void check_surplus_slots ();
+      void wakeup_workers (std::unique_lock<std::mutex> &ulock);
+      bool has_queued_task (std::unique_lock<std::mutex> &ulock);
   };
 
   // concurrency_slot_daemon

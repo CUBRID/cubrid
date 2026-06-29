@@ -164,7 +164,7 @@ namespace cubconn::connection
       state m_state;
       receiver m_receiver;
 
-      cubbase::span<std::byte> m_header;
+      NET_HEADER m_header;
       int m_request_id;
 
       /* if received command packet, task will be pushed into worker pool */
