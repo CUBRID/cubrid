@@ -30,53 +30,40 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.Scope;
-import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.visitor.AstVisitor;
-import java.util.Set;
+import java.sql.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class StmtLocalProcCall extends Stmt implements LocalRoutineCall {
-
-    public boolean reachableFromLoop;
-
-    @Override
-    public boolean reachableFromLoop() {
-        return reachableFromLoop;
-    }
-
-    @Override
-    public void markAsReachableFromLoop(Set<SqlUse> accum) {
-        this.reachableFromLoop = true;
-        decl.markAsCalledFromLoop(accum);
-    }
-
-    @Override
-    public DeclRoutine getDecl() {
-        return decl;
-    }
+public class UnitPkg extends Unit {
 
     @Override
     public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitStmtLocalProcCall(this);
+        return visitor.visitUnitPkg(this);
     }
 
-    public final String name;
-    public final NodeList<Expr> args;
-    public final Scope scope;
-    public final DeclProc decl;
-    public final boolean prefixDeclBlock;
+    public final DeclPackage pkg;
 
-    public StmtLocalProcCall(
-            ParserRuleContext ctx, String name, NodeList<Expr> args, Scope scope, DeclProc decl) {
-        super(ctx);
+    public UnitPkg(
+            ParserRuleContext ctx, boolean connectionRequired, String revision, DeclPackage pkg) {
+        super(ctx, connectionRequired, revision);
 
-        assert args != null;
-        this.name = name;
-        this.args = args;
-        this.scope = scope;
-        this.decl = decl;
-        prefixDeclBlock = decl.scope.declDone;
+        this.pkg = pkg;
     }
+
+    public String getClassName() {
+
+        if (className == null) {
+            className =
+                    String.format(
+                            "Pkg_%s_%s_%d", pkg.name, revision, new java.util.Date().getTime());
+        }
+
+        return className;
+    }
+
+    // ------------------------------------------
+    // Private
+    // ------------------------------------------
+
+    private String className;
 }

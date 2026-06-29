@@ -30,82 +30,20 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import java.sql.*;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public class Unit extends AstNode {
+public abstract class Unit extends AstNode {
 
-    @Override
-    public <R> R accept(AstVisitor<R> visitor) {
-        return visitor.visitUnit(this);
-    }
-
-    public final boolean autonomousTransaction;
     public final boolean connectionRequired;
-    public final DeclRoutine routine;
     public final String revision;
 
-    public Unit(
-            ParserRuleContext ctx,
-            boolean autonomousTransaction,
-            boolean connectionRequired,
-            DeclRoutine routine,
-            String revision) {
+    public Unit(ParserRuleContext ctx, boolean connectionRequired, String revision) {
         super(ctx);
 
-        assert routine.scope.level == 1;
-
-        this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
-        this.routine = routine;
         this.revision = revision;
     }
 
-    public String getJavaSignature() {
-
-        String ret;
-        if (routine.paramList == null) {
-            ret = String.format("%s.%s()", getClassName(), routine.name);
-        } else {
-            boolean first = true;
-            StringBuffer sbuf = new StringBuffer();
-            for (DeclParam dp : routine.paramList.nodes) {
-                if (first) {
-                    first = false;
-                } else {
-                    sbuf.append(", ");
-                }
-
-                sbuf.append(dp.toJavaSignature());
-            }
-
-            ret = String.format("%s.%s(%s)", getClassName(), routine.name, sbuf.toString());
-        }
-
-        if (routine.isProcedure()) {
-            return ret;
-        } else {
-            return (ret + " return " + routine.retTypeSpec.type.fullJavaType);
-        }
-    }
-
-    public String getClassName() {
-
-        if (className == null) {
-            String kindStr = routine.isProcedure() ? "Proc" : "Func";
-            className =
-                    String.format(
-                            "%s_%s_%s_%d",
-                            kindStr, routine.name, revision, new java.util.Date().getTime());
-        }
-
-        return className;
-    }
-
-    // ------------------------------------------
-    // Private
-    // ------------------------------------------
-
-    private String className;
+    public abstract String getClassName();
 }

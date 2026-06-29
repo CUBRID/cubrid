@@ -417,6 +417,11 @@ enum PKG_FLAGS
   PKG_FLAGS_SYSTEM_GENERATED = (1 << 0)
 };
 
+enum PKG_VAR_FLAGS
+{
+  PKG_VAR_CONSTANT = (1 << 0),
+  PKG_VAR_NOT_NULL = (1 << 1)
+};
 
 #define METHOD_GROUP_ID uint64_t
 #define METHOD_REQ_ID int
