@@ -34,6 +34,7 @@
 #include "memoize.hpp"
 #include "scan_manager.h"
 #include "partition_sr.h"
+#include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -44,6 +45,13 @@ namespace parallel_scan
   void task<result_type, ST>::execute (cubthread::entry &thread_ref)
   {
     int err_code;
+    auto done_guard = make_scope_exit ([this] ()
+    {
+      if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	{
+	  m_result_handler->signal_worker_done ();
+	}
+    });
     err_code = initialize (thread_ref);
     if (err_code != NO_ERROR)
       {

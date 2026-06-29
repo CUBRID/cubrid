@@ -968,6 +968,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_ALLOC_BCB_SUSPENDED:
 		    case THREAD_DWB_QUEUE_SUSPENDED:
 		    case THREAD_PGBUF_SUSPENDED:
+		    case THREAD_SLEEP_FUNC_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
