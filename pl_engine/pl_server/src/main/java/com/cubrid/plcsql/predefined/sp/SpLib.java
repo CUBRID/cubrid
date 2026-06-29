@@ -33,11 +33,13 @@ package com.cubrid.plcsql.predefined.sp;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.jdbc.CUBRIDServerSideStatement;
 import com.cubrid.jsp.value.DateTimeParser;
 import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.builtin.DBMS_OUTPUT;
 import com.cubrid.plcsql.compiler.CoercionScheme;
 import com.cubrid.plcsql.compiler.annotation.Operator;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
 import com.cubrid.plcsql.predefined.PlcsqlRuntimeError;
 import java.math.BigDecimal;
@@ -421,14 +423,12 @@ public class SpLib {
                 throw new PROGRAM_ERROR(); // unreachable
             }
         } catch (SQLException e) {
-            Server.log(e);
             throw new SQL_ERROR(e.getMessage());
         } finally {
             if (pstmtRef == null && pstmt != null) {
                 try {
                     pstmt.close();
                 } catch (SQLException e) {
-                    Server.log(e);
                     throw new SQL_ERROR(e.getMessage());
                 }
             }
@@ -624,26 +624,38 @@ public class SpLib {
 
     public static class Query {
         public final String query;
+        public final boolean dynamic;
         public ResultSet rs;
         public int rowCount = -1;
 
         private PreparedStatement myStmt;
 
         public Query(String query) {
+            this(query, false);
+        }
+
+        public Query(String query, boolean dynamic) {
+
+            if (query == null) {
+                throw new SQL_ERROR("SQL part was evaluated to NULL");
+            }
             this.query = query;
+            this.dynamic = dynamic;
         }
 
         public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
 
             assert val != null;
 
+            if (isOpen()) {
+                throw new CURSOR_ALREADY_OPEN();
+            }
+
+            assert myStmt == null;
+            assert rs == null;
+
+            PreparedStatement pstmt = null;
             try {
-                if (isOpen()) {
-                    throw new CURSOR_ALREADY_OPEN();
-                }
-
-                PreparedStatement pstmt;
-
                 // using pstmtRef is for the loop optimization:
                 //  preparing the statement once and closing it once for the whole iterations
                 if (pstmtRef == null) {
@@ -659,46 +671,65 @@ public class SpLib {
                     }
                 }
 
+                if (dynamic) {
+                    byte stmtType =
+                            ((CUBRIDServerSideStatement) pstmt)
+                                    .getStatementHandler()
+                                    .getStatementType();
+                    if (stmtType != ServerConstants.CUBRID_STMT_SELECT) {
+                        throw new SQL_ERROR("dynamic SQL must be a SELECT statement");
+                    }
+                }
+
                 for (int i = 0; i < val.length; i++) {
                     pstmt.setObject(i + 1, val[i]);
                 }
                 rs = pstmt.executeQuery();
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
+            } finally {
+                if (rs == null) {
+                    // exception case
+                    if (pstmt != null) {
+                        try {
+                            pstmt.close();
+                        } catch (Exception ee) {
+                            // ignore ee
+                        }
+                    }
+
+                    if (pstmtRef == null) {
+                        myStmt = null;
+                    }
+                }
             }
         }
 
         public void close() {
+            if (!isOpen()) {
+                throw new INVALID_CURSOR("attempted to close an unopened cursor");
+            }
+
             try {
-                if (!isOpen()) {
-                    throw new INVALID_CURSOR("attempted to close an unopened cursor");
-                }
                 if (myStmt == null) {
                     // no need to close the statement because it was declared and is closed outside
-                    // of this Query
-                    // close only the result set.
+                    // of this Query close only the result set.
                     rs.close();
-                    rs = null;
                 } else {
-                    myStmt.close(); // it also closes rs according to the JDBC spec: see Javadoc
-                    // on Statement.close()
-                    myStmt = null;
-                    rs = null;
+                    // it also closes rs according to the JDBC spec: see Javadoc on
+                    // Statement.close()
+                    myStmt.close();
                 }
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
+            } finally {
+                rs = null;
+                myStmt = null;
             }
         }
 
         public boolean isOpen() {
-            try {
-                return (rs != null && !rs.isClosed());
-            } catch (SQLException e) {
-                Server.log(e);
-                throw new SQL_ERROR(e.getMessage());
-            }
+            return (rs != null);
         }
 
         public boolean fetch() {
@@ -719,7 +750,6 @@ public class SpLib {
                     return false;
                 }
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -732,7 +762,6 @@ public class SpLib {
                 }
                 return rowCount < 0 ? null : (rs.getRow() > 0);
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -745,7 +774,6 @@ public class SpLib {
                 }
                 return rowCount < 0 ? null : (rs.getRow() == 0);
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
@@ -761,7 +789,6 @@ public class SpLib {
             try {
                 rowCount = rs.getRow();
             } catch (SQLException e) {
-                Server.log(e);
                 throw new SQL_ERROR(e.getMessage());
             }
         }
