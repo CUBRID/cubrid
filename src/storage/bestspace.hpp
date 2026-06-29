@@ -356,8 +356,8 @@ namespace cubstorage
       void create (OID *class_oid, HFID *hfid,
 		   bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT]);
 
-      void destroy (OID *class_oid, VFID *vfid);
-      void destroy (OID *class_oid, HFID *hfid);
+      void destroy (const OID *class_oid, const VFID *vfid);
+      void destroy (const OID *class_oid, const HFID *hfid);
 
       int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
@@ -380,15 +380,15 @@ namespace cubstorage
 
       void insert_entry (registry_entry *&head, registry_entry *entry);
       void destroy_entry (registry_entry *entry);
-      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, OID *class_oid,
-	  VFID *vfid);
-      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, OID *class_oid,
-	  HFID *hfid);
+      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head,
+	  const OID *class_oid, const VFID *vfid);
+      std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head,
+	  const OID *class_oid, const HFID *hfid);
 
       void invalidate_entries (registry_entry *head);
 
-      registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, VFID *vfid);
-      registry_entry *get_node_from_list (registry_entry *&head, OID *class_oid, HFID *hfid);
+      registry_entry *get_node_from_list (registry_entry *&head, const OID *class_oid, const VFID *vfid);
+      registry_entry *get_node_from_list (registry_entry *&head, const OID *class_oid, const HFID *hfid);
       registry_entry *get_tail_from_list (registry_entry *&head);
   };
 

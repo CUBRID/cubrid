@@ -941,7 +941,7 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::destroy (OID *class_oid, VFID *vfid)
+  bestspace_registry::destroy (const OID *class_oid, const VFID *vfid)
   {
     registry_entry *node;
 
@@ -956,7 +956,7 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::destroy (OID *class_oid, HFID *hfid)
+  bestspace_registry::destroy (const OID *class_oid, const HFID *hfid)
   {
     registry_entry *node;
 
@@ -1084,7 +1084,7 @@ namespace cubstorage
   }
 
   std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
-      bestspace_registry::find_entry (registry_entry *head, OID *class_oid, VFID *vfid)
+      bestspace_registry::find_entry (registry_entry *head, const OID *class_oid, const VFID *vfid)
   {
     registry_entry *prev;
 
@@ -1099,7 +1099,7 @@ namespace cubstorage
   }
 
   std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
-      bestspace_registry::find_entry (registry_entry *head, OID *class_oid, HFID *hfid)
+      bestspace_registry::find_entry (registry_entry *head, const OID *class_oid, const HFID *hfid)
   {
     registry_entry *prev;
 
@@ -1126,7 +1126,7 @@ namespace cubstorage
   }
 
   bestspace_registry::registry_entry *
-  bestspace_registry::get_node_from_list (registry_entry *&head, OID *class_oid, VFID *vfid)
+  bestspace_registry::get_node_from_list (registry_entry *&head, const OID *class_oid, const VFID *vfid)
   {
     auto pair = find_entry (head, class_oid, vfid);
     if (!pair)
@@ -1146,7 +1146,7 @@ namespace cubstorage
   }
 
   bestspace_registry::registry_entry *
-  bestspace_registry::get_node_from_list (registry_entry *&head, OID *class_oid, HFID *hfid)
+  bestspace_registry::get_node_from_list (registry_entry *&head, const OID *class_oid, const HFID *hfid)
   {
     auto pair = find_entry (head, class_oid, hfid);
     if (!pair)

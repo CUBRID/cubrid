@@ -116,13 +116,6 @@ struct heap_mvcc_delete_info
   MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;	/* can delete row? */
 };
 
-typedef struct heap_bestspace HEAP_BESTSPACE;
-struct heap_bestspace
-{
-  VPID vpid;			/* Vpid of one of the best pages */
-  int freespace;		/* Estimated free space in this page */
-};
-
 typedef struct heap_scancache_node HEAP_SCANCACHE_NODE;
 struct heap_scancache_node
 {
