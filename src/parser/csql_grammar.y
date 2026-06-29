@@ -111,7 +111,7 @@ extern int msg_ptr;
 extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
-extern int expecting_plcsql_text;
+extern int expecting_pkg_plcsql_text;
 extern int yylex(void);
 
 static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, container_10 *ctn, container_2 info);
@@ -1863,7 +1863,7 @@ stmt
                         g_plcsql_text_pos = -1;
                         is_in_sp_func_type = false;
                         assert(expecting_pl_lang_spec == 0); // initialized in parser_main() or parse_one_statement()
-                        assert(expecting_plcsql_text == 0); // initialized in parser_main() or parse_one_statement()
+                        assert(expecting_pkg_plcsql_text == 0); // initialized in parser_main() or parse_one_statement()
 		}}
 	stmt_
 		{{
@@ -2950,7 +2950,7 @@ create_stmt
                 {                                       /* 5 */
 		  PT_NODE *node = parser_new_node (this_parser, PT_CREATE_PACKAGE);
 		  parser_push_hint_node (node);
-                  expecting_plcsql_text = 1;
+                  expecting_pkg_plcsql_text = 1;
 		  push_msg(MSGCAT_SYNTAX_INVALID_CREATE_PACKAGE);
                 }
 	  package_name_without_dot                      /* 6 */
@@ -24000,7 +24000,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos=0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
-  expecting_plcsql_text = 0;
+  expecting_pkg_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;
@@ -24113,7 +24113,7 @@ parse_one_statement (int state)
 
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
-  expecting_plcsql_text = 0;
+  expecting_pkg_plcsql_text = 0;
   csql_yylloc.buffer_pos=0;
 
   g_query_string = NULL;

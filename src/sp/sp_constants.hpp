@@ -76,12 +76,12 @@ enum index_pkg_attr
     MAP_LIST_ITEM(OCODE)
 
 #define PKG_CODE_ATTR_PKG_UNIQUE_NAME       "pkg_unique_name"
-#define PKG_CODE_ATTR_NAME        	"name"
-#define PKG_CODE_ATTR_STYPE       	"stype"
-#define PKG_CODE_ATTR_SCODE_SPEC  	"scode_spec"
-#define PKG_CODE_ATTR_SCODE_BODY  	"scode_body"
-#define PKG_CODE_ATTR_OTYPE       	"otype"
-#define PKG_CODE_ATTR_OCODE      	"ocode"
+#define PKG_CODE_ATTR_NAME                  "name"
+#define PKG_CODE_ATTR_STYPE                 "stype"
+#define PKG_CODE_ATTR_SCODE_SPEC            "scode_spec"
+#define PKG_CODE_ATTR_SCODE_BODY            "scode_body"
+#define PKG_CODE_ATTR_OTYPE                 "otype"
+#define PKG_CODE_ATTR_OCODE                 "ocode"
 
 enum index_pkg_code_attr
 {
@@ -97,7 +97,6 @@ enum index_pkg_code_attr
     MAP_LIST_ITEM(DATA_TYPE) \
     MAP_LIST_ITEM(PREC) \
     MAP_LIST_ITEM(SCALE) \
-    MAP_LIST_ITEM(INIT_VALUE) \
     MAP_LIST_ITEM(FLAGS) \
     MAP_LIST_ITEM(COMMENT)
 
@@ -106,7 +105,6 @@ enum index_pkg_code_attr
 #define PKG_VAR_ATTR_DATA_TYPE                      "data_type"
 #define PKG_VAR_ATTR_PREC                           "prec"
 #define PKG_VAR_ATTR_SCALE                          "scale"
-#define PKG_VAR_ATTR_INIT_VALUE                     "init_value"
 #define PKG_VAR_ATTR_FLAGS                          "flags"
 #define PKG_VAR_ATTR_COMMENT                        "comment"
 
@@ -419,6 +417,11 @@ enum PKG_FLAGS
   PKG_FLAGS_SYSTEM_GENERATED = (1 << 0)
 };
 
+enum PKG_VAR_FLAGS
+{
+  PKG_VAR_CONSTANT = (1 << 0),
+  PKG_VAR_NOT_NULL = (1 << 1)
+};
 
 #define METHOD_GROUP_ID uint64_t
 #define METHOD_REQ_ID int

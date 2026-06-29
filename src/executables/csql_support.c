@@ -80,6 +80,7 @@ typedef enum csql_statement_substate
   CSQL_SUBSTATE_SEEN_OR,
   CSQL_SUBSTATE_SEEN_REPLACE,
   CSQL_SUBSTATE_EXPECTING_IS_OR_AS,
+  CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE,
   CSQL_SUBSTATE_PL_LANG_SPEC,
   CSQL_SUBSTATE_SEEN_LANGUAGE,
   CSQL_SUBSTATE_PLCSQL_TEXT,
@@ -1128,10 +1129,14 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_SEEN_OR;
 		  continue;
 		}
-	      else if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p)
-		       || match_word_ci ("package", &p))
+	      else if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
 		{
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
+		  continue;
+		}
+	      else if (match_word_ci ("package", &p))
+		{
+		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE;
 		  continue;
 		}
 	      else
@@ -1155,9 +1160,14 @@ csql_walk_statement (const char *str)
 	      break;
 
 	    case CSQL_SUBSTATE_SEEN_REPLACE:
-	      if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p) || match_word_ci ("package", &p))
+	      if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
 		{
 		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS;
+		  continue;
+		}
+	      else if (match_word_ci ("package", &p))
+		{
+		  substate = CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE;
 		  continue;
 		}
 	      else
@@ -1176,6 +1186,20 @@ csql_walk_statement (const char *str)
 	      else
 		{
 		  // keep the substate CSQL_SUBSTATE_EXPECTING_IS_OR_AS
+		  // break and proceed to the second switch
+		}
+	      break;
+
+	    case CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE:
+	      if (match_word_ci ("is", &p) || match_word_ci ("as", &p))
+		{
+		  plcsql_begin_end_balance++;
+		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  continue;
+		}
+	      else
+		{
+		  // keep the substate CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE
 		  // break and proceed to the second switch
 		}
 	      break;

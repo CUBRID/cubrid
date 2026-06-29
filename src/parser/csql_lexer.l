@@ -81,7 +81,7 @@ int msg_ptr;
 int yybuffer_pos;
 int is_dblink_query_string = 0;
 int expecting_pl_lang_spec = 0;
-int expecting_plcsql_text = 0;
+int expecting_pkg_plcsql_text = 0;
 
 /* TODO: 
  * For now, I've set it to ignore warnings in the automatically generated code. 
@@ -167,8 +167,9 @@ IDL       [a-zA-Z0-9_]
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ARIA; }
 [aA][sS]								{ begin_token(yytext);
-                                                                                if (expecting_plcsql_text) {
-                                                                                        expecting_plcsql_text = 0;
+                                                                                if (expecting_pkg_plcsql_text) {
+                                                                                        expecting_pkg_plcsql_text = 0;
+                                                                                        plcsql_begin_end_balance++;
                                                                                         BEGIN(PLCSQL_TEXT);
                                                                                 } else if (expecting_pl_lang_spec) {
                                                                                         expecting_pl_lang_spec = 0;
@@ -528,8 +529,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return INVISIBLE; }
 [iI][sS]								{ begin_token(yytext);
-                                                                                if (expecting_plcsql_text) {
-                                                                                        expecting_plcsql_text = 0;
+                                                                                if (expecting_pkg_plcsql_text) {
+                                                                                        expecting_pkg_plcsql_text = 0;
+                                                                                        plcsql_begin_end_balance++;
                                                                                         BEGIN(PLCSQL_TEXT);
                                                                                 } else if (expecting_pl_lang_spec) {
                                                                                         expecting_pl_lang_spec = 0;

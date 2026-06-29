@@ -30,6 +30,9 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.jsp.data.DBType;
+import com.cubrid.jsp.value.NumericValue;
+import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -41,6 +44,9 @@ public class Type {
     public final String fullJavaType;
     public final String typicalValueStr;
     public final String javaCode;
+    public final int dbType;
+    public final int prec;
+    public final short scale;
 
     @Override
     public String toString() {
@@ -71,12 +77,22 @@ public class Type {
         return idx == IDX_DATE || idx == IDX_TIME || idx == IDX_DATETIME || idx == IDX_TIMESTAMP;
     }
 
-    protected Type(int idx, String plcName, String fullJavaType, String typicalValueStr) {
+    protected Type(
+            int idx,
+            String plcName,
+            String fullJavaType,
+            String typicalValueStr,
+            int dbType,
+            int prec,
+            short scale) {
         this.idx = idx;
         this.plcName = plcName;
         this.fullJavaType = fullJavaType;
         this.typicalValueStr = typicalValueStr;
         this.javaCode = getJavaCode(fullJavaType);
+        this.dbType = dbType;
+        this.prec = prec;
+        this.scale = scale;
     }
 
     public static final int INVALID_IDX = 0;
@@ -103,49 +119,151 @@ public class Type {
 
     public static final int FIRST_IDX = IDX_CURSOR;
 
+    protected static final int NO_DB_TYPE = -1;
+    protected static final int NO_PREC = -1;
+    protected static final short NO_SCALE = -1;
+
     // the following two are not actual Java types but only for internal type checking
-    public static Type CURSOR = new Type(IDX_CURSOR, "Cursor", "Cursor", null);
-    public static Type NULL = new Type(IDX_NULL, "Null", "Null", "null");
-    public static Type RECORD_ANY = new Type(IDX_RECORD, "Record", "Record", null);
+    public static Type CURSOR =
+            new Type(IDX_CURSOR, "Cursor", "Cursor", null, NO_DB_TYPE, NO_PREC, NO_SCALE);
+
+    public static Type NULL =
+            new Type(IDX_NULL, "Null", "Null", "null", DBType.DB_NULL, NO_PREC, NO_SCALE);
+
+    public static Type RECORD_ANY =
+            new Type(IDX_RECORD, "Record", "Record", null, NO_DB_TYPE, NO_PREC, NO_SCALE);
 
     // (1) used as an argument type of some operators in SpLib
     // (2) used as an expression type when a specific Java type cannot be given
-    public static Type OBJECT = new Type(IDX_OBJECT, "Object", "java.lang.Object", "?");
+    public static Type OBJECT =
+            new Type(
+                    IDX_OBJECT,
+                    "Object",
+                    "java.lang.Object",
+                    "?",
+                    DBType.DB_OBJECT,
+                    NO_PREC,
+                    NO_SCALE);
 
-    public static Type BOOLEAN = new Type(IDX_BOOLEAN, "Boolean", "java.lang.Boolean", null);
+    public static Type BOOLEAN =
+            new Type(
+                    IDX_BOOLEAN,
+                    "Boolean",
+                    "java.lang.Boolean",
+                    null,
+                    NO_DB_TYPE,
+                    NO_PREC,
+                    NO_SCALE);
     // CHAR or VARCHAR with any length
-    public static Type STRING_ANY = new Type(IDX_STRING, "String", "java.lang.String", "'xyz'");
+    public static Type STRING_ANY =
+            new Type(
+                    IDX_STRING,
+                    "String",
+                    "java.lang.String",
+                    "'xyz'",
+                    DBType.DB_STRING,
+                    ServerConstants.DB_DEFAULT_PRECISION,
+                    NO_SCALE);
     // NUMERIC with any precision and scale
     public static Type NUMERIC_ANY =
-            new Type(IDX_NUMERIC, "Numeric", "java.math.BigDecimal", "0.1");
-    public static Type SHORT = new Type(IDX_SHORT, "Short", "java.lang.Short", "cast(1 as short)");
-    public static Type INT = new Type(IDX_INT, "Int", "java.lang.Integer", "cast(1 as int)");
+            new Type(
+                    IDX_NUMERIC,
+                    "Numeric",
+                    "java.math.BigDecimal",
+                    "0.1",
+                    DBType.DB_NUMERIC,
+                    NumericValue.DB_DEFAULT_NUMERIC_PRECISION,
+                    NumericValue.DB_DEFAULT_NUMERIC_SCALE);
+    public static Type SHORT =
+            new Type(
+                    IDX_SHORT,
+                    "Short",
+                    "java.lang.Short",
+                    "cast(1 as short)",
+                    DBType.DB_SHORT,
+                    NO_PREC,
+                    NO_SCALE);
+    public static Type INT =
+            new Type(
+                    IDX_INT,
+                    "Int",
+                    "java.lang.Integer",
+                    "cast(1 as int)",
+                    DBType.DB_INT,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type BIGINT =
-            new Type(IDX_BIGINT, "Bigint", "java.lang.Long", "cast(1 as bigint)");
+            new Type(
+                    IDX_BIGINT,
+                    "Bigint",
+                    "java.lang.Long",
+                    "cast(1 as bigint)",
+                    DBType.DB_BIGINT,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type FLOAT =
-            new Type(IDX_FLOAT, "Float", "java.lang.Float", "cast(0.1 as float)");
+            new Type(
+                    IDX_FLOAT,
+                    "Float",
+                    "java.lang.Float",
+                    "cast(0.1 as float)",
+                    DBType.DB_FLOAT,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type DOUBLE =
-            new Type(IDX_DOUBLE, "Double", "java.lang.Double", "cast(0.1 as double)");
-    public static Type DATE = new Type(IDX_DATE, "Date", "java.sql.Date", "date'2000-10-10'");
-    public static Type TIME = new Type(IDX_TIME, "Time", "java.sql.Time", "time'13:14:15'");
+            new Type(
+                    IDX_DOUBLE,
+                    "Double",
+                    "java.lang.Double",
+                    "cast(0.1 as double)",
+                    DBType.DB_DOUBLE,
+                    NO_PREC,
+                    NO_SCALE);
+    public static Type DATE =
+            new Type(
+                    IDX_DATE,
+                    "Date",
+                    "java.sql.Date",
+                    "date'2000-10-10'",
+                    DBType.DB_DATE,
+                    NO_PREC,
+                    NO_SCALE);
+    public static Type TIME =
+            new Type(
+                    IDX_TIME,
+                    "Time",
+                    "java.sql.Time",
+                    "time'13:14:15'",
+                    DBType.DB_TIME,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type TIMESTAMP =
             new Type(
                     IDX_TIMESTAMP,
                     "Timestamp",
                     "java.sql.Timestamp",
-                    "timestamp'2000-10-10 13:14:15'");
+                    "timestamp'2000-10-10 13:14:15'",
+                    DBType.DB_TIMESTAMP,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type DATETIME =
             new Type(
                     IDX_DATETIME,
                     "Datetime",
                     "java.sql.Timestamp",
-                    "datetime'2000-10-10 13:14:15.000'");
+                    "datetime'2000-10-10 13:14:15.000'",
+                    DBType.DB_DATETIME,
+                    NO_PREC,
+                    NO_SCALE);
     public static Type SYS_REFCURSOR =
             new Type(
                     IDX_SYS_REFCURSOR,
                     "Sys_refcursor",
                     "com.cubrid.plcsql.predefined.sp.SpLib.Query",
-                    null);
+                    null,
+                    NO_DB_TYPE,
+                    NO_PREC,
+                    NO_SCALE);
 
     private static final Map<String, Type> javaNameToType = new HashMap<>();
     private static final Map<Integer, Type> idxToType = new HashMap<>();

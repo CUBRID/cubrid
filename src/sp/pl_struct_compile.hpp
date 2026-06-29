@@ -95,7 +95,6 @@ namespace cubpl
     vector <pkg_rec_type> rec_type;
 
     // only for sp
-    string create_stmt;
     string java_signature;
     int sql_data_access;
   };
@@ -299,7 +298,6 @@ namespace cubpl
     int scale;
     int flags;
     string name;
-    string init_value;
     string comment;
   };
 
