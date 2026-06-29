@@ -134,22 +134,6 @@ extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * h
  * 4. Since hash size is fixed, rehashing the hash table is not necessary.
  */
 
-/* Hash Table Entry for HASH LIST SCAN.
- * NOTE: HASH LIST SCAN now uses open addressing (MHT_HLS_SLOT); this struct is no
- * longer a storage type and its tail/next fields are unused. The executor sizes the
- * table accurately via mht_get_hls_table_size(); this struct is retained only because
- * a disabled (#if 0) optimizer cost estimate in query_planner.c still references
- * sizeof(HENTRY_HLS). */
-typedef struct hentry_hls HENTRY_HLS;
-typedef struct hentry_hls *HENTRY_HLS_PTR;
-struct hentry_hls
-{
-  HENTRY_HLS_PTR tail;		/* tail node on hash table entry */
-  HENTRY_HLS_PTR next;		/* Next hash table entry for colisions */
-  void *data;			/* Data associated with key entry */
-  unsigned int key;		/* hash key */
-};
-
 /* Open-addressing slot for HASH LIST SCAN. data == NULL means an empty slot. */
 typedef struct mht_hls_slot MHT_HLS_SLOT;
 struct mht_hls_slot
@@ -165,11 +149,11 @@ struct mht_hls_table
   unsigned int (*hash_func) (const void *key, unsigned int htsize);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
-  MHT_HLS_SLOT *slots;		/* The hash table (open-addressing slots) */
+  MHT_HLS_SLOT *table;		/* The hash table (open-addressing slots) */
   unsigned int size;		/* power of two */
   unsigned int nentries;	/* Actual number of entries */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  HL_HEAPID data_heap_id;	/* obstack (arena) for the entry payloads (tuple copy / position) */
+  HL_HEAPID heap_id;	/* obstack (arena) for the entry payloads (tuple copy / position) */
   bool build_lru_list;		/* true if LRU list must be built */
 };
 
@@ -180,12 +164,12 @@ extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
 				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
 				      int (*cmp_func) (const void *key1, const void *key2));
 extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
-extern size_t mht_get_hls_table_size (int est_size);
 extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
 			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 					    void *args), const void *type_list, void *func_args);
 extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
+extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
 
 #endif /* _MEMORY_HASH_H_ */

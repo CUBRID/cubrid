@@ -486,8 +486,9 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
     }
   else if (hash_list_scan_type == HASH_METH_HYBRID)
     {
-      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", ((QFILE_TUPLE_SIMPLE_POS *) data)->vpid.pageid,
-	       ((QFILE_TUPLE_SIMPLE_POS *) data)->vpid.volid, ((QFILE_TUPLE_SIMPLE_POS *) data)->offset);
+      QFILE_TUPLE_SIMPLE_POS *simple_pos = (QFILE_TUPLE_SIMPLE_POS *) data;
+      fprintf (fp, "pageid = [%d]  volid = [%d]  offset = [%d]", simple_pos->vpid.pageid, simple_pos->vpid.volid,
+	       simple_pos->offset);
     }
   else if (hash_list_scan_type == HASH_METH_HASH_FILE)
     {
@@ -629,14 +630,13 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
  *   thread_p(in): thread
  */
 QFILE_TUPLE
-qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID data_heap_id, QFILE_TUPLE tpl)
+qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl)
 {
   QFILE_TUPLE tuple;
   int tuple_size = QFILE_GET_TUPLE_LENGTH (tpl);
 
-  /* The tuple copy is stored directly in the hash entry (no wrapper object) and is
-   * allocated from the table's obstack, so it is freed all at once on table destroy. */
-  tuple = (QFILE_TUPLE) db_ostk_alloc (data_heap_id, tuple_size);
+  /* allocated from the table obstack; freed all at once on table destroy */
+  tuple = (QFILE_TUPLE) db_ostk_alloc (heap_id, tuple_size);
   if (tuple == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
@@ -656,24 +656,23 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID data_heap_id, QF
  *   thread_p(in): thread
  */
 QFILE_TUPLE_SIMPLE_POS *
-qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID data_heap_id, QFILE_LIST_SCAN_ID * scan_id_p)
+qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p)
 {
-  QFILE_TUPLE_SIMPLE_POS *pos;
+  QFILE_TUPLE_SIMPLE_POS *simple_pos;
 
-  /* The position is stored directly in the hash entry (no wrapper object) and is
-   * allocated from the table's obstack, so it is freed all at once on table destroy. */
-  pos = (QFILE_TUPLE_SIMPLE_POS *) db_ostk_alloc (data_heap_id, sizeof (QFILE_TUPLE_SIMPLE_POS));
-  if (pos == NULL)
+  /* allocated from the table obstack; freed all at once on table destroy */
+  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) db_ostk_alloc (heap_id, sizeof (QFILE_TUPLE_SIMPLE_POS));
+  if (simple_pos == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
       return NULL;
     }
 
   /* save position */
-  pos->offset = scan_id_p->curr_offset;
-  pos->vpid = scan_id_p->curr_vpid;
+  simple_pos->offset = scan_id_p->curr_offset;
+  simple_pos->vpid = scan_id_p->curr_vpid;
 
-  return pos;
+  return simple_pos;
 }
 
 static bool
@@ -686,12 +685,6 @@ safe_memcpy (void *data, void *source, int size)
   memcpy (data, source, (size_t) size);
   return true;
 }
-
-/*
- * NOTE: Hash entry payloads (tuple copies / positions) are allocated from the
- * MHT_HLS_TABLE obstack and freed all at once by mht_destroy_hls(), so there is
- * no per-entry value/entry free function anymore.
- */
 
 /*
  * fhs_dump_bucket () - Print the bucket's contents

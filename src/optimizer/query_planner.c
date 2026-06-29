@@ -3575,24 +3575,6 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   outer_build_io_cost = 0.0;
 
-#if 0
-  /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
-
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-
-  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
-
-  if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      outer_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
-#endif
-
   /**
    * STEP 4: Choose the lowest cost.
    */

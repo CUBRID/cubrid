@@ -79,12 +79,6 @@ struct qfile_tuple_simple_pos
   int offset;			/* Tuple offset inside the page */
 };
 
-/* hash scan value
- * NOTE: The hash table stores the payload pointer directly in the entry slot
- * (MHT_HLS_SLOT.data) - the tuple copy for IN_MEM, the tuple position for HYBRID.
- * There is no wrapper object, so probing dereferences one level less and building
- * does one allocation less per row. */
-
 /* hash scan key */
 typedef struct hash_scan_key HASH_SCAN_KEY;
 struct hash_scan_key
@@ -132,8 +126,8 @@ struct hash_list_scan
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
-QFILE_TUPLE qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID data_heap_id, QFILE_TUPLE tpl);
-QFILE_TUPLE_SIMPLE_POS *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID data_heap_id,
+QFILE_TUPLE qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
+QFILE_TUPLE_SIMPLE_POS *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id,
 						     QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);

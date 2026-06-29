@@ -67,10 +67,10 @@
 #define GET_PTR_FOR_HASH(key) (((UINT64)(key)) & 0xFFFFFFFFUL)
 #endif
 
-/* constants for rehash */
 /* obstack chunk size for HASH LIST SCAN entry payloads (tuple copies / positions) */
 #define HASH_LIST_SCAN_DATA_CHUNK_SIZE (64 * 1024)
 
+/* constants for rehash */
 static const float MHT_REHASH_TRESHOLD = 0.7f;
 static const float MHT_REHASH_FACTOR = 1.3f;
 
@@ -116,6 +116,8 @@ static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht
 static unsigned int mht_get32_next_power_of_2 (unsigned int const ht_size);
 static unsigned int mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size);
 #endif /* ENABLE_UNUSED_FUNCTION */
+
+static unsigned int mht_next_power_of_2 (unsigned int n);
 
 /*
  * Several hasing functions for different data types
@@ -959,56 +961,6 @@ mht_calculate_htsize_for_pow2 (unsigned int ht_size)
 }
 
 /*
- * mht_next_power_of_2 - smallest power of two that is >= n
- *   return: power of two (>= 4, capped at 2^31)
- *   n(in): requested minimum number of buckets
- *
- * Note: Used by HASH LIST SCAN tables so that bucket indexing can use a
- *       bit-mask (hash & (size - 1)) instead of a modulo. Hash values stored
- *       in these tables are already avalanche-mixed (see mht_get_shiftmult32),
- *       so the low bits are well distributed and a power-of-two mask keeps
- *       the buckets evenly filled.
- */
-static unsigned int
-mht_next_power_of_2 (unsigned int n)
-{
-  unsigned int p = 4;		/* minimum number of buckets */
-
-  if (n >= (1U << 31))
-    {
-      return (1U << 31);
-    }
-  while (p < n)
-    {
-      p <<= 1;
-    }
-  return p;
-}
-
-/*
- * mht_hls_slot_count - number of open-addressing slots mht_create_hls allocates
- *                      for est_size entries (load factor + power-of-two rounding).
- *   return: slot count (power of two)
- *   est_size(in): expected number of entries
- *
- * Note: single source of the HASH LIST SCAN table sizing rule, shared by
- *       mht_create_hls (allocation) and mht_get_hls_table_size (footprint
- *       prediction for method selection) so the two cannot diverge.
- */
-static unsigned int
-mht_hls_slot_count (int est_size)
-{
-  unsigned int ht_estsize;
-
-  if (est_size <= 0)
-    {
-      est_size = 2;
-    }
-  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
-  return mht_next_power_of_2 (ht_estsize);
-}
-
-/*
  * mht_create - create a hash table
  *   return: hash table
  *   name(in): name of hash table
@@ -1119,7 +1071,7 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   MHT_HLS_TABLE *ht;
   unsigned int ht_estsize;
 
-  /* power-of-two slot count for est_size entries (shared sizing rule) */
+  /* power-of-two slot count = the slot array allocation size */
   ht_estsize = mht_hls_slot_count (est_size);
 
   /* Allocate the header information for hash table */
@@ -1127,30 +1079,28 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   if (ht == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (MHT_HLS_TABLE));
-
       return NULL;
     }
 
   /* obstack (arena) for variable-size entry payloads (tuple copy / position).
    * The payloads are freed all at once in mht_destroy_hls, instead of one by one. */
-  ht->data_heap_id = db_create_ostk_heap (HASH_LIST_SCAN_DATA_CHUNK_SIZE);
-  if (ht->data_heap_id == 0)
+  ht->heap_id = db_create_ostk_heap (HASH_LIST_SCAN_DATA_CHUNK_SIZE);
+  if (ht->heap_id == 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, HASH_LIST_SCAN_DATA_CHUNK_SIZE);
-
       free_and_init (ht);
       return NULL;
     }
 
   /* Allocate the open-addressing slot array.
    * calloc zeroes every slot, so data == NULL marks each slot empty. */
-  ht->slots = (MHT_HLS_SLOT *) calloc (ht_estsize, sizeof (MHT_HLS_SLOT));
-  if (ht->slots == NULL)
+  ht->table = (MHT_HLS_SLOT *) calloc (ht_estsize, sizeof (MHT_HLS_SLOT));
+  if (ht->table == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      (size_t) ht_estsize * sizeof (MHT_HLS_SLOT));
 
-      db_destroy_ostk_heap (ht->data_heap_id);
+      db_destroy_ostk_heap (ht->heap_id);
       free_and_init (ht);
       return NULL;
     }
@@ -1164,22 +1114,6 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
   ht->build_lru_list = false;
 
   return ht;
-}
-
-/*
- * mht_get_hls_table_size - exact byte size of the HASH LIST SCAN slot array that
- *                          mht_create_hls() allocates for est_size entries.
- *   return: slot array size in bytes
- *   est_size(in): expected number of entries (per table / per partition; int range)
- *
- * Note: uses the shared mht_hls_slot_count() sizing rule so the predicted
- *       footprint (load factor + power-of-two rounding) matches exactly what
- *       mht_create_hls allocates, for IN_MEM/HYBRID/HASH_FILE method selection.
- */
-size_t
-mht_get_hls_table_size (int est_size)
-{
-  return (size_t) mht_hls_slot_count (est_size) * sizeof (MHT_HLS_SLOT);
 }
 
 /*
@@ -1295,11 +1229,10 @@ mht_destroy_hls (MHT_HLS_TABLE * ht)
 {
   assert (ht != NULL);
 
-  /* release the open-addressing slot array */
-  free_and_init (ht->slots);
+  free_and_init (ht->table);
 
-  /* release entry payloads (tuple copies / positions) all at once */
-  db_destroy_ostk_heap (ht->data_heap_id);
+  /* free all payloads at once */
+  db_destroy_ostk_heap (ht->heap_id);
 
   free_and_init (ht);
 }
@@ -1471,11 +1404,11 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
       /* Need to print the slot id. Therefore, scan the whole table */
       for (i = 0; cont == TRUE && i < ht->size; i++)
 	{
-	  if (ht->slots[i].data != NULL)
+	  if (ht->table[i].data != NULL)
 	    {
 	      fprintf (out_fp, "HASH AT %d\n", i);
-	      fprintf (out_fp, "  KEY %10u, ", ht->slots[i].hash);
-	      cont = (*print_func) (thread_p, out_fp, ht->slots[i].data, type_list, func_args);
+	      fprintf (out_fp, "  KEY %10u, ", ht->table[i].hash);
+	      cont = (*print_func) (thread_p, out_fp, ht->table[i].data, type_list, func_args);
 	      fprintf (out_fp, "\n");
 	    }
 	}
@@ -1614,13 +1547,13 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 }
 
 /*
- * mht_get_hls - Find the data associated with the key;
- *   return: the data associated with the key, or NULL if not found
- *   ht(in):
- *   key(in):
- *   last(in/out):
+ * mht_get_hls - Probe for the first entry whose hash matches the key
+ *   return: data of the matching slot, or NULL if none
+ *   ht(in): hash table to probe
+ *   key(in): pointer to the hash to look up
+ *   last(in/out): on a match, set to the matched slot to resume from
  *
- * NOTE: This call does not affect the LRU list.
+ * NOTE: a match is a hash candidate; the caller confirms the real key.
  */
 void *
 mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
@@ -1630,9 +1563,11 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   assert (ht != NULL && key != NULL);
 
   /*
-   * Hash the key. The table size is a power of two, so a bit-mask replaces the modulo.
-   * Open addressing (linear probing): scan from the home slot until the probe hash matches
-   * or an empty slot is reached. The size-bounded loop is a defensive guard against a full table.
+   * Table size is a power of two, so a bit-mask replaces the modulo.
+   * Open addressing (linear probing): scan from the home slot until
+   *   - the probe hash matches   -> candidate, or
+   *   - an empty slot is reached -> miss.
+   * The size-bounded loop is a defensive guard against a full table.
    */
   hash = *((unsigned int *) key);
   mask = ht->size - 1;
@@ -1640,28 +1575,35 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 
   for (probes = 0; probes < ht->size; probes++)
     {
-      if (ht->slots[idx].data == NULL)
+      if (ht->table[idx].data == NULL)
 	{
-	  return NULL;
+	  return NULL;	/* miss */
 	}
-      if (ht->slots[idx].hash == hash)
+
+      if (ht->table[idx].hash == hash)
 	{
-	  *((MHT_HLS_SLOT **) last) = &ht->slots[idx];
-	  return ht->slots[idx].data;
+	  /* candidate */
+	  *((MHT_HLS_SLOT **) last) = &ht->table[idx];
+	  return ht->table[idx].data;
 	}
+
+      /* conflict */
       idx = (idx + 1) & mask;
     }
+
+  /* table full (rare): a miss is normally caught at the empty slot above */
   return NULL;
 }
 
 /*
- * mht_get_next_hls - Search the entry next to the last result
- *   return: the data associated with the key, or NULL if not found
- *   ht(in):
- *   key(in):
- *   last(in/out):
+ * mht_get_next_hls - Probe for the next entry whose hash matches the key
+ *   return: data of the next matching slot, or NULL if none
+ *   ht(in): hash table to probe
+ *   key(in): pointer to the hash to look up
+ *   last(in/out): in, the slot from the previous mht_get_hls/mht_get_next_hls;
+ *                 on a match, set to the next matched slot to resume from
  *
- * NOTE: This call does not affect the LRU list.
+ * NOTE: a match is a hash candidate; the caller confirms the real key.
  */
 void *
 mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
@@ -1677,22 +1619,28 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 
   /* Resume linear probing from the slot after the last result. */
   prev_slot = *((MHT_HLS_SLOT **) last);
-  idx = (unsigned int) (prev_slot - ht->slots);
+  idx = (unsigned int) (prev_slot - ht->table);
   idx = (idx + 1) & mask;
 
   for (probes = 0; probes < ht->size; probes++)
     {
-      if (ht->slots[idx].data == NULL)
+      if (ht->table[idx].data == NULL)
 	{
-	  return NULL;
+	  return NULL;	/* miss */
 	}
-      if (ht->slots[idx].hash == hash)
+
+      if (ht->table[idx].hash == hash)
 	{
-	  *((MHT_HLS_SLOT **) last) = &ht->slots[idx];
-	  return ht->slots[idx].data;
+	  /* candidate */
+	  *((MHT_HLS_SLOT **) last) = &ht->table[idx];
+	  return ht->table[idx].data;
 	}
+
+      /* conflict */
       idx = (idx + 1) & mask;
     }
+
+  /* table full (rare): a miss is normally caught at the empty slot above */
   return NULL;
 }
 
@@ -2716,16 +2664,14 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * mht_put_hls_internal
- *   internal function for mht_put_hls()
- *   put data in the order.
- *   eliminates unnecessary logic to improve performance for hash list scan.
+ * mht_put_hls_internal - Insert an entry into the first free slot
+ *   return: key on success, or NULL if the table is full
+ *   ht(in/out): hash table to insert into
+ *   key(in): pointer to the hash to insert under
+ *   data(in): payload stored in the slot
+ *   opt(in): put options
  *
- *   return: key
- *   ht(in/out): hash table (set as a side effect)
- *   key(in): hashing key
- *   data(in): data associated with hashing key
- *   opt(in): options;
+ * NOTE: the key itself is not stored, only its hash; lookups confirm the real key.
  */
 static const void *
 mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
@@ -2734,7 +2680,7 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
 
   assert (ht != NULL && key != NULL);
 
-  /* Hash the key. The table size is a power of two, so a bit-mask replaces the modulo. */
+  /* Table size is a power of two, so a bit-mask replaces the modulo. */
   hash = *((unsigned int *) key);
   mask = ht->size - 1;
   idx = hash & mask;
@@ -2747,15 +2693,68 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
     }
 
   /* linear probing: walk to the first free slot */
-  while (ht->slots[idx].data != NULL)
+  while (ht->table[idx].data != NULL)
     {
       ht->ncollisions++;
       idx = (idx + 1) & mask;
     }
 
-  ht->slots[idx].data = data;
-  ht->slots[idx].hash = hash;
+  ht->table[idx].data = data;
+  ht->table[idx].hash = hash;
   ht->nentries++;
 
   return key;
+}
+
+/*
+ * mht_next_power_of_2 - smallest power of two that is >= n
+ *   return: power of two (>= 4, capped at 2^31)
+ *   n(in): requested minimum number of buckets
+ *
+ * Note: HASH LIST SCAN tables index buckets with a bit-mask (hash & (size - 1))
+ *       instead of a modulo. Their hash values are already avalanche-mixed
+ *       (see mht_get_shiftmult32), so the low bits spread evenly across a
+ *       power-of-two table.
+ */
+static unsigned int
+mht_next_power_of_2 (unsigned int n)
+{
+  unsigned int p = 4;		/* minimum number of buckets */
+
+  if (n >= (1U << 31))
+    {
+      return (1U << 31);
+    }
+
+  while (p < n)
+    {
+      p <<= 1;
+    }
+
+  return p;
+}
+
+/*
+ * mht_hls_slot_count - number of open-addressing slots mht_create_hls allocates
+ *                      for est_size entries (load factor + power-of-two rounding).
+ *   return: slot count (power of two)
+ *   est_size(in): expected number of entries
+ *
+ * Note: single source of the HASH LIST SCAN table sizing rule, used by mht_create_hls
+ *       (allocation) and by the executor's method selection (slot_count *
+ *       sizeof (MHT_HLS_SLOT) = footprint) so they cannot diverge.
+ */
+unsigned int
+mht_hls_slot_count (int est_size)
+{
+  unsigned int ht_estsize;
+
+  if (est_size <= 0)
+    {
+      est_size = 2;
+    }
+
+  ht_estsize = CEIL_PTVDIV (est_size, MHT_REHASH_TRESHOLD);
+
+  return mht_next_power_of_2 (ht_estsize);
 }
