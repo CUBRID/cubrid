@@ -1509,14 +1509,23 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 	  return nullptr;
 	}
 
-      /* Not found — try sync if worthwhile */
+      /* Not found — try sync only if we have a hint that free pages exist
+       * somewhere in the file. This mirrors heap_stats_find_best_page (heap_file.c):
+       * the heap scans for free pages with heap_stats_sync_bestspace ONLY when
+       * (num_other_high_best / num_pages) >= the sync threshold, i.e. only when it
+       * already knows a reusable page exists. The previous "|| try_find == 0" forced
+       * an unconditional sync scan on the first attempt of every insert. For a
+       * blob-heavy workload each OOS chunk nearly fills a page, so no partially-free
+       * page can ever satisfy a chunk; num_other_high_best stays ~0, yet every chunk
+       * still paid for a full (and futile) bestspace sync scan. As the OOS file grew
+       * this made per-row INSERT time climb several-fold (CBRD-26824). */
       float ratio = 0;
       if (oos_hdr->estimates.num_pages > 0)
 	{
 	  ratio = (float) oos_hdr->estimates.num_other_high_best / (float) oos_hdr->estimates.num_pages;
 	}
 
-      if (ratio >= OOS_BESTSPACE_SYNC_THRESHOLD || try_find == 0)
+      if (ratio >= OOS_BESTSPACE_SYNC_THRESHOLD)
 	{
 	  /* Release header latch before sync scan to reduce contention.
 	   * Sync only updates the global hash cache (not best[]),
