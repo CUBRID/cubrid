@@ -341,7 +341,7 @@ namespace cubconn::connection
       result handle_data_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* header */
-      result handle_command_header_packet (context *ctx);
+      result handle_command_header_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* reception */
