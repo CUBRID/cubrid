@@ -43,9 +43,6 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
-
 using namespace cubpl;
 
 static PT_NODE *

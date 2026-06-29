@@ -33,7 +33,8 @@ namespace cubconn::master
   context::context () :
     m_conn (nullptr),
     m_sendbuf (32),
-    m_has_error (false)
+    m_has_error (false),
+    m_pending_client_type (DB_CLIENT_TYPE_UNKNOWN)
   {
   }
 
@@ -50,6 +51,7 @@ namespace cubconn::master
 
     m_state = state::SendInHandshake;
     m_has_error = false;
+    m_pending_client_type = DB_CLIENT_TYPE_UNKNOWN;
   }
 
   bool context::has_data_to_send ()

@@ -512,6 +512,11 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
       m_buf (" INVISIBLE");
     }
 
+  if (attribute.flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+    {
+      m_buf (" STORAGE PREFER_INLINE");
+    }
+
   if (attribute.header.name_space == ID_SHARED_ATTRIBUTE)
     {
       m_buf (" SHARED ");

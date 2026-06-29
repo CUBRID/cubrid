@@ -174,6 +174,7 @@ enum
   P_TYPE,			/* type (domain) change */
   P_IS_PARTITION_COL,		/* class has partitions */
   P_COMMENT,			/* has comment */
+  P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
   NUM_ATT_CHG_PROP
 };
 
@@ -1589,6 +1590,15 @@ do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const al
 
   assert (alter_code == PT_RENAME_ENTITY);
   assert (alter->info.alter.super.resolution_list == NULL);
+
+  const char *old_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.entity_name);
+  const char *new_qualifier_name = pt_get_qualifier_name (parser, alter->info.alter.alter_clause.rename.new_name);
+
+  if (old_qualifier_name && new_qualifier_name && intl_identifier_casecmp (old_qualifier_name, new_qualifier_name) != 0)
+    {
+      ERROR_SET_ERROR (error_code, ER_SM_RENAME_CANT_ALTER_OWNER);
+      goto error_exit;
+    }
 
   error_code = do_rename_internal (old_name, new_name);
   if (error_code != NO_ERROR)
@@ -4662,6 +4672,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   SM_CLASS *smclass;
   bool reuse_oid = false;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  int base_len = 0;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -4746,6 +4757,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
   parttemp->info.create_entity.supclass_list->info.name.db_object = pinfo->root_op;
 
   error = NO_ERROR;
+  base_len = strlen (class_name) + PARTITIONED_SUB_CLASS_TAG_LEN;
   if (part_add == PT_PARTITION_HASH
       || (alter_info && alter_info->node_type != PT_VALUE && alter_info->info.partition.type == PT_PARTITION_HASH))
     {
@@ -4798,7 +4810,14 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  newpci->next = pci.next;
 	  pci.next = newpci;
 
-	  buf_size = strlen (class_name) + 5 + 13;
+	  buf_size = base_len + snprintf (NULL, 0, "p%d", pi + org_hashsize) + 1;
+	  if (buf_size > PARTITION_VARCHAR_LEN)
+	    {
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	      goto end_create;
+	    }
+
 	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
 	    {
@@ -4808,12 +4827,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	    }
 
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "p%d", class_name, pi + org_hashsize);
-	  if (strlen (newpci->pname) >= PARTITION_VARCHAR_LEN)
-	    {
-	      error = ER_INVALID_PARTITION_REQUEST;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto end_create;
-	    }
 	  newpci->temp = dbt_create_class (newpci->pname);
 	  if (newpci->temp == NULL)
 	    {
@@ -4834,8 +4847,7 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 
 	  newpci->temp->partition_parent_atts = smclass->attributes;
 
-	  hash_parts->info.parts.name->info.name.original =
-	    strstr (newpci->pname, PARTITIONED_SUB_CLASS_TAG) + strlen (PARTITIONED_SUB_CLASS_TAG);
+	  hash_parts->info.parts.name->info.name.original = newpci->pname + base_len;
 	  hash_parts->info.parts.values = NULL;
 
 	  newpci->temp->partition =
@@ -4935,7 +4947,13 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	  pci.next = newpci;
 
 	  part_name = (char *) parts->info.parts.name->info.name.original;
-	  buf_size = strlen (class_name) + 5 + 1 + strlen (part_name);
+	  buf_size = base_len + strlen (part_name) + 1;
+	  if (buf_size > PARTITION_VARCHAR_LEN)
+	    {
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	      goto end_create;
+	    }
 
 	  newpci->pname = (char *) malloc (buf_size);
 	  if (newpci->pname == NULL)
@@ -4945,13 +4963,6 @@ do_create_partition (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITION_ALTE
 	      goto end_create;
 	    }
 	  sprintf (newpci->pname, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, part_name);
-
-	  if (strlen (newpci->pname) >= PARTITION_VARCHAR_LEN)
-	    {
-	      error = ER_INVALID_PARTITION_REQUEST;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
-	      goto end_create;
-	    }
 
 	  if (alter->info.alter.code == PT_REORG_PARTITION && parts->flag.partition_pruned)
 	    {			/* reused partition */
@@ -5549,9 +5560,9 @@ do_rename_partition (MOP old_class, const char *newname)
 {
   DB_OBJLIST *objs;
   SM_CLASS *smclass, *subclass;
-  int newlen;
+  int new_len;
   int error;
-  char new_subname[PARTITION_VARCHAR_LEN + 1], *ptr;
+  char new_subname[PARTITION_VARCHAR_LEN];
   char expr[DB_MAX_PARTITION_EXPR_LENGTH + 1] = { '\0' };
   char *expr_ptr = NULL;
 
@@ -5560,7 +5571,7 @@ do_rename_partition (MOP old_class, const char *newname)
       return ER_FAILED;
     }
 
-  newlen = strlen (newname);
+  new_len = strlen (newname) + PARTITIONED_SUB_CLASS_TAG_LEN;
 
   error = au_fetch_class (old_class, &smclass, AU_FETCH_UPDATE, AU_ALTER);
   if (error != NO_ERROR)
@@ -5588,21 +5599,13 @@ do_rename_partition (MOP old_class, const char *newname)
 	}
       if (subclass->partition)
 	{
-	  ptr = strstr ((char *) sm_ch_name ((MOBJ) subclass), PARTITIONED_SUB_CLASS_TAG);
-	  if (ptr == NULL)
+	  if ((new_len + strlen (subclass->partition->pname)) >= PARTITION_VARCHAR_LEN)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-	      error = ER_PARTITION_WORK_FAILED;
+	      error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
 	      goto end_rename;
 	    }
-
-	  if ((newlen + strlen (ptr)) >= PARTITION_VARCHAR_LEN)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PARTITION_WORK_FAILED, 0);
-	      error = ER_PARTITION_WORK_FAILED;
-	      goto end_rename;
-	    }
-	  sprintf (new_subname, "%s%s", newname, ptr);
+	  sprintf (new_subname, "%s" PARTITIONED_SUB_CLASS_TAG "%s", newname, subclass->partition->pname);
 
 	  error = sm_rename_class (objs->op, new_subname);
 	  if (error != NO_ERROR)
@@ -5813,8 +5816,7 @@ static int
 do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name, const char *attr_name)
 {
   MOP serial_class = NULL;
-  char *serial_name = NULL;
-  size_t serial_name_size;
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_IDENTIFIER serial_obj_id;
   int error = NO_ERROR;
 
@@ -5830,17 +5832,11 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
       goto end;
     }
 
-  serial_name_size = strlen (class_name) + strlen (attr_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1;
-
-  serial_name = (char *) malloc (serial_name_size);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, attr_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, serial_name_size);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, attr_name);
 
   *auto_increment_obj = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
   if (*auto_increment_obj == NULL)
@@ -5851,11 +5847,6 @@ do_find_auto_increment_serial (MOP * auto_increment_obj, const char *class_name,
     }
 
 end:
-  if (serial_name != NULL)
-    {
-      free_and_init (serial_name);
-    }
-
   return error;
 }
 
@@ -6274,20 +6265,8 @@ do_drop_partition_list (MOP class_, PT_NODE * name_list, DB_CTMPL * tmpl)
     {
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
 	       names->info.name.original);
-      classcata = sm_find_class (subclass_name);
-      if (classcata == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	  goto exit;
-	}
+      assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
 
-      COPY_OID (&partitions[i], &classcata->oid_info.oid);
-    }
-
-  for (names = name_list, i = 0; names; names = names->next, i++)
-    {
-      sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", smclass->header.ch_name, names->info.name.original);
       classcata = sm_find_class (subclass_name);
       if (classcata == NULL)
 	{
@@ -7068,6 +7047,7 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
   int names_count = 0, i = 0;
   int coalesce_count = 0, partitions_count = 0;
   OID *partitions = NULL;
+  int new_len = 0, buf_size = 0;
 
   /* sanity checks */
   assert (parser && alter && pinfo);
@@ -7122,17 +7102,27 @@ do_coalesce_partition_pre (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error_return;
     }
+
+  new_len = strlen (sm_ch_name ((MOBJ) class_)) + PARTITIONED_SUB_CLASS_TAG_LEN + 1;
   for (i = partitions_count - 1, names_count = 0; i >= partitions_count - coalesce_count; i--)
     {
-      names[names_count] = (char *) malloc (DB_MAX_IDENTIFIER_LENGTH + 1);
+      buf_size = new_len + snprintf (NULL, 0, "p%d", i);
+      if (buf_size > PARTITION_VARCHAR_LEN)
+	{
+	  error = ER_PARTITION_TABLE_NAME_OVERFLOW;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, PARTITION_VARCHAR_LEN);
+	  goto error_return;
+	}
+
+      names[names_count] = (char *) malloc (buf_size);
       if (names[names_count] == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (DB_MAX_IDENTIFIER_LENGTH + 1));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_size);
 	  error = ER_FAILED;
 	  goto error_return;
 	}
       sprintf (names[names_count], "%s" PARTITIONED_SUB_CLASS_TAG "p%d", sm_ch_name ((MOBJ) class_), i);
+
       subclass_op = sm_find_class (names[names_count]);
       if (subclass_op == NULL)
 	{
@@ -7641,6 +7631,8 @@ do_promote_partition_list (PARSER_CONTEXT * parser, PT_NODE * alter, SM_PARTITIO
       sprintf (subclass_name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", sm_ch_name ((MOBJ) smclass),
 	       name->info.name.original);
 
+      assert (strlen (subclass_name) < PARTITION_VARCHAR_LEN);
+
       /* Before promoting, make sure to recreate filter and function indexes because the expression used in these
        * indexes depends on the partitioned class name, not on the partition name */
       error = do_recreate_renamed_class_indexes (parser, sm_ch_name ((MOBJ) smclass), subclass_name);
@@ -7729,6 +7721,8 @@ do_promote_partition_by_name (const char *class_name, const char *part_num, char
   assert (class_name != NULL && part_num != NULL);
   CHECK_2ARGS_ERROR (class_name, part_num);
   sprintf (name, "%s" PARTITIONED_SUB_CLASS_TAG "%s", class_name, part_num);
+  assert (strlen (name) < PARTITION_VARCHAR_LEN);
+
   subclass = sm_find_class (name);
   if (subclass == NULL)
     {
@@ -8190,6 +8184,29 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       if (error == NO_ERROR)
 	{
 	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	}
+    }
+
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      if (name_space != ID_ATTRIBUTE)
+	{
+	  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE, attr_name);
+	  error = ER_PT_SEMANTIC;
+	}
+      else
+	{
+	  /* skip finding attribute if att is already available */
+	  if (att == NULL)
+	    {
+	      error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+	    }
 	}
     }
 
@@ -10068,6 +10085,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       error = do_cache_empty_histogram (class_obj);
+      if (error != NO_ERROR)
+	{
+	  /* histogram cache warm-up failed (e.g. _db_histogram missing, lock abort);
+	   * fail the statement cleanly instead of falling through to the
+	   * assert (error == NO_ERROR) below (CBRD-26895). */
+	  goto error_exit;
+	}
       break;
 
     default:
@@ -11689,6 +11713,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
     }
 
+  /* add or drop STORAGE PREFER_INLINE option */
+  if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+    }
+
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST))
@@ -11708,12 +11742,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
@@ -11775,12 +11813,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 
       if (found_att->auto_increment == NULL)
 	{
-	  char auto_increment_name[AUTO_INCREMENT_SERIAL_NAME_MAX_LENGTH];
+	  char auto_increment_name[DB_MAX_IDENTIFIER_LENGTH];
 	  MOP serial_class_mop, serial_mop;
 
 	  serial_class_mop = sm_find_class (CT_SERIAL_NAME);
 
-	  SET_AUTO_INCREMENT_SERIAL_NAME (auto_increment_name, ctemplate->name, old_name);
+	  error = set_auto_increment_serial_name (auto_increment_name, ctemplate->name, old_name);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 	  serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class_mop, auto_increment_name);
 	  found_att->auto_increment = serial_mop;
 	}
@@ -12076,6 +12118,33 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
        */
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
       attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* STORAGE PREFER_INLINE */
+  attr_chg_properties->p[P_OOS_PREFER_INLINE] = 0;
+  if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+    {
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
+    {
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (attr_chg_properties->p[P_OOS_PREFER_INLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /*
+       * attr_storage == PT_ATTR_STORAGE_DEFAULT/PREFER_OUTLINE -> NOW size-order OOS
+       * P_OOS_PREFER_INLINE & PRESENT_OLD                      -> WAS prefer-inline
+       *
+       * it changed from prefer-inline to default/prefer-outline; the attribute lost its prefer-inline state
+       */
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
@@ -16210,7 +16279,7 @@ pt_node_to_partition_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * en
       SM_FUNCTION_INFO *part_expr = NULL;
 
       p = (char *) node->info.partition.keycol->info.name.original;
-      db_make_varchar (&val, PARTITION_VARCHAR_LEN, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
+      db_make_varchar (&val, DB_MAX_IDENTIFIER_LENGTH, p, strlen (p), LANG_SYS_CODESET, LANG_SYS_COLLATION);
       set_add_element (dbc, &val);
       if (node->info.partition.type == PT_PARTITION_HASH)
 	{
