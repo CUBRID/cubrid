@@ -82,28 +82,45 @@ namespace cubmethod
 	return;
       }
 
-    // test connection
-    if (kill == false && claimed->is_valid () == true)
+    // Push back to pool only if reusable: caller did not request kill,
+    // socket is still valid, and pool has room.
+    if (!kill && claimed->is_valid () && (int) m_queue.size () < m_pool_size)
       {
-	if ((int) m_queue.size () < m_pool_size)
-	  {
-	    m_queue.push (claimed);
-	    return;
-	  }
-	else
-	  {
-	    // overflow
-	    kill = true;
-	  }
+	m_queue.push (claimed);
+	return;
       }
 
-    if (kill)
+    // Otherwise destroy. Covers kill=true, an already-invalidated
+    // connection (e.g. concurrent set_interrupt closed it), and pool
+    // overflow. The previous shape fell through silently when
+    // kill=false && !is_valid(), leaking the connection object.
+    delete claimed;
+    claimed = nullptr;
+  }
+
+  void
+  connection_pool::invalidate_idle ()
+  {
+    // Drain the queue under the pool mutex, then close+delete outside.
+    // Under interrupt the rctx is being torn down, so we do not return
+    // these connections to the pool -- closing them now ensures javasp
+    // ExecuteThreads on the peer side terminate (RST via SO_LINGER {1,0})
+    // instead of waiting for ~runtime_context, which may be pinned by a
+    // stuck wait_for_interrupt() drain.
+    std::queue<connection *> drained;
+    {
+      std::unique_lock<std::mutex> ulock (m_mutex);
+      std::swap (drained, m_queue);
+    }
+
+    while (!drained.empty ())
       {
-	assert (claimed != nullptr);
-	if (claimed)
+	connection *conn = drained.front ();
+	drained.pop ();
+	if (conn != nullptr)
 	  {
-	    delete claimed;
-	    claimed = nullptr;
+	    conn->invalidate ();
+	    delete conn;
 	  }
       }
   }
