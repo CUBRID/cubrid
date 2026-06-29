@@ -12209,7 +12209,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
       // *INDENT-OFF*
-      std::vector<std::pair<int, int>> oos_candidates;	/* {column_size, attr index} */
+      std::vector<heap_oos_demote_candidate> oos_candidates;
       // *INDENT-ON*
 
       for (i = 0; i < attr_info->num_values; i++)
@@ -12218,24 +12218,31 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
 	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
-	      oos_candidates.emplace_back (column_size[i], i);
+	      // *INDENT-OFF*
+	      heap_oos_demote_priority priority =
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->is_oos_prefer_inline);
+	      oos_candidates.push_back ({ priority, column_size[i], i });
+	      // *INDENT-ON*
 	    }
 	}
 
       // *INDENT-OFF*
-      std::sort (oos_candidates.begin (), oos_candidates.end (), std::greater<std::pair<int, int>> ());
+      /* Demote order: columns flagged STORAGE PREFER_INLINE sink to the tail and are externalized
+       * only as a last resort; within each priority class, largest first. The idx-descending
+       * tiebreak preserves the legacy std::greater<std::pair> order for the no-hint (DEFAULT) case. */
+      std::sort (oos_candidates.begin (), oos_candidates.end (), heap_oos_demote_candidate_precedes);
       // *INDENT-ON*
 
       // *INDENT-OFF*
-      for (auto & cand : oos_candidates)
+      for (auto& cand : oos_candidates)
 	// *INDENT-ON*
       {
 	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
 	  {
 	    break;
 	  }
-	(*oos_columns)[cand.second] = true;
-	payload_size -= cand.first;
+	(*oos_columns)[cand.attr_index] = true;
+	payload_size -= cand.size;
 	payload_size += OR_OOS_INLINE_SIZE;
 	*has_oos = true;
       }

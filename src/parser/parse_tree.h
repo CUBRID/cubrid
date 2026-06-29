@@ -1923,6 +1923,14 @@ typedef enum
   PT_ATTR_INVISIBLE
 } PT_ATTR_INVISIBLE_SETTING;
 
+typedef enum
+{
+  PT_ATTR_STORAGE_UNSET,	/* clause omitted: preserve existing setting on MODIFY/CHANGE */
+  PT_ATTR_STORAGE_DEFAULT,	/* STORAGE DEFAULT/PREFER_OUTLINE: current size-order OOS demotion */
+  PT_ATTR_STORAGE_PREFER_OUTLINE = PT_ATTR_STORAGE_DEFAULT,
+  PT_ATTR_STORAGE_PREFER_INLINE	/* STORAGE PREFER_INLINE: lower OOS demotion priority */
+} PT_ATTR_STORAGE_SETTING;
+
 /* Info for ATTR_DEF */
 struct pt_attr_def_info
 {
@@ -1936,6 +1944,7 @@ struct pt_attr_def_info
   int size_constraint;		/* max length of STRING */
   short constrain_not_null;
   PT_ATTR_INVISIBLE_SETTING attr_invisible:2;	/* unchange | VISIBLE | INVISIBLE */
+  PT_ATTR_STORAGE_SETTING attr_storage:2;	/* unset | DEFAULT/PREFER_OUTLINE | PREFER_INLINE */
 };
 
 /* Info for ALTER TABLE ADD COLUMN [FIRST | AFTER column_name ] */

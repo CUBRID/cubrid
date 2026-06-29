@@ -167,6 +167,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 #define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
+#define COLUMN_CONSTRAINT_STORAGE	(0x400)
 
 #define STACK_SIZE	128
 
@@ -1567,6 +1568,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
+%token <cptr> PREFER_INLINE
+%token <cptr> PREFER_OUTLINE
+%token <cptr> STORAGE
 %token <cptr> ISNULL
 %token <cptr> KEYLIMIT
 %token <cptr> KEYS
@@ -10011,6 +10015,15 @@ attr_def_one
 			      {
 			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			      }
+			    if ((mask & COLUMN_CONSTRAINT_STORAGE)
+				&& (node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+					    node->info.attr_def.attr_name->info.name.original);
+				node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
+			      }
 			  }
 
 			$$ = node;
@@ -10147,6 +10160,10 @@ column_constraint_and_comment_def
 	| column_invisible_def
 		{{
 			$$ = COLUMN_CONSTRAINT_INVISIBLE;
+		}}
+	| column_storage_def
+		{{
+			$$ = COLUMN_CONSTRAINT_STORAGE;
 		}}
 	;
 
@@ -10603,6 +10620,24 @@ column_invisible_def
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
+		}}
+	;
+
+column_storage_def
+	: STORAGE PREFER_INLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_INLINE;
+		}}
+	| STORAGE DEFAULT
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_DEFAULT;
+		}}
+	| STORAGE PREFER_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_OUTLINE;
 		}}
 	;
 
@@ -20804,6 +20839,8 @@ identifier
 	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PREFER_INLINE          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| PREFER_OUTLINE         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
@@ -20845,6 +20882,7 @@ identifier
 	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| STORAGE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

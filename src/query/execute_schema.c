@@ -174,6 +174,7 @@ enum
   P_TYPE,			/* type (domain) change */
   P_IS_PARTITION_COL,		/* class has partitions */
   P_COMMENT,			/* has comment */
+  P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
   NUM_ATT_CHG_PROP
 };
 
@@ -8193,6 +8194,29 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	}
     }
 
+  if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      if (name_space != ID_ATTRIBUTE)
+	{
+	  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		      MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE, attr_name);
+	  error = ER_PT_SEMANTIC;
+	}
+      else
+	{
+	  /* skip finding attribute if att is already available */
+	  if (att == NULL)
+	    {
+	      error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	    }
+
+	  if (error == NO_ERROR)
+	    {
+	      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+	    }
+	}
+    }
+
   comment = attribute->info.attr_def.comment;
   if (error == NO_ERROR && comment != NULL)
     {
@@ -11689,6 +11713,16 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
       found_att->flags &= ~(SM_ATTFLAG_INVISIBLE_COLUMN);
     }
 
+  /* add or drop STORAGE PREFER_INLINE option */
+  if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+    }
+
   /* delete or (re-)create auto_increment attribute's serial object */
   if (is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_DIFF)
       || is_att_prop_set (attr_chg_prop->p[P_AUTO_INCR], ATT_CHG_PROPERTY_LOST))
@@ -12076,6 +12110,33 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
        */
       attr_chg_properties->p[P_INVISIBLE] |= ATT_CHG_PROPERTY_LOST;
       attr_chg_properties->p[P_INVISIBLE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
+  /* STORAGE PREFER_INLINE */
+  attr_chg_properties->p[P_OOS_PREFER_INLINE] = 0;
+  if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+    {
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
+    {
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
+    {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (attr_chg_properties->p[P_OOS_PREFER_INLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /*
+       * attr_storage == PT_ATTR_STORAGE_DEFAULT/PREFER_OUTLINE -> NOW size-order OOS
+       * P_OOS_PREFER_INLINE & PRESENT_OLD                      -> WAS prefer-inline
+       *
+       * it changed from prefer-inline to default/prefer-outline; the attribute lost its prefer-inline state
+       */
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
   /* check for existing constraints: FK referenced, unique, non-unique idx */
