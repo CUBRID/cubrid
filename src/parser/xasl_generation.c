@@ -19345,6 +19345,224 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return xasl;
 }
 
+/* correlation probe: set found=true if a name in the walked subquery resolves to the outer DELETE target spec */
+typedef struct
+{
+  UINTPTR outer_spec_id;
+  bool found;
+} PT_DEL_CORR_PROBE;
+
+static PT_NODE *
+pt_delete_subq_refs_outer (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DEL_CORR_PROBE *probe = (PT_DEL_CORR_PROBE *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_NAME && node->info.name.spec_id == probe->outer_spec_id)
+    {
+      probe->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
+ *   pure-local subquery (CBRD-26921). Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled
+ *   as the aptr (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target
+ *   table, WHERE key column, and comparison operator. The runtime (Step 3) reads each list-file value and pushes
+ *   "DELETE FROM <table> WHERE <key> <op> ?" via CCI bind.
+ *
+ * return        : XASL node, or NULL on error.
+ * parser (in)   : Parser context.
+ * statement (in): DELETE parse tree (remote target with PT_DBLINK_TABLE_DML, qstr == NULL; WHERE preserved).
+ */
+static XASL_NODE *
+pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL;
+  DELETE_PROC_NODE *del = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
+  PT_DBLINK_INFO *pdblink = NULL;
+  PT_NODE *cond, *arg1, *arg2;
+  const char *op_sql = NULL;
+  const char *key_col = NULL;
+  const OID *oid = NULL;
+
+  assert (parser != NULL && statement != NULL);
+
+  from = statement->info.delete_.spec;
+  cond = statement->info.delete_.search_cond;
+
+  assert (cond != NULL && cond->node_type == PT_EXPR);
+
+  /* operator -> remote WHERE SQL text (fixed safe set; IN / = ANY push per-row equality) */
+  switch (cond->info.expr.op)
+    {
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_EQ:
+      op_sql = "=";
+      break;
+    case PT_LT:
+      op_sql = "<";
+      break;
+    case PT_GT:
+      op_sql = ">";
+      break;
+    case PT_LE:
+      op_sql = "<=";
+      break;
+    case PT_GE:
+      op_sql = ">=";
+      break;
+    default:
+      PT_INTERNAL_ERROR (parser, "remote DELETE subquery: unexpected operator");
+      return NULL;
+    }
+
+  /* single-column WHERE left-hand side (reject row / multi-column predicates) */
+  arg1 = cond->info.expr.arg1;
+  if (arg1 != NULL && arg1->node_type == PT_NAME)
+    {
+      key_col = arg1->info.name.original;
+    }
+  else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
+	   && arg1->info.dot.arg2->node_type == PT_NAME)
+    {
+      key_col = arg1->info.dot.arg2->info.name.original;
+    }
+  if (key_col == NULL)
+    {
+      PT_ERROR (parser, statement, "dblink: remote DELETE with local subquery requires a single-column predicate");
+      return NULL;
+    }
+
+  /* the local subquery feeds the value list */
+  arg2 = cond->info.expr.arg2;
+  if (arg2 == NULL || !PT_IS_QUERY (arg2))
+    {
+      PT_INTERNAL_ERROR (parser, "remote DELETE subquery: WHERE rhs is not a subquery");
+      return NULL;
+    }
+
+  /* single-column subquery (one value bound per row) */
+  if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
+    {
+      PT_ERROR (parser, statement, "dblink: remote DELETE local subquery must return a single column");
+      return NULL;
+    }
+
+  /* reject a subquery correlated to the outer DELETE target. Best-effort here: when the remote target spec id
+   * is unresolved (0) at this point the probe is skipped, and a correlated subquery is caught at runtime (Step
+   * 3) where the standalone aptr cannot bind the outer reference. */
+  if (from->info.spec.id != 0)
+    {
+      PT_DEL_CORR_PROBE probe;
+
+      probe.outer_spec_id = from->info.spec.id;
+      probe.found = false;
+      parser_walk_tree (parser, arg2, pt_delete_subq_refs_outer, &probe, NULL, NULL);
+      if (probe.found)
+	{
+	  PT_ERROR (parser, statement, "dblink: correlated subquery is not allowed in remote DELETE");
+	  return NULL;
+	}
+    }
+
+  /* build XASL skeleton: aptr (local subquery) + val_list + list scan spec */
+  aptr_statement = arg2;
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, DELETE_PROC);
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (aptr_statement->info.query.flag.subquery_cached)
+    {
+      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+    }
+
+  server_node = from->info.spec.remote_server_name;
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_node->info.dblink_table.is_name);
+
+  pdblink = &server_node->info.dblink_table;
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      PT_ERRORm (parser, server_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      return NULL;
+    }
+
+  del = &xasl->proc.delete_;
+  del->classes = NULL;
+  del->num_classes = 0;
+
+  /* remote sink: connection info resolved by pt_resolve_server_names */
+  del->is_remote_delete = true;
+  del->remote_url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  del->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  del->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+
+  /* qualified remote table name: [owner.]table (unquoted, same limitation as remote INSERT SELECT) */
+  entity_name = from->info.spec.entity_name;
+  del->remote_table_name = NULL;
+  if (entity_name->info.name.resolved)
+    {
+      del->remote_table_name = pt_append_string (parser, del->remote_table_name, entity_name->info.name.resolved);
+      del->remote_table_name = pt_append_string (parser, del->remote_table_name, ".");
+    }
+  del->remote_table_name = pt_append_string (parser, del->remote_table_name, entity_name->info.name.original);
+
+  del->remote_key_col = pt_append_string (parser, NULL, key_col);
+  del->remote_op = pt_append_string (parser, NULL, op_sql);
+  if (del->remote_table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  /* XASL cache: OID of the user creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* copy aptr class OID list (local subquery tables) for locking */
+  if (xasl->aptr_list != NULL)
+    {
+      XASL_NODE *aptr = xasl->aptr_list;
+
+      xasl->dbval_cnt = aptr->dbval_cnt;
+
+      if (aptr->n_oid_list > 0)
+	{
+	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
+	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
+	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
+	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  xasl->n_oid_list = aptr->n_oid_list;
+	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
+	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+	}
+    }
+
+  return xasl;
+}
+
 /*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
@@ -21244,6 +21462,20 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return NULL;
 	}
+
+      /* remote DELETE + local subquery sink (CBRD-26921): pt_convert_dblink_dml_query set up a
+       * PT_DBLINK_TABLE_DML with qstr == NULL (no serialized pushdown text) and preserved the WHERE subquery.
+       * Route to the value-push sink instead of the qstr pushdown. qstr != NULL keeps the normal remote DELETE
+       * (no local subquery) on the existing pushdown path. */
+      {
+	PT_NODE *remote_spec = from->info.spec.remote_server_name;
+
+	if (statement->info.delete_.search_cond != NULL && remote_spec != NULL
+	    && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	  {
+	    return pt_to_delete_xasl_remote_subquery (parser, statement);
+	  }
+      }
 
       return pt_to_xasl_for_dblink (parser, from);
     }

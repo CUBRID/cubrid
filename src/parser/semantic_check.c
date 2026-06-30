@@ -12236,6 +12236,65 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			}
 		    }
 		}
+	      else if (node->node_type == PT_DELETE)
+		{
+		  /* remote DELETE with a local subquery in WHERE (CBRD-26921): the subquery runs locally, but the
+		   * remote DML path skips the normal query semantic check below, so the WHERE subquery is never
+		   * processed as a stand-alone query (its specs would lack range_var / spec id and XASL generation
+		   * would crash). Resolve / translate it here, mirroring the remote INSERT SELECT handling above, so
+		   * it can be compiled as the value-push aptr. Only the single-predicate "<col> <op> (subquery)" shape
+		   * is touched; other remote DELETEs have no subquery (or a value list) and use the qstr pushdown. */
+		  PT_NODE *remote = node->info.delete_.spec->info.spec.remote_server_name;
+		  PT_NODE *cond = node->info.delete_.search_cond;
+		  PT_NODE *subq = NULL;
+
+		  /* Only the value-push sink. pt_rewrite_for_dblink (db_vdb.c, before this semantic check) already
+		   * converted the target to PT_DBLINK_TABLE_DML: the sink leaves qstr == NULL, while a full qstr
+		   * pushdown (e.g. same-server all-remote IN (SELECT ... FROM t@srv)) sets qstr and ships the whole
+		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
+		   * the parser shape gate (pt_dblink_delete_where_is_inscope) accepted the form, so this also confines
+		   * resolution to the parser-approved single-predicate shapes. */
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
+		      && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
+		      && PT_IS_QUERY (cond->info.expr.arg2))
+		    {
+		      subq = cond->info.expr.arg2;
+		    }
+		  if (subq != NULL)
+		    {
+		      PT_NODE *saved_top = sc_info_ptr->top_node;
+
+		      pt_resolve_names (parser, subq, sc_info_ptr);
+		      if (!pt_has_error (parser))
+			{
+			  sc_info_ptr->top_node = subq;
+			  subq = pt_check_where (parser, subq);
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq =
+				parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = mq_translate (parser, subq);
+			      if (subq == NULL && !pt_has_error (parser))
+				{
+				  PT_INTERNAL_ERROR (parser, "remote DELETE: failed to translate the WHERE subquery");
+				}
+			    }
+			  sc_info_ptr->top_node = saved_top;
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      cond->info.expr.arg2 = subq;
+			    }
+			}
+		    }
+		}
 	      break;
 	    }
 	}

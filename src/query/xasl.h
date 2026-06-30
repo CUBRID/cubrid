@@ -442,6 +442,14 @@ struct delete_proc_node
   int num_reev_classes;		/* no of classes involved in mvcc condition */
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
+  /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
+  bool is_remote_delete;	/* true if deleting from a remote table via DBLink per-row value push */
+  char *remote_url;		/* DBLink connection URL */
+  char *remote_user;		/* DBLink connection user */
+  char *remote_pwd;		/* DBLink connection password */
+  char *remote_table_name;	/* remote target table name */
+  char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
+  char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;

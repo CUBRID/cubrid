@@ -12215,14 +12215,51 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  /* remote DELETE + pure-local subquery (CBRD-26921): the parser carve-out above accepts this form, but the
-   * XASL sink (Step 2) and per-row push runtime (Step 3) are not implemented yet. Reject explicitly here so the
-   * statement does NOT fall through to the qstr serialization below, which would push the local subquery to the
-   * remote server (wrong). Replaced by the value-push sink setup once Steps 2-3 land. */
+  /* remote DELETE + pure-local subquery (CBRD-26921): set up the value-push sink. Like the INSERT SELECT sink,
+   * skip the DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for
+   * XASL generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
   if (snl->is_remote_delete_local_subq)
     {
-      PT_ERROR (parser, upd_spec,
-		"dblink: remote DELETE with local subquery is not supported yet (under construction)");
+      node->flag.cannot_prepare = 0;
+
+      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+      if (!ct)
+	{
+	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+	  return;
+	}
+
+      PT_NODE *server = upd_spec->info.spec.remote_server_name;
+      if (server == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+	  return;
+	}
+      if (server->node_type == PT_DBLINK_TABLE_DML)
+	{
+	  return;		/* already converted */
+	}
+
+      ct->info.dblink_table.is_name = true;
+      ct->info.dblink_table.conn = server;
+      if (server->next)
+	{
+	  assert (server->next->node_type == PT_NAME);
+	  ct->info.dblink_table.owner_name = server->next;
+	  server->next = NULL;
+	}
+
+      for (i = 0; i < snl->server_node_cnt; i++)
+	{
+	  if (snl->server[i]->next)
+	    {
+	      parser_free_node (parser, snl->server[i]->next);
+	    }
+	  parser_free_node (parser, snl->server[i]);
+	}
+
+      upd_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, upd_spec);
       return;
     }
 

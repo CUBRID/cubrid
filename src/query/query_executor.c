@@ -11212,6 +11212,17 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
+  /* CBRD-26921 Step 2: the parser/XASL build a remote DELETE + local subquery sink (is_remote_delete), but the
+   * per-row value-push runtime is Step 3. Reject cleanly here until then, so the statement does not fall into the
+   * local delete path (no local class, num_classes == 0) and crash the server. Replaced by the value-push
+   * runtime (qexec_execute_remote_delete_subquery) in Step 3. */
+  if (delete_->is_remote_delete)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE with a local subquery is not implemented yet (server runtime, CBRD-26921)");
+      return ER_FAILED;
+    }
+
   thread_p->no_logging = (bool) delete_->no_logging;
 
   thread_p->no_supplemental_log = (bool) delete_->no_supplemental_log;

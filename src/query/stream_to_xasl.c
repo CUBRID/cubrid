@@ -3894,6 +3894,20 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 	}
     }
 
+  /* remote DELETE + local subquery sink fields (CBRD-26921) */
+  {
+    int is_remote;
+    ptr = or_unpack_int (ptr, &is_remote);
+    delete_info->is_remote_delete = (bool) is_remote;
+  }
+
+  delete_info->remote_url = stx_restore_string (thread_p, ptr);
+  delete_info->remote_user = stx_restore_string (thread_p, ptr);
+  delete_info->remote_pwd = stx_restore_string (thread_p, ptr);
+  delete_info->remote_table_name = stx_restore_string (thread_p, ptr);
+  delete_info->remote_key_col = stx_restore_string (thread_p, ptr);
+  delete_info->remote_op = stx_restore_string (thread_p, ptr);
+
   return ptr;
 
 error:
