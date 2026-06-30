@@ -89,9 +89,9 @@ const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 static int rv;
 #endif /* !SERVER_MODE */
 
-/* default timeout seconds for infinite wait */
+/* default timeout milliseconds for infinite wait */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_latch_timeout = 300 * 1000;	/* timeout seconds */
+static int pgbuf_latch_timeout_msecs = 300 * 1000;	/* timeout milliseconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -1301,7 +1301,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-  pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
+  pgbuf_latch_timeout_msecs = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS);
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
@@ -6461,6 +6461,26 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 
 #if defined(SERVER_MODE)
 /*
+ * pgbuf_make_latch_timeout () -
+ *   return:
+ *   to(out):
+ *   timeout_msecs(in):
+ */
+static void
+pgbuf_make_latch_timeout (struct timespec *to, int timeout_msecs)
+{
+  struct timeval now;
+  struct timeval timeout;
+
+  assert (to != NULL);
+  assert (timeout_msecs >= 0);
+
+  gettimeofday (&now, NULL);
+  timeval_add_msec (&timeout, &now, timeout_msecs);
+  timeval_to_timespec (to, &timeout);
+}
+
+/*
  * pgbuf_timed_sleep_error_handling () -
  *   return:
  *   thrd_entry(in):
@@ -6547,7 +6567,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int r;
   struct timespec to;
-  int wait_secs;
+  int wait_msecs;
   int old_wait_msecs;
   int save_request_latch_mode;
   char *client_prog_name;	/* Client program name for trans */
@@ -6560,23 +6580,22 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   thread_lock_entry (thread_p);
   PGBUF_BCB_UNLOCK (bufptr);
 
-  old_wait_msecs = wait_secs = logtb_find_current_wait_msecs (thread_p);
+  old_wait_msecs = wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
-  assert (wait_secs == LK_INFINITE_WAIT || wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT
-	  || wait_secs > 0);
+  assert (wait_msecs == LK_INFINITE_WAIT || wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT
+	  || wait_msecs > 0);
 
-  if (wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT)
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      wait_secs = 0;
+      wait_msecs = 0;
     }
   else
     {
-      wait_secs = pgbuf_latch_timeout;
+      wait_msecs = pgbuf_latch_timeout_msecs;
     }
 
 try_again:
-  to.tv_sec = (int) time (NULL) + wait_secs;
-  to.tv_nsec = 0;
+  pgbuf_make_latch_timeout (&to, wait_msecs);
 
   if (thread_p->type == TT_WORKER)
     {
@@ -7396,8 +7415,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
-      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
-      to.tv_nsec = 0;
+      pgbuf_make_latch_timeout (&to, pgbuf_latch_timeout_msecs);
 
       thread_lock_entry (thread_p);
 
