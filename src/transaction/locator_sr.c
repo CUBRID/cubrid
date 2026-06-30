@@ -2757,6 +2757,54 @@ xlocator_get_class (THREAD_ENTRY * thread_p, OID * class_oid, int class_chn, con
 }
 
 /*
+ * locator_copyarea_prepare_fetch_recdes () - Prepare the copyarea slot for the next fetched object.
+ *   return: true if the slot has payload room, false otherwise.
+ */
+static bool
+locator_copyarea_prepare_fetch_recdes (LC_COPYAREA * copyarea, int offset, int num_objs, RECDES * recdes,
+				       char **copyarea_data, int *copyarea_area_size)
+{
+  *copyarea_data = copyarea->mem + offset;
+  *copyarea_area_size = copyarea->length - (int) sizeof (LC_COPYAREA_MANYOBJS) - offset
+    - num_objs * (int) sizeof (LC_COPYAREA_ONEOBJ);
+  if (*copyarea_area_size <= 0)
+    {
+      recdes->length = -DB_PAGESIZE;
+      return false;
+    }
+
+  recdes->data = *copyarea_data;
+  recdes->area_size = *copyarea_area_size;
+  return true;
+}
+
+/*
+ * locator_copyarea_pack_fetch_recdes () - Ensure fetched bytes live in the prepared copyarea slot.
+ *   return: true if the fetched record fits, false otherwise.
+ *
+ * Heap fetch may rebind recdes->data to scan-cache storage while reconstructing records.  LC_COPYAREA descriptors
+ * publish offsets relative to copyarea->mem, so re-bound bytes must be copied back before the descriptor is emitted.
+ */
+static bool
+locator_copyarea_pack_fetch_recdes (RECDES * recdes, char *copyarea_data, int copyarea_area_size, int *round_length)
+{
+  *round_length = DB_ALIGN (recdes->length, MAX_ALIGNMENT);
+  if (*round_length > copyarea_area_size)
+    {
+      recdes->length = -*round_length;
+      return false;
+    }
+
+  if (recdes->data != copyarea_data)
+    {
+      memcpy (copyarea_data, recdes->data, recdes->length);
+      recdes->data = copyarea_data;
+    }
+  recdes->area_size = copyarea_area_size;
+  return true;
+}
+
+/*
  * xlocator_fetch_all () - Fetch all instances of a class
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -2783,12 +2831,16 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
   int offset;			/* Place to store next object in area */
   int round_length;		/* Length of object rounded to integer alignment */
   int copyarea_length;
+  char *copyarea_recdes_data;
+  int copyarea_recdes_area_size;
   OID oid;
+  OID prev_oid;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  bool retry_current_oid;
 
   assert (lock != NULL);
   if (OID_ISNULL (last_oid))
@@ -2902,9 +2954,33 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
       mobjs->num_objs = 0;
       offset = 0;
+      retry_current_oid = false;
 
-      while ((scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while (true)
 	{
+	  if (!locator_copyarea_prepare_fetch_recdes (*fetch_area, offset, mobjs->num_objs, &recdes,
+						      &copyarea_recdes_data, &copyarea_recdes_area_size))
+	    {
+	      scan = S_DOESNT_FIT;
+	      break;
+	    }
+
+	  COPY_OID (&prev_oid, &oid);
+
+	  scan = heap_next_expand_oos (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	  if (scan != S_SUCCESS)
+	    {
+	      break;
+	    }
+
+	  if (!locator_copyarea_pack_fetch_recdes (&recdes, copyarea_recdes_data, copyarea_recdes_area_size,
+						   &round_length))
+	    {
+	      retry_current_oid = true;
+	      scan = S_DOESNT_FIT;
+	      break;
+	    }
+
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -2914,7 +2990,6 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 	  obj->offset = offset;
 	  obj->operation = LC_FETCH;
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
-	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
 #if !defined(NDEBUG)
 	  /* suppress valgrind UMW error */
 	  memset (recdes.data + recdes.length, 0, MIN (round_length - recdes.length, recdes.area_size - recdes.length));
@@ -2934,6 +3009,12 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
 	{
 	  break;
 	}
+
+      if (retry_current_oid)
+	{
+	  COPY_OID (&oid, &prev_oid);
+	}
+
       /*
        * The first object does not fit into given copy area
        * Get a larger area
@@ -12016,6 +12097,8 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
   int offset;			/* Place to store next object in area */
   int round_length;		/* Length of object rounded to integer alignment */
   int copyarea_length;
+  char *copyarea_recdes_data;
+  int copyarea_recdes_area_size;
   OID oid;
   OID prev_oid;
   HEAP_SCANCACHE scan_cache;
@@ -12100,6 +12183,13 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 
       while (true)
 	{
+	  if (!locator_copyarea_prepare_fetch_recdes (*fetch_area, offset, mobjs->num_objs, &recdes,
+						      &copyarea_recdes_data, &copyarea_recdes_area_size))
+	    {
+	      scan = S_DOESNT_FIT;
+	      break;
+	    }
+
 	  COPY_OID (&prev_oid, &oid);
 
 	  if (instance_lock && (*instance_lock != NULL_LOCK))
@@ -12129,6 +12219,9 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		  continue;
 		}
 
+	      recdes.data = copyarea_recdes_data;
+	      recdes.area_size = copyarea_recdes_area_size;
+
 	      scan =
 		heap_get_visible_version_expand_oos (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
 	      if (scan != S_SUCCESS)
@@ -12152,6 +12245,14 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		}
 	    }
 
+	  if (!locator_copyarea_pack_fetch_recdes (&recdes, copyarea_recdes_data, copyarea_recdes_area_size,
+						   &round_length))
+	    {
+	      retry_current_oid = true;
+	      scan = S_DOESNT_FIT;
+	      break;
+	    }
+
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
 	  COPY_OID (&obj->oid, &oid);
@@ -12161,7 +12262,6 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	  obj->offset = offset;
 	  obj->operation = LC_FETCH;
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
-	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
 #if !defined(NDEBUG)
 	  /* suppress valgrind UMW error */
 	  memset (recdes.data + recdes.length, 0, MIN (round_length - recdes.length, recdes.area_size - recdes.length));
