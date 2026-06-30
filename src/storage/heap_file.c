@@ -18510,8 +18510,16 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
   status = xlocator_find_class_oid (thread_p, class_name, &class_oid, class_lock);
   if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
     {
-      error = ER_LC_UNKNOWN_CLASSNAME;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
+      /* xlocator_find_class_oid also returns LC_CLASSNAME_ERROR when the class lock cannot be
+       * acquired (e.g. an S_LOCK timeout under EXACT while concurrent DML holds an IX_LOCK); in
+       * that case the lock manager has already set the real error (ER_LK_OBJECT_TIMEOUT_*).
+       * Preserve it, and only report ER_LC_UNKNOWN_CLASSNAME when no error has been set. */
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_LC_UNKNOWN_CLASSNAME;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, class_name);
+	}
       goto cleanup;
     }
 
