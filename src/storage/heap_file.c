@@ -9580,28 +9580,26 @@ struct heap_capacity_worker_arg
   const HFID *hfid;
   ftab_set *slice;
   HEAP_CAPACITY_ACCUM *accum;
-    std::atomic < bool > *failed;
+// *INDENT-OFF*
+  std::atomic<bool> *failed;
+  std::atomic<int> *fail_errid;	/* a failing worker's errid, last writer wins (0 = none) */
+// *INDENT-ON*
 };
 
 /*
- * heap_capacity_parallel_worker () - worker body for the parallel SHOW HEAP CAPACITY reducer.
- *   Walks this worker's sector slice, fixes each allocated heap data page with a READ latch,
- *   and folds it into the per-worker accum via heap_capacity_accumulate_one_page.
- *   Deallocated pages (race vs concurrent DDL) are skipped; any other hard error sets *failed
- *   so the caller discards the parallel result and falls back to the serial heap_get_capacity.
+ * heap_capacity_parallel_worker () - accumulate this worker's sector slice into its accum.
+ *   Deallocated pages (DDL race) are skipped; a genuine error sets *failed/*fail_errid for the
+ *   caller to propagate.
  */
 static void
 heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORKER_ARG * arg)
 {
-  PGBUF_WATCHER watcher;
   FILE_PARTIAL_SECTOR ps;
 
-  /* inherit the caller's transaction/connection context (mirror external_sort.c) */
+  /* the worker runs on a pool thread; inherit the caller's transaction/connection context */
   thread_ref.tran_index = arg->main_thread_p->tran_index;
   thread_ref.m_px_orig_thread_entry = arg->main_thread_p;
   thread_ref.conn_entry = arg->main_thread_p->conn_entry;
-
-  PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, arg->hfid);
 
   for (ps = arg->slice->get_next (); !VSID_IS_NULL (&ps.vsid); ps = arg->slice->get_next ())
     {
@@ -9613,7 +9611,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 
       for (int off = 0; off < DISK_SECTOR_NPAGES; off++, vpid.pageid++)
 	{
-	  int err;
+	  PAGE_PTR page;
 
 	  /* the file header page is not a heap page (serial avoids it via the heap chain walk) */
 	  if (vpid.volid == arg->hfid->vfid.volid && vpid.pageid == arg->hfid->vfid.fileid)
@@ -9625,45 +9623,35 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  err = pgbuf_ordered_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
-	  if (watcher.pgptr == NULL)
+	  /* Only one heap page is held at a time (heap->overflow order), so plain pgbuf_fix is safe;
+	   * revert to pgbuf_ordered_fix if this ever holds two or more pages at once. */
+	  page = pgbuf_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (page == NULL)
 	    {
-	      bool hard = (err != NO_ERROR && err != ER_PB_BAD_PAGEID);
-	      er_clear ();
-	      if (hard)
+	      int err = er_errid ();
+
+	      if (err != NO_ERROR && err != ER_PB_BAD_PAGEID)
 		{
+		  /* genuine error: record errid and abort so the caller propagates it (no serial retry) */
+		  arg->fail_errid->store (err, std::memory_order_relaxed);
 		  arg->failed->store (true, std::memory_order_relaxed);
+		  er_clear ();
 		  stop = true;
 		  break;
 		}
-	      /* Page was in the sector snapshot but has since been deallocated (e.g. by vacuum)
-	       * under concurrent DML. Skip it: SHOW HEAP CAPACITY is a best-effort, non-transactional
-	       * count (the serial path is likewise not a consistent snapshot), and the parallel heap
-	       * SELECT scan handles this same race identically. Only hard errors set *failed. */
+	      /* deallocated since the snapshot (DDL/vacuum race); skip it. Best-effort, like serial. */
+	      er_clear ();
 	      continue;
 	    }
-	  if (err != NO_ERROR)
-	    {
-	      pgbuf_ordered_unfix (&thread_ref, &watcher);
-	      er_clear ();
-	      arg->failed->store (true, std::memory_order_relaxed);
-	      stop = true;
-	      break;
-	    }
 
-	  (void) heap_capacity_accumulate_one_page (&thread_ref, watcher.pgptr, &vpid, arg->accum);
-	  pgbuf_ordered_unfix (&thread_ref, &watcher);
+	  (void) heap_capacity_accumulate_one_page (&thread_ref, page, &vpid, arg->accum);
+	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
 
       if (stop || arg->failed->load (std::memory_order_relaxed))
 	{
 	  break;
 	}
-    }
-
-  if (watcher.pgptr != NULL)
-    {
-      pgbuf_ordered_unfix (&thread_ref, &watcher);
     }
 }
 
@@ -9693,6 +9681,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
   parallel_query::worker_manager * wm = NULL;
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
   std::atomic < bool > failed (false);
+  std::atomic < int > fail_errid (NO_ERROR);
 
   /* Default to "declined". Every early return below leaves *applied == false, which tells the
    * caller (heap_capacity_next_scan) to run the serial heap_get_capacity. So each "return NO_ERROR"
@@ -9763,6 +9752,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
 	args[i].slice = &slices[i];
 	args[i].accum = &accums[i];
 	args[i].failed = &failed;
+	args[i].fail_errid = &fail_errid;
 
 	parallel_query::callable_task * task =
 	  new parallel_query::callable_task (wm,
@@ -9776,8 +9766,17 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
 
     if (failed.load ())
       {
-	er_clear ();
-	return NO_ERROR;	/* discard partial result; caller runs serial */
+	/* a worker hit a genuine error: propagate it (no silent serial retry, which would hit the
+	 * same error and wrongly ignore ER_INTERRUPTED). */
+	int errid = fail_errid.load ();
+	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_parallel: worker error errid=%d; aborting parallel\n", errid);
+	if (errid == ER_INTERRUPTED)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    return ER_INTERRUPTED;
+	  }
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	return ER_FAILED;
       }
 
     /* 5. reduce per-worker partials into the 8 outputs (averages computed once, as in serial) */
