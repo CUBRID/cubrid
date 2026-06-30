@@ -4714,6 +4714,12 @@ sort_merge_queue_run (THREAD_ENTRY * thread_p, SORT_MERGE_QUEUE_CTX * qctx)
     }
   pthread_mutex_unlock (&qctx->mtx);
 
+  /* Match SORT_WAIT_PARALLEL: ensure the worker pool drains any task accounting
+   * that may still be pending after the callback returned. in_flight reaches 0
+   * the moment a callback unlocks qctx->mtx, before the worker_manager fully
+   * retires the task. */
+  qctx->sort_param->px_worker_manager->wait_workers ();
+
   return qctx->has_error ? ER_FAILED : NO_ERROR;
 }
 
@@ -5144,7 +5150,9 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  return parallel_num;
+	  /* clamp to the actual reservation: try_reserve_workers may grant fewer than requested
+	   * under worker-pool contention. Pushing parallel_num tasks then over-subscribes the pool. */
+	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
@@ -5197,7 +5205,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  return parallel_num;
+	  /* clamp to the actual reservation (same as ORDER_BY branch). */
+	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }
   else if (sort_param->px_type == SORT_GROUP_BY || sort_param->px_type == SORT_ANALYTIC)
@@ -5217,7 +5226,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  return 1;
 	}
       sort_param->px_worker_manager = parallel_query::worker_manager::try_reserve_workers (parallel_num);
-      return (sort_param->px_worker_manager == NULL) ? 1 : parallel_num;
+      /* clamp to the actual reservation (same as ORDER_BY / INDEX_LEAF branches). */
+      return (sort_param->px_worker_manager == NULL) ? 1 : sort_param->px_worker_manager->get_reserved_workers ();
     }
   else
     {

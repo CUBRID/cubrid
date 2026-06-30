@@ -3718,7 +3718,7 @@ qfile_generate_sort_tuple (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, 
  */
 
 // *INDENT-OFF*
- sector_page_iterator::sector_page_iterator ()
+sector_page_iterator::sector_page_iterator ()
 {
   m_membuf_index = -1;
   m_sector_index = -1;
@@ -3750,7 +3750,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, sinfo->membuf_tfile);
 	      if (page == NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
+		  assert_release_error (er_errid () != NO_ERROR);
 		  return NULL;
 		}
 
@@ -3789,18 +3789,13 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
   /* Phase 2: sector-based disk pages */
   while (true)
     {
-      while (m_current_bitmap != 0)
+      while (true)
 	{
-#if defined(__GNUC__) || defined(__clang__)
-	  int bit_pos = __builtin_ctzll (m_current_bitmap);
-#else
-	  int bit_pos = bit64_count_trailing_zeros (m_current_bitmap);
-#endif
-	  m_current_bitmap &= m_current_bitmap - 1;	/* clear lowest set bit */
-
 	  VPID vpid;
-	  vpid.volid = m_current_vsid.volid;
-	  vpid.pageid = SECTOR_FIRST_PAGEID (m_current_vsid.sectid) + bit_pos;
+	  if (!qfile_sector_bitmap_next_vpid (&m_current_vsid, &m_current_bitmap, &vpid))
+	    {
+	      break;		/* current sector exhausted — fall through to next-sector fetch */
+	    }
 
 	  QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
 	  assert (tfile != NULL);
@@ -3808,7 +3803,7 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	  PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, tfile);
 	  if (page == NULL)
 	    {
-	      assert (er_errid () != NO_ERROR);
+	      assert_release_error (er_errid () != NO_ERROR);
 	      return NULL;
 	    }
 
