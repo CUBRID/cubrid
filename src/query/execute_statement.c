@@ -3119,14 +3119,14 @@ get_spec_classname (PT_NODE * spec)
   return spec->info.spec.entity_name->info.name.original;
 }
 
-int
+bool
 is_data_repl_log_enabled (PT_NODE * statement)
 {
   PT_NODE *spec;
 
   if (statement == NULL)
     {
-      return FALSE;
+      return false;
     }
 
   switch (statement->node_type)
@@ -3144,10 +3144,10 @@ is_data_repl_log_enabled (PT_NODE * statement)
 	{
 	  if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && is_replication_class (get_spec_classname (spec)))
 	    {
-	      return TRUE;
+	      return true;
 	    }
 	}
-      return FALSE;
+      return false;
 
     case PT_DELETE:
       /* Only the specs actually deleted decide replication, not join-only specs. The deleted tables are
@@ -3156,13 +3156,13 @@ is_data_repl_log_enabled (PT_NODE * statement)
 	{
 	  if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && is_replication_class (get_spec_classname (spec)))
 	    {
-	      return TRUE;
+	      return true;
 	    }
 	}
-      return FALSE;
+      return false;
 
     default:
-      return TRUE;
+      return true;
     }
 }
 
