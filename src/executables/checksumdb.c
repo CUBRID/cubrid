@@ -1097,7 +1097,7 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name, DB
   escaped_lower_bound = chksum_get_quote_escaped_lower_bound (parser, lower_bound);
 
   /* query for calculating checksum */
-  buffer = pt_append_nulstring (parser, buffer, "REPLACE /*+ USE_SBR */ INTO ");
+  buffer = pt_append_nulstring (parser, buffer, "REPLACE INTO ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer =
     pt_append_nulstring (parser, buffer,
@@ -1123,7 +1123,7 @@ chksum_print_checksum_query (PARSER_CONTEXT * parser, const char *table_name, DB
   buffer = pt_append_nulstring (parser, buffer, ");");
 
   /* query for updating elapsed time */
-  buffer = pt_append_nulstring (parser, buffer, " UPDATE /*+ USE_SBR */ ");
+  buffer = pt_append_nulstring (parser, buffer, " UPDATE ");
   buffer = pt_append_nulstring (parser, buffer, chksum_result_Table_name);
   buffer = pt_append_nulstring (parser, buffer, " SET ");
   buffer =
@@ -1702,7 +1702,31 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 
   query = (const char *) pt_get_varchar_bytes (checksum_query);
 
+  /*
+   * write replication log first and release all locks
+   * to avoid long lock wait of other concurrent clients on active server
+   */
+  error = chksum_set_repl_info_and_demote_table_lock (table_name, query, class_oidp);
+  if (error != NO_ERROR)
+    {
+      snprintf (err_msg, LINE_MAX,
+		"Failed to write a checksum replication log." " (table name: %s, chunk id: %d, lower bound: %s)",
+		table_name, chunk_id, (char *) pt_get_varchar_bytes (lower_bound));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, error);
+      return error;
+    }
+
+  /*
+   * The replication log written above is statement-based (SBR): the replica
+   * re-executes this query and recomputes the chunk checksum from its own data.
+   * Suppress row-based replication of the local execution below so the master's
+   * computed checksum row is not shipped as well - that would overwrite the
+   * replica's own recomputed value and hide real divergence. The flag lives on
+   * this transaction's descriptor (tdes) and is cleared right after execution.
+   */
+  db_set_suppress_repl_on_transaction (true);
   res = db_execute (query, &query_result, &query_error);
+  db_set_suppress_repl_on_transaction (false);
   if (res >= 0)
     {
       db_query_end (query_result);
