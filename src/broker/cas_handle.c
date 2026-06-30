@@ -127,7 +127,9 @@ hm_new_srv_handle (T_SRV_HANDLE ** new_handle, unsigned int seq_num)
 #endif /* CAS_FOR_MYSQL */
 
 #if defined (CAS_FOR_CGW)
-  srv_handle->cgw_handle = NULL;
+  srv_handle->cgw_hstmt = NULL;
+  srv_handle->cgw_col_binding = NULL;
+  srv_handle->cgw_col_binding_buff = NULL;
   srv_handle->total_tuple_count = 0;
   srv_handle->stmt_type = CUBRID_STMT_NONE;
   srv_handle->is_cursor_open = false;
@@ -213,7 +215,7 @@ hm_srv_handle_free_all (bool free_holdable)
       srv_handle_content_free (srv_handle);
       srv_handle_rm_tmp_file (i + 1, srv_handle);
 #if defined (CAS_FOR_CGW)
-      srv_handle->cgw_handle = NULL;
+      ux_cgw_free_stmt (srv_handle);
 #endif /* CAS_FOR_CGW */
       FREE_MEM (srv_handle);
       srv_handle_table[i] = NULL;
