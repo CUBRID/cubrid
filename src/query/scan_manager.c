@@ -4400,6 +4400,7 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
       assert (s_id->s.hsid.sampling.part_offsets != NULL);
       assert (s_id->s.hsid.sampling.partition_cursor < s_id->s.hsid.sampling.n_parts);
       s_id->s.hsid.sampling.picked_cursor = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor];
+      s_id->s.hsid.sampling.slice_end = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor + 1];
       UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);
       break;
 

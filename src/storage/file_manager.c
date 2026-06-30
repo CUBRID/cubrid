@@ -12387,7 +12387,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
       db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
       db_private_free_and_init (thread_p, collector_out->partsect_ftab);
       pgbuf_unfix (thread_p, page_fhead);
-      return ER_FAILED;
+      return error_code;
     }
 
   if (!FILE_IS_TEMPORARY (fhead))
@@ -12402,7 +12402,7 @@ file_get_all_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_FTAB
 	  db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
 	  db_private_free_and_init (thread_p, collector_out->partsect_ftab);
 	  pgbuf_unfix (thread_p, page_fhead);
-	  return ER_FAILED;
+	  return error_code;
 	}
     }
 
