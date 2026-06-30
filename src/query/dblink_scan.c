@@ -1501,6 +1501,83 @@ sql_build_error:
 }
 
 /*
+ * dblink_delete_open () - Connect to remote server and prepare a single-key DELETE statement (CBRD-26921).
+ *   return: NO_ERROR on success, error code on failure.
+ *   thread_p(in)   : thread entry
+ *   url/user/pwd(in): CCI connection info
+ *   table_name(in) : remote target table name
+ *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1)
+ *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">=")
+ *   state(out)     : filled with conn_handle and stmt_handle on success
+ *
+ * Builds "DELETE FROM <table> WHERE <key_col> <op> ?" with a single ? placeholder; the per-row value
+ * (from the local subquery list-file) is bound by dblink_insert_execute_row (num_vals == 1). Connection
+ * and transaction handling are identical to dblink_insert_open (pooled, CCI_AUTOCOMMIT_FALSE, DML 2PC
+ * participant; committed/rolled back at local txn end). close/rollback are shared (statement-agnostic).
+ */
+int
+dblink_delete_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
+		    const char *table_name, const char *key_col, const char *op, DBLINK_INSERT_STATE * state)
+{
+  int ret, remaining;
+  T_CCI_ERROR err_buf;
+  char *sql = NULL;
+  size_t sql_len;
+
+  state->conn_handle = -1;
+  state->stmt_handle = -1;
+
+  if (table_name == NULL || table_name[0] == '\0' || key_col == NULL || key_col[0] == '\0' || op == NULL
+      || op[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: table/key/op is NULL or empty");
+      return ER_DBLINK;
+    }
+  if (url == NULL || user == NULL || pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: url/user/pwd is NULL");
+      return ER_DBLINK;
+    }
+
+  /* Acquire pooled remote connection: CCI_AUTOCOMMIT_FALSE + DML 2PC participant (same as INSERT sink). */
+  ret = dblink_acquire_pooled_conn (thread_p, url, user, pwd, CCI_AUTOCOMMIT_FALSE, true, "remote DELETE",
+				    &state->conn_handle);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  /* build DELETE SQL: DELETE FROM <table> WHERE <key_col> <op> ?  (one placeholder) */
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + 64;
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  remaining = (int) sql_len;
+  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+  if (ret < 0 || ret >= remaining)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
+      db_private_free (thread_p, sql);
+      return ER_DBLINK;
+    }
+
+  state->stmt_handle = cci_prepare (state->conn_handle, sql, 0, &err_buf);
+  db_private_free (thread_p, sql);
+
+  if (state->stmt_handle < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * dblink_insert_execute_row () - Bind values and execute one remote INSERT row.
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)  : thread entry

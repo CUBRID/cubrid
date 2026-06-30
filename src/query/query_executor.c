@@ -556,6 +556,7 @@ static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
 					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
@@ -11212,15 +11213,12 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  /* CBRD-26921 Step 2: the parser/XASL build a remote DELETE + local subquery sink (is_remote_delete), but the
-   * per-row value-push runtime is Step 3. Reject cleanly here until then, so the statement does not fall into the
-   * local delete path (no local class, num_classes == 0) and crash the server. Replaced by the value-push
-   * runtime (qexec_execute_remote_delete_subquery) in Step 3. */
+  /* CBRD-26921: remote DELETE + local subquery sink. Evaluate the WHERE subquery locally and push one remote
+   * DELETE per value via CCI; this has no local class (num_classes == 0) so it must not enter the local delete
+   * path below. */
   if (delete_->is_remote_delete)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE with a local subquery is not implemented yet (server runtime, CBRD-26921)");
-      return ER_FAILED;
+      return qexec_execute_remote_delete_subquery (thread_p, xasl, xasl_state);
     }
 
   thread_p->no_logging = (bool) delete_->no_logging;
@@ -12755,6 +12753,137 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
   thread_p->uuidv7_seq = seq;
 
   return NO_ERROR;
+}
+
+/*
+ * qexec_execute_remote_delete_subquery () - Evaluate a local WHERE subquery and push one remote DELETE per
+ *   value via CCI (CBRD-26921). Mirrors qexec_execute_remote_insert_select, but runs the aptr (local
+ *   subquery) itself (the dispatch is at qexec_execute_delete entry, before the local delete path) and binds
+ *   a single value per row to "DELETE FROM <table> WHERE <key> <op> ?".
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : DELETE_PROC XASL with is_remote_delete set; aptr_list = local subquery
+ *   xasl_state(in) : XASL state
+ */
+static int
+qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  DELETE_PROC_NODE *del = &xasl->proc.delete_;
+  XASL_NODE *aptr = xasl->aptr_list;
+  ACCESS_SPEC_TYPE *specp = NULL;
+  SCAN_CODE xb_scan, ls_scan;
+  SCAN_ID *s_id = NULL;
+  QPROC_DB_VALUE_LIST vallist;
+  DB_VALUE *bindv[1];
+  DBLINK_INSERT_STATE dblink_state = { -1, -1 };
+
+  assert (del->is_remote_delete);
+  assert (aptr != NULL);	/* the sink XASL always carries the local subquery as aptr */
+
+  /* run the local subquery (aptr) to materialize the value list-file */
+  if (aptr != NULL)
+    {
+      if (QEXEC_IS_SUBQUERY_CACHE (aptr))
+	{
+	  if (qexec_execute_subquery_for_result_cache (thread_p, aptr, xasl_state) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      goto exit_on_error;
+	    }
+	}
+      else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+    }
+
+  if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  specp = xasl->spec_list;
+  assert (specp != NULL);
+
+  /* open remote connection and prepare the DELETE statement */
+  if (dblink_delete_open (thread_p, del->remote_url, del->remote_user, del->remote_pwd, del->remote_table_name,
+			  del->remote_key_col, del->remote_op, &dblink_state) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* open local scan on the subquery result */
+  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
+		       specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+		       NULL, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  /* push one remote DELETE per local value (0 rows -> loop runs 0 times -> remote unchanged, FR-4) */
+  while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
+    {
+      s_id = &xasl->curr_spec->s_id;
+
+      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
+	{
+	  /* take the leading (visible) column; XASL generation forces a single-column subquery
+	   * (pt_length_of_select_list EXCLUDE_HIDDEN_COLUMNS == 1), so any trailing hidden column is ignored. */
+	  vallist = s_id->val_list->valp;
+	  if (vallist == NULL || vallist->val == NULL)
+	    {
+	      assert (0);
+	      qexec_failure_line (__LINE__, xasl_state);
+	      goto exit_on_error;
+	    }
+	  bindv[0] = vallist->val;
+
+	  /* A NULL value never matches in IN / = ANY or a scalar comparison, so it deletes nothing; skip it
+	   * (DELETE WHERE key op NULL is a no-op) rather than binding NULL, which the row executor rejects. */
+	  if (DB_IS_NULL (bindv[0]))
+	    {
+	      continue;
+	    }
+
+	  if (dblink_insert_execute_row (thread_p, &dblink_state, bindv, 1) != NO_ERROR)
+	    {
+	      qexec_failure_line (__LINE__, xasl_state);
+	      goto exit_on_error;
+	    }
+
+	  xasl->list_id->tuple_cnt++;
+	}
+
+      if (ls_scan != S_END)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+    }
+
+  if (xb_scan != S_END)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  dblink_insert_close (&dblink_state);
+  qexec_close_scan (thread_p, specp);
+
+  return NO_ERROR;
+
+exit_on_error:
+  dblink_insert_rollback (&dblink_state);
+  dblink_insert_close (&dblink_state);
+  if (specp != NULL)
+    {
+      qexec_end_scan (thread_p, specp);
+      qexec_close_scan (thread_p, specp);
+    }
+  return ER_FAILED;
 }
 
 /*
