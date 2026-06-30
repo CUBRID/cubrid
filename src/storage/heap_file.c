@@ -9580,7 +9580,7 @@ struct heap_capacity_worker_arg
 
 /*
  * heap_capacity_parallel_worker () - accumulate this worker's sector slice into its accum.
- *   Deallocated pages (DDL race) are skipped; a genuine error sets *failed/*fail_errid for the
+ *   Deallocated pages (DDL race) are skipped; a genuine error sets *failed and *fail_errid for the
  *   caller to propagate.
  */
 static void
