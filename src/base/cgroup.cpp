@@ -402,20 +402,31 @@ namespace os::cgroup
 
     std::optional<std::set<std::size_t>> effective_v1 (std::filesystem::path path)
     {
-      std::ifstream file (path / "cpuset.effective_cpus");
-      std::string line;
+      auto read_cpuset_file = [&path] (const std::string &filename) -> std::optional<std::string>
+      {
+	std::ifstream file (path / filename);
+	std::string line;
 
-      if (!file)
+	if (!file)
+	  {
+	    return std::nullopt;
+	  }
+
+	file >> line;
+	return line.empty () ? std::nullopt : std::make_optional (line);
+      };
+
+      auto line = read_cpuset_file ("cpuset.effective_cpus");
+      if (!line)
+	{
+	  line = read_cpuset_file ("cpuset.cpus");
+	}
+      if (!line)
 	{
 	  return std::nullopt;
 	}
 
-      file >> line;
-      if (line.empty ())
-	{
-	  return std::nullopt;
-	}
-      return parser::range_set_to_set<std::size_t> (line);
+      return parser::range_set_to_set<std::size_t> (*line);
     }
 
     context quota_v1 ()
@@ -464,7 +475,7 @@ namespace os::cgroup
 	    }
 	}
 
-      /* cpuset controller: effective cpus (cpuset.effective_cpus) */
+      /* cpuset controller: effective cpus (cpuset.effective_cpus, or cpuset.cpus on older v1) */
       mountpoint = mountpoint_v1 ("cpuset", &root);
       if (mountpoint)
 	{
