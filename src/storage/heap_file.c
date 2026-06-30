@@ -9619,7 +9619,8 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	   * so a plain pgbuf_fix suffices -- unlike the serial path, which holds two heap pages while
 	   * walking the chain and so needs pgbuf_ordered_fix. REC_BIGONE overflow pages are read
 	   * separately by overflow_get_capacity (also plain pgbuf_fix, in heap->overflow order). */
-	  page = pgbuf_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  page =
+	    pgbuf_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page == NULL)
 	    {
 	      int err = er_errid ();
@@ -9711,7 +9712,7 @@ heap_get_capacity_internal_parallel (THREAD_ENTRY * thread_p, const HFID * hfid,
 				     int n_workers, FILE_FTAB_COLLECTOR * collector, HEAP_CAPACITY_INFO * capacity)
 {
   std::atomic < bool > failed (false);
-  std::atomic < int > fail_errid (NO_ERROR);
+  std::atomic < int >fail_errid (NO_ERROR);
 
   /* The dispatcher (heap_get_capacity) owns parallel eligibility and resources: it reserved
    * n_workers (>= 2), enumerated the heap sectors (collector), and frees the collector; this
@@ -10037,7 +10038,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INF
 	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
       if (degree >= 2)
 	{
-	  parallel_query::worker_manager *wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
+	  parallel_query::worker_manager * wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
 	  if (wm != NULL)
 	    {
 	      int n_workers = wm->get_reserved_workers ();
