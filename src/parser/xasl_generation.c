@@ -19418,7 +19418,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       op_sql = ">=";
       break;
     default:
-      PT_INTERNAL_ERROR (parser, "remote DELETE subquery: unexpected operator");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
       return NULL;
     }
 
@@ -19435,7 +19435,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (key_col == NULL)
     {
-      PT_ERROR (parser, statement, "dblink: remote DELETE with local subquery requires a single-column predicate");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE with a local subquery requires a single-column predicate (row / multi-column not supported)");
       return NULL;
     }
 
@@ -19443,14 +19444,16 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   arg2 = cond->info.expr.arg2;
   if (arg2 == NULL || !PT_IS_QUERY (arg2))
     {
-      PT_INTERNAL_ERROR (parser, "remote DELETE subquery: WHERE rhs is not a subquery");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE subquery: WHERE right-hand side is not a subquery");
       return NULL;
     }
 
   /* single-column subquery (one value bound per row) */
   if (pt_length_of_select_list (pt_get_select_list (parser, arg2), EXCLUDE_HIDDEN_COLUMNS) != 1)
     {
-      PT_ERROR (parser, statement, "dblink: remote DELETE local subquery must return a single column");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE local subquery must return a single column");
       return NULL;
     }
 
@@ -19466,7 +19469,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser_walk_tree (parser, arg2, pt_delete_subq_refs_outer, &probe, NULL, NULL);
       if (probe.found)
 	{
-	  PT_ERROR (parser, statement, "dblink: correlated subquery is not allowed in remote DELETE");
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		  "correlated subquery is not allowed in remote DELETE");
 	  return NULL;
 	}
     }
@@ -19493,7 +19497,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   pdblink = &server_node->info.dblink_table;
   if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
     {
-      PT_ERRORm (parser, server_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE: connection info (url/user/pwd) not resolved");
       return NULL;
     }
 
