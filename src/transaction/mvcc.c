@@ -664,6 +664,7 @@ mvcc_snapshot::mvcc_snapshot ()
   , m_xip ()
   , snapshot_fnc (NULL)
   , valid (false)
+  , cached_completion_count (0)
 {
 }
 
@@ -678,6 +679,7 @@ mvcc_snapshot::reset ()
   m_xip.clear ();
 
   valid = false;
+  cached_completion_count = 0;
 }
 
 void
@@ -691,6 +693,7 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
+  dest.cached_completion_count = cached_completion_count;
 }
 
 mvcc_info::mvcc_info ()

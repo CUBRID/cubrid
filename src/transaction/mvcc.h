@@ -188,6 +188,11 @@ struct mvcc_snapshot
 
   bool valid;			/* true, if the snapshot is valid */
 
+  /* CBRD-26971 Phase 2: mvcctable::m_completion_count when m_xip was last built. If unchanged on
+   * the next build_mvcc_info, no completion happened and xmin/xmax/xip are still valid, so the
+   * slot scan is skipped (PG14 GetSnapshotDataReuse). */
+  UINT64 cached_completion_count;
+
   // *INDENT-OFF*
   mvcc_snapshot ();
   void reset ();

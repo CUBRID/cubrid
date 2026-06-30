@@ -312,39 +312,54 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
     }
 
-  // CBRD-26971 Phase 1: build the active set (xip) by scanning ProcArray slots under SHARED lock,
-  // replacing the history-ring copy + seqlock retry. xmax (highest_completed + 1) = last completed + 1.
-  {
-    std::shared_lock<std::shared_mutex> shared (m_procarray_lock);
+  // CBRD-26971 Phase 2 (PG14 GetSnapshotDataReuse): if no completion happened since this
+  // transaction last built a snapshot, the active set (xmin/xmax/xip) is unchanged -> reuse it
+  // and skip the slot scan entirely. m_completion_count is bumped on every commit/rollback/sub
+  // completion under EXCLUSIVE, so it is the invalidation key.
+  if (tdes.mvccinfo.snapshot.valid
+      && tdes.mvccinfo.snapshot.cached_completion_count == m_completion_count.load (std::memory_order_acquire))
+    {
+      // cache hit: keep snapshot.m_xip; reuse the cached xmax.
+      highest_completed_mvccid = tdes.mvccinfo.snapshot.highest_completed_mvccid;
+    }
+  else
+    {
+      // Phase 1: build the active set (xip) by scanning ProcArray slots under SHARED lock,
+      // replacing the history-ring copy + seqlock retry. xmax (highest_completed + 1) = last completed + 1.
+      std::shared_lock<std::shared_mutex> shared (m_procarray_lock);
 
-    highest_completed_mvccid = m_last_completed_mvccid.load (std::memory_order_acquire);
-    MVCCID_FORWARD (highest_completed_mvccid);
+      // read the completion counter under SHARED so it is consistent with this scan
+      // (completions take the lock EXCLUSIVE, so none can interleave the scan).
+      tdes.mvccinfo.snapshot.cached_completion_count = m_completion_count.load (std::memory_order_acquire);
 
-    std::vector<MVCCID> &xip = tdes.mvccinfo.snapshot.m_xip;
-    xip.clear ();
-    for (size_t i = 0; i < m_active_mvccids_size; i++)
-      {
-	const mvcc_active_slot &slot = m_active_mvccids[i];
-	MVCCID id = slot.mvccid.load (std::memory_order_acquire);
-	if (MVCCID_IS_VALID (id))
-	  {
-	    xip.push_back (id);
-	  }
-	// instant-lock sub depth is ~1; the fixed sub-cache is never expected to overflow.
-	assert (!slot.subid_overflow.load (std::memory_order_acquire));
-	int ns = slot.n_subids.load (std::memory_order_acquire);
-	for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
-	  {
-	    MVCCID sid = slot.subids[k].load (std::memory_order_acquire);
-	    if (MVCCID_IS_VALID (sid))
-	      {
-		xip.push_back (sid);
-	      }
-	  }
-      }
-    std::sort (xip.begin (), xip.end ());
-    xip.erase (std::unique (xip.begin (), xip.end ()), xip.end ());
-  }
+      highest_completed_mvccid = m_last_completed_mvccid.load (std::memory_order_acquire);
+      MVCCID_FORWARD (highest_completed_mvccid);
+
+      std::vector<MVCCID> &xip = tdes.mvccinfo.snapshot.m_xip;
+      xip.clear ();
+      for (size_t i = 0; i < m_active_mvccids_size; i++)
+	{
+	  const mvcc_active_slot &slot = m_active_mvccids[i];
+	  MVCCID id = slot.mvccid.load (std::memory_order_acquire);
+	  if (MVCCID_IS_VALID (id))
+	    {
+	      xip.push_back (id);
+	    }
+	  // instant-lock sub depth is ~1; the fixed sub-cache is never expected to overflow.
+	  assert (!slot.subid_overflow.load (std::memory_order_acquire));
+	  int ns = slot.n_subids.load (std::memory_order_acquire);
+	  for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
+	    {
+	      MVCCID sid = slot.subids[k].load (std::memory_order_acquire);
+	      if (MVCCID_IS_VALID (sid))
+		{
+		  xip.push_back (sid);
+		}
+	    }
+	}
+      std::sort (xip.begin (), xip.end ());
+      xip.erase (std::unique (xip.begin (), xip.end ()), xip.end ());
+    }
 
   /* update lowest active mvccid computed for the most recent snapshot */
   tdes.mvccinfo.recent_snapshot_lowest_active_mvccid = crt_status_lowest_active;
