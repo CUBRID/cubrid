@@ -30,7 +30,6 @@
 
 #include <algorithm>
 #include <cassert>
-#include <thread>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -150,7 +149,6 @@ mvcctable::mvcctable ()
   , m_procarray_lock ()
   , m_last_completed_mvccid (MVCCID_NULL)
   , m_completion_count (0)
-  , m_clear_group_head (NULL)
 {
 }
 
@@ -166,7 +164,6 @@ mvcctable::initialize ()
   m_current_status_lowest_active_mvccid = MVCCID_FIRST;
   m_last_completed_mvccid = MVCCID_NULL;
   m_completion_count = 0;
-  m_clear_group_head.store (NULL);
 
   alloc_transaction_lowest_active ();
 }
@@ -477,50 +474,13 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 			 oldest_active_event::COMPLETE_MVCC);
     }
 
-  // ProcArray clear: clear our slot + advance completion markers (under EXCLUSIVE m_procarray_lock,
-  // so a SHARED snapshot scanner sees a consistent cut). CBRD-26971 Phase 3 (group clear): if the
-  // lock is contended, enqueue our clear on a lock-free LIFO and let one leader apply the whole
-  // batch under a single lock acquisition, instead of every committer fighting for the lock.
+  // ProcArray clear: clear our slot + advance completion markers under EXCLUSIVE m_procarray_lock,
+  // so a SHARED snapshot scanner sees a consistent cut. Uses a *blocking* exclusive acquire: a
+  // non-blocking try_lock-based group clear livelocks when >=2 snapshot threads hold SHARED
+  // continuously (no gap for try_lock to win) -- caught by unittests_snapshot. (CBRD-26971)
   {
-    mvcc_clear_request req;
-    req.tran_index = tran_index;
-    req.mvccid = mvccid;
-    req.next.store (NULL, std::memory_order_relaxed);
-    req.done.store (false, std::memory_order_relaxed);
-
-    mvcc_clear_request *head = m_clear_group_head.load (std::memory_order_relaxed);
-    do
-      {
-	req.next.store (head, std::memory_order_relaxed);
-      }
-    while (!m_clear_group_head.compare_exchange_weak (head, &req, std::memory_order_release,
-	   std::memory_order_relaxed));
-
-    for (;;)
-      {
-	if (req.done.load (std::memory_order_acquire))
-	  {
-	    break;   // a leader already applied our clear
-	  }
-	if (m_procarray_lock.try_lock ())   // become leader (EXCLUSIVE)
-	  {
-	    mvcc_clear_request *batch = m_clear_group_head.exchange (NULL, std::memory_order_acq_rel);
-	    for (mvcc_clear_request *n = batch; n != NULL; n = n->next.load (std::memory_order_relaxed))
-	      {
-		apply_clear (n->tran_index, n->mvccid);
-	      }
-	    m_procarray_lock.unlock ();
-	    // wake the group. Read next BEFORE marking done: once done, the owner may free its frame.
-	    for (mvcc_clear_request *n = batch; n != NULL; )
-	      {
-		mvcc_clear_request *nx = n->next.load (std::memory_order_relaxed);
-		n->done.store (true, std::memory_order_release);
-		n = nx;
-	      }
-	    break;
-	  }
-	std::this_thread::yield ();
-      }
+    std::unique_lock<std::shared_mutex> px (m_procarray_lock);
+    apply_clear (tran_index, mvccid);
   }
 
   // Advance the global oldest-active (indicative for vacuum) from a lock-free slot scan. The scanned

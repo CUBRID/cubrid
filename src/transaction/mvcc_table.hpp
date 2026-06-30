@@ -53,17 +53,6 @@ struct mvcc_active_slot
   std::atomic<MVCCID> subids[MAX_CACHED_SUBIDS];  // active sub-transaction MVCCIDs
 };
 
-// CBRD-26971 Phase 3: group commit-clear (PG ProcArrayGroupClearXid). On EXCLUSIVE contention a
-// committer pushes this node to a lock-free LIFO; one leader applies the whole batch under a single
-// lock acquisition and wakes the rest. Lives on the committing thread's stack (alive until done).
-struct mvcc_clear_request
-{
-  int tran_index;
-  MVCCID mvccid;
-  std::atomic<mvcc_clear_request *> next;
-  std::atomic<bool> done;
-};
-
 class mvcctable
 {
   public:
@@ -126,8 +115,6 @@ class mvcctable
     std::atomic<MVCCID> m_last_completed_mvccid;
     // Bumped on every completion (commit/rollback/sub) under EXCLUSIVE -> Phase 2 snapshot-reuse cache key.
     std::atomic<std::uint64_t> m_completion_count;
-    // Phase 3: lock-free LIFO of pending commit-clears (group clear).
-    std::atomic<mvcc_clear_request *> m_clear_group_head;
 
     void advance_oldest_active (MVCCID next_oldest_active);
     MVCCID compute_oldest_visible_mvccid () const;
