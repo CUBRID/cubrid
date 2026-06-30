@@ -146,7 +146,6 @@ mvcctable::mvcctable ()
   , m_ov_lock_count (0)
   , m_active_mvccids (NULL)
   , m_active_mvccids_size (0)
-  , m_procarray_lock ()
   , m_last_completed_mvccid (MVCCID_NULL)
   , m_completion_count (0)
 {

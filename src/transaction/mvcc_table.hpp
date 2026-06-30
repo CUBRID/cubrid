@@ -33,7 +33,6 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
-#include <shared_mutex>
 
 // forward declarations
 struct log_tdes;
@@ -41,9 +40,9 @@ struct mvcc_info;
 
 // PG-style per-transaction active-MVCCID slot (indexed by tran_index).
 // Holds the transaction's top/parent active MVCCID plus a small cache of active
-// sub-transaction MVCCIDs (SELECT..UPDATE instant locks). Written lockless on publish
-// (release-store) by the owning transaction, cleared on completion under EXCLUSIVE
-// m_procarray_lock; read by snapshot scanners under SHARED. (CBRD-26971 Phase 1)
+// sub-transaction MVCCIDs (SELECT..UPDATE instant locks). Written lock-free on publish
+// (release-store) by the owning transaction; cleared lock-free on completion.
+// Read by snapshot scanners without any lock (CBRD-26971).
 struct mvcc_active_slot
 {
   static const int MAX_CACHED_SUBIDS = 8;
@@ -108,9 +107,6 @@ class mvcctable
     // Per-tran-index slots (parent + sub cache).
     mvcc_active_slot *m_active_mvccids;
     size_t m_active_mvccids_size;
-    // Reader-writer lock: snapshot readers SHARED, slot publish/clear EXCLUSIVE (PG ProcArrayLock model).
-    // mutable so const accessors (is_active) can take it SHARED.
-    mutable std::shared_mutex m_procarray_lock;
     // Global "most recent completed MVCCID"; snapshot xmax = this + 1 (PG latestCompletedXid).
     std::atomic<MVCCID> m_last_completed_mvccid;
     // Bumped on every completion (commit/rollback/sub) under EXCLUSIVE -> Phase 2 snapshot-reuse cache key.
@@ -121,7 +117,8 @@ class mvcctable
     // CBRD-26971 Phase 1: lowest active MVCCID from a lock-free ProcArray slot scan
     // (a valid lower bound; advance_oldest_active is monotonic so concurrent scans are safe).
     MVCCID compute_lowest_active_from_slots () const;
-    // CBRD-26971 Phase 3: apply one commit-clear (caller holds m_procarray_lock EXCLUSIVE).
+    // CBRD-26971: apply one commit-clear lock-free (single-writer slot; orders the slot clear +
+    // last_completed advance before the m_completion_count seqlock-version bump).
     void apply_clear (int tran_index, MVCCID mvccid);
 };
 
