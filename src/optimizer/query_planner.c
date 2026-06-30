@@ -6612,8 +6612,19 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* At here, inner is single class spec */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+  /* For a right outer join the operands are swapped (converted to left outer join),
+   * so the join-method hint is carried on the 'outer' node. Read the hint from the
+   * correct side - as qo_examine_idx_join / qo_examine_nl_join do - so that
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins
+   * (otherwise hash join would be generated even when the hint forbids it). */
+  if (join_type == JOIN_RIGHT)
+    {
+      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+    }
+  else
+    {
+      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+    }
 
   if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
     {
