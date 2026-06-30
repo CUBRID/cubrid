@@ -5220,7 +5220,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
-   {false, {.i = 1}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 1}},
    {false, {.i = 1}},
@@ -5240,7 +5240,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = (int) cubthread::system_core_count () * 3}},
    {false, {.i = (int) cubthread::system_core_count () * 3}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
-   {false, {.i = 1}},
+   {false, {.i = (int) cubthread::system_core_count ()}},
 #else
    {false, {.i = 1}},
    {false, {.i = 1}},
