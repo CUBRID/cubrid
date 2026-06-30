@@ -1894,7 +1894,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
-  /* owning predicate-operand regu of an uncorrelated scalar subquery; offset-dedup aliasing restores it to the exact predicate regu (offset 0 = not such a subquery). */
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

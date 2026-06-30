@@ -825,7 +825,8 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated scalar ones (precomp_owner_regu set): recurse so their inner scans parallelize during main-thread precompute; table-form (UNBOX_AS_TABLE) and correlated (dptr_list, below) stay blocked. */
+	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated
+	 * scalar ones (precomp_owner_regu set), which recurse so inner scans parallelize. */
 	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);

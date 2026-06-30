@@ -6986,7 +6986,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
-	      /* mark uncorrelated scalar subquery for precompute/inject/checker-relax: stash owning predicate-operand regu at the regu<->xasl linkage (no post-pass predicate walk). */
+	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
+	       * stash owning predicate-operand regu at the regu<->xasl linkage. */
 	      xasl->precomp_owner_regu = regu;
 	    }
 	  else

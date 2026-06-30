@@ -2897,7 +2897,8 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
-  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0); xts_save_regu_variable source-pointer dedup re-aliases it to the predicate regu on unpack. */
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0);
+   * source-pointer dedup re-aliases it to the predicate regu on unpack. */
   offset = xts_save_regu_variable (xasl->precomp_owner_regu);
   if (offset == ER_FAILED)
     {
