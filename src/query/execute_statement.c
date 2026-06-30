@@ -3099,17 +3099,30 @@ is_replication_class (const char *classname)
   class_obj = db_find_class (classname);
   if (class_obj == NULL)
     {
+      assert (false);
       return false;
     }
 
   return sm_is_replication_class (class_obj);
 }
 
+/* Safely extract the class name from a PT_SPEC; returns NULL when the spec has no entity name
+ * (e.g. a derived table). is_replication_class (NULL) is false, so callers stay null-safe. */
+static const char *
+get_spec_classname (PT_NODE * spec)
+{
+  if (spec == NULL || spec->info.spec.entity_name == NULL)
+    {
+      return NULL;
+    }
+
+  return spec->info.spec.entity_name->info.name.original;
+}
+
 int
 is_data_repl_log_enabled (PT_NODE * statement)
 {
   PT_NODE *spec;
-  const char *classname;
 
   if (statement == NULL)
     {
@@ -3119,19 +3132,29 @@ is_data_repl_log_enabled (PT_NODE * statement)
   switch (statement->node_type)
     {
     case PT_INSERT:
-      classname = statement->info.insert.spec->info.spec.entity_name->info.name.original;
-      return is_replication_class (classname);
+      /* INSERT has a single target spec. The INSERT...SELECT source tables are not modify targets and
+       * are intentionally not inspected here. */
+      return is_replication_class (get_spec_classname (statement->info.insert.spec));
 
     case PT_UPDATE:
-      classname = statement->info.update.spec->info.spec.entity_name->info.name.original;
-      return is_replication_class (classname);
+      /* Only the specs actually updated decide replication, not join-only specs. In a multi-table UPDATE
+       * the modified tables are the ones flagged PT_SPEC_FLAG_UPDATE (the first FROM spec is not
+       * necessarily a target). Generate SBR when any updated target is a replication class. */
+      for (spec = statement->info.update.spec; spec != NULL; spec = spec->next)
+	{
+	  if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && is_replication_class (get_spec_classname (spec)))
+	    {
+	      return TRUE;
+	    }
+	}
+      return FALSE;
 
     case PT_DELETE:
+      /* Only the specs actually deleted decide replication, not join-only specs. The deleted tables are
+       * the ones flagged PT_SPEC_FLAG_DELETE. Generate SBR when any deleted target is a replication class. */
       for (spec = statement->info.delete_.spec; spec != NULL; spec = spec->next)
 	{
-	  classname = spec->info.spec.entity_name->info.name.original;
-
-	  if (is_replication_class (classname))
+	  if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && is_replication_class (get_spec_classname (spec)))
 	    {
 	      return TRUE;
 	    }
