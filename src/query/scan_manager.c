@@ -5556,7 +5556,8 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  if (llsidp->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
 	    {
 	      (void) mht_dump_hls (thread_p, stdout, llsidp->hlsid.memory.hash_table, 1, qdata_print_hash_scan_entry,
-				   (void *) &(llsidp->list_id->type_list), (void *) &(llsidp->hlsid.hash_list_scan_type));
+				   (void *) &(llsidp->list_id->type_list),
+				   (void *) &(llsidp->hlsid.hash_list_scan_type));
 	      printf ("temp file : tuple count = %ld, file_size = %dK\n", llsidp->list_id->tuple_cnt,
 		      llsidp->list_id->page_cnt * 16);
 	    }
@@ -8867,7 +8868,8 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	case HASH_METH_IN_MEM:
 	  {
 	    /* store the tuple in the table obstack */
-	    QFILE_TUPLE tuple = qdata_alloc_hscan_value (thread_p, llsidp->hlsid.memory.hash_table->heap_id, tplrec.tpl);
+	    QFILE_TUPLE tuple =
+	      qdata_alloc_hscan_value (thread_p, llsidp->hlsid.memory.hash_table->heap_id, tplrec.tpl);
 	    if (tuple == NULL)
 	      {
 		return S_ERROR;
@@ -9064,7 +9066,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  /* get value from hash table */
 	  hvalue =
 	    mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key,
-					     (void **) &llsidp->hlsid.memory.curr_hash_entry);
+			 (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      return S_END;
@@ -9122,8 +9124,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	case HASH_METH_HYBRID:
 	  hvalue =
 	    mht_get_next_hls (llsidp->hlsid.memory.hash_table,
-						  (void *) &llsidp->hlsid.curr_hash_key,
-						  (void **) &llsidp->hlsid.memory.curr_hash_entry);
+			      (void *) &llsidp->hlsid.curr_hash_key, (void **) &llsidp->hlsid.memory.curr_hash_entry);
 	  if (hvalue == NULL)
 	    {
 	      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)

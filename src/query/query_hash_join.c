@@ -2631,8 +2631,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
     {
       UINT64 slot_array_size = mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
 
-      if (list_id->tuple_cnt <= INT_MAX
-	  && slot_array_size + ((UINT64) list_id->page_cnt * DB_PAGESIZE) <= mem_limit)
+      if (list_id->tuple_cnt <= INT_MAX && slot_array_size + ((UINT64) list_id->page_cnt * DB_PAGESIZE) <= mem_limit)
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: In Memory\n");
@@ -3962,13 +3961,13 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	{
 	  hash_value =
 	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-					     (void **) &hash_scan->memory.curr_hash_entry);
+			 (void **) &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
 	  hash_value =
 	    mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-						  (void **) &hash_scan->memory.curr_hash_entry);
+			      (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
       if (hash_value != NULL)
@@ -3991,14 +3990,13 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 	{
 	  hash_value =
 	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-					     (void **) &hash_scan->memory.curr_hash_entry);
+			 (void **) &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
 	  hash_value =
 	    mht_get_next_hls (hash_scan->memory.hash_table,
-						  (void *) &hash_scan->curr_hash_key,
-						  (void **) &hash_scan->memory.curr_hash_entry);
+			      (void *) &hash_scan->curr_hash_key, (void **) &hash_scan->memory.curr_hash_entry);
 	}
 
       if (hash_value != NULL)

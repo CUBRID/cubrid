@@ -1577,7 +1577,7 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
     {
       if (ht->table[idx].data == NULL)
 	{
-	  return NULL;	/* miss */
+	  return NULL;		/* miss */
 	}
 
       if (ht->table[idx].hash == hash)
@@ -1626,7 +1626,7 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
     {
       if (ht->table[idx].data == NULL)
 	{
-	  return NULL;	/* miss */
+	  return NULL;		/* miss */
 	}
 
       if (ht->table[idx].hash == hash)

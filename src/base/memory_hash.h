@@ -153,7 +153,7 @@ struct mht_hls_table
   unsigned int size;		/* power of two */
   unsigned int nentries;	/* Actual number of entries */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  HL_HEAPID heap_id;	/* obstack (arena) for the entry payloads (tuple copy / position) */
+  HL_HEAPID heap_id;		/* obstack (arena) for the entry payloads (tuple copy / position) */
   bool build_lru_list;		/* true if LRU list must be built */
 };
 
