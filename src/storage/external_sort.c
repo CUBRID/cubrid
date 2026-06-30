@@ -5150,8 +5150,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  /* clamp to the actual reservation: try_reserve_workers may grant fewer than requested
-	   * under worker-pool contention. Pushing parallel_num tasks then over-subscribes the pool. */
+	  /* clamp to the number of workers actually reserved: try_reserve_workers () may grant a partial reservation under worker-pool contention. Pushing parallel_num tasks when fewer were reserved over-subscribes the shared pool. Same pattern as parallel scan / hash join. */
 	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }
@@ -5205,7 +5204,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  /* clamp to the actual reservation (same as ORDER_BY branch). */
+	  /* clamp to the number of workers actually reserved (partial reservation under contention), same as the SORT_ORDER_BY branch above. */
 	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }

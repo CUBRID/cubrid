@@ -4005,7 +4005,10 @@ emit_domain_def (extract_context & ctxt, print_output & output_ctx, DB_DOMAIN * 
 	      }
 
 	    case DB_TYPE_NUMERIC:
-	      output_ctx ("(%d,%d)", db_domain_precision (domain), db_domain_scale (domain));
+	      if (db_domain_precision (domain) != DB_DEFAULT_NUMERIC_PRECISION)
+		{
+		  output_ctx ("(%d,%d)", db_domain_precision (domain), db_domain_scale (domain));
+		}
 	      break;
 
 	    case DB_TYPE_SET:

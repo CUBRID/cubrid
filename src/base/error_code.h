@@ -1761,7 +1761,11 @@
 
 #define ER_METHOD_CALLBACK                          -1372
 
-#define ER_LAST_ERROR                               -1373
+#define ER_INVALID_SCALE                            -1373
+
+#define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
+
+#define ER_LAST_ERROR                               -1375
 
 
 
