@@ -80,6 +80,8 @@
 #include "session.h"
 #include "pl_session.hpp"
 
+#include <algorithm>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -4038,6 +4040,8 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+      // ProcArray Phase 1: publish before this id can be stamped into any row.
+      log_Gl.mvcc_table.publish_active_mvccid (tdes->tran_index, curr_mvcc_info->id);
     }
 
   if (!tdes->mvccinfo.sub_ids.empty ())
@@ -4667,6 +4671,14 @@ logtb_assign_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mv
   assert (curr_mvcc_info != NULL);
   assert (MVCCID_IS_VALID (curr_mvcc_info->id));
   curr_mvcc_info->sub_ids.push_back (mvcc_subid);
+
+  // ProcArray Phase 1: publish parent (idempotent; covers the get_two_new_mvccid path where the
+  // parent id was just allocated here) and the new sub id, before either can be stamped into a row.
+  {
+    int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    log_Gl.mvcc_table.publish_active_mvccid (tran_index, curr_mvcc_info->id);
+    log_Gl.mvcc_table.publish_sub_mvccid (tran_index, mvcc_subid);
+  }
 }
 
 /*
@@ -4689,6 +4701,8 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+  // ProcArray Phase 1: drop the completed sub from the slot cache (it becomes visible now).
+  mvcc_table->retire_sub_mvccid (tdes->tran_index, mvcc_sub_id);
   curr_mvcc_info->sub_ids.pop_back ();
 
   if (tdes->mvccinfo.snapshot.valid)
@@ -4700,7 +4714,14 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
 	  snapshot->highest_completed_mvccid = mvcc_sub_id;
 	  MVCCID_FORWARD (snapshot->highest_completed_mvccid);
 	}
-      snapshot->m_active_mvccs.set_inactive_mvccid (mvcc_sub_id);
+      // CBRD-26971 Phase 1: drop the completed sub from our own snapshot's sorted active list (xip),
+      // so the parent sees its sub-transaction's changes as visible.
+      std::vector<MVCCID> &xip = snapshot->m_xip;
+      std::vector<MVCCID>::iterator it = std::lower_bound (xip.begin (), xip.end (), mvcc_sub_id);
+      if (it != xip.end () && *it == mvcc_sub_id)
+	{
+	  xip.erase (it);
+	}
     }
 }
 

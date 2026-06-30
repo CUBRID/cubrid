@@ -31,7 +31,9 @@
 #include "storage_common.h"
 
 #include <atomic>
+#include <cstdint>
 #include <mutex>
+#include <shared_mutex>
 
 // forward declarations
 struct log_tdes;
@@ -61,6 +63,20 @@ struct mvcc_trans_status
   void finalize ();
 };
 
+// PG-style per-transaction active-MVCCID slot (indexed by tran_index).
+// Holds the transaction's top/parent active MVCCID plus a small cache of active
+// sub-transaction MVCCIDs (SELECT..UPDATE instant locks). Written lockless on publish
+// (release-store) by the owning transaction, cleared on completion under EXCLUSIVE
+// m_procarray_lock; read by snapshot scanners under SHARED. (CBRD-26971 Phase 1)
+struct mvcc_active_slot
+{
+  static const int MAX_CACHED_SUBIDS = 8;
+  std::atomic<MVCCID> mvccid;                     // parent/top active MVCCID, MVCCID_NULL if inactive
+  std::atomic<int> n_subids;                      // # of valid entries in subids[]
+  std::atomic<bool> subid_overflow;               // more active subs than cache -> snapshot must fall back
+  std::atomic<MVCCID> subids[MAX_CACHED_SUBIDS];  // active sub-transaction MVCCIDs
+};
+
 class mvcctable
 {
   public:
@@ -81,6 +97,11 @@ class mvcctable
     void complete_sub_mvcc (MVCCID mvccid);
     MVCCID get_new_mvccid ();
     void get_two_new_mvccid (MVCCID &first, MVCCID &second);
+
+    // ProcArray Phase 1: slot publish (lockless, publish-before-stamp) / sub-retire.
+    void publish_active_mvccid (int tran_index, MVCCID mvccid);
+    void publish_sub_mvccid (int tran_index, MVCCID sub_mvccid);
+    void retire_sub_mvccid (int tran_index, MVCCID sub_mvccid);
 
     bool is_active (MVCCID mvccid) const;
 
@@ -118,10 +139,26 @@ class mvcctable
     std::atomic<MVCCID> m_oldest_visible;
     std::atomic<size_t> m_ov_lock_count;
 
+    // --- ProcArray redesign (CBRD-26971 Phase 1): slot-based active-tran tracking ---
+    // Per-tran-index slots (parent + sub cache). Coexists with the bitmap/history-ring
+    // until Stage 1.3 makes it authoritative.
+    mvcc_active_slot *m_active_mvccids;
+    size_t m_active_mvccids_size;
+    // Reader-writer lock: snapshot readers SHARED, slot publish/clear EXCLUSIVE (PG ProcArrayLock model).
+    // mutable so const accessors (is_active) can take it SHARED.
+    mutable std::shared_mutex m_procarray_lock;
+    // Global "most recent completed MVCCID"; snapshot xmax = this + 1 (PG latestCompletedXid).
+    std::atomic<MVCCID> m_last_completed_mvccid;
+    // Bumped on every completion (commit/rollback/sub) under EXCLUSIVE -> Phase 2 snapshot-reuse cache key.
+    std::atomic<std::uint64_t> m_completion_count;
+
     mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
     void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
     MVCCID compute_oldest_visible_mvccid () const;
+    // CBRD-26971 Phase 1: lowest active MVCCID from a lock-free ProcArray slot scan
+    // (a valid lower bound; advance_oldest_active is monotonic so concurrent scans are safe).
+    MVCCID compute_lowest_active_from_slots () const;
 };
 
 #endif // !_MVCC_TABLE_H_

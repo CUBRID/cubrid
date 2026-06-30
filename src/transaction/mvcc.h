@@ -177,6 +177,13 @@ struct mvcc_snapshot
 
   mvcc_active_tran m_active_mvccs;
 
+  // *INDENT-OFF*
+  /* CBRD-26971 Phase 1: ProcArray active set as a sorted MVCCID list (xip). Built from a slot scan;
+   * mvcc_is_id_in_snapshot does a binary search on it for the uncertain middle range. Supersedes
+   * m_active_mvccs for visibility (m_active_mvccs kept until Stage 1.4 cleanup). */
+  std::vector<MVCCID> m_xip;
+  // *INDENT-ON*
+
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
   bool valid;			/* true, if the snapshot is valid */
