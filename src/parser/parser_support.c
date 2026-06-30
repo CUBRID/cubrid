@@ -11935,6 +11935,17 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       target = target->next;
     }
 
+  /* remote DELETE with a local subquery in WHERE: DELETE FROM remote_t@conn WHERE col IN (SELECT ... FROM local_t)
+   *
+   * Set optimistically when the single DELETE target is remote (remote_del == 1, no local target) and there is a
+   * WHERE clause. pt_convert_dblink_dml_query refines this: the flag is kept only when the WHERE subquery is purely
+   * local (local_cnt > 0 && server_node_cnt == 1 && !has_dblink_query), otherwise it is cleared so the existing
+   * guards apply (same-server all-remote subquery => full pushdown; multi-remote / dblink() => rejected). */
+  if (remote_del == 1 && local_del == 0 && node->info.delete_.search_cond != NULL)
+    {
+      snl->is_remote_delete_local_subq = true;
+    }
+
   pt_convert_dblink_dml_query (parser, node, local_del, remote_del, snl);
 
   return;
@@ -12118,7 +12129,19 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select)
+  /* remote DELETE + local subquery: keep the carve-out only when the WHERE subquery is purely local
+   * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
+   * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
+   * multi-remote (server_node_cnt >= 2) and dblink() forms are rejected. */
+  if (snl->is_remote_delete_local_subq)
+    {
+      if (!(snl->local_cnt > 0 && snl->server_node_cnt == 1 && !snl->has_dblink_query))
+	{
+	  snl->is_remote_delete_local_subq = false;
+	}
+    }
+
+  if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select && !snl->is_remote_delete_local_subq)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
       return;
@@ -12139,6 +12162,17 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   if (snl->distinct_cnt >= 2)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
+      return;
+    }
+
+  /* remote DELETE + pure-local subquery (CBRD-26921): the parser carve-out above accepts this form, but the
+   * XASL sink (Step 2) and per-row push runtime (Step 3) are not implemented yet. Reject explicitly here so the
+   * statement does NOT fall through to the qstr serialization below, which would push the local subquery to the
+   * remote server (wrong). Replaced by the value-push sink setup once Steps 2-3 land. */
+  if (snl->is_remote_delete_local_subq)
+    {
+      PT_ERROR (parser, upd_spec,
+		"dblink: remote DELETE with local subquery is not supported yet (under construction)");
       return;
     }
 

@@ -4043,6 +4043,12 @@ typedef struct
 				 * rewritten to a dblink scan. Cleared when the source is purely remote
 				 * (same-server @A<-@A falls back to full-pushdown) or spans other/multiple
 				 * servers (then multi-remote / local-mixed are rejected). */
+  bool is_remote_delete_local_subq;	/* remote-target DELETE whose WHERE references a pure-local subquery,
+					 * routed to the value-push sink. Set optimistically for a single remote
+					 * target with a WHERE clause (pt_convert_dblink_delete_query) and kept only
+					 * when the subquery is purely local (local_cnt > 0 && server_node_cnt == 1
+					 * && !has_dblink_query). Cleared otherwise so same-server all-remote
+					 * (full-pushdown) and multi-remote / dblink() cases fall to existing guards. */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
