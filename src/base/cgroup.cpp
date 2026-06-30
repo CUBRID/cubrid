@@ -31,7 +31,7 @@
 
 namespace os::cgroup
 {
-  std::optional<std::filesystem::path> mountpoint_v2 ()
+  std::optional<std::filesystem::path> mountpoint_v2 (std::filesystem::path *root)
   {
     std::ifstream file (path::proc_mountinfo);
     std::size_t separator, whitespace;
@@ -71,6 +71,10 @@ namespace os::cgroup
 	auto vec = parser::string_to_vector (line.substr (0, separator), ' ');
 	if (vec.size () > 4)
 	  {
+	    if (root)
+	      {
+		*root = vec[3];
+	      }
 	    return vec[4];
 	  }
 	return std::nullopt;
@@ -107,7 +111,7 @@ namespace os::cgroup
     return std::nullopt;
   }
 
-  std::optional<std::filesystem::path> mountpoint_v1 (const std::string &controller)
+  std::optional<std::filesystem::path> mountpoint_v1 (const std::string &controller, std::filesystem::path *root)
   {
     std::ifstream file (path::proc_mountinfo);
     std::size_t separator;
@@ -157,12 +161,67 @@ namespace os::cgroup
 	auto vec = parser::string_to_vector (line.substr (0, separator), ' ');
 	if (vec.size () > 4)
 	  {
+	    if (root)
+	      {
+		*root = vec[3];
+	      }
 	    return vec[4];
 	  }
 	return std::nullopt;
       }
 
     return std::nullopt;
+  }
+
+  namespace
+  {
+    std::filesystem::path remove_mount_root (const std::filesystem::path &relative, const std::filesystem::path &root)
+    {
+      std::filesystem::path normalized_relative = relative.relative_path ().lexically_normal ();
+      std::filesystem::path normalized_root = root.relative_path ().lexically_normal ();
+      std::filesystem::path result;
+      auto relative_it = normalized_relative.begin ();
+      auto root_it = normalized_root.begin ();
+
+      for (; relative_it != normalized_relative.end () && root_it != normalized_root.end (); ++relative_it, ++root_it)
+	{
+	  if (*relative_it != *root_it)
+	    {
+	      return normalized_relative;
+	    }
+	}
+
+      if (root_it != normalized_root.end ())
+	{
+	  return normalized_relative;
+	}
+
+      for (; relative_it != normalized_relative.end (); ++relative_it)
+	{
+	  result /= *relative_it;
+	}
+
+      return result;
+    }
+
+    std::filesystem::path make_path (const std::filesystem::path &mountpoint,
+				     const std::optional<std::filesystem::path> &relative, const std::filesystem::path &root)
+    {
+      std::filesystem::path path;
+
+      if (!relative)
+	{
+	  return mountpoint;
+	}
+
+      path = remove_mount_root (*relative, root);
+      if (path.empty ())
+	{
+	  return mountpoint;
+	}
+
+      return mountpoint / path;
+    }
   }
 
   std::optional<std::filesystem::path> relative_v1 (const std::string &controller)
@@ -253,24 +312,17 @@ namespace os::cgroup
       std::optional<std::filesystem::path> mountpoint, relative;
       std::optional<std::set<std::size_t>> effective;
       std::optional<double> max;
-      std::filesystem::path path;
+      std::filesystem::path path, root;
       bool flag = true;
       context ctx;
 
-      mountpoint = cgroup::mountpoint_v2 ();
+      mountpoint = cgroup::mountpoint_v2 (&root);
       if (!mountpoint)
 	{
 	  return ctx;
 	}
       relative = cgroup::relative_v2 ();
-      if (mountpoint && relative)
-	{
-	  path = *mountpoint / relative->relative_path ().lexically_normal ();
-	}
-      else
-	{
-	  path = *mountpoint;
-	}
+      path = make_path (*mountpoint, relative, root);
 
       while (path != mountpoint || flag)
 	{
@@ -371,23 +423,16 @@ namespace os::cgroup
       std::optional<std::filesystem::path> mountpoint, relative;
       std::optional<std::set<std::size_t>> effective;
       std::optional<double> max;
-      std::filesystem::path path;
+      std::filesystem::path path, root;
       bool flag = true;
       context ctx;
 
       /* cpu controller: CFS bandwidth limit (cpu.cfs_quota_us / cpu.cfs_period_us) */
-      mountpoint = mountpoint_v1 ("cpu");
+      mountpoint = mountpoint_v1 ("cpu", &root);
       if (mountpoint)
 	{
 	  relative = relative_v1 ("cpu");
-	  if (relative)
-	    {
-	      path = *mountpoint / relative->relative_path ().lexically_normal ();
-	    }
-	  else
-	    {
-	      path = *mountpoint;
-	    }
+	  path = make_path (*mountpoint, relative, root);
 
 	  flag = true;
 	  while (path != mountpoint || flag)
@@ -420,18 +465,11 @@ namespace os::cgroup
 	}
 
       /* cpuset controller: effective cpus (cpuset.effective_cpus) */
-      mountpoint = mountpoint_v1 ("cpuset");
+      mountpoint = mountpoint_v1 ("cpuset", &root);
       if (mountpoint)
 	{
 	  relative = relative_v1 ("cpuset");
-	  if (relative)
-	    {
-	      path = *mountpoint / relative->relative_path ().lexically_normal ();
-	    }
-	  else
-	    {
-	      path = *mountpoint;
-	    }
+	  path = make_path (*mountpoint, relative, root);
 
 	  flag = true;
 	  while (path != mountpoint || flag)
@@ -485,4 +523,3 @@ namespace os::cgroup
     }
   }
 }
-
