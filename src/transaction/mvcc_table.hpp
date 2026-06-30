@@ -39,30 +39,6 @@
 struct log_tdes;
 struct mvcc_info;
 
-struct mvcc_trans_status
-{
-  using version_type = unsigned int;
-
-  enum event_type
-  {
-    COMMIT,
-    ROLLBACK,
-    SUBTRAN
-  };
-
-  mvcc_active_tran m_active_mvccs;
-
-  MVCCID m_last_completed_mvccid;   // just for info
-  event_type m_event_type;          // just for info
-  std::atomic<version_type> m_version;
-
-  mvcc_trans_status ();
-  ~mvcc_trans_status ();
-
-  void initialize ();
-  void finalize ();
-};
-
 // PG-style per-transaction active-MVCCID slot (indexed by tran_index).
 // Holds the transaction's top/parent active MVCCID plus a small cache of active
 // sub-transaction MVCCIDs (SELECT..UPDATE instant locks). Written lockless on publish
@@ -126,33 +102,21 @@ class mvcctable
 
   private:
 
-    static const size_t HISTORY_MAX_SIZE = 2048;  // must be a power of 2
-    static const size_t HISTORY_INDEX_MASK = HISTORY_MAX_SIZE - 1;
-
     /* lowest active MVCCIDs - array of size NUM_TOTAL_TRAN_INDICES */
     lowest_active_mvccid_type *m_transaction_lowest_visible_mvccids;
     size_t m_transaction_lowest_visible_mvccids_size;
     /* lowest active MVCCID */
     lowest_active_mvccid_type m_current_status_lowest_active_mvccid;
 
-    /* current transaction status */
-    mvcc_trans_status m_current_trans_status;
-    /* transaction status history - array of size TRANS_STATUS_HISTORY_MAX_SIZE */
-    /* the position in transaction status history array */
-    std::atomic<size_t> m_trans_status_history_position;
-    mvcc_trans_status *m_trans_status_history;
-
     /* protect against getting new MVCCIDs concurrently */
     std::mutex m_new_mvccid_lock;     // theoretically, it may be replaced with atomic operations
-    /* protect against current transaction status modifications */
-    std::mutex m_active_trans_mutex;
 
     std::atomic<MVCCID> m_oldest_visible;
     std::atomic<size_t> m_ov_lock_count;
 
-    // --- ProcArray redesign (CBRD-26971 Phase 1): slot-based active-tran tracking ---
-    // Per-tran-index slots (parent + sub cache). Coexists with the bitmap/history-ring
-    // until Stage 1.3 makes it authoritative.
+    // --- ProcArray active-tran tracking (CBRD-26971). Replaces the former global bitmap +
+    // history ring + m_active_trans_mutex. ---
+    // Per-tran-index slots (parent + sub cache).
     mvcc_active_slot *m_active_mvccids;
     size_t m_active_mvccids_size;
     // Reader-writer lock: snapshot readers SHARED, slot publish/clear EXCLUSIVE (PG ProcArrayLock model).
@@ -165,8 +129,6 @@ class mvcctable
     // Phase 3: lock-free LIFO of pending commit-clears (group clear).
     std::atomic<mvcc_clear_request *> m_clear_group_head;
 
-    mvcc_trans_status &next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index);
-    void next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index);
     void advance_oldest_active (MVCCID next_oldest_active);
     MVCCID compute_oldest_visible_mvccid () const;
     // CBRD-26971 Phase 1: lowest active MVCCID from a lock-free ProcArray slot scan
