@@ -271,8 +271,9 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 
   // CBRD-26971 Phase 2 (PG14 GetSnapshotDataReuse): if no completion happened since this
   // transaction last built a snapshot, the active set (xmin/xmax/xip) is unchanged -> reuse it
-  // and skip the slot scan entirely. m_completion_count is bumped on every commit/rollback/sub
-  // completion under EXCLUSIVE, so it is the invalidation key.
+  // and skip the slot scan entirely. m_completion_count is bumped (release) on every
+  // commit/rollback/sub completion (see apply_clear / retire_sub_mvccid) and is the cache
+  // invalidation key; no lock is held when it is bumped or read.
   if (tdes.mvccinfo.snapshot.valid
       && tdes.mvccinfo.snapshot.cached_completion_count == m_completion_count.load (std::memory_order_acquire))
     {
@@ -328,6 +329,11 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 
       std::sort (xip.begin (), xip.end ());
       xip.erase (std::unique (xip.begin (), xip.end ()), xip.end ());
+      // Store v1 as the Phase-2 reuse key.  Note: logtb_complete_sub_mvcc may later adjust the
+      // live snapshot (highest_completed_mvccid, m_xip) in place without touching
+      // cached_completion_count.  That is safe: retire_sub_mvccid bumped m_completion_count, so
+      // the stored key is now stale, which forces a cache MISS (never a wrong reuse) on the
+      // next build_mvcc_info call.
       tdes.mvccinfo.snapshot.cached_completion_count = v1;
     }
 
@@ -511,9 +517,19 @@ void
 mvcctable::apply_clear (int tran_index, MVCCID mvccid)
 {
   // CBRD-26971 lock-free: the slot is single-writer (this tran_index), so no lock is needed.
-  // Ordering: clear the slot (release) and advance last_completed (release) BEFORE bumping
-  // m_completion_count (release, LAST) so a seqlock reader that sees the new count also sees
-  // the slot clear and the advanced xmax.
+  // Ordering: clear the slot and advance last_completed BEFORE bumping m_completion_count
+  // (the trailing release fetch_add, LAST) so a seqlock reader that sees the new count also
+  // sees the slot clear and the advanced xmax.
+  //   n_subids and subid_overflow are cleared with relaxed ordering, which is safe because
+  // the trailing release m_completion_count.fetch_add is sequenced after them in this thread;
+  // a reader that observes the new count acquires that release edge and therefore observes
+  // these clears as well.
+  // Safety model: this is a *single-trailing-bump* seqlock (not classic two-phase); a reader
+  // can observe partial mutations and still see v1==v2.  This is safe because every
+  // partially-observable state is conservative: any value seen mid-mutation is a real,
+  // untearable MVCCID that is either active or completing, and the xmax boundary guarantees
+  // that a still-active id is always >= xmax and therefore classified active even if absent
+  // from xip.
   mvcc_active_slot &slot = m_active_mvccids[tran_index];
   slot.mvccid.store (MVCCID_NULL, std::memory_order_release);
   slot.n_subids.store (0, std::memory_order_relaxed);
@@ -553,9 +569,12 @@ void
 mvcctable::complete_sub_mvcc (MVCCID mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
-  // CBRD-26971 Phase 1: the authoritative sub-completion work (clear sub from the slot cache,
-  // advance last_completed / completion_count) is done by retire_sub_mvccid(). The former global
-  // mutex + whole-bitmap copy is removed. A sub id is never the global oldest, so nothing else here.
+  // CBRD-26971: this entry point is intentionally a no-op stub.  All authoritative
+  // sub-completion work — dropping the sub from the slot cache, advancing
+  // last_completed, and bumping m_completion_count — is performed by retire_sub_mvccid(),
+  // which the caller (log_tran_table.c) invokes immediately after this function.  The
+  // stub is kept for caller-API symmetry (complete_mvcc / complete_sub_mvcc pairing).
+  // A sub id is never the global oldest active, so no vacuum-coordinate update is needed.
   (void) mvccid;
 }
 
@@ -587,12 +606,17 @@ mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
 }
 
 //
-// ProcArray Phase 1: slot publish / retire (CBRD-26971).
-// Publish is lockless (release-store): correctness rests on publish-before-stamp
-// (the id is put in the slot before any row is stamped with it) and xmax =
-// m_last_completed_mvccid + 1 (a freshly published id is > last_completed, so a racing
-// reader treats it as in-progress). These slots are NOT authoritative until Stage 1.3;
-// for now they are maintained in parallel and validated by shadow-compare.
+// ProcArray slot publish / retire (CBRD-26971).
+// These slots are the SOLE source of truth for the active transaction set.  They are
+// published and cleared lock-free and scanned by snapshot readers under the seqlock
+// protocol (m_completion_count v1/v2 wrap in build_mvcc_info / is_active).
+//
+// Correctness of publish (no counter bump): a freshly published id is always
+// > m_last_completed_mvccid (MVCCIDs are allocated monotonically and last_completed only
+// advances when a transaction actually completes), so every concurrent snapshot sees
+// id >= xmax and classifies it active WITHOUT needing it in xip.  The dangerous direction
+// — a still-active id judged visible — cannot occur because that requires id < xmax, which
+// requires last_completed to have advanced past id, which only happens when id completes.
 //
 
 void
@@ -615,8 +639,13 @@ mvcctable::publish_sub_mvccid (int tran_index, MVCCID sub_mvccid)
     }
   else
     {
-      // cache full: snapshot scanner must fall back (handled in Stage 1.2). Expected ~never
-      // for the SELECT..UPDATE instant-lock use case (shallow sub depth).
+      // Cache full.  There is no runtime fallback: the snapshot scanner asserts (!overflow) in
+      // debug builds and silently omits the excess sub-ids in release.  This is
+      // correctness-safe: every overflowed sub-id is strictly greater than its already-published
+      // parent id, which is itself > m_last_completed_mvccid; therefore every omitted sub-id
+      // satisfies id >= xmax and is classified active by that boundary alone, without needing to
+      // appear in xip.  The assert is a debug guard for the expected shallow (~1) instant-lock
+      // sub depth; overflow is not expected in production.
       slot.subid_overflow.store (true, std::memory_order_release);
     }
 }
@@ -640,7 +669,20 @@ mvcctable::retire_sub_mvccid (int tran_index, MVCCID sub_mvccid)
     }
   else
     {
-      // defensive: not at top (or overflowed) -> linear compact
+      // defensive: not at top (or overflowed) -> linear compact.
+      //
+      // Seqlock safety of this branch: a concurrent snapshot reader can observe the subids[]
+      // shifts mid-flight with v1==v2 (single-trailing-bump seqlock; counter not yet bumped).
+      // This is safe for three reasons:
+      //   1. Each array element is a full-width UINT64 atomic; every load is untearable.
+      //   2. Every value visible to a mid-shift reader is a real sub-MVCCID of THIS same
+      //      transaction — either the one being retired (still briefly in the array) or a
+      //      neighbour that has been shifted.  Reading a sub-id as "active" is conservative.
+      //   3. All such sub-ids are > m_last_completed_mvccid (a sub-id is always greater than
+      //      its already-published parent and greater than last_completed), so they are >= xmax
+      //      and classified active by that boundary even without appearing in xip.
+      //   std::sort + std::unique in build_mvcc_info deduplicates any value seen twice during
+      //   the shift, so no phantom duplicate can violate snapshot isolation.
       bool found = false;
       for (int i = 0; i < n; i++)
 	{

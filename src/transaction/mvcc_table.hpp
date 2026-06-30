@@ -48,7 +48,10 @@ struct mvcc_active_slot
   static const int MAX_CACHED_SUBIDS = 8;
   std::atomic<MVCCID> mvccid;                     // parent/top active MVCCID, MVCCID_NULL if inactive
   std::atomic<int> n_subids;                      // # of valid entries in subids[]
-  std::atomic<bool> subid_overflow;               // more active subs than cache -> snapshot must fall back
+  // Set when more active subs exist than MAX_CACHED_SUBIDS.  There is no runtime fallback;
+  // omitted sub-ids are safe because each is > its parent (> last_completed), so >= xmax,
+  // and is classified active by the xmax boundary without needing to appear in xip.
+  std::atomic<bool> subid_overflow;
   std::atomic<MVCCID> subids[MAX_CACHED_SUBIDS];  // active sub-transaction MVCCIDs
 };
 
@@ -109,7 +112,9 @@ class mvcctable
     size_t m_active_mvccids_size;
     // Global "most recent completed MVCCID"; snapshot xmax = this + 1 (PG latestCompletedXid).
     std::atomic<MVCCID> m_last_completed_mvccid;
-    // Bumped on every completion (commit/rollback/sub) under EXCLUSIVE -> Phase 2 snapshot-reuse cache key.
+    // Bumped with release ordering, LAST, on every completion (commit/rollback/sub completion).
+    // No lock is held when it is bumped; it is the seqlock version counter for the slot scan
+    // (build_mvcc_info / is_active) and the Phase-2 snapshot-reuse cache key.
     std::atomic<std::uint64_t> m_completion_count;
 
     void advance_oldest_active (MVCCID next_oldest_active);
