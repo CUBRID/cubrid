@@ -649,6 +649,11 @@ static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL
 static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
 						ANALYTIC_INFO * info);
 
+static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
+static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
+
 static void
 pt_init_xasl_supp_info ()
 {
@@ -3918,7 +3923,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
   PT_NODE *pointer = NULL;
-  PT_NODE *pt_val = NULL;
+  PT_NODE *out_name = NULL;
   PT_NODE *percentile = NULL;
 
   // it contains a list of positions
@@ -4130,49 +4135,113 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  // add dummy output name nodes, one for each argument
-		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+		  /* Share the input DB_VALUE slot across aggregates that have an identical single argument
+		   * (e.g. sum(c3), avg(c3)). Look the argument up in the per-query registry (info->args); on a
+		   * hit, point this aggregate's operand at the already-produced slot and add NOTHING to
+		   * out_list / value_list / out_names. Only CUME_DIST and PERCENT_RANK are excluded (handled by
+		   * the enclosing branch); multi-argument aggregates fall back to the producer path below. */
+		  PT_NODE *arg = tree->info.function.arg_list;
+		  DB_VALUE *shared_value = NULL;
+		  bool can_share = (arg != NULL && arg->next == NULL && pt_is_shareable_groupby_ref (parser, arg));
+
+		  if (can_share)
 		    {
-		      pt_val = parser_new_node (parser, PT_VALUE);
-		      if (pt_val == NULL)
+		      for (PT_NODE * args = info->args; args != NULL; args = args->next)
 			{
-			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  if (pt_aggregate_arg_eq (parser, arg, args))
+			    {
+			      shared_value = (DB_VALUE *) args->etc;
+			      break;
+			    }
+			}
+		    }
+
+		  if (shared_value != NULL)
+		    {
+		      /* reuse the shared slot: build a one-element value_list over it and turn it into the
+		       * operand. No producer regu, no out_list / value_list / out_names growth. */
+		      QPROC_DB_VALUE_LIST dbval_list = NULL;
+
+		      regu_alloc (value_list);
+		      regu_alloc (dbval_list);
+		      if (value_list == NULL || dbval_list == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 			  return NULL;
 			}
 
-		      pt_val->type_enum = PT_TYPE_INTEGER;
-		      pt_val->info.value.data_value.i = 0;
-		      parser_append_node (pt_val, info->out_names);
-		    }
+		      dbval_list->val = shared_value;
+		      dbval_list->dom = pt_xasl_node_to_domain (parser, arg);
+		      dbval_list->next = NULL;
+		      value_list->valp = dbval_list;
+		      value_list->val_cnt = 1;
 
-		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
-							      &value_list, &regu_position_list) == NULL)
+		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list,
+									     &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		    }
+		  else
 		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
+		      // append a copy of each argument to out_names
+		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+			{
+			  out_name = parser_copy_tree (parser, it_args);
+			  if (out_name == NULL)
+			    {
+			      PT_INTERNAL_ERROR (parser, "allocate new node");
+			      return NULL;
+			    }
+
+			  parser_append_node (out_name, info->out_names);
+			}
+
+		      // for each element from arg_list we create a corresponding node in the value_list and regu_list
+		      if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+								  &value_list, &regu_position_list) == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      error_code =
+			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+
+		      // until now we have constructed the value_list, regu_list and out_list
+		      // they are based on the current aggregate node information and we need to append them to the global
+		      // information, i.e in info
+		      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+									regu_constant_list);
+
+		      // also we need to update the scan_regu_list from info
+		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+
+		      if (can_share)
+			{
+			  PT_NODE *reg = pt_point (parser, arg);
+			  if (reg != NULL)
+			    {
+			      reg->etc = (void *) pt_index_value (value_list, 0);
+			      info->args = parser_append_node (reg, info->args);
+			    }
+			}
 		    }
-
-		  error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
-		  if (error_code != NO_ERROR)
-		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
-
-		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
-
-		  // until now we have constructed the value_list, regu_list and out_list
-		  // they are based on the current aggregate node information and we need to append them to the global
-		  // information, i.e in info
-		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-								    regu_constant_list);
-
-		  // also we need to update the scan_regu_list from info
-		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		}
 	      else
 		{
@@ -4398,6 +4467,24 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
 
 	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
+
+	  REGU_VARIABLE_LIST scan_constant_list = NULL;
+	  regu_alloc (scan_constant_list);
+	  if (scan_constant_list == NULL)
+	    {
+	      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
+	    }
+	  scan_constant_list->value = *regu;
+	  pt_aggregate_info_update_scan_regu_list (info, scan_constant_list);
+
+	  PT_NODE *reg = pt_point (parser, tree);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, 0);
+	      info->args = parser_append_node (reg, info->args);
+	    }
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -4605,8 +4692,38 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.regu_list = regu_list;
   info.scan_regu_list = scan_regu_list;
   info.out_names = out_names;
+  info.args = NULL;
   info.grbynum_valp = grbynum_valp;
   info.qo_plan = plan;
+
+
+  PT_NODE *out_name = NULL;
+  int i = 0;
+  for (out_name = out_names; out_name; out_name = out_name->next, i++)
+    {
+      bool can_share = pt_is_shareable_groupby_ref (parser, out_name);
+      bool is_exists = false;
+
+      for (PT_NODE * args = info.args; args; args = args->next)
+	{
+	  if (pt_aggregate_arg_eq (parser, out_name, args))
+	    {
+	      is_exists = true;
+	      break;
+	    }
+	}
+
+      if (can_share && !is_exists)
+	{
+	  PT_NODE *reg = pt_point (parser, out_name);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, i);
+	      info.args = parser_append_node (reg, info.args);
+	    }
+	}
+    }
+
 
   /* init */
   info.class_name = NULL;
@@ -28968,4 +29085,181 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     }
 
   return covered_count;
+}
+
+/*
+ * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
+ *				     the result flag when it visits a node that
+ *				     cannot be shared. Only a whitelist of node
+ *				     types is allowed (PT_NAME / PT_DOT_ / PT_VALUE /
+ *				     PT_DATA_TYPE, a deterministic / side-effect-free
+ *				     PT_EXPR, and a pure PT_FUNCTION); every other
+ *				     node type (subqueries, method calls, etc.) is
+ *				     rejected by default
+ *   return: node (unchanged)
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool * -- set to false when a disallowed node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *only_allowed = (bool *) arg;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+    case PT_VALUE:
+    case PT_DATA_TYPE:
+      /* allowed (shareable) node types */
+      break;
+
+    case PT_FUNCTION:
+      {
+	FUNC_CODE ftype = node->info.function.function_type;
+
+	/* only deterministic, side-effect-free functions may share a slot. exclude aggregate / analytic /
+	 * order-dependent functions, foreign (UDF) functions, and object / benchmark functions that read
+	 * external state or have side effects. */
+	if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node)
+	    || node->info.function.is_order_dependent
+	    || ftype == PT_GENERIC || ftype == F_GENERIC || ftype == F_VID || ftype == F_CLASS_OF
+	    || ftype == F_BENCHMARK)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
+      break;
+
+    case PT_EXPR:
+      {
+	PT_OP_TYPE op = node->info.expr.op;
+
+	if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)	/* RAND / DRAND / RANDOM / DRANDOM / SYS_GUID */
+	    || PT_IS_SERIAL (op)	/* NEXT VALUE / CURRENT VALUE */
+	    || PT_IS_NUMBERING_AFTER_EXECUTION (op)	/* INST_NUM / ROWNUM / ORDERBY_NUM */
+	    || op == PT_INCR || op == PT_DECR
+	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_ROW_COUNT
+	    || op == PT_LAST_INSERT_ID || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_SLEEP)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
+      break;
+
+    default:
+      /* subqueries, method calls, and any other node type: conservatively not shareable */
+      *only_allowed = false;
+      *continue_walk = PT_STOP_WALK;
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_is_shareable_groupby_ref () - determine whether an expression is built only
+ *				  from the allowed (shareable) node types listed
+ *				  in pt_is_shareable_groupby_ref_pre ()
+ *   return: true if every node in node's subtree is an allowed type, false otherwise.
+ *   parser(in):
+ *   node(in): root of the (sub)expression to inspect. Only this node and its
+ *	       descendants are checked; the sibling list (node->next) is not
+ *	       followed.
+ */
+static bool
+pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool only_allowed = true;
+  PT_NODE *save_next;
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (node);
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  /* restrict the walk to this node's own subtree, not its siblings */
+  save_next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, pt_is_shareable_groupby_ref_pre, &only_allowed, NULL, NULL);
+  node->next = save_next;
+
+  return only_allowed;
+}
+
+/*
+ * pt_aggregate_arg_eq () - equality test used for aggregate-argument sharing
+ *   return: true if the two expressions compute the exact same value, false otherwise
+ *   parser(in):
+ *   p(in):
+ *   q(in):
+ *   note: identifiers are compared by path (case-insensitive); every other shareable node is compared
+ *	   by its canonical printed form. The printed form captures the full tree, including result
+ *	   type/domain modifiers (CAST target type, COLLATE), so e.g. CAST(c AS CHAR(1)) and
+ *	   CAST(c AS CHAR(10)) are not treated as equal.
+ */
+static bool
+pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
+{
+  if (p == NULL && q == NULL)
+    {
+      return true;
+    }
+  if (p == NULL || q == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
+
+  if (p == NULL || q == NULL)
+    {
+      return (p == q);
+    }
+
+  if (p->node_type != q->node_type)
+    {
+      return false;
+    }
+
+  switch (p->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+      /* identifiers are case-insensitive; reuse the existing path comparison */
+      return (pt_check_path_eq (parser, p, q) == 0);
+
+    default:
+      {
+	char *p_str, *q_str;
+	unsigned int save_custom = parser->custom_print;
+
+	parser->custom_print |= PT_CONVERT_RANGE;
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+	parser->custom_print = save_custom;
+
+	if (p_str == NULL || q_str == NULL)
+	  {
+	    return false;
+	  }
+	return (pt_str_compare (p_str, q_str, CASE_SENSITIVE) == 0);
+      }
+    }
 }
