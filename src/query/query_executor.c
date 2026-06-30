@@ -9125,8 +9125,7 @@ qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_s
       HFID_COPY (&hfids[0], &ACCESS_SPEC_HFID (curr_spec));
     }
 
-  error_code =
-    collect_strided_vpids (thread_p, hfids, n_parts, &picked, &picked_count, &part_offsets, &weight);
+  error_code = collect_strided_vpids (thread_p, hfids, n_parts, &picked, &picked_count, &part_offsets, &weight);
   db_private_free_and_init (thread_p, hfids);
 
   if (error_code != NO_ERROR)

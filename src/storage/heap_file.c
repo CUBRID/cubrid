@@ -7823,8 +7823,7 @@ heap_sampling_set_oid_from_vpid (const HFID * hfid, const VPID * vpid, OID * oid
 {
   oid->volid = vpid->volid;
   oid->pageid = vpid->pageid;
-  oid->slotid =
-    (vpid->volid == hfid->vfid.volid && vpid->pageid == hfid->hpgid) ? HEAP_HEADER_AND_CHAIN_SLOTID : -1;
+  oid->slotid = (vpid->volid == hfid->vfid.volid && vpid->pageid == hfid->hpgid) ? HEAP_HEADER_AND_CHAIN_SLOTID : -1;
 }
 
 static SCAN_CODE
