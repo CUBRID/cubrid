@@ -5352,6 +5352,10 @@ scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p)
 {
   switch (hlsid_p->hash_list_scan_type)
     {
+    case HASH_METH_NOT_USE:
+      /* no hash table was built for this list scan; nothing to free */
+      break;
+
     case HASH_METH_IN_MEM:
     case HASH_METH_HYBRID:
       if (hlsid_p->memory.hash_table != NULL)
