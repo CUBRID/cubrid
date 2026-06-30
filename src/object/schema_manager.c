@@ -521,6 +521,20 @@ sc_current_schema_owner (void)
   return Current_Schema.owner;
 }
 
+/*
+ * sc_clear_current_schema()
+ *   return: void
+ *
+ * Note :
+ *   Clears the owner and name of the current schema.
+ */
+void
+sc_clear_current_schema (void)
+{
+  Current_Schema.owner = NULL;
+  Current_Schema.name[0] = '\0';
+}
+
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2085,6 +2099,9 @@ sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
 
+  /* Clear the current schema before ws_final () frees the owner MOP. */
+  sc_clear_current_schema ();
+
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
   sm_method_final ();
@@ -2289,13 +2306,13 @@ char *
 sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH];
   int user_specified_name_len;
   const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+  assert (buf_size >= DB_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2315,7 +2332,7 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       assert (strchr (dot + 1, '.') == NULL);
 
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
-      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH);
 
       /*
        * e.g.   name: user_name.object_name
@@ -2324,11 +2341,11 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
    * In this case, return only the object name without raising an error. And expect that the object is not found */
-  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH)
     {
-      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
 
       /*
        * e.g.   name: object_name (exceeds)
@@ -11688,15 +11705,13 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat
   assert (class_ != NULL && class_->constraints != NULL && *cons != NULL);
 
   name_length = strlen ((*cons)->name) + 1;
-  saved_name = (char *) malloc (name_length);
+  saved_name = strdup ((*cons)->name);
   if (saved_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) name_length);
       goto end;
     }
-
-  strcpy (saved_name, (*cons)->name);
 
   /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be
    * used for identifying whether the instance will have been reallocated. */

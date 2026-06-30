@@ -87,11 +87,11 @@ namespace parallel_scan
 	return m_ranges.get_num_key_ranges ();
       }
 
-      /* --- Shared overflow API (v2 / multi-chain): delegate to m_ovf. --- */
+      /* --- Shared overflow API (v3 / key-publish): delegate to m_ovf. --- */
       int try_publish_overflow (THREAD_ENTRY *thread_p, VPID first_ovf_vpid,
-				VPID leaf_vpid, PGSLOTID leaf_slot_id, int range_idx)
+				const DB_VALUE *key, int range_idx)
       {
-	return m_ovf.try_publish (thread_p, first_ovf_vpid, leaf_vpid, leaf_slot_id, range_idx);
+	return m_ovf.try_publish (thread_p, first_ovf_vpid, key, range_idx);
       }
       SCAN_CODE claim_next_overflow_page (THREAD_ENTRY *thread_p, int slot_idx, PAGE_PTR &out_page,
 					  int &out_range_idx)
