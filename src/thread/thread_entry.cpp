@@ -81,6 +81,8 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
+    , pgbuf_fix_req_cnt (0)
+    , pgbuf_pg_unfix_cnt (0)
     , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
@@ -854,6 +856,8 @@ thread_resume_status_to_string (thread_resume_suspend_status resume_status)
       return "DWB_BLOCK_QUEUE_SUSPENDED";
     case THREAD_DWB_QUEUE_RESUMED:
       return "DWB_BLOCK_QUEUE_RESUMED";
+    case THREAD_SLEEP_FUNC_SUSPENDED:
+      return "SLEEP_FUNC_SUSPENDED";
     }
   return "UNKNOWN";
 }

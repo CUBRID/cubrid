@@ -1684,7 +1684,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	}
       else if (need_skip_next)
 	{
-	  need_skip_next = false;	/* reset */
+	  need_skip_next = false;	/* init */
 
 	  if (is_outer_join)
 	    {
@@ -2003,6 +2003,8 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   if (degree < 2)
     {
       /* try single-thread hash join */
+      assert (degree == 0);
+      manager->num_parallel_threads = 0;
       assert (manager->px_worker_manager == NULL);
       return HASHJOIN_STATUS_PARTITION;
     }
@@ -2111,6 +2113,8 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   if (degree < 2)
     {
       /* try single-thread hash join */
+      assert (degree == 0);
+      manager->num_parallel_threads = 0;
       assert (manager->px_worker_manager == NULL);
       return HASHJOIN_STATUS_SINGLE;
     }
@@ -3119,7 +3123,7 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	    }
 	  else if (need_skip_next)
 	    {
-	      need_skip_next = false;	/* reset */
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
@@ -3472,7 +3476,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else if (need_skip_next)
 	    {
-	      need_skip_next = false;	/* reset */
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
@@ -3535,7 +3539,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	      else if (need_skip_next)
 		{
-		  need_skip_next = false;	/* reset */
+		  need_skip_next = false;	/* init */
 
 		  /* impossible case */
 		  assert_release_error (false);
@@ -3561,7 +3565,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
-	      need_skip_next = false;	/* reset */
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
@@ -3738,7 +3742,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else if (need_skip_next)
 	    {
-	      need_skip_next = false;	/* reset */
+	      need_skip_next = false;	/* init */
 
 	      if (context->after_join_pred != NULL)
 		{
@@ -3849,7 +3853,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	      else if (need_skip_next)
 		{
-		  need_skip_next = false;	/* reset */
+		  need_skip_next = false;	/* init */
 
 		  /* impossible case */
 		  assert_release_error (false);
@@ -3875,7 +3879,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
-	      need_skip_next = false;	/* reset */
+	      need_skip_next = false;	/* init */
 	      continue;
 	    }
 	  else
@@ -4197,7 +4201,6 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
 	{
 	  return V_ERROR;
 	}
-
       probe->is_ready = true;
     }
 
@@ -4208,7 +4211,6 @@ hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_
 	{
 	  return V_ERROR;
 	}
-
       build->is_ready = true;
     }
 
