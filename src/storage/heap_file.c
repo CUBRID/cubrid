@@ -9615,8 +9615,10 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  /* Only one heap page is held at a time (heap->overflow order), so plain pgbuf_fix is safe;
-	   * revert to pgbuf_ordered_fix if this ever holds two or more pages at once. */
+	  /* The worker fixes one heap page at a time (independent sector-bitmap pages, not a chain),
+	   * so a plain pgbuf_fix suffices -- unlike the serial path, which holds two heap pages while
+	   * walking the chain and so needs pgbuf_ordered_fix. REC_BIGONE overflow pages are read
+	   * separately by overflow_get_capacity (also plain pgbuf_fix, in heap->overflow order). */
 	  page = pgbuf_fix (&thread_ref, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (page == NULL)
 	    {
