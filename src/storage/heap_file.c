@@ -9455,13 +9455,7 @@ heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_r
  * (parallel_query::worker_manager / callable_task / compute_parallel_degree), which are linked
  * only into the server. SA / CS builds compile this out and use the serial heap_get_capacity. */
 
-/*
- * heap_capacity_accum - per-worker partial accumulator for parallel SHOW HEAP CAPACITY.
- *   Holds the running sums of heap_get_capacity for a subset of heap data pages so worker
- *   results can be summed after join. max_vpid / max_vpid_freespace track the largest-VPID
- *   data page this worker has seen, used to approximate the serial "last page" exclusion in
- *   avg_freespace_nolast (see show_heap_capacity_parallel.md, STEP 6). Zero-initialize before use.
- */
+/* heap_capacity_accum - per-worker partial sums, merged after join. Zero-initialize before use. */
 typedef struct heap_capacity_accum HEAP_CAPACITY_ACCUM;
 struct heap_capacity_accum
 {
@@ -9472,23 +9466,14 @@ struct heap_capacity_accum
   INT64 sum_freespace;
   INT64 sum_reclength;
   INT64 sum_overhead;
-  VPID max_vpid;		/* largest-VPID heap data page seen by this worker */
-  int max_vpid_freespace;	/* that page's free space (data page only, excludes overflow) */
 };
 
 /*
- * heap_capacity_accumulate_one_page () - fold one heap data page's capacity stats into accum.
- *   return: NO_ERROR (overflow-read failure is ignored, mirroring the serial path)
- *   page_ptr(in): a fixed heap page (caller holds READ latch)
- *   vpid(in): the page's VPID (for largest-VPID / avg_freespace_nolast tracking)
- *   accum(in/out): running partial sums
- *
- * Note: The per-page logic here is identical to the serial loop body in heap_get_capacity
- *       and MUST be kept in sync with it (two copies; see show_heap_capacity_parallel.md).
+ * heap_capacity_accumulate_one_page () - fold one fixed heap page's stats into accum.
+ *   Per-page logic mirrors the serial loop in heap_get_capacity; keep the two in sync.
  */
 static int
-heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, const VPID * vpid,
-				   HEAP_CAPACITY_ACCUM * accum)
+heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, HEAP_CAPACITY_ACCUM * accum)
 {
   RECDES recdes;		/* Header record descriptor */
   INT16 slotid = -1;		/* Slot of one object */
@@ -9500,7 +9485,6 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, c
   int ovf_free_space;
   int ovf_overhead;
   int j;
-  bool first_page = (accum->num_pages == 0);
 
   j = spage_number_of_records (page_ptr);
   page_freespace = spage_get_free_space (thread_p, page_ptr);
@@ -9508,14 +9492,6 @@ heap_capacity_accumulate_one_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, c
   accum->num_pages += 1;
   accum->sum_freespace += page_freespace;
   accum->sum_overhead += j * SPAGE_SLOT_SIZE;
-
-  /* track the largest-VPID data page (parallel redefinition of the serial "last page") */
-  if (first_page || vpid->volid > accum->max_vpid.volid
-      || (vpid->volid == accum->max_vpid.volid && vpid->pageid > accum->max_vpid.pageid))
-    {
-      accum->max_vpid = *vpid;
-      accum->max_vpid_freespace = page_freespace;
-    }
 
   while ((j--) > 0)
     {
@@ -9644,7 +9620,7 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  (void) heap_capacity_accumulate_one_page (&thread_ref, page, &vpid, arg->accum);
+	  (void) heap_capacity_accumulate_one_page (&thread_ref, page, arg->accum);
 	  pgbuf_unfix_and_init (&thread_ref, page);
 	}
 
@@ -9653,6 +9629,55 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	  break;
 	}
     }
+}
+
+/*
+ * heap_capacity_max_vpid_page () - largest-VPID allocated data page across all sectors (O(nsects)).
+ *   Approximates the serial "last page" for avg_freespace_nolast (serial drops its chain-tail page,
+ *   this drops the largest-VPID page). The file-table header page is excluded.
+ *   return: true and *max_vpid set if a data page exists, else false.
+ */
+static bool
+heap_capacity_max_vpid_page (const HFID * hfid, const FILE_FTAB_COLLECTOR * collector, VPID * max_vpid)
+{
+  bool found = false;
+  VPID best_vpid = VPID_INITIALIZER;
+
+  for (int i = 0; i < collector->nsects; i++)
+    {
+      FILE_ALLOC_BITMAP bitmap = collector->partsect_ftab[i].page_bitmap;
+      const VSID *vsid = &collector->partsect_ftab[i].vsid;
+
+      while (bitmap != FILE_EMPTY_PAGE_BITMAP)
+	{
+	  /* highest set bit = largest still-allocated page offset within this sector */
+	  int off = FILE_ALLOC_BITMAP_NBITS - 1 - bit64_count_leading_zeros (bitmap);
+	  VPID cand_vpid;
+
+	  cand_vpid.volid = vsid->volid;
+	  cand_vpid.pageid = SECTOR_FIRST_PAGEID (vsid->sectid) + off;
+
+	  if (cand_vpid.volid == hfid->vfid.volid && cand_vpid.pageid == hfid->vfid.fileid)
+	    {
+	      /* the file-table header page is not a heap data page; try the next-highest */
+	      bitmap = bit64_clear (bitmap, off);
+	      continue;
+	    }
+	  if (!found || cand_vpid.volid > best_vpid.volid
+	      || (cand_vpid.volid == best_vpid.volid && cand_vpid.pageid > best_vpid.pageid))
+	    {
+	      found = true;
+	      best_vpid = cand_vpid;
+	    }
+	  break;
+	}
+    }
+
+  if (found)
+    {
+      *max_vpid = best_vpid;
+    }
+  return found;
 }
 
 /*
@@ -9733,6 +9758,11 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
   {
     ftab_set fs;
     fs.convert (&collector);
+
+    /* compute the "last page" (largest-VPID) once before the collector is freed */
+    VPID last_page_vpid = VPID_INITIALIZER;
+    bool have_last_page = heap_capacity_max_vpid_page (hfid, &collector, &last_page_vpid);
+
     if (collector.partsect_ftab != NULL)
       {
 	db_private_free_and_init (thread_p, collector.partsect_ftab);
@@ -9783,9 +9813,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
     {
       INT64 t_num_recs = 0, t_reloc = 0, t_inovf = 0, t_pages = 0;
       INT64 t_freespace = 0, t_reclength = 0, t_overhead = 0;
-      bool have_max = false;
-      VPID g_max_vpid = VPID_INITIALIZER;
-      int g_max_free = 0;
+      int last_page_freespace = 0;
 
       for (int i = 0; i < n_workers; i++)
 	{
@@ -9798,15 +9826,25 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
 	  t_freespace += a->sum_freespace;
 	  t_reclength += a->sum_reclength;
 	  t_overhead += a->sum_overhead;
+	}
 
-	  /* pick the global largest-VPID data page for avg_freespace_nolast (see STEP 6) */
-	  if (a->num_pages > 0
-	      && (!have_max || a->max_vpid.volid > g_max_vpid.volid
-		  || (a->max_vpid.volid == g_max_vpid.volid && a->max_vpid.pageid > g_max_vpid.pageid)))
+      /* read the "last page" free space to exclude from avg_freespace_nolast (best-effort: re-read
+       * after join; 0 if it was deallocated meanwhile). */
+      if (have_last_page && t_pages > 1)
+	{
+	  PGBUF_WATCHER last_page_watcher;
+
+	  PGBUF_INIT_WATCHER (&last_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+	  (void) pgbuf_ordered_fix (thread_p, &last_page_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+				    &last_page_watcher);
+	  if (last_page_watcher.pgptr != NULL)
 	    {
-	      have_max = true;
-	      g_max_vpid = a->max_vpid;
-	      g_max_free = a->max_vpid_freespace;
+	      last_page_freespace = spage_get_free_space (thread_p, last_page_watcher.pgptr);
+	      pgbuf_ordered_unfix (thread_p, &last_page_watcher);
+	    }
+	  else
+	    {
+	      er_clear ();
 	    }
 	}
 
@@ -9821,8 +9859,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
 
       if (t_pages > 0)
 	{
-	  int last_free = have_max ? g_max_free : 0;
-	  *avg_freespace_nolast = (t_pages > 1) ? (int) ((t_freespace - last_free) / (t_pages - 1)) : 0;
+	  *avg_freespace_nolast = (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
 	  *avg_freespace = (int) (t_freespace / t_pages);
 	  *avg_overhead = (int) (t_overhead / t_pages);
 	}
