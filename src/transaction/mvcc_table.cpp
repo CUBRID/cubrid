@@ -487,14 +487,9 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 			 oldest_active_event::COMPLETE_MVCC);
     }
 
-  // ProcArray clear: clear our slot + advance completion markers under EXCLUSIVE m_procarray_lock,
-  // so a SHARED snapshot scanner sees a consistent cut. Uses a *blocking* exclusive acquire: a
-  // non-blocking try_lock-based group clear livelocks when >=2 snapshot threads hold SHARED
-  // continuously (no gap for try_lock to win) -- caught by unittests_snapshot. (CBRD-26971)
-  {
-    std::unique_lock<std::shared_mutex> px (m_procarray_lock);
-    apply_clear (tran_index, mvccid);
-  }
+  // CBRD-26971 lock-free: the slot is single-writer (this tran_index); apply_clear orders the
+  // slot clear + last_completed advance before the m_completion_count bump (seqlock version).
+  apply_clear (tran_index, mvccid);
 
   // Advance the global oldest-active (indicative for vacuum) from a lock-free slot scan. The scanned
   // minimum is a valid lower bound (newer transactions get higher MVCCIDs), and advance_oldest_active
@@ -622,9 +617,7 @@ mvcctable::retire_sub_mvccid (int tran_index, MVCCID sub_mvccid)
   assert (tran_index >= 0 && (size_t) tran_index < m_active_mvccids_size);
   // A completed sub becomes visible to others (its rows are no longer hidden by the sub id),
   // so drop it from the active cache. sub_ids is a strict stack, so the completing sub is the
-  // most-recently published (top). Advance completion markers (EXCLUSIVE) so the snapshot cut
-  // and the Phase-2 completion counter stay consistent.
-  std::unique_lock<std::shared_mutex> px (m_procarray_lock);
+  // most-recently published (top). The slot is single-writer (this tran_index); no lock needed.
   mvcc_active_slot &slot = m_active_mvccids[tran_index];
   int n = slot.n_subids.load (std::memory_order_relaxed);
   if (n > 0 && slot.subids[n - 1].load (std::memory_order_relaxed) == sub_mvccid)
