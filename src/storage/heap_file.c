@@ -75,8 +75,7 @@
 #include "string_buffer.hpp"
 #include "tde.h"
 
-/* parallel SHOW HEAP CAPACITY (storage-layer reducer): reuse generic parallel primitives,
- * not the xasl-coupled px_scan framework. valid in SERVER_MODE / SA_MODE only (same as external_sort.c). */
+/* Headers for the parallel SHOW HEAP CAPACITY */
 #include "px_worker_manager.hpp"
 #include "px_callable_task.hpp"
 #include "px_parallel.hpp"
@@ -492,6 +491,23 @@ struct heap_show_scan_ctx
   int hfids_count;		/* Count of above hfids array */
 };
 
+/*
+ * heap_capacity_info - storage facts/capacity of a heap. Shared output shape of heap_get_capacity
+ *   (serial) and heap_get_capacity_internal_parallel: num_* are totals, avg_* are final per-page averages.
+ */
+typedef struct heap_capacity_info HEAP_CAPACITY_INFO;
+struct heap_capacity_info
+{
+  INT64 num_recs;		/* total number of objects */
+  INT64 num_recs_relocated;	/* number of REC_RELOCATION records */
+  INT64 num_recs_inovf;		/* number of records with overflow data */
+  INT64 num_pages;		/* total heap pages (including overflow) */
+  int avg_freespace;		/* average free space per page */
+  int avg_freespace_nolast;	/* average free space per page, excluding the last page */
+  int avg_reclength;		/* average object length */
+  int avg_overhead;		/* average overhead per page */
+};
+
 static int heap_Maxslotted_reclength;
 static int heap_Slotted_overhead = 4;	/* sizeof (SPAGE_SLOT) */
 static const int heap_Find_best_page_limit = 100;
@@ -680,9 +696,11 @@ static SCAN_CODE heap_get_if_diff_chn (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, 
 				       bool ispeeking, int chn, MVCC_SNAPSHOT * mvcc_snapshot);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_reclen);
-static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
-			      INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
-			      int *avg_reclength, int *avg_overhead);
+static int heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity);
+static int heap_get_capacity_internal_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
+					      INT64 * num_recs_relocated, INT64 * num_recs_inovf, INT64 * num_pages,
+					      int *avg_freespace, int *avg_freespace_nolast, int *avg_reclength,
+					      int *avg_overhead);
 
 static int heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_reset);
 static int heap_attrinfo_recache (THREAD_ENTRY * thread_p, REPR_ID reprid, HEAP_CACHE_ATTRINFO * attr_info);
@@ -9451,9 +9469,7 @@ heap_estimate_avg_length (THREAD_ENTRY * thread_p, const HFID * hfid, int &avg_r
 }
 
 #if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-/* Parallel SHOW HEAP CAPACITY reducer. Reuses the generic parallel primitives
- * (parallel_query::worker_manager / callable_task / compute_parallel_degree), which are linked
- * only into the server. SA / CS builds compile this out and use the serial heap_get_capacity. */
+/* Parallel reducer for SHOW HEAP CAPACITY (entry point: heap_get_capacity_internal_parallel). */
 
 /* heap_capacity_accum - per-worker partial sums, merged after join. Zero-initialize before use. */
 typedef struct heap_capacity_accum HEAP_CAPACITY_ACCUM;
@@ -9681,78 +9697,35 @@ heap_capacity_max_vpid_page (const HFID * hfid, const FILE_FTAB_COLLECTOR * coll
 }
 
 /*
- * heap_get_capacity_parallel () - parallel variant of heap_get_capacity for SHOW HEAP CAPACITY.
- *   return: always NO_ERROR. Success/failure is reported via *applied, NOT the return value.
- *           This function is "best-effort": if it cannot parallelize for any reason it does not
- *           raise an error - it just declines and lets the caller run the serial path. (Raising an
- *           error here would abort SHOW HEAP CAPACITY, which we never want while serial can answer.)
- *   hfid(in): heap file
- *   applied(out): true  -> the 8 out-params hold the parallel result; caller uses them.
- *                 false -> declined; caller MUST run the serial heap_get_capacity instead
- *                          (small heap / parallelism off / no idle workers / setup or worker error).
- *   <remaining out-params>: same as heap_get_capacity (meaningful only when *applied == true).
- *
- * Note: reuses only the generic parallel primitives (ftab_set / worker_manager / callable_task /
- *       compute_parallel_degree), not the xasl-coupled px_scan framework.
+ * heap_get_capacity_internal_parallel () - parallel implementation behind heap_get_capacity.
+ *   return: NO_ERROR on success; a real error code on sector-enumeration failure or a genuine
+ *           worker error (the dispatcher propagates it, with no serial fallback).
+ *   wm(in): worker pool already reserved by the dispatcher; its lifecycle is owned by the caller.
+ *   n_workers(in): number of reserved workers (>= 2); the heap sectors are split this many ways.
+ *   capacity(out): the 8 capacity statistics (same as heap_get_capacity_internal_serial).
  */
 static int
-heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * applied, INT64 * num_recs,
-			    INT64 * num_recs_relocated, INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace,
-			    int *avg_freespace_nolast, int *avg_reclength, int *avg_overhead)
+heap_get_capacity_internal_parallel (THREAD_ENTRY * thread_p, const HFID * hfid,
+				     parallel_query::worker_manager * wm, int n_workers, HEAP_CAPACITY_INFO * capacity)
 {
-  int n_pages = 0;
-  UINT32 degree;
-  int n_workers;
-  parallel_query::worker_manager * wm = NULL;
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
   std::atomic < bool > failed (false);
   std::atomic < int > fail_errid (NO_ERROR);
+  int error = NO_ERROR;
 
-  /* Default to "declined". Every early return below leaves *applied == false, which tells the
-   * caller (heap_capacity_next_scan) to run the serial heap_get_capacity. So each "return NO_ERROR"
-   * here means "give up on parallel, fall back to serial" - it is neither success nor an error. */
-  *applied = false;
+  /* The dispatcher (heap_get_capacity) already decided to parallelize, reserved n_workers (>= 2),
+   * and owns the worker-pool lifecycle; this function performs only the scan work. */
 
-  /* 1. decide parallel degree by heap page count.
-   *    page count unavailable -> cannot size the work; decline -> caller runs serial. */
-  if (file_get_num_user_pages (thread_p, &hfid->vfid, &n_pages) != NO_ERROR)
-    {
-      er_clear ();
-      return NO_ERROR;
-    }
-  degree = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
-  if (degree < 2)
-    {
-      /* heap too small or parallelism disabled -> not worth it; decline -> caller runs serial. */
-      return NO_ERROR;
-    }
-
-  /* 2. reserve workers (best-effort: may grant fewer than requested) */
-  wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
-  if (wm == NULL)
-    {
-      /* worker pool busy with other queries -> decline -> caller runs serial (never blocks). */
-      return NO_ERROR;
-    }
-  n_workers = wm->get_reserved_workers ();
-  if (n_workers < 2)
-    {
-      /* fewer than 2 workers granted -> not worth it; release and decline -> caller runs serial. */
-      wm->release_workers ();
-      return NO_ERROR;
-    }
-
-  /* 3. collect heap data sectors and split them across workers */
-  if (file_get_all_data_sectors (thread_p, &hfid->vfid, &collector) != NO_ERROR)
+  /* collect heap data sectors and split them across workers */
+  error = file_get_all_data_sectors (thread_p, &hfid->vfid, &collector);
+  if (error != NO_ERROR)
     {
       if (collector.partsect_ftab != NULL)
 	{
 	  db_private_free_and_init (thread_p, collector.partsect_ftab);
 	}
-      er_clear ();
-      wm->release_workers ();
-      /* could not enumerate the heap's sectors -> decline -> caller runs serial. */
-      return NO_ERROR;
+      /* sector enumeration failed: propagate the error (we have committed to parallel) */
+      return error;
     }
 
   {
@@ -9792,14 +9765,14 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
       }
 
     wm->wait_workers ();
-    wm->release_workers ();
 
     if (failed.load ())
       {
 	/* a worker hit a genuine error: propagate it (no silent serial retry, which would hit the
 	 * same error and wrongly ignore ER_INTERRUPTED). */
 	int errid = fail_errid.load ();
-	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_parallel: worker error errid=%d; aborting parallel\n", errid);
+	er_log_debug (ARG_FILE_LINE, "heap_get_capacity_internal_parallel: worker error errid=%d; aborting parallel\n",
+		      errid);
 	if (errid == ER_INTERRUPTED)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
@@ -9848,36 +9821,35 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
 	    }
 	}
 
-      *num_recs = t_num_recs;
-      *num_recs_relocated = t_reloc;
-      *num_recs_inovf = t_inovf;
-      *num_pages = t_pages;
-      *avg_freespace = 0;
-      *avg_freespace_nolast = 0;
-      *avg_reclength = 0;
-      *avg_overhead = 0;
+      capacity->num_recs = t_num_recs;
+      capacity->num_recs_relocated = t_reloc;
+      capacity->num_recs_inovf = t_inovf;
+      capacity->num_pages = t_pages;
+      capacity->avg_freespace = 0;
+      capacity->avg_freespace_nolast = 0;
+      capacity->avg_reclength = 0;
+      capacity->avg_overhead = 0;
 
       if (t_pages > 0)
 	{
-	  *avg_freespace_nolast = (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
-	  *avg_freespace = (int) (t_freespace / t_pages);
-	  *avg_overhead = (int) (t_overhead / t_pages);
+	  capacity->avg_freespace_nolast =
+	    (t_pages > 1) ? (int) ((t_freespace - last_page_freespace) / (t_pages - 1)) : 0;
+	  capacity->avg_freespace = (int) (t_freespace / t_pages);
+	  capacity->avg_overhead = (int) (t_overhead / t_pages);
 	}
       if (t_num_recs != 0)
 	{
-	  *avg_reclength = (int) (t_reclength / t_num_recs);
+	  capacity->avg_reclength = (int) (t_reclength / t_num_recs);
 	}
     }
   }
 
-  /* success: the parallel result is complete -> signal the caller to use these 8 outputs. */
-  *applied = true;
   return NO_ERROR;
 }
 #endif /* SERVER_MODE */
 
 /*
- * heap_get_capacity () - Find space consumed by heap
+ * heap_get_capacity_internal_serial () - serial implementation behind heap_get_capacity
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier
  *   num_recs(in/out): Total Number of objects
@@ -9893,9 +9865,9 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, bool * a
  * Note: Find the current storage facts/capacity for given heap.
  */
 static int
-heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs, INT64 * num_recs_relocated,
-		   INT64 * num_recs_inovf, INT64 * num_pages, int *avg_freespace, int *avg_freespace_nolast,
-		   int *avg_reclength, int *avg_overhead)
+heap_get_capacity_internal_serial (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
+				   INT64 * num_recs_relocated, INT64 * num_recs_inovf, INT64 * num_pages,
+				   int *avg_freespace, int *avg_freespace_nolast, int *avg_reclength, int *avg_overhead)
 {
   VPID vpid;			/* Page-volume identifier */
   RECDES recdes;		/* Header record descriptor */
@@ -10049,6 +10021,61 @@ exit_on_error:
   assert (pg_watcher.pgptr == NULL);
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * heap_get_capacity () - Find space consumed by heap (SHOW HEAP CAPACITY entry point).
+ *   return: NO_ERROR (or a propagated error from a parallel worker)
+ *   hfid(in): Object heap file identifier
+ *   capacity(out): the storage facts/capacity (see HEAP_CAPACITY_INFO)
+ *
+ * Note: Dispatches to the parallel implementation when worthwhile (decided by
+ *       compute_parallel_degree inside heap_get_capacity_internal_parallel) and falls back to the
+ *       serial implementation otherwise. Callers need not know whether the work ran in parallel.
+ */
+static int
+heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity)
+{
+  int error_code = NO_ERROR;
+#if defined (SERVER_MODE)
+  /* parallel_query is linked into cub_server only. Decide whether to parallelize by the heap page
+   * count; if the degree warrants it and enough idle workers can be reserved, run the parallel
+   * reducer, otherwise fall through to the serial implementation. */
+  int n_pages = 0;
+
+  if (file_get_num_user_pages (thread_p, &hfid->vfid, &n_pages) != NO_ERROR)
+    {
+      er_clear ();		/* page-count probe failed; the serial path below is authoritative */
+    }
+  else
+    {
+      UINT32 degree =
+	parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN, (UINT64) n_pages, -1);
+      if (degree >= 2)
+	{
+	  parallel_query::worker_manager *wm = parallel_query::worker_manager::try_reserve_workers ((int) degree);
+	  if (wm != NULL)
+	    {
+	      int n_workers = wm->get_reserved_workers ();
+	      if (n_workers >= 2)
+		{
+		  error_code = heap_get_capacity_internal_parallel (thread_p, hfid, wm, n_workers, capacity);
+		  wm->release_workers ();
+		  return error_code;
+		}
+	      /* fewer than 2 idle workers granted; release and run serial */
+	      wm->release_workers ();
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
+
+  error_code =
+    heap_get_capacity_internal_serial (thread_p, hfid, &capacity->num_recs, &capacity->num_recs_relocated,
+				       &capacity->num_recs_inovf, &capacity->num_pages, &capacity->avg_freespace,
+				       &capacity->avg_freespace_nolast, &capacity->avg_reclength,
+				       &capacity->avg_overhead);
+  return error_code;
 }
 
 /*
@@ -15467,8 +15494,8 @@ heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 
   /* Go to each file, check only the heap files */
   error_code =
-    heap_get_capacity (thread_p, hfid, &num_recs, &num_recs_relocated, &num_recs_inovf, &num_pages, &avg_freespace,
-		       &avg_freespace_nolast, &avg_reclength, &avg_overhead);
+    heap_get_capacity_internal_serial (thread_p, hfid, &num_recs, &num_recs_relocated, &num_recs_inovf, &num_pages,
+				       &avg_freespace, &avg_freespace_nolast, &avg_reclength, &avg_overhead);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -19263,14 +19290,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   char *classname = NULL;
   char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
-  INT64 num_recs = 0;
-  INT64 num_relocated_recs = 0;
-  INT64 num_overflowed_recs = 0;
-  INT64 num_pages = 0;
-  int avg_rec_len = 0;
-  int avg_free_space_per_page = 0;
-  int avg_free_space_without_last_page = 0;
-  int avg_overhead_per_page = 0;
+  HEAP_CAPACITY_INFO capacity;
   int val = 0;
   int idx = 0;
   FILE_DESCRIPTORS fdes;
@@ -19284,31 +19304,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
 
   hfid_p = &ctx->hfids[cursor];
 
-#if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
-  {
-    /* Try the parallel page reducer; it declines (parallel_applied == false) for small heaps,
-     * when no workers are available, or on any setup/worker error, in which case we fall back to
-     * the serial heap_get_capacity. SHOW HEAP CAPACITY only. */
-    bool parallel_applied = false;
-
-    error =
-      heap_get_capacity_parallel (thread_p, hfid_p, &parallel_applied, &num_recs, &num_relocated_recs,
-				  &num_overflowed_recs, &num_pages, &avg_free_space_per_page,
-				  &avg_free_space_without_last_page, &avg_rec_len, &avg_overhead_per_page);
-    if (error == NO_ERROR && !parallel_applied)
-      {
-	error =
-	  heap_get_capacity (thread_p, hfid_p, &num_recs, &num_relocated_recs, &num_overflowed_recs, &num_pages,
-			     &avg_free_space_per_page, &avg_free_space_without_last_page, &avg_rec_len,
-			     &avg_overhead_per_page);
-      }
-  }
-#else /* SERVER_MODE */
-  error =
-    heap_get_capacity (thread_p, hfid_p, &num_recs, &num_relocated_recs, &num_overflowed_recs, &num_pages,
-		       &avg_free_space_per_page, &avg_free_space_without_last_page, &avg_rec_len,
-		       &avg_overhead_per_page);
-#endif /* SERVER_MODE */
+  error = heap_get_capacity (thread_p, hfid_p, &capacity);
   if (error != NO_ERROR)
     {
       goto cleanup;
@@ -19370,28 +19366,28 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   db_make_int (out_values[idx], hfid_p->hpgid);
   idx++;
 
-  db_make_bigint (out_values[idx], num_recs);
+  db_make_bigint (out_values[idx], capacity.num_recs);
   idx++;
 
-  db_make_bigint (out_values[idx], num_relocated_recs);
+  db_make_bigint (out_values[idx], capacity.num_recs_relocated);
   idx++;
 
-  db_make_bigint (out_values[idx], num_overflowed_recs);
+  db_make_bigint (out_values[idx], capacity.num_recs_inovf);
   idx++;
 
-  db_make_bigint (out_values[idx], num_pages);
+  db_make_bigint (out_values[idx], capacity.num_pages);
   idx++;
 
-  db_make_int (out_values[idx], avg_rec_len);
+  db_make_int (out_values[idx], capacity.avg_reclength);
   idx++;
 
-  db_make_int (out_values[idx], avg_free_space_per_page);
+  db_make_int (out_values[idx], capacity.avg_freespace);
   idx++;
 
-  db_make_int (out_values[idx], avg_free_space_without_last_page);
+  db_make_int (out_values[idx], capacity.avg_freespace_nolast);
   idx++;
 
-  db_make_int (out_values[idx], avg_overhead_per_page);
+  db_make_int (out_values[idx], capacity.avg_overhead);
   idx++;
 
   db_make_int (out_values[idx], repr->id);
