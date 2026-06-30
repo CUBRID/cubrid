@@ -282,41 +282,52 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
     }
   else
     {
-      // Phase 1: build the active set (xip) by scanning ProcArray slots under SHARED lock,
-      // replacing the history-ring copy + seqlock retry. xmax (highest_completed + 1) = last completed + 1.
-      std::shared_lock<std::shared_mutex> shared (m_procarray_lock);
-
-      // read the completion counter under SHARED so it is consistent with this scan
-      // (completions take the lock EXCLUSIVE, so none can interleave the scan).
-      tdes.mvccinfo.snapshot.cached_completion_count = m_completion_count.load (std::memory_order_acquire);
-
-      highest_completed_mvccid = m_last_completed_mvccid.load (std::memory_order_acquire);
-      MVCCID_FORWARD (highest_completed_mvccid);
-
+      // CBRD-26971 lock-free seqlock scan: read the completion counter (v1), build the active set,
+      // re-read the counter (v2); retry while they differ. Completion bumps the counter (release)
+      // AFTER clearing its slot and advancing last_completed, so a stable v1==v2 window yields a
+      // consistent cut without any lock.
+      UINT64 v1, v2;
       std::vector<MVCCID> &xip = tdes.mvccinfo.snapshot.m_xip;
-      xip.clear ();
-      for (size_t i = 0; i < m_active_mvccids_size; i++)
+      do
 	{
-	  const mvcc_active_slot &slot = m_active_mvccids[i];
-	  MVCCID id = slot.mvccid.load (std::memory_order_acquire);
-	  if (MVCCID_IS_VALID (id))
+	  v1 = m_completion_count.load (std::memory_order_acquire);
+
+	  highest_completed_mvccid = m_last_completed_mvccid.load (std::memory_order_acquire);
+	  MVCCID_FORWARD (highest_completed_mvccid);
+
+	  xip.clear ();
+	  for (size_t i = 0; i < m_active_mvccids_size; i++)
 	    {
-	      xip.push_back (id);
-	    }
-	  // instant-lock sub depth is ~1; the fixed sub-cache is never expected to overflow.
-	  assert (!slot.subid_overflow.load (std::memory_order_acquire));
-	  int ns = slot.n_subids.load (std::memory_order_acquire);
-	  for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
-	    {
-	      MVCCID sid = slot.subids[k].load (std::memory_order_acquire);
-	      if (MVCCID_IS_VALID (sid))
+	      const mvcc_active_slot &slot = m_active_mvccids[i];
+	      MVCCID id = slot.mvccid.load (std::memory_order_acquire);
+	      if (MVCCID_IS_VALID (id))
 		{
-		  xip.push_back (sid);
+		  xip.push_back (id);
+		}
+	      // n_subids (acquire) is read BEFORE subids[] so the publish_sub release on n_subids
+	      // makes the subid stores visible (no torn read).
+	      int ns = slot.n_subids.load (std::memory_order_acquire);
+	      for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
+		{
+		  MVCCID sid = slot.subids[k].load (std::memory_order_acquire);
+		  if (MVCCID_IS_VALID (sid))
+		    {
+		      xip.push_back (sid);
+		    }
 		}
 	    }
+
+	  v2 = m_completion_count.load (std::memory_order_acquire);
+	  if (v1 != v2)
+	    {
+	      snapshot_retry_count++;
+	    }
 	}
+      while (v1 != v2);
+
       std::sort (xip.begin (), xip.end ());
       xip.erase (std::unique (xip.begin (), xip.end ()), xip.end ());
+      tdes.mvccinfo.snapshot.cached_completion_count = v1;
     }
 
   /* update lowest active mvccid computed for the most recent snapshot */
@@ -492,17 +503,24 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 void
 mvcctable::apply_clear (int tran_index, MVCCID mvccid)
 {
-  // caller holds m_procarray_lock EXCLUSIVE. Clear the slot + advance the completion markers.
+  // CBRD-26971 lock-free: the slot is single-writer (this tran_index), so no lock is needed.
+  // Ordering: clear the slot (release) and advance last_completed (release) BEFORE bumping
+  // m_completion_count (release, LAST) so a seqlock reader that sees the new count also sees
+  // the slot clear and the advanced xmax.
   mvcc_active_slot &slot = m_active_mvccids[tran_index];
-  slot.mvccid.store (MVCCID_NULL, std::memory_order_relaxed);
+  slot.mvccid.store (MVCCID_NULL, std::memory_order_release);
   slot.n_subids.store (0, std::memory_order_relaxed);
   slot.subid_overflow.store (false, std::memory_order_relaxed);
-  MVCCID last = m_last_completed_mvccid.load (std::memory_order_relaxed);
-  if (MVCC_ID_PRECEDES (last, mvccid))
+
+  MVCCID cur = m_last_completed_mvccid.load (std::memory_order_relaxed);
+  while (MVCC_ID_PRECEDES (cur, mvccid)
+	 && !m_last_completed_mvccid.compare_exchange_weak (cur, mvccid, std::memory_order_release,
+	     std::memory_order_relaxed))
     {
-      m_last_completed_mvccid.store (mvccid, std::memory_order_relaxed);
+      /* cur reloaded by compare_exchange_weak; retry */
     }
-  m_completion_count.fetch_add (1, std::memory_order_relaxed);
+
+  m_completion_count.fetch_add (1, std::memory_order_release);
 }
 
 MVCCID
