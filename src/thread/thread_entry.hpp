@@ -215,6 +215,11 @@ namespace cubthread
       // The rules of thumbs is to always use private members. Until a complete refactoring, these members will remain
       // public
       int index;			/* thread entry index */
+      int pgbuf_fix_req_cnt;	/* per-thread page-fix request count; pgbuf monitor shard (see page_buffer.c).
+				 * Lives in the thread entry (always cache-hot on the fix path) instead of a global
+				 * counter, whose separate cache line was reloaded on every page fix. Single-writer
+				 * (this thread); the periodic LRU-quota consumer sums across entries for a coarse ratio. */
+      int pgbuf_pg_unfix_cnt;	/* per-thread page-unfix count; pgbuf monitor shard (see above) */
       thread_type type;		/* thread type */
       thread_id_t emulate_tid;	/* emulated thread id; applies to non-worker threads, when works on behalf of a worker
 				   * thread */
