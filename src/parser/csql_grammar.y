@@ -7390,7 +7390,12 @@ show_stmt
 			    || type == SHOWSTMT_HEAP_CAPACITY || type == SHOWSTMT_ALL_HEAP_CAPACITY)
 			  {
 			    /* append the EXACT flag: 1 = EXACT (S_LOCK), 0 = default (IS_LOCK) */
-			    args->next = pt_make_integer_value (this_parser, $5);
+			    PT_NODE *exact_flag = pt_make_integer_value (this_parser, $5);
+			    if (exact_flag == NULL)
+			      {
+			        PT_INTERNAL_ERROR (this_parser, "allocate new node");
+			      }
+			    args->next = exact_flag;
 			  }
 
 			node = pt_make_query_showstmt (this_parser, type, args, 0, NULL);
