@@ -9698,48 +9698,30 @@ heap_capacity_max_vpid_page (const HFID * hfid, const FILE_FTAB_COLLECTOR * coll
 
 /*
  * heap_get_capacity_internal_parallel () - parallel implementation behind heap_get_capacity.
- *   return: NO_ERROR on success; a real error code on sector-enumeration failure or a genuine
- *           worker error (the dispatcher propagates it, with no serial fallback).
- *   wm(in): worker pool already reserved by the dispatcher; its lifecycle is owned by the caller.
+ *   return: NO_ERROR on success; ER_INTERRUPTED / ER_FAILED on a genuine worker error (propagated).
+ *   wm(in): worker pool reserved by the dispatcher; its lifecycle is owned by the caller.
  *   n_workers(in): number of reserved workers (>= 2); the heap sectors are split this many ways.
+ *   collector(in): heap data sectors enumerated by the dispatcher (caller owns and frees it).
  *   capacity(out): the 8 capacity statistics (same as heap_get_capacity_internal_serial).
  */
 static int
-heap_get_capacity_internal_parallel (THREAD_ENTRY * thread_p, const HFID * hfid,
-				     parallel_query::worker_manager * wm, int n_workers, HEAP_CAPACITY_INFO * capacity)
+heap_get_capacity_internal_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, parallel_query::worker_manager * wm,
+				     int n_workers, FILE_FTAB_COLLECTOR * collector, HEAP_CAPACITY_INFO * capacity)
 {
-  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
   std::atomic < bool > failed (false);
   std::atomic < int > fail_errid (NO_ERROR);
-  int error = NO_ERROR;
 
-  /* The dispatcher (heap_get_capacity) already decided to parallelize, reserved n_workers (>= 2),
-   * and owns the worker-pool lifecycle; this function performs only the scan work. */
-
-  /* collect heap data sectors and split them across workers */
-  error = file_get_all_data_sectors (thread_p, &hfid->vfid, &collector);
-  if (error != NO_ERROR)
-    {
-      if (collector.partsect_ftab != NULL)
-	{
-	  db_private_free_and_init (thread_p, collector.partsect_ftab);
-	}
-      /* sector enumeration failed: propagate the error (we have committed to parallel) */
-      return error;
-    }
+  /* The dispatcher (heap_get_capacity) owns parallel eligibility and resources: it reserved
+   * n_workers (>= 2), enumerated the heap sectors (collector), and frees the collector; this
+   * function performs only the scan work. */
 
   {
     ftab_set fs;
-    fs.convert (&collector);
+    fs.convert (collector);
 
-    /* compute the "last page" (largest-VPID) once before the collector is freed */
+    /* compute the "last page" (largest-VPID) once */
     VPID last_page_vpid = VPID_INITIALIZER;
-    bool have_last_page = heap_capacity_max_vpid_page (hfid, &collector, &last_page_vpid);
-
-    if (collector.partsect_ftab != NULL)
-      {
-	db_private_free_and_init (thread_p, collector.partsect_ftab);
-      }
+    bool have_last_page = heap_capacity_max_vpid_page (hfid, collector, &last_page_vpid);
 
     std::vector < ftab_set > slices = fs.split (n_workers);
     fs.clear ();
@@ -10059,12 +10041,45 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INF
 	      int n_workers = wm->get_reserved_workers ();
 	      if (n_workers >= 2)
 		{
-		  error_code = heap_get_capacity_internal_parallel (thread_p, hfid, wm, n_workers, capacity);
+		  /* final eligibility step: enumerate the heap's data sectors (parallel-only prep) */
+		  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+		  int setup = file_get_all_data_sectors (thread_p, &hfid->vfid, &collector);
+
+		  if (setup == NO_ERROR)
+		    {
+		      error_code =
+			heap_get_capacity_internal_parallel (thread_p, hfid, wm, n_workers, &collector, capacity);
+		      if (collector.partsect_ftab != NULL)
+			{
+			  db_private_free_and_init (thread_p, collector.partsect_ftab);
+			}
+		      wm->release_workers ();
+		      return error_code;	/* success, or a genuine worker error -> propagate */
+		    }
+
+		  /* sector enumeration failed (parallel-only prep). file_get_all_data_sectors collapses the
+		   * underlying error to ER_FAILED, so inspect the error stack (not the return code) for a real
+		   * interrupt and propagate it -- otherwise a cancelled query would silently fall through to
+		   * serial and return a result. Any other failure does fall back to the serial scan, which
+		   * walks the heap chain (a different access path) and may still answer. */
+		  int setup_errid = er_errid ();
+		  if (collector.partsect_ftab != NULL)
+		    {
+		      db_private_free_and_init (thread_p, collector.partsect_ftab);
+		    }
 		  wm->release_workers ();
-		  return error_code;
+		  if (setup_errid == ER_INTERRUPTED)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+		      return ER_INTERRUPTED;
+		    }
+		  er_clear ();
 		}
-	      /* fewer than 2 idle workers granted; release and run serial */
-	      wm->release_workers ();
+	      else
+		{
+		  /* fewer than 2 idle workers granted; release and run serial */
+		  wm->release_workers ();
+		}
 	    }
 	}
     }
