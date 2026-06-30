@@ -447,7 +447,7 @@ namespace parallel_query
 		}
 	      else if (need_skip_next)
 		{
-		  need_skip_next = false;	/* reset */
+		  need_skip_next = false;	/* init */
 
 		  if (is_outer_join)
 		    {
@@ -1166,7 +1166,7 @@ cleanup:
 		}
 	      else if (need_skip_next)
 		{
-		  need_skip_next = false;	/* reset */
+		  need_skip_next = false;	/* init */
 		  continue;
 		}
 	      else
@@ -1212,7 +1212,7 @@ cleanup:
 		    {
 		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
-		      need_skip_next = false;	/* reset */
+		      need_skip_next = false;	/* init */
 		      continue;
 		    }
 		  else
@@ -1457,7 +1457,7 @@ cleanup:
 		}
 	      else if (need_skip_next)
 		{
-		  need_skip_next = false;	/* reset */
+		  need_skip_next = false;	/* init */
 
 		  if (m_context->after_join_pred != nullptr)
 		    {
@@ -1555,7 +1555,7 @@ cleanup:
 		    {
 		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
-		      need_skip_next = false;	/* reset */
+		      need_skip_next = false;	/* init */
 		      continue;
 		    }
 		  else
