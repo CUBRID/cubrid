@@ -228,6 +228,7 @@ struct groupby_state
   PRED_EXPR *grbynum_pred;
   DB_VALUE *grbynum_val;
   int grbynum_flag;
+  INT64 grbynum_limit;
   XASL_NODE *eptr_list;
   AGGREGATE_TYPE *g_output_agg_list;
   REGU_VARIABLE_LIST g_regu_list;
@@ -4319,6 +4320,67 @@ exit_on_error:
 }
 
 /*
+ * qexec_grbynum_pred_extract_limit () - Resolve the GROUP BY ... LIMIT upper bound
+ *   from gbstate->grbynum_pred. Returns the bound (>= 0) or -1 if not extractable.
+ *
+ *   The parser builds gbstate->grbynum_pred in one of two shapes
+ *   (see pt_limit_to_numbering_expr):
+ *     LIMIT n     -> a single COMP_EVAL_TERM with rel_op R_LE.
+ *     LIMIT off,n -> B_AND of two COMP_EVAL_TERMs: lhs = R_GT (offset),
+ *                    rhs = R_LE (upper bound = off + n).
+ *   In both shapes, the rhs of the R_LE term holds the upper bound.
+ */
+static INT64
+qexec_grbynum_pred_extract_limit (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
+{
+  PRED_EXPR *pe = gbstate->grbynum_pred;
+  PRED_EXPR *le_term;
+  DB_VALUE *peeked = NULL;
+  DB_VALUE coerced;
+  INT64 result = -1;
+
+  if (pe == NULL)
+    {
+      return -1;
+    }
+
+  if (pe->type == T_PRED && pe->pe.m_pred.bool_op == B_AND)
+    {
+      le_term = pe->pe.m_pred.rhs;
+    }
+  else
+    {
+      le_term = pe;
+    }
+
+  if (le_term == NULL
+      || le_term->type != T_EVAL_TERM
+      || le_term->pe.m_eval_term.et_type != T_COMP_EVAL_TERM || le_term->pe.m_eval_term.et.et_comp.rel_op != R_LE)
+    {
+      return -1;
+    }
+
+  if (fetch_peek_dbval (thread_p, le_term->pe.m_eval_term.et.et_comp.rhs,
+			&gbstate->xasl_state->vd, NULL, NULL, NULL, &peeked) != NO_ERROR
+      || peeked == NULL || DB_IS_NULL (peeked))
+    {
+      return -1;
+    }
+
+  db_make_bigint (&coerced, 0);
+  if (tp_value_coerce (peeked, &coerced, tp_domain_resolve_default (DB_TYPE_BIGINT)) == DOMAIN_COMPATIBLE)
+    {
+      INT64 v = db_get_bigint (&coerced);
+      if (v >= 0)
+	{
+	  result = v;
+	}
+    }
+  pr_clear_value (&coerced);
+  return result;
+}
+
+/*
  * qexec_eval_grbynum_pred () -
  *   return:
  *   gbstate(in)        :
@@ -4354,6 +4416,21 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	      && !(gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_CHECK))
 	    {
 	      gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_SCAN_CHECK;
+	    }
+	  /* Fast-stop: extract the LIMIT upper bound on first V_TRUE, cache it, and stop
+	     once the in-range group count reaches it. Without this, one extra group is
+	     accumulated and discarded before V_FALSE triggers stop. Non-LIMIT predicates
+	     yield -1 and are skipped. WITH ROLLUP excluded. */
+	  if (!gbstate->with_rollup && gbstate->grbynum_val != NULL)
+	    {
+	      if (gbstate->grbynum_limit < 0)
+		{
+		  gbstate->grbynum_limit = qexec_grbynum_pred_extract_limit (thread_p, gbstate);
+		}
+	      if (gbstate->grbynum_limit >= 0 && gbstate->grbynum_val->data.bigint >= gbstate->grbynum_limit)
+		{
+		  gbstate->grbynum_flag |= XASL_G_GRBYNUM_FLAG_SCAN_STOP;
+		}
 	    }
 	  break;
 
@@ -4420,6 +4497,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
   gbstate->grbynum_pred = grbynum_pred;
   gbstate->grbynum_val = grbynum_val;
   gbstate->grbynum_flag = grbynum_flag;
+  gbstate->grbynum_limit = -1;
   gbstate->eptr_list = eptr_list;
   gbstate->g_output_agg_list = g_agg_list;
   gbstate->g_regu_list = g_regu_list;
@@ -5709,6 +5787,7 @@ wrapup:
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
+	xasl->groupby_stats.input_rows = gbstate.input_recs;
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {

@@ -3363,6 +3363,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
+      json_object_set_new (groupby, "input_rows", json_integer (gstats->input_rows));
       json_object_set_new (proc, "GROUPBY", groupby);
     }
 
@@ -3926,6 +3927,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
+      fprintf (fp, ", input_rows: %d", gstats->input_rows);
+
 
       fprintf (fp, ", rows: %d)\n", gstats->rows);
     }
