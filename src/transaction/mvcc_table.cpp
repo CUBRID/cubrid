@@ -429,26 +429,37 @@ mvcctable::compute_oldest_visible_mvccid () const
 bool
 mvcctable::is_active (MVCCID mvccid) const
 {
-  // CBRD-26971 Phase 1: active iff the MVCCID is currently published in some ProcArray slot
-  // (as a parent or an active sub). Scanned under SHARED m_procarray_lock.
-  std::shared_lock<std::shared_mutex> shared (m_procarray_lock);
-  for (size_t i = 0; i < m_active_mvccids_size; i++)
+  // CBRD-26971 lock-free: active iff mvccid is published in some slot (parent or active sub).
+  // seqlock retry: re-scan if a completion bumped the version mid-scan, so the answer reflects
+  // a consistent cut. No lock.
+  UINT64 v1, v2;
+  bool found;
+  do
     {
-      const mvcc_active_slot &slot = m_active_mvccids[i];
-      if (slot.mvccid.load (std::memory_order_acquire) == mvccid)
+      v1 = m_completion_count.load (std::memory_order_acquire);
+      found = false;
+      for (size_t i = 0; i < m_active_mvccids_size && !found; i++)
 	{
-	  return true;
-	}
-      int ns = slot.n_subids.load (std::memory_order_acquire);
-      for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
-	{
-	  if (slot.subids[k].load (std::memory_order_acquire) == mvccid)
+	  const mvcc_active_slot &slot = m_active_mvccids[i];
+	  if (slot.mvccid.load (std::memory_order_acquire) == mvccid)
 	    {
-	      return true;
+	      found = true;
+	      break;
+	    }
+	  int ns = slot.n_subids.load (std::memory_order_acquire);
+	  for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
+	    {
+	      if (slot.subids[k].load (std::memory_order_acquire) == mvccid)
+		{
+		  found = true;
+		  break;
+		}
 	    }
 	}
+      v2 = m_completion_count.load (std::memory_order_acquire);
     }
-  return false;
+  while (v1 != v2);
+  return found;
 }
 
 void
