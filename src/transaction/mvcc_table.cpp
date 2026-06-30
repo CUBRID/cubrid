@@ -304,6 +304,8 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 		{
 		  xip.push_back (id);
 		}
+	      // instant-lock sub depth is ~1; the fixed sub-cache is never expected to overflow.
+	      assert (!slot.subid_overflow.load (std::memory_order_acquire));
 	      // n_subids (acquire) is read BEFORE subids[] so the publish_sub release on n_subids
 	      // makes the subid stores visible (no torn read).
 	      int ns = slot.n_subids.load (std::memory_order_acquire);
@@ -657,12 +659,17 @@ mvcctable::retire_sub_mvccid (int tran_index, MVCCID sub_mvccid)
 	  slot.subid_overflow.store (false, std::memory_order_relaxed);
 	}
     }
-  MVCCID last = m_last_completed_mvccid.load (std::memory_order_relaxed);
-  if (MVCC_ID_PRECEDES (last, sub_mvccid))
+  // CBRD-26971: lock-free seqlock readers observe m_completion_count with acquire, so the version
+  // bump must be release (LAST) and last_completed must advance with release, otherwise a reader
+  // seeing the new count may not yet see this sub's n_subids decrement.
+  MVCCID cur = m_last_completed_mvccid.load (std::memory_order_relaxed);
+  while (MVCC_ID_PRECEDES (cur, sub_mvccid)
+	 && !m_last_completed_mvccid.compare_exchange_weak (cur, sub_mvccid, std::memory_order_release,
+	     std::memory_order_relaxed))
     {
-      m_last_completed_mvccid.store (sub_mvccid, std::memory_order_relaxed);
+      /* cur reloaded; retry */
     }
-  m_completion_count.fetch_add (1, std::memory_order_relaxed);
+  m_completion_count.fetch_add (1, std::memory_order_release);
 }
 
 void
