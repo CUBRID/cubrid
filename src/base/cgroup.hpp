@@ -35,21 +35,25 @@ namespace os::cgroup
     inline constexpr const char *proc_cgroup = "/proc/self/cgroup";
   }
 
-  std::optional<std::filesystem::path> mountpoint ();
-  std::optional<std::filesystem::path> relative ();
+  std::optional<std::filesystem::path> mountpoint_v2 ();
+  std::optional<std::filesystem::path> relative_v2 ();
+
+  std::optional<std::filesystem::path> mountpoint_v1 (const std::string &controller);
+  std::optional<std::filesystem::path> relative_v1 (const std::string &controller);
 
   namespace cpu
   {
     struct context
     {
       context () :
-	max_v2 (std::nullopt),
-	effective_v2 (std::nullopt)
+	max (std::nullopt),
+	effective (std::nullopt)
       {
       }
 
-      std::optional<double> max_v2;
-      std::optional<std::set<std::size_t>> effective_v2;
+      /* cpu bandwidth limit (in cores) and effective cpuset; filled from cgroup v2 or v1 */
+      std::optional<double> max;
+      std::optional<std::set<std::size_t>> effective;
     };
 
     /* cgroup v2 */
@@ -57,6 +61,15 @@ namespace os::cgroup
     std::optional<std::set<std::size_t>> effective_v2 (std::filesystem::path path);
 
     context quota_v2 ();
+
+    /* cgroup v1 */
+    std::optional<double> max_v1 (std::filesystem::path path);
+    std::optional<std::set<std::size_t>> effective_v1 (std::filesystem::path path);
+
+    context quota_v1 ();
+
+    /* dispatch: prefer cgroup v2 (unified), fall back to v1 (legacy / hybrid) */
+    context quota ();
   }
 }
 
