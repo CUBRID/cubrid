@@ -521,7 +521,7 @@ cas_get_graceful_down_timeout (void)
 void
 cas_sig_handler (int signo)
 {
-  static int is_doing_signal_handler = 0;
+  static volatile sig_atomic_t is_doing_signal_handler = 0;
 
   if (is_doing_signal_handler)
     {
@@ -547,11 +547,51 @@ cas_sig_handler (int signo)
 #endif
 }
 
+#if !defined(WINDOWS)
+void
+cas_setup_signal_handlers (void)
+{
+  struct sigaction sa;
+
+  sigemptyset (&sa.sa_mask);
+
+  /* Termination signals should not use SA_RESTART; blocking syscalls must
+   * return EINTR so that graceful shutdown is not delayed by I/O. */
+  sa.sa_flags = 0;
+  sa.sa_handler = cas_sig_handler;
+  sigaction (SIGTERM, &sa, NULL);
+  sigaction (SIGINT, &sa, NULL);
+
+  /* Crash signals: SA_RESTART is acceptable. */
+  sa.sa_flags = SA_RESTART;
+  sigaction (SIGSEGV, &sa, NULL);
+  sigaction (SIGABRT, &sa, NULL);
+  sigaction (SIGFPE, &sa, NULL);
+  sigaction (SIGILL, &sa, NULL);
+  sigaction (SIGBUS, &sa, NULL);
+  sigaction (SIGSYS, &sa, NULL);
+
+  sa.sa_handler = SIG_IGN;
+  sigaction (SIGUSR1, &sa, NULL);
+  sigaction (SIGPIPE, &sa, NULL);
+  sigaction (SIGXFSZ, &sa, NULL);
+}
+#endif /* !WINDOWS */
+
 void
 cas_final (void)
 {
+#if !defined(WINDOWS)
+  struct sigaction sa;
+  sigemptyset (&sa.sa_mask);
+  sa.sa_flags = 0;
+  sa.sa_handler = SIG_IGN;
+  sigaction (SIGTERM, &sa, NULL);
+  sigaction (SIGINT, &sa, NULL);
+#else
   signal (SIGTERM, SIG_IGN);
   signal (SIGINT, SIG_IGN);
+#endif
   cas_free (false);
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
@@ -778,11 +818,16 @@ check_server_alive (const char *db_name, const char *db_host)
 }
 
 void
-query_cancel (int signo)
+query_cancel_process (void)
 {
 #if !defined(WINDOWS)
   struct timespec ts;
-  signal (signo, SIG_IGN);
+
+  if (query_cancel_pending != 1)
+    {
+      return;
+    }
+
   db_set_interrupt (1);
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;
@@ -790,6 +835,22 @@ query_cancel (int signo)
   clock_gettime (CLOCK_REALTIME, &ts);
   query_cancel_time = ts.tv_sec * 1000LL;
   query_cancel_time += (ts.tv_nsec / 1000000LL);
+
+  query_cancel_pending = 0;
+#else
+  assert (0);
+#endif /* !WINDOWS */
+}
+
+void
+query_cancel (int signo)
+{
+#if !defined(WINDOWS)
+  /* Only set the pending flag here.  The non-async-signal-safe work
+   * (db_set_interrupt, clock_gettime, shared-memory counters) is
+   * deferred to the main request-processing thread via
+   * query_cancel_process(). */
+  query_cancel_pending = 1;
   query_cancel_flag = 1;
 #else
   assert (0);
