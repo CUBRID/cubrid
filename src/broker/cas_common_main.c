@@ -818,14 +818,16 @@ check_server_alive (const char *db_name, const char *db_host)
 }
 
 void
-query_cancel (int signo)
+query_cancel_process (void)
 {
 #if !defined(WINDOWS)
   struct timespec ts;
 
-  /* Do not change the signal disposition to SIG_IGN here.  The handler
-   * must remain installed during a long-running request so that repeated
-   * cancel signals are not lost. */
+  if (query_cancel_pending != 1)
+    {
+      return;
+    }
+
   db_set_interrupt (1);
   as_info->num_interrupts %= MAX_DIAG_DATA_VALUE;
   as_info->num_interrupts++;
@@ -833,6 +835,22 @@ query_cancel (int signo)
   clock_gettime (CLOCK_REALTIME, &ts);
   query_cancel_time = ts.tv_sec * 1000LL;
   query_cancel_time += (ts.tv_nsec / 1000000LL);
+
+  query_cancel_pending = 0;
+#else
+  assert (0);
+#endif /* !WINDOWS */
+}
+
+void
+query_cancel (int signo)
+{
+#if !defined(WINDOWS)
+  /* Only set the pending flag here.  The non-async-signal-safe work
+   * (db_set_interrupt, clock_gettime, shared-memory counters) is
+   * deferred to the main request-processing thread via
+   * query_cancel_process(). */
+  query_cancel_pending = 1;
   query_cancel_flag = 1;
 #else
   assert (0);

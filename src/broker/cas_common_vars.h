@@ -25,6 +25,8 @@
 
 #ident "$Id$"
 
+#include <signal.h>
+
 #include "broker_shm.h"
 #include "cas_protocol.h"
 #include "cas_error.h"
@@ -80,6 +82,7 @@ extern int tran_timeout;
 extern int query_timeout;
 extern INT64 query_cancel_time;
 extern volatile sig_atomic_t query_cancel_flag;
+extern volatile sig_atomic_t query_cancel_pending;
 
 /* Error handling */
 extern int errors_in_transaction;
