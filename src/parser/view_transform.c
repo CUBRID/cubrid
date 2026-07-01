@@ -7162,14 +7162,11 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	{
 	  dinfo = &derived_table->info.dblink_table;
 
-	  /* UPDATE/DELETE re-translate their WHERE subqueries: pt_to_delete_xasl / pt_to_update_xasl
-	   * copy the already-translated search condition into an internal scan query and translate it
-	   * again.  A non-correlated dblink scalar subquery had its WHERE pushed into rewritten (and the
-	   * local WHERE term consumed) on the first pass; the copy carries rewritten but the WHERE is
-	   * gone, so it cannot be re-pushed.  mq_dblink_clear_corr_keys below resets rewritten, which
-	   * would send the bare "SELECT * FROM t" and make a scalar subquery return every row.  Snapshot
-	   * a finalized non-correlated rewrite (corr keys captured BEFORE the clear zeroes the count) and
-	   * restore it after the correlated-detection block. */
+	  /* UPDATE/DELETE re-translate their WHERE subquery (pt_to_delete_xasl / pt_to_update_xasl build
+	   * the scan query from a copy of the already-translated search condition).  The first pass pushed
+	   * the non-correlated WHERE into rewritten and consumed the local term, so mq_dblink_clear_corr_keys
+	   * below must not drop it here (details / cases in the commit message).  Snapshot before the clear
+	   * (corr count taken before it is zeroed); restored after correlated detection. */
 	  PARSER_VARCHAR *saved_rewritten = dinfo->rewritten;
 	  bool saved_has_where = dinfo->rewritten_has_where;
 	  int saved_corr_key_count = dinfo->corr_key_count;
@@ -7223,12 +7220,13 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		}
 	    }
 
-	  /* Restore a finalized non-correlated rewrite consumed by a prior translate (see snapshot
-	   * above).  Only when neither the first pass (saved) nor this pass's correlated re-detection
-	   * (current count) produced correlated keys - so a freshly detected correlated rewrite is never
-	   * overwritten.  Placed after the detection block so an OOM re-clear inside it cannot drop the
-	   * restored value. */
-	  if (saved_rewritten != NULL && saved_has_where && saved_corr_key_count == 0 && dinfo->corr_key_count == 0)
+	  /* Restore the snapshotted non-correlated base (invariant: saved_corr_key_count == 0, i.e. it has
+	   * no "col = ?" appended yet).  If this pass detects a correlated key, mq_dblink_append_corr_pred_sql
+	   * (later, in mq_rewrite) appends " AND col = ?" to it - so the mixed case ends up correct too.
+	   * A base that already carried the key (saved_corr_key_count > 0) is left to be rebuilt; that path
+	   * is not reached by DML today (see commit message).  After the detection block so an OOM re-clear
+	   * inside it cannot drop the restored value. */
+	  if (saved_rewritten != NULL && saved_has_where && saved_corr_key_count == 0)
 	    {
 	      dinfo->rewritten = saved_rewritten;
 	      dinfo->rewritten_has_where = saved_has_where;
