@@ -13071,6 +13071,18 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       expected_size += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
+  /* OOS + bigone coexistence is forbidden. heap_attrinfo_determine_disk_layout already demoted every
+   * OOS-eligible variable column. If the inline record still exceeds the maximum slotted record length,
+   * it would have to be stored as a multipage (REC_BIGONE) overflow record while also carrying OOS OIDs.
+   * That combination is unsupported, so reject it here with a user-visible error -- before writing any OOS
+   * record -- instead of silently building it and tripping debug-only asserts on the read path. */
+  if (has_oos && heap_is_big_length ((int) expected_size))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) expected_size,
+	      heap_Maxslotted_reclength);
+      return S_ERROR;
+    }
+
   if (has_oos)
     {
       /* insert big columns to OOS */
