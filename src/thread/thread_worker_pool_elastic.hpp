@@ -118,7 +118,7 @@ namespace cubthread
       void initialize (std::size_t concurrency) override;
 
       // runtime variable parameter
-      void adjust_runtime_parameter (std::size_t max_concurrency, std::size_t max_worker);
+      void adjust_runtime_parameter (std::size_t max_concurrency);
       void adjust_workers ();
       void adjust_workers (std::unique_lock<std::mutex> &ulock);
 
@@ -242,8 +242,7 @@ namespace cubthread
     assert (max_worker >= max_concurrency);
 
     std::size_t concurrency_quotient, concurrency_remainder;
-    std::size_t worker_quotient, worker_remainder;
-    std::size_t c, w;
+    std::size_t concurrency;
     std::size_t it;
 
     m_max_concurrency.store (max_concurrency);
@@ -251,17 +250,13 @@ namespace cubthread
 
     concurrency_quotient = max_concurrency / this->m_cores.size ();
     concurrency_remainder = max_concurrency % this->m_cores.size ();
-    worker_quotient = max_worker / this->m_cores.size ();
-    worker_remainder = max_worker % this->m_cores.size ();
 
     for (it = 0; it < this->m_cores.size (); it++)
       {
 	assert (dynamic_cast<core_elastic *> (this->m_cores[it].get ()));
 
-	c = it < concurrency_remainder ? concurrency_quotient + 1 : concurrency_quotient;
-	w = it < worker_remainder ? worker_quotient + 1 : worker_quotient;
-
-	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (c, w);
+	concurrency = it < concurrency_remainder ? concurrency_quotient + 1 : concurrency_quotient;
+	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (concurrency);
       }
   }
 
@@ -349,11 +344,9 @@ namespace cubthread
 
   template <stats_t Stats>
   void
-  worker_pool_elastic<Stats>::core_elastic::adjust_runtime_parameter (std::size_t max_concurrency,
-      std::size_t max_worker)
+  worker_pool_elastic<Stats>::core_elastic::adjust_runtime_parameter (std::size_t max_concurrency)
   {
     assert (max_concurrency > 0);
-    assert (max_worker >= max_concurrency);
 
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
