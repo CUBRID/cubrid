@@ -48,8 +48,14 @@ typedef struct cub_compiled_regex cub_compiled_regex;
 #define QSTR_IS_ANY_CHAR(s)	 (QSTR_IS_CHAR(s))
 #define QSTR_IS_ANY_CHAR_OR_BIT(s)   (QSTR_IS_ANY_CHAR(s) || QSTR_IS_BIT(s))
 
-#define QSTR_IS_FIXED_LENGTH(s)      (((s) == DB_TYPE_CHAR)    || ((s) == DB_TYPE_BIT))
-#define QSTR_IS_VARIABLE_LENGTH(s)   (((s) == DB_TYPE_VARCHAR) || ((s) == DB_TYPE_VARBIT))
+/* PADDED / UNPADDED length behavior.
+ * CHAR/BIT are padded to their declared length.
+ * VARCHAR/VARBIT are not padded.
+ *
+ * Independent of physical storage layout.
+ */
+#define QSTR_IS_PADDED_LENGTH(s)     (((s) == DB_TYPE_CHAR)    || ((s) == DB_TYPE_BIT))
+#define QSTR_IS_UNPADDED_LENGTH(s)   (((s) == DB_TYPE_VARCHAR) || ((s) == DB_TYPE_VARBIT))
 
 #define QSTR_NUM_BYTES(a)            (((a) + 7) / 8)
 
