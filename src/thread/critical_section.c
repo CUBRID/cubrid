@@ -487,7 +487,6 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       thread_p = thread_get_thread_entry_info ();
     }
 
-  csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
 
@@ -498,6 +497,8 @@ csect_enter_critical_section (THREAD_ENTRY * thread_p, SYNC_CRITICAL_SECTION * c
       assert (0);
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
+
+  csect->stats->nenter++;
 
   while (csect->rwlock != 0 || csect->owner != thread_id_t ())
     {
@@ -708,7 +709,6 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       thread_p = thread_get_thread_entry_info ();
     }
 
-  csect->stats->nenter++;
 
   tsc_getticks (&start_tick);
 
@@ -719,6 +719,8 @@ csect_enter_critical_section_as_reader (THREAD_ENTRY * thread_p, SYNC_CRITICAL_S
       assert (0);
       return ER_CSS_PTHREAD_MUTEX_LOCK;
     }
+
+  csect->stats->nenter++;
 
   if (csect->rwlock < 0 && csect->owner == thread_p->get_id ())
     {

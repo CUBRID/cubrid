@@ -222,7 +222,7 @@ namespace cubthread
       int private_lru_index;	/* private lru index when transaction quota is used */
       pthread_mutex_t tran_index_lock;
       unsigned int rid;		/* request id which this thread is processing */
-      status m_status;			/* thread status */
+      std::atomic<status> m_status;			/* thread status */
 
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
@@ -238,11 +238,11 @@ namespace cubthread
       unsigned int rand_seed;	/* seed for rand_r() */
       struct drand48_data rand_buf;	/* seed for lrand48_r(), drand48_r() */
 
-      thread_resume_suspend_status resume_status;		/* resume status */
+      std::atomic<thread_resume_suspend_status> resume_status;		/* resume status */
       int request_latch_mode;	/* for page latch support */
       int request_fix_count;
       bool victim_request_fail;
-      bool interrupted;		/* is this request/transaction interrupted ? */
+      std::atomic_bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
