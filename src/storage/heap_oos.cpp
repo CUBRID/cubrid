@@ -17,7 +17,7 @@
  */
 
 /*
- * heap_oos.cpp - Heap-level OOS (Out-of-row Overflow Storage) expansion
+ * heap_oos.cpp - Heap-level OOS (Out-of-row Overflow Storage) expansion, cleanup, and diagnostics
  *
  *   Replaces inlined OOS OID slots in heap records with the actual variable-attribute bytes,
  *   producing records that look as if OOS had never been used.
@@ -25,13 +25,20 @@
 
 #include "heap_oos.hpp"
 
+#include "dbtype.h"
 #include "error_code.h"
 #include "error_manager.h"
+#include "file_manager.h"
 #include "heap_file.h"
+#include "heap_file_internal.hpp"
+#include "log_append.hpp"
+#include "log_manager.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
 #include "oos_util.hpp"
+#include "recovery.h"
+#include "slotted_page.h"
 #include "storage_common.h"
 
 #include <cassert>
@@ -59,6 +66,118 @@ struct HEAP_OOS_EXPAND_STATE
   std::vector<int> vot_raw;
   std::vector<std::vector<char>> oos_blobs;
 };
+
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
+bool
+heap_oos_find_vfid (THREAD_ENTRY *thread_p, const HFID *hfid, VFID *oos_vfid, bool docreate)
+{
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
+  LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
+  VPID vpid;			/* Page-volume identifier */
+  RECDES hdr_recdes;		/* Header record descriptor */
+  PGBUF_LATCH_MODE mode;
+  bool success;
+
+  success = true;
+  VFID_SET_NULL (oos_vfid);
+
+  addr_hdr.vfid = &hfid->vfid;
+  addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  /* Read the header page */
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (addr_hdr.pgptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  /* Peek the header record */
+  if (spage_get_record (thread_p, addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      goto exit_on_error;
+    }
+
+  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+  if (VFID_ISNULL (&heap_hdr->oos_vfid))
+    {
+      if (docreate == true)
+	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+	  /* START A TOP SYSTEM OPERATION */
+	  log_sysop_start (thread_p);
+	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Apply TDE to the new OOS file atomically with its creation.
+	   * Pattern mirrors heap_ovf_find_vfid */
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Log undo, then redo */
+	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  VFID_COPY (&heap_hdr->oos_vfid, oos_vfid);
+	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
+
+	  log_sysop_commit (thread_p);
+	}
+      else
+	{
+	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  goto end;
+	}
+    }
+  else
+    {
+      VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
+    }
+
+  goto end;
+
+exit_on_error:
+  success = false;
+
+end:
+  if (addr_hdr.pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+    }
+
+  return success;
+}
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -502,4 +621,163 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
     }
 
   return NO_ERROR;
+}
+
+/*
+ * heap_oos_next_scan () - next scan function for
+ *                         'show (all) heap oos'
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
+ *   cursor(in):
+ *   out_values(in/out):
+ *   out_cnt(in):
+ *   ptr(in): 'show heap' context
+ */
+SCAN_CODE
+heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, int out_cnt, void *ptr)
+{
+  int error = NO_ERROR;
+  HEAP_SHOW_SCAN_CTX *ctx = NULL;
+  HFID *hfid_p = NULL;
+  FILE_DESCRIPTORS fdes;
+  OOS_STATS_INFO stats;
+  VFID oos_vfid;
+  char *classname = NULL;
+  char class_oid_str[64] = { 0 };
+  INT64 oos_physical_bytes = 0;
+  INT64 oos_unused_bytes = 0;
+  int idx = 0;
+
+  ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
+
+  if (cursor >= ctx->hfids_count)
+    {
+      return S_END;
+    }
+
+  hfid_p = &ctx->hfids[cursor];
+
+  error = file_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  if (OID_ISNULL (&fdes.heap.class_oid))
+    {
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, NULL_VOLID, NULL_PAGEID, NULL_SLOTID);
+      goto cleanup;
+    }
+
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  memset (&stats, 0, sizeof (stats));
+  stats.page_size = DB_PAGESIZE;
+  VFID_SET_NULL (&stats.oos_vfid);
+
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, hfid_p, &oos_vfid, false))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  if (!VFID_ISNULL (&oos_vfid))
+    {
+      error = oos_get_stats_by_vfid (thread_p, oos_vfid, &stats);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+    }
+
+  oos_physical_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+  oos_unused_bytes = oos_physical_bytes - stats.recs_sumlen;
+  if (oos_unused_bytes < 0)
+    {
+      oos_unused_bytes = 0;
+    }
+
+  error = db_make_string_copy (out_values[idx], classname);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
+  error = db_make_string_copy (out_values[idx], class_oid_str);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], hfid_p->vfid.volid);
+  idx++;
+
+  db_make_int (out_values[idx], hfid_p->vfid.fileid);
+  idx++;
+
+  db_make_int (out_values[idx], hfid_p->hpgid);
+  idx++;
+
+  db_make_int (out_values[idx], stats.has_oos_file);
+  idx++;
+
+  if (stats.has_oos_file)
+    {
+      db_make_int (out_values[idx], stats.oos_vfid.volid);
+    }
+  else
+    {
+      db_make_null (out_values[idx]);
+    }
+  idx++;
+
+  if (stats.has_oos_file)
+    {
+      db_make_int (out_values[idx], stats.oos_vfid.fileid);
+    }
+  else
+    {
+      db_make_null (out_values[idx]);
+    }
+  idx++;
+
+  db_make_int (out_values[idx], stats.num_user_pages);
+  idx++;
+
+  db_make_int (out_values[idx], stats.page_size);
+  idx++;
+
+  db_make_int (out_values[idx], stats.num_recs);
+  idx++;
+
+  db_make_bigint (out_values[idx], stats.recs_sumlen);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_physical_bytes);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_unused_bytes);
+  idx++;
+
+  assert (idx == out_cnt);
+
+cleanup:
+
+  if (classname != NULL)
+    {
+      free_and_init (classname);
+    }
+
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
 }
