@@ -696,8 +696,9 @@ static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid
 static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
 static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
 						 size_t * offset_size_ptr);
-static size_t heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
-						   size_t * offset_size_ptr, std::vector<bool> * oos_columns, bool * has_oos);
+static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
+						size_t * offset_size_ptr, std::vector<bool> * oos_columns,
+						bool * has_oos, size_t * inline_size_after_oos_ptr);
 // *INDENT-ON*
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
@@ -12173,20 +12174,24 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 }
 
 /*
- * heap_attrinfo_determine_disksize () - Find the disk size needed to transform the object
+ * heap_attrinfo_determine_disk_layout () - Determine the disk layout needed to transform the object
  *                        represented by attr_info
- *   return: size of the object
+ *   return: NO_ERROR, or error code
  *   attr_info(in/out): The attribute information structure
  *   is_mvcc_class(in): true, if MVCC class
  *   offset_size_ptr(out): offset size
+ *   oos_columns(out): true for columns demoted to OOS
+ *   has_oos(out): true if any column is demoted to OOS
+ *   inline_size_after_oos_ptr(out): inline heap record size after OOS demotion
  *
- * Note: Find the disk size needed to transform the object represented
- * by the attribute information structure.
+ * Note: Choose the OOS layout and compute the inline heap record size. This size is not the logical
+ * record size before OOS demotion.
  */
 // *INDENT-OFF*
-static size_t
+static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
-				     std::vector<bool> * oos_columns, bool * has_oos)
+					     std::vector<bool> * oos_columns, bool * has_oos,
+					     size_t * inline_size_after_oos_ptr)
 // *INDENT-ON*
 {
 // *INDENT-OFF*
@@ -12251,7 +12256,8 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
     }
 
-  return header_size + payload_size;
+  *inline_size_after_oos_ptr = header_size + payload_size;
+  return NO_ERROR;
 }
 
 /*
@@ -12407,7 +12413,14 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
 	}
       save_meta_data = elo_p->meta_data;
       elo_p->meta_data = new_meta_data;
-      rv = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
+      {
+	HFID hfid;
+	char lob_path_prefix[PATH_MAX];
+
+	heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
+	snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
+	rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+      }
 
       free_and_init (elo_p->meta_data);
       elo_p->meta_data = save_meta_data;
@@ -12866,7 +12879,14 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	    }
 	  save_meta_data = elo_p->meta_data;
 	  elo_p->meta_data = new_meta_data;
-	  rv = db_elo_copy (db_get_elo (dbvalue), &dest_elo);
+	  {
+	    HFID hfid;
+	    char lob_path_prefix[PATH_MAX];
+
+	    heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
+	    snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
+	    rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+	  }
 
 	  free_and_init (elo_p->meta_data);
 	  elo_p->meta_data = save_meta_data;
@@ -13021,7 +13041,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag)
 {
   OR_BUF buf;
-  size_t expected_size, mvcc_extra;
+  size_t inline_size_after_oos, mvcc_extra;
   size_t record_size, header_size, offset_size;
   SCAN_CODE status;
   bool is_mvcc_class, is_update;
@@ -13054,7 +13074,11 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (&(attr_info->class_oid));
 
   /* determine the layout and the size */
-  expected_size = heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_columns, &has_oos);
+  if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_columns, &has_oos,
+					   &inline_size_after_oos) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
   mvcc_extra = 0;
   header_size = OR_NON_MVCC_HEADER_SIZE;
   if (is_mvcc_class)
@@ -13068,7 +13092,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  header_size = OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE;
 	  mvcc_extra = OR_MVCC_DELETE_ID_SIZE;
 	}
-      expected_size += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
+      inline_size_after_oos += OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE;
     }
 
   /* OOS + bigone coexistence is forbidden. heap_attrinfo_determine_disk_layout already demoted every
@@ -13076,9 +13100,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
    * it would have to be stored as a multipage (REC_BIGONE) overflow record while also carrying OOS OIDs.
    * That combination is unsupported, so reject it here with a user-visible error -- before writing any OOS
    * record -- instead of silently building it and tripping debug-only asserts on the read path. */
-  if (has_oos && heap_is_big_length ((int) expected_size))
+  if (unlikely (has_oos && heap_is_big_length ((int) inline_size_after_oos)))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) expected_size,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2, (int) inline_size_after_oos,
 	      heap_Maxslotted_reclength);
       return S_ERROR;
     }
@@ -13098,8 +13122,8 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
   do
     {
       /* build record buffer */
-      new_recdes->resize_buffer (expected_size);
-      or_init (&buf, new_recdes->get_data_for_modify (), (int) expected_size);
+      new_recdes->resize_buffer (inline_size_after_oos);
+      or_init (&buf, new_recdes->get_data_for_modify (), (int) inline_size_after_oos);
 
       /* build header */
       status =
@@ -13107,7 +13131,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 						has_oos);
       if (status == S_DOESNT_FIT)
 	{
-	  expected_size += DB_PAGESIZE;
+	  inline_size_after_oos += DB_PAGESIZE;
 	  continue;
 	}
 
@@ -13120,7 +13144,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 						 mvcc_extra, lob_create_flag, &record_size);
       if (status == S_DOESNT_FIT)
 	{
-	  expected_size += DB_PAGESIZE;
+	  inline_size_after_oos += DB_PAGESIZE;
 	}
     }
   while (status == S_DOESNT_FIT);
@@ -27339,19 +27363,7 @@ heap_scancache::assign_recdes_to_area (RECDES & recdes, size_t size /* = 0 */)
 bool
 heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
 {
-  if (m_area == NULL || recdes.data == NULL)
-    {
-      return false;
-    }
-
-  const char *area_start = m_area->get_ptr ();
-  if (area_start == NULL)
-    {
-      return false;
-    }
-  const char *area_end = area_start + m_area->get_size ();
-
-  return area_start <= recdes.data && recdes.data <= area_end;
+  return m_area != NULL && recdes.data == m_area->get_ptr ();
 }
 
 const cubmem::block_allocator &
