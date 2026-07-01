@@ -19363,7 +19363,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       goto cleanup;
     }
 
-  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	    || show_type == SHOWSTMT_ALL_HEAP_OOS);
 
   if (is_all && partition_type == DB_PARTITIONED_CLASS)
     {
@@ -19829,6 +19830,165 @@ cleanup:
   if (is_heap_attrinfo_started)
     {
       heap_attrinfo_end (thread_p, &attr_info);
+    }
+
+  return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+/*
+ * heap_oos_next_scan () - next scan function for
+ *                         'show (all) heap oos'
+ *   return: NO_ERROR, or ER_code
+ *   thread_p(in):
+ *   cursor(in):
+ *   out_values(in/out):
+ *   out_cnt(in):
+ *   ptr(in): 'show heap' context
+ */
+SCAN_CODE
+heap_oos_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt, void *ptr)
+{
+  int error = NO_ERROR;
+  HEAP_SHOW_SCAN_CTX *ctx = NULL;
+  HFID *hfid_p = NULL;
+  FILE_DESCRIPTORS fdes;
+  OOS_STATS_INFO stats;
+  VFID oos_vfid;
+  char *classname = NULL;
+  char class_oid_str[64] = { 0 };
+  INT64 oos_physical_bytes = 0;
+  INT64 oos_unused_bytes = 0;
+  int idx = 0;
+
+  ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
+
+  if (cursor >= ctx->hfids_count)
+    {
+      return S_END;
+    }
+
+  hfid_p = &ctx->hfids[cursor];
+
+  error = file_descriptor_get (thread_p, &hfid_p->vfid, &fdes);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  if (OID_ISNULL (&fdes.heap.class_oid))
+    {
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, NULL_VOLID, NULL_PAGEID, NULL_SLOTID);
+      goto cleanup;
+    }
+
+  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  memset (&stats, 0, sizeof (stats));
+  stats.page_size = DB_PAGESIZE;
+  VFID_SET_NULL (&stats.oos_vfid);
+
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, hfid_p, &oos_vfid, false))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  if (!VFID_ISNULL (&oos_vfid))
+    {
+      error = oos_get_stats_by_vfid (thread_p, oos_vfid, &stats);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+    }
+
+  oos_physical_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+  oos_unused_bytes = oos_physical_bytes - stats.recs_sumlen;
+  if (oos_unused_bytes < 0)
+    {
+      oos_unused_bytes = 0;
+    }
+
+  error = db_make_string_copy (out_values[idx], classname);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  oid_to_string (class_oid_str, sizeof (class_oid_str), &fdes.heap.class_oid);
+  error = db_make_string_copy (out_values[idx], class_oid_str);
+  idx++;
+  if (error != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  db_make_int (out_values[idx], hfid_p->vfid.volid);
+  idx++;
+
+  db_make_int (out_values[idx], hfid_p->vfid.fileid);
+  idx++;
+
+  db_make_int (out_values[idx], hfid_p->hpgid);
+  idx++;
+
+  db_make_int (out_values[idx], stats.has_oos_file);
+  idx++;
+
+  if (stats.has_oos_file)
+    {
+      db_make_int (out_values[idx], stats.oos_vfid.volid);
+    }
+  else
+    {
+      db_make_null (out_values[idx]);
+    }
+  idx++;
+
+  if (stats.has_oos_file)
+    {
+      db_make_int (out_values[idx], stats.oos_vfid.fileid);
+    }
+  else
+    {
+      db_make_null (out_values[idx]);
+    }
+  idx++;
+
+  db_make_int (out_values[idx], stats.num_user_pages);
+  idx++;
+
+  db_make_int (out_values[idx], stats.page_size);
+  idx++;
+
+  db_make_int (out_values[idx], stats.num_recs);
+  idx++;
+
+  db_make_bigint (out_values[idx], stats.recs_sumlen);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_physical_bytes);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_unused_bytes);
+  idx++;
+
+  assert (idx == out_cnt);
+
+cleanup:
+
+  if (classname != NULL)
+    {
+      free_and_init (classname);
     }
 
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;

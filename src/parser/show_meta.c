@@ -79,6 +79,7 @@ static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
 static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_heap_oos (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
@@ -383,6 +384,47 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
 
   static SHOWSTMT_METADATA md_all = {
     SHOWSTMT_ALL_HEAP_CAPACITY, true /* only_for_dba */ , "show all heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_heap_oos (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Table_name", "varchar(256)"},
+    {"Class_oid", "varchar(64)"},
+    {"Heap_volume_id", "int"},
+    {"Heap_file_id", "int"},
+    {"Heap_header_page_id", "int"},
+    {"Has_oos_file", "int"},
+    {"Oos_volume_id", "int"},
+    {"Oos_file_id", "int"},
+    {"Oos_num_user_pages", "int"},
+    {"Oos_page_size", "int"},
+    {"Oos_num_recs", "int"},
+    {"Oos_recs_sumlen", "bigint"},
+    {"Oos_physical_bytes", "bigint"},
+    {"Oos_unused_bytes", "bigint"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_HEAP_OOS, true /* only_for_dba */ , "show heap oos of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_HEAP_OOS, true /* only_for_dba */ , "show all heap oos of ",
     cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
@@ -801,7 +843,8 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
 
   show_type = derived_table->info.showstmt.show_type;
   assert (show_type == SHOWSTMT_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_HEADER
-	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	  || show_type == SHOWSTMT_HEAP_OOS || show_type == SHOWSTMT_ALL_HEAP_OOS);
 
   show_args_node = derived_table->info.showstmt.show_args;
   assert (show_args_node != NULL);
@@ -965,6 +1008,8 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_ALL_HEAP_HEADER] = metadata_of_heap_header (SHOW_ALL);
   show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_HEAP_OOS] = metadata_of_heap_oos (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_HEAP_OOS] = metadata_of_heap_oos (SHOW_ALL);
   show_Metas[SHOWSTMT_INDEX_HEADER] = metadata_of_index_header (SHOW_ONLY);
   show_Metas[SHOWSTMT_INDEX_CAPACITY] = metadata_of_index_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] = metadata_of_index_header (SHOW_ALL);

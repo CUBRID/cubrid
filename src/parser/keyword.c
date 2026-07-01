@@ -384,6 +384,7 @@ static KEYWORD_RECORD keywords[] = {
   {ON_, "ON", 0},
   {ONLINE, "ONLINE", 1},
   {ONLY, "ONLY", 0},
+  {OOS, "OOS", 1},
   {OPEN, "OPEN", 1},
   {OPTIMIZATION, "OPTIMIZATION", 0},
   {OPTION, "OPTION", 0},
