@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <stdint.h>
 
 #include "heap_file.h"
 #include "heap_oos.hpp"
@@ -27333,13 +27334,22 @@ heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
     }
 
   const char *area_start = m_area->get_ptr ();
-  if (area_start == NULL)
+  const size_t area_size = m_area->get_size ();
+  if (area_start == NULL || area_size == 0)
     {
       return false;
     }
-  const char *area_end = area_start + m_area->get_size ();
 
-  return area_start <= recdes.data && recdes.data <= area_end;
+  const uintptr_t area_start_addr = (uintptr_t) area_start;
+  const uintptr_t area_end_addr = area_start_addr + (uintptr_t) area_size;
+  const uintptr_t recdes_data_addr = (uintptr_t) recdes.data;
+  if (area_end_addr < area_start_addr)
+    {
+      return false;
+    }
+
+  /* recdes.data may be caller-owned; avoid relational comparisons between unrelated pointers. */
+  return area_start_addr <= recdes_data_addr && recdes_data_addr < area_end_addr;
 }
 
 const cubmem::block_allocator &
