@@ -23870,7 +23870,8 @@ parser_main (PARSER_CONTEXT * parser)
   yylineno_prev_save = yylineno_prev;
   yylineno_save = csql_yylineno;
   yybuffer_pos=0;
-  csql_yylineno = 0;
+  csql_yylineno = 1;
+  
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -23891,7 +23892,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos = yybuffer_pos_save;
   yyline_start_pos = yyline_start_pos_save;
   yylineno_prev = yylineno_prev_save;
-  yylineno_save = csql_yylineno;
+  csql_yylineno = yylineno_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
