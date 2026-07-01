@@ -88,8 +88,7 @@
 /* Object-lock hash bucket count = num_trans * k * lock_escalation, clamped to
  * [initial_object_locks, LK_OBJ_HASH_SIZE_MAX = 2^23 buckets = 64 MB at 8 B/slot].
  * k = 3/1000 reproduces the legacy num_trans * 300 at the default lock_escalation. */
-#define LK_OBJ_HASH_SIZE_RATIO_NUM 3
-#define LK_OBJ_HASH_SIZE_RATIO_DEN 1000
+#define LK_OBJ_HASH_SIZE_RATIO (3/1000)
 #define LK_OBJ_HASH_SIZE_MAX (1 << 23)
 
 /* thread is lock-waiting ? */
@@ -1251,7 +1250,8 @@ static int
 lock_initialize_object_lock_structures (void)
 {
   /* Size the bucket array from lock_escalation (CBRD-26960); 64-bit intermediate avoids
-   * overflow, the clamp keeps the result within int. */
+   * overflow, the clamp keeps the result within int. Sized at boot only: changing
+   * lock_escalation online does not resize this array. */
   const int lock_escalation = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
   const INT64 scaled_buckets =
     (INT64) lk_Gl.config.num_trans * lock_escalation * LK_OBJ_HASH_SIZE_RATIO_NUM / LK_OBJ_HASH_SIZE_RATIO_DEN;
