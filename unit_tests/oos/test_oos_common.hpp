@@ -50,8 +50,8 @@ class ServerEnv : public ::testing::Environment
       // CUBRID log files will be created in $BUILD_DIR/unit_tests/oos/ when run ctest --test-dir $BUILD_DIR
       // when run directly, log files will be created in the current working directory
       //
-      // Note that, this is only for the er_log().
-      // Custom loggers such as oos_log::* and test_oos_log::* are logged to stderr for faster development.
+      // Note that oos_error/oos_warn write through the server error log. Debug-only OOS trace/debug/info
+      // messages go to $CUBRID/log/oos.log.
       er_init ("./test_oos_log",ER_NEVER_EXIT);
 
       // hacky way to detour pl_server_init(), not needed for oos unit tests
@@ -166,4 +166,3 @@ namespace test_oos_utils
   using auto_unfixed_page_ptr = std::unique_ptr<std::remove_pointer_t<PAGE_PTR>, page_auto_unfix>;
   using auto_freed_recdes_ptr = std::unique_ptr<RECDES, decltype (&recdes_free_data_area)>;
 }
-

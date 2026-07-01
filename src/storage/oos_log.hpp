@@ -31,6 +31,7 @@
 #include <atomic>
 #include <climits>
 
+#include "error_manager.h"
 #include "environment_variable.h"
 
 namespace oos_log
@@ -94,11 +95,11 @@ namespace oos_log
     return s_fp;
   }
 
-  inline void oos_log_internal (OosLogLevel level,
-				const char *file,
-				int line,
-				const char *func,
-				const char *fmt, ...)
+  inline void oos_log_debug_internal (OosLogLevel level,
+				      const char *file,
+				      int line,
+				      const char *func,
+				      const char *fmt, ...)
   {
     if (static_cast<int> (level) < static_cast<int> (oos_log_get_level()))
       {
@@ -121,65 +122,52 @@ namespace oos_log
     std::vsnprintf (body, sizeof (body), fmt, args);
     va_end (args);
 
-    // file: $CUBRID/log/oos.log is always the primary sink.  Writing to an
-    // inherited stderr tty corrupts the controlling terminal (cgdb UI, or a
-    // foreground csql/readline session that has switched the tty to raw mode),
-    // so stderr is opt-in via the CUBRID_OOS_LOG_STDERR environment variable
-    // (intended for local development, not for daemonized cub_server).
     FILE *logfp = oos_log_get_file();
-    bool file_written = false;
     if (logfp != nullptr)
       {
 	std::fputs (header, logfp);
 	std::fputs (body, logfp);
 	std::fputc ('\n', logfp);
 	std::fflush (logfp);
-	file_written = true;
       }
+  }
 
-    // Presence-only check: any value including "0"/"false"/"" enables stderr.
-    // To disable, the variable must be unset.  This matches the documented
-    // opt-in contract (PR description) and avoids bike-shedding over truthy
-    // string parsing.
-    static const bool stderr_enabled = (std::getenv ("CUBRID_OOS_LOG_STDERR") != nullptr);
+  inline void oos_log_server_internal (OosLogLevel level,
+				       const char *file,
+				       int line,
+				       const char *func,
+				       const char *fmt, ...)
+  {
+    char body[2048];
+    va_list args;
+    va_start (args, fmt);
+    std::vsnprintf (body, sizeof (body), fmt, args);
+    va_end (args);
 
-    // Fallback: if the file sink is unavailable (e.g. $CUBRID unset, log dir
-    // unwritable, fopen failed) AND the message is ERROR/WARN, force stderr
-    // so that release-build diagnostics are never silently dropped — this
-    // preserves the contract documented at the bottom of this header
-    // ("oos_error and oos_warn are always active").
-    const bool force_stderr_fallback =
-	    !file_written && static_cast<int> (level) >= static_cast<int> (OosLogLevel::WARN);
-
-    if (stderr_enabled || force_stderr_fallback)
-      {
-	std::fputs (header, stderr);
-	std::fputs (body, stderr);
-	std::fputc ('\n', stderr);
-	std::fflush (stderr);
-      }
+    _er_log_debug (file, line, "OOS [%s](%s:%d): %s\n",
+		   oos_log_get_level_str (level), func, line, body);
   }
 
 } // namespace oos_log
 
 
-/* oos_error and oos_warn are always active — they must be visible in release builds
- * for replication and QA diagnostics.  Lower levels are debug-only. */
+/* oos_error and oos_warn are always active and write to the server error log.
+ * Lower levels are debug-only and write to $CUBRID/log/oos.log. */
 #define oos_error(fmt, ...) \
-    oos_log::oos_log_internal(oos_log::OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_server_internal(oos_log::OosLogLevel::ERROR, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_warn(fmt, ...) \
-    oos_log::oos_log_internal(oos_log::OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_server_internal(oos_log::OosLogLevel::WARN, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #if !defined (NDEBUG)
 #define oos_trace(fmt, ...) \
-    oos_log::oos_log_internal(oos_log::OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_debug_internal(oos_log::OosLogLevel::TRACE, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_debug(fmt, ...) \
-    oos_log::oos_log_internal(oos_log::OosLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_debug_internal(oos_log::OosLogLevel::DEBUG, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 
 #define oos_info(fmt, ...) \
-    oos_log::oos_log_internal(oos_log::OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
+    oos_log::oos_log_debug_internal(oos_log::OosLogLevel::INFO, __FILE__, __LINE__, __func__, fmt, ##__VA_ARGS__)
 #else
 
 #define oos_trace(...)   do {} while (0)
