@@ -1769,7 +1769,9 @@
 
 #define ER_HEAP_OOS_BAD_INLINE_HEADER               -1376
 
-#define ER_LAST_ERROR                               -1377
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1377
+
+#define ER_LAST_ERROR                               -1378
 
 
 
