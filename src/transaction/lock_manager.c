@@ -88,7 +88,8 @@
 /* Object-lock hash bucket count = num_trans * k * lock_escalation, clamped to
  * [initial_object_locks, LK_OBJ_HASH_SIZE_MAX = 2^23 buckets = 64 MB at 8 B/slot].
  * k = 3/1000 reproduces the legacy num_trans * 300 at the default lock_escalation. */
-#define LK_OBJ_HASH_SIZE_RATIO (3/1000)
+#define LK_OBJ_HASH_SIZE_RATIO_NUM 3
+#define LK_OBJ_HASH_SIZE_RATIO_DEN 1000
 #define LK_OBJ_HASH_SIZE_MAX (1 << 23)
 
 /* thread is lock-waiting ? */
