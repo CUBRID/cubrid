@@ -1791,6 +1791,15 @@ emit_schema (extract_context & ctxt, print_output & output_ctx, EXTRACT_CLASS_TY
 	      output_ctx (", COLLATE %s", lang_get_collation_name (class_->collation_id));
 	    }
 
+	  if (sm_is_replication_class (cl->op))
+	    {
+	      output_ctx (", REPLICATION=ON");
+	    }
+	  else
+	    {
+	      output_ctx (", REPLICATION=OFF");
+	    }
+
 	  if (class_ != NULL)
 	    {
 	      tde_algo_name = tde_get_algorithm_name ((TDE_ALGORITHM) class_->tde_algorithm);
