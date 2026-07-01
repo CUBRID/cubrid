@@ -27079,8 +27079,8 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->expand_oos = false;
   const bool data_is_scan_cache_area =
     scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
-  context->keep_recdes_buffer =
-    recdes != NULL && recdes->data != NULL && recdes->area_size >= 0 && !data_is_scan_cache_area;
+  /* Caller-positioned buffers remain owned by the caller even after their writable area is exhausted. */
+  context->keep_recdes_buffer = recdes != NULL && recdes->data != NULL && !data_is_scan_cache_area;
   if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
@@ -27339,7 +27339,19 @@ heap_scancache::assign_recdes_to_area (RECDES & recdes, size_t size /* = 0 */)
 bool
 heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
 {
-  return m_area != NULL && recdes.data == m_area->get_ptr ();
+  if (m_area == NULL || recdes.data == NULL)
+    {
+      return false;
+    }
+
+  const char *area_start = m_area->get_ptr ();
+  if (area_start == NULL)
+    {
+      return false;
+    }
+  const char *area_end = area_start + m_area->get_size ();
+
+  return area_start <= recdes.data && recdes.data <= area_end;
 }
 
 const cubmem::block_allocator &
