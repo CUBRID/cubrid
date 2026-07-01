@@ -1972,17 +1972,19 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 332 Stored Procedures can be invoked only through CALL statements.
 333 CALL statements invoking a Stored Procedure may not have an INTO clause.
 
-334 Invalid vector distance metric specified.
+334 Invalid %1$s distance metric specified.
 335 Unsupported index algorithm '%1$s'.
-336 A distance metric can be specified only for a vector index.
-337 A vector index requires a distance metric, for example (column COSINE).
-338 UNIQUE is not supported for a vector index.
-339 REVERSE is not supported for a vector index.
-340 ONLINE and DEDUPLICATE options are not supported for a vector index.
-341 A partial index (WHERE clause) is not supported for a vector index.
-342 Index build options (m, ef_construction) are valid only for a vector index.
-343 Unknown vector index option '%1$s'.
-344 Duplicate vector index option '%1$s'.
+336 A distance metric can be specified only for a %1$s index.
+337 A %1$s index requires a distance metric, for example (column COSINE).
+338 UNIQUE is not supported for a %1$s index.
+339 REVERSE is not supported for a %1$s index.
+340 ONLINE option is not supported for a %1$s index.
+341 DEDUPLICATE option is not supported for a %1$s index.
+342 A partial index (WHERE clause) is not supported for a %1$s index.
+
+343 Index build options (m, ef_construction) are valid only for a %1$s index.
+344 Unknown %1$s index option '%2$s'.
+345 Duplicate %1$s index option '%2$s'.
 
 
 

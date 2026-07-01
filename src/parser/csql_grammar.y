@@ -2763,9 +2763,9 @@ create_stmt
 			    enum DB_VECTOR_DISTANCE_METRIC metric = string_to_vector_distance_metric (metric_name);
 				if (metric == METRIC_UNKNOWN)
 				  {
-				PT_ERRORm (this_parser, metric_node,
-					   MSGCAT_SET_PARSER_SEMANTIC,
-					   MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				PT_ERRORmf (this_parser, metric_node,
+					    MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_INVALID_INDEX_DISTANCE_METRIC, "HNSW");
 				  }
 			    node->info.index.vector_index.metric = metric;
 
@@ -2980,8 +2980,8 @@ create_stmt
 			      {
 				/* B-tree: legacy behavior, unchanged */
 				if (has_metric)
-				  PT_ERRORm (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_INDEX_METRIC_ON_NON_VECTOR);
+				  PT_ERRORmf (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_METRIC_NOT_SUPPORTED, "HNSW");
 
 				if ($5 && $13)
 				  {
@@ -3052,8 +3052,8 @@ create_stmt
 				  }
 
 				if (CONTAINER_AT_2 ($14) != NULL)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_INDEX_BUILD_OPTION_ON_NON_VECTOR);
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_BUILD_OPTION_NOT_SUPPORTED, "HNSW");
 
 				node->info.index.deduplicate_level = TO_NUMBER (CONTAINER_AT_1 ($14));
 				if ($5 && (node->info.index.deduplicate_level >= DEDUPLICATE_KEY_LEVEL_OFF
@@ -3085,34 +3085,35 @@ create_stmt
 				kv_pair *kvp = (kv_pair *) CONTAINER_AT_2 ($14);
 
 				if (!has_metric)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_METRIC);
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_REQUIRES_METRIC, "HNSW");
 				if ($4)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_REVERSE);
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_NO_REVERSE, "HNSW");
 				if ($5)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_UNIQUE);
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_NO_UNIQUE, "HNSW");
 				if ($13)
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_PARTIAL);
-				if (kvp == NULL
-				    && (TO_NUMBER (CONTAINER_AT_0 ($14)) != 0
-					|| TO_NUMBER (CONTAINER_AT_1 ($14)) != DEDUPLICATE_OPTION_AUTO))
-				  PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-					     MSGCAT_SEMANTIC_VECTOR_INDEX_NO_BUILD_OPTION);
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_NO_PARTIAL, "HNSW");
+				if (kvp == NULL && TO_NUMBER (CONTAINER_AT_0 ($14)) != 0)
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_NO_ONLINE_OPTION, "HNSW");
+				if (kvp == NULL && TO_NUMBER (CONTAINER_AT_1 ($14)) != DEDUPLICATE_OPTION_AUTO)
+				  PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					      MSGCAT_SEMANTIC_INDEX_NO_DEDUPLICATE_OPTION, "HNSW");
 
 				/* accept only m / ef_construction, each at most once */
 				for (kv_pair *it = kvp; it != NULL; it = it->next)
 				  {
 				    const char *k = it->key->info.name.original;
 				    if (strcasecmp (k, "m") != 0 && strcasecmp (k, "ef_construction") != 0)
-				      PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-						  MSGCAT_SEMANTIC_VECTOR_INDEX_UNKNOWN_OPTION, k);
+				      PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_INDEX_UNKNOWN_OPTION, "HNSW", k);
 				    for (kv_pair *jt = it->next; jt != NULL; jt = jt->next)
 				      if (strcasecmp (k, jt->key->info.name.original) == 0)
-					PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
-						    MSGCAT_SEMANTIC_VECTOR_INDEX_DUP_OPTION, k);
+					PT_ERRORmf2 (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						     MSGCAT_SEMANTIC_INDEX_DUP_OPTION, "HNSW", k);
 				  }
 
 				if (has_metric)
@@ -3121,8 +3122,8 @@ create_stmt
 				    enum DB_VECTOR_DISTANCE_METRIC metric =
 				      string_to_vector_distance_metric (metric_name);
 				    if (metric == METRIC_UNKNOWN)
-				      PT_ERRORm (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
-						 MSGCAT_SEMANTIC_INVALID_VECTOR_DISTANCE_METRIC);
+				      PT_ERRORmf (this_parser, metric_node, MSGCAT_SET_PARSER_SEMANTIC,
+						  MSGCAT_SEMANTIC_INVALID_INDEX_DISTANCE_METRIC, "HNSW");
 				    node->info.index.vector_index.metric = metric;
 				  }
 
