@@ -224,8 +224,7 @@ static int qstr_bit_coerce (const unsigned char *src, int src_length, int src_pr
 			    DB_DATA_STATUS * data_status);
 static int qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYPE src_type,
 			INTL_CODESET src_codeset, INTL_CODESET dest_codeset, unsigned char **dest, int *dest_length,
-			int *dest_size, int dest_precision, bool is_dest_floating, DB_TYPE dest_type,
-			DB_DATA_STATUS * data_status);
+			int *dest_size, int dest_precision, DB_TYPE dest_type, DB_DATA_STATUS * data_status);
 static int qstr_position (const char *sub_string, const int sub_size, const int sub_length, const char *src_string,
 			  const char *src_end, const char *src_string_bound, int src_length, int coll_id,
 			  bool is_forward_search, int *position);
@@ -2105,14 +2104,12 @@ qstr_retype_char_to_varchar (DB_VALUE * result, int precision, int size, int cod
     {
       char *saved_compressed_buf = result->data.ch.medium.compressed_buf;
       int saved_compressed_size = result->data.ch.medium.compressed_size;
-      int saved_length = result->data.ch.medium.length;
 
       qstr_make_typed_string (DB_TYPE_VARCHAR, result, precision, db_get_string (result), size, codeset, collation);
 
       result->data.ch.medium.compressed_buf = saved_compressed_buf;
       result->data.ch.medium.compressed_size = saved_compressed_size;
       result->data.ch.info.compressed_need_clear = 1;
-      result->data.ch.medium.length = saved_length;
     }
   else
     {
@@ -6594,13 +6591,10 @@ db_bit_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_DA
       int dest_prec;
       int dest_length;
 
-      if (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE)
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
 	{
 	  dest_prec = db_get_string_length (src_string);
-	}
-      else
-	{
-	  dest_prec = DB_VALUE_PRECISION (dest_string);
 	}
 
       error_status = qstr_bit_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
@@ -6694,9 +6688,6 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
       int dest_prec;
       int dest_length;
       int dest_size;
-      bool is_dest_floating;
-      int src_prec;
-      int src_length;
       INTL_CODESET src_codeset = db_get_string_codeset (src_string);
       INTL_CODESET dest_codeset = db_get_string_codeset (dest_string);
 
@@ -6707,21 +6698,17 @@ db_char_string_coerce (const DB_VALUE * src_string, DB_VALUE * dest_string, DB_D
 	  return error_status;
 	}
 
-      /* Recompute char_count since the cached value may no longer match the string. */
-      intl_char_count ((unsigned char *) db_get_string (src_string), db_get_string_size (src_string), src_codeset,
-		       &src_length);
-
       /* Initialize the memory manager of the destination */
-      is_dest_floating = (DB_VALUE_PRECISION (dest_string) == TP_FLOATING_PRECISION_VALUE);
-      dest_prec = is_dest_floating ? src_length : DB_VALUE_PRECISION (dest_string);
+      dest_prec = DB_VALUE_PRECISION (dest_string);
+      if (dest_prec == TP_FLOATING_PRECISION_VALUE)
+	{
+	  dest_prec = db_get_string_length (src_string);
+	}
 
-      src_prec =
-	(DB_VALUE_PRECISION (src_string) == TP_FLOATING_PRECISION_VALUE) ? src_length : DB_VALUE_PRECISION (src_string);
-
-      error_status = qstr_coerce (DB_GET_UCHAR (src_string), src_length,
-				  src_prec, DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
+      error_status = qstr_coerce (DB_GET_UCHAR (src_string), db_get_string_length (src_string),
+				  QSTR_VALUE_PRECISION (src_string), DB_VALUE_DOMAIN_TYPE (src_string), src_codeset,
 				  dest_codeset, &dest, &dest_length, &dest_size, dest_prec,
-				  is_dest_floating, DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
+				  DB_VALUE_DOMAIN_TYPE (dest_string), data_status);
 
       if (error_status == NO_ERROR && dest != NULL)
 	{
@@ -9461,7 +9448,7 @@ qstr_bit_coerce (const unsigned char *src, int src_length, int src_precision, DB
 static int
 qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYPE src_type, INTL_CODESET src_codeset,
 	     INTL_CODESET dest_codeset, unsigned char **dest, int *dest_length, int *dest_size, int dest_precision,
-	     bool is_dest_floating, DB_TYPE dest_type, DB_DATA_STATUS * data_status)
+	     DB_TYPE dest_type, DB_DATA_STATUS * data_status)
 {
   int src_padded_length, copy_length, copy_size;
   int alloc_size;
@@ -9648,13 +9635,6 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
 		  intl_binary_to_euckr (src, copy_size, dest, &conv_size);
 		}
 	      copy_size = conv_size;
-
-	      /* copy_length becomes stale after binary-to-multibyte conversion.
-	       * Skip floating-precision destinations to avoid spurious padding. */
-	      if (dest_type == DB_TYPE_CHAR && !is_dest_floating)
-		{
-		  intl_char_count (*dest, copy_size, dest_codeset, &copy_length);
-		}
 	    }
 	  else
 	    {
