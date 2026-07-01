@@ -7226,9 +7226,18 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	   * A base that already carried the key (saved_corr_key_count > 0) is left to be rebuilt; that path
 	   * is not reached by DML today (see commit message).  After the detection block so an OOM re-clear
 	   * inside it cannot drop the restored value. */
+
+	  /* The residual "left to be rebuilt" path (a finalized non-correlated WHERE that already carried a
+	   * correlated key on the first pass) would silently drop that WHERE.  DML does not reach it today;
+	   * assert it in debug so a future path that does is caught rather than producing a wrong result. */
+	  assert (!(saved_rewritten != NULL && saved_has_where && saved_corr_key_count > 0));
+
 	  if (saved_rewritten != NULL && saved_has_where && saved_corr_key_count == 0)
 	    {
 	      dinfo->rewritten = saved_rewritten;
+	      /* Restore rewritten_has_where as a snapshot/restore pair so the flag never diverges from the
+	       * restored string, independent of what mq_dblink_clear_corr_keys resets (today a no-op since
+	       * clear leaves rewritten_has_where untouched). */
 	      dinfo->rewritten_has_where = saved_has_where;
 	    }
 
