@@ -226,6 +226,7 @@ static bool is_analytic_function = false;
 
 static bool is_in_sp_func_type = false;
 
+extern int csql_yylineno;
 
 #define PT_EMPTY INT_MAX
 
@@ -23849,7 +23850,7 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save; 
+  int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save, yylineno_save; 
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23867,7 +23868,9 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos_save = yybuffer_pos;
   yyline_start_pos_save = yyline_start_pos; 
   yylineno_prev_save = yylineno_prev;
+  yylineno_save = csql_yylineno;
   yybuffer_pos=0;
+  csql_yylineno = 0;
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -23888,6 +23891,7 @@ parser_main (PARSER_CONTEXT * parser)
   yybuffer_pos = yybuffer_pos_save;
   yyline_start_pos = yyline_start_pos_save;
   yylineno_prev = yylineno_prev_save;
+  yylineno_save = csql_yylineno;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
