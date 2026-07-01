@@ -12067,6 +12067,44 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_dblink_delete_corr_ref () - walk callback: flag a subquery correlated to the outer remote DELETE target
+ *   (CBRD-26921). A correlated reference is a qualified column (PT_DOT_) whose qualifier matches the target's
+ *   range variable or entity name. Used by pt_check_with_info's DELETE branch before the subquery is bound
+ *   stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not found").
+ *   Note: conservative -- a subquery that reuses the target's alias/table name for its OWN FROM range (rare)
+ *   is also flagged; qualifier-vs-inner-FROM shadowing is not distinguished.
+ */
+typedef struct
+{
+  const char *alias;		/* outer target range variable (e.g. "r"), may be NULL */
+  const char *entity;		/* outer target table name (e.g. "remote_g1"), may be NULL */
+  bool found;
+} PT_DBLINK_DEL_CORR;
+
+static PT_NODE *
+pt_dblink_delete_corr_ref (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+
+  (void) parser;
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_DOT_ && node->info.dot.arg1 != NULL && node->info.dot.arg1->node_type == PT_NAME)
+    {
+      const char *q = node->info.dot.arg1->info.name.original;
+
+      if (q != NULL
+	  && ((chk->alias != NULL && intl_identifier_casecmp (q, chk->alias) == 0)
+	      || (chk->entity != NULL && intl_identifier_casecmp (q, chk->entity) == 0)))
+	{
+	  chk->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+  return node;
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12260,6 +12298,28 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      && PT_IS_QUERY (cond->info.expr.arg2))
 		    {
 		      subq = cond->info.expr.arg2;
+		    }
+		  if (subq != NULL)
+		    {
+		      PT_NODE *tgt = node->info.delete_.spec;
+		      PT_DBLINK_DEL_CORR corr;
+
+		      /* reject a subquery correlated to the outer DELETE target with a clear message, before the
+		       * stand-alone bind below (which would fail with "Attribute <alias> was not found"). The
+		       * value-push sink evaluates the subquery once with no outer row, so correlation is out of
+		       * scope (extension). */
+		      corr.alias =
+			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
+		      corr.entity =
+			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+		      corr.found = false;
+		      parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref, &corr, NULL, NULL);
+		      if (corr.found)
+			{
+			  PT_ERROR (parser, node,
+				    "dblink: correlated subquery is not supported in a remote DELETE WHERE clause");
+			  subq = NULL;
+			}
 		    }
 		  if (subq != NULL)
 		    {

@@ -19345,27 +19345,6 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return xasl;
 }
 
-/* correlation probe: set found=true if a name in the walked subquery resolves to the outer DELETE target spec */
-typedef struct
-{
-  UINTPTR outer_spec_id;
-  bool found;
-} PT_DEL_CORR_PROBE;
-
-static PT_NODE *
-pt_delete_subq_refs_outer (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  PT_DEL_CORR_PROBE *probe = (PT_DEL_CORR_PROBE *) arg;
-
-  *continue_walk = PT_CONTINUE_WALK;
-  if (node->node_type == PT_NAME && node->info.name.spec_id == probe->outer_spec_id)
-    {
-      probe->found = true;
-      *continue_walk = PT_STOP_WALK;
-    }
-  return node;
-}
-
 /*
  * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
  *   pure-local subquery (CBRD-26921). Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled
@@ -19457,23 +19436,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* reject a subquery correlated to the outer DELETE target. Best-effort here: when the remote target spec id
-   * is unresolved (0) at this point the probe is skipped, and a correlated subquery is caught at runtime (Step
-   * 3) where the standalone aptr cannot bind the outer reference. */
-  if (from->info.spec.id != 0)
-    {
-      PT_DEL_CORR_PROBE probe;
-
-      probe.outer_spec_id = from->info.spec.id;
-      probe.found = false;
-      parser_walk_tree (parser, arg2, pt_delete_subq_refs_outer, &probe, NULL, NULL);
-      if (probe.found)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-		  "correlated subquery is not allowed in remote DELETE");
-	  return NULL;
-	}
-    }
+  /* note: a correlated subquery is rejected earlier, in pt_check_with_info's DELETE branch
+   * (pt_dblink_delete_corr_ref), before the stand-alone bind -- so it never reaches this XASL builder. */
 
   /* build XASL skeleton: aptr (local subquery) + val_list + list scan spec */
   aptr_statement = arg2;
