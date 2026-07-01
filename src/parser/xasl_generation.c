@@ -9078,6 +9078,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    OPERATOR_TYPE op;
 
 		    data_type = pt_make_prim_data_type (parser, PT_TYPE_NUMERIC);
+		    data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		    data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		    serial_mop = pt_resolve_serial (parser, node->info.expr.arg1);
