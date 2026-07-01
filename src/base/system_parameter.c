@@ -9965,6 +9965,8 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
+  int client_limit, client_count;
+  int request_concurrency_factor;
   int max_value;
 #endif
   char newval[LINE_MAX];
@@ -10024,20 +10026,24 @@ prm_tune_parameters (void)
       if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
 	  /* if not changed by user */
-	  max_value = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
-	  if (PRM_GET_INT (max_request_concurrency_prm->value) > max_value)
+	  client_limit = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
+	  request_concurrency_factor = 0;
+	  for (client_count = client_limit - 1; client_count > 0; client_count >>= 1)
 	    {
-	      sprintf (newval, "%d", std::max (system_cpu_count, max_value));
-	      (void) prm_set (max_request_concurrency_prm, newval, false);
+	      request_concurrency_factor++;
 	    }
+	  request_concurrency_factor = std::max (request_concurrency_factor, 3);
+
+	  max_value = std::min (std::min (system_cpu_count * request_concurrency_factor, system_cpu_count * 16),
+				std::min (client_limit, CSS_MAX_CLIENT_COUNT / 2));
+	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
+	  (void) prm_set (max_request_concurrency_prm, newval, false);
 	}
       if (!PRM_IS_SET (max_request_worker_prm))
 	{
 	  /* waiting request workers keep their threads while returning concurrency slots.  */
-	  /* keep a bounded worker headroom for nested callback/method requests without     */
-	  /* opening the default cap up to CSS_MAX_CLIENT_COUNT.                            */
-	  max_value = std::min (std::max (PRM_GET_INT (max_clients_prm->value),
-					  PRM_GET_INT (max_request_concurrency_prm->value))
+	  /* keep worker headroom proportional to request concurrency.                      */
+	  max_value = std::min (PRM_GET_INT (max_request_concurrency_prm->value) * 2
 				+ PRM_REQUEST_WORKER_ELASTIC_HEADROOM, CSS_MAX_CLIENT_COUNT);
 	  if (PRM_GET_INT (max_request_worker_prm->value) > max_value)
 	    {
