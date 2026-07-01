@@ -761,7 +761,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
-  line_no = 0;
+  line_no = csql_Is_interactive ? 1 : 0;
   do
     {
       if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
