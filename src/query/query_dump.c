@@ -3927,9 +3927,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
-      fprintf (fp, ", input_rows: %d", gstats->input_rows);
-
-
+      fprintf (fp, ", input_rows: %lld", (long long int) gstats->input_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
     }
 

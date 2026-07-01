@@ -242,7 +242,7 @@ struct groupby_state
   RECDES gby_rec;
   QFILE_TUPLE_RECORD input_tpl;
   QFILE_TUPLE_RECORD *output_tplrec;
-  int input_recs;
+  INT64 input_recs;
 
   bool with_rollup;
   GROUPBY_DIMENSION *g_dim;	/* dimensions for Data Cube */
@@ -4361,8 +4361,12 @@ qexec_grbynum_pred_extract_limit (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbsta
     }
 
   if (fetch_peek_dbval (thread_p, le_term->pe.m_eval_term.et.et_comp.rhs,
-			&gbstate->xasl_state->vd, NULL, NULL, NULL, &peeked) != NO_ERROR
-      || peeked == NULL || DB_IS_NULL (peeked))
+			&gbstate->xasl_state->vd, NULL, NULL, NULL, &peeked) != NO_ERROR)
+    {
+      er_clear ();
+      return -1;
+    }
+  if (peeked == NULL || DB_IS_NULL (peeked))
     {
       return -1;
     }
@@ -4375,6 +4379,10 @@ qexec_grbynum_pred_extract_limit (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbsta
 	{
 	  result = v;
 	}
+    }
+  else
+    {
+      er_clear ();
     }
   pr_clear_value (&coerced);
   return result;
@@ -4419,11 +4427,14 @@ qexec_eval_grbynum_pred (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate)
 	    }
 	  /* Fast-stop: extract the LIMIT upper bound on first V_TRUE, cache it, and stop
 	     once the in-range group count reaches it. Without this, one extra group is
-	     accumulated and discarded before V_FALSE triggers stop. Non-LIMIT predicates
-	     yield -1 and are skipped. WITH ROLLUP excluded. */
-	  if (!gbstate->with_rollup && gbstate->grbynum_val != NULL)
+	     accumulated and discarded before V_FALSE triggers stop. The result is resolved
+	     once (grbynum_limit == -2 means "not yet resolved"); non-LIMIT predicates resolve
+	     to -1 and are then skipped without re-probing. WITH ROLLUP and SCAN_CONTINUE
+	     predicates (which must not stop early) are excluded. */
+	  if (!gbstate->with_rollup && gbstate->grbynum_val != NULL
+	      && !(gbstate->grbynum_flag & XASL_G_GRBYNUM_FLAG_SCAN_CONTINUE))
 	    {
-	      if (gbstate->grbynum_limit < 0)
+	      if (gbstate->grbynum_limit == -2)
 		{
 		  gbstate->grbynum_limit = qexec_grbynum_pred_extract_limit (thread_p, gbstate);
 		}
@@ -4497,7 +4508,7 @@ qexec_initialize_groupby_state (GROUPBY_STATE * gbstate, SORT_LIST * groupby_lis
   gbstate->grbynum_pred = grbynum_pred;
   gbstate->grbynum_val = grbynum_val;
   gbstate->grbynum_flag = grbynum_flag;
-  gbstate->grbynum_limit = -1;
+  gbstate->grbynum_limit = -2;	/* -2: limit not yet resolved (see qexec_eval_grbynum_pred fast-stop) */
   gbstate->eptr_list = eptr_list;
   gbstate->g_output_agg_list = g_agg_list;
   gbstate->g_regu_list = g_regu_list;
