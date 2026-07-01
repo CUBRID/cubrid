@@ -7161,6 +7161,19 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
 	  dinfo = &derived_table->info.dblink_table;
+
+	  /* UPDATE/DELETE re-translate their WHERE subqueries: pt_to_delete_xasl / pt_to_update_xasl
+	   * copy the already-translated search condition into an internal scan query and translate it
+	   * again.  A non-correlated dblink scalar subquery had its WHERE pushed into rewritten (and the
+	   * local WHERE term consumed) on the first pass; the copy carries rewritten but the WHERE is
+	   * gone, so it cannot be re-pushed.  mq_dblink_clear_corr_keys below resets rewritten, which
+	   * would send the bare "SELECT * FROM t" and make a scalar subquery return every row.  Snapshot
+	   * a finalized non-correlated rewrite (corr keys captured BEFORE the clear zeroes the count) and
+	   * restore it after the correlated-detection block. */
+	  PARSER_VARCHAR *saved_rewritten = dinfo->rewritten;
+	  bool saved_has_where = dinfo->rewritten_has_where;
+	  int saved_corr_key_count = dinfo->corr_key_count;
+
 	  mq_dblink_clear_corr_keys (parser, dinfo);
 
 	  /* comment out this block to disable correlated push-down */
@@ -7208,6 +7221,17 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  /* else: cross-codeset key, or no column name -> leave keys cleared (already
 		   * done by mq_dblink_clear_corr_keys above) -> no push, evaluate locally. */
 		}
+	    }
+
+	  /* Restore a finalized non-correlated rewrite consumed by a prior translate (see snapshot
+	   * above).  Only when neither the first pass (saved) nor this pass's correlated re-detection
+	   * (current count) produced correlated keys - so a freshly detected correlated rewrite is never
+	   * overwritten.  Placed after the detection block so an OOM re-clear inside it cannot drop the
+	   * restored value. */
+	  if (saved_rewritten != NULL && saved_has_where && saved_corr_key_count == 0 && dinfo->corr_key_count == 0)
+	    {
+	      dinfo->rewritten = saved_rewritten;
+	      dinfo->rewritten_has_where = saved_has_where;
 	    }
 
 	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
