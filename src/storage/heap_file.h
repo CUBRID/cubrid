@@ -382,7 +382,7 @@ struct heap_get_context
 				 * (like serial increment) require WRITE mode */
 
   bool expand_oos;		/* if true, replace inline OOS OID slots with actual values */
-  bool keep_recdes_buffer;	/* true if recdes_p->data must not be rebound to scan cache */
+  bool keep_recdes_buffer;	/* true if caller-positioned recdes_p->data must not be rebound to scan cache */
 };
 
 typedef struct sampling_info SAMPLING_INFO;
