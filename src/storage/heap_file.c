@@ -27327,19 +27327,7 @@ heap_scancache::assign_recdes_to_area (RECDES & recdes, size_t size /* = 0 */)
 bool
 heap_scancache::is_recdes_assigned_to_area (const RECDES & recdes) const
 {
-  if (m_area == NULL || recdes.data == NULL)
-    {
-      return false;
-    }
-
-  const char *area_start = m_area->get_ptr ();
-  const size_t area_size = m_area->get_size ();
-  if (area_start == NULL || area_size == 0)
-    {
-      return false;
-    }
-
-  return recdes.data == area_start;
+  return m_area != NULL && recdes.data == m_area->get_ptr ();
 }
 
 const cubmem::block_allocator &
