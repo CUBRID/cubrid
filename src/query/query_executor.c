@@ -14126,7 +14126,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   MVCC_SNAPSHOT *mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   bool need_ha_replication = !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true;
   bool sysop_started = false;
-  bool in_instant_lock_mode;
 
   // *INDENT-OFF*
   struct incr_info
@@ -14163,15 +14162,6 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 
       /* clear list id if all reevaluations result is false */
       clear_list_id = true;
-
-      /* need lock & reevaluation */
-      lock_start_instant_lock_mode (tran_index);
-      in_instant_lock_mode = true;
-    }
-  else
-    {
-      // locking and evaluation is done at scan phase
-      in_instant_lock_mode = lock_is_instant_lock_mode (tran_index);
     }
 
   list = xasl->selected_upd_list;
@@ -14343,22 +14333,16 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
   log_sysop_start (thread_p);
   sysop_started = true;
 
-  if (lock_is_instant_lock_mode (tran_index))
+  /* Increments run in an autonomous subtransaction: they commit independently of the
+   * enclosing statement and survive its rollback (click-counter semantics). */
+  if (need_ha_replication)
     {
-      assert (in_instant_lock_mode);
-
-      /* in this function, several instances can be updated, so it need to be atomic */
-      if (need_ha_replication)
-	{
-	  repl_start_flush_mark (thread_p);
-	}
-
-      /* Subtransaction case. Locks and MVCCID are acquired/released by subtransaction. */
-      tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      assert (tdes != NULL);
-      logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
-      subtransaction_started = true;
+      repl_start_flush_mark (thread_p);
     }
+  tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  assert (tdes != NULL);
+  logtb_get_new_subtransaction_mvccid (thread_p, &tdes->mvccinfo);
+  subtransaction_started = true;
 
   for (selupd = list; selupd; selupd = selupd->next)
     {
@@ -14393,22 +14377,9 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
       repl_end_flush_mark (thread_p, false);
     }
 
-  /* Here we need to check instant lock mode, since it may be reseted by qexec_execute_increment. */
-  if (lock_is_instant_lock_mode (tran_index))
-    {
-      /* Subtransaction case. */
-      assert (subtransaction_started);
-      log_sysop_commit (thread_p);
-
-      assert (in_instant_lock_mode);
-    }
-  else
-    {
-      /* Transaction case. */
-      log_sysop_attach_to_outer (thread_p);
-
-      in_instant_lock_mode = false;
-    }
+  /* Commit the autonomous subtransaction. */
+  assert (subtransaction_started);
+  log_sysop_commit (thread_p);
 
 exit:
   /* Release subtransaction resources. */
@@ -14418,15 +14389,13 @@ exit:
       logtb_complete_sub_mvcc (thread_p, tdes);
     }
 
-  if (in_instant_lock_mode)
+  /* Release the per-row X-locks the increment took, scoped to all_incr_info. force=true drops
+   * only this statement's lock count, so a lock the outer transaction already holds is kept. */
+  for (size_t i = 0; i < all_incr_info.size (); i++)
     {
-      /* Release instant locks, if not already released. */
-      lock_stop_instant_lock_mode (thread_p, tran_index, true);
-      in_instant_lock_mode = false;
+      const incr_info & released_info = all_incr_info[i];
+      lock_unlock_object (thread_p, &released_info.m_oid, &released_info.m_class_oid, X_LOCK, true);
     }
-
-  // not hold instant locks any more.
-  assert (!in_instant_lock_mode && !lock_is_instant_lock_mode (tran_index));
 
   if (err != NO_ERROR)
     {
@@ -15373,7 +15342,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   bool empty_result = false;
   bool scan_immediately_stop = false;
   int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  bool instant_lock_mode_started = false;
   bool mvcc_select_lock_needed;
   bool old_no_logging;
 
@@ -15625,9 +15593,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (!QEXEC_SEL_UPD_USE_REEVALUATION (xasl))
 	    {
-	      /* Reevaluate at select since can't reevaluate in execute_selupd_list. Need to start instant lock mode. */
-	      lock_start_instant_lock_mode (tran_index);
-	      instant_lock_mode_started = true;
+	      /* Reevaluate at select since we can't in execute_selupd_list; selupd releases these locks later. */
 	      force_select_lock = true;
 	    }
 	}
@@ -16261,21 +16227,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
 		}
 
-	      assert (lock_is_instant_lock_mode (tran_index) == false);
-	      instant_lock_mode_started = false;
-
 	      if (error != NO_ERROR)
 		{
 		  qexec_clear_mainblock_iterations (thread_p, xasl);
 		  GOTO_EXIT_ON_ERROR;
-		}
-	    }
-	  else
-	    {
-	      if (instant_lock_mode_started == true)
-		{
-		  lock_stop_instant_lock_mode (thread_p, tran_index, true);
-		  instant_lock_mode_started = false;
 		}
 	    }
 	}
@@ -16418,13 +16373,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   /*
    * Cleanup and Exit processing
    */
-  if (instant_lock_mode_started == true)
-    {
-      assert (lock_is_instant_lock_mode (tran_index) == false);
-      /* a safe guard */
-      lock_stop_instant_lock_mode (thread_p, tran_index, true);
-    }
-
   if (xasl->type == BUILDLIST_PROC)
     {
       /* destroy hash table */
@@ -16463,10 +16411,6 @@ exit_on_error:
     }
 #endif
 
-  if (instant_lock_mode_started == true)
-    {
-      lock_stop_instant_lock_mode (thread_p, tran_index, true);
-    }
   qfile_close_list (thread_p, xasl->list_id);
   if (func_vector)
     {
