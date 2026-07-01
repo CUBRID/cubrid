@@ -11445,7 +11445,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_BITSHIFT_RIGHT || op == PT_DIV || op == PT_MOD || op == PT_IF || op == PT_IFNULL || op == PT_CONCAT
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
-      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF)
+      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11971,6 +11972,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt = parser_copy_tree_list (parser, arg1->data_type);
       break;
 
+    case PT_NEXT_VALUE:
+    case PT_CURRENT_VALUE:
+      /* serial value is fixed NUMERIC(38,0); do not promote to float numeric */
+      dt->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+      break;
+
     default:
       break;
     }
@@ -12004,8 +12012,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE)
+	    {
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	    }
 	  break;
 
 	case PT_TYPE_ENUMERATION:
