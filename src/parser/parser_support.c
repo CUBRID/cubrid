@@ -1525,6 +1525,8 @@ pt_is_ddl_statement (const PT_NODE * node)
 	case PT_CREATE_SYNONYM:
 	case PT_DROP_SYNONYM:
 	case PT_RENAME_SYNONYM:
+	case PT_UPDATE_HISTOGRAM:
+	case PT_DROP_HISTOGRAM:
 	  return true;
 	default:
 	  break;
@@ -7536,7 +7538,7 @@ pt_make_query_show_exec_stats_all (PARSER_CONTEXT * parser)
  *				 groups to which a DB user belongs to.
  *
  *    SELECT SUM(SET{t.g.name})
- *    FROM db_user U, TABLE(groups) AS t(g)
+ *    FROM _db_user U, TABLE(groups) AS t(g)
  *    WHERE U.name=<user_name>
  *
  *
@@ -7587,8 +7589,8 @@ pt_make_query_user_groups (PARSER_CONTEXT * parser, const char *user_name)
   query->info.query.q.select.list = parser_append_node (sel_item, query->info.query.q.select.list);
 
   /* FROM : */
-  /* db_user U */
-  from_item = pt_add_table_name_to_from_list (parser, query, "db_user", "U", DB_AUTH_SELECT);
+  /* _db_user U */
+  from_item = pt_add_table_name_to_from_list (parser, query, CT_USER_NAME, "U", DB_AUTH_SELECT);
 
 
   {
@@ -7735,7 +7737,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -7762,7 +7764,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
                                         "SUM (SET {[t].[g].[name]}) "
                                 "FROM "
                                         /* AU_USER_CLASS_NAME */
-                                        "[db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+                                        "[_db_user] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
                                 "WHERE "
                                         "[u].[name] = '%1$s'"
                                 ") "
@@ -10070,6 +10072,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
@@ -11956,11 +11964,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11968,6 +11971,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 

@@ -327,7 +327,7 @@ namespace cubconn::connection
       }
   }
 
-  bool worker::is_wait_required (context *ctx)
+  bool worker::requires_client_info (context *ctx)
   {
     if (ctx->m_conn->fd == cdc_Gl.conn.fd)
       {
@@ -335,6 +335,11 @@ namespace cubconn::connection
       }
 
     return true;
+  }
+
+  bool worker::is_registering_client (context *ctx)
+  {
+    return ctx->m_conn->has_pending_request () || ctx->m_conn->has_working_task ();
   }
 
   bool worker::has_remaining_tasks (context *ctx)
@@ -383,10 +388,37 @@ namespace cubconn::connection
     pthread_mutex_unlock (&m_entry->tran_index_lock);
   }
 
-  bool worker::handle_connection_close (context *ctx, bool retry, std::shared_ptr<message_blocker> handle)
+  bool worker::retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
+  {
+    message request;
+
+    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
+		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
+
+    request.type = message_type::SHUTDOWN_CLIENT;
+    request.conn = ctx->m_conn;
+    request.ctx = ctx;
+    request.id = ctx->m_id;
+    request.ignore = ctx->m_ignore;
+    request.retry = is_retry;
+    request.waiter_handle = handle;
+
+    /* this request must be handled as lazily */
+    this->enqueue (queue_type::LAZY, std::move (request));
+
+    /* lazily notified */
+    m_has_retry = true;
+
+    return this->eventfd_addtimer (
+		   timer_type::QUEUE,
+		   timer_latency::LOW_LATENCY,
+		   std::bind (&worker::handle_message_queue, this)
+	   );
+  }
+
+  bool worker::handle_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
-    message request;
     int tran_index, client_id;
     int status;
 
@@ -401,6 +433,23 @@ namespace cubconn::connection
       }
 
     assert_release (ctx->m_conn);
+
+    /* during shutdown, boot_client_register cannot be expected to finish */
+    if (m_status != status::TERMINATING && !css_is_shutdowning_server ()
+	&& this->requires_client_info (ctx)
+	&& ctx->m_conn->get_tran_index () == NULL_TRAN_INDEX
+	&& this->is_registering_client (ctx))
+      {
+	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
+	ctx->m_conn->stop_talk = true;
+	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
+
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_connection_close: retry for transaction index. conn = %p, fd = %d\n",
+		     ctx->m_conn, ctx->m_conn->fd);
+
+	return this->retry_connection_close (ctx, is_retry, handle);
+      }
 
     /* change status */
 
@@ -422,22 +471,10 @@ namespace cubconn::connection
     std::tie (tran_index, client_id) = this->start_connection_close (ctx);
     if (tran_index < 0 && client_id < 0)
       {
-	if (this->is_wait_required (ctx))
+	if (this->requires_client_info (ctx))
 	  {
-	    pthread_mutex_unlock (&m_entry->tran_index_lock);
-
-	    er_log_conn (__FILE__, __LINE__,
-			 "connection::worker->handle_connection_close: wait for transaction index. conn = %p, fd = %d\n", ctx->m_conn,
-			 ctx->m_conn->fd);
-
-	    /* the connected client does not yet finished boot_client_register */
-	    /* this case is unusual */
-	    /* DO NOT RETRY. retrying may result in duplicate shutdown client requests */
-	    thread_sleep (50);
-
-	    pthread_mutex_lock (&m_entry->tran_index_lock);
-
-	    tran_index = ctx->m_conn->get_tran_index ();
+	    /* retry was skipped, so boot_client_register is not expected to publish a transaction index. */
+	    /* close without retry. */
 	    client_id = ctx->m_conn->client_id;
 	  }
       }
@@ -454,7 +491,7 @@ namespace cubconn::connection
 	ssession_stop_attached_threads (m_entry, ctx->m_conn->session_p);
       }
 
-    if (!retry)
+    if (!is_retry)
       {
 	/* interrupt and wake up */
 
@@ -500,8 +537,6 @@ namespace cubconn::connection
 
     /* clear resource */
 
-    ctx->m_send.m_transmitter.clear ();
-
     start = std::chrono::steady_clock::now ();
 
     rmutex_lock (m_entry, &ctx->m_conn->cmutex);
@@ -514,6 +549,8 @@ namespace cubconn::connection
     end = std::chrono::steady_clock::now ();
     m_stats.add (statistics::worker::BLOCKED_RMUTEX,
 		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
+
+    ctx->m_send.m_transmitter.clear ();
 
     /* close the socket */
     css_shutdown_socket (ctx->m_conn->fd);
@@ -535,28 +572,9 @@ namespace cubconn::connection
     return true;
 
 retry:
-    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_connection_close: retry fd = %d, ignore = %d, conn = %p\n",
-		 ctx->m_conn ? ctx->m_conn->fd : -1, ctx->m_ignore, ctx->m_conn);
-
     this->end_connection_close ();
 
-    request.type = message_type::SHUTDOWN_CLIENT;
-    request.conn = ctx->m_conn;
-    request.ignore = ctx->m_ignore;
-    request.retry = true;
-    request.waiter_handle = handle;
-
-    /* this request must be handled as razily */
-    this->enqueue (queue_type::LAZY, std::move (request));
-
-    /* rezily notified */
-    m_has_retry = true;
-
-    return this->eventfd_addtimer (
-		   timer_type::QUEUE,
-		   timer_latency::LOW_LATENCY,
-		   std::bind (&worker::handle_message_queue, this)
-	   );
+    return this->retry_connection_close (ctx, true, handle);
   }
 
   bool worker::statistics_metrics_to_coordinator ()
@@ -877,9 +895,41 @@ retry:
     return true;
   }
 
+  bool worker::validate_message_generation (const message &item, context *ctx) const
+  {
+    return ctx != nullptr && item.ctx == ctx && item.id == ctx->m_id && ctx->m_conn == item.conn;
+  }
+
+  bool worker::forward_message_to_successor (queue_type type, message &item, context *ctx)
+  {
+    worker *successor;
+
+    if (item.conn->worker == this && m_context.find (ctx) != m_context.end ())
+      {
+	return false;
+      }
+
+    successor = item.conn->worker;
+    if (successor != nullptr)
+      {
+	successor->enqueue (type, std::move (item));
+	if (!successor->notify ())
+	  {
+	    assert_release (false);
+	  }
+      }
+    else
+      {
+	this->wakeup_blocked_worker (item.waiter_handle);
+      }
+
+    return true;
+  }
+
   bool worker::handle_message_queue_send_packet (message &item)
   {
     context *ctx;
+    css_conn_entry *conn;
     result status;
     int r;
 
@@ -891,13 +941,13 @@ retry:
     ctx = reinterpret_cast<context *> (item.conn->context);
     if (ctx == nullptr)
       {
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
 	if (item.deleter)
 	  {
 	    item.deleter ();
 	  }
+
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
 
 #if !defined (NDEBUG)
 	er_log_conn (__FILE__, __LINE__,
@@ -905,6 +955,24 @@ retry:
 		     item.message_id, static_cast<void *> (item.conn));
 #endif
 	this->wakeup_blocked_worker (item.waiter_handle);
+
+	return true;
+      }
+
+    conn = item.conn;
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	this->wakeup_blocked_worker (item.waiter_handle);
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
 
 	return true;
       }
@@ -980,6 +1048,7 @@ retry:
   bool worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
+    css_conn_entry *conn;
     int r;
 
     assert (item.conn);
@@ -997,6 +1066,22 @@ retry:
 	er_log_conn (__FILE__, __LINE__,
 		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
+	return true;
+      }
+
+    conn = item.conn;
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
 	return true;
       }
 
@@ -1227,6 +1312,7 @@ respond:
   bool worker::handle_message_queue_shutdown_client (message &item)
   {
     context *ctx;
+    css_conn_entry *conn;
     int r;
 
     assert (item.conn);
@@ -1243,6 +1329,26 @@ respond:
 	er_log_conn (__FILE__, __LINE__,
 		     "connection::worker->handle_message_queue_shutdown_client: context is already cleared for conn = %p\n",
 		     static_cast<void *> (item.conn));
+
+	this->wakeup_blocked_worker (item.waiter_handle);
+	return true;
+      }
+
+    conn = item.conn;
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	this->wakeup_blocked_worker (item.waiter_handle);
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::LAZY, item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
 	return true;
       }
 
@@ -2002,6 +2108,58 @@ respond:
     m_watcher->mtx.unlock ();
 
     m_watcher->cv.notify_one ();
+  }
+
+  void worker::finalize_resources ()
+  {
+    message request;
+    std::size_t i;
+
+    for (i = 0; i < static_cast<std::size_t> (queue_type::TYPE_COUNT); i++)
+      {
+	while (m_queue[i].try_pop (request))
+	  {
+	    switch (request.type)
+	      {
+	      case message_type::SEND_PACKET:
+		if (request.deleter)
+		  {
+		    request.deleter ();
+		  }
+		[[fallthrough]];
+
+	      case message_type::SHUTDOWN_CLIENT:
+		this->wakeup_blocked_worker (request.waiter_handle);
+		break;
+
+	      case message_type::NEW_CLIENT:
+		css_free_conn (request.conn);
+		m_parent->retire_context (request.ctx);
+		break;
+
+	      case message_type::TAKEOVER_CLIENT:
+		css_free_conn (request.ctx->m_conn);
+		m_parent->retire_context (request.ctx);
+		break;
+
+	      case message_type::START:
+	      case message_type::HIBERNATE:
+	      case message_type::AWAKEN:
+	      case message_type::SHUTDOWN:
+	      case message_type::HANDOFF_CLIENT:
+	      case message_type::RELEASE_PACKET:
+	      case message_type::TYPE_COUNT:
+		break;
+	      }
+	  }
+      }
+
+    for (context *ctx : m_removed_context)
+      {
+	css_free_conn (ctx->m_conn);
+	m_parent->retire_context (ctx);
+      }
+    m_removed_context.clear ();
   }
 
   bool worker::run ()

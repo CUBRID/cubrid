@@ -68,7 +68,7 @@ struct t_schema_file_list_info
 
 static int ldr_validate_object_file (const char *argv0, load_args * args);
 static int ldr_get_start_line_no (std::string & file_name);
-static void ldr_compat_serial_call_target (DB_SESSION * session);
+static void ldr_compat_call_target (DB_SESSION * session);
 static FILE *ldr_check_file (std::string & file_name, int &error_code);
 static int loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode);
 static void ldr_exec_query_interrupt_handler (void);
@@ -961,16 +961,17 @@ loaddb_user (UTIL_FUNCTION_ARG * arg)
 }
 
 /*
- * ldr_compat_serial_call_target - Compatibility fix for CALL ... ON CLASS db_serial statements
- *                                  unloaded from version 11.4 or earlier.
- *   In 11.5+, "db_serial" was renamed to a view (CTV_SERIAL_NAME) and "_db_serial" became
- *   the catalog table (CT_SERIAL_NAME). This function rewrites the ON CLASS target from the
- *   old name to the current one before compilation.
+ * ldr_compat_call_target - Compatibility fix for CALL ... ON CLASS statements
+ *                          unloaded from version 11.4 or earlier.
+ *   In 11.5+, view names (e.g. "db_serial", "db_user", "db_authorization") became
+ *   distinct from their underlying catalog tables ("_db_serial", "_db_user",
+ *   "_db_authorization"). This function rewrites the ON CLASS target from the
+ *   old view name to the current catalog table name before compilation.
  *   return: void
  *   session(in): current DB session
  */
 static void
-ldr_compat_serial_call_target (DB_SESSION * session)
+ldr_compat_call_target (DB_SESSION * session)
 {
   PT_NODE *statement = NULL;
   PT_NODE *on_call_target = NULL;
@@ -986,9 +987,33 @@ ldr_compat_serial_call_target (DB_SESSION * session)
   if (on_call_target != NULL && PT_IS_NAME_NODE (on_call_target))
     {
       origin_name = PT_NAME_ORIGINAL (on_call_target);
-      if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
+      assert (origin_name != NULL);
+
+      if (strcasecmp (origin_name, CTV_USER_NAME) == 0)
+	{
+	  /* db_user view supports find_user() and login() for backward compatibility.
+	   * See CTV_USER_NAME's definition in schema_system_catalog_install.cpp.
+	   */
+	  PT_NODE *method_name_node = PT_METHOD_CALL_NAME (statement);
+	  if (method_name_node == NULL)
+	    {
+	      return;
+	    }
+	  const char *method_name = PT_NAME_ORIGINAL (method_name_node);
+	  assert (method_name != NULL);
+
+	  if (strcasecmp (method_name, "find_user") != 0 && strcasecmp (method_name, "login") != 0)
+	    {
+	      on_call_target->info.name.original = CT_USER_NAME;
+	    }
+	}
+      else if (strcasecmp (origin_name, CTV_SERIAL_NAME) == 0)
 	{
 	  on_call_target->info.name.original = CT_SERIAL_NAME;
+	}
+      else if (strcasecmp (origin_name, CTV_AUTHORIZATION_NAME) == 0)
+	{
+	  on_call_target->info.name.original = CT_AUTHORIZATION_NAME;
 	}
     }
 }
@@ -1112,7 +1137,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 
 	  if (statement_type == CUBRID_STMT_CALL)
 	    {
-	      ldr_compat_serial_call_target (session);
+	      ldr_compat_call_target (session);
 	    }
 
 	  stmt_id = db_compile_statement (session);

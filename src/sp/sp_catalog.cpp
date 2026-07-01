@@ -370,7 +370,7 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	  }
       }
 
-    obt_p = dbt_create_object_internal (classobj_p);
+    obt_p = dbt_create_object_internal (classobj_p, false);
     if (!obt_p)
       {
 	assert (er_errid () != NO_ERROR);
@@ -680,7 +680,7 @@ sp_add_stored_procedure_argument (MOP *mop_p, SP_ARG_INFO &info)
       goto error;
     }
 
-  obt_p = dbt_create_object_internal (classobj_p);
+  obt_p = dbt_create_object_internal (classobj_p, false);
   if (obt_p == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -805,7 +805,7 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  obt_p = dbt_create_object_internal (classobj_p);
+  obt_p = dbt_create_object_internal (classobj_p, false);
   if (obt_p == NULL)
     {
       assert (er_errid () != NO_ERROR);

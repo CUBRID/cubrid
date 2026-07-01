@@ -58,7 +58,7 @@
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_sort.h"
 #include "btree_load.h"
-#include "px_ftab_set.hpp"
+#include "ftab_set.hpp"
 
 #include <functional>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -4965,7 +4965,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  return parallel_num;
+	  /* clamp to the number of workers actually reserved: try_reserve_workers () may grant a partial reservation under worker-pool contention. Pushing parallel_num tasks when fewer were reserved over-subscribes the shared pool. Same pattern as parallel scan / hash join. */
+	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
@@ -5018,7 +5019,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	}
       else
 	{
-	  return parallel_num;
+	  /* clamp to the number of workers actually reserved (partial reservation under contention), same as the SORT_ORDER_BY branch above. */
+	  return sort_param->px_worker_manager->get_reserved_workers ();
 	}
     }
   else
@@ -5247,7 +5249,6 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
     }
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
-      using ftab_set = parallel_query::ftab_set;
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg, *px_sort_args_p;
       std::vector < ftab_set > ftab_sets (parallel_num);
       ftab_set temp;
