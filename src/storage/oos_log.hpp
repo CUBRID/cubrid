@@ -144,8 +144,8 @@ namespace oos_log
     std::vsnprintf (body, sizeof (body), fmt, args);
     va_end (args);
 
-    _er_log_debug (file, line, "OOS [%s](%s:%d): %s\n",
-		   oos_log_get_level_str (level), func, line, body);
+    _er_log_debug (file, line, "OOS [%s](%s): %s\n",
+		   oos_log_get_level_str (level), func, body);
   }
 
 } // namespace oos_log

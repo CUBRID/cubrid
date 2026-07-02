@@ -1059,9 +1059,6 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
       return ER_HEAP_OOS_INVALID_ARGUMENT;
     }
 
-  assert (src.data () != nullptr);
-  assert (src.size () > 0);
-
   const int src_len = static_cast<int> (src.size ());
 
   // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
