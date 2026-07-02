@@ -10475,6 +10475,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	    break;
 	  }
 
+	/* Whether the UPDATE changes a key column is uniform across subclasses/partitions,
+	 * so subclass 0's att_id is representative for the whole hierarchy. */
 	if (locator_decide_update_lock
 	    (thread_p, &class_info->class_oid[0], (ATTR_ID *) class_info->att_id, class_info->num_attrs) != WX_LOCK)
 	  {
