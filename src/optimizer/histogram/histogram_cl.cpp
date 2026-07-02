@@ -747,11 +747,21 @@ comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
 	}
       /* The first bucket has no previous endpoint stored (its lower bound is unknown), so
        * bucket_hi (b - 1) would read bucket record (uint) -1 -> assert in debug / out-of-bounds in
-       * release. Treat the first bucket as a point at its high endpoint: frac () then returns 0 when
-       * v <= hi and 1 when v > hi (the latter only when v is above the whole histogram). */
+       * release. Interpolation inside it is therefore impossible; but its mass must still count:
+       * at (or above) its endpoint the whole bucket lies below-or-equal v, and for a value inside
+       * it we assume half. (Treating it as a point dropped the entire first-bucket mass for
+       * predicates like col <= first_endpoint, badly underestimating range selectivity.) */
       const T hi = r.bucket_hi<T> (b);
-      const T lo = (b == 0) ? hi : r.bucket_hi<T> (b - 1);
-      const double f = frac (lo, hi, v);
+      double f;
+      if (b == 0)
+	{
+	  f = (v >= hi) ? 1.0 : 0.5;
+	}
+      else
+	{
+	  const T lo = r.bucket_hi<T> (b - 1);
+	  f = frac (lo, hi, v);
+	}
       nonmcv_below_rows = static_cast<double> (r.bucket_cumulative (b - 1))
 			  + static_cast<double> (r.bucket_rows (b)) * f;
     }
