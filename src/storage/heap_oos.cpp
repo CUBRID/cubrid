@@ -555,9 +555,18 @@ heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, i
       goto cleanup;
     }
 
-  if (heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname) != NO_ERROR || classname == NULL)
+  error = heap_get_class_name (thread_p, &fdes.heap.class_oid, &classname);
+  if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  if (classname == NULL)
+    {
+      error = ER_HEAP_UNKNOWN_OBJECT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 3, fdes.heap.class_oid.volid, fdes.heap.class_oid.pageid,
+	      fdes.heap.class_oid.slotid);
       goto cleanup;
     }
 
