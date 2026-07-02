@@ -2629,7 +2629,13 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   if (list_id != NULL)
     {
-      UINT64 slot_array_size = mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
+      UINT64 slot_array_size = 0;
+
+      /* the slot array is int-indexed; only compute its size when tuple_cnt fits in int */
+      if (list_id->tuple_cnt <= INT_MAX)
+	{
+	  slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
+	}
 
       if (list_id->tuple_cnt <= INT_MAX && slot_array_size + ((UINT64) list_id->page_cnt * DB_PAGESIZE) <= mem_limit)
 	{
