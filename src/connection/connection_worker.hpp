@@ -265,13 +265,16 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       /* close connection							     */
       /* --------------------------------------------------------------------------- */
-      bool is_wait_required (context *ctx);
+      bool requires_client_info (context *ctx);
+      bool is_registering_client (context *ctx);
+
       bool has_remaining_tasks (context *ctx);
 
       std::pair<int, int> start_connection_close (context *ctx);
       void end_connection_close ();
+      bool retry_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle);
 
-      bool handle_connection_close (context *ctx, bool retry = false, std::shared_ptr<message_blocker> handle = nullptr);
+      bool handle_connection_close (context *ctx, bool is_retry = false, std::shared_ptr<message_blocker> handle = nullptr);
 
       /* --------------------------------------------------------------------------- */
       /* statistics and hibernation						     */
