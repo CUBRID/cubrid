@@ -3402,7 +3402,10 @@ net_client_request_recv_stream (int request, char *argbuf, int argsize, char *re
 	}
 
       file_size -= size;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
       fwrite (reply_streamdata, 1, size, outfp);
+#pragma GCC diagnostic pop
     }
 
 end:
