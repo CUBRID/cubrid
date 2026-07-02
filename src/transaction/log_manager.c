@@ -11074,9 +11074,17 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
+	  cdc_log ("CBRD26994DBG: pause-PARK. process_lsa (%lld|%d), next_extraction_lsa (%lld|%d), reset_flag=%d",
+		   LSA_AS_ARGS (&process_lsa), LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa),
+		   cdc_Gl.producer.is_reset_process_lsa);
+
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
+	  cdc_log ("CBRD26994DBG: pause-WAKE. process_lsa (%lld|%d), next_extraction_lsa (%lld|%d), reset_flag=%d",
+		   LSA_AS_ARGS (&process_lsa), LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa),
+		   cdc_Gl.producer.is_reset_process_lsa);
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
@@ -11090,11 +11098,19 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_WAIT;
 
+	  cdc_log ("CBRD26994DBG: qfull-PARK. process_lsa (%lld|%d), next_extraction_lsa (%lld|%d), reset_flag=%d",
+		   LSA_AS_ARGS (&process_lsa), LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa),
+		   cdc_Gl.producer.is_reset_process_lsa);
+
 	  cdc_pause_consumer ();
 
 	  pthread_mutex_lock (&cdc_Gl.producer.lock);
 	  pthread_cond_wait (&cdc_Gl.producer.wait_cond, &cdc_Gl.producer.lock);
 	  pthread_mutex_unlock (&cdc_Gl.producer.lock);
+
+	  cdc_log ("CBRD26994DBG: qfull-WAKE. process_lsa (%lld|%d), next_extraction_lsa (%lld|%d), reset_flag=%d",
+		   LSA_AS_ARGS (&process_lsa), LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa),
+		   cdc_Gl.producer.is_reset_process_lsa);
 
 	  cdc_Gl.producer.state = CDC_PRODUCER_STATE_RUN;
 
@@ -11132,9 +11148,18 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
+      if (cdc_Gl.producer.is_reset_process_lsa)
+	{
+	  cdc_log ("CBRD26994DBG: RESET consumed. process_lsa (%lld|%d) -> NULL, next_extraction_lsa (%lld|%d)",
+		   LSA_AS_ARGS (&process_lsa), LSA_AS_ARGS (&cdc_Gl.producer.next_extraction_lsa));
+	  LSA_SET_NULL (&process_lsa);
+	  cdc_Gl.producer.is_reset_process_lsa = false;
+	}
+
       if (LSA_ISNULL (&process_lsa))
 	{
 	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
+	  cdc_log ("CBRD26994DBG: ADOPT next_extraction_lsa (%lld|%d) as process_lsa", LSA_AS_ARGS (&process_lsa));
 	}
       else
 	{
@@ -14503,9 +14528,17 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 
   if (cdc_Gl.producer.produced_queue_size == 0)
     {
+      cdc_log ("CBRD26994DBG: reinit: queue empty");
       cdc_log ("cdc_reinitialize_queue : don't need to be reinitialized");
       goto end;
     }
+
+  /* every caller must park the producer before reinitializing the queue */
+  assert (cdc_Gl.producer.state == CDC_PRODUCER_STATE_WAIT);
+  cdc_log
+    ("CBRD26994DBG: reinit: producer state=%d, first_q (%lld|%d), last_q (%lld|%d), start (%lld|%d)",
+     cdc_Gl.producer.state, LSA_AS_ARGS (&cdc_Gl.first_loginfo_queue_lsa),
+     LSA_AS_ARGS (&cdc_Gl.last_loginfo_queue_lsa), LSA_AS_ARGS (start_lsa));
 
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
