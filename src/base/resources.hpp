@@ -38,7 +38,7 @@ namespace os::resources
   }
 
   void initialize ();
-  std::optional<std::string> execute_command (const char *cmd);
+  std::optional<std::pair<std::string, int>> execute_command (const char *cmd);
 
   namespace cpu
   {
@@ -121,7 +121,7 @@ namespace os::resources
 
   namespace net
   {
-    bool set_nic_channels (std::string &ifname, unsigned int combined);
+    bool set_nic_channels (std::string &ifname, unsigned int combined, bool *permission_error = nullptr);
     void map_nic_to_index (std::vector<std::size_t> &index);
   }
 }
