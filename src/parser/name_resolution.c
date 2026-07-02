@@ -8175,13 +8175,19 @@ pt_write_semantic_warning (PARSER_CONTEXT * parser, PT_NODE * name, int line_no,
 
   if (name->info.name.meta_class != PT_INDEX_NAME)
     {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
       asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
+#pragma GCC diagnostic pop
     }
   else
     {
       void *ptr = name->etc;
       name->etc = (void *) PT_IDX_HINT_NONE;	// for remove (+)/(-)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
       asprintf (&buf, fmt, pt_print_bytes (parser, name)->bytes);
+#pragma GCC diagnostic pop
       name->etc = (void *) ptr;
     }
 

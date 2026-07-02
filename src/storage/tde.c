@@ -345,7 +345,10 @@ tde_create_keys_file (const char *keyfile_fullname)
     }
 
   memcpy (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_KEYS));
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   write (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
+#pragma GCC diagnostic pop
 
   fsync (vdes);
 
@@ -383,7 +386,10 @@ tde_validate_keys_file (int vdes)
       goto exit;
     }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   read (vdes, magic, CUBRID_MAGIC_MAX_LENGTH);
+#pragma GCC diagnostic pop
   if (memcmp (magic, CUBRID_MAGIC_KEYS, sizeof (CUBRID_MAGIC_MAX_LENGTH)) != 0)
     {
       valid = false;
@@ -1426,7 +1432,10 @@ tde_add_mk (int vdes, const unsigned char *master_key, time_t created_time, int 
     }
 
   /* add key */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   write (vdes, &adding_item, TDE_MK_FILE_ITEM_SIZE);
+#pragma GCC diagnostic pop
 
   fsync (vdes);
 exit:
@@ -1613,7 +1622,10 @@ tde_delete_mk (int vdes, int mk_index)
   item.created_time = -1;	/* mark it invalid */
 
   lseek (vdes, -TDE_MK_FILE_ITEM_SIZE, SEEK_CUR);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   write (vdes, &item, TDE_MK_FILE_ITEM_SIZE);
+#pragma GCC diagnostic pop
   fsync (vdes);
   found = true;
 

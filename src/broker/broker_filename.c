@@ -85,7 +85,10 @@ set_cubrid_home ()
       strcpy (cubrid_Dir, p);
       return;
     }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   getcwd (dirname, sizeof (dirname));
+#pragma GCC diagnostic pop
   if (snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname) < 0)
     {
       assert (false);
@@ -142,7 +145,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	    }
 	  else
 	    {
-	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	    }
 	}
       else
@@ -175,7 +178,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	}
       else
 	{
-	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
       break;
     }
@@ -302,7 +305,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
-      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf) < 0)
 	{
 	  assert (false);
 	  buf[0] = '\0';
@@ -310,7 +313,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_SHARD_PROXY_LOG_DIR:
       envvar_logdir_file (buf, BROKER_PATH_MAX, "broker/proxy_log/");
-      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf) < 0)
 	{
 	  assert (false);
 	  buf[0] = '\0';

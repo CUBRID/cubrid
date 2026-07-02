@@ -1113,7 +1113,10 @@ er_file_create_link_to_current_log_file (const char *log_file_path, const char *
     }
 
   (void) unlink (link_path);	// remove existing link file
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   symlink (log_file_path, link_path);
+#pragma GCC diagnostic pop
 }
 #endif /* !WINDOWS && SERVER_MODE */
 
@@ -3318,7 +3321,10 @@ er_print_crash_callstack (int sig)
   /* get current direcory, chdir to $CUBRID/log and check and make directory $CUBRID/log/coredump */
   char cdir[PATH_MAX], logdir[PATH_MAX], *p = logdir;
 
-  getcwd (cdir, sizeof (cdir));
+  if (getcwd (cdir, sizeof (cdir)) == NULL)
+    {
+      return;
+    }
   if (chdir (env) != 0)
     {
       return;
@@ -3336,7 +3342,10 @@ er_print_crash_callstack (int sig)
 	{
 	  if (mkdir (logdir, 0777) < 0)
 	    {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 	      chdir (cdir);
+#pragma GCC diagnostic pop
 	      return;
 	    }
 	}
@@ -3369,7 +3378,10 @@ er_print_crash_callstack (int sig)
   fp = fopen (filename, "w+");
   if (!fp)
     {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
       chdir (cdir);
+#pragma GCC diagnostic pop
       return;
     }
 
@@ -3386,7 +3398,10 @@ er_print_crash_callstack (int sig)
       if (er_call_stack_init () == ER_FAILED)
 	{
 	  fclose (fp);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 	  chdir (cdir);
+#pragma GCC diagnostic pop
 	  return;
 	}
       er_dump_call_stack (fp);
@@ -3399,7 +3414,10 @@ er_print_crash_callstack (int sig)
   fclose (fp);
 
   /* chdir orignal path */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   chdir (cdir);
+#pragma GCC diagnostic pop
 
   return;
 }

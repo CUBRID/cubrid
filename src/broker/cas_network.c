@@ -462,7 +462,10 @@ net_read_to_file (SOCKET sock_fd, int file_size, char *filename)
 	}
       if (out_fd >= 0)
 	{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 	  write (out_fd, read_buf, read_len);
+#pragma GCC diagnostic pop
 	}
       file_size -= read_len;
     }

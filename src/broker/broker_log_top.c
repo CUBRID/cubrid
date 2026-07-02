@@ -449,7 +449,10 @@ log_top_query (int argc, char *argv[], int arg_start)
 	      fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
 	      query_info_print ();
 	      query_info_clear_array ();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 	      chdir (org_cwd);
+#pragma GCC diagnostic pop
 	    }
 	  strcpy (prev_prefix, curr_prefix);
 	}
@@ -534,7 +537,10 @@ log_top_query (int argc, char *argv[], int arg_start)
 	  fprintf (stdout, "Report files created: ./%s/%s/log_top.{q,res}\n", splitdir, prev_prefix);
 	  query_info_print ();
 	  query_info_clear_array ();
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
 	  chdir (org_cwd);
+#pragma GCC diagnostic pop
 	}
     }
   else

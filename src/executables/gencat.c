@@ -975,7 +975,8 @@ MCWriteCat (int fd)
     }
 
   /* write out catalog.  XXX: should this be done in small chunks? */
-  write (fd, msgcat, msgcat_size);
+  ssize_t nbytes = write (fd, msgcat, msgcat_size);
+  (void) nbytes;
   free (msgcat);
 }
 

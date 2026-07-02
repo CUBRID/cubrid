@@ -336,13 +336,19 @@ ut_cd_work_dir (void)
 {
   char path[BROKER_PATH_MAX];
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
+#pragma GCC diagnostic pop
 }
 
 void
 ut_cd_root_dir (void)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   chdir (envvar_root ());
+#pragma GCC diagnostic pop
 }
 
 #ifdef V3_TEST

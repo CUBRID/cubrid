@@ -2139,7 +2139,10 @@ pt_frob_warning (PARSER_CONTEXT * parser, const PT_NODE * stmt, const char *fmt,
   char *old_buf = parser->error_buffer;
 
   va_start (ap, fmt);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   vasprintf (&parser->error_buffer, fmt, ap);
+#pragma GCC diagnostic pop
   va_end (ap);
 
   if (old_buf && parser->error_buffer != old_buf)
@@ -2170,7 +2173,10 @@ pt_frob_error (PARSER_CONTEXT * parser, const PT_NODE * stmt, const char *fmt, .
   char *old_buf = parser->error_buffer;
 
   va_start (ap, fmt);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   vasprintf (&parser->error_buffer, fmt, ap);
+#pragma GCC diagnostic pop
   va_end (ap);
 
   if (old_buf && parser->error_buffer != old_buf)
