@@ -106,6 +106,7 @@ struct aggregate_info
   REGU_VARIABLE_LIST regu_list;
   REGU_VARIABLE_LIST scan_regu_list;
   PT_NODE *out_names;
+  PT_NODE *args;
   DB_VALUE **grbynum_valp;
   const char *class_name;
   int flag_agg_optimize;
