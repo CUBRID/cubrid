@@ -1622,7 +1622,8 @@ mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   idx = (unsigned int) (prev_slot - ht->table);
   idx = (idx + 1) & mask;
 
-  for (probes = 0; probes < ht->size; probes++)
+  /* size - 1 so the scan never wraps back to prev_slot and re-returns it */
+  for (probes = 0; probes < ht->size - 1; probes++)
     {
       if (ht->table[idx].data == NULL)
 	{
@@ -2676,7 +2677,7 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
 static const void *
 mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
 {
-  unsigned int hash, mask, idx;
+  unsigned int hash, mask, idx, probes;
 
   assert (ht != NULL && key != NULL);
 
@@ -2685,18 +2686,18 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
   mask = ht->size - 1;
   idx = hash & mask;
 
-  /* defensive: open addressing requires a free slot; sizing guarantees nentries < size */
-  if (ht->nentries >= ht->size)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, DB_SIZEOF (MHT_HLS_SLOT));
-      return NULL;
-    }
-
-  /* linear probing: walk to the first free slot */
-  while (ht->table[idx].data != NULL)
+  /* linear probing: walk to the first free slot (sizing keeps nentries < size) */
+  for (probes = 0; probes < ht->size && ht->table[idx].data != NULL; probes++)
     {
       ht->ncollisions++;
       idx = (idx + 1) & mask;
+    }
+
+  if (ht->table[idx].data != NULL)
+    {
+      /* no free slot found - should never happen (sizing keeps nentries < size) */
+      assert_release_error (false);
+      return NULL;
     }
 
   ht->table[idx].data = data;

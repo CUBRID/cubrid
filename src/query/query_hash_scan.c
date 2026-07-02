@@ -53,7 +53,6 @@
 #include "memory_wrapper.hpp"
 
 
-static bool safe_memcpy (void *data, void *source, int size);
 static DB_VALUE_COMPARE_RESULT qdata_hscan_key_compare (HASH_SCAN_KEY * ckey1, HASH_SCAN_KEY * ckey2, int *diff_pos);
 
 /****************************************************************************/
@@ -642,11 +641,8 @@ qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_T
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
       return NULL;
     }
-  /* save tuple */
-  if (!safe_memcpy (tuple, tpl, tuple_size))
-    {
-      return NULL;
-    }
+
+  memcpy (tuple, tpl, tuple_size);
   return tuple;
 }
 
@@ -673,17 +669,6 @@ qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID heap_id, QFI
   simple_pos->vpid = scan_id_p->curr_vpid;
 
   return simple_pos;
-}
-
-static bool
-safe_memcpy (void *data, void *source, int size)
-{
-  if (size < 0)
-    {
-      return false;
-    }
-  memcpy (data, source, (size_t) size);
-  return true;
 }
 
 /*
