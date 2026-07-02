@@ -565,10 +565,6 @@ namespace cubbase
   {
     const char *path = "/proc/sys/net/core/rps_sock_flow_entries";
 
-    if (access (path, W_OK) != 0)
-      {
-	return false;
-      }
     /* TODO: is it better to turn this off? */
     //write_int (path, (long long int) ncores * 4096);
     return write_int (path, 0) == 0;

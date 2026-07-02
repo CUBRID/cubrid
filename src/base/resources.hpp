@@ -28,6 +28,7 @@
 #include <vector>
 #include <limits>
 #include <optional>
+#include <utility>
 #include <sched.h>
 
 namespace os::resources
@@ -38,7 +39,6 @@ namespace os::resources
   }
 
   void initialize ();
-  std::optional<std::pair<std::string, int>> execute_command (const char *cmd);
 
   namespace cpu
   {

@@ -31,7 +31,6 @@
 #include <net/if.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/wait.h>
 #include <linux/sockios.h>
 #include <linux/ethtool.h>
 
@@ -39,14 +38,10 @@
 #include "filesys_parser.hpp"
 #include "ifsys.hpp"
 #include "cgroup.hpp"
+#include "error_manager.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#define er_log_print(file, line, ...) do { \
-    _er_log_debug (file, line, __VA_ARGS__); \
-    printf (__VA_ARGS__); \
-} while (0)
 
 namespace os::resources
 {
@@ -55,55 +50,22 @@ namespace os::resources
     return error == EACCES || error == EPERM;
   }
 
-  static bool output_has_permission_error (const std::string &output)
-  {
-    return output.find ("Operation not permitted") != std::string::npos
-	   || output.find ("Permission denied") != std::string::npos;
-  }
-
   static void guide_hardware_affinity_permission ()
   {
-    er_log_print (__FILE__, __LINE__,
-		  "You must either start the server as the root user or grant the necessary capabilities "
-		  "to the server binary as shown below.\n"
-		  "(Note: It is recommended to disable irqbalance if you want this server to manage your hardware directly.)\n\n"
-		  "  $> sudo -E \"$CUBRID/bin/cubrid\" server start <db_name>\n\n"
-		  "or\n\n"
-		  "  $> sudo setcap \'cap_net_admin,cap_dac_override+ep\' \"$CUBRID/bin/cub_server\"\n"
-		  "  $> getcap \"$CUBRID/bin/cub_server\"\n"
-		  "\n");
+    _er_log_debug (__FILE__, __LINE__,
+		   "You must either start the server as the root user or grant the necessary capabilities "
+		   "to the server binary as shown below.\n"
+		   "(Note: It is recommended to disable irqbalance if you want this server to manage your hardware directly.)\n\n"
+		   "  $> sudo -E \"$CUBRID/bin/cubrid\" server start <db_name>\n\n"
+		   "or\n\n"
+		   "  $> sudo setcap \'cap_net_admin,cap_dac_override+ep\' \"$CUBRID/bin/cub_server\"\n"
+		   "  $> getcap \"$CUBRID/bin/cub_server\"\n"
+		   "\n");
   }
 
   void initialize ()
   {
     os::resources::cpu::effective ();
-  }
-
-  std::optional<std::pair<std::string, int>> execute_command (const char *cmd)
-  {
-    std::string result;
-    char buffer[256];
-    FILE *pipe;
-    int status;
-
-    pipe = popen ((std::string (cmd) + " 2>&1").c_str (), "r");
-    if (!pipe)
-      {
-	return std::nullopt;
-      }
-
-    result = "";
-    while (fgets (buffer, sizeof (buffer), pipe) != nullptr)
-      {
-	result += buffer;
-      }
-
-    status = pclose (pipe);
-    if (status == -1)
-      {
-	return std::nullopt;
-      }
-    return std::make_pair (result, status);
   }
 
   namespace cpu
@@ -329,10 +291,8 @@ namespace os::resources
   {
     bool set_nic_channels (std::string &ifname, unsigned int combined, bool *permission_error)
     {
-      std::optional<std::pair<std::string, int>> status;
       struct ethtool_channels channel;
       struct ifreq ifr;
-      char command[256];
       int saved_errno;
       int success;
       int fd;
@@ -355,39 +315,36 @@ namespace os::resources
       memset (&ifr, 0, sizeof (ifr));
       memset (&channel, 0, sizeof (channel));
 
-      channel.cmd = ETHTOOL_SCHANNELS;
-      channel.combined_count = combined;
       strncpy (ifr.ifr_name, ifname.c_str (), IFNAMSIZ - 1);
       ifr.ifr_data = reinterpret_cast<char *> (&channel);
 
+      channel.cmd = ETHTOOL_GCHANNELS;
       success = ioctl (fd, SIOCETHTOOL, &ifr);
       if (success)
 	{
 	  saved_errno = errno;
-	  snprintf (command, sizeof (command), "ethtool -L %s combined %u", ifname.c_str (), combined);
-	  status = execute_command (command);
-	  if (!status)
+	  if (permission_error && is_permission_error (saved_errno))
 	    {
-	      if (permission_error && is_permission_error (saved_errno))
-		{
-		  *permission_error = true;
-		}
-	      _er_log_debug (__FILE__, __LINE__, "warning: failed to execute the command: %s\n", command);
-	      ::close (fd);
-	      return false;
+	      *permission_error = true;
 	    }
-	  if (!WIFEXITED (status->second) || WEXITSTATUS (status->second) != 0)
+	  ::close (fd);
+	  errno = saved_errno;
+	  return false;
+	}
+
+      channel.cmd = ETHTOOL_SCHANNELS;
+      channel.combined_count = combined;
+      success = ioctl (fd, SIOCETHTOOL, &ifr);
+      if (success)
+	{
+	  saved_errno = errno;
+	  if (permission_error && is_permission_error (saved_errno))
 	    {
-	      if (permission_error && (is_permission_error (saved_errno)
-				       || output_has_permission_error (status->first)))
-		{
-		  *permission_error = true;
-		}
-	      _er_log_debug (__FILE__, __LINE__, "warning: command failed: %s\n%s", command,
-			     status->first.c_str ());
-	      ::close (fd);
-	      return false;
+	      *permission_error = true;
 	    }
+	  ::close (fd);
+	  errno = saved_errno;
+	  return false;
 	}
 
       ::close (fd);
@@ -411,7 +368,7 @@ namespace os::resources
       ifname = cubbase::ifsys::auto_select_primary_iface ();
       if (ifname.empty ())
 	{
-	  er_log_print (__FILE__, __LINE__, "warning: no interfaces available for selection. (virtual environment)\n");
+	  _er_log_debug (__FILE__, __LINE__, "warning: no interfaces available for selection. (virtual environment)\n");
 	  return ;
 	}
 
@@ -419,7 +376,7 @@ namespace os::resources
       permission_error = false;
       if (!set_nic_channels (ifname, index.size (), &permission_error))
 	{
-	  er_log_print (__FILE__, __LINE__, "warning: NIC channel configuration failed. (driver may limit)\n\n");
+	  _er_log_debug (__FILE__, __LINE__, "warning: NIC channel configuration failed: %s\n\n", strerror (errno));
 	  if (permission_error)
 	    {
 	      guide_hardware_affinity_permission ();
@@ -437,8 +394,8 @@ namespace os::resources
 	      if (cubbase::ifsys::set_irq_affinity_list (qs.v[i].irq, index[q % index.size ()]) != 0)
 		{
 		  saved_errno = errno;
-		  er_log_print (__FILE__, __LINE__, "warning: failed to set IRQ affinity for IRQ %d: %s\n", qs.v[i].irq,
-				strerror (saved_errno));
+		  _er_log_debug (__FILE__, __LINE__, "warning: failed to set IRQ affinity for IRQ %d: %s\n", qs.v[i].irq,
+				 strerror (saved_errno));
 		  if (!permission_guide_logged && is_permission_error (saved_errno))
 		    {
 		      guide_hardware_affinity_permission ();
@@ -449,7 +406,7 @@ namespace os::resources
 	}
       else
 	{
-	  er_log_print (__FILE__, __LINE__, "warning: no IRQ found for %s in /proc/interrupts.\n\n", ifname.c_str ());
+	  _er_log_debug (__FILE__, __LINE__, "warning: no IRQ found for %s in /proc/interrupts.\n\n", ifname.c_str ());
 	}
       free (qs.v);
 
@@ -463,8 +420,8 @@ namespace os::resources
       if (!cubbase::ifsys::maybe_set_rps_sock_flow_entries (index.size ()))
 	{
 	  saved_errno = errno;
-	  er_log_print (__FILE__, __LINE__, "warning: failed to set rps_sock_flow_entries: %s\n",
-			strerror (saved_errno));
+	  _er_log_debug (__FILE__, __LINE__, "warning: failed to set rps_sock_flow_entries: %s\n",
+			 strerror (saved_errno));
 	  if (!permission_guide_logged && is_permission_error (saved_errno))
 	    {
 	      guide_hardware_affinity_permission ();
@@ -477,8 +434,8 @@ namespace os::resources
 	  if (!cubbase::ifsys::set_rps_for_queue (ifname.c_str (), q, index[q % index.size ()]))
 	    {
 	      saved_errno = errno;
-	      er_log_print (__FILE__, __LINE__, "warning: failed to set RPS for %s rx-%d: %s\n", ifname.c_str (), q,
-			    strerror (saved_errno));
+	      _er_log_debug (__FILE__, __LINE__, "warning: failed to set RPS for %s rx-%d: %s\n", ifname.c_str (), q,
+			     strerror (saved_errno));
 	      if (!permission_guide_logged && is_permission_error (saved_errno))
 		{
 		  guide_hardware_affinity_permission ();
@@ -491,8 +448,8 @@ namespace os::resources
 	  if (!cubbase::ifsys::set_xps_for_queue (ifname.c_str (), q, index[q % index.size ()]))
 	    {
 	      saved_errno = errno;
-	      er_log_print (__FILE__, __LINE__, "warning: failed to set XPS for %s tx-%d: %s\n", ifname.c_str (), q,
-			    strerror (saved_errno));
+	      _er_log_debug (__FILE__, __LINE__, "warning: failed to set XPS for %s tx-%d: %s\n", ifname.c_str (), q,
+			     strerror (saved_errno));
 	      if (!permission_guide_logged && is_permission_error (saved_errno))
 		{
 		  guide_hardware_affinity_permission ();
