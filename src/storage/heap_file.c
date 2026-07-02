@@ -10940,12 +10940,6 @@ heap_attrinfo_read_dbvalues_batched_oos (THREAD_ENTRY * thread_p, RECDES * recde
 
   for (int i = 0; i < attr_info->num_values; i++)
     {
-      batched_values[i].is_oos = false;
-      batched_values[i].raw.data = NULL;
-    }
-
-  for (int i = 0; i < attr_info->num_values; i++)
-    {
       oos_read_request request;
       error = heap_attrvalue_prepare_batched_oos_read (recdes, &attr_info->values[i], attr_info,
 						       &batched_values[i], &request);
@@ -12728,6 +12722,9 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
       return S_ERROR;
     }
 
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
+
   try
   {
     pending.reserve (attr_info->num_values);
@@ -12789,9 +12786,6 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
       };
       requests.push_back (request);
     }
-
-  tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.clear ();
 
   if (!requests.empty ()
       && oos_insert_many (thread_p, oos_vfid, cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
