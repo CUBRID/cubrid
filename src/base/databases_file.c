@@ -744,7 +744,10 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
       n = (int) (s - line);
       write (vdes, line, n);
     }
+#pragma GCC diagnostic pop
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   ftruncate (vdes, lseek (vdes, 0L, SEEK_CUR));
 #pragma GCC diagnostic pop
 

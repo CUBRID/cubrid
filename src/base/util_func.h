@@ -51,9 +51,6 @@
     _Pragma("GCC diagnostic push") \
     _Pragma("GCC diagnostic ignored \"-Wformat-security\"") \
     fprintf(stderr, __VA_ARGS__);\
-    _Pragma("GCC diagnostic pop") \
-    _Pragma("GCC diagnostic push") \
-    _Pragma("GCC diagnostic ignored \"-Wformat-security\"") \
     util_log_write_errstr(__VA_ARGS__);\
     _Pragma("GCC diagnostic pop") \
   }while (0)

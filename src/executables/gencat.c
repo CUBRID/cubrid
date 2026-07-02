@@ -975,8 +975,10 @@ MCWriteCat (int fd)
     }
 
   /* write out catalog.  XXX: should this be done in small chunks? */
-  ssize_t nbytes = write (fd, msgcat, msgcat_size);
-  (void) nbytes;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
+  write (fd, msgcat, msgcat_size);
+#pragma GCC diagnostic pop
   free (msgcat);
 }
 

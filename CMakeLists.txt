@@ -620,9 +620,13 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   # set hash-style and security hardening linker flags (placed after cmake check_* calls
   # so that check_type_size/check_include_file test binaries are not linked with -pie,
   # which would fail because the test objects are not compiled with -fPIC/-fPIE)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -pie -static-libstdc++")
-  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
-  set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
+  # These are GNU ld specific flags; guard with CMAKE_COMPILER_IS_GNUCC to avoid
+  # linker errors when building with Clang + lld on Linux.
+  if(CMAKE_COMPILER_IS_GNUCC)
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -pie -static-libstdc++")
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
+    set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} -Wl,--hash-style=both -Wl,-z,relro,-z,now -static-libstdc++")
+  endif(CMAKE_COMPILER_IS_GNUCC)
 
 elseif(CMAKE_SYSTEM_NAME MATCHES "AIX")
   # Definitions for system
