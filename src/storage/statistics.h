@@ -112,6 +112,9 @@ typedef struct hist_stats HIST_STATS;
 struct hist_stats
 {
   int n_attrs;			/* number of attributes; size of the histogram[] */
+  int *attr_ids;		/* column id per slot -- consumers must match by id, NOT by the
+				 * position of the id in CLASS_STATS.attr_stats: that array is not
+				 * kept in attribute order after schema updates */
   DB_VALUE **histogram;		/* column histogram , null if not exists */
   double *null_frequency;	/* column null frequency , 0 if not exists */
 };

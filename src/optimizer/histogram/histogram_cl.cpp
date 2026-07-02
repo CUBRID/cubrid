@@ -691,14 +691,14 @@ string_pos (const unsigned char *s, std::size_t len, std::size_t max_len = 16)
 }
 
 static double
-string_domain_frac_lt (const std::string &lo, const std::string &hi, const std::string &v)
+string_domain_frac_lt (std::string_view lo, std::string_view hi, std::string_view v)
 {
   if (hi <= v)
     {
       return 1.0;
     }
 
-  auto to_bytes = [] (const std::string &s) -> const unsigned char *
+  auto to_bytes = [] (std::string_view s) -> const unsigned char *
   {
     return reinterpret_cast<const unsigned char *> (s.data ());
   };
@@ -872,7 +872,7 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
       mcv_index = histogram_reader.find_mcv<double> (key.dbl);
       break;
     case hist::histogram_key_kind::str:
-      mcv_index = histogram_reader.find_mcv<std::string> (key.str);
+      mcv_index = histogram_reader.find_mcv<std::string_view> (std::string_view (key.str));
       break;
     case hist::histogram_key_kind::u64:
       mcv_index = histogram_reader.find_mcv<std::uint64_t> (key.u64);
@@ -993,8 +993,8 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
 			  nonmcv_below_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::str:
-      comp_parts<std::string> (histogram_reader, key.str, string_domain_frac_lt,
-			       nonmcv_below_frac, mcv_lt, mcv_le);
+      comp_parts<std::string_view> (histogram_reader, std::string_view (key.str), string_domain_frac_lt,
+				    nonmcv_below_frac, mcv_lt, mcv_le);
       break;
     case hist::histogram_key_kind::u64:
       comp_parts<std::uint64_t> (histogram_reader, key.u64, numeric_domain_frac_u64_lt,
@@ -1118,7 +1118,7 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
 }
 
 static bool
-like_match_string (const std::string &pattern, const std::string &value)
+like_match_string (const std::string &pattern, std::string_view value)
 {
   if (pattern.empty())
     {
@@ -1127,13 +1127,15 @@ like_match_string (const std::string &pattern, const std::string &value)
 
   const char *p = pattern.c_str ();
   const char *s = value.data ();
+  /* value is a string_view into the histogram blob: NOT NUL-terminated; iterate by length */
+  const char *s_end = s + value.size ();
 
   /* most recent '%' position in pattern */
   const char *last_percent = nullptr;
   /* position in string that corresponds to retry after '%' */
   const char *last_match = nullptr;
 
-  while (*s != '\0')
+  while (s < s_end)
     {
       if (*p == '%')
 	{
@@ -1225,7 +1227,7 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
-      const std::string mcv_val = histogram_reader.mcv_hi<std::string> (i);
+      const std::string_view mcv_val = histogram_reader.mcv_hi<std::string_view> (i);
       if (like_match_string (pattern, mcv_val))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
@@ -1241,7 +1243,7 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (like_match_string (pattern, histogram_reader.bucket_hi<std::string> (i)))
+      if (like_match_string (pattern, histogram_reader.bucket_hi<std::string_view> (i)))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -1393,6 +1395,20 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
     }
   memset ((*histogram)->null_frequency, 0, sizeof (double) * attr_count);
 
+  (*histogram)->attr_ids = (int *) db_ws_alloc (sizeof (int) * attr_count);
+  if ((*histogram)->attr_ids == NULL)
+    {
+      db_ws_free ((*histogram)->null_frequency);
+      db_ws_free ((*histogram)->histogram);
+      db_ws_free (*histogram);
+      *histogram = NULL;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int k = 0; k < attr_count; k++)
+    {
+      (*histogram)->attr_ids[k] = -1;
+    }
+
 
   int i = 0;
 
@@ -1417,6 +1433,7 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
 
       (*histogram)->histogram[i] = NULL;
       (*histogram)->null_frequency[i] = -1.0; // -1.0 means not set
+      (*histogram)->attr_ids[i] = att->id;
 
       if (error != NO_ERROR)
 	{
@@ -1514,6 +1531,11 @@ int stats_free_histogram_and_init (HIST_STATS *histogram)
   if (histogram->null_frequency != NULL)
     {
       db_ws_free (histogram->null_frequency);
+    }
+
+  if (histogram->attr_ids != NULL)
+    {
+      db_ws_free (histogram->attr_ids);
     }
 
   db_ws_free (histogram);

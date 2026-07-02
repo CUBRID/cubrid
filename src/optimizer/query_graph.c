@@ -5324,16 +5324,24 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
 
-      /* set histogram */
-      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+      /* set histogram. hist_stats->histogram[] is filled in class attribute-list order, which is
+       * NOT the attr_stats order searched above (attr_stats loses id order on schema updates such
+       * as column drops), so match the slot by attribute id instead of reusing that index. */
+      QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+      QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+      if (hist_stats != NULL && hist_stats->attr_ids != NULL)
 	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
-	}
-      else
-	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	  int h;
+
+	  for (h = 0; h < hist_stats->n_attrs; h++)
+	    {
+	      if (hist_stats->attr_ids[h] == attr_id)
+		{
+		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
+		  break;
+		}
+	    }
 	}
 
       if (cum_statsp->valid_limits == false)

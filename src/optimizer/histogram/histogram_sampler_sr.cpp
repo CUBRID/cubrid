@@ -733,7 +733,7 @@ cleanup:
   static int
   scan_ftab_partition (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, ATTR_ID attr_id,
 		       MVCC_SNAPSHOT *snapshot, ftab_page_walker &part, cubsampling::reservoir_sampler<T> &rs,
-		       std::int64_t *total_rows, std::int64_t *null_rows)
+		       std::int64_t *total_rows, std::int64_t *null_rows, const std::atomic<bool> *abort_flag)
   {
     HEAP_SCANCACHE scan_cache;
     HEAP_CACHE_ATTRINFO attr_info;
@@ -772,6 +772,13 @@ cleanup:
       {
 	SCAN_CODE sc;
 	int fix_err;
+	if (abort_flag != NULL && abort_flag->load (std::memory_order_relaxed))
+	  {
+	    /* a sibling worker failed; its error aborts the whole request, so the pages this
+	     * worker has not scanned yet would be wasted work -- stop early (partial results
+	     * are discarded by the coordinator's error path) */
+	    break;
+	  }
 
 	/* fix the page safely + confirm it is a heap data page before scanning (see the multi-column
 	 * variant): a bitmap page may have been deallocated since the snapshot or not be a heap page */
@@ -946,7 +953,7 @@ cleanup:
     public:
       reservoir_scan_task (const OID *class_oid, const HFID *hfid, ATTR_ID attr_id, MVCC_SNAPSHOT *snapshot,
 			   int capacity, std::uint64_t seed, ftab_set part, worker_result<T> *result,
-			   THREAD_ENTRY *parent, parallel_query::worker_manager *wm)
+			   THREAD_ENTRY *parent, parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
 	, m_hfid (*hfid)
 	, m_attr_id (attr_id)
@@ -957,6 +964,7 @@ cleanup:
 	, m_result (result)
 	, m_parent (parent)
 	, m_wm (wm)
+	, m_abort (abort_flag)
       {
       }
 
@@ -971,9 +979,14 @@ cleanup:
 
 	cubsampling::reservoir_sampler<T> rs ((std::size_t) m_capacity, m_seed);
 	m_result->error = scan_ftab_partition<T> (&thread_ref, &m_class_oid, &m_hfid, m_attr_id, m_snapshot, m_part, rs,
-			  &m_result->total_rows, &m_result->null_rows);
+			  &m_result->total_rows, &m_result->null_rows, m_abort);
 	m_result->seen = rs.seen ();
 	m_result->samples = std::move (rs.samples ());
+	if (m_result->error != NO_ERROR && m_abort != NULL)
+	  {
+	    /* tell sibling workers to stop scanning: the whole request fails anyway */
+	    m_abort->store (true, std::memory_order_relaxed);
+	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle:
 	 * a dangling conn_entry can be matched by connection-scanning code (interrupt/stop paths)
@@ -1000,6 +1013,7 @@ cleanup:
       worker_result<T> *m_result;
       THREAD_ENTRY *m_parent;
       parallel_query::worker_manager *m_wm;
+      std::atomic<bool> *m_abort;
   };
 #endif /* SERVER_MODE */
 
@@ -1036,13 +1050,14 @@ cleanup:
 	return er_errid ();
       }
     std::vector<worker_result<T>> results (degree);
+    std::atomic<bool> abort_flag (false);
 
     for (int w = 0; w < degree; w++)
       {
 	reservoir_scan_task<T> *task =
 		new reservoir_scan_task<T> (class_oid, hfid, attr_id, snapshot, sample_size,
 					    cubsampling::RESERVOIR_DEFAULT_SEED + (std::uint64_t) w,
-					    std::move (parts[w]), &results[w], thread_p, wm);
+					    std::move (parts[w]), &results[w], thread_p, wm, &abort_flag);
 	wm->push_task (task);
       }
 
@@ -1215,7 +1230,8 @@ cleanup:
   static int
   scan_ftab_partition_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			     int attr_cnt, MVCC_SNAPSHOT *snapshot, ftab_page_walker &part,
-			     std::vector<col_collector *> &cols, std::int64_t *total_rows)
+			     std::vector<col_collector *> &cols, std::int64_t *total_rows,
+			     const std::atomic<bool> *abort_flag)
   {
     HEAP_SCANCACHE scan_cache;
     HEAP_CACHE_ATTRINFO attr_info;
@@ -1254,6 +1270,13 @@ cleanup:
       {
 	SCAN_CODE sc;
 	int fix_err;
+	if (abort_flag != NULL && abort_flag->load (std::memory_order_relaxed))
+	  {
+	    /* a sibling worker failed; its error aborts the whole request, so the pages this
+	     * worker has not scanned yet would be wasted work -- stop early (partial results
+	     * are discarded by the coordinator's error path) */
+	    break;
+	  }
 
 	/* Fix the page safely and confirm it is a heap data page before scanning it: a page in the
 	 * ftab bitmap may have been deallocated since the snapshot, or not be a heap page. Feeding
@@ -1350,7 +1373,7 @@ cleanup:
     public:
       multi_scan_task (const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids, int attr_cnt,
 		       MVCC_SNAPSHOT *snapshot, ftab_set part, multi_worker_result *result,
-		       THREAD_ENTRY *parent, parallel_query::worker_manager *wm)
+		       THREAD_ENTRY *parent, parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
 	, m_hfid (*hfid)
 	, m_attr_ids (attr_ids)
@@ -1360,6 +1383,7 @@ cleanup:
 	, m_result (result)
 	, m_parent (parent)
 	, m_wm (wm)
+	, m_abort (abort_flag)
       {
       }
 
@@ -1372,7 +1396,12 @@ cleanup:
 	thread_ref.on_trace = false;
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
-			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows);
+			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows, m_abort);
+	if (m_result->error != NO_ERROR && m_abort != NULL)
+	  {
+	    /* tell sibling workers to stop scanning: the whole request fails anyway */
+	    m_abort->store (true, std::memory_order_relaxed);
+	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
 	 * (see reservoir_scan_task::execute) */
@@ -1397,6 +1426,7 @@ cleanup:
       multi_worker_result *m_result;
       THREAD_ENTRY *m_parent;
       parallel_query::worker_manager *m_wm;
+      std::atomic<bool> *m_abort;
   };
 
   /* Parallel multi-column scan + per-column merge. The reusable core shared by the histogram
@@ -1469,11 +1499,12 @@ cleanup:
 	return ER_OUT_OF_VIRTUAL_MEMORY;
       }
 
+    std::atomic<bool> abort_flag (false);
     for (w = 0; w < degree; w++)
       {
 	multi_scan_task *task =
 		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]), &results[w],
-				     thread_p, wm);
+				     thread_p, wm, &abort_flag);
 	wm->push_task (task);
       }
     wm->wait_workers ();
