@@ -5119,7 +5119,7 @@ retire_all_on_error:
  * flaky scan-trace lines in the test suite. Below this threshold, force serial.
  * Only applied to SORT_ORDER_WITH_LIMIT — SORT_ORDER_BY has no observed
  * flakiness and is left untouched to keep behavior change minimal. */
-#define MIN_TUPLES_FOR_PARALLEL_SORT 100
+#define MIN_TUPLES_FOR_PARALLEL_SORT 500
 
 /*
  * sort_check_parallelism () - check the number of parallel processes
