@@ -14557,6 +14557,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
+      cdc_Gl.producer.is_reset_process_lsa = true;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -15021,6 +15022,8 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
+  cdc_Gl.producer.is_reset_process_lsa = true;
+
   return 0;
 }
 
@@ -15057,6 +15060,8 @@ cdc_cleanup ()
     {
       cdc_pause_producer ();
     }
+
+  cdc_Gl.producer.is_reset_process_lsa = true;
 
   cdc_free_extraction_filter ();
 

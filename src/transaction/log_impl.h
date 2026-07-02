@@ -817,6 +817,7 @@ typedef struct cdc_temp_logbuf
 typedef struct cdc_producer
 {
   LOG_LSA next_extraction_lsa;
+  bool is_reset_process_lsa;
 
   /* configuration */
   int all_in_cond;
