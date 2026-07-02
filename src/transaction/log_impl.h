@@ -881,8 +881,6 @@ typedef struct cdc_global
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
 
-  bool is_queue_reinitialized;
-
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
