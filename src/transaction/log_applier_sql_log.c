@@ -544,12 +544,18 @@ sl_write_sql (string_buffer & query, string_buffer * select)
     {
       /* -- select_length select * from tbl_name */
       fprintf (log_fp, "-- ");
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
       fwrite (select->get_buffer (), sizeof (char), select->len (), log_fp);
+#pragma GCC diagnostic pop
       fputc ('\n', log_fp);
     }
 
   /* print SQL query */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-result"
   fwrite (query.get_buffer (), sizeof (char), query.len (), log_fp);
+#pragma GCC diagnostic pop
   fputc ('\n', log_fp);
 
   fflush (log_fp);
