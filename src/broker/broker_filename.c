@@ -85,10 +85,7 @@ set_cubrid_home ()
       strcpy (cubrid_Dir, p);
       return;
     }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   getcwd (dirname, sizeof (dirname));
-#pragma GCC diagnostic pop
   if (snprintf (cubrid_Dir, sizeof (cubrid_Dir) - 1, "%s/..", dirname) < 0)
     {
       assert (false);

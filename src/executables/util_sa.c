@@ -1673,32 +1673,17 @@ diagdb (UTIL_FUNCTION_ARG * arg)
 	    {
 	      printf ("\n");
 	      printf ("isforward (1 or 0) ? ");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      scanf ("%d", &isforward);
-#pragma GCC diagnostic pop
 	      printf ("start_logpageid (-1 for the first/last page) ? ");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      scanf ("%lld", &s);
-#pragma GCC diagnostic pop
 	      start_logpageid = s;
 	      printf ("dump_npages (-1 for all pages) ? ");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      scanf ("%d", &dump_npages);
-#pragma GCC diagnostic pop
 	      printf ("desired_tranid (-1 for all transactions) ? ");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      scanf ("%d", &desired_tranid);
-#pragma GCC diagnostic pop
 	      printf ("log_dump(%d, %lld, %d, %d) (y/n) ? ", isforward, (long long int) start_logpageid, dump_npages,
 		      desired_tranid);
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      scanf ("%1s", yn);
-#pragma GCC diagnostic pop
 	    }
 	  while (yn[0] != 'y');
 	}
@@ -2857,10 +2842,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 	  fprintf (stdout,
 		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB,
 					 SYNCCOLLDB_MSG_SYNC_CONTINUE));
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	  scanf ("%1s", yn);
-#pragma GCC diagnostic pop
 	  if (yn[0] != 'y')
 	    {
 	      PRINT_AND_LOG_ERR_MSG (msgcat_message

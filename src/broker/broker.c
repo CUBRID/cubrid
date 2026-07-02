@@ -1675,10 +1675,7 @@ restart_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
       fp = fopen (pid_file_name, "r");
       if (fp)
 	{
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	  fscanf (fp, "%d", &old_pid);
-#pragma GCC diagnostic pop
 	  fclose (fp);
 
 	  as_info_p->psize = getsize (old_pid);

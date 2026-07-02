@@ -112,10 +112,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
 		}
 	      fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
 	      print_result ();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      chdir (org_cwd);
-#pragma GCC diagnostic pop
 
 	      info_arr_size = 0;
 	    }
@@ -166,10 +163,7 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	    }
 	  fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
 	  print_result ();
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	  chdir (org_cwd);
-#pragma GCC diagnostic pop
 	}
     }
   else

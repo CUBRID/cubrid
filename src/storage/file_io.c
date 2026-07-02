@@ -10445,10 +10445,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
   if (total_nbytes > session_p->dbfile.nbytes && session_p->dbfile.volid < LOG_DBFIRST_VOLID)
     {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       ftruncate (session_p->dbfile.vdes, session_p->dbfile.nbytes);
-#pragma GCC diagnostic pop
     }
 
 #if defined(CUBRID_DEBUG)

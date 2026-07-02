@@ -6590,10 +6590,7 @@ la_get_mem_size (void)
   fp = fopen ("/proc/self/statm", "r");
   if (fp != NULL)
     {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       fscanf (fp, "%lu", &vsize);
-#pragma GCC diagnostic pop
       /* page to Kbyte */
       vsize *= (sysconf (_SC_PAGESIZE) / ONE_K);
       fclose (fp);

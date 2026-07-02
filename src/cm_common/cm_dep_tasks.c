@@ -1552,10 +1552,7 @@ read_file (char *filename, char **outbuf)
     }
 #endif
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   read (fd, buf, size);
-#pragma GCC diagnostic pop
   buf[size] = '\0';
   close (fd);
 
@@ -1625,10 +1622,7 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
   if (fp != NULL)
     {
       memset (strbuf, '0', sizeof (strbuf));
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       fgets (strbuf, sizeof (strbuf), fp);
-#pragma GCC diagnostic pop
       DBMT_ERR_MSG_SET (_dbmt_error, strbuf);
       fclose (fp);
       ret_val = ERR_WITH_MSG;
@@ -2632,10 +2626,7 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
   if (fp != NULL)
     {
       memset (strbuf, '0', sizeof (strbuf));
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       fgets (strbuf, sizeof (strbuf), fp);
-#pragma GCC diagnostic pop
       DBMT_ERR_MSG_SET (_dbmt_error, strbuf);
       fclose (fp);
       ret_val = ERR_WITH_MSG;

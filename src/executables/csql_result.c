@@ -936,10 +936,7 @@ write_results_to_stream (const CSQL_ARGUMENT * csql_arg, FILE * fp, const CUR_RE
 			  value[value_width - 1] = '\'';
 			}
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 		      fwrite (value, 1, value_width, pf);
-#pragma GCC diagnostic pop
 
 		      if (padding_size < 0)
 			{

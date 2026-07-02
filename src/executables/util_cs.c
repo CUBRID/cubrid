@@ -2815,10 +2815,7 @@ sigusr1_signal_handler (int sig_no)
     {
       char wakeup = 1;
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       write (fd, &wakeup, sizeof (wakeup));
-#pragma GCC diagnostic pop
     }
 
   errno = saved_errno;
@@ -3095,10 +3092,7 @@ stop_sigusr1_monitor (void)
     {
       char wakeup = 1;
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       write (sigusr1_pipe_fds[1], &wakeup, sizeof (wakeup));
-#pragma GCC diagnostic pop
     }
 
   /* Wait for the monitor thread to terminate and reclaim resources */

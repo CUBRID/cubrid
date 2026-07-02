@@ -264,10 +264,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 #endif
       return -1;
     }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   chdir ("..");
-#pragma GCC diagnostic pop
   broker_create_dir (get_cubrid_file (FID_VAR_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_CAS_TMP_DIR, path, BROKER_PATH_MAX));
   broker_create_dir (get_cubrid_file (FID_AS_PID_DIR, path, BROKER_PATH_MAX));
@@ -332,10 +329,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  broker_create_dir (br_info[i].proxy_log_dir);
 	}
     }
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   chdir (envvar_bindir_file (path, BROKER_PATH_MAX, ""));
-#pragma GCC diagnostic pop
 
   if (gethostname (hostname, sizeof (hostname)) < 0)
     {

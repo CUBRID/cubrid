@@ -461,18 +461,12 @@ display_buffer (void)
 	  p = strchr (edit_contents, '\n');
 	  if (p)
 	    {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      fwrite (edit_contents, 1, p - edit_contents, pf);
-#pragma GCC diagnostic pop
 	      edit_contents = p + 1;
 	    }
 	  else
 	    {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
 	      fwrite (edit_contents, 1, strlen (edit_contents), pf);
-#pragma GCC diagnostic pop
 	      edit_contents = NULL;
 	    }
 	  fprintf (pf, "\n");

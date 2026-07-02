@@ -816,14 +816,8 @@ cm_get_proc_stat (T_CM_PROC_STAT * stat, int pid)
       return -1;
     }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   fscanf (cpufp, "%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%*s%lu%lu", &stat->cpu_user, &stat->cpu_kernel);
-#pragma GCC diagnostic pop
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   fscanf (memfp, "%lu%lu", &vmem_pages, &rmem_pages);	/* 'size' and 'resident' in stat file */
-#pragma GCC diagnostic pop
   stat->mem_virtual = vmem_pages * get_pagesize ();
   stat->mem_physical = rmem_pages * get_pagesize ();
 

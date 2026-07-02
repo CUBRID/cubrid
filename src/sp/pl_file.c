@@ -120,10 +120,7 @@ pl_read_info (const char *db_name, PL_SERVER_INFO & info)
   fp = pl_open_info (db_name, "r");
   if (fp)
     {
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       fscanf (fp, "%d %d", &info.pid, &info.port);
-#pragma GCC diagnostic pop
       fclose (fp);
       return true;
     }

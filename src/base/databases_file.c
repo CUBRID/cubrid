@@ -516,10 +516,7 @@ cfg_read_directory_ex (int vdes, DB_INFO ** info_p, bool write_flag)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (stat_buffer.st_size + 1));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
       read (vdes, line, (unsigned int) stat_buffer.st_size);
-#pragma GCC diagnostic pop
       line[stat_buffer.st_size] = '\0';
       str = cfg_next_char (line);
       while (*str != '\0')
@@ -710,8 +707,6 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
 
   lseek (vdes, 0L, SEEK_SET);
   n = sprintf (line, "#db-name\tvol-path\t\tdb-host\t\tlog-path\t\tlob-base-path\n");
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   write (vdes, line, n);
   for (db_info_p = databases; db_info_p != NULL; db_info_p = db_info_p->next)
     {
@@ -744,12 +739,8 @@ cfg_write_directory_ex (int vdes, const DB_INFO * databases)
       n = (int) (s - line);
       write (vdes, line, n);
     }
-#pragma GCC diagnostic pop
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-result"
   ftruncate (vdes, lseek (vdes, 0L, SEEK_CUR));
-#pragma GCC diagnostic pop
 
 #if !defined(WINDOWS)
   sigprocmask (SIG_SETMASK, &old_mask, NULL);
