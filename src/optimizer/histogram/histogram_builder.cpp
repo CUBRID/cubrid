@@ -23,6 +23,7 @@
 #include "histogram_builder.hpp"
 #include "histogram_reader.hpp"
 #include <cstring>
+#include "error_manager.h"
 #include "object_domain.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -31,13 +32,6 @@
 namespace hist
 {
   // ---------- endian writers for buffer (explicit specializations before use) ----------
-  template<>
-  void HistogramBuilder::write<std::int32_t> (char *&dest, std::int32_t v)
-  {
-    OR_PUT_INT (dest, v);
-    dest += OR_INT64_SIZE; // keep 8-byte slot for data_hi (4B value + 4B padding)
-  }
-
   template<>
   void HistogramBuilder::write<std::int64_t> (char *&dest, std::int64_t v)
   {
@@ -174,6 +168,7 @@ namespace hist
 	  {
 	    db_private_free (thread_p, buffer);
 	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    return NULL;
 	  }
 	write<double> (buffer_ptr, m.freq);
@@ -186,6 +181,7 @@ namespace hist
 	  {
 	    db_private_free (thread_p, buffer);
 	    assert (false);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	    return NULL;
 	  }
 	write<std::int64_t> (buffer_ptr, b.cumulative);

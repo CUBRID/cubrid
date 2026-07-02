@@ -169,9 +169,6 @@ extern int stats_get_statistics (OID * classoid, unsigned int timestamp, CLASS_S
 extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
-extern char *stats_make_select_list_for_ndv (const MOP class_mop, ATTR_NDV ** attr_ndv);
-extern int stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FILE * file_p,
-				   int with_fullscan);
 #endif /* !SERVER_MODE */
 STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
   __attribute__ ((ALWAYS_INLINE));

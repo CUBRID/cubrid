@@ -95,8 +95,6 @@ int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
 void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
-int set_histogram (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, char *histogram_blob,
-		   int histogram_total_length, MOP classop);
 
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,

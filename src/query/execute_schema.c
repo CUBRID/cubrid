@@ -85,6 +85,7 @@
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
 #define UNIQUE_SAVEPOINT_GRANT_USER "gRANTuSER"
 #define UNIQUE_SAVEPOINT_REVOKE_USER "rEVOKEuSER"
+#define UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM "uPDATEhISTOGRAM"
 
 #define QUERY_MAX_SIZE	1024 * 1024
 #define MAX_FILTER_PREDICATE_STRING_LENGTH (1073741823)
@@ -4305,11 +4306,26 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   /* Update statistics for the class. For the all-columns histogram path (nnames == 0) this is
    * DEFERRED to after the histogram build so it can reuse that scan's NDV and skip its own NDV
    * full scan; see below. The named-columns path keeps the standalone update here. */
+  if (do_histogram == DO_HISTOGRAM_CREATE)
+    {
+      /* Class statistics and histogram catalog rows are written in several steps below; a failure
+       * in between would leave fresh statistics beside stale (or blob-less) histograms in an open
+       * transaction. Anchor a system savepoint before the first write so every failure path can
+       * roll the pair back together. */
+      error = tran_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   if (do_histogram == DO_HISTOGRAM_CREATE && nnames != 0)
     {
       error = sm_update_statistics (obj, with_fullscan);
       if (error != NO_ERROR)
 	{
+	  /* a partitioned class updates its partitions one by one; roll back the ones already done */
+	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	  return error;
 	}
     }
@@ -4317,6 +4333,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   if (locator_flush_all_instances (obj, DONT_DECACHE) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
+      if (do_histogram == DO_HISTOGRAM_CREATE)
+	{
+	  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
+	}
       return error;
     }
 
@@ -4353,6 +4373,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
 		{
 		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
 	    }
@@ -4395,6 +4416,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	  if (error != NO_ERROR)
 	    {
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
 	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
@@ -4435,6 +4457,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	      assert (false);
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return ER_OBJ_INVALID_ARGUMENTS;
 	    }
 	  attr_domain = db_attribute_domain (attribute);
@@ -4442,6 +4465,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
 	      assert (false);
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return ER_OBJ_INVALID_ARGUMENT;
 	    }
 
@@ -4460,6 +4484,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
 		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
 	    }
@@ -4467,6 +4492,9 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  error = analyze_classes (NULL, db_get_class_name (obj), attname, bucket_count, with_fullscan, obj);
 	  if (error != NO_ERROR)
 	    {
+	      /* class statistics were already refreshed above; undo them together with any
+	       * histograms stored for earlier columns instead of persisting a half-updated pair */
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
 
@@ -4474,6 +4502,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  if (error != NO_ERROR)
 	    {
 	      assert (false);
+	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
 	}

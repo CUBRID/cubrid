@@ -328,11 +328,13 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 	    }
 	  /* The provided NDV may cover only a subset of columns (the histogram path skips columns it
 	   * cannot sample). A column left unmeasured (-1) here would keep its stale optimizer NDV, so
-	   * unless every column is covered, fall back to the dedicated full-scan collector below
-	   * (it measures every supported column in a single pass). */
+	   * fall back to the dedicated full-scan collector below unless every MEASURABLE column is
+	   * covered. Columns of unsupported types (ENUM, JSON, SET, ...) stay -1 on the dedicated
+	   * scan too, so treating them as uncovered would force a second full scan that gains
+	   * nothing -- and would store statistics from a different moment than the histograms. */
 	  for (rs_i = 0; rs_i < rs_n_attrs; rs_i++)
 	    {
-	      if (rs_ndv_values[rs_i] < 0)
+	      if (rs_ndv_values[rs_i] < 0 && xstats_ndv_type_is_supported (rs_ndv_attr_types[rs_i]))
 		{
 		  use_provided_ndv = false;
 		  break;
@@ -356,7 +358,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 		  rs_total_rows = ho;
 		}
 	    }
-	  cls_info_p->ci_tot_objects = (int) rs_total_rows;
+	  cls_info_p->ci_tot_objects = (int) MIN (rs_total_rows, INT_MAX);
 	}
       else
 	{
@@ -366,7 +368,7 @@ stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, boo
 	    {
 	      goto error;
 	    }
-	  cls_info_p->ci_tot_objects = (int) rs_total_rows;
+	  cls_info_p->ci_tot_objects = (int) MIN (rs_total_rows, INT_MAX);
 	}
     }
 
@@ -1465,8 +1467,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
 	  /* sum partition NDVs -- fallback only, for columns without an HLL sketch (exact for the
 	   * disjoint partition key, upper bound otherwise); the merged-sketch estimate below takes
-	   * precedence */
-	  if (rs_part_ndv != NULL && subcls_attr_p->ndv > 0)
+	   * precedence. rs_part_ndv is sized from the PARENT repr, so bound j against it. */
+	  if (rs_part_ndv != NULL && j < disk_repr_p->n_fixed + disk_repr_p->n_variable && subcls_attr_p->ndv > 0)
 	    {
 	      rs_part_ndv[j] += subcls_attr_p->ndv;
 	    }
@@ -1508,8 +1510,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
       sum[btree_iter].height = ceil (sum[btree_iter].height / partitions_count);
     }
 
-  /* parent row count = exact sum of partition row counts */
-  cls_info_p->ci_tot_objects = (int) rs_part_total;
+  /* parent row count = exact sum of partition row counts (clamped to the catalog's int field) */
+  cls_info_p->ci_tot_objects = (int) MIN (rs_part_total, INT_MAX);
 
   /* put new statistics */
   btree_iter = 0;

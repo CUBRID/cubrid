@@ -53,7 +53,7 @@ namespace hist
     public:
       /* add a non-MCV equi-depth bucket (cumulative over non-MCV non-null rows) */
       void add (HistogramTypes data_hi, std::int64_t cumulative,
-		std::int64_t approx_ndv = std::numeric_limits<std::int64_t>::quiet_NaN());
+		std::int64_t approx_ndv);
       /* add an MCV entry; MCVs must be added in ascending value order (binary-searched) */
       void add_mcv (HistogramTypes value, double freq);
       /* serialize the v2 blob. total_rows is the population row count incl nulls;

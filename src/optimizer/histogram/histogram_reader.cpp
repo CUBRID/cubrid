@@ -121,6 +121,36 @@ namespace hist
     /* read string blob */
     str_blob_ = std::string_view{buckets_end_, static_cast<std::size_t> (str_size_)};
 
+    /* String histograms reference the trailing string blob through (len32, off32) value slots.
+     * Validate every slot up front so a corrupt-but-well-framed blob fails the load (callers fall
+     * back to default estimates) instead of producing an out-of-range string_view in a release
+     * build, where the assert in value_from_ptr () is compiled out. 64-bit sums avoid u32 wrap. */
+    const DB_TYPE value_type = static_cast<DB_TYPE> (type_);
+    if (value_type == DB_TYPE_STRING || value_type == DB_TYPE_CHAR || value_type == DB_TYPE_BIT
+	|| value_type == DB_TYPE_VARBIT)
+      {
+	for (std::uint32_t i = 0; i < nmcv_; i++)
+	  {
+	    const char *p = mcv_area_begin_ + static_cast<std::size_t> (i) * MCV_RECORD_SIZE;
+	    const std::uint64_t len32 = get_value<std::uint32_t> (p);
+	    const std::uint64_t off32 = get_value<std::uint32_t> (p + 4);
+	    if (len32 > 4 && off32 + len32 > str_size_)
+	      {
+		return ER_FAILED;
+	      }
+	  }
+	for (std::uint32_t i = 0; i < nb_; i++)
+	  {
+	    const char *p = bucket_area_begin_ + static_cast<std::size_t> (i) * BUCKET_RECORD_SIZE;
+	    const std::uint64_t len32 = get_value<std::uint32_t> (p);
+	    const std::uint64_t off32 = get_value<std::uint32_t> (p + 4);
+	    if (len32 > 4 && off32 + len32 > str_size_)
+	      {
+		return ER_FAILED;
+	      }
+	  }
+      }
+
     /* cache derived aggregates */
     nonmcv_distinct_ = 0;
     for (std::uint32_t i = 0; i < nb_; i++)

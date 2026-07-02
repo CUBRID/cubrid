@@ -67,6 +67,10 @@ extern int xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p,
     int max_buckets, int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
     INT64 *out_ndv, INT64 *out_total_rows);
 
+/* true when the NDV collectors can measure a column of this type (mirrors the histogrammable
+ * type set). Lets callers distinguish "not measured yet" from "not measurable at all". */
+extern bool xstats_ndv_type_is_supported (DB_TYPE type);
+
 /* Opaque set of per-column HyperLogLog sketches produced by one class's NDV scan. A partitioned
  * class's parent merges its partitions' sets (register-wise max == one sketch over all partition
  * rows) and estimates a true global NDV per column, instead of summing per-partition NDVs, which

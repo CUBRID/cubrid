@@ -97,6 +97,11 @@ namespace hist
 	return error;
       }
       int reset (std::string_view blob);
+      /* column DB type the blob's value slots were encoded with (HST2 header 'type') */
+      DB_TYPE value_type () const
+      {
+	return static_cast<DB_TYPE> (type_);
+      }
 
       std::uint64_t bucket_count() const noexcept
       {

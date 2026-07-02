@@ -2114,7 +2114,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
 
   if (attr_cnt <= 0)
     {
-      status = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
       (void) return_error_to_client (thread_p, rid);
       goto send;
     }
@@ -2126,6 +2127,12 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   blob_lens = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
   ndvs = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * attr_cnt);
   attr_unique = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
+  if (blobs != NULL)
+    {
+      /* cleanup frees blobs[i]; a partial allocation failure below would otherwise hand
+       * uninitialized garbage pointers to db_private_free */
+      memset (blobs, 0, sizeof (char *) * attr_cnt);
+    }
   if (attr_ids == NULL || attr_types == NULL || null_freqs == NULL || blobs == NULL || blob_lens == NULL
       || ndvs == NULL || attr_unique == NULL)
     {
@@ -4454,10 +4461,20 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
+  if (class_attr_ndv.attr_cnt < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
       (void) return_error_to_client (thread_p, rid);
+      goto send;
     }
 
   for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
@@ -4478,6 +4495,7 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       (void) return_error_to_client (thread_p, rid);
     }
 
+send:
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 

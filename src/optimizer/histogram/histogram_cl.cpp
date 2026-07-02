@@ -149,63 +149,6 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 }
 
 
-int
-set_histogram (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, char *histogram_blob,
-	       int histogram_total_length, MOP classop)
-{
-  int error = NO_ERROR;
-  DB_OBJECT *histogram_obj, *edit_histogram_object = NULL;
-  DB_OTMPL *obj_tmpl = NULL;
-  DB_VALUE histogram_value;
-  db_make_null (&histogram_value);
-  error = db_get_histogram (classop, attr_name, &histogram_obj);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  obj_tmpl = dbt_edit_object (histogram_obj);
-  if (obj_tmpl == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      goto end;
-    }
-
-  /*  SM_MAX_STRING_LENGTH = 1073741823 */
-  db_make_varbit (&histogram_value, 1073741823, histogram_blob, histogram_total_length * 8);
-  error = dbt_put (obj_tmpl, "histogram_values", &histogram_value);
-  if (error != NO_ERROR)
-    {
-      dbt_abort_object (obj_tmpl);
-      obj_tmpl = NULL;
-      goto end;
-    }
-
-  edit_histogram_object = dbt_finish_object (obj_tmpl);
-  if (edit_histogram_object == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      dbt_abort_object (obj_tmpl);
-      obj_tmpl = NULL;
-      goto end;
-    }
-
-  assert (edit_histogram_object == histogram_obj);
-  obj_tmpl = NULL;
-
-  error = locator_flush_instance (edit_histogram_object);
-  if (error != NO_ERROR)
-    {
-      goto end;
-    }
-
-end:
-  db_value_clear (&histogram_value);
-  return error;
-}
-
 /*
  * store_one_histogram () - write one column's blob + exact null frequency into its
  *   _db_histogram catalog entry (the entry must already exist).
@@ -400,15 +343,21 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
   if (out_ndv_info != NULL && error == NO_ERROR)
     {
       out_ndv_info->attr_ndv = (ATTR_NDV *) malloc (sizeof (ATTR_NDV) * n);
-      if (out_ndv_info->attr_ndv != NULL)
+      if (out_ndv_info->attr_ndv == NULL)
 	{
-	  out_ndv_info->attr_cnt = n;
-	  out_ndv_info->total_rows = total_rows;
-	  for (int i = 0; i < n; i++)
-	    {
-	      out_ndv_info->attr_ndv[i].id = attr_ids[i];
-	      out_ndv_info->attr_ndv[i].ndv = ndvs[i];
-	    }
+	  /* Failing silently here would make the caller run its own NDV full scan: the stored
+	   * histogram blobs would then come from THIS scan but the class row count/NDV from a
+	   * later one -- one ANALYZE persisting two different epochs. Fail instead; the caller's
+	   * error path also discards the collected blobs. */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (ATTR_NDV) * n);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      out_ndv_info->attr_cnt = n;
+      out_ndv_info->total_rows = total_rows;
+      for (int i = 0; i < n; i++)
+	{
+	  out_ndv_info->attr_ndv[i].id = attr_ids[i];
+	  out_ndv_info->attr_ndv[i].ndv = ndvs[i];
 	}
     }
 
@@ -575,16 +524,28 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
       return true;
     }
 
-    case DB_TYPE_CHAR:   /* later consider for null trailing exists */
+    case DB_TYPE_CHAR:
     case DB_TYPE_STRING:
     {
       const char *str = db_get_string (db_val);
-      if (str == NULL)
+      int len = db_get_string_size (db_val);
+      if (str == NULL || len < 0)
 	{
 	  return false;
 	}
+      if (type == DB_TYPE_CHAR)
+	{
+	  /* SQL CHAR comparison ignores trailing spaces and the sampler strips them from the
+	   * stored values (extract<std::string> ()); strip them from the probe key too so MCV
+	   * equality and range interpolation compare like with like */
+	  while (len > 0 && str[len - 1] == ' ')
+	    {
+	      len--;
+	    }
+	}
       key.kind = hist::histogram_key_kind::str;
-      key.str.assign (str);
+      /* length-based (not strlen): embedded NULs must not truncate the key */
+      key.str.assign (str, static_cast<std::size_t> (len));
       return true;
     }
 
@@ -815,6 +776,41 @@ comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
     }
 }
 
+/* histogram_key_kind the blob's 8B value slots decode as, per the builder's write_value_slot ().
+ * Probing with a different kind would decode the slots with the wrong template: garbage estimates
+ * for numerics, and for the string template an out-of-range string_view in a release build. */
+static hist::histogram_key_kind
+histogram_key_kind_for_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+      return hist::histogram_key_kind::i64;
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_NUMERIC:
+      return hist::histogram_key_kind::dbl;
+    case DB_TYPE_STRING:
+    case DB_TYPE_CHAR:
+    case DB_TYPE_BIT:
+    case DB_TYPE_VARBIT:
+      return hist::histogram_key_kind::str;
+    case DB_TYPE_TIME:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_TIMESTAMPLTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_DATETIMETZ:
+      return hist::histogram_key_kind::u64;
+    default:
+      return hist::histogram_key_kind::invalid;
+    }
+}
+
 void
 histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success)
 {
@@ -836,6 +832,15 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
   hist::histogram_key key;
   if (!histogram_extract_key (rhs_db_value, key))
     {
+      *success = false;
+      return;
+    }
+
+  if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
+    {
+      /* probe constant does not match the column's stored value encoding (e.g. an integer column
+       * probed with a fractional constant, or a stale blob after ALTER changed the column type);
+       * decoding the slots with the wrong template would produce garbage. Use default estimates. */
       *success = false;
       return;
     }
@@ -942,6 +947,15 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
   hist::histogram_key key;
   if (!histogram_extract_key (rhs_db_value, key))
     {
+      *success = false;
+      return;
+    }
+
+  if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
+    {
+      /* probe constant does not match the column's stored value encoding (e.g. an integer column
+       * probed with a fractional constant, or a stale blob after ALTER changed the column type);
+       * decoding the slots with the wrong template would produce garbage. Use default estimates. */
       *success = false;
       return;
     }
@@ -1175,6 +1189,14 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   if (DB_VALUE_TYPE (rhs_db_value) != DB_TYPE_STRING
       && DB_VALUE_TYPE (rhs_db_value) != DB_TYPE_CHAR)
     {
+      *success = false;
+      return;
+    }
+
+  if (histogram_key_kind_for_type (histogram_reader.value_type ()) != hist::histogram_key_kind::str)
+    {
+      /* LIKE probes decode the value slots as strings; a non-string blob (stale after ALTER)
+       * would yield out-of-range string reads */
       *success = false;
       return;
     }
@@ -1557,6 +1579,11 @@ dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool deta
   DB_OBJECT *histogram_obj = NULL;
   int histogram_total_length = 0;
 
+  /* db_get () does not touch the output on its error paths; clearing uninitialized stack
+   * garbage below would free a wild pointer */
+  db_make_null (&histogram_value);
+  db_make_null (&null_frequency_value);
+
   double null_frequency = 0.0;
   if (error != NO_ERROR)
     {
@@ -1643,7 +1670,7 @@ dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool deta
   fprintf (f, "| %-47s|\n", line);
 
   /* rows line */
-  if (class_->stats->heap_num_objects <= 0 || class_->stats->heap_num_pages <= 0)
+  if (class_->stats == NULL || class_->stats->heap_num_objects <= 0 || class_->stats->heap_num_pages <= 0)
     {
       snprintf (line, sizeof (line), "Empty histogram for column: %s", attr_name);
       fprintf (f, "| %-47s|\n", line);

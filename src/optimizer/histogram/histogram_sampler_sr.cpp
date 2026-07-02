@@ -41,6 +41,7 @@
 #include "log_impl.h"
 #include "numeric_opfunc.h"
 #include "object_representation.h"
+#include "partition_sr.h"
 #include "hyperloglog.hpp"
 #include "reservoir_sampler.hpp"
 #include "statistics.h"
@@ -498,6 +499,16 @@ namespace
       {
 	s = db_get_string (v);
 	len = db_get_string_size (v);
+	if (t == DB_TYPE_CHAR && s != NULL)
+	  {
+	    /* fixed CHAR heap values are padded to the column precision; the probe key on the
+	     * client side is the (unpadded) constant. SQL CHAR comparison ignores trailing
+	     * spaces, so strip them here to keep MCV equality and range order consistent. */
+	    while (len > 0 && s[len - 1] == ' ')
+	      {
+		len--;
+	      }
+	  }
       }
     if (s == NULL || len < 0)
       {
@@ -583,6 +594,11 @@ namespace
     bool scancache_inited = false;
     bool attrinfo_inited = false;
     MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+    if (snapshot == NULL)
+      {
+	ASSERT_ERROR ();
+	return er_errid ();
+      }
 
     cubsampling::reservoir_sampler<T> rs (static_cast<std::size_t> (sample_size));
 
@@ -765,6 +781,13 @@ cleanup:
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
+	if (fix_err != NO_ERROR && scan_cache.page_watcher.pgptr != NULL)
+	  {
+	    /* fixed, but with a pending error (e.g. ER_INTERRUPTED): treat as a hard error like
+	     * the px scan does instead of silently scanning on with the error state set */
+	    error = fix_err;
+	    goto cleanup;
+	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
 	    if (old_pw.pgptr != NULL)
@@ -951,6 +974,13 @@ cleanup:
 			  &m_result->total_rows, &m_result->null_rows);
 	m_result->seen = rs.seen ();
 	m_result->samples = std::move (rs.samples ());
+
+	/* detach from the coordinator's transaction/connection before the pooled thread goes idle:
+	 * a dangling conn_entry can be matched by connection-scanning code (interrupt/stop paths)
+	 * and act on a client that has since reused the entry (cf. px task_execution_guard) */
+	thread_ref.conn_entry = NULL;
+	thread_ref.tran_index = NULL_TRAN_INDEX;
+	thread_ref.m_px_orig_thread_entry = NULL;
       }
 
       void retire () override
@@ -999,6 +1029,12 @@ cleanup:
       }
 
     MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+    if (snapshot == NULL)
+      {
+	ASSERT_ERROR ();
+	wm->release_workers ();	/* also frees wm */
+	return er_errid ();
+      }
     std::vector<worker_result<T>> results (degree);
 
     for (int w = 0; w < degree; w++)
@@ -1028,6 +1064,12 @@ cleanup:
 	part_seen[w] = results[w].seen;
       }
     wm->release_workers ();
+    if (error != NO_ERROR && er_errid () == NO_ERROR)
+      {
+	/* the worker er_set () into its own thread-local context, which is gone; without this the
+	 * client would receive an error packet whose id is 0 and whose message is empty */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      }
     if (error != NO_ERROR)
       {
 	return error;
@@ -1222,6 +1264,13 @@ cleanup:
 	  }
 	fix_err = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
 				     &scan_cache.page_watcher);
+	if (fix_err != NO_ERROR && scan_cache.page_watcher.pgptr != NULL)
+	  {
+	    /* fixed, but with a pending error (e.g. ER_INTERRUPTED): treat as a hard error like
+	     * the px scan does instead of silently scanning on with the error state set */
+	    error = fix_err;
+	    goto cleanup;
+	  }
 	if (scan_cache.page_watcher.pgptr == NULL)
 	  {
 	    if (old_pw.pgptr != NULL)
@@ -1324,6 +1373,12 @@ cleanup:
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
 			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows);
+
+	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
+	 * (see reservoir_scan_task::execute) */
+	thread_ref.conn_entry = NULL;
+	thread_ref.tran_index = NULL_TRAN_INDEX;
+	thread_ref.m_px_orig_thread_entry = NULL;
       }
 
       void retire () override
@@ -1372,6 +1427,13 @@ cleanup:
       }
 
     MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+    if (snapshot == NULL)
+      {
+	ASSERT_ERROR ();
+	wm->release_workers ();	/* also frees wm */
+	return er_errid ();
+      }
+    bool oom = false;
     std::vector<multi_worker_result> results (degree);
     for (w = 0; w < degree; w++)
       {
@@ -1379,11 +1441,32 @@ cleanup:
 	for (c = 0; c < attr_cnt; c++)
 	  {
 	    results[w].collectors[c] = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    if (results[w].collectors[c] == NULL && category_of (attr_types[c]) != value_category::unsupported)
+	      {
+		/* OOM (non-throwing new): failing loudly beats silently dropping this worker's
+		 * share of the column from the merged sample */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			sizeof (col_collector_t<double>));
+		oom = true;
+	      }
 	    if (results[w].collectors[c] != NULL && attr_unique != NULL && attr_unique[c])
 	      {
 		results[w].collectors[c]->unique = true;
 	      }
 	  }
+      }
+
+    if (oom)
+      {
+	for (w = 0; w < degree; w++)
+	  {
+	    for (c = 0; c < attr_cnt; c++)
+	      {
+		delete results[w].collectors[c];
+	      }
+	  }
+	wm->release_workers ();	/* also frees wm */
+	return ER_OUT_OF_VIRTUAL_MEMORY;
       }
 
     for (w = 0; w < degree; w++)
@@ -1406,6 +1489,11 @@ cleanup:
 	  }
 	total_rows += results[w].total_rows;
       }
+    if (error != NO_ERROR && er_errid () == NO_ERROR)
+      {
+	/* worker errors were set in the workers' own (gone) er contexts; see above */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      }
 
     if (error == NO_ERROR)
       {
@@ -1413,6 +1501,14 @@ cleanup:
 	for (c = 0; c < attr_cnt; c++)
 	  {
 	    col_collector *fin = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    if (fin == NULL && category_of (attr_types[c]) != value_category::unsupported)
+	      {
+		/* OOM (non-throwing new): a supported column losing its merged collector must fail
+		 * the request, not report success with that column's statistics silently missing */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			sizeof (col_collector_t<double>));
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
 	    if (fin == NULL)
 	      {
 		continue;       /* unsupported type */
@@ -1448,6 +1544,11 @@ cleanup:
 
     if (error != NO_ERROR)
       {
+	for (c = 0; c < attr_cnt; c++)
+	  {
+	    delete merged[c];
+	    merged[c] = NULL;
+	  }
 	return error;
       }
 
@@ -1526,6 +1627,12 @@ cleanup:
 	    build_out &o = (*m_outs)[c];
 	    build_column_blob (&thread_ref, (*m_merged)[c], m_max_buckets, m_total_rows, o.blob, o.ndv, o.null_rows);
 	  }
+
+	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
+	 * (see reservoir_scan_task::execute) */
+	thread_ref.conn_entry = NULL;
+	thread_ref.tran_index = NULL_TRAN_INDEX;
+	thread_ref.m_px_orig_thread_entry = NULL;
       }
 
       void retire () override
@@ -1669,6 +1776,15 @@ cleanup:
     if (out_sketches != NULL)
       {
 	*out_sketches = new stats_ndv_sketch_set ();
+	if (*out_sketches == NULL)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (stats_ndv_sketch_set));
+	    for (int c2 = 0; c2 < attr_cnt; c2++)
+	      {
+		delete merged[c2];
+	      }
+	    return ER_OUT_OF_VIRTUAL_MEMORY;
+	  }
       }
     *out_total_rows = total_rows;
     for (int c = 0; c < attr_cnt; c++)
@@ -1694,6 +1810,51 @@ cleanup:
 #endif /* SERVER_MODE */
 
 } // anonymous namespace
+
+/* Heaps one class's histogram scan must read: the class's own heap or -- for a partitioned
+ * class, whose own heap holds no rows -- every partition's heap. Feeding the SAME reservoirs
+ * from the partition heaps back-to-back is statistically identical to sampling the union. */
+static int
+histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
+			std::vector<std::pair<OID, HFID>> &targets)
+{
+  OID *parts = NULL;
+  int cnt = 0;
+  int error = partition_get_partition_oids (thread_p, class_oid, &parts, &cnt);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+  if (cnt == 0 || parts == NULL)
+    {
+      targets.emplace_back (*class_oid, *hfid);
+    }
+  else
+    {
+      for (int i = 0; i < cnt; i++)
+	{
+	  HFID part_hfid;
+	  HFID_SET_NULL (&part_hfid);
+	  error = heap_get_class_info (thread_p, &parts[i], &part_hfid, NULL, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      break;
+	    }
+	  if (HFID_IS_NULL (&part_hfid))
+	    {
+	      continue;		/* partition without a heap: nothing to sample */
+	    }
+	  targets.emplace_back (parts[i], part_hfid);
+	}
+    }
+  if (parts != NULL)
+    {
+      db_private_free (thread_p, parts);
+    }
+  return error;
+}
 
 int
 xhistogram_build_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
@@ -1733,6 +1894,26 @@ xhistogram_build_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class
       /* not histogrammable; nothing to build (caller pre-checks is_histogrammable_type) */
       return NO_ERROR;
     }
+
+  {
+    /* a partitioned class's rows live in the partition heaps, not the parent heap this function
+     * scans; delegate to the multi-column builder, whose scan loop covers every partition heap */
+    std::vector<std::pair<OID, HFID>> targets;
+    error = histogram_scan_targets (thread_p, class_oid, hfid, targets);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    if (targets.size () != 1 || !OID_EQ (&targets[0].first, class_oid))
+      {
+	INT64 one_ndv = -1;
+	INT64 one_total = 0;
+	return xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, hfid, &attr_id, &attr_type,
+	       NULL /* attr_unique */, 1, max_buckets, sample_size,
+	       null_frequency, histogram_blob, blob_length, &one_ndv,
+	       &one_total);
+      }
+  }
 
   switch (cat)
     {
@@ -1807,11 +1988,19 @@ xhistogram_build_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class
    * success -- the caller would then flush the new null_frequency over the stale histogram blob. */
   if (*histogram_blob == NULL)
     {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return ER_FAILED;
     }
   if (*blob_length <= 0)
     {
       db_private_free_and_init (thread_p, *histogram_blob);
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       return ER_FAILED;
     }
 
@@ -1837,6 +2026,13 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   std::int64_t total_rows = 0;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
   std::vector<col_collector *> collectors (attr_cnt, (col_collector *) NULL);
+  std::vector<std::pair<OID, HFID>> targets;
+
+  if (snapshot == NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
 
   *out_total_rows = 0;
   for (i = 0; i < attr_cnt; i++)
@@ -1865,80 +2061,111 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       sample_size = (int) s;
     }
 
+  /* a partitioned class's rows live in the partition heaps; scan those instead of the
+   * (row-less) parent heap. One shared reservoir over the partition heaps back-to-back is a
+   * uniform sample of the whole table. */
+  error = histogram_scan_targets (thread_p, class_oid, hfid, targets);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
 #if defined (SERVER_MODE)
-  /* try the page-parallel single scan first; falls through to serial when not applicable */
-  {
-    bool did_parallel = false;
-    int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-				     max_buckets, sample_size, null_frequency, histogram_blob, blob_length, out_ndv,
-				     out_total_rows, &did_parallel);
-    if (perr != NO_ERROR)
-      {
-	return perr;
-      }
-    if (did_parallel)
-      {
-	return NO_ERROR;
-      }
-  }
+  /* try the page-parallel single scan first; falls through to serial when not applicable.
+   * Partitioned classes (several target heaps) take the serial multi-heap loop below. */
+  if (targets.size () == 1 && OID_EQ (&targets[0].first, class_oid))
+    {
+      bool did_parallel = false;
+      int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
+				       max_buckets, sample_size, null_frequency, histogram_blob, blob_length, out_ndv,
+				       out_total_rows, &did_parallel);
+      if (perr != NO_ERROR)
+	{
+	  return perr;
+	}
+      if (did_parallel)
+	{
+	  return NO_ERROR;
+	}
+    }
 #endif /* SERVER_MODE */
 
-  /* one collector per column; NULL for unsupported types (their blob stays NULL) */
+  /* one collector per column; NULL for unsupported types (their blob stays NULL). Under the
+   * engine's non-throwing operator new a failed allocation also yields NULL -- for a SUPPORTED
+   * type that is an OOM and must fail the request, not silently drop the column's statistics. */
   for (i = 0; i < attr_cnt; i++)
     {
       collectors[i] = make_col_collector (attr_ids[i], attr_types[i], (std::size_t) sample_size);
+      if (collectors[i] == NULL && category_of (attr_types[i]) != value_category::unsupported)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (col_collector_t<double>));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
       if (collectors[i] != NULL && attr_unique != NULL && attr_unique[i])
 	{
 	  collectors[i]->unique = true;
 	}
     }
 
-  error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
-  if (error != NO_ERROR)
+  /* shared full scan over every target heap: each row feeds every column's reservoir */
+  for (const std::pair<OID, HFID> &tgt : targets)
     {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-  scancache_inited = true;
+      const OID *tgt_oid = &tgt.first;
+      const HFID *tgt_hfid = &tgt.second;
 
-  error = heap_attrinfo_start (thread_p, class_oid, attr_cnt, attr_ids, &attr_info);
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      goto cleanup;
-    }
-  attrinfo_inited = true;
-
-  OID_SET_NULL (&inst_oid);
-  recdes.data = NULL;
-  scan_class_oid = *class_oid;
-
-  /* single shared full scan: every row feeds every column's reservoir */
-  while ((sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
-    {
-      total_rows++;
-
-      error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
+      error = heap_scancache_start (thread_p, &scan_cache, tgt_hfid, tgt_oid, true /* cache_last_fix_page */,
+				    snapshot);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto cleanup;
 	}
+      scancache_inited = true;
 
-      for (i = 0; i < attr_cnt; i++)
+      error = heap_attrinfo_start (thread_p, tgt_oid, attr_cnt, attr_ids, &attr_info);
+      if (error != NO_ERROR)
 	{
-	  if (collectors[i] == NULL)
-	    {
-	      continue;
-	    }
-	  collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
+	  ASSERT_ERROR ();
+	  goto cleanup;
 	}
-    }
+      attrinfo_inited = true;
 
-  if (sc != S_END)
-    {
-      ASSERT_ERROR_AND_SET (error);
-      goto cleanup;
+      OID_SET_NULL (&inst_oid);
+      recdes.data = NULL;
+      scan_class_oid = *tgt_oid;
+
+      while ((sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
+	{
+	  total_rows++;
+
+	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
+	  if (error != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      goto cleanup;
+	    }
+
+	  for (i = 0; i < attr_cnt; i++)
+	    {
+	      if (collectors[i] == NULL)
+		{
+		  continue;
+		}
+	      collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
+	    }
+	}
+
+      if (sc != S_END)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  goto cleanup;
+	}
+
+      heap_attrinfo_end (thread_p, &attr_info);
+      attrinfo_inited = false;
+      (void) heap_scancache_end (thread_p, &scan_cache);
+      scancache_inited = false;
     }
 
   *out_total_rows = total_rows;
@@ -1955,7 +2182,12 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	   * whole request: reporting success here lets the caller persist this column's new NDV and
 	   * null_frequency while the stale histogram_values blob remains, mixing old and new stats in
 	   * one catalog row. (An all-null column still yields a valid header-only blob, not NULL.) */
-	  ASSERT_ERROR_AND_SET (error);
+	  error = er_errid ();
+	  if (error == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error = ER_GENERIC_ERROR;
+	    }
 	  goto cleanup;
 	}
       out_ndv[i] = collectors[i]->ndv;
@@ -2061,6 +2293,14 @@ namespace
 	  {
 	    s = db_get_string (v);
 	    len = db_get_string_size (v);
+	    if (t == DB_TYPE_CHAR && s != NULL)
+	      {
+		/* strip CHAR padding; must hash exactly like extract<std::string> () */
+		while (len > 0 && s[len - 1] == ' ')
+		  {
+		    len--;
+		  }
+	      }
 	  }
 	if (s == NULL || len < 0)
 	  {
@@ -2134,13 +2374,20 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
     {
       *out_sketches = NULL;
     }
+  if (snapshot == NULL)
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
 
 #if defined (SERVER_MODE)
   /* try the page-parallel scan first; falls through to the serial scan when not applicable */
   {
     bool did_parallel = false;
+    /* sample_size 0: the NDV-only path needs just the HLL sketches and null counts; a row
+     * reservoir per worker per column (capacity x degree x attr_cnt upfront) would be pure waste */
     int perr = parallel_collect_ndv_multi (thread_p, class_oid, hfid, attr_ids, attr_types, NULL /* attr_unique */,
-					   attr_cnt, STATS_NDV_RESERVOIR_ROWS, out_ndv, out_total_rows, &did_parallel,
+					   attr_cnt, 0, out_ndv, out_total_rows, &did_parallel,
 					   out_sketches);
     if (perr != NO_ERROR)
       {
@@ -2223,6 +2470,12 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   if (out_sketches != NULL)
     {
       *out_sketches = new stats_ndv_sketch_set ();
+      if (*out_sketches == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (stats_ndv_sketch_set));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
     }
   for (i = 0; i < attr_cnt; i++)
     {
@@ -2273,6 +2526,12 @@ cleanup:
 }
 
 
+bool
+xstats_ndv_type_is_supported (DB_TYPE type)
+{
+  return category_of (type) != value_category::unsupported;
+}
+
 int
 stats_ndv_sketch_set_merge (STATS_NDV_SKETCH_SET **dst_p, const STATS_NDV_SKETCH_SET *src)
 {
@@ -2283,6 +2542,11 @@ stats_ndv_sketch_set_merge (STATS_NDV_SKETCH_SET **dst_p, const STATS_NDV_SKETCH
   if (*dst_p == NULL)
     {
       *dst_p = new stats_ndv_sketch_set ();
+      if (*dst_p == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (stats_ndv_sketch_set));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
     }
   for (const stats_ndv_sketch_set::column &sc : src->cols)
     {
