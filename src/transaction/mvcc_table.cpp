@@ -274,7 +274,11 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   // and skip the slot scan entirely. m_completion_count is bumped (release) on every
   // commit/rollback/sub completion (see apply_clear / retire_sub_mvccid) and is the cache
   // invalidation key; no lock is held when it is bumped or read.
-  if (tdes.mvccinfo.snapshot.valid
+  // Reuse guard must test cached_valid, NOT valid: build_mvcc_info is only ever reached when
+  // valid is already false (logtb_get_mvcc_snapshot rebuilds only on !valid), so a valid-gated
+  // reuse would never fire. cached_valid stays set across READ-COMMITTED per-statement invalidation
+  // (which clears only valid), so reuse fires when no completion happened since the last build.
+  if (tdes.mvccinfo.snapshot.cached_valid
       && tdes.mvccinfo.snapshot.cached_completion_count == m_completion_count.load (std::memory_order_acquire))
     {
       // cache hit: keep snapshot.m_xip; reuse the cached xmax.
@@ -335,6 +339,7 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
       // the stored key is now stale, which forces a cache MISS (never a wrong reuse) on the
       // next build_mvcc_info call.
       tdes.mvccinfo.snapshot.cached_completion_count = v1;
+      tdes.mvccinfo.snapshot.cached_valid = true;   // cached xip/xmax now usable for reuse
     }
 
   /* update lowest active mvccid computed for the most recent snapshot */

@@ -665,6 +665,7 @@ mvcc_snapshot::mvcc_snapshot ()
   , snapshot_fnc (NULL)
   , valid (false)
   , cached_completion_count (0)
+  , cached_valid (false)
 {
 }
 
@@ -680,6 +681,7 @@ mvcc_snapshot::reset ()
 
   valid = false;
   cached_completion_count = 0;
+  cached_valid = false;
 }
 
 void
@@ -694,6 +696,7 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
   dest.cached_completion_count = cached_completion_count;
+  dest.cached_valid = cached_valid;
 }
 
 mvcc_info::mvcc_info ()

@@ -193,6 +193,13 @@ struct mvcc_snapshot
    * slot scan is skipped (PG14 GetSnapshotDataReuse). */
   UINT64 cached_completion_count;
 
+  /* CBRD-26971 Phase 2: true once m_xip/cached_completion_count hold a usable prior snapshot.
+   * Distinct from 'valid': READ-COMMITTED per-statement invalidation clears 'valid' (to force a
+   * rebuild) but keeps 'cached_valid' so build_mvcc_info can still reuse when no completion
+   * happened. Cleared only by reset() (transaction end). Guards the reuse path — 'valid' cannot,
+   * since build_mvcc_info is only ever called when 'valid' is already false. */
+  bool cached_valid;
+
   // *INDENT-OFF*
   mvcc_snapshot ();
   void reset ();
