@@ -26,8 +26,70 @@
 #include "object_representation.h"
 #include "test_oos_server_common.hpp"
 
+#include <vector>
+
 /* bridge functions defined in oos_file.cpp */
 int bridge_oos_get_max_chunk_size_within_page ();
+void bridge_oos_debug_counters_reset ();
+oos_debug_counters bridge_oos_debug_counters_get ();
+
+static std::string
+make_filled_payload (int size, char ch)
+{
+  return std::string ((std::size_t) size, ch);
+}
+
+static void
+clear_oos_insert_publication_state_for_test ()
+{
+  thread_p->oos_oids.clear ();
+
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      tdes->oos_insert_lsa_queue.clear ();
+    }
+}
+
+static void
+build_insert_requests (std::vector<std::string> &payloads, std::vector<OID> &oids,
+		       std::vector<oos_insert_request> &requests)
+{
+  oids.resize (payloads.size ());
+  requests.clear ();
+  requests.reserve (payloads.size ());
+
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      OID_SET_NULL (&oids[i]);
+      oos_insert_request request = { oos_buffer (payloads[i].data (), payloads[i].size ()), &oids[i] };
+      requests.push_back (request);
+    }
+}
+
+static void
+assert_read_many_payloads (const std::vector<std::string> &payloads, const std::vector<OID> &oids)
+{
+  std::vector<std::string> outputs;
+  std::vector<oos_read_request> requests;
+
+  outputs.resize (payloads.size ());
+  requests.reserve (payloads.size ());
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      outputs[i].resize (payloads[i].size ());
+      oos_read_request request = { oids[i], oos_buffer (outputs[i].data (), outputs[i].size ()) };
+      requests.push_back (request);
+    }
+
+  ASSERT_EQ (oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ())),
+	     NO_ERROR);
+  for (std::size_t i = 0; i < payloads.size (); i++)
+    {
+      ASSERT_EQ (outputs[i], payloads[i]);
+    }
+}
 
 // ============================================================================
 // TC: Create and Destroy
@@ -95,6 +157,213 @@ TEST (OosServerTest, OosInsertAndRead)
 
   recdes_free_data_area (&rec);
   recdes_free_data_area (&rec_out);
+}
+
+TEST (OosServerTest, OosInsertManyKeepsSinglePageLocalityAndReadManyGroupsHeadPage)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (900, 'a'),
+    make_filled_payload (1000, 'b'),
+    make_filled_payload (1100, 'c')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+
+  clear_oos_insert_publication_state_for_test ();
+  bridge_oos_debug_counters_reset ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+
+  ASSERT_EQ (oids[0].volid, oids[1].volid);
+  ASSERT_EQ (oids[0].pageid, oids[1].pageid);
+  ASSERT_EQ (oids[1].volid, oids[2].volid);
+  ASSERT_EQ (oids[1].pageid, oids[2].pageid);
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.insert_many_calls, 1ULL);
+  EXPECT_EQ (counters.insert_many_requests, 3ULL);
+  EXPECT_EQ (counters.single_page_batch_count, 1ULL);
+  EXPECT_EQ (counters.insert_fresh_pages, 1ULL);
+  EXPECT_EQ (counters.insert_values_per_fixed_page, 3ULL);
+
+  bridge_oos_debug_counters_reset ();
+  assert_read_many_payloads (payloads, oids);
+
+  counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.read_many_calls, 1ULL);
+  EXPECT_EQ (counters.read_many_requests, 3ULL);
+  EXPECT_EQ (counters.read_many_grouped_head_pages, 1ULL);
+  EXPECT_EQ (counters.read_values_per_fixed_page, 3ULL);
+}
+
+TEST (OosServerTest, OosInsertManyReusesOnlyPageThatFitsWholeBatch)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::string seed = make_filled_payload (1000, 's');
+  OID seed_oid = OID_INITIALIZER;
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (seed.data (), seed.size ()), seed_oid), NO_ERROR);
+
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (1000, 'x'),
+    make_filled_payload (1000, 'y')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+
+  clear_oos_insert_publication_state_for_test ();
+  bridge_oos_debug_counters_reset ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+
+  EXPECT_EQ (oids[0].volid, seed_oid.volid);
+  EXPECT_EQ (oids[0].pageid, seed_oid.pageid);
+  EXPECT_EQ (oids[1].volid, seed_oid.volid);
+  EXPECT_EQ (oids[1].pageid, seed_oid.pageid);
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.single_page_batch_count, 1ULL);
+  EXPECT_EQ (counters.insert_reused_pages, 1ULL);
+
+  assert_read_many_payloads (payloads, oids);
+}
+
+TEST (OosServerTest, OosInsertManyAllocatesFreshPageInsteadOfScatteringBatch)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  const int value_size = max_chunk_size / 5;
+  const int seed_size = max_chunk_size - value_size - 512;
+  ASSERT_GT (seed_size, value_size);
+
+  std::string seed1 = make_filled_payload (seed_size, 'p');
+  std::string seed2 = make_filled_payload (seed_size, 'q');
+  OID seed_oid1 = OID_INITIALIZER;
+  OID seed_oid2 = OID_INITIALIZER;
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (seed1.data (), seed1.size ()), seed_oid1), NO_ERROR);
+  ASSERT_EQ (oos_insert (thread_p, oos_vfid, oos_buffer (seed2.data (), seed2.size ()), seed_oid2), NO_ERROR);
+  ASSERT_NE (seed_oid1.pageid, seed_oid2.pageid);
+
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (value_size, 'm'),
+    make_filled_payload (value_size, 'n')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+
+  clear_oos_insert_publication_state_for_test ();
+  bridge_oos_debug_counters_reset ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+
+  EXPECT_EQ (oids[0].volid, oids[1].volid);
+  EXPECT_EQ (oids[0].pageid, oids[1].pageid);
+  EXPECT_NE (oids[0].pageid, seed_oid1.pageid);
+  EXPECT_NE (oids[0].pageid, seed_oid2.pageid);
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.single_page_batch_count, 1ULL);
+  EXPECT_EQ (counters.insert_fresh_pages, 1ULL);
+
+  assert_read_many_payloads (payloads, oids);
+}
+
+TEST (OosServerTest, OosInsertManySplitsOversizedSingleChunkRun)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  const int payload_size = max_chunk_size / 2;
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (payload_size, 'u'),
+    make_filled_payload (payload_size, 'v'),
+    make_filled_payload (payload_size, 'w')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+
+  clear_oos_insert_publication_state_for_test ();
+  bridge_oos_debug_counters_reset ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+
+  EXPECT_NE (oids[0].pageid, oids[1].pageid);
+  EXPECT_NE (oids[1].pageid, oids[2].pageid);
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.insert_many_requests, 3ULL);
+  EXPECT_EQ (counters.single_page_batch_count, 3ULL);
+  EXPECT_EQ (counters.insert_values_per_fixed_page, 3ULL);
+
+  assert_read_many_payloads (payloads, oids);
+}
+
+TEST (OosServerTest, OosInsertManyPreservesMixedSingleAndMultiChunkPublicationOrder)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (1000, 'a'),
+    make_filled_payload (max_chunk_size + 123, 'b'),
+    make_filled_payload (1200, 'c')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+
+  clear_oos_insert_publication_state_for_test ();
+  bridge_oos_debug_counters_reset ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+
+  ASSERT_FALSE (thread_p->oos_oids.empty ());
+  std::size_t pos = 0;
+  ASSERT_LT (pos, thread_p->oos_oids.size ());
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[0]));
+  pos++;
+
+  ASSERT_LT (pos, thread_p->oos_oids.size ());
+  if (OID_ISNULL (&thread_p->oos_oids[pos]))
+    {
+      pos++;
+      ASSERT_LT (pos, thread_p->oos_oids.size ());
+    }
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[1]));
+  pos++;
+
+  ASSERT_LT (pos, thread_p->oos_oids.size ());
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[pos], &oids[2]));
+  pos++;
+  EXPECT_EQ (pos, thread_p->oos_oids.size ());
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.insert_many_requests, 3ULL);
+  EXPECT_EQ (counters.single_page_batch_count, 2ULL);
+
+  assert_read_many_payloads (payloads, oids);
 }
 
 TEST (OosServerTest, OosInsertLargerThanPageSize)

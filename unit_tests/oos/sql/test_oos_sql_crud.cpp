@@ -124,6 +124,94 @@ TEST_F (OosSqlCrud, MultipleOosColumns)
   EXPECT_EQ (len3, 8192);
 }
 
+TEST_F (OosSqlCrud, Cbrd27006MultiOosColumnSelectsAndUpdate)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_crud ("
+		 "  id INT PRIMARY KEY,"
+		 "  c1 BIT VARYING,"
+		 "  c2 BIT VARYING,"
+		 "  c3 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_crud VALUES ("
+		 "  1,"
+		 "  REPEAT(X'AA', 3500),"
+		 "  REPEAT(X'BB', 3500),"
+		 "  REPEAT(X'CC', 3500)"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(c1) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7000);
+
+  rc = fetch_single_int ("SELECT LENGTH(c2) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7000);
+
+  rc = exec_sql ("UPDATE t_oos_crud SET"
+		 "  c1 = REPEAT(X'DD', 3600),"
+		 "  c3 = REPEAT(X'EE', 3400)"
+		 " WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = fetch_single_int ("SELECT LENGTH(c1) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7200);
+
+  rc = fetch_single_int ("SELECT LENGTH(c2) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7000);
+
+  rc = fetch_single_int ("SELECT LENGTH(c3) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 6800);
+}
+
+TEST_F (OosSqlCrud, Cbrd27006MixedSingleChunkAndMultiChunkRow)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_crud ("
+		 "  id INT PRIMARY KEY,"
+		 "  single1 BIT VARYING,"
+		 "  multi BIT VARYING,"
+		 "  single2 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_crud VALUES ("
+		 "  1,"
+		 "  REPEAT(X'11', 3500),"
+		 "  REPEAT(X'22', 20000),"
+		 "  REPEAT(X'33', 3500)"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int len = 0;
+  rc = fetch_single_int ("SELECT LENGTH(single1) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7000);
+
+  rc = fetch_single_int ("SELECT LENGTH(multi) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 40000);
+
+  rc = fetch_single_int ("SELECT LENGTH(single2) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 7000);
+
+}
+
 // TC-06: Multi-chunk OOS (value > page size, ~16KB)
 TEST_F (OosSqlCrud, MultiChunkOos)
 {

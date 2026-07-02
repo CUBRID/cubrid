@@ -128,6 +128,8 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 static int
 heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 {
+  std::vector<oos_read_request> requests;
+
   for (int i = 0; i < state->n_var; ++i)
     {
       if (!OR_IS_OOS (state->vot_raw[i]))
@@ -164,12 +166,18 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	}
 
       state->oos_blobs[i].resize ((std::size_t) oos_len);
-      if (oos_read (thread_p, oos_oid, oos_buffer (state->oos_blobs[i].data (), (std::size_t) oos_len)) != NO_ERROR)
-	{
-	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
-	}
+      oos_read_request request = { oos_oid,
+				   oos_buffer (state->oos_blobs[i].data (), (std::size_t) oos_len)
+				 };
+      requests.push_back (request);
+    }
+
+  if (!requests.empty () && oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()))
+      != NO_ERROR)
+    {
+      oos_error ("oos_read_many failed while expanding OOS record");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
     }
 
   return NO_ERROR;

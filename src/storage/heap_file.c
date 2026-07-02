@@ -82,8 +82,10 @@
 #include "tde.h"
 
 #include <algorithm>
+#include <new>
 #include <set>
 #include <utility>
+#include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -10796,6 +10798,203 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   return error;
 }
 
+struct heap_oos_batched_attrvalue
+{
+  bool is_oos;
+  HEAP_ATTRVALUE *value;
+  OR_ATTRIBUTE *attrepr;
+  RECDES raw;
+};
+
+static void
+heap_attrinfo_free_batched_oos_buffers (std::vector < heap_oos_batched_attrvalue > &batched_values)
+{
+  for (std::size_t i = 0; i < batched_values.size (); i++)
+    {
+      if (batched_values[i].is_oos && batched_values[i].raw.data != NULL)
+	{
+	  recdes_free_data_area (&batched_values[i].raw);
+	  batched_values[i].raw.data = NULL;
+	}
+    }
+}
+
+static int
+heap_attrvalue_prepare_batched_oos_read (RECDES * recdes, HEAP_ATTRVALUE * value,
+					 HEAP_CACHE_ATTRINFO * attr_info, heap_oos_batched_attrvalue * batched_value,
+					 oos_read_request * request)
+{
+  OR_ATTRIBUTE *attrepr = NULL;
+  int offset = 0;
+  int offset_size = 0;
+  OR_BUF buf;
+  OID oos_oid;
+  DB_BIGINT oos_len = 0;
+  int rc = NO_ERROR;
+
+  batched_value->is_oos = false;
+  batched_value->value = value;
+  batched_value->attrepr = NULL;
+  batched_value->raw.area_size = -1;
+  batched_value->raw.length = -1;
+  batched_value->raw.type = REC_UNKNOWN;
+  batched_value->raw.data = NULL;
+
+  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
+    {
+      return NO_ERROR;
+    }
+
+  if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
+      || value->attr_type == HEAP_CLASS_ATTR)
+    {
+      return NO_ERROR;
+    }
+
+  attrepr = value->read_attrepr;
+  if (attrepr->is_fixed != 0 || OR_VAR_IS_NULL (recdes->data, attrepr->location))
+    {
+      return NO_ERROR;
+    }
+
+  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  switch (offset_size)
+    {
+    case OR_BYTE_SIZE:
+      offset =
+	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
+      break;
+    case OR_SHORT_SIZE:
+      offset =
+	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR
+		      (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
+      break;
+    case OR_INT_SIZE:
+      offset =
+	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
+      break;
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (!OR_IS_OOS (offset))
+    {
+      return NO_ERROR;
+    }
+
+  OID_SET_NULL (&oos_oid);
+  buf.ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+  buf.endptr = recdes->data + recdes->length;
+  if (buf.endptr - buf.ptr < OR_OOS_INLINE_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  oos_len = or_get_bigint (&buf, &rc);
+  if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  if (recdes_allocate_data_area (&batched_value->raw, (int) oos_len) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  batched_value->is_oos = true;
+  batched_value->attrepr = attrepr;
+  batched_value->raw.length = (int) oos_len;
+  request->oid = oos_oid;
+  request->dest = oos_buffer (batched_value->raw.data, (std::size_t) oos_len);
+
+  return NO_ERROR;
+}
+
+static int
+heap_attrinfo_read_dbvalues_batched_oos (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  std::vector < heap_oos_batched_attrvalue > batched_values;
+  std::vector < oos_read_request > requests;
+  int error = NO_ERROR;
+
+  try
+  {
+    batched_values.resize ((std::size_t) attr_info->num_values);
+    requests.reserve ((std::size_t) attr_info->num_values);
+  }
+  catch (std::bad_alloc &)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	    (size_t) attr_info->num_values * (sizeof (heap_oos_batched_attrvalue) + sizeof (oos_read_request)));
+    return ER_OUT_OF_VIRTUAL_MEMORY;
+  }
+
+  for (int i = 0; i < attr_info->num_values; i++)
+    {
+      batched_values[i].is_oos = false;
+      batched_values[i].raw.data = NULL;
+    }
+
+  for (int i = 0; i < attr_info->num_values; i++)
+    {
+      oos_read_request request;
+      error = heap_attrvalue_prepare_batched_oos_read (recdes, &attr_info->values[i], attr_info,
+						       &batched_values[i], &request);
+      if (error != NO_ERROR)
+	{
+	  heap_attrinfo_free_batched_oos_buffers (batched_values);
+	  return error;
+	}
+
+      if (batched_values[i].is_oos)
+	{
+	  requests.push_back (request);
+	}
+    }
+
+  if (!requests.empty ())
+    {
+      error = oos_read_many (thread_p, cubbase::span < oos_read_request > (requests.data (), requests.size ()));
+      if (error != NO_ERROR)
+	{
+	  heap_attrinfo_free_batched_oos_buffers (batched_values);
+	  return error;
+	}
+    }
+
+  for (int i = 0; i < attr_info->num_values; i++)
+    {
+      if (batched_values[i].is_oos)
+	{
+	  error = heap_attrvalue_transform_to_dbvalue (batched_values[i].value, batched_values[i].attrepr,
+						       &batched_values[i].raw, true);
+	  recdes_free_data_area (&batched_values[i].raw);
+	  batched_values[i].raw.data = NULL;
+	}
+      else
+	{
+	  error = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
+	}
+
+      if (error != NO_ERROR)
+	{
+	  heap_attrinfo_free_batched_oos_buffers (batched_values);
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * heap_midxkey_get_value () -
  *   return:
@@ -11028,13 +11227,24 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
    * Go over each attribute and read it
    */
 
-  for (i = 0; i < attr_info->num_values; i++)
+  if (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes))
     {
-      value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
+      ret = heap_attrinfo_read_dbvalues_batched_oos (thread_p, recdes, attr_info);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      for (i = 0; i < attr_info->num_values; i++)
+	{
+	  value = &attr_info->values[i];
+	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -11091,13 +11301,24 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
    * Go over each attribute and read it
    */
 
-  for (i = 0; i < attr_info->num_values; i++)
+  if (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes))
     {
-      value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
+      ret = heap_attrinfo_read_dbvalues_batched_oos (thread_p, recdes, attr_info);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
+	}
+    }
+  else
+    {
+      for (i = 0; i < attr_info->num_values; i++)
+	{
+	  value = &attr_info->values[i];
+	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
 	}
     }
 
@@ -12445,6 +12666,11 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
     {
       recdes->area_size = length;
       recdes->data = (char *) malloc (length);
+      if (recdes->data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+	  return S_ERROR;
+	}
     }
 
   buf.ptr = buf.buffer = recdes->data;
@@ -12461,12 +12687,21 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 // *INDENT-ON*
 
 {
+  struct heap_oos_pending_insert
+  {
+    int attr_index;
+    char *data;
+    int length;
+    OID oid;
+  };
+
   char recbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   HFID oos_hfid;
   VFID oos_vfid;
-  OID oos_oid;
   RECDES recdes;
   LOG_TDES *tdes;
+  std::vector < heap_oos_pending_insert > pending;
+  std::vector < oos_insert_request > requests;
   int tran_index;
   int i;
 
@@ -12493,44 +12728,89 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
       return S_ERROR;
     }
 
-  /* init oos tracking info */
-  tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.clear ();
+  try
+  {
+    pending.reserve (attr_info->num_values);
+    requests.reserve (attr_info->num_values);
+  }
+  catch (std::bad_alloc &)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	    (size_t) attr_info->num_values * (sizeof (heap_oos_pending_insert) + sizeof (oos_insert_request)));
+    return S_ERROR;
+  }
 
   for (i = 0; i < attr_info->num_values; i++)
     {
-      /* is this oos column ? */
-      if ((*oos_columns)[i])
+      if (!(*oos_columns)[i])
 	{
-	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
-	  assert (!attr_info->values[i].last_attrepr->is_fixed);
+	  continue;
+	}
 
-	  /* heap_attrinfo_dbvalue_to_recdes may replace recdes.data with a malloc'd
-	   * buffer when the dbvalue doesn't fit the stack scratch. Both failure
-	   * branches below must reach the cleanup at error_oos. */
-	  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
-					       &recdes) != S_SUCCESS)
-	    {
-	      goto error_oos;
-	    }
-	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
-	    {
-	      goto error_oos;
-	    }
+      assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
+      assert (!attr_info->values[i].last_attrepr->is_fixed);
 
-	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
-	  (*oos_oids)[i] = oos_oid;
-	  (*oos_lengths)[i] = (DB_BIGINT) recdes.length;
-	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
-	    {
-	      free_and_init (recdes.data);
-	      recdes.area_size = IO_MAX_PAGE_SIZE;
-	      recdes.data = PTR_ALIGN (recbuf, MAX_ALIGNMENT);
-	    }
+      if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
+					   &recdes) != S_SUCCESS)
+	{
+	  goto error_oos;
+	}
+
+      if (recdes.length <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  goto error_oos;
+	}
+
+      heap_oos_pending_insert pending_value = { };
+      pending_value.attr_index = i;
+      pending_value.length = recdes.length;
+      pending_value.data = (char *) malloc ((size_t) pending_value.length);
+      if (pending_value.data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) pending_value.length);
+	  goto error_oos;
+	}
+      memcpy (pending_value.data, recdes.data, (size_t) pending_value.length);
+      pending.push_back (pending_value);
+
+      if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
+	{
+	  free_and_init (recdes.data);
+	  recdes.area_size = IO_MAX_PAGE_SIZE;
+	  recdes.data = PTR_ALIGN (recbuf, MAX_ALIGNMENT);
 	}
     }
 
-  /* here: or vectorize the DB_VALUEs and insert at once */
+  for (std::size_t request_index = 0; request_index < pending.size (); request_index++)
+    {
+      oos_insert_request request = { oos_buffer (pending[request_index].data, (size_t) pending[request_index].length),
+	&pending[request_index].oid
+      };
+      requests.push_back (request);
+    }
+
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
+
+  if (!requests.empty ()
+      && oos_insert_many (thread_p, oos_vfid, cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
+      != NO_ERROR)
+    {
+      goto error_oos;
+    }
+
+  for (std::size_t request_index = 0; request_index < pending.size (); request_index++)
+    {
+      const int attr_index = pending[request_index].attr_index;
+      (*oos_oids)[attr_index] = pending[request_index].oid;
+      (*oos_lengths)[attr_index] = (DB_BIGINT) pending[request_index].length;
+    }
+
+  for (std::size_t request_index = 0; request_index < pending.size (); request_index++)
+    {
+      free_and_init (pending[request_index].data);
+    }
 
   return S_SUCCESS;
 
@@ -12538,6 +12818,13 @@ error_oos:
   if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
     {
       free_and_init (recdes.data);
+    }
+  for (std::size_t request_index = 0; request_index < pending.size (); request_index++)
+    {
+      if (pending[request_index].data != NULL)
+	{
+	  free_and_init (pending[request_index].data);
+	}
     }
   return S_ERROR;
 }
