@@ -5111,6 +5111,16 @@ retire_all_on_error:
   return error;
 }
 
+/* Minimum tuple count required to attempt parallel ORDER_WITH_LIMIT.
+ * When the input is a mergeable list built by a parallel topN scan, per-worker
+ * tuple distribution is decided by an atomic sector-steal
+ * (sector_page_iterator::next_sector_index.fetch_add). On tiny inputs this race
+ * makes the parallel-vs-serial decision non-deterministic, which surfaces as
+ * flaky scan-trace lines in the test suite. Below this threshold, force serial.
+ * Only applied to SORT_ORDER_WITH_LIMIT — SORT_ORDER_BY has no observed
+ * flakiness and is left untouched to keep behavior change minimal. */
+#define MIN_TUPLES_FOR_PARALLEL_SORT 100
+
 /*
  * sort_check_parallelism () - check the number of parallel processes
  *   return: parallel_num
@@ -5139,6 +5149,12 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       /* check tuple_cnt */
       if (sort_info_p->input_file->tuple_cnt <= parallel_num)
 	{
+	  return 1;
+	}
+      if (sort_param->px_type == SORT_ORDER_WITH_LIMIT
+	  && sort_info_p->input_file->tuple_cnt < MIN_TUPLES_FOR_PARALLEL_SORT)
+	{
+	  /* tiny input: sector-steal race makes parallel decision non-deterministic; force serial */
 	  return 1;
 	}
 
