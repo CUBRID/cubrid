@@ -77,6 +77,8 @@ static int stats_compare_money (DB_MONETARY * mn1, DB_MONETARY * mn2);
 static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_oid, const char *class_name,
 						OID * partitions, int count, bool with_fullscan,
 						CLASS_ATTR_NDV * class_attr_ndv);
+static int stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
+					     CLASS_ATTR_NDV * class_attr_ndv, STATS_NDV_SKETCH_SET ** out_ndv_sketches);
 
 /*
  * xstats_update_statistics () -  Updates the statistics for the objects
@@ -84,6 +86,25 @@ static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * c
  *   return:
  *   class_id(in): Identifier of the class
  *   with_fullscan(in): true iff WITH FULLSCAN
+ */
+int
+xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
+			  CLASS_ATTR_NDV * class_attr_ndv)
+{
+  return stats_update_statistics_internal (thread_p, class_id_p, with_fullscan, class_attr_ndv, NULL);
+}
+
+/*
+ * stats_update_statistics_internal () -  Updates the statistics for the objects
+ *                                        of a given class
+ *   return:
+ *   class_id(in): Identifier of the class
+ *   with_fullscan(in): true iff WITH FULLSCAN
+ *   out_ndv_sketches(out): when non-NULL, receives the per-column HLL sketches behind the class's
+ *                          freshly computed NDVs (NULL when the class is partitioned or the NDV
+ *                          scan was skipped). Used by stats_update_partitioned_statistics () to
+ *                          merge partition sketches into the parent's global NDV. Caller frees
+ *                          with stats_ndv_sketch_set_free ().
  *
  * Note: It first retrieves the whole catalog information about this class,
  *       including all possible forms of disk representations for the instance
@@ -106,9 +127,9 @@ static int stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * c
  *       statistics and they are stored to disk within the catalog structure
  *       for the last class representation.
  */
-int
-xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
-			  CLASS_ATTR_NDV * class_attr_ndv)
+static int
+stats_update_statistics_internal (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_fullscan,
+				  CLASS_ATTR_NDV * class_attr_ndv, STATS_NDV_SKETCH_SET ** out_ndv_sketches)
 {
   CLS_INFO *cls_info_p = NULL;
   REPR_ID repr_id;
@@ -132,6 +153,11 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
   thread_p->push_resource_tracks ();
 
   OID_SET_NULL (&dir_oid);
+
+  if (out_ndv_sketches != NULL)
+    {
+      *out_ndv_sketches = NULL;
+    }
 
   if (heap_get_class_name (thread_p, class_id_p, &class_name) != NO_ERROR || class_name == NULL)
     {
@@ -336,7 +362,7 @@ xstats_update_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, bool with_f
 	{
 	  if (xstats_collect_ndv_by_fullscan_reservoir (thread_p, class_id_p, &(cls_info_p->ci_hfid), rs_ndv_attr_ids,
 							rs_ndv_attr_types, rs_n_attrs, rs_ndv_values,
-							&rs_total_rows) != NO_ERROR)
+							&rs_total_rows, out_ndv_sketches) != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -1178,8 +1204,10 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
   CATALOG_ACCESS_INFO part_catalog_access_info = CATALOG_ACCESS_INFO_INITIALIZER;
   OID dir_oid;
   OID part_dir_oid;
-  INT64 *rs_part_ndv = NULL;	/* per parent attr: sum of partition NDVs (upper bound) */
+  INT64 *rs_part_ndv = NULL;	/* per parent attr: sum of partition NDVs (fallback upper bound) */
   INT64 rs_part_total = 0;	/* sum of partition row counts */
+  STATS_NDV_SKETCH_SET *rs_merged_sketches = NULL;	/* partitions' HLL sketches, merged register-wise */
+  STATS_NDV_SKETCH_SET *rs_part_sketches = NULL;
 
   assert_release (class_id_p != NULL);
   assert_release (partitions != NULL);
@@ -1192,10 +1220,24 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
        * aggregation below (sum of partition totals) would multiply the row count by the partition
        * count. Passing NULL makes each partition compute its own exact stats; the parent is then the
        * correct sum. */
-      error = xstats_update_statistics (thread_p, &partitions[i], with_fullscan, NULL);
+      error = stats_update_statistics_internal (thread_p, &partitions[i], with_fullscan, NULL, &rs_part_sketches);
       if (error != NO_ERROR)
 	{
 	  goto cleanup;
+	}
+      /* Merge this partition's per-column HLL sketches into the parent's accumulated set
+       * (register-wise max == one sketch over all partition rows). The merged sketch yields the
+       * parent's true global NDV below; summing per-partition NDVs instead would overcount every
+       * value that repeats across partitions. */
+      if (rs_part_sketches != NULL)
+	{
+	  error = stats_ndv_sketch_set_merge (&rs_merged_sketches, rs_part_sketches);
+	  stats_ndv_sketch_set_free (rs_part_sketches);
+	  rs_part_sketches = NULL;
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
 	}
     }
 
@@ -1238,7 +1280,8 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, NO_ERROR);
 
-  /* accumulator for the parent's per-attribute NDV, summed over partitions below */
+  /* fallback accumulator for the parent's per-attribute NDV (sum over partitions), used only for
+   * columns the merged HLL sketches do not cover */
   {
     int rs_pn_attrs = disk_repr_p->n_fixed + disk_repr_p->n_variable;
     if (rs_pn_attrs > 0)
@@ -1316,10 +1359,10 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 
   /*
    * The statistics of the main table is generated as the sum of the statistics of each sub-partition.
-   * Only the index height is averaged. In the case of Number of Distinct Values, the value may vary depending on
-   * whether data is duplicated. In here it is calculated as a sum under the assumption that it is evenly distributed.
-   * Because sum of NDV is the maximum value, it may differ from the NDV of the column.
-   * When calculating the selectivity of the predicate in OPTIMIZER, the NDV value of btree is used as the maximum value.
+   * Only the index height is averaged. The parent's per-column Number of Distinct Values comes from
+   * the partitions' HLL sketches merged register-wise (== one sketch over all partition rows), so
+   * values repeated across partitions are counted once; the sum of partition NDVs is kept only as a
+   * fallback upper bound for columns without a sketch.
    */
   cls_rep = heap_classrepr_get (thread_p, class_id_p, NULL, NULL_REPRID, &cls_idx_cache);
   if (cls_rep == NULL)
@@ -1420,7 +1463,9 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  assert_release (subcls_attr_p->id == disk_attr_p->id);
 	  assert_release (subcls_attr_p->n_btstats == disk_attr_p->n_btstats);
 
-	  /* sum partition NDVs: exact for the (disjoint) partition key, upper bound otherwise */
+	  /* sum partition NDVs -- fallback only, for columns without an HLL sketch (exact for the
+	   * disjoint partition key, upper bound otherwise); the merged-sketch estimate below takes
+	   * precedence */
 	  if (rs_part_ndv != NULL && subcls_attr_p->ndv > 0)
 	    {
 	      rs_part_ndv[j] += subcls_attr_p->ndv;
@@ -1479,12 +1524,22 @@ stats_update_partitioned_statistics (THREAD_ENTRY * thread_p, OID * class_id_p, 
 	  disk_attr_p = disk_repr_p->variable + (i - disk_repr_p->n_fixed);
 	}
 
-      /* put ndv of columns */
-      if (rs_part_ndv != NULL && rs_part_ndv[i] > 0)
-	{
-	  /* summed partition NDVs, clamped by the parent's exact row count */
-	  disk_attr_p->ndv = MIN (rs_part_ndv[i], rs_part_total);
-	}
+      /* put ndv of columns: prefer the partitions' merged HLL sketches -- register-wise max is
+       * exactly one sketch over all partition rows, so the estimate is the true global NDV
+       * (values repeated across partitions counted once) */
+      {
+	INT64 rs_est = stats_ndv_sketch_set_estimate (rs_merged_sketches, disk_attr_p->id);
+	if (rs_est >= 0)
+	  {
+	    disk_attr_p->ndv = MIN (rs_est, rs_part_total);
+	  }
+	else if (rs_part_ndv != NULL && rs_part_ndv[i] > 0)
+	  {
+	    /* no sketch for this column: fall back to summed partition NDVs (upper bound),
+	     * clamped by the parent's exact row count */
+	    disk_attr_p->ndv = MIN (rs_part_ndv[i], rs_part_total);
+	  }
+      }
       /* put btree stats */
       for (j = 0, btree_stats_p = disk_attr_p->bt_stats; j < disk_attr_p->n_btstats; j++, btree_stats_p++)
 	{
@@ -1532,6 +1587,14 @@ cleanup:
   (void) catalog_end_access_with_dir_oid (thread_p, &catalog_access_info, error);
   (void) catalog_end_access_with_dir_oid (thread_p, &part_catalog_access_info, error);
 
+  if (rs_part_sketches != NULL)
+    {
+      stats_ndv_sketch_set_free (rs_part_sketches);
+    }
+  if (rs_merged_sketches != NULL)
+    {
+      stats_ndv_sketch_set_free (rs_merged_sketches);
+    }
   if (rs_part_ndv != NULL)
     {
       db_private_free_and_init (thread_p, rs_part_ndv);

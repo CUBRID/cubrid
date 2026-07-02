@@ -69,6 +69,19 @@
 #define HISTOGRAM_MIN_SAMPLE_ROWS 10000
 #define HISTOGRAM_MAX_SAMPLE_ROWS 300000
 
+/* Per-class set of per-column HLL sketches (see histogram_sampler_sr.hpp). One entry per column
+ * the NDV scan could measure; columns of unsupported types have no entry. */
+struct stats_ndv_sketch_set
+{
+  struct column
+  {
+    ATTR_ID id;
+    INT64 non_null_rows;	/* exact non-null row count behind the sketch */
+    cubsampling::hyperloglog hll;
+  };
+  std::vector<column> cols;
+};
+
 namespace
 {
   /* value category derived from the attribute domain type */
@@ -351,12 +364,38 @@ namespace
     return builder.build (thread_p, attr_type, n_total, null_frequency, blob_length);
   }
 
+  /* Exact, equality-preserving HLL hash of a NUMERIC value: raw coefficient bytes plus scale.
+   * Coercing to double first would merge distinct high-precision values that are not separately
+   * representable as double (adjacent integers above 2^53, scale-sensitive decimals) and
+   * undercount NDV. Shared by the serial NDV scan and the parallel collectors so their sketches
+   * stay merge-compatible. */
+  bool
+  hll_hash_numeric_exact (const DB_VALUE *v, std::uint64_t &h)
+  {
+    DB_C_NUMERIC nbuf = db_get_numeric (v);
+    if (nbuf == NULL)
+      {
+	return false;
+      }
+    const int nscale = db_get_numeric_scale (v, NULL);
+    std::string key;
+    key.assign (reinterpret_cast<const char *> (nbuf), DB_NUMERIC_BUF_SIZE);
+    key.append (reinterpret_cast<const char *> (&nscale), sizeof (nscale));
+    h = cubsampling::hll_hash_bytes (key.data (), key.size ());
+    return true;
+  }
+
   /* Offer the target attribute's value to the matching reservoir. Returns false when the value
    * is not samplable (NULL / wrong type) so the caller counts it as null. Uses decide-then-extract:
    * the reservoir decides keep/drop from the running count alone (no value needed), so the value is
    * only materialized when it is actually kept -- this skips a per-row std::string allocation for
    * the values dropped once the reservoir is full (the vast majority). When `hll` is given, every
-   * non-null value is hashed into it (frequency-blind NDV; cheap, no allocation). */
+   * non-null value is hashed into it (frequency-blind NDV; cheap, no allocation).
+   *
+   * HLL hashing here MUST stay in lockstep with ndv_hll_hash () (the serial NDV scan): partition
+   * sketches from the serial and parallel paths are merged together by
+   * stats_update_partitioned_statistics (), so the same value must set the same HLL register
+   * regardless of which path scanned the partition. */
   template <typename T>
   bool extract (const DB_VALUE *v, cubsampling::reservoir_sampler<T> &rs, cubsampling::hyperloglog *hll = nullptr);
 
@@ -397,6 +436,7 @@ namespace
   extract<double> (const DB_VALUE *v, cubsampling::reservoir_sampler<double> &rs, cubsampling::hyperloglog *hll)
   {
     double d;
+    bool is_numeric = false;
     switch (DB_VALUE_TYPE (v))
       {
       case DB_TYPE_FLOAT:
@@ -408,13 +448,28 @@ namespace
       case DB_TYPE_NUMERIC:
 	/* numeric is sampled as double, matching the client histogram key (histogram_cl.cpp) */
 	numeric_coerce_num_to_double (v, db_get_numeric_scale (v, NULL), &d);
+	is_numeric = true;
 	break;
       default:
 	return false;
       }
     if (hll != NULL)
       {
-	hll->add_hash (cubsampling::hll_hash_double (d));
+	std::uint64_t h;
+	if (is_numeric)
+	  {
+	    /* NDV counts exact NUMERIC values (not their lossy double image); also keeps the
+	     * sketch merge-compatible with the serial NDV scan (ndv_hll_hash ()) */
+	    if (!hll_hash_numeric_exact (v, h))
+	      {
+		return false;
+	      }
+	  }
+	else
+	  {
+	    h = cubsampling::hll_hash_double (d);
+	  }
+	hll->add_hash (h);
       }
     int slot = rs.consider ();
     if (slot != cubsampling::reservoir_selector::NOT_SELECTED)
@@ -1599,7 +1654,8 @@ cleanup:
   static int
   parallel_collect_ndv_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			      const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			      int sample_size, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel)
+			      int sample_size, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel,
+			      STATS_NDV_SKETCH_SET **out_sketches)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
@@ -1610,6 +1666,10 @@ cleanup:
 	return error;
       }
 
+    if (out_sketches != NULL)
+      {
+	*out_sketches = new stats_ndv_sketch_set ();
+      }
     *out_total_rows = total_rows;
     for (int c = 0; c < attr_cnt; c++)
       {
@@ -1619,6 +1679,14 @@ cleanup:
 	    continue;
 	  }
 	out_ndv[c] = merged[c]->compute_ndv (total_rows);
+	if (out_sketches != NULL)
+	  {
+	    stats_ndv_sketch_set::column col;
+	    col.id = attr_ids[c];
+	    col.non_null_rows = total_rows - merged[c]->null_rows;
+	    col.hll = std::move (merged[c]->m_hll);
+	    (*out_sketches)->cols.push_back (std::move (col));
+	  }
 	delete merged[c];
       }
     return NO_ERROR;
@@ -1924,9 +1992,14 @@ cleanup:
 
 namespace
 {
-  /* canonical byte-string key of a DB_VALUE for distinct counting; false on unsupported/NULL */
+  /* Unified 64-bit HLL hash of a DB_VALUE for distinct counting; false on unsupported/NULL.
+   * MUST hash exactly like the parallel collectors' extract<T> () (integer/datetime: hll_mix64,
+   * float/double: hll_hash_double, string/bit: hll_hash_bytes, NUMERIC: exact coefficient bytes
+   * + scale) -- partition sketches from the serial and parallel paths are merged together by
+   * stats_update_partitioned_statistics (), so the same value must set the same HLL register
+   * regardless of which path scanned the partition. */
   bool
-  ndv_canonical_key (const DB_VALUE *v, value_category cat, std::string &key)
+  ndv_hll_hash (const DB_VALUE *v, value_category cat, std::uint64_t &h)
   {
     switch (cat)
       {
@@ -1947,26 +2020,15 @@ namespace
 	  default:
 	    return false;
 	  }
-	key.assign (reinterpret_cast<const char *> (&out), sizeof (out));
+	h = cubsampling::hll_mix64 ((std::uint64_t) out);
 	return true;
       }
       case value_category::real:
       {
 	if (DB_VALUE_TYPE (v) == DB_TYPE_NUMERIC)
 	  {
-	    /* Preserve full NUMERIC precision in the NDV key. Coercing to double would merge distinct
-	     * high-precision values that are not separately representable as double (adjacent integers
-	     * above 2^53, scale-sensitive decimals) and undercount NDV. The raw coefficient bytes plus
-	     * scale form an exact, equality-preserving key. */
-	    DB_C_NUMERIC nbuf = db_get_numeric (v);
-	    if (nbuf == NULL)
-	      {
-		return false;
-	      }
-	    const int nscale = db_get_numeric_scale (v, NULL);
-	    key.assign (reinterpret_cast<const char *> (nbuf), DB_NUMERIC_BUF_SIZE);
-	    key.append (reinterpret_cast<const char *> (&nscale), sizeof (nscale));
-	    return true;
+	    /* exact coefficient bytes + scale; see hll_hash_numeric_exact () */
+	    return hll_hash_numeric_exact (v, h);
 	  }
 
 	double out;
@@ -1981,7 +2043,7 @@ namespace
 	  default:
 	    return false;
 	  }
-	key.assign (reinterpret_cast<const char *> (&out), sizeof (out));
+	h = cubsampling::hll_hash_double (out);
 	return true;
       }
       case value_category::string:
@@ -2004,7 +2066,7 @@ namespace
 	  {
 	    return false;
 	  }
-	key.assign (s, static_cast<std::size_t> (len));
+	h = cubsampling::hll_hash_bytes (s, static_cast<std::size_t> (len));
 	return true;
       }
       case value_category::datetime:
@@ -2041,7 +2103,7 @@ namespace
 	  default:
 	    return false;
 	  }
-	key.assign (reinterpret_cast<const char *> (&out), sizeof (out));
+	h = cubsampling::hll_mix64 (out);
 	return true;
       }
       default:
@@ -2053,7 +2115,7 @@ namespace
 int
 xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt,
-    INT64 *out_ndv, INT64 *out_total_rows)
+    INT64 *out_ndv, INT64 *out_total_rows, STATS_NDV_SKETCH_SET **out_sketches)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -2068,13 +2130,18 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
 
   *out_total_rows = 0;
+  if (out_sketches != NULL)
+    {
+      *out_sketches = NULL;
+    }
 
 #if defined (SERVER_MODE)
   /* try the page-parallel scan first; falls through to the serial scan when not applicable */
   {
     bool did_parallel = false;
     int perr = parallel_collect_ndv_multi (thread_p, class_oid, hfid, attr_ids, attr_types, NULL /* attr_unique */,
-					   attr_cnt, STATS_NDV_RESERVOIR_ROWS, out_ndv, out_total_rows, &did_parallel);
+					   attr_cnt, STATS_NDV_RESERVOIR_ROWS, out_ndv, out_total_rows, &did_parallel,
+					   out_sketches);
     if (perr != NO_ERROR)
       {
 	return perr;
@@ -2137,10 +2204,10 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
 	    {
 	      continue;		/* NULLs do not feed the NDV reservoir */
 	    }
-	  std::string key;
-	  if (ndv_canonical_key (v, cats[i], key))
+	  std::uint64_t h;
+	  if (ndv_hll_hash (v, cats[i], h))
 	    {
-	      hlls[i].add_hash (cubsampling::hll_hash_bytes (key.data (), key.size ()));
+	      hlls[i].add_hash (h);
 	      nn[i]++;
 	    }
 	}
@@ -2153,6 +2220,10 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
     }
 
   /* per-column NDV from the HyperLogLog sketch (frequency-blind; matches the parallel path) */
+  if (out_sketches != NULL)
+    {
+      *out_sketches = new stats_ndv_sketch_set ();
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       if (cats[i] == value_category::unsupported)
@@ -2163,18 +2234,28 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
       if (n_nn == 0)
 	{
 	  out_ndv[i] = 0;       /* all-NULL column */
-	  continue;
 	}
-      INT64 v = (INT64) (hlls[i].estimate () + 0.5);
-      if (v < 1)
+      else
 	{
-	  v = 1;
+	  INT64 v = (INT64) (hlls[i].estimate () + 0.5);
+	  if (v < 1)
+	    {
+	      v = 1;
+	    }
+	  if (v > n_nn)
+	    {
+	      v = n_nn;
+	    }
+	  out_ndv[i] = v;
 	}
-      if (v > n_nn)
+      if (out_sketches != NULL)
 	{
-	  v = n_nn;
+	  stats_ndv_sketch_set::column col;
+	  col.id = attr_ids[i];
+	  col.non_null_rows = n_nn;
+	  col.hll = std::move (hlls[i]);
+	  (*out_sketches)->cols.push_back (std::move (col));
 	}
-      out_ndv[i] = v;
     }
 
   error = NO_ERROR;
@@ -2191,3 +2272,74 @@ cleanup:
   return error;
 }
 
+
+int
+stats_ndv_sketch_set_merge (STATS_NDV_SKETCH_SET **dst_p, const STATS_NDV_SKETCH_SET *src)
+{
+  if (src == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (*dst_p == NULL)
+    {
+      *dst_p = new stats_ndv_sketch_set ();
+    }
+  for (const stats_ndv_sketch_set::column &sc : src->cols)
+    {
+      stats_ndv_sketch_set::column *dc = NULL;
+      for (stats_ndv_sketch_set::column &c : (*dst_p)->cols)
+	{
+	  if (c.id == sc.id)
+	    {
+	      dc = &c;
+	      break;
+	    }
+	}
+      if (dc == NULL)
+	{
+	  (*dst_p)->cols.push_back (sc);
+	}
+      else
+	{
+	  dc->hll.merge (sc.hll);	/* register-wise max == one sketch over both partitions */
+	  dc->non_null_rows += sc.non_null_rows;
+	}
+    }
+  return NO_ERROR;
+}
+
+INT64
+stats_ndv_sketch_set_estimate (const STATS_NDV_SKETCH_SET *set, ATTR_ID attr_id)
+{
+  if (set == NULL)
+    {
+      return -1;
+    }
+  for (const stats_ndv_sketch_set::column &c : set->cols)
+    {
+      if (c.id == attr_id)
+	{
+	  if (c.non_null_rows <= 0)
+	    {
+	      return 0;		/* all-NULL column */
+	    }
+	  INT64 v = (INT64) (c.hll.estimate () + 0.5);
+	  if (v < 1)
+	    {
+	      v = 1;
+	    }
+	  if (v > c.non_null_rows)
+	    {
+	      v = c.non_null_rows;
+	    }
+	  return v;
+	}
+    }
+  return -1;			/* no sketch for this column (unsupported type) */
+}
+
+void
+stats_ndv_sketch_set_free (STATS_NDV_SKETCH_SET *set)
+{
+  delete set;
+}

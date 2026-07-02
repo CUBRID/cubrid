@@ -67,16 +67,33 @@ extern int xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p,
     int max_buckets, int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
     INT64 *out_ndv, INT64 *out_total_rows);
 
+/* Opaque set of per-column HyperLogLog sketches produced by one class's NDV scan. A partitioned
+ * class's parent merges its partitions' sets (register-wise max == one sketch over all partition
+ * rows) and estimates a true global NDV per column, instead of summing per-partition NDVs, which
+ * overcounts every value repeated across partitions. */
+typedef struct stats_ndv_sketch_set STATS_NDV_SKETCH_SET;
+
+/* merge src into *dst_p (per column: register-wise max of the sketches, non-null counts summed).
+ * *dst_p == NULL allocates a new set. src is not consumed; the caller still frees it. */
+extern int stats_ndv_sketch_set_merge (STATS_NDV_SKETCH_SET **dst_p, const STATS_NDV_SKETCH_SET *src);
+/* estimated NDV of attr_id from the merged sketch, clamped to [1, summed non-null rows]
+ * (0 for an all-NULL column); -1 when the column has no sketch (unsupported type / set == NULL) */
+extern INT64 stats_ndv_sketch_set_estimate (const STATS_NDV_SKETCH_SET *set, ATTR_ID attr_id);
+extern void stats_ndv_sketch_set_free (STATS_NDV_SKETCH_SET *set);
+
 /*
  * xstats_collect_ndv_by_fullscan_reservoir () - dedicated, query-free NDV collection.
- *   One full heap scan; per column a row reservoir of canonical value keys; per-column
- *   (n, d, f1) are fed to stats_estimate_ndv_from_sample () (statistics_ndv.c).
+ *   One full heap scan; per column a HyperLogLog sketch fed by every non-null value.
  *
  *   out_ndv[i]      : estimated NDV for attr_ids[i]; -1 when the type is not supported
  *                     (caller keeps its existing value), 0 when the column is all-NULL.
  *   out_total_rows  : exact row count of the class (from the same scan)
+ *   out_sketches    : when non-NULL, receives the per-column HLL sketches behind out_ndv so a
+ *                     partitioned parent can merge them across partitions (caller frees with
+ *                     stats_ndv_sketch_set_free ()); may be NULL when the sketches are not needed
  */
 extern int xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, INT64 *out_ndv, INT64 *out_total_rows);
+    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, INT64 *out_ndv, INT64 *out_total_rows,
+    STATS_NDV_SKETCH_SET **out_sketches);
 
 #endif /* _HISTOGRAM_SAMPLER_SR_HPP_ */
