@@ -209,6 +209,10 @@ TEST_F (OosSqlShow, HeapWithoutOosReportsZeroStats)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (int_val, 0);
 
+  rc = get_int_column (result, COL_OOS_PAGE_SIZE, &int_val);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (int_val, DB_PAGESIZE);
+
   rc = get_int_column (result, COL_OOS_NUM_RECS, &int_val);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (int_val, 0);
