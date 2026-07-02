@@ -10076,6 +10076,12 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_ATTR:
 	  /* attr = attr */
 
+	  histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
+	  if (success)
+	    {
+	      break;
+	    }
+
 	  /* check for indexes on either of the attributes */
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  rhs_icard = qo_index_cardinality (env, rhs);
@@ -10090,7 +10096,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
 	    }
 
-	  /* TODO: add histogram selectivity */
 	  break;
 
 	case PC_CONST:
