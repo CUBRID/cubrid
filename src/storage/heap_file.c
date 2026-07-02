@@ -37,8 +37,8 @@
 #include <errno.h>
 
 #include "heap_file.h"
-#include "heap_file_internal.hpp"
 #include "heap_oos.hpp"
+#include "heap_show_scan_context.hpp"
 #include "oos_file.hpp"
 #include "oos_util.hpp"
 
@@ -189,11 +189,55 @@ typedef enum
  * Heap file header
  */
 
+#define HEAP_NUM_BEST_SPACESTATS   10
+
 /* calculate an index of best array */
 #define HEAP_STATS_NEXT_BEST_INDEX(i)   \
   (((i) + 1) % HEAP_NUM_BEST_SPACESTATS)
 #define HEAP_STATS_PREV_BEST_INDEX(i)   \
   (((i) == 0) ? (HEAP_NUM_BEST_SPACESTATS - 1) : ((i) - 1));
+
+typedef struct heap_hdr_stats HEAP_HDR_STATS;
+struct heap_hdr_stats
+{
+  /* the first must be class_oid */
+  OID class_oid;
+  VFID ovf_vfid;		/* Overflow file identifier (if any) */
+  VPID next_vpid;		/* Next page (i.e., the 2nd page of heap file) */
+  VFID oos_vfid;		/* OOS file identifier (if any) */
+  int unfill_space;		/* Stop inserting when page has run below this. leave it for updates */
+  struct
+  {
+    int num_pages;		/* Estimation of number of heap pages. Consult file manager if accurate number is
+				 * needed */
+    int num_recs;		/* Estimation of number of objects in heap */
+    float recs_sumlen;		/* Estimation total length of records */
+    int num_other_high_best;	/* Total of other believed known best pages, which are not included in the best array
+				 * and we believe they have at least HEAP_DROP_FREE_SPACE */
+    int num_high_best;		/* Number of pages in the best array that we believe have at least
+				 * HEAP_DROP_FREE_SPACE. When this number goes to zero and there is at least other
+				 * HEAP_NUM_BEST_SPACESTATS best pages, we look for them. */
+    int num_substitutions;	/* Number of page substitutions. This will be used to insert a new second best page
+				 * into second best hints. */
+    int num_second_best;	/* Number of second best hints. The hints are in "second_best" array. They are used
+				 * when finding new best pages. See the function "heap_stats_sync_bestspace". */
+    int head_second_best;	/* Index of head of second best hints. */
+    int tail_second_best;	/* Index of tail of second best hints. A new second best hint will be stored on this
+				 * index. */
+    int head;			/* Head of best circular array */
+    VPID last_vpid;		/* todo: move out of estimates */
+    VPID full_search_vpid;
+    VPID second_best[HEAP_NUM_BEST_SPACESTATS];
+    HEAP_BESTSPACE best[HEAP_NUM_BEST_SPACESTATS];
+  } estimates;			/* Probably, the set of pages with more free space on the heap. Changes to any values
+				 * of this array (either page or the free space for the page) are not logged since
+				 * these values are only used for hints. These values may not be accurate at any given
+				 * time and the entries may contain duplicated pages. */
+
+  int reserve0_for_future;	/* Nothing reserved for future */
+  int reserve1_for_future;	/* Nothing reserved for future */
+  int reserve2_for_future;	/* Nothing reserved for future */
+};
 
 typedef struct heap_stats_entry HEAP_STATS_ENTRY;
 struct heap_stats_entry
@@ -12208,6 +12252,118 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   *inline_size_after_oos_ptr = header_size + payload_size;
   return NO_ERROR;
+}
+
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; set to NULL when the heap has no OOS
+ *                    file (only possible when docreate == false)
+ *   docreate (in)  : if true and the OOS file does not exist, it is created and
+ *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it
+ *   never means "no OOS file". Callers using docreate == false must inspect
+ *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ */
+bool
+heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+{
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
+  LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
+  VPID vpid;			/* Page-volume identifier */
+  RECDES hdr_recdes;		/* Header record descriptor */
+  PGBUF_LATCH_MODE mode;
+  bool success;
+
+  success = true;
+  VFID_SET_NULL (oos_vfid);
+
+  addr_hdr.vfid = &hfid->vfid;
+  addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+
+  /* Read the header page */
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
+  if (addr_hdr.pgptr == NULL)
+    {
+      goto exit_on_error;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  /* Peek the header record */
+  if (spage_get_record (thread_p, addr_hdr.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      goto exit_on_error;
+    }
+
+  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+  if (VFID_ISNULL (&heap_hdr->oos_vfid))
+    {
+      if (docreate == true)
+	{
+	  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+
+	  /* START A TOP SYSTEM OPERATION */
+	  log_sysop_start (thread_p);
+	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Apply TDE to the new OOS file atomically with its creation.
+	   * Pattern mirrors heap_ovf_find_vfid */
+	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      goto exit_on_error;
+	    }
+
+	  /* Log undo, then redo */
+	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  VFID_COPY (&heap_hdr->oos_vfid, oos_vfid);
+	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
+	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
+
+	  log_sysop_commit (thread_p);
+	}
+      else
+	{
+	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  goto end;
+	}
+    }
+  else
+    {
+      VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
+    }
+
+  goto end;
+
+exit_on_error:
+  success = false;
+
+end:
+  if (addr_hdr.pgptr)
+    {
+      pgbuf_unfix_and_init (thread_p, addr_hdr.pgptr);
+    }
+
+  return success;
 }
 
 static SCAN_CODE
