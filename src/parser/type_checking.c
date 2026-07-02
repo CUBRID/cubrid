@@ -11498,7 +11498,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
       || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
-      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_UUID_FORMAT )
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_UUID_FORMAT)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
