@@ -11180,16 +11180,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
 
-	  if (cdc_Gl.is_queue_reinitialized)
-	    {
-	      free_and_init (tmp->log_info);
-	      free_and_init (tmp);
-
-	      cdc_Gl.is_queue_reinitialized = false;
-
-	      continue;
-	    }
-
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
           /* *INDENT-ON* */
@@ -14516,8 +14506,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       cdc_log ("cdc_reinitialize_queue : don't need to be reinitialized");
       goto end;
     }
-
-  cdc_Gl.is_queue_reinitialized = true;
 
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
