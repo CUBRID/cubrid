@@ -33,7 +33,9 @@
 #include "dbtype_def.h"
 #include "external_sort.h"
 #if defined (SERVER_MODE)
+#include "file_manager.h"
 #include "log_comm.h"		// for TRAN_ISOLATION; todo - remove it.
+#include <vector>
 #endif // SERVER_MODE
 #include "query_list.h"
 #include "storage_common.h"
@@ -114,6 +116,26 @@ typedef enum
   QFILE_SKIP_DEPENDENT = 1,
   QFILE_MOVE_DEPENDENT = 2
 } QFILE_DEPENDENT_MODE;
+
+#if defined (SERVER_MODE)
+struct sort_px_list_state
+{
+  /* shared sector scan — owned by sort_param->px_sector_scan, freed after all workers finish */
+  QFILE_LIST_SECTOR_SCAN_INFO *sector_scan;
+  /* per-worker page iterator — encapsulates membuf CAS + atomic sector steal */
+  sector_page_iterator page_iter;
+  /* current active page — set when we land on a page, cleared after all tuples are consumed */
+  PAGE_PTR curr_page;
+  struct qmgr_temp_file *curr_tfile;	/* tfile for curr_page (membuf_tfile or disk tfile) */
+  VPID curr_vpid;		/* VPID of curr_page (used for sort key pageid/volid) */
+  int curr_tplno;		/* tuple index within curr_page */
+  int curr_offset;		/* byte offset of current tuple in curr_page */
+  QFILE_TUPLE_RECORD tplrec;	/* buffer for assembling overflow tuples */
+};
+
+extern SORT_STATUS qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *arg);
+extern void qfile_sort_px_state_free (THREAD_ENTRY * thread_p, sort_px_list_state * state);
+#endif /* SERVER_MODE */
 
 /* List manipulation routines */
 extern int qfile_initialize (void);
