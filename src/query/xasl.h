@@ -985,6 +985,13 @@ struct groupby_stat
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
+  int parallel_num;
+  UINT64 px_min_groupby_time;
+  UINT64 px_max_groupby_time;
+  UINT64 px_min_groupby_pages;
+  UINT64 px_max_groupby_pages;
+  UINT64 px_min_groupby_ioreads;
+  UINT64 px_max_groupby_ioreads;
 };
 
 struct analytic_stat
@@ -995,6 +1002,13 @@ struct analytic_stat
   int rows;
   bool analytic_stopkey;
   bool analytic_sort;
+  int parallel_num;
+  UINT64 px_min_analytic_time;
+  UINT64 px_max_analytic_time;
+  UINT64 px_min_analytic_pages;
+  UINT64 px_max_analytic_pages;
+  UINT64 px_min_analytic_ioreads;
+  UINT64 px_max_analytic_ioreads;
   struct analytic_stat *next;
 };
 
@@ -1094,6 +1108,10 @@ struct xasl_node
   VAL_LIST *single_tuple;	/* single tuple result */
 
   int is_single_tuple;		/* single tuple subquery? */
+
+  /* predicate-operand regu owning this uncorrelated scalar subquery (NULL otherwise);
+   * gates the precompute/inject/checker-relax path. */
+  REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */

@@ -4028,6 +4028,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "list_dbs ";
     case PT_SYS_GUID:
       return "sys_guid ";
+    case PT_UUID:
+      return "uuid ";
     case PT_OID_OF_DUPLICATE_KEY:
       return "oid_of_duplicate_key ";
     case PT_BIT_TO_BLOB:
@@ -4110,6 +4112,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "conv_tz";
     case PT_COLLECTION_TO_STRING:
       return "collection_to_string";
+    case PT_UUID_FORMAT:
+      return "uuid_format";
     default:
       assert (false);
       return "unknown opcode";
@@ -10560,6 +10564,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_UUID_FORMAT:
+      q = pt_append_nulstring (parser, q, " uuid_format(");
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") ");
+      break;
     case PT_AES_ENCRYPT:
       q = pt_append_nulstring (parser, q, " aes_encrypt(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -12130,6 +12140,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_SYS_GUID:
       q = pt_append_nulstring (parser, q, " sys_guid() ");
+      break;
+
+    case PT_UUID:
+      q = pt_append_nulstring (parser, q, " uuid(");
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") ");
       break;
 
     case PT_PATH_EXPR_SET:
@@ -18741,6 +18758,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
+    case PT_UUID_FORMAT:
       return true;
     case PT_TZ_OFFSET:
     default:

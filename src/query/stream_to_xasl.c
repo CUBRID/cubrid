@@ -1894,6 +1894,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->precomp_owner_regu = NULL;
+    }
+  else
+    {
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   xasl->option = (QUERY_OPTIONS) tmp;
 
