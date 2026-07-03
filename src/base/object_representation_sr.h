@@ -83,6 +83,7 @@ union or_aligned_oid
 struct or_auto_increment
 {
   std::atomic<or_aligned_oid> serial_obj;
+  int cached_num;		/* serial cache block size; -1 = unresolved */
 };
 // *INDENT-ON*
 
@@ -124,6 +125,7 @@ struct or_attribute
   {
     memset (this, 0x00, offsetof (OR_ATTRIBUTE, auto_increment));
     auto_increment.serial_obj = oid_Null_oid;
+    auto_increment.cached_num = -1;
   }
   // *INDENT-ON*
 };

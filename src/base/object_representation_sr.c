@@ -2517,6 +2517,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->classoid = oid;
 
       att->auto_increment.serial_obj = oid_Null_oid;
+      att->auto_increment.cached_num = -1;
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 

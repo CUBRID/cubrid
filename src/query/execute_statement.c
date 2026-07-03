@@ -1071,6 +1071,10 @@ do_reset_auto_increment_serial (MOP serial_obj)
       goto error_exit;
     }
 
+  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial does not serve
+   * stale values after TRUNCATE-reset (do_alter_serial / do_drop_serial already decache). */
+  (void) serial_decache (ws_oid (serial_object));
+
   db_value_clear (&start_value);
   db_value_clear (&started_flag);
 
@@ -1240,6 +1244,10 @@ do_change_auto_increment_serial (PARSER_CONTEXT * const parser, MOP serial_obj, 
     {
       goto error_exit;
     }
+
+  /* invalidate the server-side serial cache so a cached AUTO_INCREMENT serial reflects the new
+   * base after ALTER ... AUTO_INCREMENT = n (matches do_alter_serial / do_drop_serial). */
+  (void) serial_decache (ws_oid (serial_object));
 
   goto normal_exit;
 
@@ -2157,10 +2165,12 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
-  /* create auto increment serial object */
+  /* create auto increment serial object; cached_num comes from auto_increment_cache_size.
+   * 0 keeps the per-row durable catalog write; n >= 2 makes the serial cache a block of n
+   * values so heap_set_autoincrement_value takes the cached path. */
   error =
-    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, 0, 0, NULL,
-			       class_name, att_name);
+    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0,
+			       prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE), 0, NULL, class_name, att_name);
   if (error < 0)
     {
       goto end;

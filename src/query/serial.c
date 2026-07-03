@@ -192,6 +192,92 @@ xserial_get_current_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const
 }
 
 /*
+ * xserial_get_cached_num () - read a serial's cache block size (cached_num) from its _db_serial row.
+ *   return: NO_ERROR, or ER_code
+ *   cached_num(out)  : the serial's cached_num (0 when the serial has no cached_num column)
+ *   serial_oidp(in)  : OID of the _db_serial row
+ *
+ * The AUTO_INCREMENT insert path caches this on the attribute representation so it can pass the
+ * serial's real cached_num to xserial_get_next_value without a per-row catalog lookup.
+ */
+int
+xserial_get_cached_num (THREAD_ENTRY * thread_p, int *cached_num, const OID * serial_oidp)
+{
+  int ret = NO_ERROR;
+  HEAP_SCANCACHE scan_cache;
+  SCAN_CODE scan;
+  RECDES recdesc = RECDES_INITIALIZER;
+  HEAP_CACHE_ATTRINFO attr_info, *attr_info_p = NULL;
+  ATTR_ID attrid;
+  DB_VALUE *val;
+  OID serial_class_oid;
+
+  *cached_num = 0;
+
+  oid_get_serial_oid (&serial_class_oid);
+  heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
+
+  /* get record into record desc */
+  scan = heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  if (scan != S_SUCCESS)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, serial_oidp->volid, serial_oidp->pageid,
+		  serial_oidp->slotid);
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_CANNOT_FETCH_SERIAL, 0);
+	}
+      goto exit_on_error;
+    }
+
+  /* retrieve the cached_num attribute */
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+  if (attrid != NOT_FOUND)
+    {
+      ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, 1, &attrid, &attr_info);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      attr_info_p = &attr_info;
+
+      ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, attr_info_p);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      val = heap_attrinfo_access (attrid, attr_info_p);
+      *cached_num = db_get_int (val);
+
+      heap_attrinfo_end (thread_p, attr_info_p);
+      attr_info_p = NULL;
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (attr_info_p != NULL)
+    {
+      heap_attrinfo_end (thread_p, attr_info_p);
+    }
+
+  heap_scancache_end (thread_p, &scan_cache);
+
+  ret = (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+  return ret;
+}
+
+/*
  * xserial_get_current_value_internal () -
  *   return: NO_ERROR, or ER_code
  *   result_num(out)    :

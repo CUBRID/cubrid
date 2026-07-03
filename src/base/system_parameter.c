@@ -147,6 +147,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HF_MAX_BESTSPACE_ENTRIES "max_bestspace_entries"
 
+#define PRM_NAME_AUTO_INCREMENT_CACHE_SIZE "auto_increment_cache_size"
+
 #define PRM_NAME_BT_UNFILL_FACTOR "index_unfill_factor"
 
 #define PRM_NAME_BT_OID_NBUFFERS "index_scan_oid_buffer_pages"
@@ -5367,6 +5369,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
+   PRM_NAME_AUTO_INCREMENT_CACHE_SIZE,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FORCE_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 0}},
+   {false, {.i = 0}},
+   NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}
