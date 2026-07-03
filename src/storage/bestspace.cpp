@@ -673,71 +673,85 @@ namespace cubstorage
       }
   }
 
-  void
+  std::size_t
   bestspace::shard::allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
       &victims, std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
   {
     bestspace_entry candidate;
+    std::size_t num_candidates;
+    tier minimum;
 
-    while (m_candidates.try_pop (candidate))
+    minimum = size_to_tier (victims[ALLOC_BATCH_SIZE - 1].second);
+    if (minimum >= tier::FS8)
       {
-	size_to_tier (candidate.freespace);
+	// it's better to allocate the new pages if the biggest size of victims is bigger than FS7
+	return 0;
       }
 
-    victims[ALLOC_BATCH_SIZE - 1].second;
+    num_candidates = 0;
+    while (num_candidates < ALLOC_BATCH_SIZE - 1 && m_candidates.try_pop (candidate))
+      {
+	if (size_to_tier (candidate.freespace) > minimum)
+	  {
+	    candidates[num_candidates] = candidate;
+	    num_candidates++;
+	  }
+      }
+
+    return num_candidates;
+  }
+
+  int
+  bestspace::shard::allocate_new_pages (HFID *hfid, std::size_t num_candidates,
+					std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher)
+  {
+    std::array<VPID, ALLOC_BATCH_SIZE> vpids;
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    int freespace;
+    int error;
+    int i;
+
+    error = heap_alloc_new_pages (thread_p, hfid, ALLOC_BATCH_SIZE - num_candidates, vpids.data (), &page_watcher);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
+
+    freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
+    // page_watcher.pgptr fixes the page pointer of the last candidates
+    for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
+      {
+	candidates[i].freespace = freespace;
+	candidates[i].volid = vpids[ALLOC_BATCH_SIZE - 1 - i].volid;
+	candidates[i].pageid = vpids[ALLOC_BATCH_SIZE - 1 - i].pageid;
+      }
+    return NO_ERROR;
   }
 
   void
-  bestspace::shard::allocate_pages (cubthread::entry &thread_ref, std::uint16_t consume_size,
-				    std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::allocate_replace_pages (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
+      &victims, std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
   {
-    std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> result;
-    std::size_t pos, offset;
     std::size_t i;
-    int freespace;
     L1 l1;
 
-    // get 8 indices from L1, ordered by smallest free space
-    result.fill (std::make_pair (std::numeric_limits<std::uint16_t>::max (), std::numeric_limits<std::uint16_t>::max ()));
-    for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
-      {
-	l1 = m_L1[i].load ();
-	freespace = l1.get_freespace ();
-
-	if (freespace >= result[ALLOC_BATCH_SIZE - 1].second)
-	  {
-	    continue;
-	  }
-
-	pos = ALLOC_BATCH_SIZE - 1;
-	while (pos > 0 && freespace < result[pos - 1].second)
-	  {
-	    result[pos] = result[pos - 1];
-	    pos--;
-	  }
-
-	result[pos] = std::make_pair (i, freespace);
-      }
-
     // renew the L1s
-    offset = 0;
-    freespace = spage_max_space_for_new_record (&thread_ref, page_watcher.pgptr);
-    if (freespace - static_cast<int> (consume_size) > static_cast<int> (result[0].second))
+    for (i = 0; i < ALLOC_BATCH_SIZE - 1; i++)
       {
-	l1.set_freespace (freespace - consume_size);
-	l1.set_vpid (vpids[0]);
-	m_L1[result[0].first].store (l1);
+	l1.set_freespace (candidates[i].freespace);
+	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
+	m_L1[victims[i].first].store (l1);
 
-	L2_update (result[0].first / L2_FANOUT, result[0].first % L2_FANOUT);
-	offset++;
+	L2_update (victims[i].first / L2_FANOUT, victims[i].first % L2_FANOUT);
       }
-    for (i = 1; i < ALLOC_BATCH_SIZE; i++)
+    if (candidates[i].freespace > victims[i].second)
       {
-	l1.set_freespace (freespace);
-	l1.set_vpid (vpids[i]);
-	m_L1[result[i - (1 - offset)].first].store (l1);
+	l1.set_freespace (candidates[i].freespace);
+	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
+	m_L1[victims[i].first].store (l1);
 
-	L2_update (result[i - (1 - offset)].first / L2_FANOUT, result[i - (1 - offset)].first % L2_FANOUT);
+	L2_update (victims[i].first / L2_FANOUT, victims[i].first % L2_FANOUT);
       }
   }
 
@@ -746,8 +760,7 @@ namespace cubstorage
   {
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
-    std::array<VPID, ALLOC_BATCH_SIZE> vpids;
-    cubthread::entry *thread_p;
+    std::size_t num_candidates;
     int error;
 
     // set allcating bit
@@ -761,19 +774,24 @@ namespace cubstorage
     // pick four pages with the smallest free space as replacement victims.
     allocate_pick_victims (victims);
     // pick four replacement candidates with more freespace than the victim pages above.
-    allocate_pick_candidates (victims, candidates);
+    num_candidates = allocate_pick_candidates (victims, candidates);
+    assert (num_candidates <= ALLOC_BATCH_SIZE - 1);
 
-    thread_p = thread_get_thread_entry_info ();
-    error = heap_alloc_new_pages (thread_p, hfid, ALLOC_BATCH_SIZE, vpids.data (), &page_watcher);
+    // allocate the pages at least one
+    error = allocate_new_pages (hfid, num_candidates, candidates, page_watcher);
     if (error != NO_ERROR)
       {
 	allocate_unmark ();
 	return status::FAILURE;
       }
+    // candidates are four available pages at this point
 
-    STATS_INC (allocated, ALLOC_BATCH_SIZE);
+    // reserve the page
+    candidates[ALLOC_BATCH_SIZE - 1].freespace -= consume_size;
 
-    allocate_pages (*thread_p, consume_size, vpids, page_watcher);
+    // replace L1s
+    allocate_replace_pages (victims, candidates);
+
     allocate_unmark ();
     return status::FOUND;
   }
@@ -842,9 +860,9 @@ namespace cubstorage
 	for (i = 0; i < SHARD_COUNT; i++)
 	  {
 	    error = m_shard[ (shard + i) % SHARD_COUNT].find (class_oid, hfid,
-							      static_cast<std::uint16_t> (needed_space),
-							      static_cast<std::uint16_t> (consume_space), bias,
-							      page_watcher);
+		    static_cast<std::uint16_t> (needed_space),
+		    static_cast<std::uint16_t> (consume_space), bias,
+		    page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||
 		    error == status::FAILURE);

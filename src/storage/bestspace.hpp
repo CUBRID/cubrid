@@ -292,11 +292,16 @@ namespace cubstorage
 
 	  status allocate_mark ();
 	  void allocate_unmark ();
+
 	  void allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
-	  void allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-					 std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
-	  void allocate_pages (cubthread::entry &thread_ref, std::uint16_t consume_size,
-			       std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher);
+	  std::size_t allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
+
+	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
+				  std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher);
+	  void allocate_replace_pages (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+				       std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
+
 	  status allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
       };
 
