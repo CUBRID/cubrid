@@ -630,6 +630,51 @@ namespace cubstorage
   }
 
   void
+  bestspace::shard::allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims)
+  {
+    std::size_t pos;
+    std::size_t i;
+    int freespace;
+    L1 l1;
+
+    // get 8 indices from L1, ordered by smallest free space
+    victims.fill (std::make_pair (std::numeric_limits<std::uint16_t>::max (), std::numeric_limits<std::uint16_t>::max ()));
+    for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
+      {
+	l1 = m_L1[i].load ();
+	freespace = l1.get_freespace ();
+
+	if (freespace >= victims[ALLOC_BATCH_SIZE - 1].second)
+	  {
+	    continue;
+	  }
+
+	pos = ALLOC_BATCH_SIZE - 1;
+	while (pos > 0 && freespace < victims[pos - 1].second)
+	  {
+	    victims[pos] = victims[pos - 1];
+	    pos--;
+	  }
+
+	victims[pos] = std::make_pair (i, freespace);
+      }
+  }
+
+  void
+  bestspace::shard::allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
+      &victims, std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
+  {
+    bestspace_entry candidate;
+
+    while (m_candidates.try_pop (candidate))
+      {
+	size_to_tier (candidate.freespace);
+      }
+
+    victims[ALLOC_BATCH_SIZE - 1].second;
+  }
+
+  void
   bestspace::shard::allocate_pages (cubthread::entry &thread_ref, std::uint16_t size,
 				    std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher)
   {
@@ -686,6 +731,8 @@ namespace cubstorage
   bestspace::status
   bestspace::shard::allocate (HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
   {
+    std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
+    std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     std::array<VPID, ALLOC_BATCH_SIZE> vpids;
     cubthread::entry *thread_p;
     int error;
@@ -696,6 +743,11 @@ namespace cubstorage
 	m_advance_shard.fetch_add (1);
 	return status::ALLOCATING;
       }
+
+    // pick four pages with the smallest free space as replacement victims.
+    allocate_pick_victims (victims);
+    // pick four replacement candidates with more freespace than the victim pages above.
+    allocate_pick_candidates (victims, candidates);
 
     thread_p = thread_get_thread_entry_info ();
     error = heap_alloc_new_pages (thread_p, hfid, ALLOC_BATCH_SIZE, vpids.data (), &page_watcher);
