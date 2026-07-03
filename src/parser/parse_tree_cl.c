@@ -7706,7 +7706,7 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
       q = pt_append_nulstring (parser, q, parser->flag.is_unloading_plcsql_def ? " RETURN " : " return ");
-      if (parser->flag.is_unloading_plcsql_def && (p->info.sp.ret_type == PT_TYPE_RESULTSET))
+      if ((p->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL) && (p->info.sp.ret_type == PT_TYPE_RESULTSET))
 	{
 	  q = pt_append_nulstring (parser, q, "sys_refcursor");
 	}
