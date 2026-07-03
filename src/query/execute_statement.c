@@ -209,7 +209,8 @@ static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
 				      OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO *** cls_info);
+static void do_free_reserved_classinfo (RESERVED_CLASS_INFO ** cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
@@ -3072,7 +3073,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO **cls_info = NULL;
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3254,7 +3255,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  (void) do_reserve_classinfo (parser, statement, cls_info);
+	  (void) do_reserve_classinfo (parser, statement, &cls_info);
 
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
@@ -3507,6 +3508,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (cls_info);
 
   if (error == ER_FAILED)
     {
@@ -3770,7 +3773,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO **cls_info = NULL;
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -3956,7 +3959,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      (void) do_reserve_classinfo (parser, statement, cls_info);
+      (void) do_reserve_classinfo (parser, statement, &cls_info);
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -4187,6 +4190,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (cls_info);
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
@@ -15385,14 +15390,20 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO *** cls_info_p)
 {
   int count = 0;
+  int num_class = 0;
+  int error = NO_ERROR;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
+  RESERVED_CLASS_INFO **cls_info = NULL;
 
   const char *classname;
   DB_OBJECT *class_obj;
+
+  assert (cls_info_p != NULL);
+  *cls_info_p = NULL;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15408,12 +15419,26 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
+	  num_class++;
+	}
+
+      cls_info = (RESERVED_CLASS_INFO **) malloc ((num_class + 1) * sizeof (RESERVED_CLASS_INFO *));
+      if (cls_info == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      memset (cls_info, 0, (num_class + 1) * sizeof (RESERVED_CLASS_INFO *));
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
 	  entity = entity_spec->info.spec.flat_entity_list;
 
 	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
 	  if (cls_info[count] == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error_exit;
 	    }
 
 	  classname = entity->info.name.original;
@@ -15425,7 +15450,8 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
 	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
 	    {
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto error_exit;
 	    }
 
 	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
@@ -15434,9 +15460,32 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	}
     }
 
-  cls_info[count] = NULL;
+  *cls_info_p = cls_info;
 
   return NO_ERROR;
+
+error_exit:
+  do_free_reserved_classinfo (cls_info);
+  return error;
+}
+
+static void
+do_free_reserved_classinfo (RESERVED_CLASS_INFO ** cls_info)
+{
+  int i = 0;
+
+  if (cls_info == NULL)
+    {
+      return;
+    }
+
+  while (cls_info[i] != NULL)
+    {
+      free_and_init (cls_info[i]);
+      i++;
+    }
+
+  free_and_init (cls_info);
 }
 
 static int
@@ -15661,7 +15710,6 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 					drop_stmt);
 
 	    free_and_init (drop_stmt);
-	    free_and_init (cls_info[i]);
 	  }
 
 	supp_appended = true;
@@ -16056,13 +16104,14 @@ end:
       free_and_init (drop_stmt);
     }
 
-  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
+  if (cls_info != NULL && cls_info[0] != NULL && statement->node_type == PT_DROP)
     {
       int i = 0;
 
       while (cls_info[i] != NULL)
 	{
-	  free_and_init (cls_info[i++]);
+	  free_and_init (cls_info[i]);
+	  i++;
 	}
     }
 
