@@ -212,7 +212,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
-                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL) {
+                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
+                        || (ct.colType.type == DBType.DB_NUMERIC
+                                && (tsp.typeVisitMode == TYPE_VISIT_PARAM_OUT
+                                        || tsp.typeVisitMode == TYPE_VISIT_RETURN))) {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
                                     iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
@@ -310,7 +313,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -327,7 +330,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -347,7 +350,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_OUT;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -2378,7 +2381,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitOpen_for_statement(Open_for_statementContext ctx) {
+    public StmtOpenFor visitOpen_for_statement(Open_for_statementContext ctx) {
 
         connectionRequired = true;
 
@@ -2394,17 +2397,35 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
         }
 
-        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
-        assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
-        if (sws.intoTargetStrs != null) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.static_sql()), // s043
-                    "SQL in an OPEN-FOR statement may not have an INTO clause");
-        }
-        StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+        if (ctx.static_sql() == null) {
+            // dynamic case
 
-        return new StmtOpenFor(ctx, refCursor, staticSql);
+            Expr dynSql = visitExpression(ctx.dyn_sql().expression());
+
+            NodeList<Expr> usedExprList;
+            Restricted_using_clauseContext usingClause = ctx.restricted_using_clause();
+            if (usingClause == null) {
+                usedExprList = null;
+            } else {
+                usedExprList = visitRestricted_using_clause(usingClause);
+            }
+
+            return new StmtOpenForDynamic(ctx, refCursor, dynSql, usedExprList);
+        } else {
+            // static case
+
+            SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
+            assert sws != null;
+            assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+            if (sws.intoTargetStrs != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.static_sql()), // s043
+                        "SQL in an OPEN-FOR statement may not have an INTO clause");
+            }
+            StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+
+            return new StmtOpenForStatic(ctx, refCursor, staticSql);
+        }
     }
 
     @Override
@@ -2704,8 +2725,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static final int TYPE_VISIT_NORMAL = 0;
-    private static final int TYPE_VISIT_PARAM = 1;
-    private static final int TYPE_VISIT_RETURN = 2;
+    private static final int TYPE_VISIT_PARAM_IN = 1; // IN parameter (and cursor parameter)
+    private static final int TYPE_VISIT_PARAM_OUT = 2; // OUT or IN OUT parameter
+    private static final int TYPE_VISIT_RETURN = 3;
 
     // --------------------------------------------------------
     // Private
