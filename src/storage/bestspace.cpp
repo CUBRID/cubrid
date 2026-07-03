@@ -33,6 +33,16 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#define STATS_INC(id, value) \
+  do \
+    { \
+      if (m_stats.enabled) \
+	{ \
+	  m_stats.id.fetch_add (value); \
+	} \
+    } \
+  while (0)
+
 namespace cubstorage
 {
   //////////////////////////////////////////////////////////////////////////
@@ -238,13 +248,7 @@ namespace cubstorage
     , m_L1 ()
     , m_recs_num (0)
     , m_recs_sumlen (0)
-    , m_request (0)
-    , m_advance_shard (0)
-    , m_fetch_L3 (0)
-    , m_fetch_L2 (0)
-    , m_fetch_L1 (0)
-    , m_found (0)
-    , m_allocated (0)
+    , m_stats { false, 0, 0, 0, 0, 0, 0, 0 }
   {
   }
 
@@ -300,7 +304,7 @@ namespace cubstorage
     status error;
     tier minimum;
 
-    m_request.fetch_add (1);
+    STATS_INC (request, 1);
 
     // convert and advance
     minimum = size_to_tier (size);
@@ -323,13 +327,13 @@ namespace cubstorage
   void bestspace::shard::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
 				    std::uint32_t &fetch_L2, std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated)
   {
-    request += m_request.load ();
-    advanced_shard += m_advance_shard.load ();
-    fetch_L3 += m_fetch_L3.load ();
-    fetch_L2 += m_fetch_L2.load ();
-    fetch_L1 += m_fetch_L1.load ();
-    found += m_found.load ();
-    allocated += m_allocated.load ();
+    request += m_stats.request.load ();
+    advanced_shard += m_stats.advance_shard.load ();
+    fetch_L3 += m_stats.fetch_L3.load ();
+    fetch_L2 += m_stats.fetch_L2.load ();
+    fetch_L1 += m_stats.fetch_L1.load ();
+    found += m_stats.found.load ();
+    allocated += m_stats.allocated.load ();
   }
 
   bestspace::status
@@ -347,7 +351,9 @@ namespace cubstorage
     for (; minimum <= tier::FS8; minimum++)
       {
 	l3 = m_L3.load ();
-	m_fetch_L3.fetch_add (1);
+
+	STATS_INC (fetch_L3, 1);
+
 	length = l3.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
@@ -418,7 +424,9 @@ namespace cubstorage
     for (; minimum <= tier::FS8; minimum++)
       {
 	l2 = m_L2[l2_index].load ();
-	m_fetch_L2.fetch_add (1);
+
+	STATS_INC (fetch_L2, 1);
+
 	length = l2.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
@@ -487,8 +495,10 @@ namespace cubstorage
     OID page_class_oid;
     status error;
 
+    STATS_INC (fetch_L1, 1);
+
     assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
-    m_fetch_L1.fetch_add (1);
+
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     if (expected.get_freespace () < size)
@@ -553,7 +563,8 @@ namespace cubstorage
 	  }
       }
 
-    m_found.fetch_add (1);
+    STATS_INC (found, 1);
+
     return status::FOUND;
   }
 
@@ -740,7 +751,8 @@ namespace cubstorage
     // set allcating bit
     if (allocate_mark () != status::SUCCESS)
       {
-	m_advance_shard.fetch_add (1);
+	STATS_INC (advance_shard, 1);
+
 	return status::ALLOCATING;
       }
 
@@ -757,7 +769,7 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    m_allocated.fetch_add (ALLOC_BATCH_SIZE);
+    STATS_INC (allocated, ALLOC_BATCH_SIZE);
 
     allocate_pages (*thread_p, size, vpids, page_watcher);
     allocate_unmark ();

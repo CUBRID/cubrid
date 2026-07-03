@@ -259,17 +259,22 @@ namespace cubstorage
 	  tbb::concurrent_queue<bestspace_entry> m_candidates;
 
 	  std::atomic<std::uint64_t> m_recs_num;
-	  std::atomic<float> m_recs_sumlen;
+	  std::atomic<std::uint64_t> m_recs_sumlen;
 
-	  std::atomic<std::uint32_t> m_request;
-	  std::atomic<std::uint32_t> m_advance_shard;
+	  struct
+	  {
+	    bool enabled;
 
-	  std::atomic<std::uint32_t> m_fetch_L3;
-	  std::atomic<std::uint32_t> m_fetch_L2;
-	  std::atomic<std::uint32_t> m_fetch_L1;
+	    std::atomic<std::uint32_t> request;
+	    std::atomic<std::uint32_t> advance_shard;
 
-	  std::atomic<std::uint32_t> m_found;
-	  std::atomic<std::uint32_t> m_allocated;
+	    std::atomic<std::uint32_t> fetch_L3;
+	    std::atomic<std::uint32_t> fetch_L2;
+	    std::atomic<std::uint32_t> fetch_L1;
+
+	    std::atomic<std::uint32_t> found;
+	    std::atomic<std::uint32_t> allocated;
+	  } m_stats;
 
 	  status L3_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L3_update (std::size_t l2_index);
