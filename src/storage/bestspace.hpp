@@ -244,7 +244,8 @@ namespace cubstorage
 
 	  void initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT]);
 
-	  status find (OID *class_oid, HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+		       std::size_t bias, PGBUF_WATCHER &page_watcher);
 
 	  void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
 			  std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
@@ -276,15 +277,16 @@ namespace cubstorage
 	    std::atomic<std::uint32_t> allocated;
 	  } m_stats;
 
-	  status L3_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+	  status L3_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
+			  std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L3_update (std::size_t l2_index);
 
-	  status L2_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
-			  PGBUF_WATCHER &page_watcher);
+	  status L2_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
+			  std::size_t l2_index, std::size_t bias, PGBUF_WATCHER &page_watcher);
 	  void L2_update (std::size_t l2_index, std::size_t l1_index);
 
-	  status L1_find (OID *class_oid, std::uint16_t size, std::size_t l2_index, std::size_t l1_index,
-			  PGBUF_WATCHER &page_watcher);
+	  status L1_find (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size, std::size_t l2_index,
+			  std::size_t l1_index, PGBUF_WATCHER &page_watcher);
 	  status L1_fix (std::size_t l2_index, std::size_t l1_index, L1 l1, VPID vpid, PGBUF_WATCHER &page_watcher);
 	  void L1_remove (std::size_t l2_index, std::size_t l1_index, L1 l1);
 
@@ -293,13 +295,13 @@ namespace cubstorage
 	  void allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
 	  void allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
 					 std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
-	  void allocate_pages (cubthread::entry &thread_ref, std::uint16_t size, std::array<VPID, ALLOC_BATCH_SIZE> &vpids,
-			       PGBUF_WATCHER &page_watcher);
-	  status allocate (HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
+	  void allocate_pages (cubthread::entry &thread_ref, std::uint16_t consume_size,
+			       std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher);
+	  status allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
       };
 
     public:
-      bestspace () noexcept;
+      explicit bestspace (std::uint16_t unfill_space = 0) noexcept;
       ~bestspace () = default;
 
       void initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT]);
@@ -312,6 +314,7 @@ namespace cubstorage
 
     private:
       std::array<shard, SHARD_COUNT> m_shard;
+      std::uint16_t m_unfill_space;
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
       static_assert (std::is_trivially_copyable<bitmap>::value, "bestspace::bitmap must be trivially copyable");
@@ -365,7 +368,8 @@ namespace cubstorage
 
       void create (OID *class_oid, HFID *hfid);
       void create (OID *class_oid, HFID *hfid,
-		   bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT]);
+		   bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT],
+		   std::uint16_t unfill_space = 0);
 
       void destroy (const OID *class_oid, const VFID *vfid);
       void destroy (const OID *class_oid, const HFID *hfid);

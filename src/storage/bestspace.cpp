@@ -299,7 +299,8 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::find (OID *class_oid, HFID *hfid, std::uint16_t size, std::size_t bias, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+			  std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     status error;
     tier minimum;
@@ -307,13 +308,13 @@ namespace cubstorage
     STATS_INC (request, 1);
 
     // convert and advance
-    minimum = size_to_tier (size);
+    minimum = size_to_tier (needed_size);
     if (minimum < tier::FS8)
       {
 	minimum++;
       }
 
-    error = L3_find (class_oid, minimum, size, bias, page_watcher);
+    error = L3_find (class_oid, minimum, needed_size, consume_size, bias, page_watcher);
     if (error == status::FOUND || error == status::FAILURE)
       {
 	return error;
@@ -321,7 +322,7 @@ namespace cubstorage
 
     assert (error == status::NOT_FOUND || error == status::CONTENDED);
 
-    return allocate (hfid, size, page_watcher);
+    return allocate (hfid, consume_size, page_watcher);
   }
 
   void bestspace::shard::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
@@ -337,8 +338,8 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::L3_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t bias,
-			     PGBUF_WATCHER &page_watcher)
+  bestspace::shard::L3_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
+			     std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
     std::size_t length, i;
@@ -357,7 +358,8 @@ namespace cubstorage
 	length = l3.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L2_find (class_oid, minimum, size, pos[ (i + bias) % length], bias, page_watcher);
+	    error = L2_find (class_oid, minimum, needed_size, consume_size, pos[ (i + bias) % length], bias,
+			     page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -410,8 +412,8 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::L2_find (OID *class_oid, tier minimum, std::uint16_t size, std::size_t l2_index, std::size_t bias,
-			     PGBUF_WATCHER &page_watcher)
+  bestspace::shard::L2_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
+			     std::size_t l2_index, std::size_t bias, PGBUF_WATCHER &page_watcher)
   {
     std::array<std::size_t, BITS_PER_BYTE> pos;
     std::size_t length, i;
@@ -430,7 +432,7 @@ namespace cubstorage
 	length = l2.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L1_find (class_oid, size, l2_index, pos[ (i + bias) % length], page_watcher);
+	    error = L1_find (class_oid, needed_size, consume_size, l2_index, pos[ (i + bias) % length], page_watcher);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -485,8 +487,8 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::L1_find (OID *class_oid, std::uint16_t size, std::size_t l2_index, std::size_t l1_index,
-			     PGBUF_WATCHER &page_watcher)
+  bestspace::shard::L1_find (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
+			     std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     std::size_t freespace;
@@ -501,7 +503,7 @@ namespace cubstorage
 
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
-    if (expected.get_freespace () < size)
+    if (expected.get_freespace () < needed_size)
       {
 	// there is no enough space
 	return status::NOT_FOUND;
@@ -532,7 +534,7 @@ namespace cubstorage
     vpid = expected.get_vpid ();
     // store the old and get the actual free space
     freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
-    if (freespace < size)
+    if (freespace < needed_size)
       {
 	// there is no enough space and the free space information is wrong
 	if (VPID_EQ (&vpid, &old_vpid))
@@ -554,7 +556,7 @@ namespace cubstorage
     if (VPID_EQ (&vpid, &old_vpid))
       {
 	desired = expected;
-	desired.set_freespace (freespace - size);
+	desired.set_freespace (freespace - consume_size);
 
 	// and I'm the only one that can modify this L1
 	if (m_L1[l2_index * L2_FANOUT + l1_index].compare_exchange_strong (expected, desired))
@@ -686,7 +688,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::allocate_pages (cubthread::entry &thread_ref, std::uint16_t size,
+  bestspace::shard::allocate_pages (cubthread::entry &thread_ref, std::uint16_t consume_size,
 				    std::array<VPID, ALLOC_BATCH_SIZE> &vpids, PGBUF_WATCHER &page_watcher)
   {
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> result;
@@ -720,9 +722,9 @@ namespace cubstorage
     // renew the L1s
     offset = 0;
     freespace = spage_max_space_for_new_record (&thread_ref, page_watcher.pgptr);
-    if (freespace - static_cast<int> (size) > static_cast<int> (result[0].second))
+    if (freespace - static_cast<int> (consume_size) > static_cast<int> (result[0].second))
       {
-	l1.set_freespace (freespace - size);
+	l1.set_freespace (freespace - consume_size);
 	l1.set_vpid (vpids[0]);
 	m_L1[result[0].first].store (l1);
 
@@ -740,7 +742,7 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::allocate (HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher)
   {
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
@@ -771,13 +773,14 @@ namespace cubstorage
 
     STATS_INC (allocated, ALLOC_BATCH_SIZE);
 
-    allocate_pages (*thread_p, size, vpids, page_watcher);
+    allocate_pages (*thread_p, consume_size, vpids, page_watcher);
     allocate_unmark ();
     return status::FOUND;
   }
 
-  bestspace::bestspace () noexcept
+  bestspace::bestspace (std::uint16_t unfill_space) noexcept
     : m_shard ()
+    , m_unfill_space (unfill_space)
   {
   }
 
@@ -796,6 +799,7 @@ namespace cubstorage
   bestspace::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
 		   PGBUF_WATCHER &page_watcher)
   {
+    int consume_space, needed_space;
     std::size_t shard, bias;
     std::size_t i;
     std::size_t retry;
@@ -823,14 +827,24 @@ namespace cubstorage
 
     PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
+    consume_space = static_cast<int> (size) + SPAGE_SLOT_SIZE;
+    needed_space = consume_space + m_unfill_space;
+    if (needed_space > heap_nonheader_page_capacity ())
+      {
+	needed_space = consume_space;
+      }
+
     retry = 0;
-    shard = thread_ref.index % SHARD_COUNT;
-    bias = thread_ref.tran_index < 0 ? -thread_ref.tran_index : thread_ref.tran_index;
+    shard = 0;
+    bias = 0;
     while (true)
       {
 	for (i = 0; i < SHARD_COUNT; i++)
 	  {
-	    error = m_shard[ (shard + i) % SHARD_COUNT].find (class_oid, hfid, size, bias, page_watcher);
+	    error = m_shard[ (shard + i) % SHARD_COUNT].find (class_oid, hfid,
+							      static_cast<std::uint16_t> (needed_space),
+							      static_cast<std::uint16_t> (consume_space), bias,
+							      page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||
 		    error == status::FAILURE);
@@ -988,14 +1002,15 @@ namespace cubstorage
 
   void
   bestspace_registry::create (OID *class_oid, HFID *hfid,
-			      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT])
+			      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT],
+			      std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->class_oid = *class_oid;
     node->hfid = *hfid;
-    node->entry = new bestspace;
+    node->entry = new bestspace (unfill_space);
     node->entry->initialize_by_entries (entries);
 
     std::lock_guard<std::mutex> lock (m_mutex);
