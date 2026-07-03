@@ -308,7 +308,8 @@ typedef enum
   SM_CLASSFLAG_WITHCHECKOPTION = 2,	/* a view with check option */
   SM_CLASSFLAG_LOCALCHECKOPTION = 4,	/* view w/local check option */
   SM_CLASSFLAG_REUSE_OID = 8,	/* the class can reuse OIDs */
-  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16	/* reserved flag for supplemental log. */
+  SM_CLASSFLAG_SUPPLEMENTAL_LOG = 16,	/* reserved flag for supplemental log. */
+  SM_CLASSFLAG_DATA_REPLICATION_OFF = 32	/* disables replication of class data (schema still replicated) */
 } SM_CLASS_FLAG;
 
 /*
@@ -999,6 +1000,7 @@ extern int classobj_change_constraint_comment (DB_SEQ * properties, SM_CLASS_CON
 extern int classobj_get_cached_constraint (SM_CONSTRAINT * constraints, SM_CONSTRAINT_TYPE type, BTID * id);
 extern bool classobj_has_class_unique_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_unique_constraint (SM_CONSTRAINT * constraints);
+extern bool classobj_has_class_repl_key_constraint (SM_CLASS_CONSTRAINT * constraints);
 extern bool classobj_has_function_constraint (SM_CONSTRAINT * constraints);
 extern int classobj_btid_from_property_value (DB_VALUE * value, BTID * btid, char **shared_cons_name);
 extern int classobj_oid_from_property_value (DB_VALUE * value, OID * oid);
@@ -1136,6 +1138,7 @@ extern int classobj_count_cons_attributes (SM_CLASS_CONSTRAINT * cons);
 #endif
 
 extern SM_CLASS_CONSTRAINT *classobj_find_cons_primary_key (SM_CLASS_CONSTRAINT * cons_list);
+extern SM_CLASS_CONSTRAINT *classobj_find_cons_replication_key (SM_CLASS_CONSTRAINT * cons_list);
 
 extern const char *classobj_map_constraint_to_property (SM_CONSTRAINT_TYPE constraint);
 extern char *classobj_describe_foreign_key_action (SM_FOREIGN_KEY_ACTION action);

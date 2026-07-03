@@ -373,7 +373,7 @@ truncate_need_repl_log (PT_NODE * statement)
 	  return false;
 	}
 
-      cons = classobj_find_cons_primary_key (class_->constraints);
+      cons = classobj_find_cons_replication_key (class_->constraints);
       if (cons != NULL)
 	{
 	  return true;

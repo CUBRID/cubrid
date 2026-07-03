@@ -1475,7 +1475,15 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
 
-1375 Last Error
+1375 HA constraint violation: A replication key candidate (PRIMARY KEY or NOT NULL UNIQUE) is required in HA mode. Otherwise, set the replication option to OFF.
+
+1376 HA constraint violation: Changing replication option is not allowed in HA mode.
+
+1377 HA constraint violation: A replication-enabled table cannot define a foreign key referencing a table with replication option OFF in HA mode.
+
+1378 HA constraint violation: %1$d constraint(s) failed, so HA mode cannot be started. Refer to '%2$s' for more details.
+
+1379 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

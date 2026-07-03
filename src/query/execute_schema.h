@@ -117,4 +117,5 @@ extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIEN
 extern int update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 					    PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram);
 
+extern int log_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj, FILE * fp);
 #endif /* _EXECUTE_SCHEMA_H_ */
