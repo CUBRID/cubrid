@@ -1198,7 +1198,9 @@ typedef enum
   PT_JOIN_LEFT_OUTER = 0x08,	/* 0000 1000 */
   PT_JOIN_RIGHT_OUTER = 0x10,	/* 0001 0000 */
   PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
-  PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
+  PT_JOIN_UNION = 0x40,		/* 0100 0000 -- not used */
+  PT_JOIN_SEMI = 0x80,		/* 1000 0000 -- first-match, single-fetch inner */
+  PT_JOIN_ANTI = 0x100		/* 1 0000 0000 -- zero-match */
 } PT_JOIN_TYPE;
 
 typedef UINT64 PT_HINT_ENUM;
@@ -2337,6 +2339,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_ANTI_JOIN_ON 2097152	/* 0x200000, term in an ANTI JOIN ON condition */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

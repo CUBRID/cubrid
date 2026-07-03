@@ -213,6 +213,7 @@ static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * 
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -10735,6 +10736,274 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
 }
 
 /*
+ * pt_semi_anti_ref_info - context for detecting column references to a spec
+ */
+typedef struct pt_semi_anti_ref_info PT_SEMI_ANTI_REF_INFO;
+struct pt_semi_anti_ref_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* the local from-list; qualifies what counts as a local "outer" ref */
+  bool found_inner;		/* a reference to the inner spec was found */
+  bool found_outer;		/* a reference to a local from-list spec other than the inner was found */
+  bool skip_nested_for_outer_gate;	/* outer-gate: do not descend into nested subqueries (their refs are not
+					   modelled by the freeze). ANTI-leak check leaves this false and keeps descending. */
+};
+
+/*
+ * pt_spec_id_in_from () - true iff spec_id belongs to a spec in the local from-list
+ */
+static bool
+pt_spec_id_in_from (PT_NODE * from_list, UINTPTR spec_id)
+{
+  PT_NODE *s;
+
+  for (s = from_list; s != NULL; s = s->next)
+    {
+      if (s->info.spec.id == spec_id)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_semi_anti_ref_pre () - walk helper: classify PT_NAME references as inner/outer.
+ *      "outer" is restricted to specs of the local from-list so that the semantic gate matches
+ *      the optimizer's local dep-set freeze; references reaching into a nested subquery (whose
+ *      specs are neither the inner nor a local from-list spec) do not count as a local outer.
+ */
+static PT_NODE *
+pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SEMI_ANTI_REF_INFO *info = (PT_SEMI_ANTI_REF_INFO *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (info->skip_nested_for_outer_gate
+      && (node->node_type == PT_SELECT
+	  || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION))
+    {
+      /* outer-gate: nested-subquery ref not modelled by the freeze; skip subtree, keep walking siblings */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id != 0)
+    {
+      if (node->info.name.spec_id == info->inner_id)
+	{
+	  info->found_inner = true;
+	}
+      else if (pt_spec_id_in_from (info->from_list, node->info.name.spec_id))
+	{
+	  info->found_outer = true;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_semi_anti_conjunct_info - per-conjunct state for the C1 direct-join-conjunct classifier
+ */
+typedef struct pt_semi_anti_conjunct_info PT_SEMI_ANTI_CONJUNCT_INFO;
+struct pt_semi_anti_conjunct_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* local from-list */
+  bool found_inner;		/* conjunct references the inner spec */
+  bool has_nested;		/* conjunct contains a nested query node */
+  UINTPTR outer_id;		/* first distinct local-outer spec referenced (0 = none) */
+  bool multi_outer;		/* >1 distinct local-outer spec referenced (third table in conjunct) */
+};
+
+/*
+ * pt_semi_anti_conjunct_pre () - classify one ON leaf conjunct: inner ref, nested query, distinct outers.
+ */
+static PT_NODE *
+pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SEMI_ANTI_CONJUNCT_INFO *info = (PT_SEMI_ANTI_CONJUNCT_INFO *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SELECT
+      || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION)
+    {
+      /* nested query disqualifies a direct join conjunct; skip subtree, keep walking siblings */
+      info->has_nested = true;
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id != 0)
+    {
+      if (node->info.name.spec_id == info->inner_id)
+	{
+	  info->found_inner = true;
+	}
+      else if (pt_spec_id_in_from (info->from_list, node->info.name.spec_id))
+	{
+	  if (info->outer_id == 0)
+	    {
+	      info->outer_id = node->info.name.spec_id;
+	    }
+	  else if (info->outer_id != node->info.name.spec_id)
+	    {
+	      info->multi_outer = true;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_semi_anti_has_direct_join_conjunct () - true iff some top-level ON conjunct directly links the inner to a
+ *      single local-outer table. Pre-CNF ON is a PT_AND expression tree (AND = expression nesting, not next
+ *      links), so split conjuncts by recursive PT_AND descent, never by ->next. A qualifying conjunct
+ *      references the inner and exactly one local-outer spec, with no nested query and no third table.
+ */
+static bool
+pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id, PT_NODE * from_list)
+{
+  PT_SEMI_ANTI_CONJUNCT_INFO info;
+
+  if (cond == NULL)
+    {
+      return false;
+    }
+
+  if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+    {
+      return (pt_semi_anti_has_direct_join_conjunct (parser, cond->info.expr.arg1, inner_id, from_list)
+	      || pt_semi_anti_has_direct_join_conjunct (parser, cond->info.expr.arg2, inner_id, from_list));
+    }
+
+  info.inner_id = inner_id;
+  info.from_list = from_list;
+  info.found_inner = false;
+  info.has_nested = false;
+  info.outer_id = 0;
+  info.multi_outer = false;
+
+  (void) parser_walk_tree (parser, cond, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
+
+  return info.found_inner && !info.has_nested && info.outer_id != 0 && !info.multi_outer;
+}
+
+/*
+ * pt_check_semi_anti_join () - enforce v1 SEMI/ANTI JOIN semantic rules:
+ *      (1) the ON predicate must reference the outer (left) side;
+ *      (2) ANTI inner columns may not be referenced outside the ANTI ON predicate.
+ *   return:  none
+ *   parser(in): the parser context
+ *   select(in): a PT_SELECT node
+ */
+static void
+pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
+{
+  PT_NODE *spec;
+
+  if (select == NULL || select->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  for (spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      /* v1: SEMI/ANTI JOIN is NL-inner only and does not compose with CONNECT BY -- the hierarchical
+         traversal bypasses the NL semi/anti inner handling and yields wrong results, so reject it here
+         instead of silently producing them. */
+      if (select->info.query.q.select.connect_by != NULL)
+	{
+	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NOT_WITH_CONNECT_BY);
+	  continue;
+	}
+
+      /* (1) ON must reference a local-outer from-list spec (matches the optimizer's local dep-set freeze) */
+      {
+	PT_SEMI_ANTI_REF_INFO info;
+	info.inner_id = spec->info.spec.id;
+	info.from_list = select->info.query.q.select.from;
+	info.found_inner = false;
+	info.found_outer = false;
+	info.skip_nested_for_outer_gate = true;	/* nested-subquery refs not modelled by the freeze */
+
+	if (spec->info.spec.on_cond != NULL)
+	  {
+	    (void) parser_walk_tree (parser, spec->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	  }
+
+	/* require a direct 2-node inner<->local-outer join conjunct (the only shape the optimizer freeze
+	 * models); reject nested-subquery-only and n>=3-table-only outer refs. */
+	if (spec->info.spec.on_cond == NULL || !info.found_outer
+	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id,
+						       select->info.query.q.select.from))
+	  {
+	    PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NEEDS_OUTER_PRED);
+	    continue;
+	  }
+      }
+
+      /* (2) ANTI inner cols allowed only in the ANTI ON; scan select clauses + sibling ON/START WITH too */
+      if (spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  PT_SEMI_ANTI_REF_INFO info;
+	  PT_NODE *targets[9];
+	  PT_NODE *other;
+	  int i;
+
+	  info.inner_id = spec->info.spec.id;
+	  info.from_list = select->info.query.q.select.from;
+	  info.found_inner = false;
+	  info.found_outer = false;
+	  info.skip_nested_for_outer_gate = false;	/* ANTI-leak check must descend into scalar subqueries */
+
+	  targets[0] = select->info.query.q.select.list;
+	  targets[1] = select->info.query.q.select.where;
+	  targets[2] = select->info.query.q.select.group_by;
+	  targets[3] = select->info.query.q.select.having;
+	  targets[4] = select->info.query.order_by;
+	  targets[5] = select->info.query.q.select.connect_by;
+	  targets[6] = select->info.query.q.select.start_with;
+	  targets[7] = select->info.query.orderby_for;
+	  targets[8] = select->info.query.q.select.with_increment;
+
+	  for (i = 0; i < 9 && !info.found_inner; i++)
+	    {
+	      if (targets[i] != NULL)
+		{
+		  (void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
+		}
+	    }
+
+	  /* other from-list specs' ON conditions (the ANTI spec's own ON is the one legal place) */
+	  for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	    {
+	      if (other == spec || other->info.spec.on_cond == NULL)
+		{
+		  continue;
+		}
+	      (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	    }
+
+	  if (info.found_inner)
+	    {
+	      PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ANTI_JOIN_RHS_NOT_ALLOWED,
+			  spec->info.spec.range_var ? spec->info.spec.range_var->info.name.original : "");
+	    }
+	}
+    }
+}
+
+/*
  * pt_check_into_clause () - check arity of any into_clause
  *                           equals arity of query
  *   return:  none
@@ -11211,6 +11480,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_into_clause (parser, node);
+
+      pt_check_semi_anti_join (parser, node);
 
       if (node->info.query.q.select.with_increment)
 	{

@@ -156,6 +156,7 @@ IDL       [a-zA-Z0-9_]
 [aA][nN][aA][lL][yY][zZ][eE]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return ANALYZE; }
+[aA][nN][tT][iI]							{ begin_token(yytext);   return ANTI; }
 [aA][nN][dD]								{ begin_token(yytext);   return AND; }
 [aA][nN][yY]								{ begin_token(yytext);   return ANY; }
 [aA][rR][cC][hH][iI][vV][eE]						{ begin_token(yytext);
@@ -940,6 +941,7 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return SECTIONS; }
 [sS][eE][lL][eE][cC][tT]						{ begin_token(yytext);   return SELECT; }
+[sS][eE][mM][iI]							{ begin_token(yytext);   return SEMI; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ begin_token(yytext);   return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);

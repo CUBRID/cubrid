@@ -3103,6 +3103,46 @@ qo_join_walk (QO_PLAN * plan, void (*child_fn) (QO_PLAN *, void *), void *child_
 }
 
 /*
+ * qo_plan_semi_anti_join_type () - return PT_JOIN_SEMI/PT_JOIN_ANTI if the inner
+ *      plan's representative scan node carries that join type, else PT_JOIN_NONE.
+ *      semi/anti are modelled structurally as JOIN_INNER, so this recovers the
+ *      real intent from the scan node spec. Shared by plan_generation.c (single-fetch
+ *      NL inner tagging) and the optimizer plan-dump labelling here.
+ *   return: PT_JOIN_TYPE
+ *   plan(in): the inner plan of an NL join
+ */
+PT_JOIN_TYPE
+qo_plan_semi_anti_join_type (QO_PLAN * plan)
+{
+  PT_NODE *spec;
+
+  while (plan != NULL)
+    {
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SCAN:
+	  spec = QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node);
+	  if (spec != NULL && (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI))
+	    {
+	      return spec->info.spec.join_type;
+	    }
+	  return PT_JOIN_NONE;
+	case QO_PLANTYPE_SORT:
+	  plan = plan->plan_un.sort.subplan;
+	  continue;
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  continue;
+	default:
+	  /* v1: SEMI/ANTI inner is scan-like; default also hit by ordinary inner joins so no assert.
+	     TODO(composite-RHS): recover the flag explicitly, not silent NONE. */
+	  return PT_JOIN_NONE;
+	}
+    }
+  return PT_JOIN_NONE;
+}
+
+/*
  * qo_join_fprint () -
  *   return:
  *   plan(in):
@@ -3115,6 +3155,19 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  fputs (" (inner join)", f);
@@ -3657,6 +3710,19 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    fputs (" (semi join)", f);
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    fputs (" (anti join)", f);
+	    break;
+	  }
+      }
       fputs (" (inner join)", f);
       break;
 
@@ -6156,17 +6222,19 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
     }
 
-  /* inner is single class spec */
+  /* inner is single class spec; for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1)
+   * so NL/IDX still survives (M3 hint neutralization) */
   if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
     {
       /* join hint: force idx-join */
     }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE)
+  else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
     {
       /* join hint: force merge-join; skip idx-join */
       goto exit;
     }
-  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	   && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
     {
       /* join hint: force hash-join; skip idx-join */
       goto exit;
@@ -6288,17 +6356,20 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   else
     {
       /* At here, inner is single class spec */
+      /* for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1) so NL survives */
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
       if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
 	{
 	  /* join hint: force nl-join */
 	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+      else if ((QO_NODE_HINT (inner_node) & PT_HINT_USE_IDX)
+	       || ((QO_NODE_HINT (inner_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node)))
 	{
 	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
 	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
+	       && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
 	{
 	  /* join hint: force hash-join; skip nl-join */
 	  goto exit;
@@ -7932,7 +8003,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	if (!bitset_is_empty (&sm_join_terms))
+	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune) */
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	  {
 	    kept +=
 	      qo_examine_merge_join (new_info, join_type, head_info, tail_info, &sm_join_terms, &duj_terms, &afj_terms,
@@ -7942,7 +8014,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms))
+	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -12811,6 +12883,19 @@ qo_plan_join_print_json (QO_PLAN * plan)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";
@@ -13140,6 +13225,19 @@ qo_plan_join_print_text (FILE * fp, QO_PLAN * plan, int indent)
   switch (plan->plan_un.join.join_type)
     {
     case JOIN_INNER:
+      {
+	PT_JOIN_TYPE sa = qo_plan_semi_anti_join_type (plan->plan_un.join.inner);
+	if (sa == PT_JOIN_SEMI)
+	  {
+	    type = "semi join";
+	    break;
+	  }
+	if (sa == PT_JOIN_ANTI)
+	  {
+	    type = "anti join";
+	    break;
+	  }
+      }
       if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
 	{
 	  type = "inner join";

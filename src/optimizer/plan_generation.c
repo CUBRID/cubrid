@@ -779,6 +779,27 @@ mark_access_as_outer_join (PARSER_CONTEXT * parser, XASL_NODE * xasl)
 }
 
 /*
+ * mark_access_as_semi_anti_join () - mark an inner scan proc's access spec as a
+ *      single-fetch NL semi/anti inner and tag the xasl with the semi/anti flag.
+ *   return: void
+ *   xasl(in): the inner scan proc xasl
+ *   join_type(in): PT_JOIN_SEMI or PT_JOIN_ANTI
+ */
+static void
+mark_access_as_semi_anti_join (XASL_NODE * xasl, PT_JOIN_TYPE join_type)
+{
+  ACCESS_SPEC_TYPE *access;
+
+  XASL_SET_FLAG (xasl, (join_type == PT_JOIN_SEMI) ? XASL_NL_SEMIJOIN : XASL_NL_ANTIJOIN);
+
+  for (access = xasl->spec_list; access; access = access->next)
+    {
+      /* fetch at most one qualifying inner row per outer row (first-match) */
+      access->single_fetch = QPROC_SINGLE_INNER;
+    }
+}
+
+/*
  * init_class_scan_proc () -
  *   return: XASL_NODE *
  *   env(in): The optimizer environment
@@ -2206,6 +2227,15 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      if (IS_OUTER_JOIN_TYPE (join_type))
 		{
 		  mark_access_as_outer_join (parser, scan);
+		}
+	      else
+		{
+		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
+		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
+		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
+		    {
+		      mark_access_as_semi_anti_join (scan, sa_type);
+		    }
 		}
 	    }
 	  bitset_assign (&new_subqueries, &fake_subqueries);

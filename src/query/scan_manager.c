@@ -7740,7 +7740,7 @@ scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC n
 	}
       break;
 
-    case QPROC_SINGLE_INNER:	/* currently, not used */
+    case QPROC_SINGLE_INNER:	/* NL SEMI/ANTI JOIN inner: fetch at most one qualifying row (first-match) */
       /* already returned a row? */
       /* if scan works in a single_fetch mode and first qualified scan item has already been fetched, return
        * end_of_scan. */

@@ -1985,6 +1985,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서 visibility를 정의할 수 있습니다.
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
+338 ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
+339 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
+340 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
