@@ -1109,6 +1109,10 @@ struct xasl_node
 
   int is_single_tuple;		/* single tuple subquery? */
 
+  /* predicate-operand regu owning this uncorrelated scalar subquery (NULL otherwise);
+   * gates the precompute/inject/checker-relax path. */
+  REGU_VARIABLE *precomp_owner_regu;
+
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */
   SELUPD_LIST *selected_upd_list;	/* click counter related */
