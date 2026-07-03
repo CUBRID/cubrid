@@ -51,6 +51,7 @@
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "regu_var.hpp"
+#include "memory_hash.h"	/* HENTRY_HLS for hash-join spill cost */
 #include "histogram_cl.hpp"
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
@@ -82,11 +83,14 @@
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
 #define ISCAN_OID_ACCESS_OVERHEAD 5
 #define MJ_CPU_OVERHEAD_FACTOR 20
-#define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
+#define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
+#define HJ_MEM_ALLOC_CONSTANT 1500	/* Heuristic offset to prefer NL join over hash join:
+					   ~1500 cost observed for NL with ~3000 rows,
+					   preventing hash join selection for small inputs */
+#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
 #define ISCAN_IO_HIT_RATIO 0.5
-#define SSCAN_DEFAULT_CARD 100
+#define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
 #define RBO_CHECK_COST 50
@@ -3382,6 +3386,12 @@ qo_nljoin_cost (QO_PLAN * planp)
   planp->variable_cpu_cost = inner_cpu_cost + outer_cpu_cost;
   planp->variable_io_cost = inner_io_cost + outer_io_cost;
 
+#if 0
+  /* The cost of subqueries is already accounted for in the inner plan.
+   * Therefore, this routine is unnecessary.
+   * Moreover, since it applies only to NL joins, it unfairly penalizes NL.
+   * This logic be removed.
+   */
   {
     QO_ENV *env;
     int i;
@@ -3418,6 +3428,7 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_cpu_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_cpu_cost;
     planp->variable_io_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_io_cost;	/* assume IO as # blocks */
   }
+#endif
 
 #if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nNested Loop Cost: \n");
@@ -3526,6 +3537,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 {
   QO_PLAN *inner_plan_p, *outer_plan_p;
   double inner_cardinality, outer_cardinality;
+  double inner_pages, outer_pages;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
 
@@ -3552,6 +3564,11 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_cardinality = inner_plan_p->info->cardinality;
   outer_cardinality = outer_plan_p->info->cardinality;
 
+  inner_pages = inner_cardinality * (double) inner_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  outer_pages = outer_cardinality * (double) outer_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  inner_pages = MAX (1.0, inner_pages);
+  outer_pages = MAX (1.0, outer_pages);
+
   /**
    * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
    */
@@ -3566,32 +3583,34 @@ qo_hjoin_cost (QO_PLAN * plan_p)
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-  inner_build_io_cost = 0.0;
+  inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  inner_build_io_cost = inner_pages;
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-  outer_build_io_cost = 0.0;
+  outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  outer_build_io_cost = outer_pages;
 
-#if 0
-  /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
+  /* Partitioned hash join spills to disk when the build input exceeds the in-memory
+   * hash limit (max_hash_list_scan_size). The in-memory cost above omits that spill IO,
+   * so charge it here; an oversized build then prefers NL/idx join.
+   * Per-entry size = sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS). */
+  {
+    UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+    if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+      {
+	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+      }
 
-  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
-
-  if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      outer_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
-#endif
+    if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+      {
+	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+      }
+  }
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -6245,33 +6264,30 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }			/* for (t = ...) */
       }
 
-      if (bitset_cardinality (&(outer->nodes)) == 1)
-	{			/* single class spec */
-	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	    {
-	      /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
-	      goto exit;
-	    }
+      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+      if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
+	{
+	  /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
+	  goto exit;
+	}
 
-	  if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
-	    {
-	      /* join hint: force nl-join */
-	    }
-	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	    {
-	      /* join hint: force idx-join, merge-join; skip nl-join */
-	      goto exit;
-	    }
-	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
-	    {
-	      /* join hint: force hash-join; skip nl-join */
-	      goto exit;
-	    }
-	  else
-	    {
-	      /* fall through */
-	    }
+      if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
+	{
+	  /* join hint: force nl-join */
+	}
+      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	{
+	  /* join hint: force idx-join, merge-join; skip nl-join */
+	  goto exit;
+	}
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	{
+	  /* join hint: force hash-join; skip nl-join */
+	  goto exit;
+	}
+      else
+	{
+	  /* fall through */
 	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
@@ -6596,8 +6612,19 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* At here, inner is single class spec */
-  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+  /* For a right outer join the operands are swapped (converted to left outer join),
+   * so the join-method hint is carried on the 'outer' node. Read the hint from the
+   * correct side - as qo_examine_idx_join / qo_examine_nl_join do - so that
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins
+   * (otherwise hash join would be generated even when the hint forbids it). */
+  if (join_type == JOIN_RIGHT)
+    {
+      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+    }
+  else
+    {
+      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+    }
 
   if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
     {
@@ -6615,12 +6642,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
     }
   else
     {
-      /* default: disable hash-join */
-#if TEST_HASH_JOIN_ENABLE
       /* fall through */
-#else /* TEST_HASH_JOIN_ENABLE */
-      goto exit;
-#endif /* TEST_HASH_JOIN_ENABLE */
     }
 
   /* Check if a click counter is set. */
@@ -8095,9 +8117,18 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
 	}
 
       objects = (plan->info)->cardinality;
-      result_size = objects * (double) (plan->info)->projected_size;
-      pages = result_size / (double) IO_PAGESIZE;
-      pages = MAX (1.0, pages);
+      /* TCARD-based lookahead: filtered rows x measured pages-per-row (TCARD/NCARD).
+       * Uses measured disk-page statistics instead of the estimated tuple width
+       * (projected_size), which is fragile to width-estimation errors. */
+      if (QO_NODE_NCARD (node) > 0)
+	{
+	  result_size = objects * (double) QO_NODE_TCARD (node) / (double) QO_NODE_NCARD (node);
+	  pages = MAX (1.0, result_size);
+	}
+      else
+	{
+	  pages = 0.0;
+	}
 
       /* apply join cost; add to the total cost */
       total_cost += pages;
