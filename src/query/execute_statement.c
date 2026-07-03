@@ -15985,7 +15985,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15994,8 +15994,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_CREATE;
 	objtype = CDC_INDEX;
@@ -16004,7 +16008,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -16013,8 +16017,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_ALTER;
 	objtype = CDC_INDEX;
@@ -16023,7 +16031,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -16032,8 +16040,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* after a successful DROP INDEX the constraint is already gone; oid then remains a NULL OID */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_DROP;
 	objtype = CDC_INDEX;
