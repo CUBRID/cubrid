@@ -3752,6 +3752,11 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
+
   if (error == ER_FAILED)
     {
       assert (er_errid () != NO_ERROR);
@@ -4457,6 +4462,11 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
