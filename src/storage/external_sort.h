@@ -155,12 +155,28 @@ struct SORT_INFO
   int flag;			/* to open output list file */
   int parallelism;
   void *orderby_stats;
+  void *px_state;		/* per-worker sector scan state (ORDER_BY and GROUP_BY parallel) */
+};
+
+/* Passed as px_extra_arg to sort_listfile for SORT_GROUP_BY / SORT_ANALYTIC parallel runs.
+ * Populated by query_executor.c (from GROUPBY_STATE or ANALYTIC_STATE) before calling
+ * sort_listfile. Gives sort_check_parallelism and sort_start_parallelism the inputs they
+ * need without requiring those states to be visible in external_sort.c.
+ * Harmless in SA_MODE: parallelism degenerates to 1 and the pointer is ignored. */
+typedef struct sort_listfile_px_arg SORT_LISTFILE_PX_ARG;
+struct sort_listfile_px_arg
+{
+  SORTKEY_INFO *key_info;	/* points to the caller's key_info — read-only, shared across workers */
+  QFILE_LIST_ID *input_list;	/* points to the input list file scanned by all workers */
+  int hash_eligible;		/* GROUP_BY only: if non-zero, parallelism must be skipped (0 otherwise) */
+  void *stats;			/* GROUPBY_STATS* or ANALYTIC_STATS* in xasl node for trace output */
+  int parallelism;		/* parallel(N) hint from xasl->parallelism; -1 = auto */
 };
 
 extern int sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GET_FUNC * get_fn,
 			  void *get_arg, SORT_PUT_FUNC * put_fn, void *put_arg, SORT_CMP_FUNC * cmp_fn, void *cmp_arg,
 			  SORT_DUP_OPTION option, int limit, bool includes_tde_class,
-			  SORT_PARALLEL_TYPE sort_parallel_type);
+			  SORT_PARALLEL_TYPE sort_parallel_type, void *px_extra_arg = NULL);
 
 extern SORT_STATUS btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
 

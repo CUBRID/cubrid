@@ -324,6 +324,10 @@ namespace cubthread
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
 
+      /* UUIDv7 per-thread state for monotonic generation */
+      uint64_t uuidv7_last_ms;        /* last used millisecond timestamp */
+      uint8_t uuidv7_seq;            /* sequence counter within same millisecond (GUID_V7_SEQ_BITS : 8 bits) */
+
       thread_id_t get_id ();
       pthread_t get_posix_id ();
       void register_id ();
@@ -547,4 +551,22 @@ int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutex
 const char *thread_type_to_string (thread_type type);
 const char *thread_status_to_string (cubthread::entry::status status);
 const char *thread_resume_status_to_string (thread_resume_suspend_status resume_status);
+
+/* UUIDv7 state accessors */
+inline void
+thread_get_uuidv7_state (cubthread::entry *thread_p, uint64_t *last_ms, uint8_t *seq)
+{
+  assert (thread_p != NULL);
+  *last_ms = thread_p->uuidv7_last_ms;
+  *seq = thread_p->uuidv7_seq;
+}
+
+inline void
+thread_set_uuidv7_state (cubthread::entry *thread_p, uint64_t last_ms, uint8_t seq)
+{
+  assert (thread_p != NULL);
+  thread_p->uuidv7_last_ms = last_ms;
+  thread_p->uuidv7_seq = seq;
+}
+
 #endif // _THREAD_ENTRY_HPP_
