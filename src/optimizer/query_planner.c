@@ -2066,7 +2066,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -2226,8 +2226,16 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      heap_rows = (double) QO_NODE_NCARD (nodep) * sel * filter_sel;
+      /* With no physical-order (clustering/correlation) statistic, assume the heap order is
+       * uncorrelated with the index -- as PostgreSQL does when correlation is unknown: every
+       * fetched row costs one page read, bounded by the table size. The previous formula
+       * (opages * sel) modeled the opposite extreme (perfectly clustered rows), which priced
+       * an N-row scattered fetch and a 1-row unique probe at the same single page and made
+       * high-fanout inner index scans of nested loops look nearly free. Unique/pk probes
+       * (heap_rows <= 1) keep the old cost via the MAX (1.0, ...) floor below. */
+      object_IO = MIN (heap_rows, opages);
+      heap_access = heap_rows * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
