@@ -451,7 +451,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
+                        "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
                         node.name,
                         StringEscapeUtils.escapeJava(node.staticSql.rewritten),
                         Arrays.toString(node.paramRefCounts),
@@ -2477,37 +2477,44 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtOpenForWithHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
-                "  %'REF-CURSOR'%.open(conn, null,",
-                "    %'+HOST-EXPRS'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
+                "  %'REF-CURSOR'%.open(conn, null, new Object[] {",
+                "    %'+HOST-EXPRS'% });",
                 "}"
             };
 
     private static String[] tmplStmtOpenForWithoutHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
                 "  %'REF-CURSOR'%.open(conn, null);",
                 "}"
             };
 
-    @Override
-    public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
+    private CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
 
-        if (node.staticSql.hostExprs.size() == 0) {
+        if (node.usedExprList == null || node.usedExprList.size() == 0) {
             return new CodeTemplate(
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithoutHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"');
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false");
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
-            for (Expr e : node.staticSql.hostExprs.keySet()) {
+            for (Expr e : node.usedExprList) {
                 hostExprs.addElement((CodeTemplate) visit(e));
             }
 
@@ -2515,14 +2522,32 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"',
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false",
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }
     }
+
+    @Override
+    public CodeToResolve visitStmtOpenForStatic(StmtOpenForStatic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    @Override
+    public CodeToResolve visitStmtOpenForDynamic(StmtOpenForDynamic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    // -------------------------------------------------------------------------
+    // StmtRaise
+    //
 
     @Override
     public CodeToResolve visitStmtRaise(StmtRaise node) {
