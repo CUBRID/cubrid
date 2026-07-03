@@ -151,6 +151,13 @@ BTID serial_Cached_btid = BTID_INITIALIZER;
 ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
 
+/* Serializes the one-time lazy load of serial_Attrs_id[] / serial_Num_attrs (and the cached
+ * _db_serial class OID) from the catalog, and supplies the barrier that publishes the filled
+ * array to readers. The old global cache_pool_mutex used to cover this init; the lock-free pool
+ * no longer does. Held only on the cold load/read paths (cache miss, cache-exhaustion
+ * writeback), never on the cached value-advance fast path. */
+static pthread_mutex_t serial_Attr_load_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc);
@@ -343,11 +350,17 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	}
       else
 	{
-	  /* Cache miss: hold no mutex, take the serial OID X_LOCK, then install.
+	  /* Cache miss: hold no pool mutex, take the serial OID X_LOCK, then install.
 	   * Installs for a given serial are serialized by its OID lock. */
 	  if (OID_ISNULL (&serial_Cache_pool.db_serial_class_oid))
 	    {
-	      ret = serial_load_attribute_info_of_db_serial (thread_p);
+	      /* One-time catalog load, serialized (double-checked under the load mutex). */
+	      pthread_mutex_lock (&serial_Attr_load_mutex);
+	      if (serial_Num_attrs < 0)
+		{
+		  ret = serial_load_attribute_info_of_db_serial (thread_p);
+		}
+	      pthread_mutex_unlock (&serial_Attr_load_mutex);
 	    }
 
 	  if (ret == NO_ERROR)
@@ -849,15 +862,21 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (cached_num > 1)
     {
-      /* Install the entry; caller holds the serial OID X_LOCK, so we are the sole installer. */
+      /* Install the entry. The caller holds the serial OID X_LOCK after a re-checked miss, so we
+       * are the sole installer and find_or_insert must report a fresh insert. Never overwrite an
+       * existing entry: that would reset a live cached counter and risk handing out duplicates. */
       OID key = *serial_oidp;
+      bool inserted = serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
 
-      (void) serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
+      assert (inserted);
       if (entry != NULL)
 	{
-	  pr_share_value (&next_val, &cur_val);
-	  serial_set_cache_entry (entry, &inc_val, &cur_val, &min_val, &max_val, &started, &cyclic, &last_val,
-				  cached_num);
+	  if (inserted)
+	    {
+	      pr_share_value (&next_val, &cur_val);
+	      serial_set_cache_entry (entry, &inc_val, &cur_val, &min_val, &max_val, &started, &cyclic, &last_val,
+				      cached_num);
+	    }
 	  pthread_mutex_unlock (&entry->mutex);
 	}
     }
@@ -1143,23 +1162,29 @@ serial_finalize_cache_pool (void)
 static int
 serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid)
 {
+  int error = NO_ERROR;
+
   attrid = NOT_FOUND;
 
+  /* Do the lazy load and read serial_Attrs_id[] under the same mutex: a reader that runs after
+   * the load is guaranteed (via the mutex acquire/release barrier) to see the fully-filled
+   * array, and concurrent first callers do not each redo the catalog scan. */
+  pthread_mutex_lock (&serial_Attr_load_mutex);
   if (serial_Num_attrs < 0)
     {
-      int error = serial_load_attribute_info_of_db_serial (thread_p);
-      if (error != NO_ERROR)
-	{
-          ASSERT_ERROR ();
-	  return error;
-	}
+      error = serial_load_attribute_info_of_db_serial (thread_p);
     }
-
-  if (attr_index >= 0 && attr_index <= serial_Num_attrs)
+  if (error == NO_ERROR && attr_index >= 0 && attr_index <= serial_Num_attrs)
     {
       attrid = serial_Attrs_id[attr_index];
     }
-  return NO_ERROR;
+  pthread_mutex_unlock (&serial_Attr_load_mutex);
+
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return error;
 }
 // *INDENT-ON*
 
