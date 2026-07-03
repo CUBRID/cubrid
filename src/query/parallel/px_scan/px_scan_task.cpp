@@ -710,7 +710,19 @@ namespace parallel_scan
 		      }
 		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 		      {
-			result_handler_p->write (&thread_ref);
+			if (!result_handler_p->write (&thread_ref))
+			  {
+			    /* write()'s return is otherwise ignored; a per-row error would be silently
+			     * skipped and diverge from serial. Stop the worker like the S_ERROR path.
+			     * Some write() paths already raise the interrupt; avoid a double move. */
+			    if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+			      {
+				m_err_messages->move_top_error_message_to_this ();
+				m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			      }
+			    stop = true;
+			    return S_ERROR;
+			  }
 		      }
 		  }
 		if (xs_scan == S_ERROR)
@@ -730,7 +742,19 @@ namespace parallel_scan
 		  }
 		else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 		  {
-		    result_handler_p->write (&thread_ref);
+		    if (!result_handler_p->write (&thread_ref))
+		      {
+			/* write()'s return is otherwise ignored; a per-row error would be silently
+			 * skipped and diverge from serial. Stop the worker like the S_ERROR path.
+			 * Some write() paths already raise the interrupt; avoid a double move. */
+			if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+			  {
+			    m_err_messages->move_top_error_message_to_this ();
+			    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			  }
+			stop = true;
+			return S_ERROR;
+		      }
 		  }
 	      }
 	  }

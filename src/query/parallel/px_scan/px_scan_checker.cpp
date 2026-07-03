@@ -63,6 +63,17 @@ namespace parallel_scan
       case PT_VARIANCE:
       case PT_VAR_POP:
       case PT_VAR_SAMP:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
+      case PT_GROUP_CONCAT:
+      case PT_MEDIAN:
+      case PT_PERCENTILE_CONT:
+      case PT_PERCENTILE_DISC:
+      case PT_CUME_DIST:
+      case PT_PERCENT_RANK:
 	return true;
       default:
 	return false;
