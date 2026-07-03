@@ -16105,6 +16105,30 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 #endif
 
+      /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
+      for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+	{
+	  XASL_NODE *subq;
+	  for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
+	    {
+	      DB_VALUE *peek_precomp = NULL;
+	      if (subq->precomp_owner_regu == NULL)
+		{
+		  continue;
+		}
+	      if (fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL, NULL,
+				    &peek_precomp) != NO_ERROR)
+		{
+		  if (tplrec.tpl)
+		    {
+		      db_private_free_and_init (thread_p, tplrec.tpl);
+		    }
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	}
+
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
 	{
