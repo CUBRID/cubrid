@@ -529,11 +529,7 @@ connect_error:
 
   if (db_err_msg)
     {
-      *db_err_msg = (char *) malloc (strlen (p) + 1);
-      if (*db_err_msg)
-	{
-	  strcpy (*db_err_msg, p);
-	}
+      *db_err_msg = strdup (p);
     }
 
   return ERROR_INFO_SET_WITH_MSG (err_code, DBMS_ERROR_INDICATOR, p);
@@ -9145,6 +9141,13 @@ ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT * result, int stm
   srv_handle->has_result_set = true;
   srv_handle->max_row = q_result->tuple_count;
 
+  if (is_holdable)
+    {
+      /* Keep symmetric with hm_qresult_end (), which decrements num_holdable_results when it frees
+       * a holdable result. Without this increment the counter underflows on teardown. */
+      as_info->num_holdable_results++;
+    }
+
   return srv_h_id;
 
 error:
@@ -9486,10 +9489,36 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   if (query_handler != nullptr)
     {
       const cubmethod::query_result & qresult = query_handler->get_result ();
+      DB_QUERY_RESULT *rs_result = (DB_QUERY_RESULT *) qresult.result;
+
+      /* The cached DB_QUERY_RESULT may have been freed and its memory reused by another
+       * (e.g. CALL) result before this deferred fetch. Validate the live object type/status
+       * instead of trusting the cached stmt_type, otherwise a bogus 1-row(NULL) result is returned. */
+      if (rs_result == NULL || rs_result->type != T_SELECT || rs_result->status == T_CLOSED)
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_SRV_HANDLE, CAS_ERROR_INDICATOR);
+
+	  cas_log_write (0, false, "make_out_rs invalid result for query_id %lld type %d status %d %s%d",
+			 (long long) query_id, (rs_result != NULL) ? rs_result->type : -1,
+			 (rs_result != NULL) ? rs_result->status : -1, "error:", err_info.err_number);
+
+	  goto ux_make_out_rs_error;
+	}
+
       DB_QUERY_TYPE *column_info = db_get_query_type_list (query_handler->get_db_session (), qresult.stmt_id);
       new_handle_id = ux_create_srv_handle_with_method_query_result (qresult.result,
 								     qresult.stmt_type,
 								     qresult.num_column, column_info, true);
+      if (new_handle_id < 0)
+	{
+	  err_code = new_handle_id;	/* preserve the specific error (e.g. MAX_PREPARED_STMT / NO_MORE_MEMORY) */
+	  goto ux_make_out_rs_error;
+	}
+      assert (new_handle_id > 0);	/* a created handle id is 1-based; 0 is never returned */
+
+      /* Detach the DB_QUERY_RESULT from the method query handler so the handler's
+       * deferred end_qresult () does not free the same object again (double free). */
+      query_handler->detach_result_for_out_rs ();
     }
 
   srv_handle = hm_find_srv_handle (new_handle_id);
@@ -9609,6 +9638,12 @@ ux_make_out_rs (DB_BIGINT query_id, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
 
   return 0;
 ux_make_out_rs_error:
+  if (new_handle_id > 0)
+    {
+      /* The server handle was created and (after detach_result_for_out_rs ()) solely owns the
+       * query result. Free it here so an error after its creation does not leak the handle/result. */
+      hm_srv_handle_free (new_handle_id);
+    }
   NET_BUF_ERR_SET (net_buf);
   return err_code;
 }

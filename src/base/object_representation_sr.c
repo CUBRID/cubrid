@@ -3884,7 +3884,6 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 {
   char *diskatt, *attr = NULL;
   int offset = 0, offset_next = 0;
-  unsigned char len = 0;
   OR_BUF buffer;
   int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
 
@@ -3910,28 +3909,12 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
        */
       offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
-      /*
-       * kludge kludge kludge
-       * This is now an encoded "varchar" string, we need to skip over the
-       * length before returning it.  Note that this also depends on the
-       * stored string being NULL terminated.
-       */
       assert (attr != NULL);
-      if (attr != NULL)
-	{
-	  len = *((unsigned char *) attr);
-	}
 
       if (offset == offset_next)
 	{
 	  attr = NULL;
 	  *string = NULL;
-	}
-      else if (len < 0xFFU)
-	{
-	  assert (len != 0);
-	  attr += 1;
-	  *string = attr;
 	}
       else
 	{
@@ -3945,23 +3928,30 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	      return rc;
 	    }
 
-	  assert (*string == NULL);
-	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
-	  if (*string == NULL)
+	  if (compressed_length > 0)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
-	    }
-	  *alloced_string = 1;
+	      assert (*string == NULL);
+	      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+	      if (*string == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      *alloced_string = 1;
 
-	  rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
-	  if (rc != NO_ERROR)
+	      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+	      if (rc != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  db_private_free (NULL, *string);
+		  *alloced_string = 0;
+		  *string = NULL;
+		  return rc;
+		}
+	    }
+	  else
 	    {
-	      ASSERT_ERROR ();
-	      db_private_free (NULL, *string);
-	      *alloced_string = 0;
-	      *string = NULL;
-	      return rc;
+	      *string = buffer.ptr;
 	    }
 	}
     }

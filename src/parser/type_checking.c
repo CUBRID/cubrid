@@ -7654,7 +7654,12 @@ pt_check_not_null_constraint (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE *
 	{
 	  consp = sm_class_constraints (cls);
 
-	  au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT);
+	  if (au_fetch_class (cls, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
+	    {
+	      er_clear ();
+	      return false;
+	    }
+
 	  attr = classobj_find_attribute (class_, node->info.name.original, 0);
 	  if (attr == NULL)
 	    {
@@ -9147,6 +9152,28 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 		       pt_short_print (parser, arg1), "collection type");
 	  node->type_enum = PT_TYPE_NONE;
 	  goto error;
+	}
+      break;
+
+    case PT_INDEX_CARDINALITY:
+    case PT_ESTIMATED_TABLE_ROWS:
+    case PT_ESTIMATED_AVG_ROW_LENGTH:
+    case PT_ESTIMATED_DATA_LENGTH:
+    case PT_ESTIMATED_DATA_FREE:
+      if (PT_IS_VALUE_NODE (arg1) && PT_IS_CHAR_STRING_TYPE (arg1->type_enum)
+	  && arg1->info.value.data_value.str != NULL && arg1->info.value.data_value.str->length < DB_MAX_CLASS_LENGTH)
+	{
+	  const char *name = (const char *) PT_VALUE_GET_BYTES (arg1);
+	  char realname[DB_MAX_IDENTIFIER_LENGTH];
+
+	  if (strchr (name, '.') == NULL && sm_user_specified_name (name, realname, DB_MAX_IDENTIFIER_LENGTH) != NULL)
+	    {
+	      arg1->info.value.data_value.str = pt_append_bytes (parser, NULL, realname, strlen (realname));
+	      /* text and db_value still hold the old name; clear so both are refreshed from the qualified one */
+	      arg1->info.value.text = NULL;
+	      arg1->info.value.db_value_is_initialized = false;
+	      (void) pt_value_to_db (parser, arg1);
+	    }
 	}
       break;
 
@@ -11418,7 +11445,8 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_BITSHIFT_RIGHT || op == PT_DIV || op == PT_MOD || op == PT_IF || op == PT_IFNULL || op == PT_CONCAT
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
-      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF)
+      || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11944,6 +11972,13 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       dt = parser_copy_tree_list (parser, arg1->data_type);
       break;
 
+    case PT_NEXT_VALUE:
+    case PT_CURRENT_VALUE:
+      /* serial value is fixed NUMERIC(38,0); do not promote to float numeric */
+      dt->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+      break;
+
     default:
       break;
     }
@@ -11977,8 +12012,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
 	  break;
 
 	case PT_TYPE_NUMERIC:
-	  dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
-	  dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	  if (op != PT_NEXT_VALUE && op != PT_CURRENT_VALUE)
+	    {
+	      dt->info.data_type.precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      dt->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
+	    }
 	  break;
 
 	case PT_TYPE_ENUMERATION:

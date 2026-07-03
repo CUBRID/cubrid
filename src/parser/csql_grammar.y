@@ -1405,6 +1405,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
+%token SYS_REFCURSOR
 %token SYS_TIME_
 %token SYS_TIMESTAMP
 %token SYSTEM_USER
@@ -3018,6 +3019,7 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            int ret_type;
                             PT_NODE* body = $11;
                             if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
                               {
@@ -3052,7 +3054,31 @@ create_stmt
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+
+                            ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+                            if (ret_type == PT_TYPE_SYS_REFCURSOR) {
+
+                                // the return type is SYS_REFCURSOR
+
+                                if (body->info.sp_body.lang != SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "SYS_REFCURSOR return type can be used only in PL/CSQL functions");
+                                }
+                                // In PL/CSQL, CURSOR is not a type name, and hence one cannot use it as the return type of a function.
+                                // But, the return type CURSOR of JSP and the return type SYS_REFCURSOR of PL/CSQL
+                                // indicate the same kind of function results, the result of a SELECT query done in the SP.
+                                // So, unify them as PT_TYPE_RESULTSET to simplify later processes of semantic check and execution.
+                                // PT_TYPE_SYS_REFCURSOR will not appear in any later processing logics of statements.
+                                ret_type = PT_TYPE_RESULTSET;
+                            } else if (ret_type == PT_TYPE_RESULTSET) {
+
+                                // the return type is CURSOR
+
+                                if (body->info.sp_body.lang == SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "CURSOR return type cannot be used in PL/CSQL functions");
+                                }
+                            }
+			    node->info.sp.ret_type = ret_type;
+
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
@@ -11673,6 +11699,12 @@ sp_return_type
 			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
 			$$ = ctn;
                 }}
+        | SYS_REFCURSOR
+                {{
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_SYS_REFCURSOR), NULL);
+			$$ = ctn;
+                }}
         | table_column MOD TYPE
 		{{
 			container_2 ctn;
@@ -14408,7 +14440,7 @@ opt_orderby_clause
 				parser_save_and_set_pseudoc (0);
 			  }
 
-			if (stmt && !stmt->info.query.q.select.from)
+			if (stmt && stmt->node_type == PT_SELECT && !stmt->info.query.q.select.from)
 			    PT_ERRORmf(this_parser, pt_top(this_parser),
 				MSGCAT_SET_PARSER_SEMANTIC,
 				MSGCAT_SEMANTIC_NOT_ALLOWED_HERE, "ORDER BY");
@@ -14589,6 +14621,7 @@ opt_siblings
 	| SIBLINGS
 		{{
 			PT_NODE *stmt = parser_top_orderby_node ();
+
 			stmt->info.query.flag.order_siblings = true;
 			if (stmt->info.query.q.select.connect_by == NULL)
 			    {
@@ -24037,7 +24070,7 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
-  INIT_PT_HINT("NLJ_KEEP_HEAP_PAGE_PINNED", PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED),
+  INIT_PT_HINT("DBLINK_NO_PUSH_DOWN_SUBQ", PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),

@@ -632,7 +632,8 @@ cubrid_log_connect_server_internal (char *host, int port, char *dbname)
 
 	  __gv_cvar.css_close_conn (g_conn_entry);
 
-	  g_conn_entry = __gv_cvar.css_server_connect_part_two (host, g_conn_entry, port_id, &rid);
+	  g_conn_entry = __gv_cvar.css_server_connect_part_two (host, g_conn_entry, port_id, &rid,
+								DB_CLIENT_TYPE_UNKNOWN);
 	  if (g_conn_entry == NULL)
 	    {
 	      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_CONNECT,
