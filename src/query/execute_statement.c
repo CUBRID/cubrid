@@ -3255,7 +3255,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  (void) do_reserve_classinfo (parser, statement, &cls_info);
+	  error = do_reserve_classinfo (parser, statement, &cls_info);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
@@ -3959,7 +3963,11 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      (void) do_reserve_classinfo (parser, statement, &cls_info);
+      err = do_reserve_classinfo (parser, statement, &cls_info);
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -15395,6 +15403,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   int count = 0;
   int num_class = 0;
   int error = NO_ERROR;
+  size_t cls_info_size = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
   RESERVED_CLASS_INFO **cls_info = NULL;
@@ -15422,13 +15431,13 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  num_class++;
 	}
 
-      cls_info = (RESERVED_CLASS_INFO **) malloc ((num_class + 1) * sizeof (RESERVED_CLASS_INFO *));
+      cls_info_size = (num_class + 1) * sizeof (RESERVED_CLASS_INFO *);
+      cls_info = (RESERVED_CLASS_INFO **) calloc (num_class + 1, sizeof (RESERVED_CLASS_INFO *));
       if (cls_info == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-
-      memset (cls_info, 0, (num_class + 1) * sizeof (RESERVED_CLASS_INFO *));
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
@@ -15437,6 +15446,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
 	  if (cls_info[count] == NULL)
 	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (RESERVED_CLASS_INFO));
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      goto error_exit;
 	    }
@@ -16102,17 +16112,6 @@ end:
   if (drop_stmt != NULL)
     {
       free_and_init (drop_stmt);
-    }
-
-  if (cls_info != NULL && cls_info[0] != NULL && statement->node_type == PT_DROP)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i]);
-	  i++;
-	}
     }
 
   return error;
