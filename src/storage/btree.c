@@ -26763,6 +26763,44 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * btree_fk_release_pages_and_locks () - Release the page latches and any locked object held by an
+ *                                       FK-existence scan before it suspends on a conflicting transaction.
+ *
+ * thread_p (in)       : Thread entry.
+ * bts (in/out)        : FK-existence scan; marked interrupted, with its current and overflow pages unfixed.
+ * fk_arg (in)         : FK-existence scan argument carrying the optional overflow page.
+ * find_fk_obj (in/out): FK-find state; any object it has locked is released.
+ * class_oid (in)      : Class OID of the locked object.
+ *
+ * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
+ *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
+ *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ */
+static void
+btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,
+				  BTREE_FIND_FK_OBJECT * find_fk_obj, OID * class_oid)
+{
+  bts->is_interrupted = true;
+  /* TODO: it's not clear at this stage; to be safe, put cur_key in decompressed state. */
+  btree_check_decompress_key (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  if (fk_arg->ovfl_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
+    }
+  /* Make sure another object was not already fixed. */
+  if (!OID_ISNULL (&find_fk_obj->locked_object))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
+					       find_fk_obj->lock_mode);
+      OID_SET_NULL (&find_fk_obj->locked_object);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * btree_fk_object_does_exist () - Check whether current object exists (it must not be deleted and successfully locked).
  *
@@ -26823,20 +26861,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
 	/* Wait for that transaction to end before deciding whether the FK reference holds: release all
 	 * page latches and any locked object, then block on the inserter (S_LOCK then release). */
-	bts->is_interrupted = true;
-	btree_check_decompress_key (bts);
-	COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-	pgbuf_unfix_and_init (thread_p, bts->C_page);
-	if (fk_arg->ovfl_page != NULL)
-	  {
-	    pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
-	  }
-	if (!OID_ISNULL (&find_fk_obj->locked_object))
-	  {
-	    lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
-						     find_fk_obj->lock_mode);
-	    OID_SET_NULL (&find_fk_obj->locked_object);
-	  }
+	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 	fk_lock_result = lock_transaction_mvccid (thread_p, fk_insert_mvccid, S_LOCK, LK_UNCOND_LOCK);
 	if (fk_lock_result != LK_GRANTED)
 	  {
@@ -26921,26 +26946,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Object may exist but could not be locked conditionally. */
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
-  bts->is_interrupted = true;
+  btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 
-  /* TODO: 
-   * It's not clear at this stage.
-   * To be safe, we put cur_key in decompressed state. */
-  btree_check_decompress_key (bts);
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
-  if (fk_arg->ovfl_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
-    }
-
-  /* Make sure another object was not already fixed. */
-  if (!OID_ISNULL (&find_fk_obj->locked_object))
-    {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
-					       find_fk_obj->lock_mode);
-      OID_SET_NULL (&find_fk_obj->locked_object);
-    }
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
