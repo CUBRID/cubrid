@@ -158,129 +158,6 @@ namespace parallel_query
     }
 
     /*
-     * sector_page_iterator
-     */
-
-    sector_page_iterator::sector_page_iterator ()
-      : m_membuf_index (-1)
-      , m_sector_index (-1)
-      , m_current_bitmap (0)
-      , m_current_vsid (VSID_INITIALIZER)
-      , m_current_tfile (nullptr)
-    {
-      //
-    }
-
-    PAGE_PTR
-    sector_page_iterator::get_next_page (cubthread::entry &thread_ref, QFILE_LIST_SECTOR_SCAN_INFO &sector_scan)
-    {
-      QFILE_LIST_SECTOR_INFO *sector_info = &sector_scan.sector_info;
-      FILE_PARTIAL_SECTOR *sectors = sector_info->sectors;
-      void **tfiles = sector_info->tfiles;
-      int sector_index;
-
-      /* Phase 1: membuf pages — the CAS winner claims the entire membuf region
-       *                          and iterates it sequentially. Non-owners fall
-       *                          through to Phase 2 directly. */
-      while (true)
-	{
-	  if (m_membuf_index >= 0)
-	    {
-	      /* this worker is the membuf owner */
-	      if (m_membuf_index <= sector_info->membuf_tfile->membuf_last)
-		{
-		  VPID vpid;
-		  vpid.volid = NULL_VOLID;
-		  vpid.pageid = m_membuf_index++;
-
-		  PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, sector_info->membuf_tfile);
-		  if (page == nullptr)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      return nullptr;
-		    }
-
-		  /* skip overflow continuation pages */
-		  if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
-		    {
-		      qmgr_free_old_page_and_init (&thread_ref, page, sector_info->membuf_tfile);
-		      continue;
-		    }
-
-		  m_current_tfile = sector_info->membuf_tfile;
-		  return page;
-		}
-
-	      /* membuf exhausted — fall through to Phase 2 */
-	      m_membuf_index = -1;
-	      break;
-	    }
-
-	  if (m_sector_index == -1 && sector_info->membuf_tfile != nullptr)
-	    {
-	      /* first call: try to claim membuf (exactly one winner) */
-	      bool expected = false;
-
-	      if (sector_scan.membuf_claimed.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
-		{
-		  assert (m_membuf_index == -1);
-		  m_membuf_index = 0;
-		  continue;		/* re-enter Phase 1 as the owner */
-		}
-	    }
-
-	  /* not the owner — proceed to Phase 2 */
-	  break;
-	}
-
-      /* Phase 2: sector-based disk pages */
-      while (true)
-	{
-	  /* find next set bit in current sector bitmap */
-	  while (m_current_bitmap != 0)
-	    {
-	      VPID vpid;
-	      if (!qfile_sector_bitmap_next_vpid (&m_current_vsid, &m_current_bitmap, &vpid))
-		{
-		  break;	/* current sector exhausted — fall through to next-sector fetch */
-		}
-
-	      QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
-	      assert (tfile != nullptr);
-
-	      PAGE_PTR page = qmgr_get_old_page (&thread_ref, &vpid, tfile);
-	      if (page == nullptr)
-		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  return nullptr;
-		}
-
-	      /* skip overflow continuation pages — they are followed via VPID chain
-	       * by the worker that owns the overflow start page */
-	      if (QFILE_GET_TUPLE_COUNT (page) == QFILE_OVERFLOW_TUPLE_COUNT_FLAG)
-		{
-		  qmgr_free_old_page_and_init (&thread_ref, page, tfile);
-		  continue;
-		}
-
-	      m_current_tfile = tfile;
-	      return page;
-	    }
-
-	  /* current sector exhausted — grab next sector atomically */
-	  sector_index = sector_scan.next_sector_index.fetch_add (1, std::memory_order_relaxed);
-	  if (sector_index >= sector_info->sector_cnt)
-	    {
-	      return nullptr;		/* all sectors distributed */
-	    }
-
-	  m_sector_index = sector_index;
-	  m_current_vsid = sectors[sector_index].vsid;
-	  m_current_bitmap = sectors[sector_index].page_bitmap;
-	}
-    }
-
-    /*
      * split_task
      */
 
@@ -369,7 +246,7 @@ namespace parallel_query
 	      break;		/* error_exit */
 	    }
 
-	  page = m_page_iter.get_next_page (thread_ref, m_shared_info->sector_scan);
+	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
 	      if (er_errid () != NO_ERROR)
@@ -1076,7 +953,7 @@ cleanup:
 	      break;		/* error_exit */
 	    }
 
-	  page = m_page_iter.get_next_page (thread_ref, m_shared_info->sector_scan);
+	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
 	      if (er_errid () != NO_ERROR)
@@ -1339,7 +1216,7 @@ cleanup:
 	      break;		/* error_exit */
 	    }
 
-	  page = m_page_iter.get_next_page (thread_ref, m_shared_info->sector_scan);
+	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
 	  if (page == nullptr)
 	    {
 	      if (er_errid () != NO_ERROR)
