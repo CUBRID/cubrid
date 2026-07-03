@@ -1043,6 +1043,7 @@ IDL       [a-zA-Z0-9_]
 [sS][yY][sS][tT][iI][mM][eE][sS][tT][aA][mM][pP]			{ begin_token(yytext);   return SYS_TIMESTAMP; }
 [sS][yY][sS]_[dD][aA][tT][eE][tT][iI][mM][eE] 				{ begin_token(yytext);   return SYS_DATETIME; }
 [sS][yY][sS][dD][aA][tT][eE][tT][iI][mM][eE] 				{ begin_token(yytext);   return SYS_DATETIME; }
+[sS][yY][sS][_][rR][eE][fF][cC][uU][rR][sS][oO][rR]			{ begin_token(yytext);   return SYS_REFCURSOR; }
 [sS][yY][sS][tT][eE][mM]						{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return SYSTEM; }

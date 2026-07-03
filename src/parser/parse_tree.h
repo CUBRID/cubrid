@@ -480,7 +480,8 @@ struct json_t;
            (n)->info.expr.op == PT_DRAND || \
            (n)->info.expr.op == PT_RANDOM || \
            (n)->info.expr.op == PT_RAND || \
-           (n)->info.expr.op == PT_SYS_GUID ))
+           (n)->info.expr.op == PT_SYS_GUID || \
+           (n)->info.expr.op == PT_UUID ))
 
 #define PT_IS_EXPR_WITH_PRIOR_ARG(x) (PT_IS_EXPR_NODE (x) && \
 		PT_IS_EXPR_NODE_WITH_OPERATOR ((x)->info.expr.arg1, PT_PRIOR))
@@ -1163,6 +1164,12 @@ enum pt_type_enum
 
   PT_TYPE_TABLE_COLUMN,		/* not a real type but a type specification of the form <table>.<column>%TYPE */
   /* which can be used only in SP parameter and return types */
+
+  PT_TYPE_SYS_REFCURSOR,	/* SYS_REFCURSOR — used only in PL/CSQL SP return types.
+				   It does not appear in the statements processing logic after parsing because
+				   it is replaced by PT_TYPE_RESULTSET after some checks during parsing.
+				 */
+
 };
 typedef enum pt_type_enum PT_TYPE_ENUM;
 
@@ -1518,6 +1525,8 @@ typedef enum
   PT_SLEEP,
 
   PT_SYS_GUID,
+  PT_UUID,
+  PT_UUID_FORMAT,
 
   PT_DBTIMEZONE,
   PT_SESSIONTIMEZONE,
@@ -3893,6 +3902,8 @@ struct parser_context
 
   long int lrand;		/* integer random value used by rand() */
   double drand;			/* floating-point random value used by drand() */
+  UINT64 uuidv7_last_ms;	/* last used millisecond timestamp for local UUIDv7 generation */
+  UINT8 uuidv7_seq;		/* local UUIDv7 sequence within the same millisecond */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;

@@ -441,7 +441,7 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
-   if((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
+   if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
                                      "Names starting with \"%s\" are reserved by CUBRID.", \
@@ -1411,6 +1411,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
+%token SYS_REFCURSOR
 %token SYS_TIME_
 %token SYS_TIMESTAMP
 %token SYSTEM_USER
@@ -2790,7 +2791,7 @@ create_stmt
                                         PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
 
                                         ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
-                                        if(function_ptr->function_type == PT_GENERIC)
+                                        if (function_ptr->function_type == PT_GENERIC)
                                         {
                                            snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
                                            ptr = buf;
@@ -3066,6 +3067,7 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            int ret_type;
                             PT_NODE* body = $11;
                             if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
                               {
@@ -3100,7 +3102,31 @@ create_stmt
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+
+                            ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+                            if (ret_type == PT_TYPE_SYS_REFCURSOR) {
+
+                                // the return type is SYS_REFCURSOR
+
+                                if (body->info.sp_body.lang != SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "SYS_REFCURSOR return type can be used only in PL/CSQL functions");
+                                }
+                                // In PL/CSQL, CURSOR is not a type name, and hence one cannot use it as the return type of a function.
+                                // But, the return type CURSOR of JSP and the return type SYS_REFCURSOR of PL/CSQL
+                                // indicate the same kind of function results, the result of a SELECT query done in the SP.
+                                // So, unify them as PT_TYPE_RESULTSET to simplify later processes of semantic check and execution.
+                                // PT_TYPE_SYS_REFCURSOR will not appear in any later processing logics of statements.
+                                ret_type = PT_TYPE_RESULTSET;
+                            } else if (ret_type == PT_TYPE_RESULTSET) {
+
+                                // the return type is CURSOR
+
+                                if (body->info.sp_body.lang == SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "CURSOR return type cannot be used in PL/CSQL functions");
+                                }
+                            }
+			    node->info.sp.ret_type = ret_type;
+
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
@@ -3193,7 +3219,7 @@ create_stmt
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
                                 si->pwd = CONTAINER_AT_4($5);
-                                if(si->pwd == NULL)
+                                if (si->pwd == NULL)
                                 {
                                    PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
                                    if (val)                    
@@ -3218,7 +3244,7 @@ create_stmt
                                      }
                                 }
 
-                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
+                                if ( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
                                   { 
                                       PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
@@ -4175,7 +4201,7 @@ alter_stmt
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
 
-                                if(is_not_allowed)
+                                if (is_not_allowed)
                                   {                                       
                                         PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
@@ -6585,83 +6611,8 @@ alter_column_clause_mysql_specific
 
 			if (alter_node)
 			  {
-			    PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			    if (node)
-			      {
-				PT_NODE *def;
-				node->info.data_default.default_value = $4;
-				node->info.data_default.shared = PT_DEFAULT;
-				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
-
-				def = node->info.data_default.default_value;
-				if (def && def->node_type == PT_EXPR)
-				  {
-					if (def->info.expr.op == PT_TO_CHAR)
-					  {
-						if (def->info.expr.arg3)
-						  {
-						    bool dummy;
-						    bool has_user_lang = false;
-						    assert (def->info.expr.arg3->node_type == PT_VALUE);
-							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
-							if (has_user_lang)
-							  {
-								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-							  }
-						  }
-
-						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
-						  {
-						    def = def->info.expr.arg1;
-						  }
-					  }
-
-				    switch (def->info.expr.op)
-				      {
-				      case PT_SYS_TIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-					break;
-				      case PT_SYS_DATE:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-					break;
-				      case PT_SYS_DATETIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-					break;
-				      case PT_SYS_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-					break;
-				      case PT_CURRENT_TIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-					break;
-				      case PT_CURRENT_DATE:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-					break;
-				      case PT_CURRENT_DATETIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-					break;
-				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-					break;
-				      case PT_USER:
-					node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-					break;
-				      case PT_CURRENT_USER:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-					break;
-				      case PT_UNIX_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-					break;
-				      default:
-					node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-					break;
-				      }
-				  }
-				else
-				  {
-				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-				  }
-			      }
+			    PT_NODE *node = pt_make_data_default_expr_node (this_parser, $4);
+			    PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 			    alter_node->info.alter.code = PT_ALTER_DEFAULT;
 			    alter_node->info.alter.alter_clause.ch_attr_def.attr_name_list = $1;
@@ -6820,7 +6771,7 @@ insert_set_stmt_header
                         PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
 
 			/* for DBLink DML */
-                        if($3 && $3->node_type == PT_SPEC)
+                        if ($3 && $3->node_type == PT_SPEC)
                         {
                            ocs = $3;
                         }
@@ -6958,7 +6909,7 @@ insert_name_clause_header
 			PT_NODE *ocs = NULL;
 
 			/* for DBLink DML */
-                        if($3 && $3->node_type == PT_SPEC)
+                        if ($3 && $3->node_type == PT_SPEC)
                         {
                            ocs = $3;
                         }
@@ -8829,7 +8780,7 @@ opt_password
 	: /* empty */
 		{{
 			$$ = NULL;                        
-                        if(pwd_info.parser_add_user_check)
+                        if (pwd_info.parser_add_user_check)
                         {
                            pwd_info.pwd_start_offset = (@$.buffer_pos);
                            pwd_info.pwd_end_offset = (@$.buffer_pos);
@@ -10644,84 +10595,8 @@ column_default_constraint_def
 	: DEFAULT expression_
 		{{
 			PT_NODE *attr_node;
-			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			if (node)
-			  {
-			    PT_NODE *def;
-			    node->info.data_default.default_value = $2;
-			    node->info.data_default.shared = PT_DEFAULT;
-			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
-
-			    def = node->info.data_default.default_value;
-			    if (def && def->node_type == PT_EXPR)
-			      {
-					if (def->info.expr.op == PT_TO_CHAR)
-					  {
-						if (def->info.expr.arg3)
-						  {
-							bool has_user_lang = false;
-							bool dummy;
-
-							assert (def->info.expr.arg3->node_type == PT_VALUE);
-							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
-							 if (has_user_lang)
-							   {
-								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-							   }
-							}
-
-						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
-						  {
-							def = def->info.expr.arg1;
-						  }
-					  }
-
-				switch (def->info.expr.op)
-				  {
-				  case PT_SYS_TIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-				    break;
-				  case PT_SYS_DATE:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-				    break;
-				  case PT_SYS_DATETIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-				    break;
-				  case PT_SYS_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-				    break;
-				  case PT_CURRENT_TIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-				    break;
-				  case PT_CURRENT_DATE:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-				    break;
-				  case PT_CURRENT_DATETIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-				    break;
-				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-				    break;
-				  case PT_USER:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-				    break;
-				  case PT_CURRENT_USER:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-				    break;
-				  case PT_UNIX_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-				    break;
-				  default:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-				    break;
-				  }
-			      }
-			    else
-			      {
-				node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			      }
-			  }
+			PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
+			PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
@@ -11211,7 +11086,7 @@ opt_using
 			PT_NODE *node = $3;
                         (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
 
-                        if(arg[1] == 1)
+                        if (arg[1] == 1)
                         {
                                 PT_ERRORf (this_parser, node,
 				"check syntax at '%s', subqueries are not allowed in using clause.",
@@ -11806,6 +11681,12 @@ sp_return_type
                 {{
 			container_2 ctn;
 			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
+                }}
+        | SYS_REFCURSOR
+                {{
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_SYS_REFCURSOR), NULL);
 			$$ = ctn;
                 }}
         | table_column MOD TYPE
@@ -13674,9 +13555,9 @@ expression_list_for_call
 expression_queue_for_call
 	: expression_queue_for_call  ','
             {{
-                if(pwd_info.parser_call_check)
+                if (pwd_info.parser_call_check)
                   {                           
-                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                     if (++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
                          pwd_info.pwd_start_offset = (@$.buffer_pos);
                        }
@@ -13686,7 +13567,7 @@ expression_queue_for_call
 		{{
 			container_2 new_q;
 
-                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                        if (pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
                            {
                               pwd_info.pwd_end_offset = (@$.buffer_pos);
                            }
@@ -13701,9 +13582,9 @@ expression_queue_for_call
 		}}
 	| 
            {{ 
-                if(pwd_info.parser_call_check)
+                if (pwd_info.parser_call_check)
                   {     
-                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                     if (++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
                           pwd_info.pwd_start_offset = (@$.buffer_pos);
                        }
@@ -13713,7 +13594,7 @@ expression_queue_for_call
 		{{
 			container_2 new_q;
 
-                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                        if (pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
                            {
                               pwd_info.pwd_end_offset = (@$.buffer_pos);
                            }
@@ -17565,13 +17446,13 @@ generic_function
 generic_function_for_call        
 	: procedure_or_function_name 
         {
-            if(pwd_info.parser_call_check)
+            if (pwd_info.parser_call_check)
             {
-                if(strcasecmp($1->info.name.original, "set_password")==0)
+                if (strcasecmp($1->info.name.original, "set_password")==0)
                     pwd_info.method_password_arg_idx = 1;
-                else if(strcasecmp($1->info.name.original, "add_user")==0)    
+                else if (strcasecmp($1->info.name.original, "add_user")==0)    
                    pwd_info.method_password_arg_idx = 2;
-                else if(strcasecmp($1->info.name.original, "login")==0)    
+                else if (strcasecmp($1->info.name.original, "login")==0)    
                     pwd_info.method_password_arg_idx = 2;
                 else
                     pwd_info.method_password_arg_idx = 0;
@@ -17681,7 +17562,7 @@ opt_expression_list_for_call
 	| expression_list_for_call
 		{{
                         
-                         if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
+                         if ((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
                          {
                             pwd_info.pwd_start_offset = @$.buffer_pos;
                             pwd_info.pwd_end_offset = pwd_info.pwd_start_offset;
@@ -19502,7 +19383,7 @@ primitive_type
                         charset_node = $3;
                         coll_node = $4;
 
-                        if(is_in_sp_func_type && len)
+                        if (is_in_sp_func_type && len)
                           {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                           }
@@ -19661,8 +19542,8 @@ primitive_type
 			    dt->info.data_type.dec_precision =
 			      scale ? scale->info.value.data_value.i : DB_DEFAULT_NUMERIC_SCALE;
 
-                            if(is_in_sp_func_type && prec)
-                              {                                
+                            if (is_in_sp_func_type && prec)
+                            {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                               }
                             else
@@ -19705,7 +19586,7 @@ primitive_type
 			PT_NODE *prec, *dt = NULL;
 			prec = $2;
 
-                        if(is_in_sp_func_type && prec)
+                        if (is_in_sp_func_type && prec)
                           {                                
                             PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                           }
@@ -20152,7 +20033,7 @@ deduplicate_key_mod_level
         : DEDUPLICATE_ '=' unsigned_integer
                {
                   int int_val = $3->info.value.data_value.i;
-                  if(int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
+                  if (int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
                       {                          
                         PT_ERRORmf2 (this_parser, $3, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
                                      DEDUPLICATE_KEY_LEVEL_OFF, DEDUPLICATE_KEY_LEVEL_MAX);
@@ -22315,7 +22196,7 @@ connect_item
                   {
                         val->info.value.data_value.i = atoi($3);
                         val->type_enum = PT_TYPE_INTEGER;
-                        if( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
+                        if ( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
                           {                                
                             PT_ERROR (this_parser, val, "Invalid PORT number.");
                           }
@@ -22433,7 +22314,7 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        if( $3 && $3[0] &&  $3[0] != '?' )
+                        if ( $3 && $3[0] &&  $3[0] != '?' )
                         {                           
                            PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
                         }
@@ -22504,11 +22385,11 @@ alter_server_item
 dblink_server_name
 	: identifier DOT server_identifier
           {{
-             if($3)
+             if ($3)
                {
                   $3->next = $1;                  
                }
-             else if($1)
+             else if ($1)
                {
                   parser_free_node (this_parser, $1);
                }  
@@ -22544,7 +22425,7 @@ dblink_expr
             {{
              is_dblink_query_string = 0;
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
-             if(ct)
+             if (ct)
              {
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
@@ -22564,9 +22445,9 @@ dblink_expr
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
-                if( $1 )
+                if ( $1 )
                 {
-                        if( $1->node_type == PT_NAME )
+                        if ( $1->node_type == PT_NAME )
                         {
                                 ct->info.dblink_table.is_name = true;
                                 ct->info.dblink_table.conn = $1;
@@ -22639,7 +22520,7 @@ dblink_conn_str:
                         for( i = DBLINK_CONN_PARAM_CNT - 2; i >= 2; i--)
                         {                       
                                 node = parser_new_node (this_parser, PT_VALUE);
-                                if( node == NULL )
+                                if ( node == NULL )
                                 {
                                         while (node_list)
                                         {
@@ -22704,7 +22585,7 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
+                        if (typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
                                 PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));
@@ -22920,8 +22801,11 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	  || OP == PT_CURRENT_DATETIME || OP == PT_SYS_TIMESTAMP
 	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_UTC_TIME
 	  || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
-	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
+	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP
+	  || OP == PT_UUID)
 	{
+	  /* UUID(4) does not need si_datetime. 
+	   * but we cant evaluate argument now, so UUID(4) has unnecessary overhead */
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;
 	}
@@ -23894,12 +23778,12 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	{
 	  date_lang = arg3;
 	} 
-      else if(this_parser->flag.is_parsing_static_sql)
+      else if (this_parser->flag.is_parsing_static_sql)
         {
            if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
              {
                 PT_NODE * node = arg3->info.expr.cast_type; 
-                if(node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
+                if (node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
                   {  
                     date_lang = arg3;
                   }
@@ -24269,6 +24153,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_RANDOM:
     case PT_DRAND:
     case PT_DRANDOM:
+    case PT_UUID:
       {
 	PT_NODE *expr;
 	parser_cannot_cache = true;
@@ -24333,6 +24218,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
+    case PT_UUID_FORMAT:
     case PT_ESTIMATED_TABLE_ROWS:
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
@@ -24522,14 +24408,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (a2)
         {
           /* default fmt value */
-          if(a1->node_type == PT_VALUE
+          if (a1->node_type == PT_VALUE
              && PT_IS_DATE_TIME_TYPE(a1->type_enum))
             {
               a2->type_enum = PT_TYPE_CHAR;
               a2->info.value.data_value.str =
                 pt_append_bytes(this_parser, NULL, "dd", 2);
             }
-          else if(a1->node_type == PT_VALUE
+          else if (a1->node_type == PT_VALUE
                   && PT_IS_NUMERIC_TYPE(a1->type_enum))
             {
               a2->type_enum = PT_TYPE_INTEGER;
@@ -25867,7 +25753,7 @@ pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
    //
    if ( pt_check_ipv4(pInfo[0]) == false )
    {
-          if( pt_check_hostname(pInfo[0]) == false )
+          if ( pt_check_hostname(pInfo[0]) == false )
           {
                 sprintf(perr_msg, "Incorrect host(IP) format of connection information for dblink");
                 return false;
@@ -25875,13 +25761,13 @@ pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
    }
 
    int port = atoi(pInfo[1]);
-   if( port < 0 || port > 65535 )
+   if ( port < 0 || port > 65535 )
    {
            sprintf(perr_msg, "Invalid PORT of connection information for dblink");
            return false;
    }
 
-   if( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
+   if ( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
      {
            sprintf(perr_msg, "Invalid properties of connection information for dblink");
            return false;
@@ -25929,7 +25815,7 @@ pt_create_paren_expr_list (PT_NODE * exp)
 static PT_NODE *
 pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-   if(node)
+   if (node)
      {
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
@@ -25965,42 +25851,42 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 ctn->c1 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_PORT:
-                if( ctn->c2 != NULL )
+                if ( ctn->c2 != NULL )
                 {
                     PT_ERROR (parser, node, "PORT information was duplicated.");
                 }
                 ctn->c2 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_DBNAME:
-                if( ctn->c3 != NULL )
+                if ( ctn->c3 != NULL )
                 {
                     PT_ERROR (parser, node, "DBNAME information was duplicated.");
                 }
                 ctn->c3 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_USER:
-                if( ctn->c4 != NULL )
+                if ( ctn->c4 != NULL )
                 {
                     PT_ERROR (parser, node, "USER information was duplicated.");
                 }
                 ctn->c4 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_PASSWORD:
-                if( ctn->c5 != NULL )
+                if ( ctn->c5 != NULL )
                 {
                     PT_ERROR (parser, node, "PASSWORD information was duplicated.");
                 }
                 ctn->c5 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_PROPERTIES:
-                if( ctn->c6 != NULL )
+                if ( ctn->c6 != NULL )
                 {
                     PT_ERROR (parser, node, "PROPERTIES information was duplicated.");
                 }
                 ctn->c6 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_COMMENT:
-                if( ctn->c7 != NULL )
+                if ( ctn->c7 != NULL )
                 {
                     PT_ERROR (parser, node, "COMMENT information was duplicated.");
                 }
@@ -26008,7 +25894,7 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 break;
 
         case CONN_INFO_OWNER:
-                if( ctn->c8 != NULL )
+                if ( ctn->c8 != NULL )
                 {
                     PT_ERROR (parser, node, "OWNER information was duplicated.");
                 }
@@ -26030,7 +25916,7 @@ pt_check_one_stmt(char* p)
 {
     char end;
     char* t = strchr(p, ';');
-    if(!t)
+    if (!t)
      {
         return true;
      }
@@ -26040,12 +25926,12 @@ pt_check_one_stmt(char* p)
      {
         t++;
      }
-    if(*t == '\0')
+    if (*t == '\0')
        return true;
 
     while(*p)
     {
-        if( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
+        if ( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
           {
                 end = (*p == '[') ? ']' : *p;
                 for(p++; *p ; p++)
@@ -26057,7 +25943,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
           }
-        else if((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
+        else if ((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
         {
                 for(p += 2; *p ; p++)
                 {
@@ -26068,7 +25954,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
         }
-        else if(p[0] == '/' && p[1] == '*')
+        else if (p[0] == '/' && p[1] == '*')
         {
                 for(p += 2; *p ; p++)
                 {
@@ -26079,7 +25965,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
         }
-        else if(*p == ';')
+        else if (*p == ';')
           {
              p++;
 
@@ -26117,11 +26003,11 @@ pt_ct_check_select (char* p, char *perr_msg)
         p++;
      }
 
-   if(*p)
+   if (*p)
    {
-        if( strncasecmp(p, "SELECT", 6) == 0 )
+        if ( strncasecmp(p, "SELECT", 6) == 0 )
         {
-            if( char_isspace2(p[6]))
+            if ( char_isspace2(p[6]))
               {    
                  if (pt_check_one_stmt(p + 6))
                    {

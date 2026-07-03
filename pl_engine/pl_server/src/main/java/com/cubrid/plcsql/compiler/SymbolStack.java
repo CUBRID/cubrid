@@ -439,6 +439,7 @@ public class SymbolStack {
                         "TO_TIME",
                         "TO_TIMESTAMP",
                         "TO_TIMESTAMP_TZ",
+                        "UUID_FORMAT",
 
                         // aggregate and analytic
                         "AVG",
@@ -524,7 +525,8 @@ public class SymbolStack {
 
                         // others
                         "SLEEP",
-                        "SYS_GUID");
+                        "SYS_GUID",
+                        "UUID");
 
         for (String s : funcNames) {
             DeclFunc df =

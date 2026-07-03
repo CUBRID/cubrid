@@ -1475,17 +1475,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
 
-1375 Package "%1$s" already exists.
-1376 Package Body "%1$s" already exists.
-1377 Package "%1$s" does not exist.
-1378 Package Body "%1$s" does not exist.
-1379 Package compile error: %1$s
-1380 The owner or a member of DBA group can %1$s a package.
-1381 Dropping a system generated package is not allowed.
-1382 Package Procedure's unique name exceeds 255 characters.
-1383 Duplicate package name '%1$s' in the name list.
+1375 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
 
-1384 Last Error
+1376 Package "%1$s" already exists.
+1377 Package Body "%1$s" already exists.
+1378 Package "%1$s" does not exist.
+1379 Package Body "%1$s" does not exist.
+1380 Package compile error: %1$s
+1381 The owner or a member of DBA group can %1$s a package.
+1382 Dropping a system generated package is not allowed.
+1383 Package Procedure's unique name exceeds 255 characters.
+1384 Duplicate package name '%1$s' in the name list.
+
+1385 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1997,6 +1999,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 335 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set visibility.
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
+
+337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
+
 
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME

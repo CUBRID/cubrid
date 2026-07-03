@@ -1764,17 +1764,19 @@
 
 #define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
 
-#define ER_PKG_ALREADY_EXIST                        -1375
-#define ER_PKG_BODY_ALREADY_EXIST                   -1376
-#define ER_PKG_NOT_EXIST                            -1377
-#define ER_PKG_BODY_NOT_EXIST                       -1378
-#define ER_PKG_COMPILE_ERROR                        -1379
-#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1380
-#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1381
-#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1382
-#define ER_PKG_DUPLICATE_NAME                       -1383
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
 
-#define ER_LAST_ERROR                               -1384
+#define ER_PKG_ALREADY_EXIST                        -1376
+#define ER_PKG_BODY_ALREADY_EXIST                   -1377
+#define ER_PKG_NOT_EXIST                            -1378
+#define ER_PKG_BODY_NOT_EXIST                       -1379
+#define ER_PKG_COMPILE_ERROR                        -1380
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1381
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1382
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1383
+#define ER_PKG_DUPLICATE_NAME                       -1384
+
+#define ER_LAST_ERROR                               -1385
 
 
 /*
