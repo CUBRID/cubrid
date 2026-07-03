@@ -3508,6 +3508,11 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
+
   if (error == ER_FAILED)
     {
       assert (er_errid () != NO_ERROR);
@@ -4187,6 +4192,11 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
@@ -15479,6 +15489,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 
   int stmt_length = 0;
 
+  bool free_oid = false;
   bool supp_appended = false;
 
   if (statement->sql_user_text == NULL || statement->sql_user_text_len == 0)
@@ -15679,6 +15690,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+	free_oid = true;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15705,6 +15717,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+	free_oid = true;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15731,6 +15744,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+	free_oid = true;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
 	objname = statement->info.index.index_name->info.name.original;
@@ -15754,6 +15768,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+	free_oid = true;
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
@@ -15777,6 +15792,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	    error = ER_OUT_OF_VIRTUAL_MEMORY;
 	    goto end;
 	  }
+	free_oid = true;
 
 	DB_OBJECT *serial_class = sm_find_class (CT_SERIAL_NAME);
 
@@ -15800,6 +15816,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	else
 	  {
 	    oid = (OID *) malloc (sizeof (OID));
+	    if (oid == NULL)
+	      {
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto end;
+	      }
+	    free_oid = true;
 	    OID_SET_NULL (oid);
 	  }
 
@@ -15969,7 +15991,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       host_val = (PARSER_VARCHAR **) malloc (sizeof (PARSER_VARCHAR *) * parser->host_var_count);
       if (host_val == NULL)
 	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
 	}
 
       for (i = 0; i < parser->host_var_count; i++)
@@ -16046,7 +16069,7 @@ end:
       free (host_val);
     }
 
-  if (oid != NULL)
+  if (free_oid && oid != NULL)
     {
       free_and_init (oid);
     }
