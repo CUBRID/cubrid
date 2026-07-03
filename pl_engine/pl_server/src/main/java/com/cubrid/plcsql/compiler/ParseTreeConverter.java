@@ -2381,7 +2381,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitOpen_for_statement(Open_for_statementContext ctx) {
+    public StmtOpenFor visitOpen_for_statement(Open_for_statementContext ctx) {
 
         connectionRequired = true;
 
@@ -2397,17 +2397,35 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
         }
 
-        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
-        assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
-        if (sws.intoTargetStrs != null) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.static_sql()), // s043
-                    "SQL in an OPEN-FOR statement may not have an INTO clause");
-        }
-        StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+        if (ctx.static_sql() == null) {
+            // dynamic case
 
-        return new StmtOpenFor(ctx, refCursor, staticSql);
+            Expr dynSql = visitExpression(ctx.dyn_sql().expression());
+
+            NodeList<Expr> usedExprList;
+            Restricted_using_clauseContext usingClause = ctx.restricted_using_clause();
+            if (usingClause == null) {
+                usedExprList = null;
+            } else {
+                usedExprList = visitRestricted_using_clause(usingClause);
+            }
+
+            return new StmtOpenForDynamic(ctx, refCursor, dynSql, usedExprList);
+        } else {
+            // static case
+
+            SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
+            assert sws != null;
+            assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+            if (sws.intoTargetStrs != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.static_sql()), // s043
+                        "SQL in an OPEN-FOR statement may not have an INTO clause");
+            }
+            StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+
+            return new StmtOpenForStatic(ctx, refCursor, staticSql);
+        }
     }
 
     @Override
