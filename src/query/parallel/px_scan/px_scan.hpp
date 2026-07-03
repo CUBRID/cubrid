@@ -30,7 +30,7 @@
 #include "px_scan_trace_handler.hpp"
 #include "px_scan_result_type.hpp"
 #include "query_manager.h"
-#include "px_scan_join_info.hpp"
+#include "px_scan_pre_execution_info.hpp"
 #include "px_scan_type.hpp"
 
 namespace parallel_scan
@@ -116,7 +116,7 @@ namespace parallel_scan
       interrupt m_interrupt;
       err_messages_with_lock m_err_messages;
       worker_manager *m_worker_manager;
-      join_info m_join_info;
+      pre_execution_info m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;
