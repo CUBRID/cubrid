@@ -17,12 +17,13 @@
  */
 
 //
-// bestspace.hpp
+// bestspace.hpp - bestspace in memory
 //
 
 #ifndef _BESTSPACE_HPP_
 #define _BESTSPACE_HPP_
 
+#include "tbb/concurrent_queue.h"
 #include "thread_entry.hpp"
 #include "page_buffer.h"
 #include "storage_common.h"
@@ -255,6 +256,8 @@ namespace cubstorage
 	  atomic_wrapper<L2> m_L2[L3_FANOUT];
 	  atomic_wrapper<L1> m_L1[L3_FANOUT * L2_FANOUT];
 
+	  tbb::concurrent_queue<bestspace_entry> m_candidates;
+
 	  std::atomic<std::uint64_t> m_recs_num;
 	  std::atomic<float> m_recs_sumlen;
 
@@ -359,7 +362,6 @@ namespace cubstorage
       void destroy (const OID *class_oid, const VFID *vfid);
       void destroy (const OID *class_oid, const HFID *hfid);
 
-      int find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
       void show_stats ();

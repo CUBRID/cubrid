@@ -17,7 +17,7 @@
  */
 
 //
-// bestspace.cpp
+// bestspace.cpp - bestspace in memory
 //
 
 #include "bestspace.hpp"
@@ -971,39 +971,17 @@ namespace cubstorage
   }
 
   int
-  bestspace_registry::find (cubthread::entry &thread_ref, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher)
-  {
-    if (heap_stats_find_best_page (&thread_ref, hfid, size, true, NULL, &page_watcher) == NULL)
-      {
-	return er_errid ();
-      }
-    return NO_ERROR;
-  }
-
-  int
   bestspace_registry::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
 			    PGBUF_WATCHER &page_watcher)
   {
     int error;
-
-    if (!class_oid || OID_ISNULL (class_oid) || class_oid->pageid == 193)
-      {
-	return find (thread_ref, hfid, size, page_watcher);
-      }
 
     error = find_from_cache (thread_ref, class_oid, hfid, size, page_watcher);
     if (error != ER_MHT_NOTFOUND)
       {
 	return error;
       }
-
-    error = find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
-    if (error == ER_MHT_NOTFOUND)
-      {
-	return find (thread_ref, hfid, size, page_watcher);
-      }
-
-    return error;
+    return find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
   }
 
   int
