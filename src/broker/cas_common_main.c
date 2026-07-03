@@ -571,6 +571,7 @@ cas_setup_signal_handlers (void)
   sigaction (SIGBUS, &sa, NULL);
   sigaction (SIGSYS, &sa, NULL);
 
+  sa.sa_flags = 0;
   sa.sa_handler = SIG_IGN;
   sigaction (SIGUSR1, &sa, NULL);
   sigaction (SIGPIPE, &sa, NULL);
