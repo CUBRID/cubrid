@@ -76,6 +76,7 @@
 #include "dbtype.h"
 #include "string_regex.hpp"
 #include "thread_entry.hpp"
+#include "string_opfunc.h"
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -130,7 +131,6 @@
 
 /* maximum selectivity allowed for hash aggregate evaluation */
 #define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
-
 
 #define QEXEC_CLEAR_AGG_LIST_VALUE(agg_list) \
   do \
@@ -555,6 +555,8 @@ static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
+static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12509,6 +12511,198 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 }
 
 /*
+ * qexec_generate_row_default_expr () - Generate a row-level default expression value
+ *   return: NO_ERROR or ER_code
+ *   attr(in): attribute metadata
+ *   xasl_state(in): XASL state containing value descriptor
+ *   uuid_state(in): UUID generation state
+ *   out_val(out): generated value
+ */
+static int
+qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
+				 DB_VALUE * out_val)
+{
+  DB_VALUE new_val;
+  DB_DEFAULT_EXPR_TYPE expr_type;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+
+  assert (attr != NULL);
+  assert (out_val != NULL);
+
+  expr_type = attr->current_default_value.default_expr.default_expr_type;
+  assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
+
+  pr_clear_value (out_val);
+  db_make_null (&new_val);
+
+  switch (expr_type)
+    {
+    case DB_DEFAULT_SYSGUID:
+      error = db_uuidv4 (&new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV4:
+      error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV7:
+      if (DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+      error =
+	db_uuid_bin (UUID_V7, uuid_state,
+		     ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
+		     + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
+      break;
+
+    default:
+      assert (false);
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+    {
+      DB_VALUE format_val, lang_val;
+      int has_user_format = 0;
+      int flag = 0;
+      const char *lang_str;
+      TP_DOMAIN *result_domain;
+
+      if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	{
+	  db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	  has_user_format = 1;
+	}
+      else
+	{
+	  db_make_null (&format_val);
+	  has_user_format = 0;
+	}
+
+      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+      db_make_int (&lang_val, flag);
+
+      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	{
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&new_val)))
+	    {
+	      result_domain = NULL;
+	    }
+	  else if (DB_IS_NULL (&format_val))
+	    {
+	      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	    }
+	  else
+	    {
+	      result_domain = tp_domain_resolve_value (&format_val, NULL);
+	    }
+	}
+      else
+	{
+	  result_domain = attr->domain;
+	}
+
+      error = db_to_char (&new_val, &format_val, &lang_val, out_val, result_domain);
+
+      if (has_user_format)
+	{
+	  pr_clear_value (&format_val);
+	}
+      pr_clear_value (&new_val);
+    }
+  else
+    {
+      error = pr_clone_value (&new_val, out_val);
+      pr_clear_value (&new_val);
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  status = tp_value_cast (out_val, out_val, attr->domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_evaluate_row_default_exprs () - Regenerate row-level default expressions (e.g., UUID)
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in): thread context
+ *   insert(in): INSERT_PROC_NODE
+ *   attr_info(in): attribute info
+ *   xasl_state(in): XASL state containing value descriptor
+ *
+ * Note: This function regenerates DEFAULT values that must be unique per row,
+ *       such as UUID(4), UUID(7), and SYS_GUID. These are identified by
+ *       DB_IS_DEFAULT_DETERMINE_BY_ROW macro.
+ */
+static int
+qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state)
+{
+  int k;
+  int num_default_expr = insert->num_default_expr;
+  UINT64 last_ms = thread_p->uuidv7_last_ms;
+  UINT8 seq = thread_p->uuidv7_seq;
+  UUID_STATE uuid_state;
+
+  if (num_default_expr <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  uuid_state.last_ms = &last_ms;
+  uuid_state.seq = &seq;
+
+  for (k = 0; k < num_default_expr; k++)
+    {
+      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
+      DB_DEFAULT_EXPR_TYPE expr_type;
+      int error;
+
+      if (attr == NULL)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+
+      expr_type = attr->current_default_value.default_expr.default_expr_type;
+      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
+	{
+	  continue;
+	}
+
+      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  thread_p->uuidv7_last_ms = last_ms;
+  thread_p->uuidv7_seq = seq;
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree block
@@ -12827,6 +13021,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  }
 	  break;
 
+	case DB_DEFAULT_SYSGUID:
+	case DB_DEFAULT_UUIDV4:
+	case DB_DEFAULT_UUIDV7:
+	  /*
+	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
+	   *   - use 'qexec_evaluate_row_default_exprs'
+	   * You can prepare things here
+	   */
+	  break;
+
 	case DB_DEFAULT_NONE:
 	  if (attr->current_default_value.val_length <= 0)
 	    {
@@ -12979,6 +13183,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 
 		  insert->vals[k] = vallist->val;
+		}
+
+	      /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
+	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
 		}
 
 	      /* evaluate constraint predicate */
@@ -13157,6 +13367,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      insert->vals[k] = valp;
+	    }
+
+	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
+	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
 	    }
 
 	  /* evaluate constraint predicate */
@@ -16727,6 +16943,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
+
+  /* save the query_id into the XASL state struct */
+  xasl_state.query_id = query_id;
+
+  /* initialize error line */
+  xasl_state.qp_xasl_line = 0;
+
   time_t sec;
   int millisec;
   util_get_second_and_ms_since_epoch (&sec, &millisec);
@@ -16734,23 +16957,27 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
 
-  if (c_time_struct != NULL)
+  if (c_time_struct == NULL)
     {
-      db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
-			  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-			  c_time_struct->tm_sec, millisec);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      qexec_failure_line (__LINE__, &xasl_state);
+      stat = ER_DATE_CONVERSION;
+      goto query_error;
+    }
+
+  stat = db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
+			     c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
+			     c_time_struct->tm_sec, millisec);
+  if (stat != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, &xasl_state);
+      goto query_error;
     }
 
   rand_buf_p = qmgr_get_rand_buf (thread_p);
   lrand48_r (rand_buf_p, &xasl_state.vd.lrand);
   drand48_r (rand_buf_p, &xasl_state.vd.drand);
   xasl_state.vd.xasl_state = &xasl_state;
-
-  /* save the query_id into the XASL state struct */
-  xasl_state.query_id = query_id;
-
-  /* initialize error line */
-  xasl_state.qp_xasl_line = 0;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
@@ -16766,6 +16993,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl->query_in_progress = true;
   stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
   xasl->query_in_progress = false;
+
+query_error:
 
 #if defined(SERVER_MODE)
   if (thread_is_on_trace (thread_p))
