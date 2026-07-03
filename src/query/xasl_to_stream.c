@@ -5180,6 +5180,15 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, dblink_spec->corr_key_count);
+
+  offset = xts_save_regu_variable_list (dblink_spec->corr_key_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, dblink_spec->host_var_count);
   if (dblink_spec->host_var_count > 0)
     {
@@ -7055,6 +7064,8 @@ xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
 
   size += (PTR_SIZE		/* dblink_regu_list_pred */
 	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* corr_key_count */
+	   + PTR_SIZE		/* corr_key_regu_list */
 	   + OR_INT_SIZE	/* host_var_count */
 	   + PTR_SIZE		/* host_var_index */
 	   + PTR_SIZE		/* conn_rul */

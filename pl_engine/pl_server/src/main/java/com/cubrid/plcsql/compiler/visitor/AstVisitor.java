@@ -170,7 +170,9 @@ public abstract class AstVisitor<R> {
 
     public abstract R visitStmtNull(StmtNull node);
 
-    public abstract R visitStmtOpenFor(StmtOpenFor node);
+    public abstract R visitStmtOpenForStatic(StmtOpenForStatic node);
+
+    public abstract R visitStmtOpenForDynamic(StmtOpenForDynamic node);
 
     public abstract R visitStmtRaise(StmtRaise node);
 
