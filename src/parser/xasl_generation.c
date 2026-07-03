@@ -7107,6 +7107,9 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
+	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
+	       * stash owning predicate-operand regu at the regu<->xasl linkage. */
+	      xasl->precomp_owner_regu = regu;
 	    }
 	  else
 	    {
@@ -22753,7 +22756,6 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   return node;
 }
-
 
 /*
  * parser_generate_xasl () - Creates xasl proc for parse tree.
