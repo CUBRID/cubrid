@@ -637,7 +637,13 @@ conn_retry:
 	    /* Discard any cancel that arrived too late for the previous request
 	     * before re-arming the handler for this request. */
 	    query_cancel_pending = 0;
-	    signal (SIGUSR1, query_cancel);
+	    {
+	      struct sigaction sa_cancel;
+	      sigemptyset (&sa_cancel.sa_mask);
+	      sa_cancel.sa_flags = 0;	/* no SA_RESTART: EINTR is needed */
+	      sa_cancel.sa_handler = query_cancel;
+	      sigaction (SIGUSR1, &sa_cancel, NULL);
+	    }
 #endif /* !WINDOWS */
 
 	    fn_ret = process_request (proxy_sock_fd, &net_buf, &req_info, INVALID_SOCKET);
