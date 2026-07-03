@@ -1771,7 +1771,11 @@
 
 #define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1377
 
-#define ER_LAST_ERROR                               -1378
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1378
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1379
+
+#define ER_LAST_ERROR                               -1380
 
 
 
