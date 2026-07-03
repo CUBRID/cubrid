@@ -10072,6 +10072,12 @@ pt_partition_name (PARSER_CONTEXT * parser, const char *class_name, const char *
   int size = 0;
   size = strlen (class_name) + strlen (partition) + strlen (PARTITIONED_SUB_CLASS_TAG);
 
+  if (size >= PARTITION_VARCHAR_LEN)
+    {
+      PT_ERRORm (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_PARTITION_NAME_TOO_LONG);
+      return NULL;
+    }
+
   buf = (char *) calloc (size + 1, sizeof (char));
   if (buf == NULL)
     {
@@ -10473,6 +10479,11 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	  *next_len = 12;
 	  return DB_DEFAULT_SYSDATETIME;
 	}
+      if (str_size >= 10 && strncmp (str, "SYS_GUID()", 10) == 0)
+	{
+	  *next_len = 10;
+	  return DB_DEFAULT_SYSGUID;
+	}
       if (str_size >= 8)
 	{
 	  if (strncmp (str, "SYS_DATE", 8) == 0)
@@ -10524,6 +10535,16 @@ parse_default_expr_type (const char *str, const int str_size, int *next_len)
 	{
 	  *next_len = 16;
 	  return DB_DEFAULT_UNIX_TIMESTAMP;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(4)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV4;
+	}
+      if (str_size >= 7 && strncmp (str, "UUID(7)", 7) == 0)
+	{
+	  *next_len = 7;
+	  return DB_DEFAULT_UUIDV7;
 	}
       if (str_size >= 6 && strncmp (str, "USER()", 6) == 0)
 	{
@@ -10588,6 +10609,65 @@ pt_get_default_expression_from_string (PARSER_CONTEXT * parser, const char *str,
 
       default_expr->default_expr_format = strndup (formatted_string, remaining_len);
     }
+}
+
+PT_NODE *
+pt_make_default_value_tree_from_default_expr (PARSER_CONTEXT * parser, const DB_DEFAULT_EXPR * default_expr)
+{
+  PT_NODE *default_value = NULL;
+
+  assert (default_expr != NULL);
+  assert (default_expr->default_expr_type != DB_DEFAULT_NONE);
+
+  default_value = pt_make_expression_default_expr (parser, NULL, default_expr->default_expr_type);
+  if (default_value == NULL)
+    {
+      return NULL;
+    }
+
+  if (default_expr->default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+    {
+      return default_value;
+    }
+
+  if (default_expr->default_expr_op == T_TO_CHAR)
+    {
+      PT_NODE *arg1, *arg2, *arg3;
+      bool has_user_format = (default_expr->default_expr_format != NULL);
+      const char *lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+      int flag = 0;
+
+      arg1 = default_value;
+      arg2 = pt_make_string_value (parser, default_expr->default_expr_format);
+      if (arg2 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  return NULL;
+	}
+
+      arg3 = parser_new_node (parser, PT_VALUE);
+      if (arg3 == NULL)
+	{
+	  parser_free_tree (parser, default_value);
+	  parser_free_tree (parser, arg2);
+	  return NULL;
+	}
+
+      arg3->type_enum = PT_TYPE_INTEGER;
+      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+      arg3->info.value.data_value.i = (long) flag;
+
+      default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
+      if (default_value == NULL)
+	{
+	  parser_free_tree (parser, arg1);
+	  parser_free_tree (parser, arg2);
+	  parser_free_tree (parser, arg3);
+	  return NULL;
+	}
+    }
+
+  return default_value;
 }
 
 /*
@@ -11958,11 +12038,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       assert (false);
     }
 
-  if (local_upd > 0 && upd_spec)
-    {
-      parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
-    }
-
   if (into_spec)
     {
       parser_walk_tree (parser, into_spec, pt_get_server_name_list, snl, NULL, NULL);
@@ -11970,6 +12045,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   if (upd_spec)
     {
+      if (local_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_check_sub_query_spec, snl, NULL, NULL);
+	}
+      else if (remote_upd > 0)
+	{
+	  parser_walk_tree (parser, node, pt_get_server_name_list, snl, NULL, NULL);
+	}
+
       parser_walk_tree (parser, upd_spec, pt_get_server_name_list, snl, NULL, NULL);
     }
 
@@ -12384,9 +12468,11 @@ extern PT_NODE *
 pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 {
   PT_NODE *node = parser_new_node (parser, PT_DATA_DEFAULT);
+
   if (node)
     {
       PT_NODE *def;
+
       node->info.data_default.default_value = expr;
       node->info.data_default.shared = PT_DEFAULT;
 
@@ -12449,6 +12535,48 @@ pt_make_data_default_expr_node (PARSER_CONTEXT * parser, PT_NODE * expr)
 	      break;
 	    case PT_UNIX_TIMESTAMP:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
+	      break;
+	    case PT_SYS_GUID:
+	      node->info.data_default.default_expr_type = DB_DEFAULT_SYSGUID;
+	      break;
+	    case PT_UUID:
+	      {
+		PT_NODE *uuid_arg = def->info.expr.arg1;
+
+		if (uuid_arg == NULL)
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+		  }
+		else if (uuid_arg->node_type == PT_VALUE && PT_IS_NUMERIC_TYPE (uuid_arg->type_enum))
+		  {
+		    if (pt_coerce_value (parser, uuid_arg, uuid_arg, PT_TYPE_INTEGER, NULL) == NO_ERROR)
+		      {
+			if (uuid_arg->info.value.data_value.i == 0 || uuid_arg->info.value.data_value.i == 4)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV4;
+			  }
+			else if (uuid_arg->info.value.data_value.i == 7)
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_UUIDV7;
+			  }
+			else
+			  {
+			    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+			  }
+		      }
+		    else
+		      {
+			node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+			PT_ERROR (parser, node, "UUID argument coercion error");
+		      }
+		  }
+		else
+		  {
+		    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+		    PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+		  }
+	      }
 	      break;
 	    default:
 	      node->info.data_default.default_expr_type = DB_DEFAULT_NONE;

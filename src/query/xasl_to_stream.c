@@ -2897,6 +2897,15 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0);
+   * source-pointer dedup re-aliases it to the predicate regu on unpack. */
+  offset = xts_save_regu_variable (xasl->precomp_owner_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, xasl->option);
 
   offset = xts_save_outptr_list (xasl->outptr_list);
@@ -5180,6 +5189,15 @@ xts_process_dblink_spec_type (char *ptr, const DBLINK_SPEC_TYPE * dblink_spec)
     }
   ptr = or_pack_int (ptr, offset);
 
+  ptr = or_pack_int (ptr, dblink_spec->corr_key_count);
+
+  offset = xts_save_regu_variable_list (dblink_spec->corr_key_regu_list);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, dblink_spec->host_var_count);
   if (dblink_spec->host_var_count > 0)
     {
@@ -5985,6 +6003,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* scan_op_type */
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
+
+  size += PTR_SIZE;		/* precomp_owner_regu offset */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)
@@ -7055,6 +7075,8 @@ xts_sizeof_dblink_spec_type (const DBLINK_SPEC_TYPE * dblink_spec)
 
   size += (PTR_SIZE		/* dblink_regu_list_pred */
 	   + PTR_SIZE		/* dblink_regu_list_rest */
+	   + OR_INT_SIZE	/* corr_key_count */
+	   + PTR_SIZE		/* corr_key_regu_list */
 	   + OR_INT_SIZE	/* host_var_count */
 	   + PTR_SIZE		/* host_var_index */
 	   + PTR_SIZE		/* conn_rul */

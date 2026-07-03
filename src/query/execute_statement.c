@@ -89,6 +89,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
+#include "string_opfunc.h"
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
@@ -428,19 +429,24 @@ is_stmt_based_repl_type (const PT_NODE * node)
   return false;
 }
 
+typedef enum
+{
+  DEFAULT_EXPR_EVAL_BY_ROW_ONLY,
+  DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY
+} DEFAULT_EXPR_EVAL_MODE;
+
 /*
- * do_evaluate_default_expr() - evaluates the default expressions, if any, for
- *				the attributes of a given class
+ * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
- *   class_name(in):
+ *   smclass(in):
+ *   eval_mode(in): 
  */
-int
-do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+static int
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode)
 {
   SM_ATTRIBUTE *att;
-  SM_CLASS *smclass;
-  int error;
+  int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
   DB_DATETIME *datetime;
@@ -451,128 +457,161 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
 
-  assert (class_name->node_type == PT_NAME);
-
-  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  assert (smclass != NULL);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
+
+      if (default_expr_type != DB_DEFAULT_NONE)
 	{
-	  switch (att->default_value.default_expr.default_expr_type)
+	  /* DB_IS_DEFAULT_DETERMINE_BY_STATEMENT same as !DB_IS_DEFAULT_DETERMINE_BY_ROW */
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+
+	  error = NO_ERROR;
+	  switch (default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
-				      &hour, &minute, &second, &millisecond);
-		  db_make_time (&default_value, hour, minute, second);
-		}
-	      break;
+	      {
+		// The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
+				    &hour, &minute, &second, &millisecond);
+		db_make_time (&default_value, hour, minute, second);
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_TIME cur_time, db_time;
-		  const char *t_source, *t_dest;
-		  DB_DATETIME *datetime;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		DB_TIME cur_time, db_time;
+		const char *t_source, *t_dest;
+		DB_DATETIME *datetime;
 
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  t_source = tz_get_system_timezone ();
-		  t_dest = tz_get_session_local_timezone ();
-		  db_time = datetime->time / 1000;
-		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
-						       strlen (t_dest), &cur_time);
-		  db_value_put_encoded_time (&default_value, &cur_time);
-		}
-	      break;
+		datetime = db_get_datetime (&parser->sys_datetime);
+		t_source = tz_get_system_timezone ();
+		t_dest = tz_get_session_local_timezone ();
+		db_time = datetime->time / 1000;
+		error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
+						     strlen (t_dest), &cur_time);
+		db_value_put_encoded_time (&default_value, &cur_time);
+		break;
+	      }
 	    case DB_DEFAULT_SYSDATE:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  error = db_value_put_encoded_date (&default_value, &datetime->date);
-		}
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		datetime = db_get_datetime (&parser->sys_datetime);
+		error = db_value_put_encoded_date (&default_value, &datetime->date);
+		break;
+	      }
 	    case DB_DEFAULT_SYSDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = pr_clone_value (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_SYSTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      error = db_unix_timestamp (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = db_unix_timestamp (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_USER:
-	      user_name = db_get_user_and_host_name ();
-	      error = db_make_string (&default_value, user_name);
-	      default_value.need_clear = true;
-	      break;
+	      {
+		user_name = db_get_user_and_host_name ();
+		error = db_make_string (&default_value, user_name);
+		default_value.need_clear = true;
+		break;
+	      }
 	    case DB_DEFAULT_CURR_USER:
-	      user_name = db_get_user_name ();
-	      error = db_make_string (&default_value, user_name);
-	      default_value.need_clear = true;
-	      break;
+	      {
+		user_name = db_get_user_name ();
+		error = db_make_string (&default_value, user_name);
+		default_value.need_clear = true;
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTDATE:
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  TZ_REGION system_tz_region, session_tz_region;
-		  DB_DATETIME dest_dt;
-		  DB_DATETIME *src_dt;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		TZ_REGION system_tz_region, session_tz_region;
+		DB_DATETIME dest_dt;
+		DB_DATETIME *src_dt;
 
-		  src_dt = db_get_datetime (&parser->sys_datetime);
-		  tz_get_system_tz_region (&system_tz_region);
-		  tz_get_session_tz_region (&session_tz_region);
-		  error =
-		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
-		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
-		    {
-		      db_value_put_encoded_date (&default_value, &dest_dt.date);
-		    }
-		  else
-		    {
-		      db_make_datetime (&default_value, &dest_dt);
-		    }
-		}
-	      break;
+		src_dt = db_get_datetime (&parser->sys_datetime);
+		tz_get_system_tz_region (&system_tz_region);
+		tz_get_session_tz_region (&session_tz_region);
+		error =
+		  tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+		if (default_expr_type == DB_DEFAULT_CURRENTDATE)
+		  {
+		    db_value_put_encoded_date (&default_value, &dest_dt.date);
+		  }
+		else
+		  {
+		    db_make_datetime (&default_value, &dest_dt);
+		  }
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_DATE tmp_date;
-		  DB_TIME tmp_time;
-		  DB_TIMESTAMP tmp_timestamp;
-		  DB_DATETIME *sys_datetime;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		DB_DATE tmp_date;
+		DB_TIME tmp_time;
+		DB_TIMESTAMP tmp_timestamp;
+		DB_DATETIME *sys_datetime;
 
-		  sys_datetime = db_get_datetime (&parser->sys_datetime);
-		  tmp_date = sys_datetime->date;
-		  tmp_time = sys_datetime->time / 1000;
-		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-		  db_make_timestamp (&default_value, tmp_timestamp);
-		}
-	      break;
+		sys_datetime = db_get_datetime (&parser->sys_datetime);
+		tmp_date = sys_datetime->date;
+		tmp_time = sys_datetime->time / 1000;
+		db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+		db_make_timestamp (&default_value, tmp_timestamp);
+		break;
+	      }
+	    case DB_DEFAULT_SYSGUID:
+	      {
+		error = db_uuidv4 (&default_value);
+		break;
+	      }
+	    case DB_DEFAULT_UUIDV4:
+	      {
+		error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
+		break;
+	      }
+	    case DB_DEFAULT_UUIDV7:
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		UUID_STATE uuid_state;
+
+		uuid_state.last_ms = &parser->uuidv7_last_ms;
+		uuid_state.seq = &parser->uuidv7_seq;
+		error =
+		  db_uuid_bin (UUID_V7, &uuid_state,
+			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
+		break;
+	      }
 	    default:
 	      break;
 	    }
@@ -582,6 +621,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      break;
 	    }
 
+	  pr_clear_value (&att->default_value.value);
 	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	    {
 	      if (att->default_value.default_expr.default_expr_format != NULL)
@@ -652,6 +692,46 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
     }
 
   return error;
+}
+
+/*
+ * do_evaluate_statement_default_expr() - evaluates the default expressions determined by statement, if any, for
+ *				the attributes of a given class
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+static int
+do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+{
+  SM_CLASS *smclass;
+  int error = NO_ERROR;
+
+  assert (class_name->node_type == PT_NAME);
+
+  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
+}
+
+/*
+ * do_evaluate_row_default_expr_for_otemplate() - evaluates the default expressions determined by row, if any, for
+ *				the attributes of a given class's object template
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+static int
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
+{
+  assert (otemplate != NULL);
+  assert (otemplate->class_ != NULL);
+
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY);
 }
 
 /*
@@ -883,9 +963,8 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   DB_OBJECT *serial_object = NULL;
   DB_VALUE value;
   DB_OTMPL *obj_tmpl = NULL;
-  char *serial_name = NULL;
+  char serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
   int save;
   bool au_disable_flag = false;
 
@@ -900,16 +979,11 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, name_len);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      return error;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   AU_DISABLE (save);
   au_disable_flag = true;
@@ -993,15 +1067,9 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       goto update_auto_increment_error;
     }
 
-  free_and_init (serial_name);
   return NO_ERROR;
 
 update_auto_increment_error:
-  if (serial_name)
-    {
-      free_and_init (serial_name);
-    }
-
   if (au_disable_flag == true)
     {
       AU_ENABLE (save);
@@ -1359,9 +1427,9 @@ do_get_serial_obj_id (DB_IDENTIFIER * serial_obj_id, DB_OBJECT * serial_class_mo
   /* This is the case when the loaddb utility is executed with the --no-user-specified-name option as the dba user. */
   if (db_get_client_type () == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2)
     {
-      char other_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+      char other_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
 
-      do_find_serial_by_query (serial_name, other_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      do_find_serial_by_query (serial_name, other_serial_name, sizeof (other_serial_name));
       if (other_serial_name[0] != '\0')
 	{
 	  if (db_get_client_statement_type () == CUBRID_STMT_CREATE_SERIAL)
@@ -1950,7 +2018,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   int error = NO_ERROR;
   PT_NODE *auto_increment_node, *start_val_node, *inc_val_node;
   PT_NODE *dtyp;
-  char *att_name = NULL, *serial_name = NULL;
+  char *att_name = NULL, serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   DB_VALUE start_val, inc_val, max_val, min_val;
   DB_VALUE zero, value, *pval = NULL;
   DB_VALUE cmp_result;
@@ -1958,7 +2026,6 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE e38;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -1998,17 +2065,11 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
   if (serial_mop != NULL)
@@ -2185,18 +2246,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
-  pr_clear_value (&e38);
-  pr_clear_value (&value);
-  pr_clear_value (&zero);
-  pr_clear_value (&cmp_result);
-  pr_clear_value (&start_val);
-  pr_clear_value (&inc_val);
-  pr_clear_value (&max_val);
-  pr_clear_value (&min_val);
-
-  free_and_init (serial_name);
-
-  return NO_ERROR;
+  error = NO_ERROR;
 
 end:
   pr_clear_value (&e38);
@@ -2207,11 +2257,6 @@ end:
   pr_clear_value (&inc_val);
   pr_clear_value (&max_val);
   pr_clear_value (&min_val);
-
-  if (serial_name)
-    {
-      free_and_init (serial_name);
-    }
 
   return error;
 }
@@ -2237,12 +2282,11 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   DB_DATA_STATUS data_stat;
   int error = NO_ERROR;
   PT_NODE *dtyp;
-  char *att_name = NULL, *serial_name = NULL;
+  char *att_name = NULL, serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   DB_VALUE e38, current_val, max_val, value;
   int i, compare_result, save;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
-  size_t name_len;
   bool au_disable_flag = false;
 
   db_make_null (&e38);
@@ -2271,17 +2315,11 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
   sm_downcase_name (att_name, att_downcase_name, SM_MAX_IDENTIFIER_LENGTH);
   att_name = att_downcase_name;
 
-  /* serial_name : <class_name>_ai_<att_name> */
-  name_len = (strlen (class_name) + strlen (att_name) + AUTO_INCREMENT_SERIAL_NAME_EXTRA_LENGTH + 1);
-  serial_name = (char *) malloc (name_len);
-  if (serial_name == NULL)
+  error = set_auto_increment_serial_name (serial_name, class_name, att_name);
+  if (error != NO_ERROR)
     {
-      error = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, name_len);
       goto end;
     }
-
-  SET_AUTO_INCREMENT_SERIAL_NAME (serial_name, class_name, att_name);
 
   /* get serial mop by serial name */
   serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, serial_name);
@@ -2410,11 +2448,6 @@ end:
   pr_clear_value (&current_val);
   pr_clear_value (&max_val);
 
-  if (serial_name != NULL)
-    {
-      free_and_init (serial_name);
-    }
-
   if (obj_tmpl != NULL)
     {
       dbt_abort_object (obj_tmpl);
@@ -2459,7 +2492,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   int ret_msg_id = 0;
 
   const char *serial_name = NULL, *serial_owner_name = NULL;
-  char user_specified_serial_name[DB_MAX_SERIAL_NAME_LENGTH] = { '\0' };
+  char user_specified_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
   MOP serial_mop = NULL, owner_mop = NULL;
   const char *comment = NULL;
 
@@ -3053,7 +3086,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       serial_name = (char *) PT_NODE_SR_NAME (statement);
       serial_owner_name = statement->info.serial.owner_name->info.name.original;
 
-      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, DB_MAX_SERIAL_NAME_LENGTH);
+      sm_user_specified_name_for_serial (serial_name, user_specified_serial_name, sizeof (user_specified_serial_name));
       serial_mop = do_get_serial_obj_id (&serial_obj_id, serial_class, user_specified_serial_name);
       if (serial_mop == NULL)
 	{
@@ -13043,6 +13076,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
 	  /* inserted one more row */
 	  row_count++;
 
@@ -13541,6 +13580,15 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			}
 		    }
 
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  if (error != NO_ERROR)
+		    {
+		      dbt_abort_object (otemplate);
+		      otemplate = NULL;
+		      cnt = error;
+		      goto cleanup;
+		    }
+
 		  if (statement->node_type == PT_INSERT && statement->info.insert.odku_assignments)
 		    {
 		      if (update == NULL)
@@ -13930,7 +13978,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = do_evaluate_default_expr (parser, class_);
+  error = do_evaluate_statement_default_expr (parser, class_);
   if (error != NO_ERROR)
     {
       return error;
@@ -17768,12 +17816,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      err = do_evaluate_default_expr (parser, flat);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       /* check update part */
       if (statement->info.merge.update.assignment && !insert_only)
 	{
@@ -18397,6 +18439,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
+
+	  err = do_evaluate_statement_default_expr (parser, flat);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;

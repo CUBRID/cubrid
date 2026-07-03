@@ -2719,6 +2719,74 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
   logtb_set_tran_index_interrupt (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), set);
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_interrupt_session_sleeper_mapfunc () - For a worker thread belonging to the given session, set its
+ *   transaction interrupt flag. If the worker is currently suspended inside SLEEP (), wake it as well.
+ *   Workers that do not belong to the given session are ignored.
+ */
+static void
+logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+					 THREAD_ENTRY * caller_thread, SESSION_ID session_id)
+{
+  (void) stop_mapper;		// suppress unused parameter warning
+
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+    {
+      // not what we need
+      return;
+    }
+
+  bool match = false;
+  (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+      && thread_ref.m_status != cubthread::entry::status::TS_FREE
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
+      && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
+    {
+      match = true;
+      if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (thread_ref.tran_index);
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->interrupt != (int) true)
+	    {
+	      tdes->interrupt = (int) true;
+#if defined (HAVE_ATOMIC_BUILTINS)
+	      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
+#else
+	      log_Gl.trantable.num_interrupts++;
+#endif
+	    }
+	}
+    }
+
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  if (!match)
+    {
+      return;
+    }
+
+  thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_SLEEP_FUNC_SUSPENDED);
+}
+
+/*
+ * logtb_interrupt_session_sleepers () - wake every worker of the given DB session suspended inside SLEEP()
+ *   (caller_thread excluded).
+ */
+static void
+logtb_interrupt_session_sleepers (THREAD_ENTRY * caller_thread, SESSION_ID session_id)
+{
+  if (session_id == DB_EMPTY_SESSION)
+    {
+      return;
+    }
+  thread_get_manager ()->map_entries (logtb_interrupt_session_sleeper_mapfunc, caller_thread, session_id);
+}
+#endif /* SERVER_MODE */
+
 /*
  * logtb_set_tran_index_interrupt - indicate interrupt to a future caller for an
  *                               specific transaction index
@@ -2805,6 +2873,25 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		      session->set_interrupt (ER_INTERRUPTED);
 		    }
 		}
+
+#if defined (SERVER_MODE)
+	      /* Wake workers suspended inside the SLEEP() built-in so this cancel reaches them. */
+	      {
+		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
+		if (tran_worker != NULL)
+		  {
+		    /* single regular SQL: wake this transaction's own suspended worker */
+		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
+							    THREAD_SLEEP_FUNC_SUSPENDED);
+		    if (tran_worker->conn_entry != NULL)
+		      {
+			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
+			 * wake all suspended workers of the same session */
+			logtb_interrupt_session_sleepers (thread_p, tran_worker->conn_entry->session_id);
+		      }
+		  }
+	      }
+#endif /* SERVER_MODE */
 	    }
 
 	  return true;

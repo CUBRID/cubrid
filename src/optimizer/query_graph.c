@@ -3425,6 +3425,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
+    case PT_UUID:
     case PT_SLEEP:
 
       return RANK_EXPR_HEAVY;
@@ -7617,8 +7618,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  size_t len = strlen (temp_name) + 1;
-			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
+			  index_entryp->statistics_attribute_name = strdup (temp_name);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {
 			      if (seg_idx != seg_idx_arr)
@@ -7626,10 +7626,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 				  free_and_init (seg_idx);
 				}
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				      sizeof (char) * len);
+				      sizeof (char) * (strlen (temp_name) + 1));
 			      return;
 			    }
-			  strcpy (index_entryp->statistics_attribute_name, temp_name);
 			}
 		    }
 		}

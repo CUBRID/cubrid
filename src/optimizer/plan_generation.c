@@ -2997,9 +2997,9 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
   if (has_hint)
     {
-      /* PRM_ID_PARALLELISM=0 must veto hints; PARALLEL(N) otherwise bypasses global disable. */
+      /* Parallel index scan needs at least two threads after applying the global cap. */
       cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-      if (cap <= 0 || spec->info.spec.num_parallel_threads <= 1)
+      if (cap <= 1 || spec->info.spec.num_parallel_threads <= 1)
 	{
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
 	}
@@ -3055,7 +3055,7 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     degree = (x <= 1) ? 2 : ((63 - __builtin_clzll (x)) + 2);
   }
   cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-  if (cap <= 0)
+  if (cap <= 1)
     {
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;

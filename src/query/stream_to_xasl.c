@@ -1894,6 +1894,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->precomp_owner_regu = NULL;
+    }
+  else
+    {
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   xasl->option = (QUERY_OPTIONS) tmp;
 
@@ -5386,6 +5402,23 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
       dblink_spec->dblink_regu_list_rest =
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (dblink_spec->dblink_regu_list_rest == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &dblink_spec->corr_key_count);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      dblink_spec->corr_key_regu_list = NULL;
+    }
+  else
+    {
+      dblink_spec->corr_key_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->corr_key_regu_list == NULL)
 	{
 	  goto error;
 	}

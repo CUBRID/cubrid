@@ -433,7 +433,8 @@ extern "C"
     /* update to actual reserved workers */
     num_parallel_threads = worker_manager_p->get_reserved_workers ();
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	ACCESS_SPEC_UNSET_FLAG (spec, ACCESS_SPEC_FLAG_MERGEABLE_LIST);
       }
@@ -863,7 +864,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }
@@ -1319,7 +1321,8 @@ extern "C"
 	return NO_ERROR;
       }
 
-    if (xasl->topn_items || XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
+    /* XASL_TO_BE_CACHED kept blocked: caching main list_id would leak worker intermediate state. */
+    if (XASL_IS_FLAGED (xasl, XASL_TO_BE_CACHED))
       {
 	return NO_ERROR;
       }
@@ -1697,6 +1700,7 @@ namespace parallel_scan
 	  }
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
 					  &m_interrupt, &m_err_messages, m_parallelism, m_g_agg_domain_resolve_need, m_xasl);
+	m_result_handler->set_trace_handler (&m_trace_handler);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -1792,7 +1796,7 @@ namespace parallel_scan
 	task_p = placement_new ((task<result_type, ST> *) task_p, m_thread_p, m_query_entry, m_result_handler,
 				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
-				m_is_grouped, m_uses_xasl_clone, m_xasl, &m_join_info);
+				m_is_grouped, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;
@@ -1827,9 +1831,11 @@ namespace parallel_scan
       {
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {
+	    /* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too instead of re-executing per worker. */
+	    m_pre_execution_info.capture_precomp_vals (m_xasl);
 	    if (m_xasl->scan_ptr)
 	      {
-		m_join_info.capture_join_info (m_xasl);
+		m_pre_execution_info.capture_pre_execution_info (m_xasl);
 		for (XASL_NODE *xptr = m_xasl->scan_ptr; xptr; xptr=xptr->scan_ptr)
 		  {
 		    if (xptr->spec_list && xptr->spec_list->type == TARGET_LIST)
@@ -1870,7 +1876,7 @@ namespace parallel_scan
 
 	if (m_xasl->scan_ptr)
 	  {
-	    m_join_info.apply_join_info (m_xasl);
+	    m_pre_execution_info.apply_pre_execution_info (m_xasl);
 	  }
 
 	XASL_NODE *xptr = m_xasl;
@@ -1922,7 +1928,7 @@ namespace parallel_scan
 	scan_code = m_result_handler->read (m_thread_p, m_xasl->proc.buildvalue.agg_list);
 	if (m_xasl->scan_ptr)
 	  {
-	    m_join_info.apply_join_info (m_xasl);
+	    m_pre_execution_info.apply_pre_execution_info (m_xasl);
 	  }
       }
     else
