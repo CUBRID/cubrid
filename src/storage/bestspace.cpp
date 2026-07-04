@@ -643,19 +643,22 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims)
+  bestspace::shard::allocate_pick_victims (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims)
   {
     std::size_t pos;
     std::size_t i;
     int freespace;
     L1 l1;
 
-    // get 8 indices from L1, ordered by smallest free space
     victims.fill (std::make_pair (std::numeric_limits<std::uint16_t>::max (), std::numeric_limits<std::uint16_t>::max ()));
     for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
       {
 	l1 = m_L1[i].load ();
 	freespace = l1.get_freespace ();
+
+	// add residents list
+	residents[i] = l1.get_vpid ();
 
 	if (freespace >= victims[ALLOC_BATCH_SIZE - 1].second)
 	  {
@@ -674,12 +677,17 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace::shard::allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE>
-      &victims, std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
+  bestspace::shard::allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
   {
+    // avoid draining all queue entries to reduce tail latency
+    constexpr std::size_t MAX_POP_TRIES = L3_FANOUT * L2_FANOUT;
+    std::size_t num_residents = L3_FANOUT * L2_FANOUT;
     bestspace_entry candidate;
     std::size_t num_candidates;
     tier minimum;
+    std::size_t trial, i;
 
     minimum = size_to_tier (victims[ALLOC_BATCH_SIZE - 1].second);
     if (minimum >= tier::FS8)
@@ -688,14 +696,36 @@ namespace cubstorage
 	return 0;
       }
 
+    trial = 0;
     num_candidates = 0;
-    while (num_candidates < ALLOC_BATCH_SIZE - 1 && m_candidates.try_pop (candidate))
+    while (trial++ < MAX_POP_TRIES &&
+	   num_candidates < ALLOC_BATCH_SIZE - 1 && m_candidates.try_pop (candidate))
       {
-	if (size_to_tier (candidate.freespace) > minimum)
+	if (size_to_tier (candidate.freespace) <= minimum)
 	  {
-	    candidates[num_candidates] = candidate;
-	    num_candidates++;
+	    continue;
 	  }
+
+	for (i = 0; i < num_residents; i++)
+	  {
+	    if (residents[i].volid == candidate.volid &&
+		residents[i].pageid == candidate.pageid)
+	      {
+		break;
+	      }
+	  }
+	if (i < num_residents)
+	  {
+	    // there is already candidate page in bestspace or candidates
+	    continue;
+	  }
+
+	candidates[num_candidates] = candidate;
+	num_candidates++;
+
+	residents[num_residents].volid = candidate.volid;
+	residents[num_residents].pageid = candidate.pageid;
+	num_residents++;
       }
 
     return num_candidates;
@@ -758,6 +788,7 @@ namespace cubstorage
   bestspace::status
   bestspace::shard::allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher)
   {
+    std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     std::size_t num_candidates;
@@ -772,9 +803,10 @@ namespace cubstorage
       }
 
     // pick four pages with the smallest free space as replacement victims.
-    allocate_pick_victims (victims);
+    allocate_pick_victims (residents, victims);
+
     // pick four replacement candidates with more freespace than the victim pages above.
-    num_candidates = allocate_pick_candidates (victims, candidates);
+    num_candidates = allocate_pick_candidates (residents, victims, candidates);
     assert (num_candidates <= ALLOC_BATCH_SIZE - 1);
 
     // allocate the pages at least one

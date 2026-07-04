@@ -293,8 +293,10 @@ namespace cubstorage
 	  status allocate_mark ();
 	  void allocate_unmark ();
 
-	  void allocate_pick_victims (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
-	  std::size_t allocate_pick_candidates (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+	  void allocate_pick_victims (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+				      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
+	  std::size_t allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+						std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
 						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
 
 	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
