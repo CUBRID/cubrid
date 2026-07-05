@@ -78,17 +78,6 @@ namespace cubstorage
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t SHARD_COUNT = 8;
 
-    private:
-      enum class status
-      {
-	NOT_FOUND,
-	FOUND,
-	CONTENDED,
-	ALLOCATING,
-	SUCCESS,
-	FAILURE
-      };
-
       enum class tier : std::int8_t
       {
 	FS0 = -1,   // 1-7%
@@ -101,6 +90,17 @@ namespace cubstorage
 	FS7,	    // 71-84%
 	FS8,	    // 85-100%
 	FSEND	    // END
+      };
+
+    private:
+      enum class status
+      {
+	NOT_FOUND,
+	FOUND,
+	CONTENDED,
+	ALLOCATING,
+	SUCCESS,
+	FAILURE
       };
 
       friend tier &operator++ (tier &v)
