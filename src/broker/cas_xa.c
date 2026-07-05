@@ -223,20 +223,41 @@ net_arg_get_xid (XID * xid, char *buf)
   for (i = 0; i < 3; i++)
     {
       if (data_size < 4)
-	return -1;
+	{
+	  return -1;
+	}
+
       memcpy (&id[i], buf, 4);
       id[i] = ntohl (id[i]);
       buf += 4;
       data_size -= 4;
     }
 
-  if (data_size < id[1] + id[2])
-    return -1;
+  if (id[1] < 0 || id[2] < 0)
+    {
+      return -1;
+    }
+
+  size_t gtrid_len = (size_t) id[1];
+  size_t bqual_len = (size_t) id[2];
+
+  if (gtrid_len > sizeof (xid->data) || bqual_len > sizeof (xid->data) - gtrid_len)
+    {
+      return -1;
+    }
+
+  size_t xid_len = gtrid_len + bqual_len;
+
+  if (data_size < 0 || (size_t) data_size != xid_len)
+    {
+      return -1;
+    }
 
   xid->formatID = id[0];
   xid->gtrid_length = id[1];
   xid->bqual_length = id[2];
-  memcpy (xid->data, buf, id[1] + id[2]);
+  memcpy (xid->data, buf, xid_len);
+
   return 0;
 }
 
