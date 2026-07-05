@@ -11350,51 +11350,55 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   snl->server_cnt++;
   for (int i = 0; i < snl->stored_cnt; i++)
     {
-      int node_cnt = 0;
-
       if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
 	{
-	  node_cnt++;
+	  continue;		/* name mismatch: not a duplicate of this slot, keep scanning */
 	}
 
       if (owner_ptr == NULL && snl->server[i]->next == NULL)
 	{
-	  snl->distinct_cnt += node_cnt;
-	  return node;
+	  return node;		/* exact duplicate (no owner qualifier on either side) */
 	}
 
-      if (owner_ptr && snl->server[i]->next)
+      if (owner_ptr != NULL && snl->server[i]->next != NULL)
 	{
-	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
-	    {
-	      node_cnt++;
-	    }
-	  snl->distinct_cnt += node_cnt;
-	  return node;
+	  return node;		/* same name, both owner-qualified: treat as duplicate */
 	}
+      /* same name, owner-presence differs (one qualified, one not): keep scanning */
     }
 
-  if (name_ptr != NULL)
+  if (name_ptr == NULL)
     {
-      new_name = parser_new_node (parser, PT_NAME);
-      new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
-      if (owner_ptr)
-	{
-	  new_owner = parser_new_node (parser, PT_NAME);
-	  new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
-	  new_name->next = new_owner;
-
-	  vq = pt_append_nulstring (parser, vq, owner_ptr);
-	  vq = pt_append_bytes (parser, vq, ".", 1);
-	}
-      vq = pt_append_nulstring (parser, vq, name_ptr);
-
-      snl->len[snl->stored_cnt] = (int) strlen ((char *) vq->bytes);
-      snl->server_full_name[snl->stored_cnt] = (char *) vq->bytes;
-      snl->server[snl->stored_cnt] = new_name;
-      snl->stored_cnt++;
-      snl->distinct_cnt++;
+      return node;
     }
+
+  if (snl->stored_cnt >= (int) (sizeof (snl->server) / sizeof (snl->server[0])))
+    {
+      /* slots full (3rd+ distinct remote): count only, no out-of-bounds store. The multi-remote
+       * guard in pt_convert_dblink_dml_query (distinct_cnt >= 2) rejects the statement regardless. */
+      snl->distinct_cnt++;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  new_name = parser_new_node (parser, PT_NAME);
+  new_name->info.name.original = pt_append_string (parser, NULL, name_ptr);
+  if (owner_ptr)
+    {
+      new_owner = parser_new_node (parser, PT_NAME);
+      new_owner->info.name.original = pt_append_string (parser, NULL, owner_ptr);
+      new_name->next = new_owner;
+
+      vq = pt_append_nulstring (parser, vq, owner_ptr);
+      vq = pt_append_bytes (parser, vq, ".", 1);
+    }
+  vq = pt_append_nulstring (parser, vq, name_ptr);
+
+  snl->len[snl->stored_cnt] = (int) strlen ((char *) vq->bytes);
+  snl->server_full_name[snl->stored_cnt] = (char *) vq->bytes;
+  snl->server[snl->stored_cnt] = new_name;
+  snl->stored_cnt++;
+  snl->distinct_cnt++;		/* a store always means exactly one new distinct server (lockstep) */
 
   return node;
 }
