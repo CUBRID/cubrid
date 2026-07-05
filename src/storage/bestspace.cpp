@@ -253,7 +253,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT])
+  bestspace::shard::initialize_by_entries (const bestspace_entry entries[ENTRIES_PER_SHARD])
   {
     std::array<tier, BITS_PER_BYTE> tiers;
     std::size_t length;
@@ -264,7 +264,7 @@ namespace cubstorage
     L1 l1;
 
     // L1
-    for (i = 0; i < L3_FANOUT * L2_FANOUT; i++)
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
       {
 	l1.set_vpid ({ entries[i].pageid, entries[i].volid });
 	l1.set_freespace (entries[i].freespace);
@@ -828,20 +828,41 @@ namespace cubstorage
     return status::FOUND;
   }
 
-  bestspace::bestspace (std::uint16_t unfill_space) noexcept
-    : m_shard ()
+  bestspace::bestspace (std::uint16_t unfill_space, std::size_t shard_count)
+    : m_shards (shard_count)
     , m_unfill_space (unfill_space)
   {
+    assert (shard_count > 0);
   }
 
   void
-  bestspace::initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT])
+  bestspace::initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries)
   {
-    std::size_t i;
+    std::array<bestspace_entry, ENTRIES_PER_SHARD> shard_entries;
+    std::size_t entries_to_copy;
+    std::size_t entry_index = 0;
+    std::size_t i, j;
 
-    for (i = 0; i < SHARD_COUNT; i++)
+    assert (num_entries <= m_shards.size () * ENTRIES_PER_SHARD);
+
+    entry_index = 0;
+    for (i = 0; i < m_shards.size (); i++)
       {
-	m_shard[i].initialize_by_entries (entries[i]);
+	entries_to_copy = entry_index < num_entries ? num_entries - entry_index : 0;
+	entries_to_copy = MIN (entries_to_copy, ENTRIES_PER_SHARD);
+	if (entries_to_copy > 0)
+	  {
+	    std::memcpy (shard_entries.data (), entries + entry_index, entries_to_copy * sizeof (bestspace_entry));
+	  }
+	for (j = entries_to_copy; j < ENTRIES_PER_SHARD; j++)
+	  {
+	    shard_entries[j].freespace = 0;
+	    shard_entries[j].volid = NULL_VOLID;
+	    shard_entries[j].pageid = NULL_PAGEID;
+	  }
+
+	m_shards[i].initialize_by_entries (shard_entries.data ());
+	entry_index += entries_to_copy;
       }
   }
 
@@ -889,12 +910,15 @@ namespace cubstorage
     bias = 0;
     while (true)
       {
-	for (i = 0; i < SHARD_COUNT; i++)
+	for (i = 0; i < m_shards.size (); i++)
 	  {
-	    error = m_shard[ (shard + i) % SHARD_COUNT].find (class_oid, hfid,
-		    static_cast<std::uint16_t> (needed_space),
-		    static_cast<std::uint16_t> (consume_space), bias,
-		    page_watcher);
+	    error = m_shards[ (shard + i) % m_shards.size ()].find (
+			    class_oid,
+			    hfid,
+			    static_cast<std::uint16_t> (needed_space),
+			    static_cast<std::uint16_t> (consume_space),
+			    bias,
+			    page_watcher);
 	    assert (error == status::FOUND ||
 		    error == status::ALLOCATING ||
 		    error == status::FAILURE);
@@ -976,9 +1000,9 @@ namespace cubstorage
     std::uint32_t fetch_L1 = 0;
     std::uint32_t found = 0;
     std::uint32_t allocated = 0;
-    for (i = 0; i < SHARD_COUNT; i++)
+    for (i = 0; i < m_shards.size (); i++)
       {
-	m_shard[i].get_stats (request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
+	m_shards[i].get_stats (request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
       }
 
     printf ("  request: %d, advanced_shard: %d, fetch_L3: %d, fetch_L2: %d, fetch_L1: %d, found: %d, allocated page: %d\n",
@@ -1035,14 +1059,14 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::create (OID *class_oid, HFID *hfid)
+  bestspace_registry::create (OID *class_oid, HFID *hfid, std::size_t shard_count, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->class_oid = *class_oid;
     node->hfid = *hfid;
-    node->entry = new bestspace;
+    node->entry = new bestspace (unfill_space, shard_count);
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
@@ -1051,17 +1075,16 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::create (OID *class_oid, HFID *hfid,
-			      bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT],
-			      std::uint16_t unfill_space)
+  bestspace_registry::create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
+			      std::size_t shard_count, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->class_oid = *class_oid;
     node->hfid = *hfid;
-    node->entry = new bestspace (unfill_space);
-    node->entry->initialize_by_entries (entries);
+    node->entry = new bestspace (unfill_space, shard_count);
+    node->entry->initialize_by_entries (entries, num_entries);
 
     std::lock_guard<std::mutex> lock (m_mutex);
 

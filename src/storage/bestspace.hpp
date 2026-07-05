@@ -37,6 +37,7 @@
 #include <cstdint>
 #include <mutex>
 #include <type_traits>
+#include <vector>
 
 namespace cubstorage
 {
@@ -76,7 +77,8 @@ namespace cubstorage
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
-      static constexpr std::size_t SHARD_COUNT = 8;
+      static constexpr std::size_t ENTRIES_PER_SHARD = L3_FANOUT * L2_FANOUT;
+      static constexpr std::size_t DEFAULT_SHARD_COUNT = 8;
 
       enum class tier : std::int8_t
       {
@@ -242,7 +244,7 @@ namespace cubstorage
 	  shard () noexcept;
 	  ~shard () = default;
 
-	  void initialize_by_entries (bestspace_entry entries[L3_FANOUT * L2_FANOUT]);
+	  void initialize_by_entries (const bestspace_entry entries[ENTRIES_PER_SHARD]);
 
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
@@ -308,10 +310,10 @@ namespace cubstorage
       };
 
     public:
-      explicit bestspace (std::uint16_t unfill_space = 0) noexcept;
+      explicit bestspace (std::uint16_t unfill_space = 0, std::size_t shard_count = DEFAULT_SHARD_COUNT);
       ~bestspace () = default;
 
-      void initialize_by_entries (bestspace_entry entries[SHARD_COUNT][L3_FANOUT * L2_FANOUT]);
+      void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
 
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
@@ -320,7 +322,7 @@ namespace cubstorage
       void show_stats ();
 
     private:
-      std::array<shard, SHARD_COUNT> m_shard;
+      std::vector<shard> m_shards;
       std::uint16_t m_unfill_space;
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
@@ -373,10 +375,10 @@ namespace cubstorage
       bestspace_registry ();
       ~bestspace_registry ();
 
-      void create (OID *class_oid, HFID *hfid);
-      void create (OID *class_oid, HFID *hfid,
-		   bestspace_entry entries[bestspace::SHARD_COUNT][bestspace::L3_FANOUT * bestspace::L2_FANOUT],
+      void create (OID *class_oid, HFID *hfid, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
 		   std::uint16_t unfill_space = 0);
+      void create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
+		   std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT, std::uint16_t unfill_space = 0);
 
       void destroy (const OID *class_oid, const VFID *vfid);
       void destroy (const OID *class_oid, const HFID *hfid);
