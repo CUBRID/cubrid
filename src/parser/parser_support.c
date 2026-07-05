@@ -12083,7 +12083,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->server_node_cnt >= 2 && remote_upd > 0)
+  if (snl->distinct_cnt >= 2)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
       return;
