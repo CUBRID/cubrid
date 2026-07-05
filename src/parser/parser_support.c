@@ -11348,7 +11348,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  for (int i = 0; i < snl->server_node_cnt; i++)
+  for (int i = 0; i < snl->stored_cnt; i++)
     {
       int node_cnt = 0;
 
@@ -11359,7 +11359,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       if (owner_ptr == NULL && snl->server[i]->next == NULL)
 	{
-	  snl->server_node_cnt += node_cnt;
+	  snl->distinct_cnt += node_cnt;
 	  return node;
 	}
 
@@ -11369,7 +11369,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	    {
 	      node_cnt++;
 	    }
-	  snl->server_node_cnt += node_cnt;
+	  snl->distinct_cnt += node_cnt;
 	  return node;
 	}
     }
@@ -11389,10 +11389,11 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
       vq = pt_append_nulstring (parser, vq, name_ptr);
 
-      snl->len[snl->server_node_cnt] = (int) strlen ((char *) vq->bytes);
-      snl->server_full_name[snl->server_node_cnt] = (char *) vq->bytes;
-      snl->server[snl->server_node_cnt] = new_name;
-      snl->server_node_cnt++;
+      snl->len[snl->stored_cnt] = (int) strlen ((char *) vq->bytes);
+      snl->server_full_name[snl->stored_cnt] = (char *) vq->bytes;
+      snl->server[snl->stored_cnt] = new_name;
+      snl->stored_cnt++;
+      snl->distinct_cnt++;
     }
 
   return node;
@@ -11549,6 +11550,8 @@ find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 #endif
 
 #if defined (ENABLE_UNUSED_FUNCTION)
+/* not migrated to stored_cnt/distinct_cnt (CBRD-26966): dead code, excluded from the build.
+ * if ever revived, its server_node_cnt uses below must become stored_cnt (array bound). */
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
@@ -12226,9 +12229,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   ct->info.dblink_table.qstr = val;
 
-  for (i = 0; i < snl->server_node_cnt; i++)
+  for (i = 0; i < snl->stored_cnt; i++)
     {
-      if (snl->server_node_cnt != 1)
+      if (snl->stored_cnt != 1)
 	{
 	  if (ct->info.dblink_table.owner_list == NULL && snl->server[i]->next)
 	    {
@@ -12397,7 +12400,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       // Note that this is not the case for Static SQL SELECT statements.
       if (parser->flag.is_parsing_static_sql)
 	{
-	  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+	  if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	    {
 	      PT_ERROR (parser, stmt, "DBLink DML is not yet supported for PL/CSQL Static SQL.");
 	      return;
@@ -12427,7 +12430,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
     case PT_CREATE_ENTITY:
     case PT_ALTER:
       parser_walk_tree (parser, stmt, NULL, NULL, pt_convert_select, &snl);
-      if (snl.has_dblink_query || snl.server_node_cnt > 0)
+      if (snl.has_dblink_query || snl.distinct_cnt > 0)
 	{
 	  parser->flag.dblink_skip_implicit_serial_qualifier = 1;
 	}
@@ -12438,7 +12441,7 @@ pt_rewrite_for_dblink (PARSER_CONTEXT * parser, PT_NODE * stmt)
       return;
     }
 
-  if (snl.has_dblink_query || snl.server_node_cnt > 0)
+  if (snl.has_dblink_query || snl.distinct_cnt > 0)
     {
       parser->flag.dblink_skip_implicit_serial_qualifier = 1;
     }
