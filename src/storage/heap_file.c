@@ -595,13 +595,14 @@ static int heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR
 			    HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * new_pg_watcher);
 static VPID *heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr, VPID * rm_vpid);
 
+static void heap_bestspace_clear_candidates (HEAP_HDR_STATS * heap_hdr);
+static void heap_bestspace_add_candidate (HEAP_HDR_STATS * heap_hdr, const cubstorage::bestspace_entry * candidate);
+
 static int heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				  cubstorage::bestspace_entry * first_entry);
 static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr);
 static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				  cubstorage::bestspace_entry * entries, int num_entries);
-static void heap_bestspace_clear_candidates (HEAP_HDR_STATS * heap_hdr);
-static void heap_bestspace_add_candidate (HEAP_HDR_STATS * heap_hdr, const cubstorage::bestspace_entry * candidate);
 STATIC_INLINE int heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 				       PGBUF_WATCHER * page_watcher);
 
@@ -5045,10 +5046,13 @@ heap_bestspace_add_candidate (HEAP_HDR_STATS * heap_hdr, const cubstorage::bests
   assert (heap_hdr != NULL);
   assert (candidate != NULL);
 
-  if (cubstorage::bestspace::size_to_tier (candidate->freespace) < cubstorage::bestspace::tier::FS3)
-    {
-      return;
-    }
+  /*
+   * is this really necessary ?
+   if (cubstorage::bestspace::size_to_tier (candidate->freespace) < cubstorage::bestspace::tier::FS3)
+   {
+   return;
+   }
+   */
 
   max_candidates = sizeof (heap_hdr->bestspace.candidates) / sizeof (heap_hdr->bestspace.candidates[0]);
 
