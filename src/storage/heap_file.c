@@ -5162,15 +5162,25 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
 
       /* insert into slotted page */
       sp_success = spage_insert (thread_p, page_ptr, &recdes, &slotid);
-      if (sp_success != SP_SUCCESS)
+      if (sp_success != SP_SUCCESS || slotid != HEAP_BESTSPACE_ENTRIES_SLOTID)
 	{
-	  if (sp_success != SP_ERROR)
+	  if (sp_success == SP_SUCCESS)
+	    {
+	      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error = ER_GENERIC_ERROR;
+	    }
+	  else if (sp_success != SP_ERROR)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNABLE_TO_CREATE_HEAP, 1,
 		      fileio_get_volume_label (hfid->vfid.volid, PEEK));
+	      error = ER_HEAP_UNABLE_TO_CREATE_HEAP;
+	    }
+	  else
+	    {
+	      ASSERT_ERROR_AND_SET (error);
 	    }
 	  pgbuf_unfix_and_init (thread_p, page_ptr);
-	  return ER_HEAP_UNABLE_TO_CREATE_HEAP;
+	  return error;
 	}
 
       /* undo deallocates newly created bestspace pages with the heap file. */
@@ -5225,7 +5235,12 @@ heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HD
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error_exit;
 	}
-      assert (heap_page_is_bestspace (thread_p, page_ptr));
+      if (!heap_page_is_bestspace (thread_p, page_ptr))
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	  goto error_exit;
+	}
 
       if (heap_copy_chain (thread_p, page_ptr, &chain) != NO_ERROR)
 	{
@@ -5308,7 +5323,12 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STAT
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto error_exit;
 	}
-      assert (heap_page_is_bestspace (thread_p, page_ptr));
+      if (!heap_page_is_bestspace (thread_p, page_ptr))
+	{
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  error_code = ER_GENERIC_ERROR;
+	  goto error_exit;
+	}
 
       if (spage_get_record (thread_p, page_ptr, HEAP_BESTSPACE_ENTRIES_SLOTID, &recdes, PEEK) != S_SUCCESS)
 	{
@@ -5319,7 +5339,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STAT
 
       if (recdes.length <= 0 || recdes.length % sizeof (cubstorage::bestspace_entry) != 0)
 	{
-	  // something was wrong
+	  /* Something was wrong. */
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
 	  goto error_exit;
@@ -5819,9 +5839,9 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   assert (!OID_ISNULL (class_oid));
 
   VPID_SET_NULL (&last_vpid);
-  header_bestspace_entry.freespace = 0;
-  header_bestspace_entry.volid = NULL_VOLID;
-  header_bestspace_entry.pageid = NULL_PAGEID;
+  first_entry.freespace = 0;
+  first_entry.volid = NULL_VOLID;
+  first_entry.pageid = NULL_PAGEID;
   addr.vfid = &hfid->vfid;
 
   /*
