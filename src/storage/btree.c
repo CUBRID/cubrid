@@ -35257,6 +35257,28 @@ btree_key_online_index_tran_delete (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 	  goto end;
 	}
 
+      /* We cannot insert a new key longer than this node's max_key_len in place. It would break the invariant that
+       * a parent's max_key_len is always greater than or equal to its child's: the delete traversal that brought us
+       * here, unlike the insert traversal, does not update max_key_len on the nodes in the path from root. Restart
+       * and insert the key with DELETE_FLAG through the normal insert traversal instead. */
+      if (search_key->result != BTREE_KEY_FOUND)
+	{
+	  BTREE_NODE_HEADER *node_header = btree_get_node_header (thread_p, *leaf_page);
+
+	  if (node_header == NULL)
+	    {
+	      assert_release (false);
+	      error_code = ER_FAILED;
+	      goto end;
+	    }
+
+	  if (node_header->max_key_len < helper->insert_helper.key_len_in_page)
+	    {
+	      search_key->result = BTREE_KEY_NOTFOUND;
+	      goto end;
+	    }
+	}
+
       /* Set DELETE_FLAG in the helper structure. */
       helper->insert_helper.obj_info.mvcc_info.flags |= BTREE_OID_HAS_MVCC_INSID;
       btree_online_index_set_delete_flag_state (helper->insert_helper.obj_info.mvcc_info.insert_mvccid);

@@ -863,6 +863,7 @@ IDL       [a-zA-Z0-9_]
 [sS][yY][sS][tT][iI][mM][eE][sS][tT][aA][mM][pP]			{ return SYS_TIMESTAMP; }
 [sS][yY][sS]_[dD][aA][tT][eE][tT][iI][mM][eE] 				{ return SYS_DATETIME; }
 [sS][yY][sS][dD][aA][tT][eE][tT][iI][mM][eE] 				{ return SYS_DATETIME; }
+[sS][yY][sS][_][rR][eE][fF][cC][uU][rR][sS][oO][rR]			{ return SYS_REFCURSOR; }
 [sS][yY][sS][tT][eE][mM]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return SYSTEM; }
 [sS][yY][sS][tT][eE][mM]_[uU][sS][eE][rR]				{ return SYSTEM_USER; }
@@ -960,7 +961,6 @@ IDL       [a-zA-Z0-9_]
 [yY][eE][aA][rR]							{ return YEAR_; }
 [yY][eE][aA][rR]_[mM][oO][nN][tT][hH]      				{ return YEAR_MONTH; }
 [zZ][oO][nN][eE]							{ return ZONE; }
-
 
 \\N									{ return Null; }
 

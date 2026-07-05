@@ -59,15 +59,8 @@ static int qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thr
     std::vector<DB_VALUE> &db_values);
 static int qdata_process_distinct_or_sort (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QUERY_ID query_id);
-static int qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p,
-    cubxasl::aggregate_list_node *agg_p,
-    VAL_DESCR *val_desc_p);
-static int qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *val);
 static int qdata_aggregate_interpolation (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     QFILE_LIST_SCAN_ID *scan_id);
-
-static int qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
-static int qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALUE *dbvalue);
 
 //
 // implementation
@@ -233,10 +226,51 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
       error = qdata_aggregate_value_to_accumulator (thread_p, acc, acc_dom, func_type, func_domain, new_acc->value, true);
       break;
 
-    // for these two situations we just need to merge
+    // JSON_ARRAYAGG: append the partial arrays by preserving every element.
     case PT_JSON_ARRAYAGG:
+      if (!DB_IS_NULL (new_acc->value))
+	{
+	  if (DB_IS_NULL (acc->value))
+	    {
+	      error = pr_clone_value (new_acc->value, acc->value);
+	    }
+	  else
+	    {
+	      DB_VALUE merge_result;
+	      db_make_null (&merge_result);
+	      DB_VALUE *merge_args[2] = { acc->value, new_acc->value };
+	      error = db_evaluate_json_merge_preserve (&merge_result, (DB_VALUE * const *) merge_args, 2);
+	      if (error == NO_ERROR)
+		{
+		  pr_clear_value (acc->value);
+		  *acc->value = merge_result;
+		}
+	      else
+		{
+		  pr_clear_value (&merge_result);
+		}
+	    }
+	}
+      break;
+
+    // JSON_OBJECTAGG: merge the partial objects keeping the FIRST value for each duplicate key, to
+    // match the serial result (db_accumulate_json_objectagg ignores ER_JSON_DUPLICATE_KEY, so the
+    // first value wins). JSON_MERGE_PRESERVE must not be used here: it wraps duplicate-key values
+    // into an array, which would diverge from the serial single-value-per-key result.
     case PT_JSON_OBJECTAGG:
-      error = db_evaluate_json_merge_preserve (new_acc->value, &acc->value, 1);
+      if (!DB_IS_NULL (new_acc->value))
+	{
+	  if (DB_IS_NULL (acc->value))
+	    {
+	      error = pr_clone_value (new_acc->value, acc->value);
+	    }
+	  else
+	    {
+	      JSON_DOC *acc_doc = db_get_json_document (acc->value);
+	      const JSON_DOC *new_doc = db_get_json_document (new_acc->value);
+	      error = db_json_object_merge_ignore_duplicates_func (new_doc, acc_doc);
+	    }
+	}
       break;
 
     case PT_STDDEV:
@@ -1794,7 +1828,7 @@ exit:
  *   val_desc_p(in):
  *
  */
-static int
+int
 qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
     VAL_DESCR *val_desc_p)
 {
@@ -2774,7 +2808,7 @@ qdata_save_agg_htable_to_list (cubthread::entry *thread_p, mht_table *hash_table
  *   val(in):
  *
  */
-static int
+int
 qdata_update_agg_interpolation_func_value_and_domain (cubxasl::aggregate_list_node *agg_p, DB_VALUE *dbval)
 {
   int error = NO_ERROR;
@@ -2859,7 +2893,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, D
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned (a copy in serial, a peeked value in parallel); the caller clears it. */
       return error_code;
     }
 
@@ -2887,7 +2921,7 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, D
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned; the caller clears it. */
       return error_code;
     }
 
@@ -2963,7 +2997,7 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_p, DB_VALU
   if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
 			       "GROUP_CONCAT()") != NO_ERROR)
     {
-      pr_clear_value (dbvalue);
+      /* dbvalue is caller-owned; the caller clears it. */
       return ER_FAILED;
     }
 
