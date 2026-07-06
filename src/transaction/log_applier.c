@@ -1436,6 +1436,245 @@ la_dispatch_order_pop (void)
   la_Dispatch_order.count--;
 }
 
+/*
+ * writeset PoC [stage S2]: 리더 측 의존성 게이트.
+ *
+ * 완료집합(la_Gate_completed_slots): 슬레이브에 이미 적용(커밋)된 마스터 commit_seq(=commit_lsa)
+ *   오픈 어드레싱 해시. 빈 슬롯 표식은 NULL LSA (실제 commit_lsa 는 pageid>=0 이므로 안전).
+ * pending 큐(la_Gate_pending_*): 의존 미충족으로 아직 워커에 못 보낸 태스크. reader 는 막히지 않고
+ *   다음 레코드를 계속 읽으며, 선행 트랜잭션 완료 시 drain 에서 디스패치한다.
+ * 모두 리더 스레드 단독 접근이라 잠금이 없다.
+ * prune 미적용 — 완료집합 축소는 S3 에서 retire 의 gap-free floor 로 처리한다.
+ *
+ * [설계 결정] 판정은 "의존 대상이 완료집합에 있나"(la_gate_set_contains) 로 직접 한다.
+ * MySQL 은 dense 한 sequence_number 를 전제로 gap-free LWM 을 두고 "last_committed <= LWM"
+ * 한 번의 비교로 판정하지만, 그 gap-free LWM 은 본질(의존 완료 확인)의 최적화일 뿐 필수가 아니다.
+ * CUBRID 의 의존 라벨은 성긴(sparse) commit_lsa 라 집합 멤버십이 자연스럽고 최소이며, 멤버십만으로
+ * "선행 P 미적용 시 P 를 기다리고 독립 트랜잭션은 병렬" 이 정확히 성립한다(구멍 문제 없음).
+ * => 이 PoC 는 gap-free LWM 을 두지 않는다(off 가정). 필요해지면 dense commit-seq 도입 후 후속 개선.
+ */
+/* PoC: 완료집합 고정 용량(2^18). 부팅 시 1회 할당하고 grow/rehash 하지 않는다.
+ * prune 미적용이라 load 0.5 기준 약 13만 커밋을 넘으면 mark_completed 가 실패한다.
+ * 다음번 고려: S3 의 gap-free retire floor 로 prune, 또는 동적 확장 재도입. */
+#define LA_GATE_SET_CAPACITY (1 << 18)
+
+typedef struct la_gate_pending LA_GATE_PENDING;
+struct la_gate_pending
+{
+  LA_APPLY_TASK task;
+  LA_GATE_PENDING *next;
+};
+
+static LOG_LSA *la_Gate_completed_slots = NULL;
+static int la_Gate_completed_capacity = 0;
+static int la_Gate_completed_count = 0;
+static LA_GATE_PENDING *la_Gate_pending_head = NULL;
+static LA_GATE_PENDING *la_Gate_pending_tail = NULL;
+
+static int la_gate_dispatch_now (const LA_APPLY_TASK * task_in);
+
+static UINT64
+la_gate_hash_lsa (const LOG_LSA * lsa)
+{
+  return (UINT64) lsa->pageid * 2654435761ULL + (UINT64) (unsigned short) lsa->offset;
+}
+
+static bool
+la_gate_set_contains (const LOG_LSA * lsa)
+{
+  int mask, idx;
+
+  if (la_Gate_completed_slots == NULL || la_Gate_completed_capacity == 0)
+    {
+      return false;
+    }
+
+  mask = la_Gate_completed_capacity - 1;
+  idx = (int) (la_gate_hash_lsa (lsa) & (UINT64) mask);
+  while (!LSA_ISNULL (&la_Gate_completed_slots[idx]))
+    {
+      if (LSA_EQ (&la_Gate_completed_slots[idx], lsa))
+	{
+	  return true;
+	}
+      idx = (idx + 1) & mask;
+    }
+  return false;
+}
+
+static int
+la_gate_mark_completed (const LOG_LSA * commit_seq)
+{
+  int mask, idx;
+
+  if (LSA_ISNULL (commit_seq) || la_Gate_completed_slots == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  /* PoC: 고정 크기 완료집합. prune 이 없어 load 0.5 를 넘으면 더 담을 수 없다(워크로드가 상정
+   * 범위 초과). 조용히 오동작(무한 탐색)하지 않도록 명시적으로 실패시킨다. 다음번: S3 prune 도입. */
+  if ((la_Gate_completed_count + 1) * 2 > la_Gate_completed_capacity)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "writeset apply gate: completed-set full (raise LA_GATE_SET_CAPACITY or add prune)");
+      return ER_FAILED;
+    }
+
+  mask = la_Gate_completed_capacity - 1;
+  idx = (int) (la_gate_hash_lsa (commit_seq) & (UINT64) mask);
+  while (!LSA_ISNULL (&la_Gate_completed_slots[idx]))
+    {
+      if (LSA_EQ (&la_Gate_completed_slots[idx], commit_seq))
+	{
+	  return NO_ERROR;	/* 이미 있음 */
+	}
+      idx = (idx + 1) & mask;
+    }
+  LSA_COPY (&la_Gate_completed_slots[idx], commit_seq);
+  la_Gate_completed_count++;
+  return NO_ERROR;
+}
+
+static bool
+la_gate_is_satisfied (const LOG_LSA * dep)
+{
+  /* 의존 없음(NULL) 이면 즉시 ready. 아니면 선행 트랜잭션이 완료집합에 있어야 한다. */
+  if (LSA_ISNULL (dep))
+    {
+      return true;
+    }
+  return la_gate_set_contains (dep);
+}
+
+static int
+la_gate_enqueue_pending (const LA_APPLY_TASK * task)
+{
+  LA_GATE_PENDING *node = (LA_GATE_PENDING *) malloc (sizeof (LA_GATE_PENDING));
+
+  if (node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_GATE_PENDING));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  node->task = *task;
+  node->next = NULL;
+  if (la_Gate_pending_tail == NULL)
+    {
+      la_Gate_pending_head = node;
+      la_Gate_pending_tail = node;
+    }
+  else
+    {
+      la_Gate_pending_tail->next = node;
+      la_Gate_pending_tail = node;
+    }
+  return NO_ERROR;
+}
+
+static int
+la_gate_drain_ready (void)
+{
+  bool progressed = true;
+  int error = NO_ERROR;
+
+  /* pending 을 반복 스캔한다. 한 태스크의 디스패치가 다른 태스크의 의존을 풀 수 있으므로
+   * 한 패스에서 아무것도 못 내보낼 때까지 돈다. */
+  while (progressed)
+    {
+      LA_GATE_PENDING *prev = NULL;
+      LA_GATE_PENDING *cur = la_Gate_pending_head;
+
+      progressed = false;
+      while (cur != NULL)
+	{
+	  if (la_gate_is_satisfied (&cur->task.dependency_seq))
+	    {
+	      LA_GATE_PENDING *ready = cur;
+
+	      /* pending 에서 분리 */
+	      if (prev == NULL)
+		{
+		  la_Gate_pending_head = cur->next;
+		}
+	      else
+		{
+		  prev->next = cur->next;
+		}
+	      if (cur == la_Gate_pending_tail)
+		{
+		  la_Gate_pending_tail = prev;
+		}
+	      cur = cur->next;
+
+	      error = la_gate_dispatch_now (&ready->task);
+	      free_and_init (ready);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      progressed = true;
+	    }
+	  else
+	    {
+	      prev = cur;
+	      cur = cur->next;
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+static int
+la_gate_dispatch_now (const LA_APPLY_TASK * task_in)
+{
+  LA_APPLY_TASK task = *task_in;
+  UINT64 dispatch_seq = 0;
+  int worker_idx = ((unsigned int) task.tranid) % LA_APPLY_WORKER_COUNT;
+  int error;
+
+  /* 워커 선택은 아직 trid%N (S3 에서 부하기반 la_gate_choose_worker 로 교체). */
+  error = la_dispatch_order_push (worker_idx, task.apply, task.tranid, task.rectype, &dispatch_seq);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  task.seq = dispatch_seq;
+  return la_enqueue_apply_task (&la_apply_Workers[worker_idx], &task);
+}
+
+static void
+la_gate_init (void)
+{
+  la_Gate_pending_head = NULL;
+  la_Gate_pending_tail = NULL;
+  la_Gate_completed_count = 0;
+
+  /* 완료집합은 고정 크기로 부팅 시 1회 할당(재시작 시 재사용). */
+  if (la_Gate_completed_slots == NULL)
+    {
+      la_Gate_completed_slots = (LOG_LSA *) malloc ((size_t) LA_GATE_SET_CAPACITY * sizeof (LOG_LSA));
+      if (la_Gate_completed_slots == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) LA_GATE_SET_CAPACITY * sizeof (LOG_LSA));
+	  la_Gate_completed_capacity = 0;
+	  return;
+	}
+      la_Gate_completed_capacity = LA_GATE_SET_CAPACITY;
+    }
+
+  {
+    int i;
+
+    for (i = 0; i < la_Gate_completed_capacity; i++)
+      {
+	LSA_SET_NULL (&la_Gate_completed_slots[i]);
+      }
+  }
+}
+
 #if !defined (NDEBUG)
 static const char *
 la_debug_worker_stage_string (LA_WORKER_DEBUG_STAGE stage)
@@ -2042,8 +2281,28 @@ la_collect_worker_results (void)
 
 	  entry->result = result;
 	  entry->result_ready = true;
+	  /* writeset PoC: 워커는 결과 enqueue 전에 DB 커밋을 마치므로, 결과 수집 시점엔
+	   * 이 커밋의 변경이 슬레이브에 이미 적용됨이 보장된다 → 완료집합에 등록. */
+	  if (result.rectype == LOG_COMMIT)
+	    {
+	      int gerror = la_gate_mark_completed (&result.commit_lsa);
+	      if (gerror != NO_ERROR)
+		{
+		  return gerror;
+		}
+	    }
 	}
     }
+
+  /* writeset PoC: 완료로 의존이 풀린 pending 태스크들을 디스패치한다. */
+  {
+    int derror = la_gate_drain_ready ();
+
+    if (derror != NO_ERROR)
+      {
+	return derror;
+      }
+  }
 
   return NO_ERROR;
 }
@@ -3016,6 +3275,7 @@ la_start_apply_workers (void)
 
   /* 디스패치 FIFO 를 기동 시 비운다 (리더 전용 구조) */
   la_dispatch_order_init ();
+  la_gate_init ();
 
   for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
     {
@@ -9481,57 +9741,25 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	      LSA_SET_NULL (&task.dependency_seq);
 	    }
 
-		  {
-		    UINT64 dispatch_seq = 0;
-		    int worker_idx = ((unsigned int) lrec->trid) % LA_APPLY_WORKER_COUNT;
-
-#if !defined (NDEBUG)
-		    la_debug_note_commit_seen (lrec->trid, final, worker_idx, la_debug_get_buffered_item_count ());
-#endif /* !NDEBUG */
-		    /* 같은 트랜잭션은 항상 같은 워커로 보낸다 (tranid 기반 해시).
-		     * 각 워커가 자기만의 클라이언트 세션/워크스페이스를 가지므로 트랜잭션 단위로 묶여야 한다. */
-
-		    /* worker 결과를 out-of-order 로 수집하더라도 retire 는 dispatch 순서대로만 하므로,
-		     * 태스크를 큐에 넣기 전에 시퀀스를 부여해 둔다. */
-#if !defined (NDEBUG)
-		    struct timeval _ordpush_begin;
-		    LA_TIME_BEGIN (_ordpush_begin);
-#endif /* !NDEBUG */
-		    error = la_dispatch_order_push (worker_idx, task.apply, lrec->trid, lrec->type, &dispatch_seq);
-#if !defined (NDEBUG)
-		    LA_TIME_ACCUM_USEC (_ordpush_begin, la_Debug_progress.commit_dispatch_order_usec_total);
-#endif /* !NDEBUG */
-		    if (error != NO_ERROR)
-		      {
-			la_applier_need_shutdown = true;
-			return error;
-		      }
-
-		    task.seq = dispatch_seq;
-		    er_log_debug (ARG_FILE_LINE,
-				  "reader dispatch seq=%llu trid=%d rectype=%d commit_lsa=%lld|%d apply=%p apply_head=%p -> worker[%d]\n",
-				  (unsigned long long) task.seq,
-				  lrec->trid, lrec->type, (long long) final->pageid, (int) final->offset,
-				  (void *) task.apply, (task.apply ? (void *) task.apply->head : NULL), worker_idx);
-#if !defined (NDEBUG)
-		    struct timeval _disp_begin;
-		    LA_TIME_BEGIN (_disp_begin);
-#endif /* !NDEBUG */
-		    error = la_enqueue_apply_task (&la_apply_Workers[worker_idx], &task);
-#if !defined (NDEBUG)
-		    LA_TIME_ACCUM_USEC (_disp_begin, la_Debug_progress.reader_dispatch_usec_total);
-#endif /* !NDEBUG */
-		    if (error != NO_ERROR)
-		      {
-		la_applier_need_shutdown = true;
-		return error;
-	      }
-#if !defined (NDEBUG)
-		    la_debug_note_dispatch ();
-#endif /* !NDEBUG */
-
-		  }
-		}
+	  /* writeset PoC: 의존 미충족이면 워커로 안 보내고 리더 pending 큐에 park.
+	   * reader 는 막히지 않고 다음 레코드를 계속 읽는다. 선행 완료 시 collect 후 drain 에서 디스패치. */
+	  if (la_gate_is_satisfied (&task.dependency_seq))
+	    {
+	      error = la_gate_dispatch_now (&task);
+	    }
+	  else
+	    {
+	      error = la_gate_enqueue_pending (&task);
+	      LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_gate park trid=%d commit=%lld|%d dep=%lld|%d\n", lrec->trid,
+			    (long long) final->pageid, (int) final->offset, (long long) task.dependency_seq.pageid,
+			    (int) task.dependency_seq.offset);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      la_applier_need_shutdown = true;
+	      return error;
+	    }
+	}
       else
 	{
 	  la_free_repl_items_by_tranid (lrec->trid);
