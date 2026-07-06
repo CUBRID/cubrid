@@ -32,6 +32,8 @@
 
 #include <pthread.h>
 
+#include <unordered_map>
+
 /* forward declaration of transaction descriptor (defined in log_impl.h) */
 typedef struct log_tdes LOG_TDES;
 
@@ -45,16 +47,15 @@ typedef UINT64 LOG_WRITESET_HASH;
 #define LOG_WRITESET_TX_LIMIT     110000
 #define LOG_WRITESET_HISTORY_CAP  110000
 
-/* global commit history: open-addressed hash of recently committed writeset keys */
+/* global commit history (MySQL rpl_trx_tracking 방식): writeset 키 해시 -> 최신 커밋 LSA 표준
+ * 해시맵. 손수 만든 오픈 어드레싱 대신 std::unordered_map 이 성장/적재율을 알아서 관리하고,
+ * CAP 초과 시 통째로 clear + history_start 상향(= MySQL m_writeset_history.clear()). */
 typedef struct log_writeset_history LOG_WRITESET_HISTORY;
 struct log_writeset_history
 {
-  LOG_WRITESET_HASH *keys;	/* open-addressed key slots, sized capacity */
-  LOG_LSA *lsas;		/* parallel commit LSA slots, sized capacity */
-  int capacity;			/* number of slots (power of two) */
-  int count;			/* number of occupied slots */
-  LOG_LSA history_start;	/* conservative parent LSA for keys evicted by clear */
-  pthread_mutex_t latch;	/* protects the whole structure */
+  std::unordered_map < LOG_WRITESET_HASH, LOG_LSA > map;	/* 키 해시 -> 최신 커밋 LSA */
+  LOG_LSA history_start;	/* clear 로 evict 된 키의 보수적 부모 LSA */
+  pthread_mutex_t latch;	/* 전체 보호 */
 };
 
 extern LOG_WRITESET_HISTORY log_Writeset_history;

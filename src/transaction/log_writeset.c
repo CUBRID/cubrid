@@ -52,23 +52,6 @@ LOG_WRITESET_HISTORY log_Writeset_history;
 static LOG_LSA log_Writeset_prev_commit_lsa;
 
 static UINT64 log_writeset_fnv1a (const OID * class_oid, const char *packed, int len);
-static int log_writeset_next_power_of_two (int n);
-static int log_writeset_history_slot (LOG_WRITESET_HASH hash, bool * found);
-
-/*
- * log_writeset_next_power_of_two - smallest power of two >= n (n assumed > 0)
- */
-static int
-log_writeset_next_power_of_two (int n)
-{
-  int p = 1;
-
-  while (p < n)
-    {
-      p <<= 1;
-    }
-  return p;
-}
 
 /*
  * log_writeset_fnv1a - FNV-1a 64-bit hash over class_oid (8 bytes) + packed key
@@ -97,12 +80,6 @@ log_writeset_fnv1a (const OID * class_oid, const char *packed, int len)
       hash *= LOG_WRITESET_FNV_PRIME;
     }
 
-  /* reserve 0 as the empty-slot marker in the open-addressed global history */
-  if (hash == 0)
-    {
-      hash = 1;
-    }
-
   return hash;
 }
 
@@ -114,33 +91,7 @@ log_writeset_fnv1a (const OID * class_oid, const char *packed, int len)
 int
 log_writeset_history_initialize (void)
 {
-  int capacity;
-  size_t keys_size, lsas_size;
-
-  capacity = log_writeset_next_power_of_two (LOG_WRITESET_HISTORY_CAP * 2);
-
-  keys_size = (size_t) capacity * sizeof (LOG_WRITESET_HASH);
-  lsas_size = (size_t) capacity * sizeof (LOG_LSA);
-
-  log_Writeset_history.keys = (LOG_WRITESET_HASH *) malloc (keys_size);
-  if (log_Writeset_history.keys == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, keys_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  log_Writeset_history.lsas = (LOG_LSA *) malloc (lsas_size);
-  if (log_Writeset_history.lsas == NULL)
-    {
-      free_and_init (log_Writeset_history.keys);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, lsas_size);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  memset (log_Writeset_history.keys, 0, keys_size);
-
-  log_Writeset_history.capacity = capacity;
-  log_Writeset_history.count = 0;
+  log_Writeset_history.map.clear ();
   LSA_SET_NULL (&log_Writeset_history.history_start);
   pthread_mutex_init (&log_Writeset_history.latch, NULL);
 
@@ -155,16 +106,7 @@ log_writeset_history_initialize (void)
 void
 log_writeset_history_finalize (void)
 {
-  if (log_Writeset_history.keys != NULL)
-    {
-      free_and_init (log_Writeset_history.keys);
-    }
-  if (log_Writeset_history.lsas != NULL)
-    {
-      free_and_init (log_Writeset_history.lsas);
-    }
-  log_Writeset_history.capacity = 0;
-  log_Writeset_history.count = 0;
+  log_Writeset_history.map.clear ();
   LSA_SET_NULL (&log_Writeset_history.history_start);
   pthread_mutex_destroy (&log_Writeset_history.latch);
 
@@ -302,37 +244,6 @@ log_writeset_add_dbvalue (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * 
 }
 
 /*
- * log_writeset_history_slot - locate the open-addressed slot for a key hash
- *
- *   hash(in): non-zero writeset key hash to look up
- *   found(out): true if the key is present, false if the returned slot is empty
- *
- * return: slot index (occupied slot when *found, otherwise the empty insertion slot)
- *
- * Note: caller must hold log_Writeset_history.latch. Load factor is kept below
- *       0.5 by the capacity clear in commit_flush, so an empty slot always exists.
- */
-static int
-log_writeset_history_slot (LOG_WRITESET_HASH hash, bool * found)
-{
-  int mask = log_Writeset_history.capacity - 1;
-  int idx = (int) (hash & (UINT64) mask);
-
-  while (log_Writeset_history.keys[idx] != 0)
-    {
-      if (log_Writeset_history.keys[idx] == hash)
-	{
-	  *found = true;
-	  return idx;
-	}
-      idx = (idx + 1) & mask;
-    }
-
-  *found = false;
-  return idx;
-}
-
-/*
  * log_writeset_commit_probe - compute this transaction's dependency label
  *
  *   ws_parent_out(out): dependency_seq = min (prev_commit_lsa, writeset parent)
@@ -367,12 +278,11 @@ log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * w
     {
       for (i = 0; i < tdes->ws_hash_count; i++)
 	{
-	  bool found = false;
-	  int idx = log_writeset_history_slot (tdes->ws_hashes[i], &found);
+	  auto it = log_Writeset_history.map.find (tdes->ws_hashes[i]);
 
-	  if (found && LSA_GT (&log_Writeset_history.lsas[idx], &ws_parent))
+	  if (it != log_Writeset_history.map.end () && LSA_GT (&it->second, &ws_parent))
 	    {
-	      LSA_COPY (&ws_parent, &log_Writeset_history.lsas[idx]);
+	      LSA_COPY (&ws_parent, &it->second);
 	    }
 	}
     }
@@ -421,26 +331,18 @@ log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_L
 
   if (!tdes->ws_overflow && tdes->ws_hash_count > 0)
     {
-      /* if adding this transaction's keys could exceed capacity, drop the history
-       * and raise the conservative floor to this commit LSA */
-      if (log_Writeset_history.count + tdes->ws_hash_count > LOG_WRITESET_HISTORY_CAP)
+      /* CAP 초과하면 히스토리를 통째로 비우고 보수적 floor 를 이 commit LSA 로 올린다
+       * (= MySQL m_writeset_history.clear() + m_writeset_history_start = seq). */
+      if (log_Writeset_history.map.size () + (size_t) tdes->ws_hash_count > (size_t) LOG_WRITESET_HISTORY_CAP)
 	{
-	  memset (log_Writeset_history.keys, 0, (size_t) log_Writeset_history.capacity * sizeof (LOG_WRITESET_HASH));
-	  log_Writeset_history.count = 0;
+	  log_Writeset_history.map.clear ();
 	  LSA_COPY (&log_Writeset_history.history_start, commit_lsa);
 	}
 
+      /* 이 트랜잭션의 키들에 현재 commit LSA 를 기록(신규 삽입 또는 갱신). */
       for (i = 0; i < tdes->ws_hash_count; i++)
 	{
-	  bool found = false;
-	  int idx = log_writeset_history_slot (tdes->ws_hashes[i], &found);
-
-	  if (!found)
-	    {
-	      log_Writeset_history.keys[idx] = tdes->ws_hashes[i];
-	      log_Writeset_history.count++;
-	    }
-	  LSA_COPY (&log_Writeset_history.lsas[idx], commit_lsa);
+	  log_Writeset_history.map[tdes->ws_hashes[i]] = *commit_lsa;
 	}
     }
 
