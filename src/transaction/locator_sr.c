@@ -48,6 +48,7 @@
 #include "heap_file.h"
 #include "list_file.h"
 #include "log_lsa.hpp"
+#include "log_writeset.h"
 #include "lock_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -8086,6 +8087,13 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
 			     REPL_INFO_TYPE_RBR_NORMAL);
+	  /* writeset PoC: collect this row's PK hash for row-identity conflict tracking (RBR only) */
+	  if (error_code == NO_ERROR && datayn)
+	    {
+	      LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	      (void) log_writeset_add_dbvalue (thread_p, tdes, class_oid, key_dbvalue);
+	    }
 	}
       if (error_code != NO_ERROR)
 	{
@@ -8797,6 +8805,14 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  repl_old_key = pr_make_ext_value ();
 	  pr_clone_value (old_key, repl_old_key);
+	  /* writeset PoC: collect both OLD and NEW PK hashes here, where new_key is
+	   * still alive (it is discarded at the end of this loop iteration) */
+	  {
+	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	    (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, old_key);
+	    (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, new_key);
+	  }
 	}
 
       if (new_key == &new_dbvalue)
@@ -8848,6 +8864,13 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  /* writeset PoC: collect OLD PK for the edge path where the in-loop clone
+	   * block did not run (repl_old_key fetched fresh here) */
+	  {
+	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	    (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, repl_old_key);
+	  }
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
