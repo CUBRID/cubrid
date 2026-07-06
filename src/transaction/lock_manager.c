@@ -8980,7 +8980,7 @@ lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation)
       return false;
     }
 
-  if (class_lock == IX_LOCK && lock_escalation == S_LOCK)
+  if (class_lock == IX_LOCK && (lock_escalation == S_LOCK || lock_escalation == WS_LOCK))
     {
       return false;
     }
