@@ -30,8 +30,28 @@
 
 #include <algorithm>
 #include <cassert>
+#include <ctime>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+namespace
+{
+  // ---- CBRD-26971: amortize the per-commit oldest-active slot scan to ~ms cadence ----
+  // The scan's only consumer chain (snapshot xmin quick-filter, vacuum threshold) tolerates a
+  // bounded lag (always a valid, monotonically-advanced lower bound). Gate: the first committer
+  // that lands in a new CLOCK_MONOTONIC_COARSE millisecond tick claims the scan via CAS; all
+  // other commits skip it. The idle-tail hole (commits stop right after a skipped scan) is closed
+  // by update_global_oldest_visible() doing an authoritative advance at the consumer's cadence.
+  std::atomic<unsigned long long> g_last_oldest_scan_tick { 0 };
+
+  inline unsigned long long
+  coarse_now_ms ()
+  {
+    struct timespec ts;
+    clock_gettime (CLOCK_MONOTONIC_COARSE, &ts);   // vDSO; ~jiffy(1-4ms) resolution
+    return (unsigned long long) ts.tv_sec * 1000ULL + (unsigned long long) ts.tv_nsec / 1000000ULL;
+  }
+}
 
 // help debugging oldest active by following all changes
 struct oldest_active_event
@@ -512,10 +532,17 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
   // slot clear + last_completed advance before the m_completion_count bump (seqlock version).
   apply_clear (tran_index, mvccid);
 
-  // Advance the global oldest-active (indicative for vacuum) from a lock-free slot scan. The scanned
-  // minimum is a valid lower bound (newer transactions get higher MVCCIDs), and advance_oldest_active
-  // is a monotonic CAS, so this is safe under concurrency without any serialization.
-  advance_oldest_active (compute_lowest_active_from_slots ());
+  // CBRD-26971: oldest-active advance amortized to ~ms cadence. Only the first committer landing in a
+  // new coarse-ms tick pays the O(#slots) scan; everyone else skips (bounded lag is safe: the
+  // value stays a valid monotone lower bound, and vacuum refreshes it at its own cadence too).
+  {
+    unsigned long long now = coarse_now_ms ();
+    unsigned long long last = g_last_oldest_scan_tick.load (std::memory_order_relaxed);
+    if (last != now && g_last_oldest_scan_tick.compare_exchange_strong (last, now, std::memory_order_relaxed))
+      {
+	advance_oldest_active (compute_lowest_active_from_slots ());
+      }
+  }
 }
 
 void
@@ -748,6 +775,10 @@ mvcctable::get_global_oldest_visible () const
 MVCCID
 mvcctable::update_global_oldest_visible ()
 {
+  // CBRD-26971: authoritative oldest-active refresh at the consumer's (vacuum's) cadence, so a commit
+  // burst whose last completion skipped the ms-gated scan cannot leave the bound stale forever.
+  advance_oldest_active (compute_lowest_active_from_slots ());
+
   if (m_ov_lock_count == 0)
     {
       MVCCID oldest_visible = compute_oldest_visible_mvccid ();
