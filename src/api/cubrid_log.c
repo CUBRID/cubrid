@@ -1770,7 +1770,7 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
       CUBRID_LOG_WRITE_TRACELOG ("[OUTPUT] lsa (%lld), list_size (%d)\n", *lsa, *list_size);
     }
 
-  return rc;
+  return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
 
