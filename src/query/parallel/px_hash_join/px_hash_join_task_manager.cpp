@@ -1018,6 +1018,7 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
+      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
       int tuple_cnt, tuple_index, tuple_length;
 
@@ -1111,7 +1112,8 @@ cleanup:
 	    {
 	      assert (tuple_cnt == 1);
 
-	      error = qfile_assemble_overflow_tuple (&thread_ref, page, &overflow_record, m_page_iter.get_current_tfile ());
+	      error =
+		      qfile_assemble_overflow_tuple (&thread_ref, page, &probe_overflow_record, m_page_iter.get_current_tfile ());
 	      if (error != NO_ERROR)
 		{
 		  m_task_manager.handle_error (thread_ref);
@@ -1119,7 +1121,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = overflow_record.tpl;
+	      probe->tuple_record.tpl = probe_overflow_record.tpl;
 	    }
 
 	  assert (has_error == false);
@@ -1294,6 +1296,11 @@ cleanup:
 
       /* qfile_close_scan is called by the caller. */
 
+      if (probe_overflow_record.tpl != nullptr)
+	{
+	  db_private_free_and_init (&thread_ref, probe_overflow_record.tpl);
+	}
+
       if (overflow_record.tpl != nullptr)
 	{
 	  db_private_free_and_init (&thread_ref, overflow_record.tpl);
@@ -1306,6 +1313,7 @@ cleanup:
       QFILE_LIST_ID *list_id;
 
       PAGE_PTR page = nullptr;
+      QFILE_TUPLE_RECORD probe_overflow_record = { nullptr, 0 };
       QFILE_TUPLE_RECORD overflow_record = { nullptr, 0 };
       int tuple_cnt, tuple_index, tuple_length;
 
@@ -1402,7 +1410,8 @@ cleanup:
 	    {
 	      assert (tuple_cnt == 1);
 
-	      error = qfile_assemble_overflow_tuple (&thread_ref, page, &overflow_record, m_page_iter.get_current_tfile ());
+	      error =
+		      qfile_assemble_overflow_tuple (&thread_ref, page, &probe_overflow_record, m_page_iter.get_current_tfile ());
 	      if (error != NO_ERROR)
 		{
 		  m_task_manager.handle_error (thread_ref);
@@ -1410,7 +1419,7 @@ cleanup:
 		  break;	/* error_exit */
 		}
 
-	      probe->tuple_record.tpl = overflow_record.tpl;
+	      probe->tuple_record.tpl = probe_overflow_record.tpl;
 	    }
 
 	  assert (has_error == false);
@@ -1714,6 +1723,11 @@ cleanup:
 	}
 
       /* qfile_close_scan is called by the caller. */
+
+      if (probe_overflow_record.tpl != nullptr)
+	{
+	  db_private_free_and_init (&thread_ref, probe_overflow_record.tpl);
+	}
 
       if (overflow_record.tpl != nullptr)
 	{
