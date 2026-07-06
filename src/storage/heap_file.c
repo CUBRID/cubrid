@@ -23394,6 +23394,12 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto error;
+    }
+
   if (context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
