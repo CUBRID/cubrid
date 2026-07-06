@@ -25,6 +25,10 @@
 
 #include "test_oos_sql_common.hpp"
 
+/* bridge functions defined in oos_file.cpp (CUBRID_UNIT_TEST_ENABLED builds) */
+void bridge_oos_debug_counters_reset ();
+oos_debug_counters bridge_oos_debug_counters_get ();
+
 class OosSqlCrud : public ::testing::Test
 {
   protected:
@@ -210,6 +214,55 @@ TEST_F (OosSqlCrud, Cbrd27006MixedSingleChunkAndMultiChunkRow)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (len, 7000);
 
+}
+
+// CBRD-27006 follow-up: lazy OOS Resolve is batched through oos_read_many() only
+// when at least two requested attributes are OOS values. Non-OOS projections and
+// single-OOS projections must stay on the scalar path.
+TEST_F (OosSqlCrud, Cbrd27006ReadDispatchBatchesOnlyMultiOosProjections)
+{
+  int rc;
+
+  rc = exec_sql ("CREATE TABLE t_oos_crud ("
+		 "  id INT PRIMARY KEY,"
+		 "  small_col VARCHAR(100),"
+		 "  c1 BIT VARYING,"
+		 "  c2 BIT VARYING"
+		 ")");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  // 4500B + 4500B: still > DB_PAGESIZE/4 after the first demotion, so both go OOS
+  rc = exec_sql ("INSERT INTO t_oos_crud VALUES (1, 'row1', REPEAT(X'AA', 4500), REPEAT(X'BB', 4500))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int len = 0;
+
+  // Non-OOS projection on an OOS record: scalar path, no oos_read_many()
+  bridge_oos_debug_counters_reset ();
+  rc = fetch_single_int ("SELECT LENGTH(small_col) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 4);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().read_many_calls, 0ULL);
+
+  // Single requested OOS value: scalar path keeps the stack-scratch fast path
+  bridge_oos_debug_counters_reset ();
+  rc = fetch_single_int ("SELECT LENGTH(c1) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 9000);
+  EXPECT_EQ (bridge_oos_debug_counters_get ().read_many_calls, 0ULL);
+
+  // Two requested OOS values: one grouped oos_read_many() over one head page
+  bridge_oos_debug_counters_reset ();
+  rc = fetch_single_int ("SELECT LENGTH(c1) + LENGTH(c2) FROM t_oos_crud WHERE id = 1", &len);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (len, 18000);
+
+  oos_debug_counters counters = bridge_oos_debug_counters_get ();
+  EXPECT_EQ (counters.read_many_calls, 1ULL);
+  EXPECT_EQ (counters.read_many_requests, 2ULL);
+  EXPECT_EQ (counters.read_many_grouped_head_pages, 1ULL);
 }
 
 // TC-06: Multi-chunk OOS (value > page size, ~16KB)
