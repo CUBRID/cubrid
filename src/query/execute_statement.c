@@ -187,7 +187,7 @@ typedef struct reserved_class_info
 
 typedef struct reserved_class_info_list
 {
-  RESERVED_CLASS_INFO *classes;
+  RESERVED_CLASS_INFO *cls_info;
   int num_classes;
 } RESERVED_CLASS_INFO_LIST;
 
@@ -213,11 +213,11 @@ static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * de
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
-				      RESERVED_CLASS_INFO_LIST & reserved_classes, OID * reserved_oid);
+				      RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid);
 
 static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement,
-				 RESERVED_CLASS_INFO_LIST & reserved_classes);
-static void do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_classes);
+				 RESERVED_CLASS_INFO_LIST & reserved_cls_info);
+static void do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
@@ -3080,7 +3080,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO_LIST reserved_classes = { NULL, 0 };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3262,7 +3262,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  error = do_reserve_classinfo (parser, statement, reserved_classes);
+	  error = do_reserve_classinfo (parser, statement, reserved_cls_info);
 	  /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
 	  if (error != NO_ERROR)
 	    {
@@ -3496,7 +3496,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
-	  (void) do_supplemental_statement (parser, statement, reserved_classes, reserved_oid);
+	  (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
 	}
     }
 
@@ -3521,7 +3521,7 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
-  do_free_reserved_classinfo (reserved_classes);
+  do_free_reserved_classinfo (reserved_cls_info);
 
   if (error == ER_FAILED)
     {
@@ -3785,7 +3785,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO_LIST reserved_classes = { NULL, 0 };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -3971,7 +3971,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      err = do_reserve_classinfo (parser, statement, reserved_classes);
+      err = do_reserve_classinfo (parser, statement, reserved_cls_info);
       /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
       if (err != NO_ERROR)
 	{
@@ -4182,7 +4182,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
-      (void) do_supplemental_statement (parser, statement, reserved_classes, reserved_oid);
+      (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
     }
 
 end:
@@ -4208,7 +4208,7 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
-  do_free_reserved_classinfo (reserved_classes);
+  do_free_reserved_classinfo (reserved_cls_info);
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
@@ -15407,7 +15407,7 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO_LIST & reserved_classes)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO_LIST & reserved_cls_info)
 {
   int count = 0;
   int num_class = 0;
@@ -15419,8 +15419,8 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   const char *classname;
   DB_OBJECT *class_obj;
 
-  reserved_classes.classes = NULL;
-  reserved_classes.num_classes = 0;
+  reserved_cls_info.cls_info = NULL;
+  reserved_cls_info.num_classes = 0;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15440,17 +15440,17 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	}
 
       cls_info_size = num_class * sizeof (RESERVED_CLASS_INFO);
-      reserved_classes.classes = (RESERVED_CLASS_INFO *) calloc (num_class, sizeof (RESERVED_CLASS_INFO));
-      if (reserved_classes.classes == NULL)
+      reserved_cls_info.cls_info = (RESERVED_CLASS_INFO *) calloc (num_class, sizeof (RESERVED_CLASS_INFO));
+      if (reserved_cls_info.cls_info == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      reserved_classes.num_classes = num_class;
+      reserved_cls_info.num_classes = num_class;
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  RESERVED_CLASS_INFO & class_info = reserved_classes.classes[count];
+	  RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[count];
 
 	  entity = entity_spec->info.spec.flat_entity_list;
 	  classname = entity->info.name.original;
@@ -15475,20 +15475,20 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   return NO_ERROR;
 
 error_exit:
-  do_free_reserved_classinfo (reserved_classes);
+  do_free_reserved_classinfo (reserved_cls_info);
   return error;
 }
 
 static void
-do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_classes)
+do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info)
 {
-  free_and_init (reserved_classes.classes);
-  reserved_classes.num_classes = 0;
+  free_and_init (reserved_cls_info.cls_info);
+  reserved_cls_info.num_classes = 0;
 }
 
 static int
 do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
-			   RESERVED_CLASS_INFO_LIST & reserved_classes, OID * reserved_oid)
+			   RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -15647,9 +15647,9 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	ddl_type = CDC_DROP;
 
-	for (int i = 0; i < reserved_classes.num_classes; i++)
+	for (int i = 0; i < reserved_cls_info.num_classes; i++)
 	  {
-	    RESERVED_CLASS_INFO & class_info = reserved_classes.classes[i];
+	    RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[i];
 
 	    pre_drop_length =
 	      ((class_info.objtype ==
