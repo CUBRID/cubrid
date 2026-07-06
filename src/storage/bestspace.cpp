@@ -1146,37 +1146,21 @@ namespace cubstorage
       }
   }
 
-  int
-  bestspace_registry::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
-			    PGBUF_WATCHER &page_watcher)
+  bestspace *
+  bestspace_registry::find (OID *class_oid, HFID *hfid)
   {
-    int error;
+    bestspace *entry;
 
-    error = find_from_cache (thread_ref, class_oid, hfid, size, page_watcher);
-    if (error != ER_MHT_NOTFOUND)
+    entry = find_from_cache (class_oid, hfid);
+    if (entry)
       {
-	return error;
+	return entry;
       }
-    return find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
+    return find_from_global (class_oid, hfid);
   }
 
-  int
-  bestspace_registry::exist (OID *class_oid, HFID *hfid)
-  {
-    std::unique_lock<std::mutex> ulock (m_mutex);
-
-    auto pair = find_entry (m_head, class_oid, hfid);
-    if (!pair)
-      {
-	// invalid class oid and hfid
-	return ER_MHT_NOTFOUND;
-      }
-    return NO_ERROR;
-  }
-
-  int
-  bestspace_registry::find_from_cache (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
-				       PGBUF_WATCHER &page_watcher)
+  bestspace *
+  bestspace_registry::find_from_cache (OID *class_oid, HFID *hfid)
   {
     registry_entry *cache;
     std::uint64_t generation;
@@ -1186,23 +1170,22 @@ namespace cubstorage
       {
 	TLS_cache.generation = generation;
 	invalidate_entries (TLS_cache.head);
-	return ER_MHT_NOTFOUND;
+	return nullptr;
       }
 
     cache = get_node_from_list (TLS_cache.head, class_oid, hfid);
     if (!cache)
       {
-	return ER_MHT_NOTFOUND;
+	return nullptr;
       }
 
     // make this cache the first (LRU)
     insert_entry (TLS_cache.head, cache);
-    return (cache->entry)->find (thread_ref, class_oid, hfid, size, page_watcher);
+    return cache->entry;
   }
 
-  int
-  bestspace_registry::find_from_global (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
-					PGBUF_WATCHER &page_watcher)
+  bestspace *
+  bestspace_registry::find_from_global (OID *class_oid, HFID *hfid)
   {
     registry_entry *cache;
     bestspace *entry;
@@ -1213,7 +1196,7 @@ namespace cubstorage
     if (!pair)
       {
 	// invalid class oid and hfid
-	return ER_MHT_NOTFOUND;
+	return nullptr;
       }
     entry = (pair->second)->entry;
 
@@ -1234,7 +1217,7 @@ namespace cubstorage
     cache->entry = entry;
 
     insert_entry (TLS_cache.head, cache);
-    return entry->find (thread_ref, class_oid, hfid, size, page_watcher);
+    return entry;
   }
 
   void

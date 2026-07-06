@@ -389,9 +389,7 @@ namespace cubstorage
       void destroy (const OID *class_oid, const VFID *vfid);
       void destroy (const OID *class_oid, const HFID *hfid);
 
-      int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
-
-      int exist (OID *class_oid, HFID *hfid);
+      bestspace *find (OID *class_oid, HFID *hfid);
 
       void show_stats ();
 
@@ -404,10 +402,8 @@ namespace cubstorage
       static constexpr std::size_t TLS_MAX_SIZE = 20;
       inline static thread_local registry_cache TLS_cache;
 
-      int find_from_cache (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
-			   PGBUF_WATCHER &page_watcher);
-      int find_from_global (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
-			    PGBUF_WATCHER &page_watcher);
+      bestspace *find_from_cache (OID *class_oid, HFID *hfid);
+      bestspace *find_from_global (OID *class_oid, HFID *hfid);
 
       void insert_entry (registry_entry *&head, registry_entry *entry);
       void destroy_entry (registry_entry *entry);

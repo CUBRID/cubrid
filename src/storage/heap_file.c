@@ -608,6 +608,12 @@ static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, co
 static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
 				HEAP_HDR_STATS * header, cubstorage::bestspace_entry * entries,
 				cubstorage::bestspace_entry * candidates);
+
+// *INDENT-OFF*
+static cubstorage::bestspace *heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
+						    PGBUF_WATCHER * header_watcher);
+// *INDENT-ON*
+
 STATIC_INLINE int heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 				       PGBUF_WATCHER * page_watcher);
 
@@ -5594,6 +5600,104 @@ exit:
   return error_code;
 }
 
+
+/*
+ * heap_build_bestspace () - Take and rebuild a bestspace from heap file
+ *   return:
+ */
+// *INDENT-OFF*
+static cubstorage::bestspace *
+// *INDENT-ON*
+heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGBUF_WATCHER * header_watcher)
+{
+  // *INDENT-OFF*
+  cubstorage::bestspace *bestspace;
+  cubstorage::bestspace_entry *entries = NULL, *candidates = NULL;
+  // *INDENT-ON*
+  int num_entries, num_candidates, num_shards;
+  HEAP_HDR_STATS *header;
+  RECDES recdes;
+  int error;
+
+  /* get the header */
+  if (spage_get_record (thread_p, header_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+    {
+      return NULL;
+    }
+  header = ((HEAP_HDR_STATS *) recdes.data);
+
+  /* get the max number of the entries */
+  num_entries = header->bestspace.num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD;
+  num_candidates = header->bestspace.num_candidates;
+
+  entries = (cubstorage::bestspace_entry *) malloc (num_entries * sizeof (cubstorage::bestspace_entry));
+  if (!entries)
+    {
+      return NULL;
+    }
+  if (num_candidates > 0)
+    {
+      candidates = (cubstorage::bestspace_entry *) malloc (num_candidates * sizeof (cubstorage::bestspace_entry));
+      if (!candidates)
+	{
+	  free_and_init (entries);
+	  return NULL;
+	}
+    }
+
+  /* there is no in-memory bestspace */
+  error = heap_take_bestspace (thread_p, hfid, header_watcher, header, entries, candidates);
+  if (error != NO_ERROR)
+    {
+      free_and_init (entries);
+      if (candidates)
+	{
+	  free_and_init (candidates);
+	}
+      return NULL;
+    }
+
+  if (OID_IS_ROOTOID (class_oid))
+    {
+      num_shards = 1;
+    }
+  else
+    {
+      num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+    }
+
+  cubstorage::bestspaces.create (class_oid, hfid, entries,
+				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD),
+				 candidates, num_candidates, num_shards, header->unfill_space);
+
+  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  if (!bestspace)
+    {
+      /* impossible */
+      assert_release (false);
+
+      free_and_init (entries);
+      if (candidates)
+	{
+	  free_and_init (candidates);
+	}
+      return NULL;
+    }
+
+  /* if the old shards is bigger than current option */
+  if (num_entries > num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD)
+    {
+      bestspace->add_candidates (&entries[num_shards * 64], num_entries - num_shards * 64);
+    }
+
+  free_and_init (entries);
+  if (candidates)
+    {
+      free_and_init (candidates);
+    }
+  return bestspace;
+}
+
 /*
  * heap_find_bestspace () - Find or rebuild a bestspace from heap file
  *   return:
@@ -5603,119 +5707,57 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std:
 		     PGBUF_WATCHER * page_watcher)
 {
   // *INDENT-OFF*
+  cubstorage::bestspace *bestspace;
   cubstorage::bestspace_entry *entries = NULL, *candidates = NULL;
   // *INDENT-ON*
   int num_entries, num_candidates, num_shards;
   int unfill_space;
   PGBUF_WATCHER header_watcher;
-  HEAP_HDR_STATS *header;
-  RECDES recdes;
   VPID vpid;
   int error;
 
-  error = cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
-  if (error == ER_MHT_NOTFOUND)
+  /* find the bestspace */
+  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  if (bestspace)
     {
-      /* fix the header page */
-      vpid.volid = hfid->vfid.volid;
-      vpid.pageid = hfid->hpgid;
-
-      PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
-      error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  return error;
-	}
-
-      /* check if there is bestspace. other threads already may create the bestspace */
-      error = cubstorage::bestspaces.exist (class_oid, hfid);
-      if (error == NO_ERROR)
-	{
-	  /* other threads create the bestspace and found the space */
-	  pgbuf_ordered_unfix (thread_p, &header_watcher);
-	  /* find the bestspace */
-	  return cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
-	}
-
-      /* get the header */
-      if (spage_get_record (thread_p, header_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
-	{
-	  pgbuf_ordered_unfix (thread_p, &header_watcher);
-	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
-	}
-      header = ((HEAP_HDR_STATS *) recdes.data);
-
-      /* get the max number of the entries */
-      num_entries = header->bestspace.num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD;
-      num_candidates = header->bestspace.num_candidates;
-
-      entries = malloc (num_entries * sizeof (cubstorage::bestspace_entry));
-      if (!entries)
-	{
-	  pgbuf_ordered_unfix (thread_p, &header_watcher);
-	  return ER_FAILED;
-	}
-      if (num_candidates > 0)
-	{
-	  candidates = malloc (num_candidates * sizeof (cubstorage::bestspace_entry));
-	  if (!candidates)
-	    {
-	      free_and_init (entries);
-	      pgbuf_ordered_unfix (thread_p, &header_watcher);
-	      return ER_FAILED;
-	    }
-	}
-
-      /* there is no in-memory bestspace */
-      error = heap_take_bestspace (thread_p, hfid, &header_watcher, header, entries, candidates);
-      if (error != NO_ERROR)
-	{
-	  free_and_init (entries);
-	  if (candidates)
-	    {
-	      free_and_init (candidates);
-	    }
-	  pgbuf_ordered_unfix (thread_p, &header_watcher);
-	  return error;
-	}
-
-      if (OID_IS_ROOTOID (class_oid))
-	{
-	  num_shards = 1;
-	}
-      else
-	{
-	  num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
-	}
-      unfill_space = header->unfill_space;
-      cubstorage::bestspaces.create (class_oid, hfid, entries,
-				     MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD),
-				     candidates, num_candidates, num_shards, unfill_space);
-
-      /* if the old shards is bigger than current option */
-      if (num_entries > num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD)
-	{
-	  /* heap_bestspace_add_candidate (&entries[num_shards * 64], num_entries - num_shards * 64); */
-	}
-
-      pgbuf_ordered_unfix (thread_p, &header_watcher);
-      free_and_init (entries);
-      if (candidates)
-	{
-	  free_and_init (candidates);
-	}
-
-      error = cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
-      if (error != NO_ERROR)
-	{
-	  /* this must be success */
-	  ASSERT_ERROR ();
-	  return error;
-	}
+      return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
     }
-  return error;
+
+  /* there is no bestspace */
+  /* fix the header page */
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error;
+    }
+
+  /* recheck bestspace after acquiring the latch. */
+  /* another thread may have created it before us while we were waiting. */
+  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  if (bestspace)
+    {
+      /* other threads create the bestspace and found the space */
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+
+      /* find the bestspace */
+      return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
+    }
+
+  /* build from the heap page */
+  bestspace = heap_build_bestspace (thread_p, class_oid, hfid, &header_watcher);
+  if (!bestspace)
+    {
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+      return ER_FAILED;
+    }
+
+  pgbuf_ordered_unfix (thread_p, &header_watcher);
+  return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
 }
 
 /*
