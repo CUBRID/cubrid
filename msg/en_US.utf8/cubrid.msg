@@ -1477,17 +1477,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1375 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
 
-1376 Vacuum master daemon is not running; the server may be still booting or already shut down.
+1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1377 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
+1377 Vacuum master daemon is not running; the server may be still booting or already shut down.
 
-1378 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
+1378 Internal error: out-of-row storage record of object %1$d|%2$d|%3$d may be corrupted.
 
-1379 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
+1379 The record cannot be stored because its size (%1$d bytes) still exceeds the maximum record size (%2$d bytes) even after moving large variable-length columns to out-of-row storage (OOS). Reduce the size of fixed-length or non-eligible columns.
 
-1380 Internal error: invalid out-of-row storage argument.
+1380 Internal error: out-of-row storage record metadata is inconsistent or corrupted.
 
-1381 Last Error
+1381 Internal error: invalid out-of-row storage argument.
+
+1382 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
