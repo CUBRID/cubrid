@@ -12067,17 +12067,55 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_dblink_delete_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
+ *   variable, or as a bare entity name when the spec has no alias).
+ *   Only a plain SELECT has a single top-level FROM to check; UNION/INTERSECTION/DIFFERENCE and CTEs are
+ *   conservatively treated as not shadowing (same as before this check existed), since a query's operands
+ *   would each need this evaluated in their own right. Once a name is rebound here, every reference to it
+ *   anywhere within subq (including further-nested subqueries, unless THEY rebind it again) resolves to
+ *   this local FROM item, never to the outer scope -- so this single top-level check is sufficient
+ *   regardless of nesting depth below it.
+ */
+static bool
+pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
+{
+  PT_NODE *spec;
+
+  if (name == NULL || subq == NULL || subq->node_type != PT_SELECT)
+    {
+      return false;
+    }
+
+  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      const char *spec_name = (spec->info.spec.range_var != NULL)
+	? spec->info.spec.range_var->info.name.original
+	: ((spec->info.spec.entity_name != NULL) ? spec->info.spec.entity_name->info.name.original : NULL);
+
+      if (spec_name != NULL && intl_identifier_casecmp (spec_name, name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * pt_dblink_delete_corr_ref () - walk callback: flag a subquery correlated to the outer remote DELETE target.
  *   A correlated reference is a qualified column (PT_DOT_) whose qualifier matches the target's range variable
  *   or entity name. Used by pt_check_with_info's DELETE branch before the subquery is bound
  *   stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not found").
- *   Note: conservative -- a subquery that reuses the target's alias/table name for its OWN FROM range (rare)
- *   is also flagged; qualifier-vs-inner-FROM shadowing is not distinguished.
+ *   alias_shadowed/entity_shadowed (set by the caller via pt_dblink_delete_subq_shadows_name) exempt a
+ *   qualifier that the subquery's own top-level FROM rebinds to a local item -- that qualifier can only
+ *   refer to the local item, never to the outer target, so it is not a correlated reference.
  */
 typedef struct
 {
   const char *alias;		/* outer target range variable (e.g. "r"), may be NULL */
   const char *entity;		/* outer target table name (e.g. "remote_g1"), may be NULL */
+  bool alias_shadowed;		/* true if the subquery's own top-level FROM rebinds `alias` */
+  bool entity_shadowed;		/* true if the subquery's own top-level FROM rebinds `entity` */
   bool found;
 } PT_DBLINK_DEL_CORR;
 
@@ -12094,8 +12132,8 @@ pt_dblink_delete_corr_ref (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
       const char *q = node->info.dot.arg1->info.name.original;
 
       if (q != NULL
-	  && ((chk->alias != NULL && intl_identifier_casecmp (q, chk->alias) == 0)
-	      || (chk->entity != NULL && intl_identifier_casecmp (q, chk->entity) == 0)))
+	  && ((chk->alias != NULL && !chk->alias_shadowed && intl_identifier_casecmp (q, chk->alias) == 0)
+	      || (chk->entity != NULL && !chk->entity_shadowed && intl_identifier_casecmp (q, chk->entity) == 0)))
 	{
 	  chk->found = true;
 	  *continue_walk = PT_STOP_WALK;
@@ -12312,6 +12350,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
 		      corr.entity =
 			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+		      /* an inner FROM item that reuses the outer alias/table name for its OWN range shadows it --
+		       * any qualifier by that name inside subq then refers to the inner item, not the outer target. */
+		      corr.alias_shadowed = pt_dblink_delete_subq_shadows_name (subq, corr.alias);
+		      corr.entity_shadowed = pt_dblink_delete_subq_shadows_name (subq, corr.entity);
 		      corr.found = false;
 		      parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref, &corr, NULL, NULL);
 		      if (corr.found)
