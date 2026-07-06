@@ -1755,8 +1755,8 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
       *log_item_list = NULL;
       *list_size = 0;
     }
-  else if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) != CUBRID_LOG_SUCCESS
-	   && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
+  else if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) !=
+	   CUBRID_LOG_SUCCESS && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
     {
       CUBRID_LOG_ERROR_HANDLING (rc, NULL);
     }
