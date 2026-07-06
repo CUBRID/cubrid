@@ -241,13 +241,14 @@ namespace cubstorage
     m_freespace[static_cast<std::size_t> (fs)].set (index);
   }
 
-  bestspace::shard::shard () noexcept
+  bestspace::shard::shard (bestspace &parent) noexcept
     : m_allocating (false)
     , m_L3 ()
     , m_L2 ()
     , m_L1 ()
     , m_recs_num (0)
     , m_recs_sumlen (0)
+    , m_parent (parent)
     , m_stats { false, 0, 0, 0, 0, 0, 0, 0 }
   {
   }
@@ -699,7 +700,7 @@ namespace cubstorage
     trial = 0;
     num_candidates = 0;
     while (trial++ < MAX_POP_TRIES &&
-	   num_candidates < ALLOC_BATCH_SIZE - 1 && m_candidates.try_pop (candidate))
+	   num_candidates < ALLOC_BATCH_SIZE - 1 && m_parent.pop_candidate (candidate))
       {
 	if (size_to_tier (candidate.freespace) <= minimum)
 	  {
@@ -829,10 +830,15 @@ namespace cubstorage
   }
 
   bestspace::bestspace (std::uint16_t unfill_space, std::size_t shard_count)
-    : m_shards (shard_count)
+    : m_shards ()
     , m_unfill_space (unfill_space)
   {
     assert (shard_count > 0);
+
+    for (std::size_t i = 0; i < shard_count; i++)
+      {
+	m_shards.emplace_back (*this);
+      }
   }
 
   void
@@ -840,7 +846,7 @@ namespace cubstorage
   {
     std::array<bestspace_entry, ENTRIES_PER_SHARD> shard_entries;
     std::size_t entries_to_copy;
-    std::size_t entry_index = 0;
+    std::size_t entry_index;
     std::size_t i, j;
 
     assert (num_entries <= m_shards.size () * ENTRIES_PER_SHARD);
@@ -864,6 +870,23 @@ namespace cubstorage
 	m_shards[i].initialize_by_entries (shard_entries.data ());
 	entry_index += entries_to_copy;
       }
+  }
+
+  void
+  bestspace::add_candidates (const bestspace_entry *candidates, std::size_t num_candidates)
+  {
+    std::size_t i;
+
+    for (i = 0; i < num_candidates; i++)
+      {
+	m_candidates.push (candidates[i]);
+      }
+  }
+
+  bool
+  bestspace::pop_candidate (bestspace_entry &candidate)
+  {
+    return m_candidates.try_pop (candidate);
   }
 
   int
@@ -1076,7 +1099,7 @@ namespace cubstorage
 
   void
   bestspace_registry::create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
-			      std::size_t shard_count, std::uint16_t unfill_space)
+			      const bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
@@ -1085,6 +1108,7 @@ namespace cubstorage
     node->hfid = *hfid;
     node->entry = new bestspace (unfill_space, shard_count);
     node->entry->initialize_by_entries (entries, num_entries);
+    node->entry->add_candidates (candidates, num_candidates);
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
@@ -1134,6 +1158,20 @@ namespace cubstorage
 	return error;
       }
     return find_from_global (thread_ref, class_oid, hfid, size, page_watcher);
+  }
+
+  int
+  bestspace_registry::exist (OID *class_oid, HFID *hfid)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex);
+
+    auto pair = find_entry (m_head, class_oid, hfid);
+    if (!pair)
+      {
+	// invalid class oid and hfid
+	return ER_MHT_NOTFOUND;
+      }
+    return NO_ERROR;
   }
 
   int

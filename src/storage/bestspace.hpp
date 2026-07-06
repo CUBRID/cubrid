@@ -37,7 +37,7 @@
 #include <cstdint>
 #include <mutex>
 #include <type_traits>
-#include <vector>
+#include <deque>
 
 namespace cubstorage
 {
@@ -241,7 +241,7 @@ namespace cubstorage
 #endif
 
 	public:
-	  shard () noexcept;
+	  shard (bestspace &parent) noexcept;
 	  ~shard () = default;
 
 	  void initialize_by_entries (const bestspace_entry entries[ENTRIES_PER_SHARD]);
@@ -259,11 +259,10 @@ namespace cubstorage
 	  atomic_wrapper<L2> m_L2[L3_FANOUT];
 	  atomic_wrapper<L1> m_L1[L3_FANOUT * L2_FANOUT];
 
-	  tbb::concurrent_queue<bestspace_entry> m_candidates;
-
 	  std::atomic<std::uint64_t> m_recs_num;
 	  std::atomic<std::uint64_t> m_recs_sumlen;
 
+	  bestspace &m_parent;
 	  struct
 	  {
 	    bool enabled;
@@ -315,6 +314,9 @@ namespace cubstorage
 
       void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
 
+      void add_candidates (const bestspace_entry *candidates, std::size_t num_candidates);
+      bool pop_candidate (bestspace_entry &candidate);
+
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
@@ -322,7 +324,10 @@ namespace cubstorage
       void show_stats ();
 
     private:
-      std::vector<shard> m_shards;
+      std::deque<shard> m_shards;
+      tbb::concurrent_queue<bestspace_entry> m_candidates;
+
+      // parameter
       std::uint16_t m_unfill_space;
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
@@ -378,12 +383,15 @@ namespace cubstorage
       void create (OID *class_oid, HFID *hfid, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
 		   std::uint16_t unfill_space = 0);
       void create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
-		   std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT, std::uint16_t unfill_space = 0);
+		   const bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
+		   std::uint16_t unfill_space = 0);
 
       void destroy (const OID *class_oid, const VFID *vfid);
       void destroy (const OID *class_oid, const HFID *hfid);
 
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
+
+      int exist (OID *class_oid, HFID *hfid);
 
       void show_stats ();
 

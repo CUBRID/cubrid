@@ -801,6 +801,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
 #define PRM_NAME_HARDWARE_AFFINITY "hardware_affinity"
+#define PRM_NAME_BESTSPACE_SHARD_COUNT "bestspace_shard_count"
 
 // #endregion 
 
@@ -5385,6 +5386,18 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_BESTSPACE_SHARD_COUNT,
+   PRM_NAME_BESTSPACE_SHARD_COUNT,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 8}},
+   {false, {.i = 8}},
+   {false, {.i = 1}},
+   {false, {.i = 28}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL}
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
