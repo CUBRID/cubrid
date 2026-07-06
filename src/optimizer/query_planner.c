@@ -6634,13 +6634,13 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (join_type == JOIN_RIGHT)
     {
       if (bitset_cardinality (&(outer->nodes)) == 1)
-        {
-          hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-        }
+	{
+	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	}
       else
-        {
-          hint_node = NULL;
-        }
+	{
+	  hint_node = NULL;
+	}
     }
   else
     {
@@ -6650,23 +6650,23 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   if (hint_node != NULL)
     {
       if (QO_NODE_HINT (hint_node) & PT_HINT_NO_USE_HASH)
-        {
-          /* join hint: disable hash-join */
-          goto exit;
-        }
+	{
+	  /* join hint: disable hash-join */
+	  goto exit;
+	}
       else if (QO_NODE_HINT (hint_node) & PT_HINT_USE_HASH)
-        {
-          /* join hint: force hash-join */
-        }
+	{
+	  /* join hint: force hash-join */
+	}
       else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-        {
-          /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-          goto exit;
-        }
+	{
+	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+	  goto exit;
+	}
       else
-        {
-          /* fall through */
-        }
+	{
+	  /* fall through */
+	}
     }
 
   /* Check if a click counter is set. */
