@@ -30,7 +30,7 @@
 #include "px_scan_trace_handler.hpp"
 #include "px_interrupt.hpp"
 #include "px_worker_manager.hpp"
-#include "px_scan_join_info.hpp"
+#include "px_scan_pre_execution_info.hpp"
 #include "px_scan_type.hpp"
 
 namespace parallel_scan
@@ -48,7 +48,7 @@ namespace parallel_scan
 	    input_handler_t *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
 	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
-	    bool uses_xasl_clone, XASL_NODE *orig_xasl, join_info *join_info)
+	    bool uses_xasl_clone, XASL_NODE *orig_xasl, pre_execution_info *pre_exec_info)
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_cache_entry (nullptr),
@@ -71,7 +71,7 @@ namespace parallel_scan
       m_vd (nullptr),
       m_xasl_state (nullptr),
       m_scan_func_ptr (nullptr),
-      m_join_info (join_info),
+      m_pre_execution_info (pre_exec_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
       m_uses_xasl_clone (uses_xasl_clone),
@@ -105,7 +105,7 @@ namespace parallel_scan
       val_descr *m_vd;
       xasl_state *m_xasl_state;
       UINTPTR *m_scan_func_ptr;
-      join_info *m_join_info;
+      pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
       bool m_uses_xasl_clone;

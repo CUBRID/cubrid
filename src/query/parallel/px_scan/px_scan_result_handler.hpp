@@ -248,6 +248,14 @@ namespace parallel_scan
       void write_finalize (THREAD_ENTRY *thread_p);
       void signal_worker_done ();
     private:
+      template <FUNC_CODE F>
+      bool initialize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node);
+      template <FUNC_CODE F>
+      bool accumulate_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *agg_node, DB_VALUE *db_value_p);
+      template <FUNC_CODE F>
+      SCAN_CODE read_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p);
+      template <FUNC_CODE F>
+      void finalize_node (THREAD_ENTRY *thread_p, AGGREGATE_TYPE *orig_agg_p, AGGREGATE_TYPE *cur_agg_p);
       int m_parallelism;
       std::mutex m_result_mutex;
       std::condition_variable m_result_cv;
