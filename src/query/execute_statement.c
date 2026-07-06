@@ -3501,17 +3501,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 end:
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -4199,17 +4188,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 end:
 
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
