@@ -209,7 +209,7 @@ static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
 				      OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO *** cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO **&cls_info);
 static void do_free_reserved_classinfo (RESERVED_CLASS_INFO ** cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
@@ -3255,7 +3255,8 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  error = do_reserve_classinfo (parser, statement, &cls_info);
+	  error = do_reserve_classinfo (parser, statement, cls_info);
+	  /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
 	  if (error != NO_ERROR)
 	    {
 	      goto end;
@@ -3963,7 +3964,8 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      err = do_reserve_classinfo (parser, statement, &cls_info);
+      err = do_reserve_classinfo (parser, statement, cls_info);
+      /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
       if (err != NO_ERROR)
 	{
 	  goto end;
@@ -15398,7 +15400,7 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO *** cls_info_p)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO **&cls_info)
 {
   int count = 0;
   int num_class = 0;
@@ -15406,13 +15408,11 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
   size_t cls_info_size = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
-  RESERVED_CLASS_INFO **cls_info = NULL;
 
   const char *classname;
   DB_OBJECT *class_obj;
 
-  assert (cls_info_p != NULL);
-  *cls_info_p = NULL;
+  cls_info = NULL;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15470,12 +15470,11 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	}
     }
 
-  *cls_info_p = cls_info;
-
   return NO_ERROR;
 
 error_exit:
   do_free_reserved_classinfo (cls_info);
+  cls_info = NULL;
   return error;
 }
 
