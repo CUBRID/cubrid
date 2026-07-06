@@ -64,6 +64,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <queue>
+#include <vector>
 #include <assert.h>
 #if defined(SOLARIS)
 #include <netdb.h>		/* for MAXHOSTNAMELEN */
@@ -536,11 +537,10 @@ struct log_tdes
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
 
-  /* writeset PoC: per-transaction distinct writeset-key hashes (tdes-lifetime) */
-  int ws_hash_count;		/* number of writeset hashes collected */
-  int ws_hash_capacity;		/* allocated capacity of ws_hashes */
-  LOG_WRITESET_HASH *ws_hashes;	/* dynamic array of writeset key hashes */
-  bool ws_overflow;		/* set when count exceeds per-tx limit; writeset dropped */
+  /* writeset PoC: per-transaction writeset-key hashes (tdes-lifetime).
+   * MySQL Rpl_transaction_write_set_ctx::write_set 와 동형인 벡터(리스트). */
+  std::vector < LOG_WRITESET_HASH > ws_hashes;	/* collected writeset key hashes */
+  bool ws_overflow;		/* set when size exceeds per-tx limit; writeset dropped (= MySQL has_missing_keys) */
   LOG_LSA ws_dependency_seq;	/* commit-time dependency label = min (prev commit, writeset parent) */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */

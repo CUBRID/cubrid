@@ -43,8 +43,6 @@
 #define LOG_WRITESET_FNV_OFFSET_BASIS ((UINT64) 0xcbf29ce484222325ULL)
 #define LOG_WRITESET_FNV_PRIME        ((UINT64) 0x00000100000001b3ULL)
 
-#define LOG_WRITESET_TX_START_CAPACITY 64
-
 LOG_WRITESET_HISTORY log_Writeset_history;
 
 /* commit-order baseline: the most recent commit LSA published to the history.
@@ -143,47 +141,21 @@ log_writeset_add_key (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * clas
     }
 
   /* NOTE: ws_overflow 는 단순 메모리 캡이 아니라 정합성 안전장치다. 수집이 부분적으로만 되면
-   * (한도 초과 또는 realloc 실패) writeset 이 불완전 -> 트랜잭션이 실제보다 "독립"으로 보여
-   * 슬레이브 게이트가 잘못 병렬화 -> 같은 행 순서 붕괴. 게다가 호출부는 반환값을 (void) 로 무시하므로
-   * 조용히 틀린다. 그래서 부분 writeset 을 남기지 않고 통째로 버린 뒤 commit-order 로 격하한다.
-   * (PoC 단순화 대상 아님 - 제거 금지.) */
-  if (tdes->ws_hash_count >= LOG_WRITESET_TX_LIMIT)
+   * writeset 이 불완전 -> 트랜잭션이 실제보다 "독립"으로 보여 슬레이브 게이트가 잘못 병렬화
+   * -> 같은 행 순서 붕괴. 게다가 호출부는 반환값을 (void) 로 무시하므로 조용히 틀린다. 그래서
+   * per-tx 한도 초과 시 부분 writeset 을 남기지 않고 통째로 버린 뒤 commit-order 로 격하한다
+   * (= MySQL has_missing_keys). (PoC 단순화 대상 아님 - 제거 금지.) */
+  if (tdes->ws_hashes.size () >= LOG_WRITESET_TX_LIMIT)
     {
       /* per-tx limit reached: drop writeset, degrade to commit order */
       tdes->ws_overflow = true;
-      if (tdes->ws_hashes != NULL)
-	{
-	  free_and_init (tdes->ws_hashes);
-	}
-      tdes->ws_hash_count = 0;
-      tdes->ws_hash_capacity = 0;
+      tdes->ws_hashes.clear ();
+      tdes->ws_hashes.shrink_to_fit ();
       return NO_ERROR;
     }
 
-  if (tdes->ws_hash_count >= tdes->ws_hash_capacity)
-    {
-      int new_capacity;
-      LOG_WRITESET_HASH *new_hashes;
-
-      new_capacity = (tdes->ws_hash_capacity == 0) ? LOG_WRITESET_TX_START_CAPACITY : tdes->ws_hash_capacity * 2;
-      new_hashes = (LOG_WRITESET_HASH *) realloc (tdes->ws_hashes, (size_t) new_capacity * sizeof (LOG_WRITESET_HASH));
-      if (new_hashes == NULL)
-	{
-	  /* cannot grow: degrade this transaction to commit order rather than
-	   * keep a partial writeset (a partial set would miss real dependencies) */
-	  tdes->ws_overflow = true;
-	  free_and_init (tdes->ws_hashes);
-	  tdes->ws_hash_count = 0;
-	  tdes->ws_hash_capacity = 0;
-	  return NO_ERROR;
-	}
-      tdes->ws_hashes = new_hashes;
-      tdes->ws_hash_capacity = new_capacity;
-    }
-
   hash = log_writeset_fnv1a (class_oid, packed, len);
-  tdes->ws_hashes[tdes->ws_hash_count] = hash;
-  tdes->ws_hash_count++;
+  tdes->ws_hashes.push_back (hash);
 
   return NO_ERROR;
 }
@@ -260,7 +232,6 @@ void
 log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * ws_parent_out)
 {
   LOG_LSA ws_parent;
-  int i;
 
   pthread_mutex_lock (&log_Writeset_history.latch);
 
@@ -276,9 +247,9 @@ log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * w
 
   if (tdes != NULL)
     {
-      for (i = 0; i < tdes->ws_hash_count; i++)
+      for (LOG_WRITESET_HASH h : tdes->ws_hashes)
 	{
-	  auto it = log_Writeset_history.map.find (tdes->ws_hashes[i]);
+	  auto it = log_Writeset_history.map.find (h);
 
 	  if (it != log_Writeset_history.map.end () && LSA_GT (&it->second, &ws_parent))
 	    {
@@ -313,8 +284,6 @@ log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * w
 void
 log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * commit_lsa)
 {
-  int i;
-
   if (tdes == NULL || commit_lsa == NULL || LSA_ISNULL (commit_lsa))
     {
       return;
@@ -329,20 +298,20 @@ log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_L
       LSA_COPY (&log_Writeset_prev_commit_lsa, commit_lsa);
     }
 
-  if (!tdes->ws_overflow && tdes->ws_hash_count > 0)
+  if (!tdes->ws_overflow && !tdes->ws_hashes.empty ())
     {
       /* CAP 초과하면 히스토리를 통째로 비우고 보수적 floor 를 이 commit LSA 로 올린다
        * (= MySQL m_writeset_history.clear() + m_writeset_history_start = seq). */
-      if (log_Writeset_history.map.size () + (size_t) tdes->ws_hash_count > (size_t) LOG_WRITESET_HISTORY_CAP)
+      if (log_Writeset_history.map.size () + tdes->ws_hashes.size () > (size_t) LOG_WRITESET_HISTORY_CAP)
 	{
 	  log_Writeset_history.map.clear ();
 	  LSA_COPY (&log_Writeset_history.history_start, commit_lsa);
 	}
 
       /* 이 트랜잭션의 키들에 현재 commit LSA 를 기록(신규 삽입 또는 갱신). */
-      for (i = 0; i < tdes->ws_hash_count; i++)
+      for (LOG_WRITESET_HASH h : tdes->ws_hashes)
 	{
-	  log_Writeset_history.map[tdes->ws_hashes[i]] = *commit_lsa;
+	  log_Writeset_history.map[h] = *commit_lsa;
 	}
     }
 

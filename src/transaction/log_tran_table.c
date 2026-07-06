@@ -1583,12 +1583,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
   /* writeset PoC: discard per-tx writeset (abort must NOT flush to global history) */
-  if (tdes->ws_hashes != NULL)
-    {
-      free_and_init (tdes->ws_hashes);
-    }
-  tdes->ws_hash_count = 0;
-  tdes->ws_hash_capacity = 0;
+  tdes->ws_hashes.clear ();
   tdes->ws_overflow = false;
   LSA_SET_NULL (&tdes->ws_dependency_seq);
   tdes->m_log_postpone_cache.reset ();
@@ -1673,9 +1668,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   /* writeset PoC: per-transaction writeset starts empty */
-  tdes->ws_hash_count = 0;
-  tdes->ws_hash_capacity = 0;
-  tdes->ws_hashes = NULL;
+  tdes->ws_hashes.clear ();
   tdes->ws_overflow = false;
   LSA_SET_NULL (&tdes->ws_dependency_seq);
   tdes->lob_locator_root.init ();
