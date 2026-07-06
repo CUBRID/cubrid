@@ -1990,6 +1990,29 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
 	    }
+
+	  /* pt_resolve_names () above clears parser->sys_datetime, parser->sys_epochtime when the statement needs
+	   * datetime default expressions (see fill_in_insert_default_function_arguments), discarding the server time
+	   * already fetched at the beginning of this function. Restore them from the base time cached by that fetch;
+	   * request them from the server again only when the cache is unusable, so that do_statement () does not
+	   * evaluate default expressions with a null system datetime. */
+	  if (statement->flag.si_datetime && (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime)))
+	    {
+	      db_calculate_current_server_time (parser);
+	      if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
+		{
+		  err = qp_get_server_info (parser, SI_SYS_DATETIME);
+		  if (err != NO_ERROR)
+		    {
+		      if (statement != session->statements[stmt_ndx])
+			{
+			  parser_free_tree (parser, statement);
+			}
+		      return err;
+		    }
+		  db_set_base_server_time (&parser->sys_datetime);
+		}
+	    }
 	}
 
       err = do_statement (parser, statement);

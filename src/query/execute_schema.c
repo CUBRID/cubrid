@@ -9621,6 +9621,19 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  /* Name resolution clears parser->sys_datetime, parser->sys_epochtime
+   * for datetime defaults. (see fill_in_insert_default_function_arguments)
+   * Internal do_statement() won't re-request server time,
+   * so fetch it here to avoid null evaluation. */
+  if (insert_into->flag.si_datetime && (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime)))
+    {
+      error = qp_get_server_info (parser, SI_SYS_DATETIME);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   error = do_statement (parser, insert_into);
   pt_free_statement_xasl_id (insert_into);
   if (error < 0)

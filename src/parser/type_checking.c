@@ -16503,6 +16503,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
 	db_value_put_encoded_date (result, &tmp_datetime->date);
@@ -16516,6 +16517,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	DB_TIMESTAMP *timestamp;
 	int year, month, day, hour, minute, second;
 
+	assert (!DB_IS_NULL (&parser->sys_epochtime));
 	timestamp = db_get_timestamp (&parser->sys_epochtime);
 	tz_timestamp_decode_no_leap_sec (*timestamp, &year, &month, &day, &hour, &minute, &second);
 	date = julian_encode (month + 1, day, year);
@@ -16532,6 +16534,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	db_value_domain_init (result, DB_TYPE_DATE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 	tz_get_system_tz_region (&system_tz_region);
 	tz_get_session_tz_region (&session_tz_region);
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	dest_dt = db_get_datetime (&parser->sys_datetime);
 	err_status =
@@ -16550,6 +16553,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	DB_TIME db_time;
 	DB_TIMESTAMP *tmp_datetime;
 
+	assert (!DB_IS_NULL (&parser->sys_epochtime));
 	tmp_datetime = db_get_timestamp (&parser->sys_epochtime);
 	db_time = (DB_TIME) (*tmp_datetime % SECONDS_OF_ONE_DAY);
 	db_value_put_encoded_time (result, &db_time);
@@ -16563,6 +16567,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	db_value_domain_init (result, DB_TYPE_TIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_time = tmp_datetime->time / 1000;
 
@@ -16583,6 +16588,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	t_dest = tz_get_session_local_timezone ();
 	len_source = (int) strlen (t_source);
 	len_dest = (int) strlen (t_dest);
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_time = tmp_datetime->time / 1000;
 
@@ -16605,6 +16611,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	db_value_domain_init (result, DB_TYPE_TIMESTAMP, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_date = tmp_datetime->date;
 	tmp_time = tmp_datetime->time / 1000;
@@ -16624,6 +16631,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	db_value_domain_init (result, DB_TYPE_TIMESTAMP, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
 
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tmp_date = tmp_datetime->date;
 	tmp_time = tmp_datetime->time / 1000;
@@ -16639,6 +16647,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	DB_DATETIME *tmp_datetime;
 
 	db_value_domain_init (result, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 
 	db_make_datetime (result, tmp_datetime);
@@ -16653,6 +16662,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	int err_status;
 
 	db_value_domain_init (result, DB_TYPE_DATETIME, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	tz_get_system_tz_region (&system_tz_region);
 	tz_get_session_tz_region (&session_tz_region);
@@ -17578,6 +17588,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	int timezone_milis;
 	DB_DATETIME *tmp_datetime, utc_datetime;
 
+	assert (!DB_IS_NULL (&parser->sys_datetime));
 	tmp_datetime = db_get_datetime (&parser->sys_datetime);
 	db_sys_timezone (&timezone);
 	timezone_milis = db_get_int (&timezone) * 60000;
@@ -17644,6 +17655,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	DB_TIMESTAMP *tmp_timestamp, timestamp;
 	int year, month, day, hour, minute, second;
 
+	assert (!DB_IS_NULL (&parser->sys_epochtime));
 	tmp_timestamp = db_get_timestamp (&parser->sys_epochtime);
 	tz_timestamp_decode_no_leap_sec (*tmp_timestamp, &year, &month, &day, &hour, &minute, &second);
 	date = julian_encode (month + 1, day, year);
