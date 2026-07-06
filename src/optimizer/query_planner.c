@@ -6264,30 +6264,33 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }			/* for (t = ...) */
       }
 
-      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-      if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	{
-	  /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
-	  goto exit;
-	}
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+	{			/* single class spec */
+	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
+	    {
+	      /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
+	      goto exit;
+	    }
 
-      if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
-	{
-	  /* join hint: force nl-join */
-	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	{
-	  /* join hint: force idx-join, merge-join; skip nl-join */
-	  goto exit;
-	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
-	{
-	  /* join hint: force hash-join; skip nl-join */
-	  goto exit;
-	}
-      else
-	{
-	  /* fall through */
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
+	    {
+	      /* join hint: force nl-join */
+	    }
+	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	    {
+	      /* join hint: force idx-join, merge-join; skip nl-join */
+	      goto exit;
+	    }
+	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	    {
+	      /* join hint: force hash-join; skip nl-join */
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* fall through */
+	    }
 	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
@@ -6557,7 +6560,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *outer_node, *inner_node;
+  QO_NODE *outer_node, *inner_node, *hint_node;
   QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
@@ -6612,37 +6615,51 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* For a right outer join the operands are swapped (converted to left outer join),
-   * so the join-method hint is carried on the 'outer' node. Read the hint from the
-   * correct side - as qo_examine_idx_join / qo_examine_nl_join do - so that
-   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins
-   * (otherwise hash join would be generated even when the hint forbids it). */
+  /* inner_node is the single-class inner used for the key-limit / index checks below. */
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+  /* Determine the node that carries the join-method hint.  For a right outer join the
+   * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
+   * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
+   * table-level hint applies only when that side is a single class; for a multi-node
+   * (temp) inner the table hint is not applicable and the cost decides. */
   if (join_type == JOIN_RIGHT)
     {
-      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+        {
+          hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+        }
+      else
+        {
+          hint_node = NULL;
+        }
     }
   else
     {
-      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+      hint_node = inner_node;
     }
 
-  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+  if (hint_node != NULL)
     {
-      /* join hint: disable hash-join */
-      goto exit;
-    }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-    {
-      /* join hint: force hash-join */
-    }
-  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-    {
-      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-      goto exit;
-    }
-  else
-    {
-      /* fall through */
+      if (QO_NODE_HINT (hint_node) & PT_HINT_NO_USE_HASH)
+        {
+          /* join hint: disable hash-join */
+          goto exit;
+        }
+      else if (QO_NODE_HINT (hint_node) & PT_HINT_USE_HASH)
+        {
+          /* join hint: force hash-join */
+        }
+      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+        {
+          /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+          goto exit;
+        }
+      else
+        {
+          /* fall through */
+        }
     }
 
   /* Check if a click counter is set. */
