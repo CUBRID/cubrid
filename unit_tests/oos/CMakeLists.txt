@@ -63,20 +63,7 @@ add_test(NAME oos_setup_db
     "CUBRID=$ENV{CUBRID}"
     "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
     "PATH=$ENV{PATH}"
-    bash -c "
-      # Small vacuum log blocks (min 4; default 31) so real-vacuum tests can close a
-      # block quickly. vacuum_log_block_pages is frozen into the database at createdb,
-      # so the [@unittestdb] section must exist BEFORE createdb runs. Idempotent append;
-      # scoped to unittestdb only, so other databases are unaffected.
-      if [ -f \"$ENV{CUBRID}/conf/cubrid.conf\" ] && ! grep -qF '[@unittestdb]' \"$ENV{CUBRID}/conf/cubrid.conf\"; then
-        printf '\\n[@unittestdb]\\nvacuum_log_block_pages=4\\n' >> \"$ENV{CUBRID}/conf/cubrid.conf\"
-      fi
-      if [ ! -f \"$ENV{CUBRID_DATABASES}/databases.txt\" ] || ! grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
-        mkdir -p \"$ENV{CUBRID_DATABASES}/unittestdb\" && \
-        cubrid createdb --db-volume-size=20M --log-volume-size=20M unittestdb en_US.utf8 \
-          -F \"$ENV{CUBRID_DATABASES}/unittestdb\"
-      fi
-    "
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/setup_unittestdb.sh"
 )
 set_tests_properties(oos_setup_db PROPERTIES FIXTURES_SETUP OOS_DB)
 
@@ -85,12 +72,7 @@ add_test(NAME oos_cleanup_db
     "CUBRID=$ENV{CUBRID}"
     "CUBRID_DATABASES=$ENV{CUBRID_DATABASES}"
     "PATH=$ENV{PATH}"
-    bash -c "
-      cubrid server stop unittestdb 2>/dev/null || true
-      if grep -q unittestdb \"$ENV{CUBRID_DATABASES}/databases.txt\" 2>/dev/null; then
-        cubrid deletedb unittestdb
-      fi
-    "
+    bash "${CMAKE_CURRENT_SOURCE_DIR}/scripts/cleanup_unittestdb.sh"
 )
 set_tests_properties(oos_cleanup_db PROPERTIES FIXTURES_CLEANUP OOS_DB TIMEOUT 30)
 
