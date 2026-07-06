@@ -327,6 +327,7 @@ jobs:
                         mkdir -p \$CCACHE_DIR
                         ccache --max-size=5G
                         ccache -z
+                        # POC: shell debug-build measurement (throwaway, do not merge)
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
                   - save_cache:
