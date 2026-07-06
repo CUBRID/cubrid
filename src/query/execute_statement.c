@@ -209,7 +209,7 @@ static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
 				      OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO **&cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** &cls_info);
 static void do_free_reserved_classinfo (RESERVED_CLASS_INFO ** cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
@@ -15400,7 +15400,7 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO **&cls_info)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** &cls_info)
 {
   int count = 0;
   int num_class = 0;
