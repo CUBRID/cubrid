@@ -314,6 +314,20 @@ log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_L
 	  log_Writeset_history.map[h] = *commit_lsa;
 	}
     }
+  else if (tdes->ws_overflow)
+    {
+      /* MySQL 한도초과(write-set limit reached) fallback 과 동일: overflow tx 는 writeset 을 못
+       * 남기므로 히스토리를 통째 clear 하고 floor(history_start)를 이 커밋으로 올린다. 그래야 이후
+       * 트랜잭션들이 이 overflow 커밋 이후에만 적용되어(= 이 커밋을 기다려) 같은 행 순서 붕괴를
+       * 막는다. (probe 는 이미 commit-order 로 격하됨 = MySQL 의 commit_parent 유지.)
+       * MySQL 은 m_writeset_history.clear() + m_writeset_history_start = seq 를 무조건 하지만,
+       * 우리 flush 는 커밋 순서와 달라질 수 있어 floor 는 단조 상향만 한다. */
+      log_Writeset_history.map.clear ();
+      if (LSA_GT (commit_lsa, &log_Writeset_history.history_start))
+	{
+	  LSA_COPY (&log_Writeset_history.history_start, commit_lsa);
+	}
+    }
 
   pthread_mutex_unlock (&log_Writeset_history.latch);
 }
