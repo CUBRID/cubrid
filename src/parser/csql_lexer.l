@@ -668,6 +668,9 @@ IDL       [a-zA-Z0-9_]
 										csql_yylval.cptr = pt_makename(yytext);
 										return LOG; }
 [lL][oO][oO][pP]							{ begin_token(yytext);   return LOOP; }
+[lL][oO][oO][sS][eE]							{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return LOOSE; }
 [lL][oO][wW][eE][rR]							{ begin_token(yytext);   return LOWER; }
 [mM][aA][tT][cC][hH]							{ begin_token(yytext);   return MATCH; }
 [mM][aA][tT][cC][hH][eE][dD]						{ begin_token(yytext);

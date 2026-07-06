@@ -334,6 +334,7 @@ static KEYWORD_RECORD keywords[] = {
   {LOCK_, "LOCK", 1},
   {LOG, "LOG", 1},
   {LOOP, "LOOP", 0},
+  {LOOSE, "LOOSE", 1},
   {LOWER, "LOWER", 0},
   {MATCH, "MATCH", 0},
   {MATCHED, "MATCHED", 1},

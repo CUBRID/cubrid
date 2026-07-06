@@ -637,7 +637,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <number> show_type_arg_named
 %type <number> show_type_id
 %type <number> show_type_id_dot_id
-%type <number> opt_show_exact
+%type <number> opt_show_scan_mode
 %type <number> kill_type
 %type <number> procedure_or_function
 %type <boolean> opt_analytic_from_last
@@ -1608,6 +1608,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> LEAD
 %token <cptr> LOCK_
 %token <cptr> LOG
+%token <cptr> LOOSE
 %token <cptr> MATCHED
 %token <cptr> MAXIMUM
 %token <cptr> MAXVALUE
@@ -7381,7 +7382,7 @@ show_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| SHOW show_type_id OF class_name opt_show_exact
+	| SHOW show_type_id OF class_name opt_show_scan_mode
 		{{
 			int type = $2;
 			PT_NODE *node, *args = $4;
@@ -7389,7 +7390,7 @@ show_stmt
 			if (type == SHOWSTMT_HEAP_HEADER || type == SHOWSTMT_ALL_HEAP_HEADER
 			    || type == SHOWSTMT_HEAP_CAPACITY || type == SHOWSTMT_ALL_HEAP_CAPACITY)
 			  {
-			    /* append the EXACT flag: 1 = EXACT (S_LOCK), 0 = default (IS_LOCK) */
+			    /* append the scan-mode flag: 1 = EXACT (S_LOCK), 0 = LOOSE/default (IS_LOCK) */
 			    PT_NODE *exact_flag = pt_make_integer_value (this_parser, $5);
 			    if (exact_flag == NULL)
 			      {
@@ -7582,10 +7583,14 @@ show_type_id
 		}}
 	;
 
-opt_show_exact
+opt_show_scan_mode
 	: /* empty */
 		{{
-			$$ = 0;	/* default: IS_LOCK */
+			$$ = 0;	/* default: LOOSE (IS_LOCK) */
+		}}
+	| LOOSE
+		{{
+			$$ = 0;	/* LOOSE: IS_LOCK */
 		}}
 	| EXACT
 		{{
@@ -20799,6 +20804,7 @@ identifier
 	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
+	| LOOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
