@@ -471,6 +471,12 @@ struct log_rcv_tdes
   LOG_LSA analysis_last_aborted_sysop_start_lsa;	/* to recover logical redo operation. */
 };
 
+/* writeset PoC: FNV-1a hash of a touched row's (class_oid, packed PK). */
+#ifndef _LOG_WRITESET_HASH_DEFINED_
+#define _LOG_WRITESET_HASH_DEFINED_
+typedef UINT64 LOG_WRITESET_HASH;
+#endif /* _LOG_WRITESET_HASH_DEFINED_ */
+
 typedef struct log_tdes LOG_TDES;
 struct log_tdes
 {
@@ -529,6 +535,13 @@ struct log_tdes
   void *first_save_entry;	/* first save entry for the transaction */
 
   int suppress_replication;	/* suppress writing replication logs when flag is set */
+
+  /* writeset PoC: per-transaction distinct writeset-key hashes (tdes-lifetime) */
+  int ws_hash_count;		/* number of writeset hashes collected */
+  int ws_hash_capacity;		/* allocated capacity of ws_hashes */
+  LOG_WRITESET_HASH *ws_hashes;	/* dynamic array of writeset key hashes */
+  bool ws_overflow;		/* set when count exceeds per-tx limit; writeset dropped */
+  LOG_LSA ws_dependency_seq;	/* commit-time dependency label = min (prev commit, writeset parent) */
 
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 

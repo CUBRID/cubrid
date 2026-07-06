@@ -49,6 +49,7 @@
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_manager.h"
+#include "log_writeset.h"
 #include "log_system_tran.hpp"
 #include "memory_private_allocator.hpp"
 #include "object_representation.h"
@@ -494,6 +495,12 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
     {
       goto error;
     }
+  /* writeset PoC: allocate the global commit history once at boot */
+  error_code = log_writeset_history_initialize ();
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
   return error_code;
 
 error:
@@ -579,6 +586,8 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   lock_finalize ();
   pgbuf_finalize ();
   file_manager_final ();
+  /* writeset PoC: release the global commit history */
+  log_writeset_history_finalize ();
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -1573,6 +1582,15 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  /* writeset PoC: discard per-tx writeset (abort must NOT flush to global history) */
+  if (tdes->ws_hashes != NULL)
+    {
+      free_and_init (tdes->ws_hashes);
+    }
+  tdes->ws_hash_count = 0;
+  tdes->ws_hash_capacity = 0;
+  tdes->ws_overflow = false;
+  LSA_SET_NULL (&tdes->ws_dependency_seq);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
   if (tdes->ddl_sql_user_text != NULL)
@@ -1654,6 +1672,12 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
+  /* writeset PoC: per-transaction writeset starts empty */
+  tdes->ws_hash_count = 0;
+  tdes->ws_hash_capacity = 0;
+  tdes->ws_hashes = NULL;
+  tdes->ws_overflow = false;
+  LSA_SET_NULL (&tdes->ws_dependency_seq);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;

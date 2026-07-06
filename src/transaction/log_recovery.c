@@ -2486,6 +2486,7 @@ log_rv_analysis_record (THREAD_ENTRY * thread_p, LOG_RECTYPE log_type, int tran_
     case LOG_REPLICATION_DATA:
     case LOG_REPLICATION_STATEMENT:
     case LOG_DUMMY_HA_SERVER_STATE:
+    case LOG_DUMMY_WS_LABEL:
     case LOG_DUMMY_OVF_RECORD:
     case LOG_DUMMY_GENERIC:
     case LOG_SUPPLEMENTAL_INFO:
@@ -3828,6 +3829,7 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 	    case LOG_REPLICATION_DATA:
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_WS_LABEL:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -4758,6 +4760,7 @@ log_recovery_undo (THREAD_ENTRY * thread_p)
 		case LOG_REPLICATION_DATA:
 		case LOG_REPLICATION_STATEMENT:
 		case LOG_DUMMY_HA_SERVER_STATE:
+		case LOG_DUMMY_WS_LABEL:
 		case LOG_DUMMY_OVF_RECORD:
 		case LOG_DUMMY_GENERIC:
 		case LOG_SUPPLEMENTAL_INFO:
@@ -5758,6 +5761,11 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
     case LOG_DUMMY_HA_SERVER_STATE:
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_HA_SERVER_STATE), &log_lsa, log_pgptr);
+      break;
+
+    case LOG_DUMMY_WS_LABEL:
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_WS_LABEL), &log_lsa, log_pgptr);
+      LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_WS_LABEL), &log_lsa, log_pgptr);
       break;
 
     case LOG_SMALLER_LOGREC_TYPE:
