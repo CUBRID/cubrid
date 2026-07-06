@@ -1578,12 +1578,15 @@ dblink_delete_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 }
 
 /*
- * dblink_insert_execute_row () - Bind values and execute one remote INSERT row.
+ * dblink_insert_execute_row () - Bind values and execute one remote INSERT or DELETE row.
  *   return: NO_ERROR on success, error code on failure.
- *   thread_p(in)  : thread entry
- *   state(in)     : open insert state (conn_handle, stmt_handle)
- *   vals(in)      : array of DB_VALUE* (one per SELECT output column)
- *   num_vals(in)  : length of vals
+ *   thread_p(in)      : thread entry
+ *   state(in)         : open insert/delete state (conn_handle, stmt_handle)
+ *   vals(in)          : array of DB_VALUE* (one per SELECT output column)
+ *   num_vals(in)      : length of vals
+ *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
+ *                        value); NULL if the caller does not need it (e.g. a positional INSERT row
+ *                        always affects exactly one row, so the INSERT SELECT caller ignores this).
  *
  * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
  *   dblink_insert_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
@@ -1593,7 +1596,8 @@ dblink_delete_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
  *       local transaction commits.
  */
 int
-dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
+dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals,
+			   int *affected_rows)
 {
   int k, result, err;
   T_CCI_ERROR err_buf;
@@ -1616,12 +1620,17 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
 	}
     }
 
-  /* execute INSERT */
+  /* execute INSERT/DELETE */
   result = cci_execute (state->stmt_handle, 0, 0, &err_buf);
   if (result < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       return ER_DBLINK;
+    }
+
+  if (affected_rows != NULL)
+    {
+      *affected_rows = result;
     }
 
   return NO_ERROR;

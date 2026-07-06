@@ -12526,8 +12526,11 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 	      goto exit_on_error;
 	    }
 
-	  /* send row to remote */
-	  if (dblink_insert_execute_row (thread_p, &dblink_state, insert->vals, val_no) != NO_ERROR)
+	  /* send row to remote. affected_rows is not read here: this pre-dates the C-03 DELETE fix and is
+	   * unrelated to it -- a positional INSERT row is expected to affect exactly one row, though a
+	   * remote-side trigger/constraint could in principle alter that. Reconciling INSERT accounting
+	   * against such cases is out of scope here. */
+	  if (dblink_insert_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
 	      goto exit_on_error;
@@ -12775,6 +12778,7 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QPROC_DB_VALUE_LIST vallist;
   DB_VALUE *bindv[1];
   DBLINK_INSERT_STATE dblink_state = { -1, -1 };
+  int row_affected;
 
   assert (del->is_remote_delete);
   assert (aptr != NULL);	/* the sink XASL always carries the local subquery as aptr */
@@ -12848,13 +12852,16 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      continue;
 	    }
 
-	  if (dblink_insert_execute_row (thread_p, &dblink_state, bindv, 1) != NO_ERROR)
+	  /* affected_rows is the remote's own reported count for this DELETE execute: it can be 0
+	   * (key has no remote match) or more than 1 (remote key is not unique), neither of which
+	   * equals "one local subquery row" -- accumulate it instead of counting local rows. */
+	  if (dblink_insert_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
 	      goto exit_on_error;
 	    }
 
-	  xasl->list_id->tuple_cnt++;
+	  xasl->list_id->tuple_cnt += row_affected;
 	}
 
       if (ls_scan != S_END)

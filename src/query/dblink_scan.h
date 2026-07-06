@@ -124,7 +124,7 @@ extern int dblink_delete_open (THREAD_ENTRY * thread_p, const char *url, const c
 			       const char *table_name, const char *key_col, const char *op,
 			       DBLINK_INSERT_STATE * state);
 extern int dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals,
-				      int num_vals);
+				      int num_vals, int *affected_rows);
 extern void dblink_insert_rollback (DBLINK_INSERT_STATE * state);
 extern void dblink_insert_close (DBLINK_INSERT_STATE * state);
 
