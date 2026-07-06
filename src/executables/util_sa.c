@@ -147,7 +147,7 @@ static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_confirm (void);
 static void upgradedb_upgradedir_path (char *out, size_t outsize, const char *fmt, ...);
 static int upgradedb_read_file (const char *path, char **out_buf, size_t * out_len);
-static int upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len);
+static int upgradedb_load_decoded_script (int from_v, char **out_buf, size_t * out_len);
 static int upgradedb_process_upgrade_scripts (UPGRADEDB_SCRIPT_OP op);
 static int upgradedb_execute_sql_buffer (const char *buf);
 static int upgradedb_process_script (const char *buf, size_t len, UPGRADEDB_SCRIPT_OP op);
@@ -5350,7 +5350,7 @@ exit:
 }
 
 static int
-upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * out_len)
+upgradedb_load_decoded_script (int from_v, char **out_buf, size_t * out_len)
 {
   char script_path[PATH_MAX];
   const char *expected_sha256 = UPGRADE_SCRIPT_SHA256S[from_v - 1];
@@ -5361,7 +5361,7 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
   char actual_sha256[SHA256_DIGEST_LENGTH * 2 + 1];
   int error = NO_ERROR;
 
-  upgradedb_upgradedir_path (script_path, sizeof (script_path), UPGRADEDB_SCRIPT_FORMAT, from_v, to_v);
+  upgradedb_upgradedir_path (script_path, sizeof (script_path), UPGRADEDB_SCRIPT_FORMAT, from_v, from_v + 1);
 
   error = upgradedb_read_file (script_path, &buf, &file_size);
   if (error != NO_ERROR)
@@ -5428,7 +5428,7 @@ upgradedb_process_upgrade_scripts (UPGRADEDB_SCRIPT_OP op)
     {
       char *buf = NULL;
       size_t len = 0;
-      int error = upgradedb_load_decoded_script (v, v + 1, &buf, &len);
+      int error = upgradedb_load_decoded_script (v, &buf, &len);
       if (error != NO_ERROR)
 	{
 	  return error;
