@@ -1767,7 +1767,9 @@
 
 #define ER_QSTR_INVALID_UUID_FORMAT                 -1375
 
-#define ER_LAST_ERROR                               -1376
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
+
+#define ER_LAST_ERROR                               -1377
 
 
 
