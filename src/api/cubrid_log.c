@@ -46,6 +46,7 @@
 #include "connection_cl.h"
 #include "connection_list_cl.h"
 #include "cubrid_log.h"
+#include "error_code.h"
 #include "log_lsa.hpp"
 #include "network.h"
 #include "object_representation.h"
@@ -817,11 +818,44 @@ cubrid_log_error:
   return err_code;
 }
 
+/* er_errid () is overwritten with ER_BO_CONNECT_FAILED at the end of every connect failure path
+ * (boot_client_initialize_css), so the cause of a db_restart () failure must be taken from its
+ * return value. The CUBRID_LOG_FAILED_CONNECT set mirrors the codes that boot_client_initialize_css
+ * classifies as connect errors. Unmapped errors keep CUBRID_LOG_FAILED_LOGIN so that authentication
+ * failures (e.g. ER_AU_INVALID_PASSWORD) are reported as before. */
+static int
+cubrid_log_map_connect_error (int error)
+{
+  switch (error)
+    {
+    case ERR_CSS_TCP_HOST_NAME_ERROR:
+      return CUBRID_LOG_INVALID_HOST;
+    case ER_BO_UNKNOWN_DATABASE:
+      return CUBRID_LOG_INVALID_DBNAME;
+    case ER_NET_SERVER_HAND_SHAKE:
+    case ER_NET_HS_UNKNOWN_SERVER_REL:
+    case ER_NET_DIFFERENT_RELEASE:
+    case ER_NET_NO_SERVER_HOST:
+    case ER_NET_CANT_CONNECT_SERVER:
+    case ER_NET_NO_MASTER:
+    case ER_NET_SERVER_CRASHED:
+    case ER_BO_CONNECT_FAILED:
+    case ERR_CSS_TCP_CANNOT_CONNECT_TO_MASTER:
+    case ERR_CSS_TCP_CONNECT_TIMEDOUT:
+    case ERR_CSS_ERROR_FROM_SERVER:
+    case ER_CSS_CLIENTS_EXCEEDED:
+      return CUBRID_LOG_FAILED_CONNECT;
+    default:
+      return CUBRID_LOG_FAILED_LOGIN;
+    }
+}
+
 static int
 cubrid_log_db_login (char *hostname, char *dbname, char *username, char *password)
 {
   MOP user;
   char dbname_at_hostname[CUB_MAXHOSTNAMELEN + CUBRID_LOG_MAX_DBNAME_LEN + 2] = { '\0', };
+  int restart_error, err_code;
 
   snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
 
@@ -831,11 +865,13 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
-  if (db_restart ("cubrid_log_api", 0, dbname_at_hostname) != NO_ERROR)
+  restart_error = db_restart ("cubrid_log_api", 0, dbname_at_hostname);
+  if (restart_error != NO_ERROR)
     {
-      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, CUBRID_LOG_FAILED_LOGIN,
-			   "db_restart failed to connect to %s\n", dbname_at_hostname);
-      return CUBRID_LOG_FAILED_LOGIN;
+      err_code = cubrid_log_map_connect_error (restart_error);
+      cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, err_code,
+			   "db_restart failed to connect to %s (error = %d)\n", dbname_at_hostname, restart_error);
+      return err_code;
     }
 
   user = au_find_user (username);
@@ -920,9 +956,10 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PASSWORD, "password must not be null\n");
     }
 
-  if (cubrid_log_db_login (host, dbname, user, password) != CUBRID_LOG_SUCCESS)
+  err_code = cubrid_log_db_login (host, dbname, user, password);
+  if (err_code != CUBRID_LOG_SUCCESS)
     {
-      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_LOGIN, NULL);
+      CUBRID_LOG_ERROR_HANDLING (err_code, NULL);
     }
 
   if (er_init (NULL, ER_NEVER_EXIT) != NO_ERROR)
