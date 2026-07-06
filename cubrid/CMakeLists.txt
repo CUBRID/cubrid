@@ -373,7 +373,7 @@ set(PARALLEL_SCAN_SOURCES
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_result_handler.cpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.cpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.cpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.cpp
   ${PARALLEL_SCAN_DIR}/px_scan.cpp
@@ -393,7 +393,7 @@ set(PARALLEL_SCAN_HEADERS
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_list.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_slot_iterator_index.hpp
-  ${PARALLEL_SCAN_DIR}/px_scan_join_info.hpp
+  ${PARALLEL_SCAN_DIR}/px_scan_pre_execution_info.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_task.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_trace_handler.hpp
   ${PARALLEL_SCAN_DIR}/px_scan_type.hpp
