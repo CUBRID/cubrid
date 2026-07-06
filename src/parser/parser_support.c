@@ -11362,7 +11362,11 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
       if (owner_ptr != NULL && snl->server[i]->next != NULL)
 	{
-	  return node;		/* same name, both owner-qualified: treat as duplicate */
+	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
+	    {
+	      continue;		/* same name, different owner: distinct server, keep scanning */
+	    }
+	  return node;		/* same name and same owner qualifier: exact duplicate */
 	}
       /* same name, owner-presence differs (one qualified, one not): keep scanning */
     }
