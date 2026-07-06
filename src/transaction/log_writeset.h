@@ -45,15 +45,6 @@ typedef UINT64 LOG_WRITESET_HASH;
 #define LOG_WRITESET_TX_LIMIT     110000
 #define LOG_WRITESET_HISTORY_CAP  110000
 
-/* hash key source: (class_oid, packed PK image) - the exact bytes the slave rehydrates */
-typedef struct log_writeset_key LOG_WRITESET_KEY;
-struct log_writeset_key
-{
-  OID class_oid;
-  int packed_len;
-  char *packed_key;
-};
-
 /* global commit history: open-addressed hash of recently committed writeset keys */
 typedef struct log_writeset_history LOG_WRITESET_HISTORY;
 struct log_writeset_history

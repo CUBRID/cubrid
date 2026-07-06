@@ -200,6 +200,11 @@ log_writeset_add_key (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * clas
       return NO_ERROR;
     }
 
+  /* NOTE: ws_overflow 는 단순 메모리 캡이 아니라 정합성 안전장치다. 수집이 부분적으로만 되면
+   * (한도 초과 또는 realloc 실패) writeset 이 불완전 -> 트랜잭션이 실제보다 "독립"으로 보여
+   * 슬레이브 게이트가 잘못 병렬화 -> 같은 행 순서 붕괴. 게다가 호출부는 반환값을 (void) 로 무시하므로
+   * 조용히 틀린다. 그래서 부분 writeset 을 남기지 않고 통째로 버린 뒤 commit-order 로 격하한다.
+   * (PoC 단순화 대상 아님 - 제거 금지.) */
   if (tdes->ws_hash_count >= LOG_WRITESET_TX_LIMIT)
     {
       /* per-tx limit reached: drop writeset, degrade to commit order */
