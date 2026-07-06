@@ -1996,7 +1996,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * already fetched at the beginning of this function. Restore them from the base time cached by that fetch;
 	   * request them from the server again only when the cache is unusable, so that do_statement () does not
 	   * evaluate default expressions with a null system datetime. */
-	  if (statement->flag.si_datetime && (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime)))
+	  if (statement->flag.si_datetime
+	      && (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime)))
 	    {
 	      db_calculate_current_server_time (parser);
 	      if (DB_IS_NULL (&parser->sys_datetime) || DB_IS_NULL (&parser->sys_epochtime))
