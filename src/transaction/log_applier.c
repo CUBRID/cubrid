@@ -1471,6 +1471,22 @@ static int la_Gate_completed_count = 0;
 static LA_GATE_PENDING *la_Gate_pending_head = NULL;
 static LA_GATE_PENDING *la_Gate_pending_tail = NULL;
 
+/* S3: gap-free 완료 프론티어 (MySQL LWM 등가). reader 가 로그를 커밋 순서로 읽으므로, 처리한 커밋
+ * commit_lsa 를 커밋 순서 FIFO(la_Gate_order)에 넣고, 그 head 가 완료될 때마다 프론티어를 전진시킨다.
+ * 프론티어 = "이 LSA 이하 모든 커밋이 슬레이브에 적용 완료"인 최대 commit_lsa. 완료집합은 프론티어
+ * 위쪽(비연속 tail)만 유지하고 이하는 prune 한다. is_satisfied 는 dep<=frontier 로 짧게 판정한다.
+ * (retire 의 committed_lsa 는 게이트 재정렬로 gap-free 가 아니므로 프론티어로 쓸 수 없다.) */
+typedef struct la_gate_order LA_GATE_ORDER;
+struct la_gate_order
+{
+  LOG_LSA commit_lsa;
+  LA_GATE_ORDER *next;
+};
+static LOG_LSA la_Gate_frontier;
+static bool la_Gate_frontier_seeded = false;
+static LA_GATE_ORDER *la_Gate_order_head = NULL;
+static LA_GATE_ORDER *la_Gate_order_tail = NULL;
+
 static int la_gate_dispatch_now (const LA_APPLY_TASK * task_in);
 
 static UINT64
@@ -1502,6 +1518,102 @@ la_gate_set_contains (const LOG_LSA * lsa)
   return false;
 }
 
+/* S3: 완료집합에서 floor 이하 항목을 제거(재구축). floor 이하는 dep<=frontier 로 판정되므로 안전. */
+static void
+la_gate_set_prune_below (const LOG_LSA * floor)
+{
+  LOG_LSA *survivors;
+  int i, kept = 0, mask;
+
+  if (la_Gate_completed_slots == NULL || la_Gate_completed_count == 0 || LSA_ISNULL (floor))
+    {
+      return;
+    }
+
+  survivors = (LOG_LSA *) malloc ((size_t) la_Gate_completed_count * sizeof (LOG_LSA));
+  if (survivors == NULL)
+    {
+      return;			/* prune 실패해도 정합성엔 영향 없음(공간만 못 되찾음) */
+    }
+
+  for (i = 0; i < la_Gate_completed_capacity; i++)
+    {
+      if (!LSA_ISNULL (&la_Gate_completed_slots[i]) && LSA_GT (&la_Gate_completed_slots[i], floor))
+	{
+	  LSA_COPY (&survivors[kept++], &la_Gate_completed_slots[i]);
+	}
+      LSA_SET_NULL (&la_Gate_completed_slots[i]);
+    }
+
+  mask = la_Gate_completed_capacity - 1;
+  for (i = 0; i < kept; i++)
+    {
+      int idx = (int) (la_gate_hash_lsa (&survivors[i]) & (UINT64) mask);
+
+      while (!LSA_ISNULL (&la_Gate_completed_slots[idx]))
+	{
+	  idx = (idx + 1) & mask;
+	}
+      LSA_COPY (&la_Gate_completed_slots[idx], &survivors[i]);
+    }
+  la_Gate_completed_count = kept;
+  free_and_init (survivors);
+}
+
+/* S3: reader 가 처리한 커밋을 커밋 순서 FIFO 에 기록(프론티어 전진 재료). */
+static int
+la_gate_order_push (const LOG_LSA * commit_lsa)
+{
+  LA_GATE_ORDER *node = (LA_GATE_ORDER *) malloc (sizeof (LA_GATE_ORDER));
+
+  if (node == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LA_GATE_ORDER));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  LSA_COPY (&node->commit_lsa, commit_lsa);
+  node->next = NULL;
+  if (la_Gate_order_tail == NULL)
+    {
+      la_Gate_order_head = node;
+      la_Gate_order_tail = node;
+    }
+  else
+    {
+      la_Gate_order_tail->next = node;
+      la_Gate_order_tail = node;
+    }
+  return NO_ERROR;
+}
+
+/* S3: FIFO head(가장 오래된 커밋)가 완료됐으면 프론티어를 그만큼 전진시킨다(gap-free). */
+static void
+la_gate_advance_frontier (void)
+{
+  int advanced = 0;
+
+  while (la_Gate_order_head != NULL && la_gate_set_contains (&la_Gate_order_head->commit_lsa))
+    {
+      LA_GATE_ORDER *done = la_Gate_order_head;
+
+      LSA_COPY (&la_Gate_frontier, &done->commit_lsa);
+      la_Gate_order_head = done->next;
+      if (la_Gate_order_head == NULL)
+	{
+	  la_Gate_order_tail = NULL;
+	}
+      free_and_init (done);
+      advanced++;
+    }
+
+  if (advanced > 0)
+    {
+      LA_DEBUG_LOG (ARG_FILE_LINE, "ws_gate frontier advanced by %d -> %lld|%d (completed_set count=%d)\n", advanced,
+		    (long long) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset, la_Gate_completed_count);
+    }
+}
+
 static int
 la_gate_mark_completed (const LOG_LSA * commit_seq)
 {
@@ -1512,13 +1624,18 @@ la_gate_mark_completed (const LOG_LSA * commit_seq)
       return NO_ERROR;
     }
 
-  /* PoC: 고정 크기 완료집합. prune 이 없어 load 0.5 를 넘으면 더 담을 수 없다(워크로드가 상정
-   * 범위 초과). 조용히 오동작(무한 탐색)하지 않도록 명시적으로 실패시킨다. 다음번: S3 prune 도입. */
+  /* S3: 가득 차기 전에 프론티어 이하 항목을 prune 해 공간을 회수한다(그 항목들은 dep<=frontier 로
+   * 이미 만족 판정되므로 집합에서 지워도 안전). prune 후에도 가득이면(= 진행 중 in-flight 윈도가
+   * 용량 초과) 조용한 오동작 대신 명시적으로 실패시킨다. */
   if ((la_Gate_completed_count + 1) * 2 > la_Gate_completed_capacity)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
-	      "writeset apply gate: completed-set full (raise LA_GATE_SET_CAPACITY or add prune)");
-      return ER_FAILED;
+      la_gate_set_prune_below (&la_Gate_frontier);
+      if ((la_Gate_completed_count + 1) * 2 > la_Gate_completed_capacity)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "writeset apply gate: completed-set full (raise LA_GATE_SET_CAPACITY)");
+	  return ER_FAILED;
+	}
     }
 
   mask = la_Gate_completed_capacity - 1;
@@ -1539,11 +1656,17 @@ la_gate_mark_completed (const LOG_LSA * commit_seq)
 static bool
 la_gate_is_satisfied (const LOG_LSA * dep)
 {
-  /* 의존 없음(NULL) 이면 즉시 ready. 아니면 선행 트랜잭션이 완료집합에 있어야 한다. */
+  /* 의존 없음(NULL) 이면 즉시 ready. */
   if (LSA_ISNULL (dep))
     {
       return true;
     }
+  /* S3: 프론티어 이하(하위 커밋 전부 적용 완료)면 즉시 만족 (완료집합에서 prune 됐어도 OK). */
+  if (la_Gate_frontier_seeded && LSA_LE (dep, &la_Gate_frontier))
+    {
+      return true;
+    }
+  /* 그 외에는 선행 트랜잭션이 완료집합(프론티어 위 tail)에 있어야 한다. */
   return la_gate_set_contains (dep);
 }
 
@@ -1650,6 +1773,18 @@ la_gate_init (void)
   la_Gate_pending_head = NULL;
   la_Gate_pending_tail = NULL;
   la_Gate_completed_count = 0;
+
+  /* S3: 프론티어/커밋순서 FIFO 초기화(재시작 시 이전 FIFO 잔여 해제). */
+  la_Gate_frontier_seeded = false;
+  LSA_SET_NULL (&la_Gate_frontier);
+  while (la_Gate_order_head != NULL)
+    {
+      LA_GATE_ORDER *n = la_Gate_order_head->next;
+
+      free_and_init (la_Gate_order_head);
+      la_Gate_order_head = n;
+    }
+  la_Gate_order_tail = NULL;
 
   /* 완료집합은 고정 크기로 부팅 시 1회 할당(재시작 시 재사용). */
   if (la_Gate_completed_slots == NULL)
@@ -2293,6 +2428,9 @@ la_collect_worker_results (void)
 	    }
 	}
     }
+
+  /* S3: 이번에 완료된 커밋들로 gap-free 프론티어를 전진시킨다(완료집합 tail 축소). */
+  la_gate_advance_frontier ();
 
   /* writeset PoC: 완료로 의존이 풀린 pending 태스크들을 디스패치한다. */
   {
@@ -3135,9 +3273,10 @@ la_apply_worker_main (void *arg)
       LSA_SET_NULL (&result.committed_rep_lsa);
       result.log_record_time = task.log_record_time;
       LA_DEBUG_LOG (ARG_FILE_LINE,
-		    "worker[tid=%lu idx=%d tran=%d] dequeued trid=%d rectype=%d apply=%p commit_lsa=%lld|%d head=%p\n",
+		    "worker[tid=%lu idx=%d tran=%d] dequeued trid=%d rectype=%d apply=%p commit_lsa=%lld|%d dep=%lld|%d head=%p\n",
 		    (unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
 		    task.rectype, (void *) task.apply, (long long) task.commit_lsa.pageid, (int) task.commit_lsa.offset,
+		    (long long) task.dependency_seq.pageid, (int) task.dependency_seq.offset,
 		    (task.apply ? (void *) task.apply->head : NULL));
       /* task.apply 를 직접 받아 la_find_apply_list 호출을 피한다 (R1/R2 레이스 제거) */
 #if !defined (NDEBUG)
@@ -9739,6 +9878,20 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  else
 	    {
 	      LSA_SET_NULL (&task.dependency_seq);
+	    }
+
+	  /* S3: 프론티어는 첫 커밋 처리 직전 재시작 지점(la_Info.committed_lsa, 하위 전부 적용됨)으로
+	   * 시드하고, 처리하는 커밋을 커밋 순서 FIFO 에 기록한다(park 여부와 무관하게 항상). */
+	  if (!la_Gate_frontier_seeded)
+	    {
+	      LSA_COPY (&la_Gate_frontier, &la_Info.committed_lsa);
+	      la_Gate_frontier_seeded = true;
+	    }
+	  error = la_gate_order_push (&task.commit_lsa);
+	  if (error != NO_ERROR)
+	    {
+	      la_applier_need_shutdown = true;
+	      return error;
 	    }
 
 	  /* writeset PoC: 의존 미충족이면 워커로 안 보내고 리더 pending 큐에 park.
