@@ -233,7 +233,7 @@ net_arg_get_xid (XID * xid, char *buf)
       data_size -= 4;
     }
 
-  if (id[1] < 0 || id[2] < 0)
+  if (id[1] <= 0 || id[2] <= 0)
     {
       return -1;
     }
