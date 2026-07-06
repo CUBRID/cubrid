@@ -5369,7 +5369,9 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
       return error;
     }
 
-  if (qstr_hex_to_bin (buf, (int) (file_size / 2), buf, (int) file_size) != (int) file_size)
+  const size_t decoded_len = file_size / 2;
+
+  if (qstr_hex_to_bin (buf, (int) decoded_len, buf, (int) file_size) != (int) file_size)
     {
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_DECODE_FAILED),
@@ -5377,10 +5379,10 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
       error = ER_FAILED;
       goto exit;
     }
-  buf[file_size / 2] = '\0';
+  buf[decoded_len] = '\0';
 
   SHA256_Init (&sha_ctx);
-  SHA256_Update (&sha_ctx, buf, file_size / 2);
+  SHA256_Update (&sha_ctx, buf, decoded_len);
   SHA256_Final (digest, &sha_ctx);
   str_to_hex_prealloced ((const char *) digest, SHA256_DIGEST_LENGTH,
 			 actual_sha256, sizeof (actual_sha256), HEX_LOWERCASE);
@@ -5395,7 +5397,7 @@ upgradedb_load_decoded_script (int from_v, int to_v, char **out_buf, size_t * ou
     }
 
   *out_buf = buf;
-  *out_len = file_size / 2;
+  *out_len = decoded_len;
   buf = NULL;			/* ownership transferred — exit must not free */
 
 exit:
