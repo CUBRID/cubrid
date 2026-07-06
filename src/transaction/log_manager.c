@@ -69,6 +69,7 @@
 #include "log_system_tran.hpp"
 #include "log_volids.hpp"
 #include "log_writer.h"
+#include "log_writeset.h"
 #include "partition_sr.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
@@ -235,6 +236,7 @@ static void log_change_tran_as_completed (THREAD_ENTRY * thread_p, LOG_TDES * td
 					  LOG_LSA * lsa);
 static void log_append_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
 static void log_append_commit_log_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * commit_lsa);
+static void log_append_ws_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_append_abort_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * abort_lsa);
 
 static void log_dump_record_header_to_string (LOG_RECORD_HEADER * log, char *buf, size_t len);
@@ -287,6 +289,8 @@ static LOG_PAGE *log_dump_record_2pc_acknowledgement (THREAD_ENTRY * thread_p, F
 						      LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						  LOG_PAGE * log_page_p);
+static LOG_PAGE *log_dump_record_ws_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
+					   LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa,
 						    LOG_PAGE * log_page_p);
 static LOG_PAGE *log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type, LOG_LSA * lsa_p,
@@ -485,6 +489,8 @@ log_to_string (LOG_RECTYPE type)
 
     case LOG_DUMMY_HA_SERVER_STATE:
       return "LOG_DUMMY_HA_SERVER_STATE";
+    case LOG_DUMMY_WS_LABEL:
+      return "LOG_DUMMY_WS_LABEL";
     case LOG_DUMMY_OVF_RECORD:
       return "LOG_DUMMY_OVF_RECORD";
     case LOG_DUMMY_GENERIC:
@@ -4655,9 +4661,39 @@ log_append_repl_info_and_commit_log (THREAD_ENTRY * thread_p, LOG_TDES * tdes, L
   log_Gl.prior_info.prior_lsa_mutex.lock ();
 
   log_append_repl_info_with_lock (thread_p, tdes, true);
+  /* writeset PoC: carry the dependency label just before the commit record so the
+   * replication applier can gate parallel apply; part of the same atomic mutex section. */
+  log_append_ws_label_with_lock (thread_p, tdes);
   log_append_commit_log_with_lock (thread_p, tdes, commit_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.unlock ();
+}
+
+/*
+ * log_append_ws_label_with_lock - append the writeset dependency label record
+ *
+ *   tdes(in): transaction whose ws_dependency_seq (computed at commit_probe) is carried
+ *
+ * NOTE: writeset PoC. Appended inside prior_lsa_mutex, immediately before the
+ *       transaction's commit record. No-op for crash recovery; read by the
+ *       replication applier to set the apply task's dependency_seq.
+ */
+static void
+log_append_ws_label_with_lock (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  LOG_REC_WS_LABEL *ws_label;
+  LOG_PRIOR_NODE *node;
+
+  node = prior_lsa_alloc_and_copy_data (thread_p, LOG_DUMMY_WS_LABEL, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
+  if (node == NULL)
+    {
+      return;
+    }
+
+  ws_label = (LOG_REC_WS_LABEL *) node->data_header;
+  LSA_COPY (&ws_label->dependency_seq, &tdes->ws_dependency_seq);
+
+  (void) prior_lsa_next_record_with_lock (thread_p, node, tdes);
 }
 
 /*
@@ -5210,8 +5246,20 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  if (!LOG_CHECK_LOG_APPLIER (thread_p) && tdes->is_active_worker_transaction ()
 	      && log_does_allow_replication () == true)
 	    {
+#if defined(SERVER_MODE) || defined(SA_MODE)
+	      /* writeset PoC: compute the dependency label before the commit LSA is
+	       * assigned (outside prior_lsa_mutex, under the dedicated history latch) */
+	      log_writeset_commit_probe (thread_p, tdes, &tdes->ws_dependency_seq);
+#endif
 	      /* for the replication agent guarantee the order of transaction */
 	      log_append_repl_info_and_commit_log (thread_p, tdes, &commit_lsa);
+#if defined(SERVER_MODE) || defined(SA_MODE)
+	      /* writeset PoC: publish this commit's keys into the global history before
+	       * the row locks are released below, so a later same-key transaction sees
+	       * them at its probe (row X-locks serialize same-key transactions) */
+	      assert (LSA_ISNULL (&tdes->ws_dependency_seq) || LSA_LE (&tdes->ws_dependency_seq, &commit_lsa));
+	      log_writeset_commit_flush (thread_p, tdes, &commit_lsa);
+#endif
 	    }
 	  else
 	    {
@@ -6915,6 +6963,20 @@ log_dump_record_ha_server_state (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA
 }
 
 static LOG_PAGE *
+log_dump_record_ws_label (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
+{
+  LOG_REC_WS_LABEL *ws_label;
+
+  /* Get the DATA HEADER */
+  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*ws_label), log_lsa, log_page_p);
+  ws_label = ((LOG_REC_WS_LABEL *) ((char *) log_page_p->area + log_lsa->offset));
+  fprintf (out_fp, "  writeset dependency_seq = %lld|%d\n", (long long) ws_label->dependency_seq.pageid,
+	   (int) ws_label->dependency_seq.offset);
+
+  return log_page_p;
+}
+
+static LOG_PAGE *
 log_dump_record_supplemental_info (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_SUPPLEMENT *supplement;
@@ -7021,6 +7083,10 @@ log_dump_record (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_RECTYPE record_type
 
     case LOG_DUMMY_HA_SERVER_STATE:
       log_page_p = log_dump_record_ha_server_state (thread_p, out_fp, log_lsa, log_page_p);
+      break;
+
+    case LOG_DUMMY_WS_LABEL:
+      log_page_p = log_dump_record_ws_label (thread_p, out_fp, log_lsa, log_page_p);
       break;
 
     case LOG_SUPPLEMENTAL_INFO:
@@ -7950,6 +8016,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 	    case LOG_REPLICATION_STATEMENT:
 	    case LOG_SYSOP_ATOMIC_START:
 	    case LOG_DUMMY_HA_SERVER_STATE:
+	    case LOG_DUMMY_WS_LABEL:
 	    case LOG_DUMMY_OVF_RECORD:
 	    case LOG_DUMMY_GENERIC:
 	    case LOG_SUPPLEMENTAL_INFO:
@@ -8382,6 +8449,7 @@ log_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * start_postp
 		    case LOG_REPLICATION_STATEMENT:
 		    case LOG_SYSOP_ATOMIC_START:
 		    case LOG_DUMMY_HA_SERVER_STATE:
+		    case LOG_DUMMY_WS_LABEL:
 		    case LOG_DUMMY_OVF_RECORD:
 		    case LOG_DUMMY_GENERIC:
 		    case LOG_SUPPLEMENTAL_INFO:
