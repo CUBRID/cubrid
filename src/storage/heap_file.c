@@ -605,8 +605,9 @@ static int heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR
 static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr);
 static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr,
 				  const cubstorage::bestspace_entry * entries, int num_entries);
-static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace_entry * entries,
-				int *num_entries, cubstorage::bestspace_entry * candidates, int *num_candidates);
+static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
+				cubstorage::bestspace_entry * entries, int *num_entries,
+				cubstorage::bestspace_entry * candidates, int *num_candidates, int *unfill_space);
 STATIC_INLINE int heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 				       PGBUF_WATCHER * page_watcher);
 
@@ -5499,12 +5500,13 @@ error_exit:
  *   return:
  */
 static int
-heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace_entry * entries, int *num_entries,
-		     cubstorage::bestspace_entry * candidates, int *num_candidates)
+heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
+		     cubstorage::bestspace_entry * entries, int *num_entries, cubstorage::bestspace_entry * candidates,
+		     int *num_candidates, int *unfill_space)
 {
-  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  PGBUF_WATCHER header_watcher, page_watcher;
   HEAP_HDR_STATS *header;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  PGBUF_WATCHER page_watcher;
   bool page_watcher_fixed = false;
   int num_entries_in_page, num_entries_to_copy;
   int remaining_entries;
@@ -5521,18 +5523,7 @@ heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace
   *num_entries = 0;
   *num_candidates = 0;
 
-  vpid.volid = hfid->vfid.volid;
-  vpid.pageid = hfid->hpgid;
-
-  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
-  error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-
-  if (spage_get_record (thread_p, header_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
+  if (spage_get_record (thread_p, header_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
     {
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error_code = ER_GENERIC_ERROR;
@@ -5595,20 +5586,18 @@ heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace
       heap_bestspace_clear_candidates (header);
 
       addr.vfid = &hfid->vfid;
-      addr.pgptr = header_watcher.pgptr;
+      addr.pgptr = header_watcher->pgptr;
       addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
       log_append_redo_data (thread_p, RVHF_STATS, &addr, sizeof (*header), header);
-      pgbuf_set_dirty (thread_p, header_watcher.pgptr, DONT_FREE);
+      pgbuf_set_dirty (thread_p, header_watcher->pgptr, DONT_FREE);
     }
+
+  *unfill_space = header->unfill_space;
 
 exit:
   if (page_watcher_fixed)
     {
       pgbuf_ordered_unfix (thread_p, &page_watcher);
-    }
-  if (header_watcher.pgptr != NULL)
-    {
-      pgbuf_ordered_unfix (thread_p, &header_watcher);
     }
 
   if (error_code != NO_ERROR)
@@ -5628,25 +5617,88 @@ STATIC_INLINE int
 heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
 		     PGBUF_WATCHER * page_watcher)
 {
+  // *INDENT-OFF*
+  cubstorage::bestspace_entry *entries, *candidates;
+  // *INDENT-ON*
+  int min_entries, max_entries, max_candidates;
+  int num_entries, num_candidates, num_shards;
+  int unfill_space;
+  PGBUF_WATCHER header_watcher;
+  VPID vpid;
   int error;
-
-  /*
-     if (!class_oid || OID_ISNULL (class_oid) || class_oid->pageid == 193)
-     {
-     find direct from the heap header, in-memory bestspace is waste
-     return find (thread_ref, hfid, size, page_watcher);
-     }
-   */
 
   error = cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
   if (error == ER_MHT_NOTFOUND)
     {
-      /*
-       * read from the heap header
-       * and...
-       * error = cubstorage::bestspaces.create ();
-       * and retry
-       */
+      /* fix the header page */
+      vpid.volid = hfid->vfid.volid;
+      vpid.pageid = hfid->hpgid;
+
+      PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+      error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+
+      /* check if there is bestspace. other threads already may create the bestspace */
+      error = cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
+      if (error == NO_ERROR)
+	{
+	  /* other threads create the bestspace and found the space */
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	  return error;
+	}
+
+      /* get the max number of the entries */
+      error = sysprm_get_range (PRM_ID_HF_MAX_BESTSPACE_ENTRIES, (void *) &min_entries, (void *) &max_entries);
+      if (error != NO_ERROR)
+	{
+	  assert (false);
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	  return ER_FAILED;
+	}
+      max_entries = (max_entries + 63) / 64 * 64;
+      max_candidates =
+	sizeof (((HEAP_HDR_STATS *) 0)->bestspace.candidates) /
+	sizeof (((HEAP_HDR_STATS *) 0)->bestspace.candidates[0]);
+      entries = malloc (max_entries * sizeof (cubstorage::bestspace_entry));
+      if (!entries)
+	{
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	  return ER_FAILED;
+	}
+      candidates = malloc (max_candidates * sizeof (cubstorage::bestspace_entry));
+      if (!candidates)
+	{
+	  free_and_init (entries);
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	  return ER_FAILED;
+	}
+
+      /* there is no in-memory bestspace */
+      error =
+	heap_take_bestspace (thread_p, hfid, &header_watcher, entries, &num_entries, candidates, &num_candidates,
+			     &unfill_space);
+      if (error != NO_ERROR)
+	{
+	  pgbuf_ordered_unfix (thread_p, &header_watcher);
+	  return error;
+	}
+
+      if (OID_IS_ROOTOID (class_oid))
+	{
+	  num_shards = 1;
+	}
+      else
+	{
+	  num_shards = prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) / 64;
+	}
+      cubstorage::bestspaces.create (class_oid, hfid, entries, num_entries, num_shards, unfill_space);
+
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+
       error = cubstorage::bestspaces.find (*thread_p, class_oid, hfid, size, *page_watcher);
       if (error != NO_ERROR)
 	{
@@ -21573,8 +21625,8 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       assert (!HFID_IS_NULL (&context->hfid));
 
       /* find and fix page for insert */
-      if (cubstorage::bestspaces.find (*thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
-				       *context->home_page_watcher_p) != NO_ERROR)
+      if (heap_find_bestspace (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+			       context->home_page_watcher_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -21717,8 +21769,8 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
 
   assert (!HFID_IS_NULL (&context->hfid));
 
-  if (cubstorage::bestspaces.find (*thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
-				   *context->home_page_watcher_p) != NO_ERROR)
+  if (heap_find_bestspace (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+			   context->home_page_watcher_p) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
