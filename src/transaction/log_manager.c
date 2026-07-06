@@ -12930,13 +12930,34 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
+	  db_make_null (&old_values[i]);
+	}
+
+      for (i = 0; i < attr_info.num_values; i++)
+	{
 	  heap_value = &attr_info.values[i];
 
 	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+	  /* reading redo_recdes below reuses attr_info and clears each dbvalue, which frees any buffer
+	   * the dbvalue owns (e.g. the decompressed buffer of a compressed string).
+	   * So the old value must be deep-copied here, not shallow-copied. */
+	  (void) pr_clone_value (&heap_value->dbvalue, &old_values[oldval_deforder]);
+
+	  /* pr_clone_value () returns NO_ERROR even when its internal setval fails (e.g. allocation failure)
+	   * and leaves the clone NULL. Do not pack a NULL old value silently; treat it as an error. */
+	  if (!DB_IS_NULL (&heap_value->dbvalue) && DB_IS_NULL (&old_values[oldval_deforder]))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+
+	      goto exit;
+	    }
 
 	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
 	}
@@ -13253,6 +13274,11 @@ exit:
 
   if (old_values != NULL)
     {
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  pr_clear_value (&old_values[i]);
+	}
+
       free_and_init (old_values);
     }
 
