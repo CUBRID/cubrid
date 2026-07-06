@@ -9290,8 +9290,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	}
     }
 
-  if ((lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_HA_SERVER_STATE) && lrec->trid != LOG_SYSTEM_TRANID
-      && LSA_ISNULL (&lrec->prev_tranlsa))
+  if ((lrec->type != LOG_END_OF_LOG && lrec->type != LOG_DUMMY_HA_SERVER_STATE && lrec->type != LOG_DUMMY_WS_LABEL)
+      && lrec->trid != LOG_SYSTEM_TRANID && LSA_ISNULL (&lrec->prev_tranlsa))
     {
       apply = la_add_apply_list (lrec->trid);
       if (apply == NULL)
