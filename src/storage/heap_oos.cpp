@@ -141,8 +141,9 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
       if (value_offset + OR_OOS_INLINE_SIZE > state->src_length)
 	{
 	  assert_release (false && "OOS inline slot extends past record bounds");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
+		  NULL_VOLID, NULL_PAGEID, NULL_SLOTID);
+	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
       /* Inline OOS slot layout (M2+): [OID (8B) | full_length (8B bigint)]. */
@@ -154,15 +155,17 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
       if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
 	{
 	  assert_release (false && "failed to read OOS OID from inline slot");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
+		  OID_AS_ARGS (&oos_oid));
+	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
       oos_len = or_get_bigint (&buf, &rc);
       if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
 	{
 	  assert_release (false && "invalid OOS inline length");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
+		  OID_AS_ARGS (&oos_oid));
+	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
       state->oos_blobs[i].resize ((std::size_t) oos_len);
@@ -172,12 +175,14 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
       requests.push_back (request);
     }
 
-  if (!requests.empty () && oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()))
-      != NO_ERROR)
+  if (!requests.empty ())
     {
-      oos_error ("oos_read_many failed while expanding OOS record");
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_FAILED;
+      int oos_err = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
+      if (oos_err != NO_ERROR)
+	{
+	  oos_error ("oos_read_many failed while expanding OOS record");
+	  return oos_err;
+	}
     }
 
   return NO_ERROR;

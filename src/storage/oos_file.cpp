@@ -1109,15 +1109,12 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
 	     oos_vfid.fileid, oos_vfid.volid, src.size ());
   int err = NO_ERROR;
 
-  assert (src.data () != nullptr);
-  assert (src.size () > 0);
-
   /* Guards the narrowing cast below against wrap-around from a corrupt caller. */
   if (src.data () == nullptr || src.size () == 0 || src.size () > (std::size_t) INT_MAX)
     {
       oos_error ("oos_insert rejected invalid src (data=%p, size=%zu)", src.data (), src.size ());
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_INVALID_ARGUMENT, 0);
+      return ER_HEAP_OOS_INVALID_ARGUMENT;
     }
 
   const int src_len = static_cast<int> (src.size ());
@@ -1542,8 +1539,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
     {
       oos_error ("OOS slot smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
 		 oos_recdes.length, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
   std::memcpy (&header_out, oos_recdes.data, OOS_RECORD_HEADER_SIZE);
@@ -1553,8 +1550,8 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
     {
       oos_error ("OOS chunk overflows caller buffer (payload=%d, remaining=%zu) at oid={vol=%d,page=%d,slot=%d}",
 		 payload_len, writer.remaining (), OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
   return NO_ERROR;
 }
@@ -1585,16 +1582,16 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 	  oos_error ("OOS chain inconsistency at idx=%d: header.chunk_index=%d, header.total_data_length=%d,"
 		     " expected_total=%d at oid={vol=%d,page=%d,slot=%d}",
 		     idx, header.chunk_index, header.total_data_length, total_data_length, OID_AS_ARGS (&current));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	  return ER_HEAP_OOS_CORRUPTED_RECORD;
 	}
 
       /* A 0-byte chunk would let a cyclic next_chunk_oid loop forever. */
       if (writer.written () == before)
 	{
 	  oos_error ("OOS empty chunk at idx=%d, oid={vol=%d,page=%d,slot=%d}", idx, OID_AS_ARGS (&current));
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	  return ER_HEAP_OOS_CORRUPTED_RECORD;
 	}
 
       current = header.next_chunk_oid;
@@ -1629,8 +1626,8 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
     {
       oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
 		 first_header.chunk_index, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
   /* Inline length (dest.size()) and chain header must agree. */
@@ -1638,8 +1635,8 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
     {
       oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",
 		 expected_length, first_header.total_data_length, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
   if (!OID_ISNULL (&first_header.next_chunk_oid))
@@ -1656,8 +1653,8 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
     {
       oos_error ("OOS final length mismatch: written=%zu expected=%d at oid={vol=%d,page=%d,slot=%d}",
 		 writer.written (), expected_length, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
   return NO_ERROR;
 }
@@ -2217,10 +2214,10 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
       if (oos_recdes.length < (int) sizeof (OOS_RECORD_HEADER))
 	{
 	  assert_release (false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
 	  oos_error ("OOS record at volid=%d pageid=%d slotid=%d has invalid length %d",
 		     OID_AS_ARGS (&current_oid), oos_recdes.length);
-	  return ER_GENERIC_ERROR;
+	  return ER_HEAP_OOS_CORRUPTED_RECORD;
 	}
       OOS_RECORD_HEADER header;
       std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
@@ -2459,6 +2456,13 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
     }
 
   assert (oos_recdes.length >= OOS_RECORD_HEADER_SIZE);
+  if (oos_recdes.length < OOS_RECORD_HEADER_SIZE)
+    {
+      oos_error ("oos_get_length: OOS record smaller than header (len=%d) at oid={vol=%d,page=%d,slot=%d}",
+		 oos_recdes.length, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return -1;
+    }
 
   OOS_RECORD_HEADER header;
   std::memcpy (&header, oos_recdes.data, sizeof (OOS_RECORD_HEADER));
