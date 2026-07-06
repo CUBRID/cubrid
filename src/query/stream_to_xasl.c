@@ -3894,7 +3894,7 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
 	}
     }
 
-  /* remote DELETE + local subquery sink fields (CBRD-26921) */
+  /* remote DELETE + local subquery sink fields */
   {
     int is_remote;
     ptr = or_unpack_int (ptr, &is_remote);

@@ -4188,7 +4188,7 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
     }
   ptr = or_pack_int (ptr, offset);
 
-  /* remote DELETE + local subquery sink fields (CBRD-26921) */
+  /* remote DELETE + local subquery sink fields */
   ptr = or_pack_int (ptr, (int) delete_info->is_remote_delete);
 
   offset = xts_save_string (delete_info->remote_url);
@@ -6576,7 +6576,7 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + OR_INT_SIZE	/* no_supplemental_log */
 	   + OR_INT_SIZE	/* num_cond_reev_classes */
 	   + PTR_SIZE		/* mvcc_cond_reev_classes */
-	   /* remote DELETE + local subquery sink fields (CBRD-26921) */
+	   /* remote DELETE + local subquery sink fields */
 	   + OR_INT_SIZE	/* is_remote_delete */
 	   + PTR_SIZE		/* remote_url */
 	   + PTR_SIZE		/* remote_user */

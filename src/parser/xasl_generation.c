@@ -19347,9 +19347,9 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /*
  * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
- *   pure-local subquery (CBRD-26921). Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled
- *   as the aptr (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target
- *   table, WHERE key column, and comparison operator. The runtime (Step 3) reads each list-file value and pushes
+ *   pure-local subquery. Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled as the aptr
+ *   (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target table,
+ *   WHERE key column, and comparison operator. The runtime reads each list-file value and pushes
  *   "DELETE FROM <table> WHERE <key> <op> ?" via CCI bind.
  *
  * return        : XASL node, or NULL on error.
@@ -21432,7 +21432,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  return NULL;
 	}
 
-      /* remote DELETE + local subquery sink (CBRD-26921): pt_convert_dblink_dml_query set up a
+      /* remote DELETE + local subquery sink: pt_convert_dblink_dml_query set up a
        * PT_DBLINK_TABLE_DML with qstr == NULL (no serialized pushdown text) and preserved the WHERE subquery.
        * Route to the value-push sink instead of the qstr pushdown. qstr != NULL keeps the normal remote DELETE
        * (no local subquery) on the existing pushdown path. */

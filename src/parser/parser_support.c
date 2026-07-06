@@ -11863,7 +11863,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* T1-4: true iff the DELETE WHERE clause is a single positive predicate over a subquery that the phase-1
+/* true iff the DELETE WHERE clause is a single positive predicate over a subquery that the phase-1
  * value-push sink supports by shape: col IN (subquery), col = ANY (subquery), or a scalar comparison
  * col {= | < | > | <= | >=} (subquery). Forms excluded here fall through to the existing "local mixed remote
  * DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF list, caught by op or
@@ -11872,9 +11872,10 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
  *
  * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
  * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
- * point. A correlated or row subquery that passes this shape gate is therefore routed to the sink and currently
- * hits the explicit "under construction" rejection (safe -- nothing is pushed); Step 2/3 must reject these when
- * building the local sub-plan, where the reference to the outer target is resolvable. */
+ * point. A correlated or row subquery that passes this shape gate is routed to the sink and rejected later, where
+ * the reference to the outer target (or the multi-column shape) is resolvable: pt_dblink_delete_corr_ref()
+ * (semantic_check.c) rejects correlated subqueries, and pt_to_delete_xasl_remote_subquery() (xasl_generation.c)
+ * rejects row/multi-column subqueries. */
 static bool
 pt_dblink_delete_where_is_inscope (PT_NODE * node)
 {
@@ -11990,7 +11991,8 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * The WHERE shape is restricted here (pt_dblink_delete_where_is_inscope) to the phase-1 supported forms:
    * shape-unsupported predicates (OR / multiple predicates / comparison ANY-ALL / NOT IN / EXISTS) fail the
    * gate and fall through to the "local mixed remote DML is not allowed" rejection, while correlated / row
-   * subqueries that pass the shape gate are rejected at the sink stub (under construction) until Step 2/3. */
+   * subqueries that pass the shape gate are rejected downstream (semantic_check.c / xasl_generation.c, see
+   * pt_dblink_delete_where_is_inscope's comment for the exact rejection points). */
   if (remote_del == 1 && local_del == 0 && pt_dblink_delete_where_is_inscope (node))
     {
       snl->is_remote_delete_local_subq = true;
@@ -12215,9 +12217,9 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  /* remote DELETE + pure-local subquery (CBRD-26921): set up the value-push sink. Like the INSERT SELECT sink,
-   * skip the DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for
-   * XASL generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
+  /* remote DELETE + pure-local subquery: set up the value-push sink. Like the INSERT SELECT sink, skip the
+   * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
+   * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
   if (snl->is_remote_delete_local_subq)
     {
       node->flag.cannot_prepare = 0;

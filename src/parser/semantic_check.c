@@ -12067,9 +12067,9 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_dblink_delete_corr_ref () - walk callback: flag a subquery correlated to the outer remote DELETE target
- *   (CBRD-26921). A correlated reference is a qualified column (PT_DOT_) whose qualifier matches the target's
- *   range variable or entity name. Used by pt_check_with_info's DELETE branch before the subquery is bound
+ * pt_dblink_delete_corr_ref () - walk callback: flag a subquery correlated to the outer remote DELETE target.
+ *   A correlated reference is a qualified column (PT_DOT_) whose qualifier matches the target's range variable
+ *   or entity name. Used by pt_check_with_info's DELETE branch before the subquery is bound
  *   stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not found").
  *   Note: conservative -- a subquery that reuses the target's alias/table name for its OWN FROM range (rare)
  *   is also flagged; qualifier-vs-inner-FROM shadowing is not distinguished.
@@ -12276,7 +12276,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      else if (node->node_type == PT_DELETE)
 		{
-		  /* remote DELETE with a local subquery in WHERE (CBRD-26921): the subquery runs locally, but the
+		  /* remote DELETE with a local subquery in WHERE: the subquery runs locally, but the
 		   * remote DML path skips the normal query semantic check below, so the WHERE subquery is never
 		   * processed as a stand-alone query (its specs would lack range_var / spec id and XASL generation
 		   * would crash). Resolve / translate it here, mirroring the remote INSERT SELECT handling above, so

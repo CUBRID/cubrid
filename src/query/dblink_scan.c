@@ -1501,7 +1501,7 @@ sql_build_error:
 }
 
 /*
- * dblink_delete_open () - Connect to remote server and prepare a single-key DELETE statement (CBRD-26921).
+ * dblink_delete_open () - Connect to remote server and prepare a single-key DELETE statement.
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)   : thread entry
  *   url/user/pwd(in): CCI connection info

@@ -11213,7 +11213,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool need_locking;
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  /* CBRD-26921: remote DELETE + local subquery sink. Evaluate the WHERE subquery locally and push one remote
+  /* remote DELETE + local subquery sink: evaluate the WHERE subquery locally and push one remote
    * DELETE per value via CCI; this has no local class (num_classes == 0) so it must not enter the local delete
    * path below. */
   if (delete_->is_remote_delete)
@@ -12757,7 +12757,7 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 
 /*
  * qexec_execute_remote_delete_subquery () - Evaluate a local WHERE subquery and push one remote DELETE per
- *   value via CCI (CBRD-26921). Mirrors qexec_execute_remote_insert_select, but runs the aptr (local
+ *   value via CCI. Mirrors qexec_execute_remote_insert_select, but runs the aptr (local
  *   subquery) itself (the dispatch is at qexec_execute_delete entry, before the local delete path) and binds
  *   a single value per row to "DELETE FROM <table> WHERE <key> <op> ?".
  *   return: NO_ERROR or ER_FAILED
