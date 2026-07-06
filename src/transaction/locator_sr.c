@@ -8805,8 +8805,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	{
 	  repl_old_key = pr_make_ext_value ();
 	  pr_clone_value (old_key, repl_old_key);
-	  /* writeset PoC: collect both OLD and NEW PK hashes here, where new_key is
-	   * still alive (it is discarded at the end of this loop iteration) */
+	  /* writeset PoC: UPDATE 는 PK 를 바꿀 수 있으므로 OLD/NEW PK 는 서로 다른 두 행 정체성이다.
+	   * 둘 다 수집해야 이후 OLD PK 든 NEW PK 든 건드리는 트랜잭션이 이 업데이트 뒤로 순서가 잡힌다
+	   * (PK 불변이면 동일 해시 -> 전역 map 에 멱등하게 들어감). new_key 가 아직 살아있는 이 지점에서
+	   * 수집한다(루프 이터레이션 끝에서 폐기됨). */
 	  {
 	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
@@ -8864,8 +8866,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  /* writeset PoC: collect OLD PK for the edge path where the in-loop clone
-	   * block did not run (repl_old_key fetched fresh here) */
+	  /* writeset PoC: in-loop 수집 블록이 안 탄 엣지 경로(repl_old_key 를 여기서 새로 fetch).
+	   * 이 시점엔 new_key 가 이미 폐기됐으므로 OLD PK 만 수집한다(in-loop 경로와 배타적이라
+	   * OLD 이중 카운트 없음). */
 	  {
 	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
