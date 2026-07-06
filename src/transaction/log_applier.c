@@ -319,6 +319,9 @@ struct la_apply_task
   /* 리더가 미리 매핑해 둔 repl_list 포인터. 워커가 la_find_apply_list 를 호출하지 않도록 하여
    * la_Info.repl_lists 배열 realloc/슬롯 재사용 레이스를 회피한다. */
   LA_APPLY *apply;
+  /* writeset PoC: 마스터 commit_seq 기준 의존성 라벨. 커밋 직전 LOG_DUMMY_WS_LABEL 에서
+   * 디코드한 dependency_seq. 게이트가 이 라벨의 선행 트랜잭션 완료를 기다린다. NULL=의존 없음. */
+  LOG_LSA dependency_seq;
 };
 
 typedef struct la_apply_stats LA_APPLY_STATS;
@@ -869,6 +872,7 @@ static void la_clear_all_repl_and_commit_list (void);
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static int la_add_node_into_la_commit_list (int tranid, LOG_LSA * lsa, int type, time_t eot_time);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
+static void la_retrieve_ws_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -6201,6 +6205,46 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
 }
 
 /*
+ * la_retrieve_ws_label() - writeset PoC: LOG_DUMMY_WS_LABEL 레코드에서 dependency_seq 를 읽는다
+ *   return: void
+ *   pgptr(in): 라벨 레코드가 있는 로그 페이지
+ *   lsa(in): 라벨 레코드의 LSA
+ *   dependency_seq(out): 디코드한 의존성 라벨. 실패 시 NULL LSA
+ *
+ * Note: la_retrieve_eot_time() 과 동일한 패턴. 레코드 헤더 뒤 data_header 를 읽는다.
+ */
+static void
+la_retrieve_ws_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
+{
+  int error = NO_ERROR;
+  LOG_REC_WS_LABEL *ws_label;
+  LOG_PAGEID pageid;
+  PGLENGTH offset;
+  LOG_PAGE *pg;
+
+  LSA_SET_NULL (dependency_seq);
+
+  pageid = lsa->pageid;
+  offset = DB_SIZEOF (LOG_RECORD_HEADER) + lsa->offset;
+  pg = pgptr;
+
+  LA_LOG_READ_ALIGN (error, offset, pageid, pg);
+  if (error != NO_ERROR)
+    {
+      return;
+    }
+
+  LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, SSIZEOF (*ws_label), offset, pageid, pg);
+  if (error != NO_ERROR)
+    {
+      return;
+    }
+
+  ws_label = (LOG_REC_WS_LABEL *) ((char *) pg->area + offset);
+  LSA_COPY (dependency_seq, &ws_label->dependency_seq);
+}
+
+/*
  * la_get_current()
  *   return: NO_ERROR or error code
  *
@@ -9163,6 +9207,12 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   char buffer[256];
   time_t eot_time;
 
+  /* writeset PoC: 직전 LOG_DUMMY_WS_LABEL 에서 디코드한 의존성 라벨 (reader 스레드 전용).
+   * 마스터가 커밋 레코드 바로 앞 같은 prior_lsa_mutex 구간에 라벨을 기록하므로, 바로 다음
+   * LOG_COMMIT(같은 trid)이 이를 소비한다. trid 로 매칭해 소비 후 리셋한다. */
+  static int la_ws_label_trid = NULL_TRANID;
+  static LOG_LSA la_ws_label_dependency_seq = { NULL_PAGEID, NULL_OFFSET };
+
 #if !defined (NDEBUG)
   /* Per-trid run length trace. Emits one line whenever the trid the reader is currently
    * scanning changes, with the previous run's record count and start LSA. Lets us see
@@ -9419,6 +9469,17 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  /* 리더가 이미 la_add_apply_list 로 매핑해 둔 repl_list 포인터를 태스크에 실어 보낸다.
 	   * 워커는 이 포인터를 직접 사용해 la_Info.repl_lists 배열 경합을 피한다. */
 	  task.apply = la_find_apply_list (lrec->trid);
+	  /* writeset PoC: 바로 앞 WS_LABEL(같은 trid)에서 디코드한 의존성 라벨을 태스크에 싣는다.
+	   * 일치하는 라벨이 없으면 의존 없음(NULL)으로 둔다. 소비 후 홀더를 리셋한다. */
+	  if (la_ws_label_trid == lrec->trid)
+	    {
+	      LSA_COPY (&task.dependency_seq, &la_ws_label_dependency_seq);
+	      la_ws_label_trid = NULL_TRANID;
+	    }
+	  else
+	    {
+	      LSA_SET_NULL (&task.dependency_seq);
+	    }
 
 		  {
 		    UINT64 dispatch_seq = 0;
@@ -9523,6 +9584,16 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	      return error;
 	    }
 	}
+      break;
+
+    case LOG_DUMMY_WS_LABEL:
+      /* writeset PoC: 커밋 직전 라벨 레코드. dependency_seq 를 디코드해 두고 바로 뒤따르는
+       * LOG_COMMIT(같은 trid)에서 task.dependency_seq 로 소비한다. */
+      la_retrieve_ws_label (pg_ptr, final, &la_ws_label_dependency_seq);
+      la_ws_label_trid = lrec->trid;
+      LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
+		    (long long) la_ws_label_dependency_seq.pageid, (int) la_ws_label_dependency_seq.offset,
+		    (long long) final->pageid, (int) final->offset);
       break;
 
     default:
