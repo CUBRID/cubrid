@@ -15450,7 +15450,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  RESERVED_CLASS_INFO &class_info = reserved_classes.classes[count];
+	  RESERVED_CLASS_INFO & class_info = reserved_classes.classes[count];
 
 	  entity = entity_spec->info.spec.flat_entity_list;
 	  classname = entity->info.name.original;
@@ -15649,7 +15649,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
 
 	for (int i = 0; i < reserved_classes.num_classes; i++)
 	  {
-	    RESERVED_CLASS_INFO &class_info = reserved_classes.classes[i];
+	    RESERVED_CLASS_INFO & class_info = reserved_classes.classes[i];
 
 	    pre_drop_length =
 	      ((class_info.objtype ==
