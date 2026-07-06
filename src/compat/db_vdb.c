@@ -2153,7 +2153,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* reset the parser values */
-  if (statement->flag.si_datetime)
+  if (statement->flag.si_datetime || statement->node_type == PT_CREATE_ENTITY || statement->node_type == PT_ALTER)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);
