@@ -11132,6 +11132,12 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
+      if (cdc_Gl.producer.is_reset_process_lsa)
+	{
+	  LSA_SET_NULL (&process_lsa);
+	  cdc_Gl.producer.is_reset_process_lsa = false;
+	}
+
       if (LSA_ISNULL (&process_lsa))
 	{
 	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
@@ -11179,16 +11185,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->length = log_info_entry.length;
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
-
-	  if (cdc_Gl.is_queue_reinitialized)
-	    {
-	      free_and_init (tmp->log_info);
-	      free_and_init (tmp);
-
-	      cdc_Gl.is_queue_reinitialized = false;
-
-	      continue;
-	    }
 
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
@@ -14517,7 +14513,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       goto end;
     }
 
-  cdc_Gl.is_queue_reinitialized = true;
+  /* every caller must park the producer before reinitializing the queue */
+  assert (cdc_Gl.producer.state == CDC_PRODUCER_STATE_WAIT);
 
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
@@ -14557,6 +14554,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
+      cdc_Gl.producer.is_reset_process_lsa = true;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -15021,6 +15019,8 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
+  cdc_Gl.producer.is_reset_process_lsa = true;
+
   return 0;
 }
 
@@ -15085,6 +15085,7 @@ cdc_cleanup ()
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
 
   pthread_mutex_lock (&cdc_Gl.producer.lock);
+  cdc_Gl.producer.is_reset_process_lsa = true;
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
   pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
