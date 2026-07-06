@@ -15058,8 +15058,6 @@ cdc_cleanup ()
       cdc_pause_producer ();
     }
 
-  cdc_Gl.producer.is_reset_process_lsa = true;
-
   cdc_free_extraction_filter ();
 
   assert (cdc_Gl.loginfo_queue != NULL);
@@ -15087,6 +15085,7 @@ cdc_cleanup ()
   LSA_SET_NULL (&cdc_Gl.last_loginfo_queue_lsa);
 
   pthread_mutex_lock (&cdc_Gl.producer.lock);
+  cdc_Gl.producer.is_reset_process_lsa = true;
   LSA_SET_NULL (&cdc_Gl.producer.next_extraction_lsa);
   pthread_mutex_unlock (&cdc_Gl.producer.lock);
 
