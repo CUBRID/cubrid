@@ -884,7 +884,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST, "host must not be null\n");
     }
 
-  if (port < 0 || port > USHRT_MAX)
+  if (port <= 0 || port > USHRT_MAX)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT,
 				 "invalid port number : %d, port must be greater than 0 and less than %d\n", port,
