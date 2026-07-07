@@ -582,8 +582,6 @@ static int *pt_make_identity_offsets (PT_NODE * attr_list);
 
 static void pt_to_pred_terms (PARSER_CONTEXT * parser, PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
 
-static VAL_LIST *pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list);
-
 static TABLE_INFO *pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec);
 
 static SYMBOL_INFO *pt_symbol_info_alloc (void);
@@ -3763,7 +3761,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   return:
  *   attribute_list(in):
  */
-static VAL_LIST *
+VAL_LIST *
 pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;

@@ -596,99 +596,114 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
   proc = &xasl->proc.hashjoin;
 
-  /* proc->outer.regu_list_pred */
-  if (outer_info->pred_count > 0)
-    {
-      pos_cnt = outer_info->pred_count;
-
-      pos_list = (int *) malloc (pos_cnt * sizeof (int));
-      if (pos_list == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
-	  goto error_exit;
-	}
-
-      pred = outer_info->pred_list;
-      for (pos_index = 0; pos_index < pos_cnt; pos_index++)
-	{
-	  found_index = pt_find_attribute (parser, pred, outer_info->name_list);
-	  if (found_index == -1)
-	    {
-	      free_and_init (pos_list);
-	      goto error_exit;
-	    }
-
-	  pos_list[pos_index] = found_index;
-	  pred = pred->next;
-	}
-
-      proc->outer.regu_list_pred =
-	pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_xasl->val_list, pos_list);
-
-      free_and_init (pos_list);
-
-      if (proc->outer.regu_list_pred == NULL)
-	{
-	  goto error_exit;
-	}
-
-      for (regu = proc->outer.regu_list_pred; regu != NULL; regu = regu->next)
-	{
-	  regu->value.value.pos_descr.pos_no += outer_info->expr_count;
-	}
-    }
-
-  /* proc->inner.regu_list_pred */
-  if (inner_info->pred_count > 0)
-    {
-      pos_cnt = inner_info->pred_count;
-
-      pos_list = (int *) malloc (pos_cnt * sizeof (int));
-      if (pos_list == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
-	  goto error_exit;
-	}
-
-      pred = inner_info->pred_list;
-      for (pos_index = 0; pos_index < pos_cnt; pos_index++)
-	{
-	  found_index = pt_find_attribute (parser, pred, inner_info->name_list);
-	  if (found_index == -1)
-	    {
-	      free_and_init (pos_list);
-	      goto error_exit;
-	    }
-
-	  pos_list[pos_index] = found_index;
-	  pred = pred->next;
-	}
-
-      proc->inner.regu_list_pred =
-	pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_xasl->val_list, pos_list);
-
-      free_and_init (pos_list);
-
-      if (proc->inner.regu_list_pred == NULL)
-	{
-	  goto error_exit;
-	}
-
-      for (regu = proc->inner.regu_list_pred; regu != NULL; regu = regu->next)
-	{
-	  regu->value.value.pos_descr.pos_no += inner_info->expr_count;
-	}
-    }
-
-  /* During/after-join predicates reference columns from both inputs.
-   * Each column's value is fetched by regu_list_pred into the input's val_list,
-   * but its own table_info may not resolve there, especially when the input is itself a join.
-   * Bind through a temporary combined listfile context (outer ++ inner), then restore. */
+  /* The regu_list_pred and predicate binding below
+   * are needed only when residual (during/after-join) predicates exist. */
   if (!bitset_is_empty (&plan->plan_un.join.during_join_terms)
       || !bitset_is_empty (&projection_info->after_join_pred_set))
     {
+      /* One buffer per name_list column, in name_list order.
+       * The child XASL's val_list is not reusable: it follows the child subtree, not name_list. */
+      VAL_LIST *outer_name_val_list = pt_make_val_list (parser, outer_info->name_list);
+      VAL_LIST *inner_name_val_list = pt_make_val_list (parser, inner_info->name_list);
+
+      if (outer_name_val_list == NULL || inner_name_val_list == NULL)
+	{
+	  /* both live in the packing arena, freed at end of XASL generation:
+	   * no per-buffer cleanup, so a partial failure here is safe. */
+	  goto error_exit;
+	}
+
+      /* proc->outer.regu_list_pred */
+      if (outer_info->pred_count > 0)
+	{
+	  pos_cnt = outer_info->pred_count;
+
+	  pos_list = (int *) malloc (pos_cnt * sizeof (int));
+	  if (pos_list == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
+	      goto error_exit;
+	    }
+
+	  pred = outer_info->pred_list;
+	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
+	    {
+	      found_index = pt_find_attribute (parser, pred, outer_info->name_list);
+	      if (found_index == -1)
+		{
+		  free_and_init (pos_list);
+		  goto error_exit;
+		}
+
+	      pos_list[pos_index] = found_index;
+	      pred = pred->next;
+	    }
+
+	  proc->outer.regu_list_pred =
+	    pt_to_position_regu_variable_list (parser, outer_info->pred_list, outer_name_val_list, pos_list);
+
+	  free_and_init (pos_list);
+
+	  if (proc->outer.regu_list_pred == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  for (regu = proc->outer.regu_list_pred; regu != NULL; regu = regu->next)
+	    {
+	      regu->value.value.pos_descr.pos_no += outer_info->expr_count;
+	    }
+	}
+
+      /* proc->inner.regu_list_pred */
+      if (inner_info->pred_count > 0)
+	{
+	  pos_cnt = inner_info->pred_count;
+
+	  pos_list = (int *) malloc (pos_cnt * sizeof (int));
+	  if (pos_list == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, pos_cnt * sizeof (int));
+	      goto error_exit;
+	    }
+
+	  pred = inner_info->pred_list;
+	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
+	    {
+	      found_index = pt_find_attribute (parser, pred, inner_info->name_list);
+	      if (found_index == -1)
+		{
+		  free_and_init (pos_list);
+		  goto error_exit;
+		}
+
+	      pos_list[pos_index] = found_index;
+	      pred = pred->next;
+	    }
+
+	  proc->inner.regu_list_pred =
+	    pt_to_position_regu_variable_list (parser, inner_info->pred_list, inner_name_val_list, pos_list);
+
+	  free_and_init (pos_list);
+
+	  if (proc->inner.regu_list_pred == NULL)
+	    {
+	      goto error_exit;
+	    }
+
+	  for (regu = proc->inner.regu_list_pred; regu != NULL; regu = regu->next)
+	    {
+	      regu->value.value.pos_descr.pos_no += inner_info->expr_count;
+	    }
+	}
+
+      /* During/after-join predicates reference columns from both inputs.
+       * Each column's value is fetched by regu_list_pred into the DB_VALUE
+       * buffers built from name_list above, but its own table_info may not
+       * resolve there, especially when the input is itself a join.
+       * Bind through a temporary combined listfile context (outer ++ inner), then restore. */
       SYMBOL_INFO *symbols = parser->symbols;
       SYMBOL_INFO save_symbol = *symbols;	/* save */
       VAL_LIST *combined_val_list;
@@ -708,7 +723,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
       for (int i = 0; i < 2; i++)
 	{
-	  VAL_LIST *src_val_list = (i == 0) ? outer_xasl->val_list : inner_xasl->val_list;
+	  VAL_LIST *src_val_list = (i == 0) ? outer_name_val_list : inner_name_val_list;
 	  QPROC_DB_VALUE_LIST src_val = (src_val_list != NULL) ? src_val_list->valp : NULL;
 	  int count = (i == 0) ? outer_info->name_count : inner_info->name_count;
 
@@ -793,7 +808,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 
       *symbols = save_symbol;	/* restore */
 
-      if (has_error)
+      if (has_error || pt_has_error (parser))
 	{
 	  goto error_exit;
 	}
