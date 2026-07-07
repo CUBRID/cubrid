@@ -2333,10 +2333,12 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       chn = heap_chnguess_get (thread_p, oid, tran_index);
     }
 
-  /* TODO (CBRD-26847): analysis needed - this single-object client fetch keeps inline OOS OID slots
-   * (pre-policy behavior), while xlocator_fetch_all expands them; CS-mode clients cannot resolve OOS. */
+  /* Raw RECDES is shipped to the client via LC_COPYAREA and CS-mode clients cannot resolve inline
+   * OOS OID slots, so expand them here (same rule as xlocator_fetch_all). An expansion that
+   * outgrows the copy area returns S_DOESNT_FIT with the needed size as a negative recdes length,
+   * which the callers' standard grow-and-retry protocol already handles. */
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
-			     chn, HEAP_WITHOUT_OOS_EXPAND);
+			     chn, HEAP_WITH_OOS_EXPAND);
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
