@@ -9814,6 +9814,8 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   attr_info->inst_chn = NULL_CHN;
   attr_info->values = NULL;
   attr_info->num_values = -1;	/* initialize attr_info */
+  attr_info->lazy_recdes = NULL;	/* not in lazy mode by default */
+  attr_info->lazy_first_term_marked = false;	/* first-term attrs not marked yet */
 
   /*
    * Find the most recent representation of the instances of the class, and
@@ -9901,6 +9903,7 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
       value->do_increment = 0;
       value->last_attrepr = NULL;
       value->read_attrepr = NULL;
+      value->lazy_always_eager = false;
     }
 
   /*
@@ -10650,6 +10653,9 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
       return NO_ERROR;
     }
 
+  /* an eager read takes the cache out of lazy mode */
+  attr_info->lazy_recdes = NULL;
+
   /*
    * Make sure that we have the needed cached representation.
    */
@@ -10693,6 +10699,92 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
     }
 
   return ret;
+
+exit_on_error:
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * heap_attrinfo_read_dbvalues_lazy () - Prepare attr_info for LAZY, on-demand reads.
+ *   Instead of reading every attribute now, recache the representation if needed, stash the
+ *   record descriptor, and mark every value HEAP_UNINIT_ATTRVALUE so heap_attrinfo_access ()
+ *   reads it on first access. Used by eval_data_filter () so the dbvalues of predicate columns
+ *   skipped by short-circuit evaluation are never read.
+ *   return: NO_ERROR or error code
+ *   inst_oid(in): instance OID (may be NULL)
+ *   recdes(in): instance record descriptor
+ *   attr_info(in/out): attribute information / cache
+ */
+int
+heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
+				  HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int i;
+  REPR_ID reprid;
+  HEAP_ATTRVALUE *value;
+  int ret = NO_ERROR;
+
+  if (unlikely (attr_info->num_values == -1))
+    {
+      return NO_ERROR;
+    }
+
+  if (recdes == NULL || recdes->data == NULL)
+    {
+      /* no record to defer the reads from (class attribute / index info scans read shared,
+       * class attributes and default values) — read everything now, exactly as before */
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
+    }
+
+  /* out of lazy mode until the values are prepared below, so an error midway cannot leave a
+   * stale lazy_recdes from the previous row; it is re-armed after the loop */
+  attr_info->lazy_recdes = NULL;
+
+  if (inst_oid != NULL && recdes != NULL && recdes->data != NULL)
+    {
+      reprid = or_rep_id (recdes);
+      if (unlikely (attr_info->read_classrepr == NULL || attr_info->read_classrepr->id != reprid))
+	{
+	  ret = heap_attrinfo_recache (thread_p, reprid, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+    }
+
+  /* Mark every value HEAP_UNINIT_ATTRVALUE (clearing any previously read value first to avoid
+   * leaks), so heap_attrinfo_access () reads each one on demand using lazy_recdes. Exception:
+   * values of the always-evaluated first predicate term (lazy_always_eager) are read right away
+   * — lazy cannot save anything on them, and refreshing them in place keeps their regus on the
+   * fast-peek path. (heap_attrvalue_read () clears the previous value itself.) */
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+      if (value->lazy_always_eager)
+	{
+	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  if (ret != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	}
+      else if (value->state != HEAP_UNINIT_ATTRVALUE)
+	{
+	  (void) pr_clear_value (&value->dbvalue);
+	  value->state = HEAP_UNINIT_ATTRVALUE;
+	}
+    }
+  attr_info->lazy_recdes = recdes;
+
+  if (inst_oid != NULL && recdes != NULL && recdes->data != NULL)
+    {
+      attr_info->inst_chn = or_chn (recdes);
+      attr_info->inst_oid = *inst_oid;
+    }
+
+  return NO_ERROR;
 
 exit_on_error:
 
@@ -10975,11 +11067,28 @@ heap_attrinfo_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
     }
 
   value = heap_attrvalue_locate (attrid, attr_info);
-  if (value == NULL || value->state == HEAP_UNINIT_ATTRVALUE)
+  if (value == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "heap_attrinfo_access: Unknown attrid = %d", attrid);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return NULL;
+    }
+
+  if (value->state == HEAP_UNINIT_ATTRVALUE)
+    {
+      if (attr_info->lazy_recdes != NULL)
+	{
+	  if (heap_attrvalue_read (attr_info->lazy_recdes, value, attr_info) != NO_ERROR)
+	    {
+	      return NULL;
+	    }
+	}
+      else
+	{
+	  er_log_debug (ARG_FILE_LINE, "heap_attrinfo_access: Unknown attrid = %d", attrid);
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return NULL;
+	}
     }
 
   return &value->dbvalue;

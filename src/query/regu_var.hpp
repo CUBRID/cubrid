@@ -170,6 +170,11 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
+const int REGU_VARIABLE_LAZY_ALWAYS_EAGER = 0x2000;	/* attr referenced by the data filter's first
+							 * (always-evaluated) predicate term: its dbvalue is read
+							 * eagerly per row even under the lazy predicate read, so
+							 * it keeps the fast-peek path (set at runtime by
+							 * eval_data_filter ()) */
 
 class regu_variable_node
 {

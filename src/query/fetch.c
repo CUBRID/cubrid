@@ -3958,6 +3958,18 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	      goto exit_on_error;
 	    }
 	}
+      /* lazy mode: do NOT cache the value pointer — the dbvalue is re-read on demand every row
+       * (see heap_attrinfo_access ()), so a cached pointer would be trusted while its slot is
+       * already reset. Leaving cache_dbvalp NULL also keeps REGU_VARIABLE_FAST_PEEK from being
+       * set below. An attr of the always-evaluated first predicate term (LAZY_ALWAYS_EAGER) is
+       * refreshed each row by heap_attrinfo_read_dbvalues_lazy (), so it may keep the fast-peek
+       * path. */
+      if (regu_var->value.attr_descr.cache_attrinfo != NULL
+	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL
+	  && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_LAZY_ALWAYS_EAGER))
+	{
+	  break;
+	}
       regu_var->value.attr_descr.cache_dbvalp = *peek_dbval;	/* cache */
       break;
 
