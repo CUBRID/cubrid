@@ -2164,6 +2164,16 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       goto cleanup;
     }
 
+  /* TODO(CBRD-26936 follow-up): enforce per-class authorization on the server here.
+   * The client SQL/API paths (do_update_histogram/do_drop_histogram, do_update_stats) already
+   * check AU_ALTER + AU_SELECT before issuing this request, so no legitimate client bypasses it.
+   * A client crafting the raw request directly, however, could pass a class OID it lacks rights
+   * on and infer that class's data distribution (MCV values, bucket bounds) or trigger repeated
+   * full scans. CUBRID authorization is client-side only (the server has no au_ layer and even
+   * DBA checks are passed as client-computed flags), so closing this needs a new server-side
+   * _db_auth reader that evaluates owner / direct grant / PUBLIC / DBA for (current user,
+   * class_oid) -- deferred to a dedicated security follow-up PR. */
+
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
 	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
   if (status != NO_ERROR)
