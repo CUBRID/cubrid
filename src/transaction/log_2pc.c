@@ -797,9 +797,25 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
       state = tdes->state;
     }
 
-#ifndef CCI_XA
+#ifdef CCI_XA
   /*
-   * PHASE II of 2PC: Inform decsion to participants (i.e., either commit or
+   * CCI_XA: FULL/PREPARE flows are completed in phase 1 via log_complete(); phase 2
+   * is redundant for those types.  COMMIT_DECISION/ABORT_DECISION arrive when CUBRID
+   * is acting as an XA resource manager (e.g. JDBC XA), not as the DBLink coordinator.
+   * In that role the local branch must still be committed/aborted through phase 2,
+   * because phase 1 was never entered for these execute types.
+   */
+  if (execute_2pc_type == LOG_2PC_EXECUTE_COMMIT_DECISION || execute_2pc_type == LOG_2PC_EXECUTE_ABORT_DECISION)
+    {
+      state = log_2pc_commit_second_phase (thread_p, tdes, decision);
+    }
+  else
+    {
+      state = tdes->state;
+    }
+#else
+  /*
+   * PHASE II of 2PC: Inform decision to participants (i.e., either commit or
    *                  abort)
    */
   if (execute_2pc_type != LOG_2PC_EXECUTE_PREPARE || *decision == false)
@@ -1125,10 +1141,10 @@ log_2pc_attach_client (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_TDES * clie
   tdes->isloose_end = false;
   tdes->isolation = client_tdes->isolation;
   tdes->wait_msecs = client_tdes->wait_msecs;
-  /*
-   * The client identification remains the same. So there is not a need
-   * to set clientids.
-   */
+  /* Transfer the connection-level client_id to the prepared slot so that
+   * xboot_unregister_client() matches and properly releases this slot when
+   * the attaching client (daemon or recovery CAS) disconnects. */
+  tdes->client_id = client_tdes->client_id;
 
   /* Return the table entry that is not going to be used anymore */
   logtb_free_tran_index (thread_p, client_tdes->tran_index);

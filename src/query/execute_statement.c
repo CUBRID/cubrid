@@ -21889,12 +21889,8 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
   return error;
 }
 
-#define DBLINK_PASSWORD_MAX_LENGTH      (128)
-#define DBLINK_PASSWORD_CONFUSED_LENGTH (6)	// include 4(int) + 1(unsigned char) +  1(unsigned char)
-// Valid data size is the largest multiple of 3 less than or equal to DBLINK_PASSWORD_CIPHER_LENGTH.
-#define DBLINK_PASSWORD_CIPHER_LENGTH   (DBLINK_PASSWORD_MAX_LENGTH + DBLINK_PASSWORD_CONFUSED_LENGTH)
-#define DBLINK_PASSWORD_PAD_LENGTH      (40)	// include 2(length) + 2(mk) + 2(length) + 32(mk), Must be 4 or more
-#define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH / 3 * 4) + DBLINK_PASSWORD_PAD_LENGTH)
+/* DBLINK_PASSWORD_* cipher sizing macros now live in crypt_opfunc.h (shared with the server-side
+ * _db_global_tran catalog). The encrypt/decrypt logic is centralized in crypt_dblink_password_*(). */
 
 /*
  * pt_check_dblink_password ()  : Check the validity of the entered password.
@@ -22021,56 +22017,16 @@ ret_pos:
 static int
 get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 {
-  int err, length, buf_size;
-  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
-  char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
-  struct timeval check_time = { 0, 0 };
-  struct tm *lt;
-  char empty_str[4] = { 0x00, };
-
-  srand (time (NULL));
+  int err;
+  char newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
 
   db_make_null (encrypt_val);
-  if (!passwd)
-    {
-      passwd = empty_str;
-    }
 
-  if (strlen (passwd) > DBLINK_PASSWORD_MAX_LENGTH)
-    {
-      return ER_DBLINK_PASSWORD_OVER_MAX_LENGTH;
-    }
-
-  length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
-  passwd = confused;
-
-  if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
-    {
-      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
-    }
-  else
-    {
-      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		    check_time.tv_usec) >= (int) sizeof (private_key))
-	{
-	  assert_release (0);
-	  private_key[sizeof (private_key) - 1] = '\0';
-	}
-    }
-
-  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher, private_key);
+  err = crypt_dblink_password_encrypt (passwd, newpwd, sizeof (newpwd));
   if (err == NO_ERROR)
     {
-      err =
-	crypt_dblink_bin_to_str (cipher, length, newpwd, DBLINK_PASSWORD_MAX_BUFSIZE, private_key,
-				 (long) check_time.tv_usec);
-      if (err == NO_ERROR)
-	{
-	  // byte stream to hex string   
-	  err = db_make_string_copy (encrypt_val, newpwd);
-	}
+      // byte stream to hex string
+      err = db_make_string_copy (encrypt_val, newpwd);
     }
 
   return err;
@@ -22090,9 +22046,8 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 static int
 get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
-  int err, length, new_length;
-  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  int err;
+  char rawpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
@@ -22100,34 +22055,10 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
       return NO_ERROR;
     }
 
-  new_length = DBLINK_PASSWORD_MAX_BUFSIZE;
-  /* Adjust the length so that it is a multiple of 4. */
-  new_length >>= 2;
-  new_length <<= 2;
-
-  length = strlen (passwd_cipher);
-  if (length != new_length)
-    {
-      return ER_DBLINK_PASSWORD_INVALID_LENGTH;
-    }
-
-  // hex string  to byte stream 
-  err = crypt_dblink_str_to_bin (passwd_cipher, length, cipher, &new_length, private_key);
-  if (err != NO_ERROR)
-    {
-      return ER_DBLINK_PASSWORD_INVALID_FMT;
-    }
-
-  err = crypt_dblink_decrypt ((unsigned char *) cipher, new_length, (unsigned char *) newpwd, private_key);
+  err = crypt_dblink_password_decrypt (passwd_cipher, rawpwd, sizeof (rawpwd));
   if (err == NO_ERROR)
     {
-      newpwd[new_length] = '\0';	// Do NOT omit this line.
-      err = reverse_shake_dblink_password (newpwd, new_length, cipher);
-      if (err != NO_ERROR)
-	{
-	  return ER_DBLINK_PASSWORD_CHECKSUM;
-	}
-      err = db_make_string_copy (decrypt_val, cipher);
+      err = db_make_string_copy (decrypt_val, rawpwd);
     }
 
   return err;
