@@ -76,6 +76,7 @@
 #include "dbtype.h"
 #include "string_regex.hpp"
 #include "thread_entry.hpp"
+#include "string_opfunc.h"
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -131,7 +132,6 @@
 
 /* maximum selectivity allowed for hash aggregate evaluation */
 #define HASH_AGGREGATE_VH_SELECTIVITY_THRESHOLD         0.5f
-
 
 #define QEXEC_CLEAR_AGG_LIST_VALUE(agg_list) \
   do \
@@ -399,13 +399,6 @@ typedef enum analytic_stage ANALYTIC_STAGE;
 
 #define QEXEC_GET_BH_TOPN_TUPLE(heap, index) (*(TOPN_TUPLE **) BH_ELEMENT (heap, index))
 
-typedef enum
-{
-  TOPN_SUCCESS,
-  TOPN_OVERFLOW,
-  TOPN_FAILURE
-} TOPN_STATUS;
-
 static DB_LOGICAL qexec_eval_instnum_pred (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_add_composite_lock (THREAD_ENTRY * thread_p, REGU_VARIABLE_LIST reg_var_list, XASL_STATE * xasl_state,
 				     LK_COMPOSITE_LOCK * composite_lock, int upd_del_cls_cnt, OID * default_cls_oid);
@@ -564,6 +557,8 @@ static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
+static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -706,13 +701,8 @@ static int qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGAT
 static int qexec_evaluate_partition_aggregates (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec,
 						AGGREGATE_TYPE * agg_list, bool * is_scan_needed);
 
-static int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd);
 static BH_CMP_RESULT qexec_topn_compare (const void *left, const void *right, BH_CMP_ARG arg);
 static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec);
-static TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * sort_stop,
-					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
-static int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
-					 bool is_final);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
 					     DB_VALUE * ubound);
@@ -1243,7 +1233,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false) != NO_ERROR)
+	      if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -1304,7 +1294,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
       if (xasl->topn_items != NULL && tpldescr_status != QPROC_TPLDESCR_SUCCESS)
 	{
 	  /* abandon top-n processing */
-	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false) != NO_ERROR)
+	  if (qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, false, NULL) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
@@ -4063,7 +4053,7 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
   if (xasl->topn_items != NULL)
     {
       /* already sorted, just dump tuples to list */
-      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true);
+      error = qexec_topn_tuples_to_list_id (thread_p, xasl, xasl_state, true, NULL);
     }
   else
     {
@@ -4959,6 +4949,14 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  else
 	    {
 	    }
+
+	  /* read tuple into value */
+	  if (qdata_load_agg_hentry_from_tuple (thread_p, data, context->temp_part_key, context->temp_part_value,
+						context->key_domains, context->accumulator_domains) != NO_ERROR)
+	    {
+	      qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
+	      return ER_FAILED;
+	    }
 	  qmgr_free_old_page_and_init (thread_p, page, list_idp->tfile_vfid);
 	}
       else
@@ -4972,13 +4970,13 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	      return ER_FAILED;
 	    }
 	  data = context->tuple_recdes.data;
-	}
 
-      /* read tuple into value */
-      if (qdata_load_agg_hentry_from_tuple (thread_p, data, context->temp_part_key, context->temp_part_value,
-					    context->key_domains, context->accumulator_domains) != NO_ERROR)
-	{
-	  return ER_FAILED;
+	  /* read tuple into value */
+	  if (qdata_load_agg_hentry_from_tuple (thread_p, data, context->temp_part_key, context->temp_part_value,
+						context->key_domains, context->accumulator_domains) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
 	}
 
       /* aggregate */
@@ -5650,9 +5648,18 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
   estimated_pages = qfile_get_estimated_pages_for_sorting (list_id, &gbstate.key_info);
 
+  /* Declare without initializer to avoid "jump crosses initialization" error
+   * when gotos earlier in the function target labels past this declaration. */
+  SORT_LISTFILE_PX_ARG gby_px;
+  gby_px.key_info = &gbstate.key_info;
+  gby_px.input_list = list_id;
+  gby_px.hash_eligible = gbstate.hash_eligible;
+  gby_px.stats = &xasl->groupby_stats;
+  gby_px.parallelism = xasl->parallelism;
+
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_gby_get_next, &gbstate, &qexec_gby_put_next,
 		     &gbstate, gbstate.cmp_fn, &gbstate.key_info, SORT_DUP, NO_SORT_LIMIT,
-		     gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY) != NO_ERROR)
+		     gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY, &gby_px) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -8970,8 +8977,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       /* save stats for the partition before ending the current scan */
       if (thread_is_on_trace (thread_p))
 	{
-	  /* trace_storage lives in distinct union members per scan type; list never partitions */
-	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
+	  /* parallel-only: serial leaves m_stats_last stale and clobbers per-row deltas accumulated via 5406 */
+	  if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
 	    {
 	      if (spec->s_id.s.phsid.trace_storage)
 		{
@@ -12620,6 +12627,198 @@ exit_on_error:
 }
 
 /*
+ * qexec_generate_row_default_expr () - Generate a row-level default expression value
+ *   return: NO_ERROR or ER_code
+ *   attr(in): attribute metadata
+ *   xasl_state(in): XASL state containing value descriptor
+ *   uuid_state(in): UUID generation state
+ *   out_val(out): generated value
+ */
+static int
+qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
+				 DB_VALUE * out_val)
+{
+  DB_VALUE new_val;
+  DB_DEFAULT_EXPR_TYPE expr_type;
+  int error = NO_ERROR;
+  TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
+
+  assert (attr != NULL);
+  assert (out_val != NULL);
+
+  expr_type = attr->current_default_value.default_expr.default_expr_type;
+  assert (DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type));
+
+  pr_clear_value (out_val);
+  db_make_null (&new_val);
+
+  switch (expr_type)
+    {
+    case DB_DEFAULT_SYSGUID:
+      error = db_uuidv4 (&new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV4:
+      error = db_uuid_bin (UUID_V4, NULL, 0, &new_val);
+      break;
+
+    case DB_DEFAULT_UUIDV7:
+      if (DATETIME_IS_NULL (&xasl_state->vd.sys_datetime) || xasl_state->vd.sys_epochtime == 0)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+      error =
+	db_uuid_bin (UUID_V7, uuid_state,
+		     ((uint64_t) xasl_state->vd.sys_epochtime * 1000ULL)
+		     + (uint64_t) (xasl_state->vd.sys_datetime.time % 1000), &new_val);
+      break;
+
+    default:
+      assert (false);
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (attr->current_default_value.default_expr.default_expr_op == T_TO_CHAR)
+    {
+      DB_VALUE format_val, lang_val;
+      int has_user_format = 0;
+      int flag = 0;
+      const char *lang_str;
+      TP_DOMAIN *result_domain;
+
+      if (attr->current_default_value.default_expr.default_expr_format != NULL)
+	{
+	  db_make_string (&format_val, attr->current_default_value.default_expr.default_expr_format);
+	  has_user_format = 1;
+	}
+      else
+	{
+	  db_make_null (&format_val);
+	  has_user_format = 0;
+	}
+
+      lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
+      lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
+      db_make_int (&lang_val, flag);
+
+      if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (attr->domain)))
+	{
+	  if (TP_IS_CHAR_TYPE (DB_VALUE_TYPE (&new_val)))
+	    {
+	      result_domain = NULL;
+	    }
+	  else if (DB_IS_NULL (&format_val))
+	    {
+	      result_domain = tp_domain_resolve_default (DB_TYPE_STRING);
+	    }
+	  else
+	    {
+	      result_domain = tp_domain_resolve_value (&format_val, NULL);
+	    }
+	}
+      else
+	{
+	  result_domain = attr->domain;
+	}
+
+      error = db_to_char (&new_val, &format_val, &lang_val, out_val, result_domain);
+
+      if (has_user_format)
+	{
+	  pr_clear_value (&format_val);
+	}
+      pr_clear_value (&new_val);
+    }
+  else
+    {
+      error = pr_clone_value (&new_val, out_val);
+      pr_clear_value (&new_val);
+    }
+
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  status = tp_value_cast (out_val, out_val, attr->domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_evaluate_row_default_exprs () - Regenerate row-level default expressions (e.g., UUID)
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in): thread context
+ *   insert(in): INSERT_PROC_NODE
+ *   attr_info(in): attribute info
+ *   xasl_state(in): XASL state containing value descriptor
+ *
+ * Note: This function regenerates DEFAULT values that must be unique per row,
+ *       such as UUID(4), UUID(7), and SYS_GUID. These are identified by
+ *       DB_IS_DEFAULT_DETERMINE_BY_ROW macro.
+ */
+static int
+qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
+				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state)
+{
+  int k;
+  int num_default_expr = insert->num_default_expr;
+  UINT64 last_ms = thread_p->uuidv7_last_ms;
+  UINT8 seq = thread_p->uuidv7_seq;
+  UUID_STATE uuid_state;
+
+  if (num_default_expr <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  uuid_state.last_ms = &last_ms;
+  uuid_state.seq = &seq;
+
+  for (k = 0; k < num_default_expr; k++)
+    {
+      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
+      DB_DEFAULT_EXPR_TYPE expr_type;
+      int error;
+
+      if (attr == NULL)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+
+      expr_type = attr->current_default_value.default_expr.default_expr_type;
+      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr_type))
+	{
+	  continue;
+	}
+
+      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  thread_p->uuidv7_last_ms = last_ms;
+  thread_p->uuidv7_seq = seq;
+
+  return NO_ERROR;
+}
+
+/*
  * qexec_execute_insert () -
  *   return: NO_ERROR or ER_code
  *   xasl(in)   : XASL Tree block
@@ -12943,6 +13142,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  }
 	  break;
 
+	case DB_DEFAULT_SYSGUID:
+	case DB_DEFAULT_UUIDV4:
+	case DB_DEFAULT_UUIDV7:
+	  /*
+	   * SYS_GUID(), UUID() in DEFAULT does not evaluate value per statement
+	   *   - use 'qexec_evaluate_row_default_exprs'
+	   * You can prepare things here
+	   */
+	  break;
+
 	case DB_DEFAULT_NONE:
 	  if (attr->current_default_value.val_length <= 0)
 	    {
@@ -13095,6 +13304,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		    }
 
 		  insert->vals[k] = vallist->val;
+		}
+
+	      /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
+	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
 		}
 
 	      /* evaluate constraint predicate */
@@ -13273,6 +13488,12 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      insert->vals[k] = valp;
+	    }
+
+	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
+	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
+	    {
+	      GOTO_EXIT_ON_ERROR;
 	    }
 
 	  /* evaluate constraint predicate */
@@ -16005,6 +16226,30 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
 #endif
 
+      /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
+      for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)
+	{
+	  XASL_NODE *subq;
+	  for (subq = xptr->aptr_list; subq != NULL; subq = subq->next)
+	    {
+	      DB_VALUE *peek_precomp = NULL;
+	      if (subq->precomp_owner_regu == NULL)
+		{
+		  continue;
+		}
+	      if (fetch_peek_dbval (thread_p, subq->precomp_owner_regu, &xasl_state->vd, NULL, NULL, NULL,
+				    &peek_precomp) != NO_ERROR)
+		{
+		  if (tplrec.tpl)
+		    {
+		      db_private_free_and_init (thread_p, tplrec.tpl);
+		    }
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	    }
+	}
+
       /* start main block iterations */
       if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
 	{
@@ -16843,6 +17088,13 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
   xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
+
+  /* save the query_id into the XASL state struct */
+  xasl_state.query_id = query_id;
+
+  /* initialize error line */
+  xasl_state.qp_xasl_line = 0;
+
   time_t sec;
   int millisec;
   util_get_second_and_ms_since_epoch (&sec, &millisec);
@@ -16850,23 +17102,27 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   xasl_state.vd.sys_epochtime = (DB_TIMESTAMP) sec;
 
-  if (c_time_struct != NULL)
+  if (c_time_struct == NULL)
     {
-      db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
-			  c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
-			  c_time_struct->tm_sec, millisec);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DATE_CONVERSION, 0);
+      qexec_failure_line (__LINE__, &xasl_state);
+      stat = ER_DATE_CONVERSION;
+      goto query_error;
+    }
+
+  stat = db_datetime_encode (&xasl_state.vd.sys_datetime, c_time_struct->tm_mon + 1, c_time_struct->tm_mday,
+			     c_time_struct->tm_year + 1900, c_time_struct->tm_hour, c_time_struct->tm_min,
+			     c_time_struct->tm_sec, millisec);
+  if (stat != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, &xasl_state);
+      goto query_error;
     }
 
   rand_buf_p = qmgr_get_rand_buf (thread_p);
   lrand48_r (rand_buf_p, &xasl_state.vd.lrand);
   drand48_r (rand_buf_p, &xasl_state.vd.drand);
   xasl_state.vd.xasl_state = &xasl_state;
-
-  /* save the query_id into the XASL state struct */
-  xasl_state.query_id = query_id;
-
-  /* initialize error line */
-  xasl_state.qp_xasl_line = 0;
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   if (logtb_find_current_isolation (thread_p) >= TRAN_REP_READ)
@@ -16882,6 +17138,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
   xasl->query_in_progress = true;
   stat = qexec_execute_mainblock (thread_p, xasl, &xasl_state, NULL);
   xasl->query_in_progress = false;
+
+query_error:
 
 #if defined(SERVER_MODE)
   if (thread_is_on_trace (thread_p))
@@ -21461,6 +21719,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
   bool on_trace = false;
+  ANALYTIC_STATS *new_stat = NULL;
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -21468,6 +21727,30 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       tsc_getticks (&start_tick);
       old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
       old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+
+      /* Pre-create the trace stats node and link it now so the parallel sort can fill in
+       * per-worker px_* fields during sort_end_parallelism (mirrors GROUPBY_STATS, which is
+       * an embedded struct already present before the sort). The remaining fields are filled
+       * at wrapup. */
+      new_stat = (ANALYTIC_STATS *) malloc (sizeof (ANALYTIC_STATS));
+      if (new_stat != NULL)
+	{
+	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
+
+	  ANALYTIC_STATS *curr_stats = xasl->analytic_stats;
+	  if (curr_stats == NULL)
+	    {
+	      xasl->analytic_stats = new_stat;
+	    }
+	  else
+	    {
+	      while (curr_stats->next)
+		{
+		  curr_stats = curr_stats->next;
+		}
+	      curr_stats->next = new_stat;
+	    }
+	}
     }
 
   /* fetch regulist and outlist */
@@ -21613,10 +21896,17 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   analytic_state.key_info.use_original = 1;
   analytic_state.cmp_fn = &qfile_compare_partial_sort_record;
 
+  SORT_LISTFILE_PX_ARG anl_px;
+  anl_px.key_info = &analytic_state.key_info;
+  anl_px.input_list = list_id;
+  anl_px.hash_eligible = 0;	/* GROUP_BY only; never skip ANALYTIC parallelism on this account */
+  anl_px.stats = new_stat;	/* may be NULL when not tracing */
+  anl_px.parallelism = xasl->parallelism;
+
   if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_analytic_get_next, &analytic_state,
 		     &qexec_analytic_put_next, &analytic_state, analytic_state.cmp_fn, &analytic_state.key_info,
 		     SORT_DUP, NO_SORT_LIMIT, analytic_state.output_file->tfile_vfid->tde_encrypted,
-		     SORT_ANALYTIC) != NO_ERROR)
+		     SORT_ANALYTIC, &anl_px) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -21659,55 +21949,35 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     }
 
 wrapup:
-  if (on_trace)
+  if (on_trace && new_stat != NULL)
     {
+      /* new_stat was allocated and linked into xasl->analytic_stats up front; its px_*
+       * fields may already be filled by the parallel sort. Fill the remaining fields here. */
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
-      ANALYTIC_STATS *curr_stats = NULL;
-      ANALYTIC_STATS *new_stat = (ANALYTIC_STATS *) malloc (sizeof (ANALYTIC_STATS));
-      if (new_stat != NULL)
+      if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	{
-	  memset (new_stat, 0, sizeof (ANALYTIC_STATS));
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-	    {
-	      new_stat->analytic_stopkey = true;
-	      new_stat->analytic_sort = false;
-	    }
-	  else
-	    {
-	      new_stat->analytic_stopkey = false;
-	      new_stat->analytic_sort = !is_skip_sort;
-	    }
-	  TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
+	  new_stat->analytic_stopkey = true;
+	  new_stat->analytic_sort = false;
+	}
+      else
+	{
+	  new_stat->analytic_stopkey = false;
+	  new_stat->analytic_sort = !is_skip_sort;
+	}
+      TSC_ADD_TIMEVAL (new_stat->analytic_time, tv_diff);
 
-	  new_stat->analytic_pages =
-	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
-	  new_stat->analytic_ioreads =
-	    (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
+      new_stat->analytic_pages = (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES) - old_sort_pages);
+      new_stat->analytic_ioreads = (perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES) - old_sort_ioreads);
 
-	  if (list_id != NULL)
-	    {
-	      new_stat->rows = list_id->tuple_cnt;
-	    }
-	  else
-	    {
-	      new_stat->rows = 0;
-	    }
-
-	  curr_stats = xasl->analytic_stats;
-	  if (curr_stats == NULL)
-	    {
-	      xasl->analytic_stats = new_stat;
-	    }
-	  else
-	    {
-	      while (curr_stats->next)
-		{
-		  curr_stats = curr_stats->next;
-		}
-	      curr_stats->next = new_stat;
-	    }
+      if (list_id != NULL)
+	{
+	  new_stat->rows = list_id->tuple_cnt;
+	}
+      else
+	{
+	  new_stat->rows = 0;
 	}
     }
 
@@ -26505,7 +26775,7 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  * xasl (in) :
  * vd (in) :
  */
-static int
+int
 qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd)
 {
   BINARY_HEAP *heap = NULL;
@@ -26792,7 +27062,7 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
  * Note: We only add a tuple here if the top-n heap has fewer than n elements
  *  or if the new tuple can replace one of the existing tuples
  */
-static TOPN_STATUS
+TOPN_STATUS
 qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFILE_TUPLE_DESCRIPTOR * tpldescr)
 {
   int error = NO_ERROR;
@@ -26892,9 +27162,15 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
  *				   output listfile
  * return : error code or NO_ERROR
  * xasl (in) : xasl node
+ * is_final (in) : true on the main final flush; closes the output list and drops tuples rejected by orderby_num.
+ *		   false only resets ordbynum_val (used by overflow/abandon and by parallel workers).
+ * merged_results (in) : when non-NULL, a parallel worker's result list to write into instead of xasl->list_id
+ *		   (this list is later merged across workers). NULL means the main thread writing to xasl->list_id,
+ *		   which is also the only case that records the orderby_topnsort trace stat.
  */
-static int
-qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool is_final)
+int
+qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool is_final,
+			      QFILE_LIST_ID * merged_results)
 {
   QFILE_LIST_ID *list_id = NULL;
   QFILE_TUPLE_DESCRIPTOR *tpl_descr = NULL;
@@ -26905,6 +27181,7 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   int row = 0, i, value_size, values_count, error = NO_ERROR;
   ORDBYNUM_INFO ordby_info;
   DB_LOGICAL res = V_FALSE;
+  bool use_xasl_list = (merged_results == NULL);
 
   /* setup ordby_info so that we can evaluate the orderby_num() predicate */
   ordby_info.xasl_state = xasl_state;
@@ -26914,12 +27191,16 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   ordby_info.ordbynum_val = xasl->ordbynum_val;
   db_make_bigint (ordby_info.ordbynum_val, 0);
 
-  list_id = xasl->list_id;
+  list_id = use_xasl_list ? xasl->list_id : merged_results;
   topn = xasl->topn_items;
   heap = topn->heap;
   tpl_descr = &list_id->tpl_descr;
   values_count = topn->values_count;
-  xasl->orderby_stats.orderby_topnsort = true;
+  if (use_xasl_list)
+    {
+      /* orderby_topnsort trace stat is recorded only when finalizing into xasl->list_id, not a redirected list. */
+      xasl->orderby_stats.orderby_topnsort = true;
+    }
 
   /* convert binary heap to sorted array */
   bh_to_sorted_array (heap);
@@ -27044,6 +27325,40 @@ cleanup:
       db_make_bigint (xasl->ordbynum_val, 0);
     }
   return error;
+}
+
+/* free xasl->topn_items heap+tuples+container, NULL-safe; shared free sequence reused by parallel result handler */
+void
+qexec_clear_topn_items (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  int i;
+  BINARY_HEAP *heap;
+
+  if (xasl->topn_items == NULL)
+    {
+      return;
+    }
+
+  /* inline twins at qexec_clear_xasl share this deref-before-guard; out of scope here (follow-up ticket) */
+  heap = xasl->topn_items->heap;
+  if (heap != NULL)
+    {
+      for (i = 0; i < heap->element_count; i++)
+	{
+	  if (QEXEC_GET_BH_TOPN_TUPLE (heap, i) != NULL)	/* cheap insurance; qexec_clear_topn_tuple self-guards too */
+	    {
+	      qexec_clear_topn_tuple (thread_p, QEXEC_GET_BH_TOPN_TUPLE (heap, i), xasl->topn_items->values_count);
+	    }
+	}
+      bh_destroy (thread_p, heap);
+    }
+
+  if (xasl->topn_items->tuples != NULL)
+    {
+      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
+    }
+
+  db_private_free_and_init (thread_p, xasl->topn_items);
 }
 
 /*

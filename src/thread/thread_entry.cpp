@@ -81,6 +81,8 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
+    , pgbuf_fix_req_cnt (0)
+    , pgbuf_pg_unfix_cnt (0)
     , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
@@ -144,6 +146,8 @@ namespace cubthread
     , m_uses_px_stats (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
+    , uuidv7_last_ms (0)
+    , uuidv7_seq (0)
       // private:
     , m_id ()
     , m_error ()
