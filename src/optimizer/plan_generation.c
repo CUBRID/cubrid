@@ -5929,6 +5929,13 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	      continue;
 	    }
 
+	  if (QO_IS_FAKE_TERM (term))
+	    {
+	      /* dep/dummy terms are plan-graph artifacts, not executable predicates;
+	       * make_pred_from_bitset () would drop them and return a NULL predicate. */
+	      continue;
+	    }
+
 	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
 	    {
 	      /* correlated subquery: must run per-row via dptr in the parent scan, not the probe loop. */
