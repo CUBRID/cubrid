@@ -536,7 +536,8 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 int
 cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 {
-  int i;
+  int i, j;
+  char **new_extraction_user = NULL;
 
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
@@ -548,17 +549,35 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
       return CUBRID_LOG_INVALID_USER_ARR_SIZE;
     }
 
-  g_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
-  if (g_extraction_user == NULL)
+  for (i = 0; i < arr_size; i++)
+    {
+      if (user_arr[i] == NULL)
+	{
+	  return CUBRID_LOG_INVALID_USER;
+	}
+    }
+
+  new_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
+  if (new_extraction_user == NULL)
     {
       return CUBRID_LOG_FAILED_MALLOC;
     }
 
   for (i = 0; i < arr_size; i++)
     {
-      g_extraction_user[i] = strdup (user_arr[i]);
+      new_extraction_user[i] = strdup (user_arr[i]);
+      if (new_extraction_user[i] == NULL)
+	{
+	  for (j = 0; j < i; j++)
+	    {
+	      free_and_init (new_extraction_user[j]);
+	    }
+	  free_and_init (new_extraction_user);
+	  return CUBRID_LOG_FAILED_MALLOC;
+	}
     }
 
+  g_extraction_user = new_extraction_user;
   g_extraction_user_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
