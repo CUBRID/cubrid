@@ -1653,21 +1653,32 @@ la_gate_mark_completed (const LOG_LSA * commit_seq)
   return NO_ERROR;
 }
 
+/*
+ * la_gate_is_satisfied() - writeset PoC: 이 트랜잭션을 지금 워커에 보내도 되는지 판정한다.
+ *   return: true 면 선행 의존이 슬레이브에 이미 적용됨(dispatch 가능), false 면 아직(park)
+ *   dep(in): 이 트랜잭션의 dependency_seq (마스터가 실어준 선행 의존 라벨 = MySQL last_committed)
+ *
+ * 값싼 순서로 3단계 판정:
+ *   ① dep == NULL          선행 의존 없음(행 충돌 無) → 즉시 ready
+ *   ② dep <= frontier(LWM)  그 LSA 이하가 gap-free 로 전부 적용 완료 → O(1) 통과. 완료집합에서
+ *                           prune 됐어도 참이므로, 이 경로가 완료집합 prune 을 가능하게 한다.
+ *   ③ 완료집합 멤버십        프론티어 위쪽이라 LWM 이 못 덮는 구간. 커밋순서 미보존(§6)으로 선행이
+ *                           out-of-order 먼저 끝난 "홀" 인지 직접 확인 → 독립 트랜잭션 즉시 병렬.
+ *
+ * ②는 최적화(빠른 경로 + prune 으로 메모리 상한), ③이 근본(홀 커버). 근거는 게이트 헤더 주석 참조.
+ */
 static bool
 la_gate_is_satisfied (const LOG_LSA * dep)
 {
-  /* 의존 없음(NULL) 이면 즉시 ready. */
   if (LSA_ISNULL (dep))
     {
-      return true;
+      return true;		/* ① 선행 의존 없음 */
     }
-  /* S3: 프론티어 이하(하위 커밋 전부 적용 완료)면 즉시 만족 (완료집합에서 prune 됐어도 OK). */
   if (la_Gate_frontier_seeded && LSA_LE (dep, &la_Gate_frontier))
     {
-      return true;
+      return true;		/* ② LWM 이하 = 그 이하 커밋 전부 적용 완료 */
     }
-  /* 그 외에는 선행 트랜잭션이 완료집합(프론티어 위 tail)에 있어야 한다. */
-  return la_gate_set_contains (dep);
+  return la_gate_set_contains (dep);	/* ③ 프론티어 위 홀: 완료집합에서 직접 확인 */
 }
 
 static int
@@ -1749,15 +1760,52 @@ la_gate_drain_ready (void)
   return NO_ERROR;
 }
 
+/*
+ * la_gate_choose_worker() - writeset PoC: 게이트 통과 트랜잭션을 배정할 워커를 고른다.
+ *   return: 부하가 가장 낮은 워커 인덱스 (완전 유휴 워커가 있으면 그것)
+ *
+ * 게이트(la_gate_is_satisfied)가 이미 "선행 적용 완료"를 보장하므로, 이 트랜잭션은 어느 워커에
+ * 줘도 순서가 안전하다. 그래서 trid%N 고정 배정(= trid 분포에 병렬도가 묶이던 원인, 설계 §3)을
+ * 버리고 부하가 가장 낮은 워커를 고른다 — MySQL 의 get_free_worker 와 같은 방식(설계 §5).
+ * 한 트랜잭션은 한 task 로 통째 dispatch 되므로 "한 tx = 한 워커" 결속은 그대로 유지된다.
+ * queue.count/busy 는 워커 스레드가 갱신하지만 배정은 부하분산 힌트라 무락 읽기로 충분하다
+ * (부정확한 선택은 성능에만 영향; 정합성은 게이트가 보장).
+ */
+static int
+la_gate_choose_worker (void)
+{
+  int best = 0;
+  int best_load = -1;
+  int i;
+
+  for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+    {
+      int load = la_apply_Workers[i].queue.count + (la_apply_Workers[i].busy ? 1 : 0);
+
+      if (best_load < 0 || load < best_load)
+	{
+	  best_load = load;
+	  best = i;
+	  if (load == 0)
+	    {
+	      break;		/* 완전 유휴 워커 즉시 선택 */
+	    }
+	}
+    }
+  return best;
+}
+
 static int
 la_gate_dispatch_now (const LA_APPLY_TASK * task_in)
 {
   LA_APPLY_TASK task = *task_in;
   UINT64 dispatch_seq = 0;
-  int worker_idx = ((unsigned int) task.tranid) % LA_APPLY_WORKER_COUNT;
+  int worker_idx;
   int error;
 
-  /* 워커 선택은 아직 trid%N (S3 에서 부하기반 la_gate_choose_worker 로 교체). */
+  /* writeset PoC: 게이트를 통과한(= 선행 완료 보장) 트랜잭션이므로 부하 최소 워커에 배정한다.
+   * trid%N 고정 배정을 대체 — 자세한 근거는 la_gate_choose_worker 주석 참조. */
+  worker_idx = la_gate_choose_worker ();
   error = la_dispatch_order_push (worker_idx, task.apply, task.tranid, task.rectype, &dispatch_seq);
   if (error != NO_ERROR)
     {
@@ -9606,9 +9654,18 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   char buffer[256];
   time_t eot_time;
 
-  /* writeset PoC: 직전 LOG_DUMMY_WS_LABEL 에서 디코드한 의존성 라벨 (reader 스레드 전용).
-   * 마스터가 커밋 레코드 바로 앞 같은 prior_lsa_mutex 구간에 라벨을 기록하므로, 바로 다음
-   * LOG_COMMIT(같은 trid)이 이를 소비한다. trid 로 매칭해 소비 후 리셋한다. */
+  /* writeset PoC: WS_LABEL -> COMMIT 사이에서 의존성 라벨을 실어 나르는 reader-local 버퍼.
+   *
+   * 의존성 라벨(dependency_seq)은 커밋 레코드가 아니라 그 "직전" 더미 레코드에 실려 온다:
+   *     ... -> LOG_DUMMY_WS_LABEL(dependency_seq) -> LOG_COMMIT(같은 trid) -> ...
+   * 마스터가 이 둘을 같은 prior_lsa_mutex 구간에서 붙여 기록하므로 사이에 다른 레코드가
+   * 끼어들지 않는다(인접성 불변식). 따라서 라벨을 읽는 순간 아래 두 변수에 잠시 담아 두면,
+   * 바로 다음에 오는 LOG_COMMIT 이 trid 로 매칭해 task.dependency_seq 로 꺼내 쓴다.
+   *
+   *   [LOG_DUMMY_WS_LABEL]  la_ws_label_trid/dependency_seq 에 저장   (9970~ 참고)
+   *   [LOG_COMMIT]          trid 일치 시 소비 -> task, 불일치면 의존 없음 (9871~ 참고)
+   *
+   * 리더(로그를 읽는 단일 스레드)만 접근하므로 락이 필요 없다. */
   static int la_ws_label_trid = NULL_TRANID;
   static LOG_LSA la_ws_label_dependency_seq = { NULL_PAGEID, NULL_OFFSET };
 
@@ -9868,8 +9925,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  /* 리더가 이미 la_add_apply_list 로 매핑해 둔 repl_list 포인터를 태스크에 실어 보낸다.
 	   * 워커는 이 포인터를 직접 사용해 la_Info.repl_lists 배열 경합을 피한다. */
 	  task.apply = la_find_apply_list (lrec->trid);
-	  /* writeset PoC: 바로 앞 WS_LABEL(같은 trid)에서 디코드한 의존성 라벨을 태스크에 싣는다.
-	   * 일치하는 라벨이 없으면 의존 없음(NULL)으로 둔다. 소비 후 홀더를 리셋한다. */
+	  /* writeset PoC: 바로 앞 WS_LABEL 이 남긴 의존성 라벨을 소비해 태스크에 싣는다.
+	   * trid 가 일치하면 그 라벨이 이 커밋의 것이므로 싣고 홀더를 리셋한다.
+	   * 일치하는 라벨이 없으면(더미 없이 온 커밋 등) 의존 없음(NULL)으로 둔다. */
 	  if (la_ws_label_trid == lrec->trid)
 	    {
 	      LSA_COPY (&task.dependency_seq, &la_ws_label_dependency_seq);
@@ -9968,8 +10026,8 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_WS_LABEL:
-      /* writeset PoC: 커밋 직전 라벨 레코드. dependency_seq 를 디코드해 두고 바로 뒤따르는
-       * LOG_COMMIT(같은 trid)에서 task.dependency_seq 로 소비한다. */
+      /* writeset PoC: 커밋 직전 라벨 레코드. dependency_seq 를 디코드해 홀더에 저장해 두면,
+       * 바로 뒤따르는 LOG_COMMIT(같은 trid)이 task.dependency_seq 로 꺼내 쓴다. */
       la_retrieve_ws_label (pg_ptr, final, &la_ws_label_dependency_seq);
       la_ws_label_trid = lrec->trid;
       LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
