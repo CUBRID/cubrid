@@ -4617,6 +4617,26 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
+  /* The histogram build below runs with authorization disabled and scans every row of the
+   * class server-side; the blob it stores exposes sampled values (MCVs, bucket bounds).
+   * Require the same rights as UPDATE STATISTICS: ALTER, and SELECT for the data read.
+   * (au_check_class_authorization ignores Au_disable, so it still checks under AU_DISABLE.) */
+  error = au_check_class_authorization (obj, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+      AU_ENABLE (save);
+      return error;
+    }
+  error = au_check_class_authorization (obj, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      PT_ERRORmf2 (parser, cls, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+		   "SELECT", db_get_class_name (obj));
+      AU_ENABLE (save);
+      return error;
+    }
+
   error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
 
   if (error != NO_ERROR)
@@ -4657,6 +4677,16 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (er_errid () != NO_ERROR);
       AU_ENABLE (save);
       return er_errid ();
+    }
+
+  /* Dropping a histogram is a statistics change on the class; require ALTER like
+   * UPDATE STATISTICS (the drop runs with authorization disabled below). */
+  error = au_check_class_authorization (obj, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+      AU_ENABLE (save);
+      return error;
     }
 
   error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);

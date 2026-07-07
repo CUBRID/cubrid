@@ -4691,6 +4691,23 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
 	      return error;
 	    }
+
+	  /* The reservoir-based collector scans the heap directly on the server, so the SELECT
+	   * authorization that the legacy collector enforced through its internal SELECT query is
+	   * no longer exercised; the collected histogram also stores sampled values (MCVs, bucket
+	   * bounds). Keep requiring SELECT explicitly. Report it as a command-level error (not a
+	   * parse-tree error) so the message framing matches what the legacy query raised. */
+	  error = au_check_class_authorization (class_mop, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      char au_msg[SM_MAX_IDENTIFIER_LENGTH + 64];
+	      const char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+						MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON);
+	      snprintf (au_msg, sizeof (au_msg), fmt ? fmt : "%s is not authorized on %s", "SELECT",
+			db_get_class_name (class_mop));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, au_msg);
+	      return error;
+	    }
 	}
 
       // update stats
