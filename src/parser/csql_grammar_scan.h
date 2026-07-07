@@ -83,7 +83,6 @@ extern "C"
   extern int yylineno_prev;
   extern int yyleng_last;
 
-
 #ifdef __cplusplus
 }
 #endif

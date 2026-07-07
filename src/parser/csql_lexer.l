@@ -83,7 +83,6 @@ int saved_yy_start = 0;
 int yyline_start_pos = 0;
 static int yyline_start_pos_bk = 0;
 int yyleng_last = 0;
-static int yyleng_last_bk = 0;
 int yylineno_prev = 0;
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
@@ -2190,7 +2189,6 @@ parser_yy_user_action (void)
     }
     
   yyline_start_pos_bk = yyline_start_pos;
-  yyleng_last_bk = yyleng_last;
   yyleng_last = yyleng;
 
   if (YY_START == INITIAL)	/* token start (not a continuation) */
@@ -2201,16 +2199,13 @@ parser_yy_user_action (void)
 
   if (yylineno_prev < yylineno)
     {
-      this_parser->line = yylineno;
+      char *last_newline = strrchr(yytext, '\n');
+      if (last_newline != NULL)
+        {
+          yyline_start_pos = yybuffer_pos + (last_newline - yytext) + 1;
+        }
 
-      for (int k = csql_yyget_leng () - 1; k >= 0; k--)
-	{
-	  if (yytext[k] == '\n')
-	    {
-	      yyline_start_pos = yybuffer_pos + k + 1;
-	      break;
-	    }
-	}
+      this_parser->line = yylineno;
     }
 
   yylineno_prev = yylineno;

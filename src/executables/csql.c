@@ -918,6 +918,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
+	  start_line_no = csql_Is_interactive ? 1 : (line_no + 1);
+	  csql_yyset_lineno (start_line_no);
+
 	  continue;
 	}
       else
