@@ -95,6 +95,10 @@ log_writeset_history_initialize (void)
 
   LSA_SET_NULL (&log_Writeset_prev_commit_lsa);
 
+  /* TEST ONLY (writeset PoC 검증): 서버 부팅에 의한 히스토리 초기화. 가득 차서 비우는
+   * commit_flush 경로("CLEAR (full)")와 구분되도록 다른 태그로 남긴다. 검증 후 제거. */
+  er_log_debug (ARG_FILE_LINE, "writeset history INIT (server boot): cap_limit=%d\n", LOG_WRITESET_HISTORY_CAP);
+
   return NO_ERROR;
 }
 
@@ -140,11 +144,12 @@ log_writeset_add_key (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * clas
       return NO_ERROR;
     }
 
-  /* NOTE: ws_overflow 는 단순 메모리 캡이 아니라 정합성 안전장치다. 수집이 부분적으로만 되면
-   * writeset 이 불완전 -> 트랜잭션이 실제보다 "독립"으로 보여 슬레이브 게이트가 잘못 병렬화
-   * -> 같은 행 순서 붕괴. 게다가 호출부는 반환값을 (void) 로 무시하므로 조용히 틀린다. 그래서
-   * per-tx 한도 초과 시 부분 writeset 을 남기지 않고 통째로 버린 뒤 commit-order 로 격하한다
-   * (= MySQL has_missing_keys). (PoC 단순화 대상 아님 - 제거 금지.) */
+  /* ws_overflow 는 메모리 캡이 아니라 "정합성" 안전장치다. 부분 수집이 왜 위험한가:
+   *   1. writeset 이 불완전해지면 트랜잭션이 실제보다 "독립적"으로 보인다.
+   *   2. 슬레이브 게이트가 그걸 믿고 잘못 병렬화 -> 같은 행 순서가 붕괴한다.
+   *   3. 호출부가 반환값을 (void) 로 무시하므로 이 오류는 조용히 발생한다.
+   * 그래서 per-tx 한도를 넘기면 부분 writeset 을 통째로 버리고 commit-order 로 격하한다
+   * (= MySQL has_missing_keys). PoC 단순화 대상이 아니다 - 제거 금지. */
   if (tdes->ws_hashes.size () >= LOG_WRITESET_TX_LIMIT)
     {
       /* per-tx limit reached: drop writeset, degrade to commit order */
@@ -156,6 +161,11 @@ log_writeset_add_key (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * clas
 
   hash = log_writeset_fnv1a (class_oid, packed, len);
   tdes->ws_hashes.push_back (hash);
+
+  /* TEST ONLY (writeset PoC 검증): 수집한 해시를 서버 에러로그로 남긴다. 검증 후 제거할 것. */
+  er_log_debug (ARG_FILE_LINE, "writeset insert hash: trid=%d class=%d|%d|%d packed_len=%d hash=%016llx\n",
+		tdes->trid, (int) class_oid->volid, (int) class_oid->pageid, (int) class_oid->slotid, len,
+		(unsigned long long) hash);
 
   return NO_ERROR;
 }
@@ -200,6 +210,12 @@ log_writeset_add_dbvalue (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buf_len);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+
+  /* 반드시 0 으로 초기화한다: or_pack_mem_value 는 도메인과 값 사이 정렬(or_get_align64)로 건너뛴
+   * 패딩 바이트를 채우지 않는데, packed_len 은 그 패딩을 포함한다. memset 없이 malloc 쓰레기가 남으면
+   * 같은 행(class_oid, PK)이라도 호출 경로(INSERT vs UPDATE/DELETE)마다 해시가 달라져 의존성 검출이
+   * 깨진다. replication.c 는 같은 이유로 memset 하지만(valgrind), 우리는 정합성 문제이므로 전 빌드에서 한다. */
+  memset (buf, 0, (size_t) buf_len);
 
   ptr = or_pack_mem_value (buf, pk, &packed_len);
   if (ptr == NULL)
@@ -304,6 +320,12 @@ log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_L
        * (= MySQL m_writeset_history.clear() + m_writeset_history_start = seq). */
       if (log_Writeset_history.map.size () + tdes->ws_hashes.size () > (size_t) LOG_WRITESET_HISTORY_CAP)
 	{
+	  /* TEST ONLY (writeset PoC 검증): 히스토리가 가득 차서 통째로 비우는 경로. 부팅 초기화
+	   * ("INIT (server boot)")와 구분되는 태그. 검증 후 제거. */
+	  er_log_debug (ARG_FILE_LINE,
+			"writeset history CLEAR (full): prev_count=%zu + tx=%zu > cap=%d, new history_start=%lld|%d\n",
+			log_Writeset_history.map.size (), tdes->ws_hashes.size (), LOG_WRITESET_HISTORY_CAP,
+			(long long) commit_lsa->pageid, (int) commit_lsa->offset);
 	  log_Writeset_history.map.clear ();
 	  LSA_COPY (&log_Writeset_history.history_start, commit_lsa);
 	}
