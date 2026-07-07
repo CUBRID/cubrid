@@ -5369,7 +5369,7 @@ upgradedb_load_decoded_script (int version, char **out_buf, size_t * out_len)
       return error;
     }
 
-  const size_t decoded_len = file_size / 2;
+  const size_t decoded_len = (file_size + 1) / 2;
 
   if (qstr_hex_to_bin (buf, (int) decoded_len, buf, (int) file_size) != (int) file_size)
     {
