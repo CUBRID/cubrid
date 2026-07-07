@@ -29,27 +29,6 @@
 #include "thread_compat.hpp"
 
 /*
- * xhistogram_build_by_fullscan_reservoir () - full-scan a class, reservoir-sample one
- *   attribute, and build the histogram blob server-side (replaces the query-based path).
- *
- *   thread_p(in)       : thread entry
- *   class_oid(in)      : class OID
- *   hfid(in)           : heap file id of the class
- *   attr_id(in)        : attribute id to build the histogram for
- *   attr_type(in)      : attribute domain type
- *   max_buckets(in)    : maximum number of buckets
- *   sample_size(in)    : reservoir capacity (number of non-null values to keep)
- *   null_frequency(out): fraction of NULLs over all rows (exact; full scan)
- *   histogram_blob(out): db_private_alloc'd blob (caller frees); NULL if no data
- *   blob_length(out)   : length of histogram_blob
- *
- *   return: NO_ERROR or error code
- */
-extern int xhistogram_build_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-    ATTR_ID attr_id, DB_TYPE attr_type, int max_buckets, int sample_size, double *null_frequency,
-    char **histogram_blob, int *blob_length);
-
-/*
  * xhistogram_build_multi_by_fullscan_reservoir () - single-scan, multi-column variant.
  *   Reads the heap ONCE and reservoir-samples every requested attribute in the same pass
  *   (instead of one full scan per column), then builds one histogram blob per column.

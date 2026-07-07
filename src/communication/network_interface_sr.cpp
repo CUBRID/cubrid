@@ -2112,8 +2112,11 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_int (ptr, &sample_size);
   ptr = or_unpack_int (ptr, &attr_cnt);
 
-  if (attr_cnt <= 0)
+  if (attr_cnt <= 0
+      || (INT64) OR_OID_SIZE + 3 * OR_INT_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
     {
+      /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
+       * the received request -- prevents unpacking past the request buffer and absurd allocations */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       status = ER_OBJ_INVALID_ARGUMENTS;
       (void) return_error_to_client (thread_p, rid);

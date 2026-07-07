@@ -1497,6 +1497,11 @@ error_end:
 	  db_ws_free ((*histogram)->histogram);
 	  (*histogram)->histogram = NULL;
 	}
+      if ((*histogram)->attr_ids != NULL)
+	{
+	  db_ws_free ((*histogram)->attr_ids);
+	  (*histogram)->attr_ids = NULL;
+	}
       if ((*histogram)->null_frequency != NULL)
 	{
 	  db_ws_free ((*histogram)->null_frequency);
