@@ -11378,10 +11378,11 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 
   if (snl->stored_cnt >= (int) (sizeof (snl->server) / sizeof (snl->server[0])))
     {
-      /* slots full (3rd+ distinct remote): count only, no out-of-bounds store. The multi-remote
-       * guard in pt_convert_dblink_dml_query (distinct_cnt >= 2) rejects the statement regardless. */
+      /* slots full (3rd+ distinct remote): count only, no out-of-bounds store. Keep walking (not
+       * PT_STOP_WALK) so any local spec later in the same FROM-list is still visited and counted
+       * into local_cnt; otherwise pt_convert_dblink_dml_query's local_cnt>0 check is skipped and
+       * the wrong rejection message (multi-remote instead of local-mixed-remote) is raised. */
       snl->distinct_cnt++;
-      *continue_walk = PT_STOP_WALK;
       return node;
     }
 
