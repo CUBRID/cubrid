@@ -966,8 +966,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
-	      csql_yyset_lineno (start_line_no);
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
+	      csql_yyset_lineno (csql_Is_interactive ? 1 : line_no + 1);
 	      csql_edit_contents_clear ();
 	      uncommented_string = false;
 	    }
