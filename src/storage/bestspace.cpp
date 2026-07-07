@@ -952,7 +952,8 @@ namespace cubstorage
 	    if (error == status::FAILURE)
 	      {
 		ASSERT_ERROR ();
-		return er_errid ();
+		errid = er_errid ();
+		return errid != NO_ERROR ? errid : ER_FAILED;
 	      }
 	  }
 
