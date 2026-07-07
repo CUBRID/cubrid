@@ -1051,7 +1051,7 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
  * return : NULL
  * str (in) : the new statement chunk received from input
  */
-void
+bool
 csql_walk_statement (const char *str)
 {
   /* using flags but not adding many states in here may be not good choice, but it will not change the state machine
@@ -1060,10 +1060,11 @@ csql_walk_statement (const char *str)
   bool is_last_stmt_valid = true;
   const char *p;
   int str_length;
+  bool uncommented_string = false;
 
   if (str == NULL)
     {
-      return;
+      return false;
     }
 
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
@@ -1106,6 +1107,15 @@ csql_walk_statement (const char *str)
 	    }
 
 	  // here, *p is a non-white-space
+
+	  if ((*p == '/' && (*(p + 1) == '/' || *(p + 1) == '*')) || (*p == '-' && *(p + 1) == '-'))
+	    {
+	      /* blank code */ ;
+	    }
+	  else
+	    {
+	      uncommented_string = true;
+	    }
 
 	substate_transition:
 	  switch (substate)
@@ -1485,6 +1495,8 @@ csql_walk_statement (const char *str)
   csql_Edit_contents.substate = substate;
   csql_Edit_contents.plcsql_begin_end_balance = plcsql_begin_end_balance;
   csql_Edit_contents.plcsql_nest_level = plcsql_nest_level;
+
+  return uncommented_string;
 }
 
 /*

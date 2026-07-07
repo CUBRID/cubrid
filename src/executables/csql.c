@@ -674,6 +674,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool is_first_read_line = true;
   bool read_whole_line;
   char *prompt;
+  bool uncommented_string = false;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -761,6 +762,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
+  uncommented_string = false;
   start_line_no = 1;
   for (line_no = 1; true; line_no++)
     {
@@ -918,8 +920,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
-	  start_line_no = csql_Is_interactive ? 1 : (line_no + 1);
-	  csql_yyset_lineno (start_line_no);
+	  uncommented_string = false;
 
 	  continue;
 	}
@@ -940,7 +941,15 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    }
 	  else
 	    {
-	      csql_walk_statement (line_read);
+	      if (csql_walk_statement (line_read))
+		{
+		  if (!csql_Is_interactive && !uncommented_string)
+		    {
+		      uncommented_string = true;
+		      start_line_no = line_no;
+		    }
+		}
+
 	      /* because we don't want to execute session commands in string block or comment block or identifier block */
 	      is_in_block = csql_is_statement_in_block ();
 
@@ -957,10 +966,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
+	      csql_yyset_lineno (start_line_no);
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
 	      csql_edit_contents_clear ();
-	      start_line_no = csql_Is_interactive ? 1 : (line_no + 1);
-	      csql_yyset_lineno (start_line_no);
+	      uncommented_string = false;
 	    }
 	}
 
