@@ -2468,7 +2468,7 @@ clean_string:
 
   while (true)
     {
-      scan = heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+      scan = heap_next (thread_p, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK, HEAP_WITHOUT_OOS_EXPAND);
       if (scan == S_SUCCESS)
 	{
 	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);

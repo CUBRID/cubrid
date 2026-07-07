@@ -106,7 +106,8 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	scan_code =
-	  heap_get_visible_version_expand_oos (thread_p, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN);
+	  heap_get_visible_version (thread_p, ref_oid, &ref_class_oid, NULL, &scan_cache, PEEK, NULL_CHN,
+				    HEAP_WITH_OOS_EXPAND);
 	heap_scancache_end (thread_p, &scan_cache);
 
 	if (scan_code == S_ERROR)
@@ -212,7 +213,7 @@ process_object (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, HEAP_CA
 
   /* get object with X_LOCK */
   scan_code = locator_lock_and_get_object (thread_p, oid, &upd_scancache->node.class_oid, &copy_recdes, upd_scancache,
-					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED);
+					   X_LOCK, COPY, NULL_CHN, LOG_WARNING_IF_DELETED, HEAP_WITHOUT_OOS_EXPAND);
   if (scan_code != S_SUCCESS)
     {
       if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
