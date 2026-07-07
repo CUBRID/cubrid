@@ -1328,7 +1328,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   T_CCI_ERROR err_buf;
   char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
   char *sql = NULL;
-  size_t sql_len;
+  size_t sql_len, table_name_len;
+  int *attr_name_lens = NULL;
   char *p;
   const char *find;
 
@@ -1414,12 +1415,20 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
     }
 
   /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
-  sql_len = strlen (table_name) + DBLINK_INSERT_SQL_HDR_OVERHEAD;
+  table_name_len = strlen (table_name);
+  sql_len = table_name_len + DBLINK_INSERT_SQL_HDR_OVERHEAD;
   if (num_attrs > 0)
     {
+      attr_name_lens = (int *) db_private_alloc (thread_p, (size_t) num_attrs * sizeof (int));
+      if (attr_name_lens == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) num_attrs * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
       for (i = 0; i < num_attrs; i++)
 	{
-	  sql_len += strlen (attr_names[i]) + DBLINK_INSERT_SQL_PER_COLUMN;
+	  attr_name_lens[i] = (int) strlen (attr_names[i]);
+	  sql_len += (size_t) attr_name_lens[i] + DBLINK_INSERT_SQL_PER_COLUMN;
 	}
     }
   sql_len += (size_t) num_bind *DBLINK_INSERT_SQL_PER_PLACEHOLDER + DBLINK_INSERT_SQL_VALUES_OVERHEAD;
@@ -1428,6 +1437,10 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   if (sql == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      if (attr_name_lens != NULL)
+	{
+	  db_private_free_and_init (thread_p, attr_name_lens);
+	}
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -1435,44 +1448,79 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   p = sql;
   remaining = (int) sql_len;
 
-  /* Append to the SQL buffer; bail out if snprintf truncates (ret >= remaining) or errors
-   * (ret < 0). A data-change path must not prepare a malformed/over-run statement. The buffer
-   * is over-allocated (see DBLINK_INSERT_SQL_* estimates), so this is a defensive guard. */
+  /* Bounds-checked buffer append: memcpy for known-length strings, direct byte-store for single
+   * chars. Every length here is already known (literal sizeof, table_name_len, or
+   * attr_name_lens[] computed above). Each write is checked against `remaining` before copying,
+   * so a length mismatch (never expected: sql_len is an over-allocated upper bound; see
+   * DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of overrunning the
+   * buffer. */
 // *INDENT-OFF*
-#define DBLINK_INSERT_SQL_APPEND(...) \
+#define DBLINK_INSERT_SQL_APPEND_N(src, len) \
   do \
     { \
-      ret = snprintf (p, remaining, __VA_ARGS__); \
-      if (ret < 0 || ret >= remaining) \
+      size_t _len = (size_t) (len); \
+      if (_len >= (size_t) remaining) \
         { \
           goto sql_build_error; \
         } \
-      p += ret; \
-      remaining -= ret; \
+      memcpy (p, (src), _len); \
+      p += _len; \
+      remaining -= (int) _len; \
+    } \
+  while (0)
+#define DBLINK_INSERT_SQL_APPEND_LIT(lit) DBLINK_INSERT_SQL_APPEND_N (lit, sizeof (lit) - 1)
+#define DBLINK_INSERT_SQL_APPEND_CHAR(c) \
+  do \
+    { \
+      if (remaining <= 1) \
+        { \
+          goto sql_build_error; \
+        } \
+      *p++ = (c); \
+      remaining--; \
     } \
   while (0)
 // *INDENT-ON*
 
-  DBLINK_INSERT_SQL_APPEND ("/* DBLINK INSERT */ INSERT INTO %s", table_name);
+  DBLINK_INSERT_SQL_APPEND_LIT ("/* DBLINK INSERT */ INSERT INTO ");
+  DBLINK_INSERT_SQL_APPEND_N (table_name, table_name_len);
 
   if (num_attrs > 0)
     {
-      DBLINK_INSERT_SQL_APPEND (" (");
+      DBLINK_INSERT_SQL_APPEND_CHAR (' ');
+      DBLINK_INSERT_SQL_APPEND_CHAR ('(');
       for (i = 0; i < num_attrs; i++)
 	{
-	  DBLINK_INSERT_SQL_APPEND ("%s%s", attr_names[i], (i < num_attrs - 1) ? ", " : "");
+	  DBLINK_INSERT_SQL_APPEND_N (attr_names[i], attr_name_lens[i]);
+	  if (i < num_attrs - 1)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	    }
 	}
-      DBLINK_INSERT_SQL_APPEND (")");
+      DBLINK_INSERT_SQL_APPEND_CHAR (')');
+      db_private_free_and_init (thread_p, attr_name_lens);
     }
 
-  DBLINK_INSERT_SQL_APPEND (" VALUES (");
+  DBLINK_INSERT_SQL_APPEND_LIT (" VALUES (");
   for (i = 0; i < num_bind; i++)
     {
-      DBLINK_INSERT_SQL_APPEND ("?%s", (i < num_bind - 1) ? ", " : "");
+      DBLINK_INSERT_SQL_APPEND_CHAR ('?');
+      if (i < num_bind - 1)
+	{
+	  DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	}
     }
-  DBLINK_INSERT_SQL_APPEND (")");
+  DBLINK_INSERT_SQL_APPEND_CHAR (')');
 
-#undef DBLINK_INSERT_SQL_APPEND
+  if (remaining <= 0)
+    {
+      goto sql_build_error;
+    }
+  *p = '\0';
+
+#undef DBLINK_INSERT_SQL_APPEND_N
+#undef DBLINK_INSERT_SQL_APPEND_LIT
+#undef DBLINK_INSERT_SQL_APPEND_CHAR
 
   /* prepare statement */
   state->stmt_handle = cci_prepare (state->conn_handle, sql, 0, &err_buf);
@@ -1489,6 +1537,10 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 
 sql_build_error:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL assembly truncated");
+  if (attr_name_lens != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_name_lens);
+    }
   db_private_free (thread_p, sql);
   /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
   return ER_DBLINK;
