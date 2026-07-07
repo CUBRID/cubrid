@@ -1212,6 +1212,7 @@ ldr_exec_query_from_file (const char *file_name, FILE * input_stream, int *start
 	    {
 	      db_get_parser_line_col (session, &line, &col);	// current input line and column
 	    }
+	  ldr_print_error_msg (line, base_line, file_name);
 	  db_close_session (session);
 	  logddl_set_file_line (line + base_line);
 	  break;

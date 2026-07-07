@@ -668,7 +668,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   unsigned char utf8_line_buf[INTL_UTF8_MAX_CHAR_SIZE * LINE_BUFFER_SIZE];
   char *line_read = NULL;
   int line_length;
-  int line_no;
+  int line_no, start_line_no;
   char *ptr;			/* loop pointer */
   char *line_read_alloced = NULL;
   bool is_first_read_line = true;
@@ -761,8 +761,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
-  line_no = csql_Is_interactive ? 1 : 0;
-  do
+  start_line_no = 1;
+  for (line_no = 1; true; line_no++)
     {
       if (db_Connect_status == DB_CONNECTION_STATUS_CONNECTED)
 	{
@@ -818,8 +818,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	}
       else
 	{
-	  line_no++;
-
 	  /* If input line exeeds LINE_BUFFER_SIZE, line_buf couldn't contain '\n' character in it. So, read_whole_line
 	   * will be remained as false. */
 	  line_read = fgets ((char *) line_buf, LINE_BUFFER_SIZE, csql_Input_fp);
@@ -956,9 +954,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	  if (csql_execute)
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
 	      csql_edit_contents_clear ();
-	      csql_yyset_lineno (csql_Is_interactive ? 1 : (line_no + 1));
+	      start_line_no = csql_Is_interactive ? 1 : (line_no + 1);
+	      csql_yyset_lineno (start_line_no);
 	    }
 	}
 
@@ -967,7 +966,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
     error_continue:
       nonscr_display_error (csql_Scratch_text, SCRATCH_TEXT_LEN);
     }
-  while (true);
 
 fatal_error:
   csql_edit_contents_finalize ();

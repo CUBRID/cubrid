@@ -625,7 +625,8 @@ csql_display_csql_err (int line_no, int col_no)
  * csql_display_session_err() - display all query compilation errors
  *                            for this session
  *   return: none
- *   session(in): context of query compilation 
+ *   session(in): context of query compilation
+ *   line_no(in): statement starting line number
  */
 void
 csql_display_session_err (DB_SESSION * session, int line_no)
