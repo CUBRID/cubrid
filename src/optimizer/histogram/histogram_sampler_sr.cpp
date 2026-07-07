@@ -1575,7 +1575,9 @@ cleanup:
 
     if (error != NO_ERROR)
       {
-	for (c = 0; c < attr_cnt; c++)
+	/* on a worker error `merged` was never assigned (still empty); on a merge-phase error it
+	 * holds attr_cnt slots -- iterate its actual size, not attr_cnt */
+	for (c = 0; c < (int) merged.size (); c++)
 	  {
 	    delete merged[c];
 	    merged[c] = NULL;
