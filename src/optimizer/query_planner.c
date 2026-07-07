@@ -59,7 +59,6 @@
 #define TEST_DUMP_PLAN_JOIN_COST 0
 #define TEST_DUMP_PLAN_FOLLOW_COST 0
 
-#define TEST_HASH_JOIN_ENABLE 0
 #define TEST_HASH_JOIN_FORCE_ENABLE 0
 
 #define INDENT_INCR		4
@@ -92,6 +91,10 @@
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
 					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
+#define HJ_HASH_ENTRY_POS_SIZE 12	/* sizeof (QFILE_TUPLE_SIMPLE_POS): the per-entry tuple-position size
+					   added to sizeof (HENTRY_HLS) for the spill threshold. The struct is
+					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
+					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
@@ -3606,14 +3609,12 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   {
     UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
-    if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ))
-	> mem_limit * HJ_PARTITION_FILL_FACTOR)
+    if ((inner_cardinality * (sizeof (HENTRY_HLS) + HJ_HASH_ENTRY_POS_SIZE)) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
 	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
       }
 
-    if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ ))
-	> mem_limit * HJ_PARTITION_FILL_FACTOR)
+    if ((outer_cardinality * (sizeof (HENTRY_HLS) + HJ_HASH_ENTRY_POS_SIZE)) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
 	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
       }
