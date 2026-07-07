@@ -12062,13 +12062,6 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
     {
       node->flag.cannot_prepare = 0;
 
-      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
-      if (!ct)
-	{
-	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-	  return;
-	}
-
       PT_NODE *server = into_spec->info.spec.remote_server_name;
       if (server == NULL)
 	{
@@ -12078,6 +12071,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       if (server->node_type == PT_DBLINK_TABLE_DML)
 	{
 	  return;		/* already converted */
+	}
+
+      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+      if (!ct)
+	{
+	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+	  return;
 	}
 
       ct->info.dblink_table.is_name = true;
