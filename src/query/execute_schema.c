@@ -4473,6 +4473,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
 	  if (!is_histogrammable_type (attr_type))
 	    {
+	      /* NOT a failure path: dump_histogram () prints the TYPE-NOT-SUPPORTED notice and
+	       * returns NO_ERROR, so `error` is reset and the statement still succeeds -- the
+	       * statistics refreshed above stand as a normal, committed-with-the-statement effect.
+	       * No savepoint rollback is needed here. */
 	      error = ER_OBJ_INVALID_ARGUMENTS;
 	      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
 	      continue;
