@@ -1121,6 +1121,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   if (log_Gl.trantable.area != NULL)
     {
+      /* Boot defined this trantable (and its pgbuf/lock/file/mvcc) early; reuse
+       * that pool across the redefine below instead of rebuilding it. */
+      logtb_Reuse_boot_managers = true;
       log_final (thread_p);
     }
 
@@ -1339,6 +1342,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * max_clients+1
    */
   error_code = logtb_define_trantable_log_latch (thread_p, -1);
+  /* End of the redefine window; later undefines (error, shutdown) finalize normally. */
+  logtb_Reuse_boot_managers = false;
   if (error_code != NO_ERROR)
     {
       goto error;

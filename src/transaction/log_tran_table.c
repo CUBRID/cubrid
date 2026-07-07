@@ -362,6 +362,10 @@ error:
  * Note: Define the transaction table which is used to support the
  *              number of expected transactions.
  */
+/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
+ * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
+bool logtb_Reuse_boot_managers = false;
+
 void
 logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks)
 {
@@ -476,23 +480,27 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  log_Gl.mvcc_table.initialize ();
+  /* Reusing the boot-time pool: skip re-initialization. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.initialize ();
 
-  /* Initialize the lock manager and the page buffer pool */
-  error_code = lock_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = file_manager_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
+      /* Initialize the lock manager and the page buffer pool */
+      error_code = lock_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = file_manager_init ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   return error_code;
 
@@ -575,10 +583,14 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  log_Gl.mvcc_table.finalize ();
-  lock_finalize ();
-  pgbuf_finalize ();
-  file_manager_final ();
+  /* Reusing the boot-time pool: keep the managers alive; only free the array below. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.finalize ();
+      lock_finalize ();
+      pgbuf_finalize ();
+      file_manager_final ();
+    }
 
   if (log_Gl.trantable.area != NULL)
     {
