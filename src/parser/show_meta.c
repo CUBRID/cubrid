@@ -223,7 +223,6 @@ metadata_of_slotted_page_header (void)
     {"Total_free_area", "int"},
     {"Contiguous_free_area", "int"},
     {"Free_space_offset", "int"},
-    {"Need_update_best_hint", "int"},
     {"Is_saving", "int"},
     {"Flags", "int"}
   };

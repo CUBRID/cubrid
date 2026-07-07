@@ -99,9 +99,6 @@ class record_descriptor;
     } \
   while (0)
 
-/* A good space to accept insertions */
-#define HEAP_DROP_FREE_SPACE (int)(DB_PAGESIZE * 0.3)
-
 /*
  * Heap scan structures
  */
@@ -673,8 +670,8 @@ extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
 
-extern void heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid, int prev_freespace);
-extern bool heap_should_try_update_stat (const int current_freespace, const int prev_freespace);
+extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace);
+
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
