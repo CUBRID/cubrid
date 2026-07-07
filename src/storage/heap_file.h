@@ -679,8 +679,6 @@ extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * 
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
 						int ispeeking, int old_chn, bool is_cached_scan = false);
-PAGE_PTR heap_stats_find_best_page (THREAD_ENTRY * thread_p, const HFID * hfid, int needed_space, bool isnew_rec,
-				    HEAP_SCANCACHE * space_cache, PGBUF_WATCHER * pg_watcher);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
@@ -696,7 +694,6 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);

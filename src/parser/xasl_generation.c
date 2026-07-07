@@ -27929,8 +27929,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA;
     case RESERVED_P_IS_SAVING:
       return HEAP_PAGE_INFO_IS_SAVING;
-    case RESERVED_P_UPDATE_BEST:
-      return HEAP_PAGE_INFO_UPDATE_BEST;
 
       /* Key info names */
     case RESERVED_KEY_VOLUMEID:

@@ -873,7 +873,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::add_candidates (const bestspace_entry *candidates, std::size_t num_candidates)
+  bestspace::add_candidates (bestspace_entry *candidates, std::size_t num_candidates)
   {
     std::size_t i;
 
@@ -1083,24 +1083,8 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::create (OID *class_oid, HFID *hfid, std::size_t shard_count, std::uint16_t unfill_space)
-  {
-    registry_entry *node;
-
-    node = new registry_entry;
-    node->class_oid = *class_oid;
-    node->hfid = *hfid;
-    node->entry = new bestspace (unfill_space, shard_count);
-
-    std::lock_guard<std::mutex> lock (m_mutex);
-
-    assert (!find_entry (m_head, class_oid, hfid));
-    insert_entry (m_head, node);
-  }
-
-  void
-  bestspace_registry::create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
-			      const bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
+  bestspace_registry::create (OID *class_oid, HFID *hfid, bestspace_entry *entries, std::size_t num_entries,
+			      bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
@@ -1118,22 +1102,7 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::destroy (const OID *class_oid, const VFID *vfid)
-  {
-    registry_entry *node;
-
-    std::lock_guard<std::mutex> lock (m_mutex);
-
-    node = get_node_from_list (m_head, class_oid, vfid);
-    if (node)
-      {
-	m_generation.fetch_add (1);
-	destroy_entry (node);
-      }
-  }
-
-  void
-  bestspace_registry::destroy (const OID *class_oid, const HFID *hfid)
+  bestspace_registry::destroy (OID *class_oid, HFID *hfid)
   {
     registry_entry *node;
 

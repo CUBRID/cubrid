@@ -314,7 +314,7 @@ namespace cubstorage
 
       void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
 
-      void add_candidates (const bestspace_entry *candidates, std::size_t num_candidates);
+      void add_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       bool pop_candidate (bestspace_entry &candidate);
 
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
@@ -380,14 +380,10 @@ namespace cubstorage
       bestspace_registry ();
       ~bestspace_registry ();
 
-      void create (OID *class_oid, HFID *hfid, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
+      void create (OID *class_oid, HFID *hfid, bestspace_entry *entries, std::size_t num_entries,
+		   bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
 		   std::uint16_t unfill_space = 0);
-      void create (OID *class_oid, HFID *hfid, const bestspace_entry *entries, std::size_t num_entries,
-		   const bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT,
-		   std::uint16_t unfill_space = 0);
-
-      void destroy (const OID *class_oid, const VFID *vfid);
-      void destroy (const OID *class_oid, const HFID *hfid);
+      void destroy (OID *class_oid, HFID *hfid);
 
       bestspace *find (OID *class_oid, HFID *hfid);
 
