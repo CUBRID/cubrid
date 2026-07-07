@@ -382,6 +382,10 @@ struct heap_get_context
 
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
+
+  bool implicit_write_lock;	/* for an MVCC UPDATE/DELETE write-write acquisition, skip the per-row
+				 * instance X-lock and serialize via the record header (mvcc_del_id /
+				 * mvcc_ins_id) + the write-owner's transaction self-lock. */
 };
 
 /* Forward definition. */

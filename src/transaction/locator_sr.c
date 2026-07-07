@@ -83,6 +83,14 @@ typedef enum
 				 * another */
 } LOCATOR_INDEX_ACTION_FLAG;
 
+/* outcome of resolving an implicit-write-lock write-write conflict (locator_resolve_implicit_ww_conflict) */
+typedef enum
+{
+  LOCATOR_WW_PROCEED,		/* no conflict: use the record in hand */
+  LOCATOR_WW_REFETCHED,		/* re-fetched after a fallback lock or a wait: re-classify */
+  LOCATOR_WW_ERROR		/* failure; *scan is set */
+} LOCATOR_WW_RESULT;
+
 typedef struct locator_classname_action LOCATOR_CLASSNAME_ACTION;
 struct locator_classname_action
 {
@@ -5362,6 +5370,23 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 }
 
 /*
+ * locator_mvcc_reset_vanished_row () - absorb a lockless MVCC UPDATE/DELETE that lost the write-write race
+ *   force_count(out): reset to 0 (no row was modified)
+ *   return: NO_ERROR
+ *
+ * Note: ER_HEAP_UNKNOWN_OBJECT from the heap stamp means another transaction committed a delete of the row
+ *       between our lockless scan and the stamp. The row is already gone, so the statement affects 0 rows --
+ *       benign, not an error. Clears the pending error and reports success.
+ */
+static int
+locator_mvcc_reset_vanished_row (int *force_count)
+{
+  er_clear ();
+  *force_count = 0;
+  return NO_ERROR;
+}
+
+/*
  * locator_update_force () - Update the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -5720,7 +5745,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED);
+								      LOG_ERROR_IF_DELETED,
+								      S_UPDATE /* UPDATE not decoupled */ );
 		}
 	      else
 		{
@@ -6028,6 +6054,12 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
       error_code = heap_update_logical (thread_p, &update_context);
       if (error_code != NO_ERROR)
 	{
+	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
+	      error_code = locator_mvcc_reset_vanished_row (force_count);
+	      goto error;
+	    }
 	  /*
 	   * Problems updating the object...Maybe, the transaction should be aborted by the caller...Quit..
 	   */
@@ -6208,7 +6240,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
+						 S_DELETE /* REC_HOME MVCC DELETE write-write decoupling */ );
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -6331,6 +6364,12 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		   * aborted by the caller...Quit..
 		   */
 		  error_code = er_errid ();
+		  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
+		      error_code = locator_mvcc_reset_vanished_row (force_count);
+		      goto error;
+		    }
 		  er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
 				LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 		  if (error_code == NO_ERROR)
@@ -6420,6 +6459,12 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 			LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 	  assert (er_errid () != NO_ERROR);
 	  error_code = er_errid ();
+	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
+	    {
+	      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
+	      error_code = locator_mvcc_reset_vanished_row (force_count);
+	      goto error;
+	    }
 	  if (error_code == NO_ERROR)
 	    {
 	      error_code = ER_FAILED;
@@ -12941,6 +12986,67 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
   return redistribute_partition_data (thread_p, class_oid, no_oids, oid_list);
 }
 
+#if defined (SERVER_MODE)
+/*
+ * locator_resolve_implicit_ww_conflict () - resolve a write-write conflict for an implicit MVCC write
+ *   lock from the just-read record header; may re-fix the home page
+ *
+ *   return : PROCEED (no conflict), REFETCHED (record re-fetched -> re-classify), or ERROR (*scan set)
+ *
+ * A big/relocated row is stamped off the home page, so it falls back to the per-row X-lock; otherwise
+ * the conflicting owner (in-progress del_id / ins_id) is waited out on its transaction self-lock.
+ */
+static LOCATOR_WW_RESULT
+locator_resolve_implicit_ww_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, LOCK lock_mode,
+				      MVCC_REC_HEADER * header, bool * lock_acquired, bool * xlock_fallback,
+				      SCAN_CODE * scan)
+{
+  MVCC_SATISFIES_DELETE_RESULT satisfies;
+  MVCCID owner_mvccid = MVCCID_NULL;
+
+  /* A big/relocated row is stamped off the home page (its latch does not cover it), so fall back to the
+   * per-row X-lock to keep write-write serialized, then re-fetch. */
+  if (context->record_type != REC_HOME && context->record_type != REC_ASSIGN_ADDRESS)
+    {
+      heap_clean_get_context (thread_p, context);
+      if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+	{
+	  return LOCATOR_WW_ERROR;
+	}
+      *lock_acquired = true;
+      *xlock_fallback = true;
+      *scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+      return (*scan == S_SUCCESS) ? LOCATOR_WW_REFETCHED : LOCATOR_WW_ERROR;
+    }
+
+  /* an in-progress delete/insert exposes the conflicting transaction in the header */
+  satisfies = mvcc_satisfies_delete (thread_p, header);
+  if (satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
+    {
+      owner_mvccid = MVCC_GET_DELID (header);
+    }
+  else if (satisfies == DELETE_RECORD_INSERT_IN_PROGRESS)
+    {
+      owner_mvccid = MVCC_GET_INSID (header);
+    }
+  if (!logtb_is_active_other_mvccid (thread_p, owner_mvccid))
+    {
+      return LOCATOR_WW_PROCEED;
+    }
+
+  /* wait for the owner to settle (never hold a page latch while waiting on a lock), then re-fetch */
+  heap_clean_get_context (thread_p, context);
+  if (lock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      *scan = S_ERROR;
+      return LOCATOR_WW_ERROR;
+    }
+  lock_unlock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK);
+  *scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+  return (*scan == S_SUCCESS) ? LOCATOR_WW_REFETCHED : LOCATOR_WW_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
@@ -12956,6 +13062,9 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
+#if defined (SERVER_MODE)
+  bool xlock_fallback = false;	/* set once a big/relocated row has fallen back to the per-row X-lock */
+#endif
 
   assert (context != NULL);
   assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
@@ -12965,6 +13074,22 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally */
 
+#if defined (SERVER_MODE)
+  if (context->implicit_write_lock && !mvcc_is_mvcc_disabled_class (context->class_oid_p))
+    {
+      /* MVCC UPDATE/DELETE write-write. Do NOT take a per-row instance X-lock. Instead, announce
+       * ourselves with a single transaction self-lock keyed by our MVCCID, so a concurrent writer
+       * that reads our MVCCID from the record header (below) can wait on us. CBRD-26942 already
+       * acquires that self-lock at the MVCCID assignment choke point; this is the error-propagating
+       * layer over it, and must run before our DELID stamp becomes observable. */
+      if (logtb_ensure_mvccid_self_lock (thread_p) != NO_ERROR)
+	{
+	  goto error;
+	}
+      /* lock_acquired stays false: we hold no per-row lock to release */
+    }
+  else
+#endif /* SERVER_MODE */
   if (lock_object (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) != LK_GRANTED)
     {
       if (context->scan_cache && context->scan_cache->cache_last_fix_page && context->home_page_watcher.pgptr != NULL)
@@ -12994,20 +13119,26 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
-  /* Lock should be aquired now -> get recdes */
-  if (context->recdes_p != NULL)
+  /* Lock acquired -> get the record.  For an implicit write lock this loop re-fetches after an X-lock
+   * fallback or after waiting out a conflicting write-owner, then re-classifies; a single pass otherwise. */
+  while (true)
     {
-      scan = heap_get_last_version (thread_p, context);
-      /* this scan_code must be preserved until the end of this function to be returned; - unless an error occur */
-      if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
+      if (context->recdes_p != NULL)
 	{
-	  goto error;
+	  scan = heap_get_last_version (thread_p, context);
+	  /* this scan_code must be preserved until the end of this function to be returned; - unless an error occur */
+	  if (scan != S_SUCCESS && scan != S_SUCCESS_CHN_UPTODATE)
+	    {
+	      goto error;
+	    }
 	}
-    }
 
-  /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
-  if (!mvcc_is_mvcc_disabled_class (context->class_oid_p))
-    {
+      /* Check isolation restrictions and the visibility of the object if it belongs to a mvcc class */
+      if (mvcc_is_mvcc_disabled_class (context->class_oid_p))
+	{
+	  break;
+	}
+
       MVCC_REC_HEADER recdes_header;
 
       /* get header: directly from recdes if it has been obtained, otherwise from heap */
@@ -13029,6 +13160,24 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	{
 	  goto error;
 	}
+
+#if defined (SERVER_MODE)
+      /* With no per-row X-lock held, resolve any write-write conflict directly from the record header. */
+      if (context->implicit_write_lock && !xlock_fallback)
+	{
+	  LOCATOR_WW_RESULT ww = locator_resolve_implicit_ww_conflict (thread_p, context, lock_mode, &recdes_header,
+								       &lock_acquired, &xlock_fallback, &scan);
+	  if (ww == LOCATOR_WW_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (ww == LOCATOR_WW_REFETCHED)
+	    {
+	      continue;
+	    }
+	  /* LOCATOR_WW_PROCEED: fall through to the isolation / visibility checks */
+	}
+#endif /* SERVER_MODE */
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
@@ -13077,6 +13226,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	  scan = S_DOESNT_EXIST;
 	  goto error;
 	}
+
+      break;
     }
 
   return scan;
@@ -13112,6 +13263,8 @@ error:
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
+ * op_type (in)	       : operation type; S_DELETE takes the decoupled write-write path, others keep the
+ *				lock-manager path.
  *
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  */
@@ -13119,7 +13272,7 @@ SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					     MVCC_REEV_DATA * mvcc_reev_data,
-					     NON_EXISTENT_HANDLING non_ex_handling_type)
+					     NON_EXISTENT_HANDLING non_ex_handling_type, SCAN_OPERATION_TYPE op_type)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan = S_SUCCESS;
@@ -13152,6 +13305,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	}
     }
   heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  context.implicit_write_lock = (op_type == S_DELETE);	/* MVCC write-write decoupling: DELETE only */
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))

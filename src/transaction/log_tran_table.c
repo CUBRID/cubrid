@@ -4321,6 +4321,24 @@ logtb_is_current_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
 }
 
 /*
+ * logtb_is_active_other_mvccid - is mvccid a valid, currently-active transaction other than ours?
+ *
+ * return: bool
+ *
+ *   thread_p(in): thread entry
+ *   mvccid(in): MVCC id
+ *
+ * Note: guards "wait for the owner to finish" paths. False when the id is invalid, is our own, or the
+ *       owner has already ended -- there is nothing to wait on in those cases.
+ */
+bool
+logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && log_Gl.mvcc_table.is_active (mvccid);
+}
+
+/*
  * logtb_get_mvcc_snapshot  - get MVCC snapshot
  *
  * return: MVCC snapshot
