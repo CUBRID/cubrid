@@ -1040,6 +1040,16 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       sel = 1.0;
     }
 
+  /* Out-of-range hedge, symmetric with the equal/LIKE paths: a probe value past the histogram's
+   * upper bound (e.g. col > stored_max on an append-only key/date column whose statistics have
+   * gone stale) otherwise collapses to exactly 0. Floor it at 1/total_rows so a slightly stale
+   * histogram never estimates a genuinely-populated range at zero rows. The lower out-of-range
+   * side is already hedged by the first bucket's half-mass in comp_parts (). */
+  if (sel <= 0.0)
+    {
+      sel = 1.0 / total_rows;
+    }
+
   *selectivity = sel;
   *success = true;
   return;

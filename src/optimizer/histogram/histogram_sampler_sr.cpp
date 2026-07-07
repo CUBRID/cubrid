@@ -107,6 +107,10 @@ namespace
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
       case DB_TYPE_NUMERIC:
+	/* NUMERIC histogram values (MCV/bucket endpoints) are collected as double, so precision
+	 * beyond ~16 significant digits (2^53) is lost and adjacent NUMERIC values can merge into
+	 * one endpoint. NDV is unaffected (it hashes the exact coefficient bytes + scale, see
+	 * hll_hash_numeric_exact); only the histogram value approximation is double. */
 	return value_category::real;
       case DB_TYPE_CHAR:
       case DB_TYPE_VARCHAR:	/* == DB_TYPE_STRING */
