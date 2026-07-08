@@ -801,8 +801,8 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
     EXPECT_FALSE (owned);
   }
 
-  // ---- Case 3: valid OID but a length outside the (0, INT_MAX] range ----
-  const DB_BIGINT bad_lengths[] = { 0, -1, (DB_BIGINT) INT_MAX + 1 };
+  // ---- Case 3: valid OID but a length outside the (0, DB_MAX_STRING_LENGTH] range ----
+  const DB_BIGINT bad_lengths[] = { 0, -1, (DB_BIGINT) DB_MAX_STRING_LENGTH + 1, (DB_BIGINT) INT_MAX + 1 };
   for (DB_BIGINT bad_len : bad_lengths)
     {
       OID valid_oid;

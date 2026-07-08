@@ -122,13 +122,13 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 }
 
 /*
- * heap_oos_read_blobs () - Read the OOS blob for every OOS-tagged variable index.
+ * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
  *   state(in/out): oos_blobs must be resized to n_var (empty vectors)
  */
 static int
-heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
+heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 {
   std::vector<oos_read_request> requests;
 
@@ -140,33 +140,14 @@ heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	}
 
       const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
-      if (value_offset + OR_OOS_INLINE_SIZE > state->src_length)
-	{
-	  assert_release (false && "OOS inline slot extends past record bounds");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  NULL_VOLID, NULL_PAGEID, NULL_SLOTID);
-	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
-	}
+      OID oos_oid;
+      DB_BIGINT oos_len;
 
-      /* Inline OOS slot layout (M2+): [OID (8B) | full_length (8B bigint)]. */
-      OID oos_oid = OID_INITIALIZER;
-      DB_BIGINT oos_len = 0;
-      int rc = NO_ERROR;
-      OR_BUF buf;
-      or_init (&buf, (char *) state->src + value_offset, OR_OOS_INLINE_SIZE);
-      if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
+      /* Reuse the single inline-reference parser (same [OID (8B) | full_length (8B)] layout and
+       * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
+      RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
+      if (heap_oos_parse_inline_ref (&rec, state->src + value_offset, &oos_oid, &oos_len) != NO_ERROR)
 	{
-	  assert_release (false && "failed to read OOS OID from inline slot");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  OID_AS_ARGS (&oos_oid));
-	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
-	}
-      oos_len = or_get_bigint (&buf, &rc);
-      if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
-	{
-	  assert_release (false && "invalid OOS inline length");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  OID_AS_ARGS (&oos_oid));
 	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
@@ -397,7 +378,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 
       state.oos_blobs.resize (state.n_var);
 
-      if (heap_oos_read_blobs (thread_p, &state) != NO_ERROR)
+      if (heap_oos_read_values (thread_p, &state) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -451,8 +432,8 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
   *oos_len = or_get_bigint (&buf, &rc);
 
   /* Case 2: bigint read failed or the forwarder OID is NULL.
-   * Case 3: full length out of the (0, INT_MAX] range a single record can hold. */
-  if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) INT_MAX)
+   * Case 3: full length out of the (0, DB_MAX_STRING_LENGTH] range a stored value can hold. */
+  if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
