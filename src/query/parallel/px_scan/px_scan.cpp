@@ -456,9 +456,9 @@ extern "C"
 
     /* By construction, mvcc_select_lock_needed is false here: the gate above (spec->curent == nullptr
      * branch) sets ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN and returns early whenever it is true, and that
-     * flag persists across subsequent calls for the same spec (issue #154, critic gate 1 verification). */
-    bool page_copy_scan = qexec_is_page_copy_eligible (spec, scan_op_type, mvcc_select_lock_needed, fixed_scan,
-						       grouped_scan);
+     * flag persists across subsequent calls for the same spec. */
+    bool cached_scan = qexec_is_cached_scan_eligible (spec, scan_op_type, mvcc_select_lock_needed, fixed_scan,
+		       grouped_scan);
 
     scan_id->s.phsid.manager = nullptr;	/* init */
 
@@ -478,7 +478,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, page_copy_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -510,7 +511,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, page_copy_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -542,7 +544,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, page_copy_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -1803,7 +1806,7 @@ namespace parallel_scan
 	task_p = placement_new ((task<result_type, ST> *) task_p, m_thread_p, m_query_entry, m_result_handler,
 				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
-				m_is_grouped, m_is_page_copy_scan, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
+				m_is_grouped, m_is_cached_scan, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;

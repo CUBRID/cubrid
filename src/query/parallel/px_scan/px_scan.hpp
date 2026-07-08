@@ -46,7 +46,7 @@ namespace parallel_scan
       manager (THREAD_ENTRY *thread_p, QUERY_ID query_id, SCAN_ID *scan_id, xasl_node *xasl, int parallelism, HFID hfid,
 	       OID cls_oid,
 	       val_descr *vd,
-	       bool is_fixed, bool is_grouped, bool is_page_copy_scan,
+	       bool is_fixed, bool is_grouped, bool is_cached_scan,
 	       worker_manager *worker_manager,
 	       QFILE_LIST_ID *list_id = nullptr,
 	       INDX_INFO *indx_info = nullptr)
@@ -72,7 +72,7 @@ namespace parallel_scan
 	  m_worker_manager (worker_manager),
 	  m_is_fixed (is_fixed),
 	  m_is_grouped (is_grouped),
-	  m_is_page_copy_scan (is_page_copy_scan),
+	  m_is_cached_scan (is_cached_scan),
 	  m_uses_xasl_clone (false),
 	  m_g_agg_domain_resolve_need (false),
 	  m_list_id (list_id),
@@ -120,7 +120,7 @@ namespace parallel_scan
       pre_execution_info m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
-      bool m_is_page_copy_scan;	/* issue #154: page-copy activation, computed via qexec_is_page_copy_eligible () */
+      bool m_is_cached_scan;	/* cached-scan activation, computed via qexec_is_cached_scan_eligible () */
       bool m_uses_xasl_clone;
       bool m_g_agg_domain_resolve_need;
       QFILE_LIST_ID *m_list_id;

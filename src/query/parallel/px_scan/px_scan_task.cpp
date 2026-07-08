@@ -228,7 +228,7 @@ namespace parallel_scan
 				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
 				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
 				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved,
-				     m_is_page_copy_scan);
+				     m_is_cached_scan);
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	  }
@@ -293,11 +293,11 @@ namespace parallel_scan
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
 			/* Worker fixed_scan here is a local recompute (xptr->scan_ptr == NULL check above),
-			 * simplified vs the leader's full fixed-scan chain-walk that fed m_is_page_copy_scan.
-			 * The asymmetry is perf-only, not a correctness gap: page-copy is structurally safe
+			 * simplified vs the leader's full fixed-scan chain-walk that fed m_is_cached_scan.
+			 * The asymmetry is perf-only, not a correctness gap: a cached scan is structurally safe
 			 * for any S_SELECT lock-free scan regardless of which path computed fixed_scan, and
-			 * the "&& !fixed_scan" guard below still prevents copy-mode from activating on a scan
-			 * this worker locally determined to be fixed (issue #154, critic gate 2 P3b). */
+			 * the "&& !fixed_scan" guard below still prevents a cached scan from activating on a
+			 * scan this worker locally determined to be fixed. */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
@@ -307,7 +307,7 @@ namespace parallel_scan
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
 							specp->s.cls_node.cls_regu_list_reserved,
-							m_is_page_copy_scan && !fixed_scan);
+							m_is_cached_scan && !fixed_scan);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;

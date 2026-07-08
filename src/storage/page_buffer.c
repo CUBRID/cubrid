@@ -857,7 +857,7 @@ static char pgbuf_Guard[8] = { MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM
 #endif /* CUBRID_DEBUG */
 
 /* ----------------------------------------------------------------------------------------------
- * Pgbuf opaque copy-buffer API (issue #154 page-copy heap scan).
+ * Pgbuf opaque copy-buffer API for cached heap scans (CBRD-27041).
  *
  * The copy buffer is not a real BCB slot: it is a stand-alone <dummy BCB, iopage> pair, private to
  * this file, so that the PAGE_PTR returned by pgbuf_copy_buffer_get_page_ptr () satisfies the same
@@ -894,7 +894,7 @@ pgbuf_copy_buffer_alloc (void)
   memcpy (&buf->iopage_buf.iopage.page[DB_PAGESIZE], pgbuf_Guard, sizeof (pgbuf_Guard));
 #endif /* CUBRID_DEBUG */
 
-  er_log_debug (ARG_FILE_LINE, "page-copy scan buffer allocated");
+  er_log_debug (ARG_FILE_LINE, "cached scan buffer allocated");
 
   return buf;
 }

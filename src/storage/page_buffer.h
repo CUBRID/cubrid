@@ -496,7 +496,7 @@ extern void pgbuf_daemons_destroy ();
 
 extern int pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr);
 
-/* Pgbuf opaque copy-buffer API (issue #154 page-copy heap scan). The struct is private
+/* Pgbuf opaque copy-buffer API for cached heap scans (CBRD-27041). The struct is private
  * to page_buffer.c; callers only ever see the opaque handle below. */
 typedef struct pgbuf_copy_buffer *PGBUF_COPY_BUFFER_HANDLE;
 

@@ -660,7 +660,7 @@ static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid,
 					   HEAP_SCANCACHE ** scan_cache);
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-					  MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy = false);
+					  MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache = false);
 static int heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid);
@@ -6777,7 +6777,7 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-			       MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy)
+			       MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache)
 {
   int ret = NO_ERROR;
   int granted;
@@ -6866,20 +6866,20 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
-  scan_cache->copied_buf_handle = NULL;
-  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->local_cache_handle = NULL;
+  VPID_SET_NULL (&scan_cache->local_cache_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-  if (page_copy && is_queryscan)
+  if (copy_to_local_cache && is_queryscan)
     {
-      scan_cache->copied_buf_handle = pgbuf_copy_buffer_alloc ();
-      if (scan_cache->copied_buf_handle == NULL)
+      scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
+      if (scan_cache->local_cache_handle == NULL)
 	{
 	  /* OOM contract (pinned): degrade to COPY, no er_set, no error return. */
-	  er_log_debug (ARG_FILE_LINE, "page-copy buffer alloc failed, degrading to COPY");
+	  er_log_debug (ARG_FILE_LINE, "local cache buffer alloc failed, degrading to COPY");
 	}
       else
 	{
-	  scan_cache->read_mode = HEAP_SCAN_READ_PAGE_COPY;
+	  scan_cache->read_mode = HEAP_SCAN_READ_LOCAL_CACHE;
 	}
     }
 
@@ -6900,8 +6900,8 @@ exit_on_error:
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
-  scan_cache->copied_buf_handle = NULL;
-  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->local_cache_handle = NULL;
+  VPID_SET_NULL (&scan_cache->local_cache_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
@@ -6922,10 +6922,10 @@ exit_on_error:
  */
 int
 heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid, const OID * class_oid,
-		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy)
+		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot, bool copy_to_local_cache)
 {
   return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true,
-					mvcc_snapshot, page_copy);
+					mvcc_snapshot, copy_to_local_cache);
 }
 
 /*
@@ -7186,8 +7186,8 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
-  scan_cache->copied_buf_handle = NULL;
-  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->local_cache_handle = NULL;
+  VPID_SET_NULL (&scan_cache->local_cache_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;
@@ -7242,9 +7242,9 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	    }
 	}
 
-      pgbuf_copy_buffer_free (scan_cache->copied_buf_handle);
-      scan_cache->copied_buf_handle = NULL;
-      VPID_SET_NULL (&scan_cache->copied_vpid);
+      pgbuf_copy_buffer_free (scan_cache->local_cache_handle);
+      scan_cache->local_cache_handle = NULL;
+      VPID_SET_NULL (&scan_cache->local_cache_vpid);
       scan_cache->read_mode = HEAP_SCAN_READ_COPY;
     }
 
@@ -7890,7 +7890,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   bool is_null_recdata;
   PGBUF_WATCHER old_page_watcher;
   PGBUF_WATCHER rec_info_page_watcher;
-  PAGE_PTR local_pgptr = NULL;	/* issue #154: page-copy read pointer (copy buffer or live page) */
+  PAGE_PTR local_pgptr = NULL;	/* cached-scan read pointer (local cache or live page) */
 
   assert (scan_cache != NULL);
 
@@ -7972,20 +7972,20 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		}
 	    }
-	  /* Page-copy fast path: skip fix entirely if same page already copied (issue #154, Slice 2).
-	   * record-info scans never use page-copy (critic gate 1 F1): heap_get_record_info () below
-	   * derefs scan_cache->page_watcher directly and requires a live fixed page. */
-	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
-	      && scan_cache->copied_buf_handle != NULL && VPID_EQ (&vpid, &scan_cache->copied_vpid))
+	  /* Cached-scan fast path: skip fix entirely if the same page is already in the local cache.
+	   * record-info scans never use the cached scan: heap_get_record_info () below derefs
+	   * scan_cache->page_watcher directly and requires a live fixed page. */
+	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
+	      && scan_cache->local_cache_handle != NULL && VPID_EQ (&vpid, &scan_cache->local_cache_vpid))
 	    {
-	      /* Same page already in copy buffer -- use it directly. Unfix any fall-through-parked
+	      /* Same page already in the local cache -- use it directly. Unfix any fall-through-parked
 	       * page (heap_clean_get_context can park a live page when cache_last_fix_page was
 	       * temporarily forced true for the previous record's heap_scan_get_visible_version call). */
 	      if (scan_cache->page_watcher.pgptr != NULL)
 		{
 		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		}
-	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	      goto slot_walk;
 	    }
 	  /* else: fall through to existing fix block */
@@ -8013,18 +8013,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		}
 	    }
 
-	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
+	      && scan_cache->local_cache_handle != NULL)
 	    {
-	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2).
-	       * record-info scans never use page-copy (critic gate 1 F1). */
-	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->copied_buf_handle);
-	      scan_cache->copied_vpid = vpid;
+	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache and unfix.
+	       * record-info scans never use the cached scan. */
+	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
+	      scan_cache->local_cache_vpid = vpid;
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	    }
 	  else
 	    {
-	      local_pgptr = scan_cache->page_watcher.pgptr;	/* live page (non-copy mode) */
+	      local_pgptr = scan_cache->page_watcher.pgptr;	/* live page (non-cached mode) */
 	    }
 
 	slot_walk:
@@ -8034,22 +8035,16 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      /* Getting record information means that we need to scan all slots even if they store no object. */
 	      if (reversed_direction)
 		{
-		  scan =
-		    spage_previous_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
-							   PEEK);
+		  scan = spage_previous_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 		}
 	      else
 		{
-		  scan =
-		    spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
-						       PEEK);
+		  scan = spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
-		  scan =
-		    spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
-						       PEEK);
+		  scan = spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 		}
 	    }
 	  else
@@ -8107,19 +8102,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (scan == S_END)
 		{
 		  /* Find next page of heap and continue scanning */
-		  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+		  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL)
 		    {
-		      /* page_watcher.pgptr is NULL here (copy mode always unfixes after copying); re-fix the
-		       * copied page so heap_vpid_prev/heap_vpid_next below have a live pointer (issue #154). */
+		      /* page_watcher.pgptr is NULL here (a cached scan always unfixes after copying); re-fix
+		       * the cached page so heap_vpid_prev/heap_vpid_next below have a live pointer. */
 		      scan_cache->page_watcher.pgptr =
-			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->copied_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK,
-						     scan_cache, &scan_cache->page_watcher);
+			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
+						     S_LOCK, scan_cache, &scan_cache->page_watcher);
 		      if (scan_cache->page_watcher.pgptr == NULL)
 			{
 			  if (er_errid () == ER_PB_BAD_PAGEID)
 			    {
-			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid.volid, oid.pageid,
-				      oid.slotid);
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid.volid,
+				      oid.pageid, oid.slotid);
 			    }
 
 			  /* something went wrong, return */
@@ -8201,14 +8196,15 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       else
 	{
 	  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
-	  bool is_pc = (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL);
+	  bool is_cached_scan = (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
+				 && scan_cache->local_cache_handle != NULL);
 
 	  scan_cache->cache_last_fix_page = true;
-	  assert (!is_pc || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: copy-mode consumption never holds the live page */
+	  assert (!is_cached_scan || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: cached-scan consumption never holds the live page */
 
 	  scan =
 	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					   NULL_CHN, is_pc);
+					   NULL_CHN, is_cached_scan);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 	}
 
@@ -8334,7 +8330,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   bool is_null_recdata;
-  PAGE_PTR local_pgptr = NULL;	/* issue #154: page-copy read pointer (copy buffer or live page) */
+  PAGE_PTR local_pgptr = NULL;	/* cached-scan read pointer (local cache or live page) */
 
   if (!OID_ISNULL (&scan_cache->node.class_oid))
     {
@@ -8364,9 +8360,9 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
       while (true)
 	{
 
-	  /* Page-copy fast path: skip fix if same page already copied (issue #154, Slice 2W). */
-	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
-	      && scan_cache->copied_buf_handle != NULL && VPID_EQ (vpid, &scan_cache->copied_vpid))
+	  /* Cached-scan fast path: skip fix if the same page is already in the local cache. */
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
+	      && scan_cache->local_cache_handle != NULL && VPID_EQ (vpid, &scan_cache->local_cache_vpid))
 	    {
 	      /* Unfix any fall-through-parked page (heap_clean_get_context can park a live page when
 	       * cache_last_fix_page was temporarily forced true for the previous record's
@@ -8375,7 +8371,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		{
 		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 		}
-	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	      goto slot_walk_1page;
 	    }
 	  /* else: fall through to existing fix block */
@@ -8412,13 +8408,13 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		}
 	    }
 
-	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL)
 	    {
-	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2W). */
-	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->copied_buf_handle);
-	      scan_cache->copied_vpid = *vpid;
+	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache and unfix. */
+	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
+	      scan_cache->local_cache_vpid = *vpid;
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	    }
 	  else
 	    {
@@ -8482,16 +8478,16 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
       {
 	int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
-	bool is_pc = (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
-		      && scan_cache->copied_buf_handle != NULL
-		      && local_pgptr == pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle));
+	bool is_cached_scan = (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
+			       && scan_cache->local_cache_handle != NULL
+			       && local_pgptr == pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle));
 
 	scan_cache->cache_last_fix_page = true;
-	assert (!is_pc || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: copy-mode consumption never holds the live page */
+	assert (!is_cached_scan || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: cached-scan consumption never holds the live page */
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					 NULL_CHN, is_pc);
+					 NULL_CHN, is_cached_scan);
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
@@ -25622,14 +25618,14 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 *   old_chn (in): Cache coherency number for existing record data. It is
 *		   used by clients to avoid resending record data when
 *		   it was not updated.
-*   is_page_copy (in): call-scoped page-copy read mode (issue #154). Plumbed in Slice 1; consumed
-*		       by the REC_HOME shortcut starting Slice 2. Default false everywhere.
+*   is_cached_scan (in): call-scoped cached-scan read mode (CBRD-27041). When true, the caller
+*		       guarantees peeked_recdes->data points into the scan-private local cache.
 *  Note: this function should be used for heap scan;
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-			       bool is_page_copy)
+			       bool is_cached_scan)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
@@ -25696,11 +25692,11 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	      return scan;
 	    }
 
-	  if (is_page_copy)
+	  if (is_cached_scan)
 	    {
-	      /* Caller guarantees peeked_recdes->data points into the copied_buf_handle frame (issue #154,
-	       * Slice 2/2W): local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_pc/is_page_copy
-	       * is true, so peeked_recdes->data is stable copy memory, not a live latched page. */
+	      /* Caller guarantees peeked_recdes->data points into the local_cache_handle frame:
+	       * local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_cached_scan
+	       * is true, so peeked_recdes->data is stable local-cache memory, not a live latched page. */
 	      *recdes = *peeked_recdes;
 	      return scan;
 	    }
