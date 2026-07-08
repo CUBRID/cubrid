@@ -1228,6 +1228,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Pagesize is incorrect. We need to undefine anything that has been
        * created with old pagesize and start again
        */
+      /* leave the reuse window so the redefine below rebuilds at the new size */
+      logtb_Reuse_boot_managers = false;
       if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
 	{
 	  /* Pagesize is incompatible */
@@ -1511,6 +1513,9 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
 error:
   /* ***** */
+
+  /* clear in case an early error skipped the reset above */
+  logtb_Reuse_boot_managers = false;
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
