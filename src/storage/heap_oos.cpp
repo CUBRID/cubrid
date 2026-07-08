@@ -59,14 +59,14 @@ struct HEAP_OOS_EXPAND_STATE
   int src_vot_bytes;
   int dst_vot_bytes;
   int fixed_bitmap_bytes;
-  std::vector<int> vot_raw;
-  std::vector<std::vector<char>> oos_blobs;
+  std::vector<int> vot_entries;
+  std::vector<std::vector<char>> oos_payloads;
 };
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
  *   return: NO_ERROR or ER_FAILED
- *   state(in/out): fills vot_raw and n_var
+ *   state(in/out): fills vot_entries and n_var
  */
 static int
 heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
@@ -74,7 +74,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
   const char *src_vot = (const char *) OR_GET_OBJECT_VAR_TABLE (state->src);
   const int capacity = (state->src_length - state->src_header_size) / state->src_offset_size;
 
-  state->vot_raw.reserve (capacity + 1);
+  state->vot_entries.reserve (capacity + 1);
   state->n_var = -1;
 
   for (int i = 0; i <= capacity; ++i)
@@ -85,26 +85,26 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      int raw;
+      int entry;
       const char *ep = src_vot + i * state->src_offset_size;
       switch (state->src_offset_size)
 	{
 	case OR_BYTE_SIZE:
-	  raw = OR_GET_BYTE (ep);
+	  entry = OR_GET_BYTE (ep);
 	  break;
 	case OR_SHORT_SIZE:
-	  raw = OR_GET_SHORT (ep);
+	  entry = OR_GET_SHORT (ep);
 	  break;
 	case OR_INT_SIZE:
-	  raw = OR_GET_INT (ep);
+	  entry = OR_GET_INT (ep);
 	  break;
 	default:
 	  assert_release (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      state->vot_raw.push_back (raw);
-      if (OR_IS_LAST_ELEMENT (raw))
+      state->vot_entries.push_back (entry);
+      if (OR_IS_LAST_ELEMENT (entry))
 	{
 	  state->n_var = i;
 	  break;
@@ -126,7 +126,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
  * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
- *   state(in/out): oos_blobs must be resized to n_var (empty vectors)
+ *   state(in/out): oos_payloads must be resized to n_var (empty vectors)
  */
 static int
 heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
@@ -135,12 +135,12 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 
   for (int i = 0; i < state->n_var; ++i)
     {
-      if (!OR_IS_OOS (state->vot_raw[i]))
+      if (!OR_IS_OOS (state->vot_entries[i]))
 	{
 	  continue;
 	}
 
-      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
+      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
       OID oos_oid;
       DB_BIGINT oos_len;
 
@@ -152,9 +152,9 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
-      state->oos_blobs[i].resize ((std::size_t) oos_len);
+      state->oos_payloads[i].resize ((std::size_t) oos_len);
       oos_read_request request = { oos_oid,
-				   oos_buffer (state->oos_blobs[i].data (), (std::size_t) oos_len)
+				   oos_buffer (state->oos_payloads[i].data (), (std::size_t) oos_len)
 				 };
       requests.push_back (request);
     }
@@ -184,7 +184,7 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
   state->src_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, state->src_offset_size);
   state->dst_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, dst_offset_size);
 
-  state->fixed_bitmap_bytes = OR_GET_VAR_OFFSET (state->vot_raw[0]) - state->src_vot_bytes;
+  state->fixed_bitmap_bytes = OR_GET_VAR_OFFSET (state->vot_entries[0]) - state->src_vot_bytes;
   if (state->fixed_bitmap_bytes < 0)
     {
       assert_release (false);
@@ -195,8 +195,8 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
   int64_t new_values_bytes = 0;
   for (int i = 0; i < state->n_var; ++i)
     {
-      const int this_off = OR_GET_VAR_OFFSET (state->vot_raw[i]);
-      const int next_off = OR_GET_VAR_OFFSET (state->vot_raw[i + 1]);
+      const int this_off = OR_GET_VAR_OFFSET (state->vot_entries[i]);
+      const int next_off = OR_GET_VAR_OFFSET (state->vot_entries[i + 1]);
       const int src_val_len = next_off - this_off;
       if (src_val_len < 0 || state->src_header_size + next_off > state->src_length)
 	{
@@ -204,10 +204,10 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      if (OR_IS_OOS (state->vot_raw[i]))
+      if (OR_IS_OOS (state->vot_entries[i]))
 	{
 	  assert_release (src_val_len == OR_OOS_INLINE_SIZE);
-	  new_values_bytes += (int64_t) state->oos_blobs[i].size ();
+	  new_values_bytes += (int64_t) state->oos_payloads[i].size ();
 	}
       else
 	{
@@ -281,9 +281,9 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   for (int i = 0; i < state->n_var; ++i)
     {
       OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
-      const int val_len = (OR_IS_OOS (state->vot_raw[i])
-			   ? (int) state->oos_blobs[i].size ()
-			   : (OR_GET_VAR_OFFSET (state->vot_raw[i + 1]) - OR_GET_VAR_OFFSET (state->vot_raw[i])));
+      const int val_len = (OR_IS_OOS (state->vot_entries[i])
+			   ? (int) state->oos_payloads[i].size ()
+			   : (OR_GET_VAR_OFFSET (state->vot_entries[i + 1]) - OR_GET_VAR_OFFSET (state->vot_entries[i])));
       cumulative += val_len;
     }
   OR_PUT_INT (dst_vot + state->n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
@@ -306,15 +306,15 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   int dst_pos = state->src_header_size + state->dst_vot_bytes + state->fixed_bitmap_bytes;
   for (int i = 0; i < state->n_var; ++i)
     {
-      if (OR_IS_OOS (state->vot_raw[i]))
+      if (OR_IS_OOS (state->vot_entries[i]))
 	{
-	  std::memcpy (dst + dst_pos, state->oos_blobs[i].data (), state->oos_blobs[i].size ());
-	  dst_pos += (int) state->oos_blobs[i].size ();
+	  std::memcpy (dst + dst_pos, state->oos_payloads[i].data (), state->oos_payloads[i].size ());
+	  dst_pos += (int) state->oos_payloads[i].size ();
 	}
       else
 	{
-	  const int src_off = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
-	  const int len = OR_GET_VAR_OFFSET (state->vot_raw[i + 1]) - OR_GET_VAR_OFFSET (state->vot_raw[i]);
+	  const int src_off = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
+	  const int len = OR_GET_VAR_OFFSET (state->vot_entries[i + 1]) - OR_GET_VAR_OFFSET (state->vot_entries[i]);
 	  std::memcpy (dst + dst_pos, state->src + src_off, len);
 	  dst_pos += len;
 	}
@@ -377,7 +377,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 	  return S_ERROR;
 	}
 
-      state.oos_blobs.resize (state.n_var);
+      state.oos_payloads.resize (state.n_var);
 
       if (heap_oos_read_values (thread_p, &state) != NO_ERROR)
 	{
