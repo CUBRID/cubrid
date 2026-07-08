@@ -61,6 +61,18 @@ heap_oos_demote_candidate_precedes (const heap_oos_demote_candidate &a, const he
 
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
 
+/* Grouped inline-OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
+
+/* Parse an OOS-marked variable attribute's inline reference [OID (8B) | full_length (8B)]. */
+extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len);
+
+/* Return a pointer to the attribute's inline OOS reference, or NULL if it is not inline-OOS here. */
+extern const char *heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value);
+
+/* Read every requested attribute of recdes, resolving all inline-OOS values through one grouped
+ * oos_read_many() and reading the rest with the scalar reader. */
+extern int heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info);
+
 /* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
  * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
 extern int heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
