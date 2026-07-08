@@ -3250,8 +3250,10 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
 		     regu_variable_list_node * regu_list_recordinfo, bool page_copy_scan)
 {
-  /* page_copy_scan: Slice 1 plumbing only, not yet consumed (see Slice 3). */
-  (void) page_copy_scan;
+  /* Guard: this function is shared by S_HEAP_SCAN, S_HEAP_SCAN_RECORD_INFO, and S_HEAP_SAMPLING_SCAN
+   * (issue #154, critic gate 1 F1). Only plain heap scans may activate page-copy; record-info and
+   * sampling scans never do, defense-in-depth on top of the caller-side eligibility predicate. */
+  scan_id->page_copy_scan = page_copy_scan && (scan_type == S_HEAP_SCAN);
 
   HEAP_SCAN_ID *hsidp;
   DB_TYPE single_node_type = DB_TYPE_NULL;
@@ -4577,7 +4579,7 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* A new argument(is_indexscan = false) is appended */
 	  ret =
 	    heap_scancache_start (thread_p, &hsidp->scan_cache, &hsidp->hfid, &hsidp->cls_oid, scan_id->fixed,
-				  mvcc_snapshot);
+				  mvcc_snapshot, scan_id->page_copy_scan);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;

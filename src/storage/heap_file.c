@@ -6774,14 +6774,6 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
  *   is_queryscan(in):
  *
  */
-/* TEMPORARY (issue #154 Slice 2/2W validation only -- removed in Slice 3): force page-copy read
- * mode for query scans that do not already keep their page fixed across records, ahead of the
- * Slice 3 activation predicate (qexec_is_page_copy_eligible ()) being wired through
- * scan_open_heap_scan () -> heap_scancache_start (). Debug-only; no effect in release builds. */
-#if !defined (NDEBUG)
-#define FORCE_PAGE_COPY_SCAN 1
-#endif /* !NDEBUG */
-
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
@@ -6877,13 +6869,6 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->copied_buf_handle = NULL;
   VPID_SET_NULL (&scan_cache->copied_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-#if defined (FORCE_PAGE_COPY_SCAN)
-  if (!cache_last_fix_page && is_queryscan)
-    {
-      /* TEMPORARY (issue #154 Slice 2/2W validation only) -- removed in Slice 3. */
-      page_copy = true;
-    }
-#endif /* FORCE_PAGE_COPY_SCAN */
   if (page_copy && is_queryscan)
     {
       scan_cache->copied_buf_handle = pgbuf_copy_buffer_alloc ();
@@ -7987,8 +7972,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		}
 	    }
-	  /* Page-copy fast path: skip fix entirely if same page already copied (issue #154, Slice 2). */
-	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
+	  /* Page-copy fast path: skip fix entirely if same page already copied (issue #154, Slice 2).
+	   * record-info scans never use page-copy (critic gate 1 F1): heap_get_record_info () below
+	   * derefs scan_cache->page_watcher directly and requires a live fixed page. */
+	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
 	      && scan_cache->copied_buf_handle != NULL && VPID_EQ (&vpid, &scan_cache->copied_vpid))
 	    {
 	      /* Same page already in copy buffer -- use it directly. Unfix any fall-through-parked
@@ -8026,9 +8013,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		}
 	    }
 
-	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
 	    {
-	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2). */
+	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2).
+	       * record-info scans never use page-copy (critic gate 1 F1). */
 	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->copied_buf_handle);
 	      scan_cache->copied_vpid = vpid;
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);

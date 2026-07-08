@@ -227,7 +227,8 @@ namespace parallel_scan
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
 				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
 				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
-				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved);
+				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved,
+				     m_is_page_copy_scan);
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	  }
@@ -299,7 +300,8 @@ namespace parallel_scan
 							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-							specp->s.cls_node.cls_regu_list_reserved);
+							specp->s.cls_node.cls_regu_list_reserved,
+							m_is_page_copy_scan && !fixed_scan);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;

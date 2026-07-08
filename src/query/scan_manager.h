@@ -492,6 +492,7 @@ struct scan_id_struct
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
+  bool page_copy_scan;		/* page-copy activation for this scan (issue #154); persists across partition reopens */
   int grouped;			/* if true, the scan items are accessed group by group, instead of a whole single scan
 				 * from beginning to end. */
   int qualified_block;		/* scan block has qualified items, initially set to true */

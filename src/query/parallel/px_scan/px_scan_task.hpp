@@ -48,7 +48,7 @@ namespace parallel_scan
 	    input_handler_t *input_handler,
 	    interrupt *interrupt, err_messages_with_lock *err_messages, val_descr *vd, trace_handler *trace_handler,
 	    worker_manager *worker_manager, int xasl_id, HFID hfid, OID cls_oid, bool is_fixed, bool is_grouped,
-	    bool uses_xasl_clone, XASL_NODE *orig_xasl, pre_execution_info *pre_exec_info)
+	    bool is_page_copy_scan, bool uses_xasl_clone, XASL_NODE *orig_xasl, pre_execution_info *pre_exec_info)
 	: m_parent_thread_p (parent_thread_p),
 	  m_query_entry (query_entry),
 	  m_xasl_cache_entry (nullptr),
@@ -74,6 +74,7 @@ namespace parallel_scan
       m_pre_execution_info (pre_exec_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
+      m_is_page_copy_scan (is_page_copy_scan),
       m_uses_xasl_clone (uses_xasl_clone),
       m_worker_manager (worker_manager)
       {
@@ -108,6 +109,7 @@ namespace parallel_scan
       pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
+      bool m_is_page_copy_scan;	/* issue #154: from manager, propagated to scan_open_heap_scan */
       bool m_uses_xasl_clone;
       TSC_TICKS m_start_tick;
 

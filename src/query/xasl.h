@@ -1077,6 +1077,7 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
+  bool page_copy_scan;		/* runtime-only page-copy activation (issue #154); not serialized */
   bool pruned;			/* true if partition pruning has been performed */
   bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 #endif				/* #if defined (SERVER_MODE) || defined (SA_MODE) */

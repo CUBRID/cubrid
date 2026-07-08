@@ -565,6 +565,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
+  fprintf (foutput, ",page copy scan=%d", spec_list_p->page_copy_scan);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
