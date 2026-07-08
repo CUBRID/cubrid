@@ -17644,7 +17644,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	DB_TIMESTAMP *tmp_timestamp, timestamp;
 	int year, month, day, hour, minute, second;
 
-	assert (!DB_IS_NULL (&parser->sys_epochtime));
 	tmp_timestamp = db_get_timestamp (&parser->sys_epochtime);
 	tz_timestamp_decode_no_leap_sec (*tmp_timestamp, &year, &month, &day, &hour, &minute, &second);
 	date = julian_encode (month + 1, day, year);
