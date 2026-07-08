@@ -7529,7 +7529,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 		}
 
 	      break;
-	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO, ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN */
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO */
 
 	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 	    error_code = scan_open_heap_page_scan (thread_p, s_id, val_list, vd, &ACCESS_SPEC_CLS_OID (curr_spec),
@@ -7846,8 +7846,7 @@ qexec_close_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec)
 	{
 	case TARGET_CLASS:
 	  if (curr_spec->access == ACCESS_METHOD_SEQUENTIAL || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN
-	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	      || curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
 	    {
 	      perfmon_inc_stat (thread_p, PSTAT_QM_NUM_SSCANS);
 	    }
@@ -8025,8 +8024,7 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  /* initialize the scan_id for partitioned classes */
 	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
 	    {
 	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
 	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
@@ -8888,11 +8886,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
     {
       /* first partition */
       spec->curent = spec->parts;
-      /* sampling cursor tracks spec->curent; first partition = 0 */
-      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-	{
-	  spec->s_id.s.hsid.sampling.partition_cursor = 0;
-	}
     }
   else
     {
@@ -8937,17 +8930,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       /* move to next partition */
       if (spec->curent->next == NULL)
 	{
-	  /* no more partitions; TAIL leaves sampling cursor untouched */
+	  /* no more partitions */
 	  spec->curent = NULL;
 	}
       else
 	{
 	  spec->curent = spec->curent->next;
-	  /* sampling cursor tracks spec->curent */
-	  if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-	    {
-	      spec->s_id.s.hsid.sampling.partition_cursor++;
-	    }
 	}
     }
 
@@ -8990,15 +8978,6 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
       if (IS_ANY_INDEX_ACCESS (spec->access))
 	{
 	  btid = spec->curent->btid;
-	}
-      /* load partition slice; partition_cursor < n_parts, so [pc+1] in-bounds */
-      if (spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-	{
-	  sampling_info *sampling = &spec->s_id.s.hsid.sampling;
-
-	  assert (sampling->partition_cursor < sampling->n_parts);
-	  sampling->picked_cursor = sampling->part_offsets[sampling->partition_cursor];
-	  sampling->slice_end = sampling->part_offsets[sampling->partition_cursor + 1];
 	}
     }
 
@@ -9115,7 +9094,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 		}
 
 	      break;
-	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO, ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN */
+	    }			/* case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO */
 
 	  case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 	    {
@@ -14946,17 +14925,10 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   QFILE_LIST_ID *output = NULL;
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   BUILDVALUE_PROC_NODE *buildvalue = &xasl->proc.buildvalue;
-  sampling_info *sampling = NULL;
-
-  /* check sampling scan */
-  if (XASL_IS_FLAGED (xasl, XASL_SAMPLING_SCAN) && xasl->spec_list)
-    {
-      sampling = &xasl->spec_list->s_id.s.hsid.sampling;
-    }
 
   /* make final pass on aggregate list nodes */
   if (buildvalue->agg_list
-      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false, sampling) != NO_ERROR)
+      && qdata_finalize_aggregate_list (thread_p, buildvalue->agg_list, false) != NO_ERROR)
     {
       GOTO_EXIT_ON_ERROR;
     }
@@ -19759,7 +19731,7 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 
   assert (gbstate->g_dim[N].d_flag != GROUPBY_DIM_FLAG_NONE);
 
-  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file, NULL);
+  error_code = qdata_finalize_aggregate_list (thread_p, gbstate->g_dim[N].d_agg_list, keep_list_file);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

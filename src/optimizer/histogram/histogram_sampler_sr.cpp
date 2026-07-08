@@ -29,6 +29,7 @@
 
 #include "histogram_sampler_sr.hpp"
 
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
@@ -961,17 +962,28 @@ cleanup:
   static col_collector *
   make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap)
   {
-    switch (category_of (t))
+    /* the engine's operator new is non-throwing, but the constructors allocate through STL
+     * (the 16 KiB HLL register vector, the reservoir's reserve) whose failures arrive as
+     * std::bad_alloc; convert them to the NULL the callers already treat as OOM instead of
+     * letting the exception terminate the server */
+    try
       {
-      case value_category::integer:
-	return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
-      case value_category::real:
-	return new col_collector_t<double> (id, t, value_category::real, cap);
-      case value_category::string:
-	return new col_collector_t<std::string> (id, t, value_category::string, cap);
-      case value_category::datetime:
-	return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
-      default:
+	switch (category_of (t))
+	  {
+	  case value_category::integer:
+	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
+	  case value_category::real:
+	    return new col_collector_t<double> (id, t, value_category::real, cap);
+	  case value_category::string:
+	    return new col_collector_t<std::string> (id, t, value_category::string, cap);
+	  case value_category::datetime:
+	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
+	  default:
+	    return NULL;
+	  }
+      }
+    catch (const std::bad_alloc &)
+      {
 	return NULL;
       }
   }
@@ -1080,12 +1092,22 @@ cleanup:
 		ASSERT_ERROR ();
 		goto cleanup;
 	      }
-	    for (c = 0; c < attr_cnt; c++)
+	    try
 	      {
-		if (cols[c] != NULL)
+		for (c = 0; c < attr_cnt; c++)
 		  {
-		    cols[c]->feed (heap_attrinfo_access (attr_ids[c], &attr_info));
+		    if (cols[c] != NULL)
+		      {
+			cols[c]->feed (heap_attrinfo_access (attr_ids[c], &attr_info));
+		      }
 		  }
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* sampled string copies allocate through STL; fail the scan cleanly */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto cleanup;
 	      }
 	  }
 	if (sc != S_END)
@@ -1117,7 +1139,9 @@ cleanup:
     std::vector<col_collector *> collectors;	/* one per column, owned by the driver */
     std::int64_t total_rows;
     int error;
-    multi_worker_result () : total_rows (0), error (NO_ERROR) {}
+    int er_area_len;		/* > 0: er_area holds the failed worker's flattened er context */
+    alignas (sizeof (int)) char er_area[1024];
+    multi_worker_result () : total_rows (0), error (NO_ERROR), er_area_len (0) {}
   };
 
   class multi_scan_task : public cubthread::entry_task
@@ -1149,10 +1173,17 @@ cleanup:
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
 			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows, m_abort);
-	if (m_result->error != NO_ERROR && m_abort != NULL)
+	if (m_result->error != NO_ERROR)
 	  {
-	    /* tell sibling workers to stop scanning: the whole request fails anyway */
-	    m_abort->store (true, std::memory_order_relaxed);
+	    /* this worker's er context is thread-local and gone once the pooled thread moves on;
+	     * flatten it so the coordinator can re-raise the actual error for the client */
+	    m_result->er_area_len = (int) sizeof (m_result->er_area);
+	    er_get_area_error (m_result->er_area, &m_result->er_area_len);
+	    if (m_abort != NULL)
+	      {
+		/* tell sibling workers to stop scanning: the whole request fails anyway */
+		m_abort->store (true, std::memory_order_relaxed);
+	      }
 	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
@@ -1273,12 +1304,14 @@ cleanup:
     wm->release_workers ();
 
     int error = NO_ERROR;
+    int failed_w = -1;
     std::int64_t total_rows = 0;
     for (w = 0; w < degree; w++)
       {
 	if (results[w].error != NO_ERROR)
 	  {
 	    error = results[w].error;
+	    failed_w = w;
 	  }
 	total_rows += results[w].total_rows;
       }
@@ -1288,8 +1321,16 @@ cleanup:
       }
     if (error != NO_ERROR && er_errid () == NO_ERROR)
       {
-	/* worker errors were set in the workers' own (gone) er contexts; see above */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	if (failed_w >= 0 && results[failed_w].er_area_len > 0)
+	  {
+	    /* re-raise the failed worker's captured error (code + message) in this thread's
+	     * er context, so the client sees the actual cause instead of a generic error */
+	    (void) er_set_area_error (results[failed_w].er_area);
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  }
       }
 
     if (error == NO_ERROR)
@@ -1314,20 +1355,30 @@ cleanup:
 	      {
 		fin->unique = true;
 	      }
-	    std::vector<col_collector *> peers;
-	    std::int64_t nulls = 0;
-	    peers.reserve (degree);
-	    for (w = 0; w < degree; w++)
+	    try
 	      {
-		if (results[w].collectors[c] != NULL)
+		std::vector<col_collector *> peers;
+		std::int64_t nulls = 0;
+		peers.reserve (degree);
+		for (w = 0; w < degree; w++)
 		  {
-		    peers.push_back (results[w].collectors[c]);
-		    nulls += results[w].collectors[c]->null_rows;
+		    if (results[w].collectors[c] != NULL)
+		      {
+			peers.push_back (results[w].collectors[c]);
+			nulls += results[w].collectors[c]->null_rows;
+		      }
 		  }
+		fin->null_rows = nulls;
+		fin->merge_peers (peers, (std::size_t) sample_size);
+		merged[c] = fin;
 	      }
-	    fin->null_rows = nulls;
-	    fin->merge_peers (peers, (std::size_t) sample_size);
-	    merged[c] = fin;
+	    catch (const std::bad_alloc &)
+	      {
+		/* merge buffers allocate through STL; fail the request instead of terminating */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		delete fin;
+	      }
 	  }
       }
 
@@ -1424,7 +1475,17 @@ cleanup:
 	while ((c = m_next_col->fetch_add (1)) < m_attr_cnt)
 	  {
 	    build_out &o = (*m_outs)[c];
-	    build_column_blob (&thread_ref, (*m_merged)[c], m_max_buckets, m_total_rows, o.blob, o.ndv, o.null_rows);
+	    try
+	      {
+		build_column_blob (&thread_ref, (*m_merged)[c], m_max_buckets, m_total_rows, o.blob, o.ndv,
+				   o.null_rows);
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* leave the blob empty: the coordinator reports a supported column with an empty
+		 * blob as ER_OUT_OF_VIRTUAL_MEMORY, failing the request cleanly */
+		o.blob.clear ();
+	      }
 	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
@@ -1514,8 +1575,16 @@ cleanup:
       {
 	for (int c = 0; c < attr_cnt; c++)
 	  {
-	    build_column_blob (thread_p, merged[c], max_buckets, total_rows, outs[c].blob, outs[c].ndv,
-			       outs[c].null_rows);
+	    try
+	      {
+		build_column_blob (thread_p, merged[c], max_buckets, total_rows, outs[c].blob, outs[c].ndv,
+				   outs[c].null_rows);
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* an empty blob on a supported column is reported as OOM just below */
+		outs[c].blob.clear ();
+	      }
 	  }
       }
 
@@ -1804,13 +1873,23 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	      goto cleanup;
 	    }
 
-	  for (i = 0; i < attr_cnt; i++)
+	  try
 	    {
-	      if (collectors[i] == NULL)
+	      for (i = 0; i < attr_cnt; i++)
 		{
-		  continue;
+		  if (collectors[i] == NULL)
+		    {
+		      continue;
+		    }
+		  collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
 		}
-	      collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      /* sampled string copies allocate through STL; fail the scan cleanly */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
 	    }
 	}
 

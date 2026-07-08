@@ -36,9 +36,6 @@
 
 #define STATS_SAMPLING_THRESHOLD 5000	/* sampling trial count */
 #define STATS_SAMPLING_LEAFS_MAX 5000	/* sampling leaf pages */
-#define MAX_HEAP_SAMPLING_PAGES 10000
-#define MIN_HEAP_SAMPLING_PAGES 5000
-#define EXPECTED_ROWS_PER_PAGE 20
 
 /* disk-resident elements of pkeys[] field */
 #define BTREE_STATS_PKEYS_NUM      8
@@ -173,30 +170,5 @@ extern void stats_free_statistics (CLASS_STATS * stats);
 extern void stats_dump (const char *classname, FILE * fp);
 extern void stats_ndv_dump (const char *classname, FILE * fp);
 #endif /* !SERVER_MODE */
-STATIC_INLINE int stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
-  __attribute__ ((ALWAYS_INLINE));
-
-/*
- * stats_adjust_sampling_weight () - adjust sampling weight
- * return : adjusted sampling weight
- * sampling_ndv (in)  : sampling number of distinct values
- */
-STATIC_INLINE int
-stats_adjust_sampling_weight (INT64 sampling_ndv, int sampling_weight)
-{
-  /* This is based on the assumption that if the sample data is a lot of duplicated, */
-  /* there will also be duplicate in the overall data. */
-  /* Differential weight is applied to NDV within 1% of all rows of sample data. */
-  if (sampling_weight <= 1)
-    {
-      return sampling_weight;
-    }
-  int min_NDV = MAX_HEAP_SAMPLING_PAGES * EXPECTED_ROWS_PER_PAGE / 100;	/* 1% of number of sampling data */
-  if (sampling_ndv < min_NDV)
-    {
-      return MAX (sampling_weight * sampling_ndv / min_NDV, 1);
-    }
-  return sampling_weight;
-}
 
 #endif /* _STATISTICS_H_ */

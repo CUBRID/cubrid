@@ -119,7 +119,6 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
-  sampling_info sampling;	/* for sampling statistics */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -145,7 +144,6 @@ struct parallel_heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
-  sampling_info sampling;	/* for sampling statistics */
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;

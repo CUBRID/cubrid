@@ -4429,9 +4429,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = dump_histogram (obj, (char *) att->header.name, attr_type, false, NO_ERROR, stdout);
 	      if (error != NO_ERROR)
 		{
+		  /* the statistics and histograms are already stored; the dump is presentation
+		   * only, so a failed printout must not roll back the successful update */
 		  assert (false);
-		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
-		  return error;
+		  er_clear ();
+		  error = NO_ERROR;
 		}
 	    }
 	}

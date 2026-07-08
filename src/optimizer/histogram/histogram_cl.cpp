@@ -748,15 +748,30 @@ comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
 	}
       /* The first bucket has no previous endpoint stored (its lower bound is unknown), so
        * bucket_hi (b - 1) would read bucket record (uint) -1 -> assert in debug / out-of-bounds in
-       * release. Interpolation inside it is therefore impossible; but its mass must still count:
-       * at (or above) its endpoint the whole bucket lies below-or-equal v, and for a value inside
-       * it we assume half. (Treating it as a point dropped the entire first-bucket mass for
-       * predicates like col <= first_endpoint, badly underestimating range selectivity.) */
+       * release. At (or above) its endpoint the whole bucket lies below-or-equal v. For a value
+       * inside it, mirror the second bucket's width below `hi` to approximate the missing lower
+       * bound: with q = dist(v,hi) / dist(v,hi2) (via the kind's frac), the mirrored in-bucket
+       * fraction is 1 - q/(1-q) -- ~1 just below the endpoint, 0 at one bucket-width below and
+       * beyond. A probe far below the histogram's actual minimum thus contributes ~nothing (the
+       * caller's 1/total_rows floor takes over) instead of half the first bucket's mass. */
       const T hi = r.bucket_hi<T> (b);
       double f;
       if (b == 0)
 	{
-	  f = (v >= hi) ? 1.0 : 0.5;
+	  if (v >= hi)
+	    {
+	      f = 1.0;
+	    }
+	  else if (nb > 1)
+	    {
+	      const T hi2 = r.bucket_hi<T> (1);
+	      const double q = frac (v, hi2, hi);
+	      f = (q >= 0.5) ? 0.0 : clamp01 (1.0 - q / (1.0 - q));
+	    }
+	  else
+	    {
+	      f = 0.5;		/* single bucket: no width information to extrapolate from */
+	    }
 	}
       else
 	{
