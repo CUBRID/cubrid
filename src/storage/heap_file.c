@@ -8345,6 +8345,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   bool is_null_recdata;
+  PAGE_PTR local_pgptr = NULL;	/* issue #154: page-copy read pointer (copy buffer or live page) */
 
   if (!OID_ISNULL (&scan_cache->node.class_oid))
     {
@@ -8373,6 +8374,22 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
       while (true)
 	{
+
+	  /* Page-copy fast path: skip fix if same page already copied (issue #154, Slice 2W). */
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
+	      && scan_cache->copied_buf_handle != NULL && VPID_EQ (vpid, &scan_cache->copied_vpid))
+	    {
+	      /* Unfix any fall-through-parked page (heap_clean_get_context can park a live page when
+	       * cache_last_fix_page was temporarily forced true for the previous record's
+	       * heap_scan_get_visible_version call). */
+	      if (scan_cache->page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		}
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      goto slot_walk_1page;
+	    }
+	  /* else: fall through to existing fix block */
 
 	  /*
 	   * Fetch the page where the object of OID is stored. Use previous
@@ -8406,13 +8423,28 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		}
 	    }
 
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+	    {
+	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2W). */
+	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->copied_buf_handle);
+	      scan_cache->copied_vpid = *vpid;
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	    }
+	  else
+	    {
+	      local_pgptr = scan_cache->page_watcher.pgptr;
+	    }
+
+	slot_walk_1page:
+
 	  {
 	    /* Find the next object. Skip relocated records (i.e., new_home records). This records must be accessed
 	     * through the relocation record (i.e., the object). */
 
 	    while (true)
 	      {
-		scan = spage_next_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		scan = spage_next_record (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 
 		if (scan != S_SUCCESS)
 		  {
@@ -8425,7 +8457,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		    /* skip the header */
 		    continue;
 		  }
-		type = spage_get_record_type (scan_cache->page_watcher.pgptr, oid.slotid);
+		type = spage_get_record_type (local_pgptr, oid.slotid);
 		if (type == REC_NEWHOME || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN)
 		  {
 		    /* skip */
@@ -8461,12 +8493,15 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
       {
 	int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
+	bool is_pc = (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
+		      && scan_cache->copied_buf_handle != NULL
+		      && local_pgptr == pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle));
 
 	scan_cache->cache_last_fix_page = true;
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					 NULL_CHN);
+					 NULL_CHN, is_pc);
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
