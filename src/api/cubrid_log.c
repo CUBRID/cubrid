@@ -1093,7 +1093,8 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level == 1)
     {
-      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage, *timestamp);
+      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage,
+				 timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
@@ -1107,7 +1108,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP,
 				 "timestamp must be greater or equal than 0. Input timestamp is %s, and value is %lld\n",
-				 timestamp ? "not null" : "null", *timestamp);
+				 timestamp ? "not null" : "null", timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (lsa == NULL)
