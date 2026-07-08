@@ -4283,6 +4283,10 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
   RECDES recdes;
   int error;
 
+  assert (thread_p);
+  assert (class_oid && hfid);
+  assert (header_watcher);
+
   /* get the header */
   if (spage_get_record (thread_p, header_watcher->pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
     {
@@ -4335,11 +4339,11 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
       num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
     }
 
-  cubstorage::bestspaces.create (class_oid, hfid, entries,
-				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD),
-				 candidates, num_candidates, num_shards, header->unfill_space);
+  cubstorage::bestspaces.create (hfid, entries,
+				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
+				 num_candidates, num_shards, (std::uint16_t) header->unfill_space);
 
-  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  bestspace = cubstorage::bestspaces.find (hfid);
   if (!bestspace)
     {
       /* impossible */
@@ -4386,7 +4390,7 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid)
   int error;
 
   /* find the bestspace */
-  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  bestspace = cubstorage::bestspaces.find (hfid);
   if (bestspace)
     {
       return bestspace;
@@ -4407,7 +4411,7 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid)
 
   /* recheck bestspace after acquiring the latch. */
   /* another thread may have created it before us while we were waiting. */
-  bestspace = cubstorage::bestspaces.find (class_oid, hfid);
+  bestspace = cubstorage::bestspaces.find (hfid);
   if (bestspace)
     {
       /* other threads create the bestspace and found the space */
@@ -4461,12 +4465,18 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   cubstorage::bestspace_entry candidate;
   // *INDENT-ON*
   int freespace;
+  OID class_oid;
   VPID *vpid;
 
   /* prev_freespace is not used but leave this for future feature */
   (void) prev_freespace;
 
-  bestspace = heap_find_bestspace (thread_p, class_oid, hfid);
+  if (heap_get_class_oid_from_page (thread_p, pgptr, &class_oid) != NO_ERROR)
+    {
+      return;
+    }
+
+  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid);
   if (!bestspace)
     {
       return;
@@ -4556,6 +4566,8 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
 
       if (!HFID_IS_NULL (hfid))
 	{
+	  cubstorage::bestspaces.destroy (hfid);
+
 	  /* reuse heap file */
 	  if (heap_reuse (thread_p, hfid, class_oid, reuse_oid) == NULL)
 	    {
@@ -4617,9 +4629,6 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
       ASSERT_ERROR ();
       goto error;
     }
-
-  /* remove the existing bestspace about class_oid in memory (does this really needed ?) */
-  cubstorage::bestspaces.destroy (class_oid, hfid);
 
   pgbuf_set_page_ptype (thread_p, addr_hdr.pgptr, PAGE_HEAP);
 
@@ -5199,7 +5208,7 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 
   file_postpone_destroy (thread_p, &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (class_oid, hfid);
+  cubstorage::bestspaces.destroy (hfid);
 
   return NO_ERROR;
 }
@@ -5243,7 +5252,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
-  cubstorage::bestspaces.destroy (class_oid, hfid);
+  cubstorage::bestspaces.destroy (hfid);
 
   return ret;
 }

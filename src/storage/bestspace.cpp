@@ -1074,22 +1074,18 @@ namespace cubstorage
 	node = m_head;
 	m_head = m_head->next;
 
-	printf ("\nclass_oid { %d, %d, %d }\n", node->class_oid.volid, node->class_oid.pageid, node->class_oid.slotid);
-	node->entry->show_stats ();
-
 	delete node->entry;
 	delete node;
       }
   }
 
   void
-  bestspace_registry::create (OID *class_oid, HFID *hfid, bestspace_entry *entries, std::size_t num_entries,
-			      bestspace_entry *candidates, std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
+  bestspace_registry::create (HFID *hfid, bestspace_entry *entries, std::size_t num_entries, bestspace_entry *candidates,
+			      std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
-    node->class_oid = *class_oid;
     node->hfid = *hfid;
     node->entry = new bestspace (unfill_space, shard_count);
     node->entry->initialize_by_entries (entries, num_entries);
@@ -1097,19 +1093,32 @@ namespace cubstorage
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    assert (!find_entry (m_head, class_oid, hfid));
+    assert (!find_entry (m_head, hfid));
     insert_entry (m_head, node);
   }
 
   void
-  bestspace_registry::destroy (OID *class_oid, HFID *hfid)
+  bestspace_registry::destroy (const VFID *vfid)
   {
     registry_entry *node;
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    node = get_node_from_list (m_head, class_oid, hfid);
-    if (node)
+    while ((node = get_node_from_list (m_head, vfid)))
+      {
+	m_generation.fetch_add (1);
+	destroy_entry (node);
+      }
+  }
+
+  void
+  bestspace_registry::destroy (const HFID *hfid)
+  {
+    registry_entry *node;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    while ((node = get_node_from_list (m_head, hfid)))
       {
 	m_generation.fetch_add (1);
 	destroy_entry (node);
@@ -1117,20 +1126,20 @@ namespace cubstorage
   }
 
   bestspace *
-  bestspace_registry::find (OID *class_oid, HFID *hfid)
+  bestspace_registry::find (HFID *hfid)
   {
     bestspace *entry;
 
-    entry = find_from_cache (class_oid, hfid);
+    entry = find_from_cache (hfid);
     if (entry)
       {
 	return entry;
       }
-    return find_from_global (class_oid, hfid);
+    return find_from_global (hfid);
   }
 
   bestspace *
-  bestspace_registry::find_from_cache (OID *class_oid, HFID *hfid)
+  bestspace_registry::find_from_cache (HFID *hfid)
   {
     registry_entry *cache;
     std::uint64_t generation;
@@ -1143,7 +1152,7 @@ namespace cubstorage
 	return nullptr;
       }
 
-    cache = get_node_from_list (TLS_cache.head, class_oid, hfid);
+    cache = get_node_from_list (TLS_cache.head, hfid);
     if (!cache)
       {
 	return nullptr;
@@ -1155,14 +1164,14 @@ namespace cubstorage
   }
 
   bestspace *
-  bestspace_registry::find_from_global (OID *class_oid, HFID *hfid)
+  bestspace_registry::find_from_global (HFID *hfid)
   {
     registry_entry *cache;
     bestspace *entry;
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
-    auto pair = find_entry (m_head, class_oid, hfid);
+    auto pair = find_entry (m_head, hfid);
     if (!pair)
       {
 	// invalid class oid and hfid
@@ -1182,7 +1191,6 @@ namespace cubstorage
       {
 	cache = get_tail_from_list (TLS_cache.head);
       }
-    cache->class_oid = *class_oid;
     cache->hfid = *hfid;
     cache->entry = entry;
 
@@ -1205,13 +1213,13 @@ namespace cubstorage
   }
 
   std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
-      bestspace_registry::find_entry (registry_entry *head, const OID *class_oid, const VFID *vfid)
+      bestspace_registry::find_entry (registry_entry *head, const VFID *vfid)
   {
     registry_entry *prev;
 
     for (prev = nullptr; head; prev = head, head = head->next)
       {
-	if (OID_EQ (&head->class_oid, class_oid) && VFID_EQ (&head->hfid.vfid, vfid))
+	if (VFID_EQ (&head->hfid.vfid, vfid))
 	  {
 	    return std::make_pair (prev, head);
 	  }
@@ -1220,13 +1228,13 @@ namespace cubstorage
   }
 
   std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
-      bestspace_registry::find_entry (registry_entry *head, const OID *class_oid, const HFID *hfid)
+      bestspace_registry::find_entry (registry_entry *head, const HFID *hfid)
   {
     registry_entry *prev;
 
     for (prev = nullptr; head; prev = head, head = head->next)
       {
-	if (OID_EQ (&head->class_oid, class_oid) && HFID_EQ (&head->hfid, hfid))
+	if (HFID_EQ (&head->hfid, hfid))
 	  {
 	    return std::make_pair (prev, head);
 	  }
@@ -1239,7 +1247,6 @@ namespace cubstorage
   {
     while (head)
       {
-	OID_SET_NULL (&head->class_oid);
 	HFID_SET_NULL (&head->hfid);
 	head->entry = nullptr;
 	head = head->next;
@@ -1247,9 +1254,9 @@ namespace cubstorage
   }
 
   bestspace_registry::registry_entry *
-  bestspace_registry::get_node_from_list (registry_entry *&head, const OID *class_oid, const VFID *vfid)
+  bestspace_registry::get_node_from_list (registry_entry *&head, const VFID *vfid)
   {
-    auto pair = find_entry (head, class_oid, vfid);
+    auto pair = find_entry (head, vfid);
     if (!pair)
       {
 	return nullptr;
@@ -1267,9 +1274,9 @@ namespace cubstorage
   }
 
   bestspace_registry::registry_entry *
-  bestspace_registry::get_node_from_list (registry_entry *&head, const OID *class_oid, const HFID *hfid)
+  bestspace_registry::get_node_from_list (registry_entry *&head, const HFID *hfid)
   {
-    auto pair = find_entry (head, class_oid, hfid);
+    auto pair = find_entry (head, hfid);
     if (!pair)
       {
 	return nullptr;

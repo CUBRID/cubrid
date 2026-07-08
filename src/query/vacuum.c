@@ -6408,6 +6408,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       (void) heap_delete_hfid_from_cache (thread_p, class_oid);
     }
+  cubstorage::bestspaces.destroy (&rcv_data->vfid);
 
   /* Success */
   return NO_ERROR;
