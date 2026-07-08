@@ -600,8 +600,9 @@ static int heap_bestspace_fix_page (THREAD_ENTRY * thread_p, const HFID * hfid, 
 
 static int heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				  cubstorage::bestspace_entry * first_entry);
-static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr);
-static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr,
+static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid,
+					const VPID * pages, int num_pages);
+static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages, int num_pages,
 				  const cubstorage::bestspace_entry * entries, int num_entries);
 static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
 				HEAP_HDR_STATS * header, cubstorage::bestspace_entry * entries,
@@ -3982,32 +3983,33 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
  *   return: NO_ERROR if successful, error code otherwise
  */
 static int
-heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr)
+heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, const VPID * pages,
+			     int num_pages)
 {
   PGBUF_WATCHER page_watcher;
   PAGE_PTR page_ptr = NULL;
   HEAP_CHAIN chain;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   RECDES recdes;
-  std::size_t i;
   int error_code = NO_ERROR;
+  int i;
 
-  assert (thread_p != NULL);
-  assert (hfid != NULL);
-  assert (heap_hdr != NULL);
+  assert (thread_p);
+  assert (class_oid && hfid);
+  assert (pages && num_pages > 0);
 
   addr.vfid = &hfid->vfid;
 
-  for (i = 0; i < heap_hdr->bestspace.num_pages; i++)
+  for (i = 0; i < num_pages; i++)
     {
-      if (VPID_ISNULL (&heap_hdr->bestspace.pages[i]))
+      if (VPID_ISNULL (&pages[i]))
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
 	  goto error_exit;
 	}
 
-      error_code = heap_bestspace_fix_page (thread_p, hfid, &heap_hdr->bestspace.pages[i], &page_watcher);
+      error_code = heap_bestspace_fix_page (thread_p, hfid, &pages[i], &page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4020,7 +4022,7 @@ heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const HFID * hfid, const H
 	  goto error_exit;
 	}
 
-      COPY_OID (&chain.class_oid, &heap_hdr->class_oid);
+      COPY_OID (&chain.class_oid, class_oid);
       chain.max_mvccid = MVCCID_NULL;
       chain.flags = 0;
       HEAP_PAGE_SET_VACUUM_STATUS (&chain, HEAP_PAGE_VACUUM_NONE);
@@ -4061,7 +4063,7 @@ error_exit:
  *   return: NO_ERROR if successful, error code otherwise
  */
 static int
-heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HDR_STATS * heap_hdr,
+heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages, int num_pages,
 		       const cubstorage::bestspace_entry * update_entries, int num_update_entries)
 {
   char pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -4081,16 +4083,16 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const HEAP_HD
   addr.vfid = &hfid->vfid;
 
   remaining_entries = num_update_entries;
-  for (i = 0; i < (int) heap_hdr->bestspace.num_pages; i++)
+  for (i = 0; i < (int) num_pages; i++)
     {
-      if (VPID_ISNULL (&heap_hdr->bestspace.pages[i]))
+      if (VPID_ISNULL (&pages[i]))
 	{
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
 	  goto error_exit;
 	}
 
-      error_code = heap_bestspace_fix_page (thread_p, hfid, &heap_hdr->bestspace.pages[i], &page_watcher);
+      error_code = heap_bestspace_fix_page (thread_p, hfid, &pages[i], &page_watcher);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -4882,7 +4884,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   PAGE_PTR pgptr = NULL;	/* Page pointer */
   LOG_DATA_ADDR addr;		/* Address of logging data */
   HEAP_HDR_STATS *heap_hdr = NULL;	/* Header of heap structure */
-  HEAP_HDR_STATS heap_hdr_bestspace;
   HEAP_CHAIN *chain;		/* Chain to next and prev page */
   PGBUF_WATCHER hdr_watcher;
   bool hdr_watcher_attached = false;
@@ -5069,13 +5070,14 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   assert (heap_hdr->bestspace.num_pages > 0);
   pgbuf_attach_watcher (thread_p, hdr_pgptr, PGBUF_LATCH_WRITE, &hfid_for_watcher, &hdr_watcher);
   hdr_watcher_attached = true;
-  heap_hdr_bestspace = *heap_hdr;
 
-  if (heap_update_bestspace_chain (thread_p, hfid, &heap_hdr_bestspace) != NO_ERROR)
+  if (heap_update_bestspace_chain
+      (thread_p, &heap_hdr->class_oid, hfid, heap_hdr->bestspace.pages, heap_hdr->bestspace.num_pages) != NO_ERROR)
     {
       goto error;
     }
-  if (heap_update_bestspace (thread_p, hfid, &heap_hdr_bestspace, &first_entry, 1) != NO_ERROR)
+  if (heap_update_bestspace (thread_p, hfid, heap_hdr->bestspace.pages, heap_hdr->bestspace.num_pages, &first_entry, 1)
+      != NO_ERROR)
     {
       goto error;
     }
@@ -5716,7 +5718,8 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     }
 
   /* update shards */
-  heap_update_bestspace (thread_p, hfid, &heap_hdr, entries, MIN (num_entries, max_bestpages));
+  heap_update_bestspace (thread_p, hfid, heap_hdr.bestspace.pages, heap_hdr.bestspace.num_pages, entries,
+			 MIN (num_entries, max_bestpages));
   /* update candidates */
   if (num_entries > max_bestpages)
     {
