@@ -10445,7 +10445,7 @@ fileio_restore_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 
   if (total_nbytes > session_p->dbfile.nbytes && session_p->dbfile.volid < LOG_DBFIRST_VOLID)
     {
-      ftruncate (session_p->dbfile.vdes, session_p->dbfile.nbytes);
+      (void) ftruncate (session_p->dbfile.vdes, session_p->dbfile.nbytes);
     }
 
 #if defined(CUBRID_DEBUG)

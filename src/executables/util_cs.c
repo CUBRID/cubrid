@@ -2815,7 +2815,7 @@ sigusr1_signal_handler (int sig_no)
     {
       char wakeup = 1;
 
-      write (fd, &wakeup, sizeof (wakeup));
+      (void) write (fd, &wakeup, sizeof (wakeup));
     }
 
   errno = saved_errno;
@@ -3092,7 +3092,7 @@ stop_sigusr1_monitor (void)
     {
       char wakeup = 1;
 
-      write (sigusr1_pipe_fds[1], &wakeup, sizeof (wakeup));
+      (void) write (sigusr1_pipe_fds[1], &wakeup, sizeof (wakeup));
     }
 
   /* Wait for the monitor thread to terminate and reclaim resources */
