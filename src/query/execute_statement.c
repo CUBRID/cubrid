@@ -15420,6 +15420,7 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
   const char *classname;
   DB_OBJECT *class_obj;
+  OID *class_oid;
 
   reserved_cls_info.cls_info = NULL;
   reserved_cls_info.num_classes = 0;
@@ -15448,19 +15449,45 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
-      reserved_cls_info.num_classes = num_class;
+      reserved_cls_info.num_classes = 0;
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
 	  RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[count];
 
 	  entity = entity_spec->info.spec.flat_entity_list;
+	  if (entity == NULL || entity->info.name.original == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
+	  if (class_obj == NULL)
+	    {
+	      if (statement->info.drop.if_exists)
+		{
+		  er_clear ();
+		  continue;
+		}
+
+	      ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, classname);
+	      goto error_exit;
+	    }
+
+	  class_oid = ws_oid (class_obj);
+	  if (class_oid == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
 
 	  strcpy (class_info.name, classname);
 
-	  memcpy (&class_info.oid, ws_oid (class_obj), sizeof (OID));
+	  memcpy (&class_info.oid, class_oid, sizeof (OID));
 
 	  if (do_find_object_type (statement->info.drop.entity_type, classname, &class_info.objtype) != NO_ERROR)
 	    {
@@ -15472,6 +15499,8 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
 	  count++;
 	}
+
+      reserved_cls_info.num_classes = count;
     }
 
   return NO_ERROR;
