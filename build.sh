@@ -35,6 +35,9 @@ default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
 compiler=""
+# CCI_XA (distributed transaction / XA) support is enabled by default.
+# Disable it with: -c "-DSUPPORT_XA=false"
+support_xa="true"
 
 # if you turn on the unit test of memory monitor
 # configure_options="-DUNIT_TEST_MEMORY_MONITOR=ON" or "-DUNIT_TESTS=ON"
@@ -303,7 +306,7 @@ function build_configure ()
   esac
   print_result "OK"
 
-  print_check "Configuring [with $configure_options]"
+  print_check "Configuring [with -DSUPPORT_XA=$support_xa $configure_options]"
   if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
     configure_dir=".."
   else
@@ -315,7 +318,7 @@ function build_configure ()
     generate_opt="-G Ninja"
   fi
 	
-  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir $generate_opt
+  cmake -E chdir $build_dir cmake $configure_prefix -DSUPPORT_XA=$support_xa $configure_options $source_dir $generate_opt
 
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
@@ -524,6 +527,8 @@ function show_usage ()
   fi
   echo "  -z arg  Package to generate (src,zip_src,shell,tarball,cci,jdbc,rpm,owfs);"
   echo "          [default: all]"
+  echo "  -x      Enable CCI_XA (distributed transaction/XA) support; [default: enabled]"
+  echo "          (to disable: -c \"-DSUPPORT_XA=false\")"
   echo "  -? | -h Show this help message and exit"
   echo ""
   echo " TARGET"
@@ -565,7 +570,7 @@ function get_options ()
 	  packages="$packages $optval"
 	done
       ;;
-      x ) configure_options="$configure_options -DSUPPORT_XA=true" ;;
+      x ) support_xa="true" ;;
       v ) print_version_only=1 ;;
       h|\?|* ) show_usage; exit 1;;
     esac

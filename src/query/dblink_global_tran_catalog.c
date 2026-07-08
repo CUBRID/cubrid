@@ -34,6 +34,7 @@
 #include "locator_sr.h"
 #include "dbtype.h"
 #include "error_manager.h"
+#include "crypt_opfunc.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -53,6 +54,14 @@
 #define GLOBAL_TRAN_ATTR_CREATED  1
 #define GLOBAL_TRAN_ATTR_UPDATED  0
 
+/* Prefer the error code already set by the failing heap/locator op; fall back to ER_FAILED. */
+static int
+dblink_global_tran_errid (void)
+{
+  int error = er_errid ();
+  return (error == NO_ERROR) ? ER_FAILED : error;
+}
+
 int
 dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
 			       const char *conn_url, const char *user_name, const char *password, char state)
@@ -69,6 +78,15 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
   bool attr_inited = false;
 
   char state_str[2] = { state, '\0' };
+  char cipher[DBLINK_PASSWORD_MAX_BUFSIZE + 1] = { 0, };
+
+  /* Never persist the participant password in plaintext: encrypt it up-front (same cipher format as
+   * server objects). On failure the caller aborts the enclosing 2PC sysop, so nothing is stored. */
+  error = crypt_dblink_password_encrypt (password, cipher, sizeof (cipher));
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   if (xlocator_find_class_oid (thread_p, CT_GLOBAL_TRAN_NAME, &class_oid, NULL_LOCK) != LC_CLASSNAME_EXIST)
     {
@@ -84,81 +102,77 @@ dblink_global_tran_insert_row (THREAD_ENTRY * thread_p, int gtrid, int bqual,
 
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_INSERT, NULL) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   scan_cache_inited = true;
 
   if (heap_assign_address (thread_p, hfid_p, &class_oid, &oid, 0) != NO_ERROR)
     {
-      error = er_errid ();
-      if (error == NO_ERROR)
-	{
-	  error = ER_FAILED;
-	}
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   attr_inited = true;
 
   if (heap_attrinfo_clear_dbvalues (&attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
   db_make_int (&dbval, gtrid);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_GTRID, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   db_make_int (&dbval, bqual);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_BQUAL, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   db_make_string (&dbval, (char *) (conn_url ? conn_url : ""));
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_CONN_URL, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   db_make_string (&dbval, (char *) (user_name ? user_name : ""));
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_USER, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
-  db_make_string (&dbval, (char *) (password ? password : ""));
+  db_make_string (&dbval, cipher);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_PASSWORD, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
   db_make_string (&dbval, state_str);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
   db_sys_datetime (&dbval);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_CREATED, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_UPDATED, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
@@ -216,13 +230,19 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
 	      found_bqual = db_get_int (&heap_value->dbvalue);
 	      valid_bqual = true;
 	    }
+
+	  /* gtrid/bqual are the only attributes inspected here; stop once both are read */
+	  if (valid_gtrid && valid_bqual)
+	    {
+	      break;
+	    }
 	}
       if (valid_gtrid && valid_bqual && found_gtrid == gtrid && found_bqual == bqual)
 	{
 	  *out_oid = inst_oid;
 	  return NO_ERROR;
 	}
-      sc = heap_next (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK);
+      sc = heap_next (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK, HEAP_WITHOUT_OOS_EXPAND);
     }
   return ER_FAILED;		/* not found */
 }
@@ -256,14 +276,14 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
 
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_UPDATE, NULL) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   attr_inited = true;
@@ -277,14 +297,14 @@ dblink_global_tran_update_state (THREAD_ENTRY * thread_p, int gtrid, int bqual, 
   db_make_string (&dbval, state_str);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_STATE, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
   db_sys_datetime (&dbval);
   if (heap_attrinfo_set (&oid, GLOBAL_TRAN_ATTR_UPDATED, &dbval, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
 
@@ -335,14 +355,14 @@ dblink_global_tran_delete_row (THREAD_ENTRY * thread_p, int gtrid, int bqual)
 
   if (heap_scancache_start_modify (thread_p, &scan, hfid_p, &class_oid, SINGLE_ROW_DELETE, NULL) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   attr_inited = true;
@@ -387,6 +407,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
   int error = NO_ERROR;
   bool scan_cache_inited = false;
   bool attr_inited = false;
+  char cipher[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
 
   if (callback == NULL)
     {
@@ -406,14 +427,14 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
 
   if (heap_scancache_start (thread_p, &scan, hfid_p, &class_oid, true, NULL) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   scan_cache_inited = true;
 
   if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
     {
-      error = ER_FAILED;
+      error = dblink_global_tran_errid ();
       goto cleanup;
     }
   attr_inited = true;
@@ -423,10 +444,11 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
     {
       if (heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info) != NO_ERROR)
 	{
-	  error = ER_FAILED;
+	  error = dblink_global_tran_errid ();
 	  goto cleanup;
 	}
       memset (&row, 0, sizeof (row));
+      cipher[0] = '\0';
       for (i = 0, heap_value = attr_info.values; i < attr_info.num_values; i++, heap_value++)
 	{
 	  if (DB_IS_NULL (&heap_value->dbvalue))
@@ -456,7 +478,8 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
 	    case GLOBAL_TRAN_ATTR_PASSWORD:
 	      {
 		const char *s = db_get_string (&heap_value->dbvalue);
-		snprintf (row.password, sizeof (row.password), "%s", s ? s : "");
+		/* stored as encrypted cipher; keep it locally and decrypt after the row is fully read */
+		snprintf (cipher, sizeof (cipher), "%s", s ? s : "");
 	      }
 	      break;
 	    case GLOBAL_TRAN_ATTR_STATE:
@@ -473,12 +496,20 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
       if (row.state == DBLINK_2PC_STATE_PREPARE || row.state == DBLINK_2PC_STATE_ABORT
 	  || row.state == DBLINK_2PC_STATE_COMMIT)
 	{
-	  if (!(*callback) (&row))
+	  /* Decrypt the participant password back to the raw form used to reconnect. A single corrupt
+	   * row must not block recovery of the others, so log and skip it instead of aborting. */
+	  if (crypt_dblink_password_decrypt (cipher, row.password, sizeof (row.password)) != NO_ERROR)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "dblink_global_tran: skip recovery row (gtrid=%d, bqual=%d): password decrypt failed\n",
+			    row.gtrid, row.bqual);
+	    }
+	  else if (!(*callback) (&row))
 	    {
 	      break;
 	    }
 	}
-      sc = heap_next (thread_p, hfid_p, &class_oid, &inst_oid, &recdes, &scan, PEEK);
+      sc = heap_next (thread_p, hfid_p, &class_oid, &inst_oid, &recdes, &scan, PEEK, HEAP_WITHOUT_OOS_EXPAND);
     }
 
 cleanup:
