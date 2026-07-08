@@ -2107,6 +2107,15 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &max_buckets);
   ptr = or_unpack_int (ptr, &sample_size);
