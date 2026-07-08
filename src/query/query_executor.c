@@ -5379,7 +5379,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       tsc_getticks (&start_tick);
       xasl->groupby_stats.run_groupby = true;
       xasl->groupby_stats.rows = 0;
-      xasl->groupby_stats.grouped_rows = 0;
+      xasl->groupby_stats.read_rows = 0;
     }
 
   /* initialize groupby_num() value */
@@ -5710,7 +5710,7 @@ wrapup:
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-	xasl->groupby_stats.grouped_rows = gbstate.input_recs;
+	xasl->groupby_stats.read_rows = gbstate.input_recs;
 
 	if (xasl->groupby_stats.groupby_sort == true)
 	  {
@@ -19630,6 +19630,8 @@ qexec_gby_finalize_group (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, int 
 	    {
 	      DB_LOGICAL peek_res;
 
+	      /* peek: transiently bump the count to test whether the next group would exceed the limit;
+	       * restored immediately (eval_pred only reads grbynum_val). */
 	      gbstate->grbynum_val->data.bigint++;
 	      peek_res = eval_pred (thread_p, gbstate->grbynum_pred, &xasl_state->vd, NULL);
 	      gbstate->grbynum_val->data.bigint--;
@@ -20854,7 +20856,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       xasl->groupby_stats.groupby_sort = false;
       xasl->groupby_stats.groupby_hash = HS_NONE;
       xasl->groupby_stats.rows = 0;
-      xasl->groupby_stats.grouped_rows = 0;
+      xasl->groupby_stats.read_rows = 0;
     }
 
   assert (buildlist->g_with_rollup == 0);
@@ -21062,7 +21064,7 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-      xasl->groupby_stats.grouped_rows = gbstate.input_recs;
+      xasl->groupby_stats.read_rows = gbstate.input_recs;
     }
 
 exit_on_error:
