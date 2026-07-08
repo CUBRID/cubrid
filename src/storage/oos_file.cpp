@@ -16,6 +16,9 @@
  *
  */
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+#include <atomic>
+#endif
 #include <cassert>
 #include <cstring>
 #include <new>
@@ -135,8 +138,33 @@ static OOS_STATS_BESTSPACE_CACHE *oos_Bestspace = NULL;
 static const int oos_Find_best_page_limit = 100;
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
-static oos_debug_counters oos_Debug_counters = { };
-#define OOS_COUNTER_ADD(field, value) (oos_Debug_counters.field += (unsigned long long) (value))
+#define OOS_DEBUG_COUNTER_FIELDS(OP) \
+  OP (insert_many_calls) \
+  OP (insert_many_requests) \
+  OP (single_page_batch_count) \
+  OP (insert_reused_pages) \
+  OP (insert_fresh_pages) \
+  OP (insert_values_per_fixed_page) \
+  OP (read_many_calls) \
+  OP (read_many_requests) \
+  OP (read_many_grouped_head_pages) \
+  OP (read_values_per_fixed_page)
+
+struct oos_debug_atomic_counters
+{
+#define OOS_DEBUG_COUNTER_DECLARE(field) std::atomic<unsigned long long> field;
+  OOS_DEBUG_COUNTER_FIELDS (OOS_DEBUG_COUNTER_DECLARE)
+#undef OOS_DEBUG_COUNTER_DECLARE
+};
+
+static oos_debug_atomic_counters oos_Debug_counters = { };
+
+#define OOS_COUNTER_ADD(field, value) \
+  do \
+    { \
+      oos_Debug_counters.field.fetch_add ((unsigned long long) (value), std::memory_order_relaxed); \
+    } \
+  while (0)
 #define OOS_COUNTER_INC(field) OOS_COUNTER_ADD (field, 1)
 #else
 #define OOS_COUNTER_ADD(field, value) do { } while (0)
@@ -2537,12 +2565,23 @@ bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfi
 void
 bridge_oos_debug_counters_reset ()
 {
-  oos_Debug_counters = { };
+#define OOS_DEBUG_COUNTER_RESET(field) \
+  oos_Debug_counters.field.store (0, std::memory_order_relaxed);
+  OOS_DEBUG_COUNTER_FIELDS (OOS_DEBUG_COUNTER_RESET)
+#undef OOS_DEBUG_COUNTER_RESET
 }
 
 oos_debug_counters
 bridge_oos_debug_counters_get ()
 {
-  return oos_Debug_counters;
+  oos_debug_counters counters = { };
+
+#define OOS_DEBUG_COUNTER_LOAD(field) \
+  counters.field = oos_Debug_counters.field.load (std::memory_order_relaxed);
+  OOS_DEBUG_COUNTER_FIELDS (OOS_DEBUG_COUNTER_LOAD)
+#undef OOS_DEBUG_COUNTER_LOAD
+
+  return counters;
 }
+#undef OOS_DEBUG_COUNTER_FIELDS
 #endif
