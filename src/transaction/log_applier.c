@@ -3320,6 +3320,13 @@ la_apply_worker_main (void *arg)
       result.commit_lsa = task.commit_lsa;
       LSA_SET_NULL (&result.committed_rep_lsa);
       result.log_record_time = task.log_record_time;
+      /* TEST ONLY (writeset PoC 검증): 워커가 이 트랜잭션 적용을 "시작"하는 시점. release 에서도
+       * er_log_debug=yes 면 남는다. 에러로그의 타임스탬프로 워커간 START/END 구간이 겹치면 병렬,
+       * 겹치지 않고 한 워커의 END 뒤에 다음 START 가 오면 직렬이다. 검증 후 제거. */
+      er_log_debug (ARG_FILE_LINE, "ws_apply START worker=%d trid=%d rectype=%d commit_lsa=%lld|%d dep=%lld|%d\n",
+		    (int) (worker - la_apply_Workers), task.tranid, task.rectype, (long long) task.commit_lsa.pageid,
+		    (int) task.commit_lsa.offset, (long long) task.dependency_seq.pageid,
+		    (int) task.dependency_seq.offset);
       LA_DEBUG_LOG (ARG_FILE_LINE,
 		    "worker[tid=%lu idx=%d tran=%d] dequeued trid=%d rectype=%d apply=%p commit_lsa=%lld|%d dep=%lld|%d head=%p\n",
 		    (unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
@@ -3413,6 +3420,11 @@ la_apply_worker_main (void *arg)
 			(unsigned long) pthread_self (), (int) (worker - la_apply_Workers), tm_Tran_index, task.tranid,
 			result.stats.last_class_name[0] != '\0' ? result.stats.last_class_name : "<none>",
 			result.error, worker_applied_item_count);
+	  /* TEST ONLY (writeset PoC 검증): 워커가 이 트랜잭션 적용을 "종료(커밋 완료)"한 시점.
+	   * START 와 짝지어 워커별 구간 겹침으로 직렬/병렬을 판정한다. 검증 후 제거. */
+	  er_log_debug (ARG_FILE_LINE, "ws_apply END   worker=%d trid=%d commit_lsa=%lld|%d applied=%llu err=%d\n",
+			(int) (worker - la_apply_Workers), task.tranid, (long long) task.commit_lsa.pageid,
+			(int) task.commit_lsa.offset, applied_item_count, result.error);
 	}
 
 #if !defined (NDEBUG)
@@ -9956,11 +9968,21 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	   * reader 는 막히지 않고 다음 레코드를 계속 읽는다. 선행 완료 시 collect 후 drain 에서 디스패치. */
 	  if (la_gate_is_satisfied (&task.dependency_seq))
 	    {
+	      /* TEST ONLY (writeset PoC 검증): 리더가 즉시 디스패치(의존 충족). park 대비 비율로
+	       * 게이트가 병렬을 흘려보내는지 직렬로 막는지 본다. 검증 후 제거. */
+	      er_log_debug (ARG_FILE_LINE, "ws_reader DISPATCH trid=%d commit=%lld|%d dep=%lld|%d\n", lrec->trid,
+			    (long long) final->pageid, (int) final->offset, (long long) task.dependency_seq.pageid,
+			    (int) task.dependency_seq.offset);
 	      error = la_gate_dispatch_now (&task);
 	    }
 	  else
 	    {
 	      error = la_gate_enqueue_pending (&task);
+	      /* TEST ONLY (writeset PoC 검증): 의존 미충족으로 park(직렬화 신호). release-visible.
+	       * 검증 후 제거. */
+	      er_log_debug (ARG_FILE_LINE, "ws_reader PARK     trid=%d commit=%lld|%d dep=%lld|%d\n", lrec->trid,
+			    (long long) final->pageid, (int) final->offset, (long long) task.dependency_seq.pageid,
+			    (int) task.dependency_seq.offset);
 	      LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_gate park trid=%d commit=%lld|%d dep=%lld|%d\n", lrec->trid,
 			    (long long) final->pageid, (int) final->offset, (long long) task.dependency_seq.pageid,
 			    (int) task.dependency_seq.offset);

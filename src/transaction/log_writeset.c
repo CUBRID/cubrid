@@ -156,6 +156,10 @@ log_writeset_add_key (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const OID * clas
       tdes->ws_overflow = true;
       tdes->ws_hashes.clear ();
       tdes->ws_hashes.shrink_to_fit ();
+      /* TEST ONLY (writeset PoC 검증): per-tx 한도 초과로 writeset 을 버리고 commit-order 로 격하.
+       * 이 트랜잭션은 직전 커밋 전부를 기다리는 직렬화 배리어가 된다. 검증 후 제거. */
+      er_log_debug (ARG_FILE_LINE, "writeset FALLBACK(overflow) trid=%d: ws_keys reached per-tx limit=%d, dropped\n",
+		    tdes->trid, LOG_WRITESET_TX_LIMIT);
       return NO_ERROR;
     }
 
@@ -255,6 +259,12 @@ log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * w
     {
       /* no writeset: fall back to commit order (wait for everything before us) */
       LSA_COPY (ws_parent_out, &log_Writeset_prev_commit_lsa);
+      /* TEST ONLY (writeset PoC 검증): overflow 트랜잭션은 commit-order 로 격하됨. dependency_seq 가
+       * 직전 커밋을 그대로 가리키면 이 경로다(= 직렬화 배리어). 검증 후 제거. */
+      er_log_debug (ARG_FILE_LINE,
+		    "writeset probe trid=%d OVERFLOW->commit_order dependency_seq=%lld|%d (prev_commit=%lld|%d)\n",
+		    (tdes != NULL ? tdes->trid : -1), (long long) ws_parent_out->pageid, (int) ws_parent_out->offset,
+		    (long long) log_Writeset_prev_commit_lsa.pageid, (int) log_Writeset_prev_commit_lsa.offset);
       pthread_mutex_unlock (&log_Writeset_history.latch);
       return;
     }
@@ -283,6 +293,17 @@ log_writeset_commit_probe (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * w
     {
       LSA_COPY (ws_parent_out, &log_Writeset_prev_commit_lsa);
     }
+
+  /* TEST ONLY (writeset PoC 검증): 이 트랜잭션의 최종 의존 라벨을 남긴다. release 에서도 er_log_debug=yes
+   * 면 보인다. dependency_seq 가 NULL 이면 독립(병렬 가능), 직전 커밋을 가리키면 사실상 직렬.
+   * ws_keys 는 이 트랜잭션이 건드린 행 수(중복 포함), history_start 는 현재 floor. 검증 후 제거. */
+  er_log_debug (ARG_FILE_LINE,
+		"writeset probe trid=%d ws_keys=%zu dependency_seq=%lld|%d (ws_parent=%lld|%d prev_commit=%lld|%d "
+		"history_start=%lld|%d)\n", (tdes != NULL ? tdes->trid : -1),
+		(tdes != NULL ? tdes->ws_hashes.size () : (size_t) 0), (long long) ws_parent_out->pageid,
+		(int) ws_parent_out->offset, (long long) ws_parent.pageid, (int) ws_parent.offset,
+		(long long) log_Writeset_prev_commit_lsa.pageid, (int) log_Writeset_prev_commit_lsa.offset,
+		(long long) log_Writeset_history.history_start.pageid, (int) log_Writeset_history.history_start.offset);
 
   pthread_mutex_unlock (&log_Writeset_history.latch);
 }
@@ -349,6 +370,12 @@ log_writeset_commit_flush (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_L
 	{
 	  LSA_COPY (&log_Writeset_history.history_start, commit_lsa);
 	}
+      /* TEST ONLY (writeset PoC 검증): overflow 커밋이 전역 히스토리를 통째 비우고 floor 를 이 커밋으로
+       * 올렸다 → 이후 트랜잭션들이 이 커밋 뒤로 직렬화된다. 검증 후 제거. */
+      er_log_debug (ARG_FILE_LINE,
+		    "writeset FALLBACK(overflow) flush trid=%d: cleared history, new history_start=%lld|%d\n",
+		    tdes->trid, (long long) log_Writeset_history.history_start.pageid,
+		    (int) log_Writeset_history.history_start.offset);
     }
 
   pthread_mutex_unlock (&log_Writeset_history.latch);
