@@ -7455,6 +7455,31 @@ qexec_prepare_table_sampling (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_s
  */
 
 /*
+ * qexec_is_page_copy_eligible () - page-copy heap scan eligibility predicate (issue #154)
+ *   return: true if the scan may use page-copy read mode
+ *   specp(in): Access specification node
+ *   scan_op_type(in): SELECT, DELETE, UPDATE
+ *   mvcc_select_lock_needed(in): true if lock at scanning needed in mvcc
+ *   fixed(in): if true, pages containing scan items in a group keep fixed
+ *   grouped(in): if true, the scan items are accessed group by group
+ *
+ * Note: gate-free deployment (no env/system-parameter gate). Restricted to lock-free S_SELECT
+ * sequential heap scans; grouped scans are out of scope for page-copy.
+ */
+bool
+qexec_is_page_copy_eligible (ACCESS_SPEC_TYPE * specp, SCAN_OPERATION_TYPE scan_op_type,
+			     bool mvcc_select_lock_needed, int fixed, int grouped)
+{
+  return specp->type == TARGET_CLASS
+    && specp->access == ACCESS_METHOD_SEQUENTIAL
+    && scan_op_type == S_SELECT
+    && !COMPOSITE_LOCK (scan_op_type)	/* tautological with S_SELECT; documents boundary */
+    && !mvcc_select_lock_needed
+    && !fixed
+    && !grouped;		/* grouped scans are out of scope */
+}
+
+/*
  * qexec_open_scan () -
  *   return: NO_ERROR, or ER_code
  *   curr_spec(in)      : Access Specification Node

@@ -141,4 +141,10 @@ extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
 extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 bool is_final, QFILE_LIST_ID * merged_results);
+
+/* page-copy heap scan eligibility predicate (issue #154). Declared here (not in xasl.h) so that
+ * both query_executor.c and px_scan.cpp can call it without a forward dependency on the full
+ * ACCESS_SPEC_TYPE definition at this point in each TU's include order. */
+extern bool qexec_is_page_copy_eligible (struct access_spec_node *specp, SCAN_OPERATION_TYPE scan_op_type,
+					 bool mvcc_select_lock_needed, int fixed, int grouped);
 #endif /* _QUERY_EXECUTOR_H_ */

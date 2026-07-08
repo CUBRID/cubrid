@@ -856,6 +856,75 @@ static char pgbuf_Guard[8] = { MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM
 };
 #endif /* CUBRID_DEBUG */
 
+/* ----------------------------------------------------------------------------------------------
+ * Pgbuf opaque copy-buffer API (issue #154 page-copy heap scan).
+ *
+ * The copy buffer is not a real BCB slot: it is a stand-alone <dummy BCB, iopage> pair, private to
+ * this file, so that the PAGE_PTR returned by pgbuf_copy_buffer_get_page_ptr () satisfies the same
+ * CAST_PGPTR_TO_BFPTR / CAST_PGPTR_TO_IOPGPTR invariants as a real fixed page.
+ * ---------------------------------------------------------------------------------------------- */
+struct pgbuf_copy_buffer
+{
+  PGBUF_BCB dummy_bcb;		/* real BCB struct, only vpid field meaningful */
+  PGBUF_IOPAGE_BUFFER iopage_buf;	/* flexible-payload; actual size determined by alloc */
+};
+
+/* CRITICAL: sizeof (struct pgbuf_copy_buffer) under-allocates because FILEIO_PAGE.page is char[1].
+ * Must use dynamic sizing. */
+#define PGBUF_COPY_BUFFER_ALLOC_SIZE \
+  ((size_t) (offsetof (struct pgbuf_copy_buffer, iopage_buf) + PGBUF_IOPAGE_BUFFER_SIZE))
+
+PGBUF_COPY_BUFFER_HANDLE
+pgbuf_copy_buffer_alloc (void)
+{
+  struct pgbuf_copy_buffer *buf = (struct pgbuf_copy_buffer *) malloc (PGBUF_COPY_BUFFER_ALLOC_SIZE);
+
+  if (buf == NULL)
+    {
+      return NULL;		/* OOM: caller handles graceful degradation */
+    }
+  /* PGBUF_BCB embeds a std::atomic member, so a raw memset trips -Wclass-memaccess; value-initialize
+   * via placement new instead (same net effect: every field zeroed). */
+  placement_new (&buf->dummy_bcb);
+  buf->iopage_buf.bcb = &buf->dummy_bcb;
+  buf->dummy_bcb.iopage_buffer = &buf->iopage_buf;
+  VPID_SET_NULL (&buf->dummy_bcb.vpid);
+#if defined (CUBRID_DEBUG)
+  /* Init guard bytes at page[DB_PAGESIZE], matching PGBUF_FIND_BUFFER_GUARD. */
+  memcpy (&buf->iopage_buf.iopage.page[DB_PAGESIZE], pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+
+  er_log_debug (ARG_FILE_LINE, "page-copy scan buffer allocated");
+
+  return buf;
+}
+
+void
+pgbuf_copy_buffer_free (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  free_and_init (handle);
+}
+
+void
+pgbuf_copy_page_for_scan (PAGE_PTR src_pgptr, PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  FILEIO_PAGE *src_iopage;
+  PGBUF_BCB *src_bcb;
+
+  CAST_PGPTR_TO_IOPGPTR (src_iopage, src_pgptr);	/* src must be fixed */
+  memcpy (&handle->iopage_buf.iopage, src_iopage, IO_PAGESIZE);
+
+  /* Update dummy BCB vpid from source. */
+  CAST_PGPTR_TO_BFPTR (src_bcb, src_pgptr);
+  handle->dummy_bcb.vpid = src_bcb->vpid;
+}
+
+PAGE_PTR
+pgbuf_copy_buffer_get_page_ptr (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  return (PAGE_PTR) handle->iopage_buf.iopage.page;
+}
+
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
 

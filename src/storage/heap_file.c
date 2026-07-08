@@ -660,7 +660,7 @@ static int heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid,
 					   HEAP_SCANCACHE ** scan_cache);
 static int heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					  const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-					  MVCC_SNAPSHOT * mvcc_snapshot);
+					  MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy = false);
 static int heap_scancache_force_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache);
 static int heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid);
@@ -6777,7 +6777,7 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
-			       MVCC_SNAPSHOT * mvcc_snapshot)
+			       MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy)
 {
   int ret = NO_ERROR;
   int granted;
@@ -6866,6 +6866,22 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = mvcc_snapshot;
   scan_cache->partition_list = NULL;
+  scan_cache->copied_buf_handle = NULL;
+  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+  if (page_copy && is_queryscan)
+    {
+      scan_cache->copied_buf_handle = pgbuf_copy_buffer_alloc ();
+      if (scan_cache->copied_buf_handle == NULL)
+	{
+	  /* OOM contract (pinned): degrade to COPY, no er_set, no error return. */
+	  er_log_debug (ARG_FILE_LINE, "page-copy buffer alloc failed, degrading to COPY");
+	}
+      else
+	{
+	  scan_cache->read_mode = HEAP_SCAN_READ_PAGE_COPY;
+	}
+    }
 
   return ret;
 
@@ -6884,6 +6900,9 @@ exit_on_error:
   scan_cache->debug_initpattern = 0;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
+  scan_cache->copied_buf_handle = NULL;
+  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
@@ -6903,10 +6922,10 @@ exit_on_error:
  */
 int
 heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid, const OID * class_oid,
-		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot)
+		      int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot, bool page_copy)
 {
   return heap_scancache_start_internal (thread_p, scan_cache, hfid, class_oid, cache_last_fix_page, true,
-					mvcc_snapshot);
+					mvcc_snapshot, page_copy);
 }
 
 /*
@@ -7167,6 +7186,9 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   scan_cache->debug_initpattern = HEAP_DEBUG_SCANCACHE_INITPATTERN;
   scan_cache->mvcc_snapshot = NULL;
   scan_cache->partition_list = NULL;
+  scan_cache->copied_buf_handle = NULL;
+  VPID_SET_NULL (&scan_cache->copied_vpid);
+  scan_cache->read_mode = HEAP_SCAN_READ_COPY;
 
   return NO_ERROR;
 }
@@ -7219,6 +7241,11 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
 	      curr_node = next_node;
 	    }
 	}
+
+      pgbuf_copy_buffer_free (scan_cache->copied_buf_handle);
+      scan_cache->copied_buf_handle = NULL;
+      VPID_SET_NULL (&scan_cache->copied_vpid);
+      scan_cache->read_mode = HEAP_SCAN_READ_COPY;
     }
 
   HFID_SET_NULL (&scan_cache->node.hfid);
@@ -25499,14 +25526,20 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 *   old_chn (in): Cache coherency number for existing record data. It is
 *		   used by clients to avoid resending record data when
 *		   it was not updated.
+*   is_page_copy (in): call-scoped page-copy read mode (issue #154). Plumbed in Slice 1; consumed
+*		       by the REC_HOME shortcut starting Slice 2. Default false everywhere.
 *  Note: this function should be used for heap scan;
 */
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn)
+			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
+			       bool is_page_copy)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
+
+  /* is_page_copy: Slice 1 plumbing only; the page-copy REC_HOME shortcut lands in Slice 2. */
+  (void) is_page_copy;
 
   /*
    * The process below should be within heap_get_visible_version_internal(), 
