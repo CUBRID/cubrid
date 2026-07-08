@@ -747,7 +747,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
-#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+#define PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS "page_latch_timeout_in_msecs"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -5298,14 +5298,14 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PAGE_LATCH_TIMEOUT,
-   PRM_NAME_PAGE_LATCH_TIMEOUT,
+  {PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS,
+   PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 300}},
-   {false, {.i = 300}},
-   {false, {.i = 3000}},
+   {false, {.i = 300 * 1000}},
+   {false, {.i = 300 * 1000}},
+   {false, {.i = 3000 * 1000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5671,6 +5671,8 @@ static const int call_stack_dump_error_codes[] = {
   ER_HEAP_UNKNOWN_OBJECT,
   ER_HEAP_BAD_RELOCATION_RECORD,
   ER_HEAP_OOS_BAD_INLINE_HEADER,
+  ER_HEAP_OOS_CORRUPTED_RECORD,
+  ER_HEAP_OOS_INVALID_ARGUMENT,
   ER_HEAP_BAD_OBJECT_TYPE,
   ER_HEAP_OVFADDRESS_CORRUPTED,
   ER_LK_PAGE_TIMEOUT,

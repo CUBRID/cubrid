@@ -561,7 +561,8 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-	scan_code = heap_get_visible_version_expand_oos (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN);
+	scan_code =
+	  heap_get_visible_version (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN, HEAP_WITH_OOS_EXPAND);
 	heap_scancache_end (thread_p, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
@@ -777,7 +778,8 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
   HEAP_SCANCACHE scan_cache;
 
   (void) heap_scancache_quick_start (&scan_cache);
-  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN);
+  heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN,
+			 HEAP_WITHOUT_OOS_EXPAND);
 
   old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
 

@@ -147,6 +147,18 @@ TEST (OosTest, OosInsertAndRead)
   ASSERT_STREQ (rec_out.data, random_data.c_str());
 }
 
+TEST (OosTest, OosInsertRejectsInvalidSource)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  OID oid = OID_INITIALIZER;
+  er_clear ();
+  int err = oos_insert (thread_p, oos_vfid, oos_buffer (nullptr, 0), oid);
+  EXPECT_EQ (err, ER_HEAP_OOS_INVALID_ARGUMENT);
+  EXPECT_EQ (er_errid (), ER_HEAP_OOS_INVALID_ARGUMENT);
+}
+
 TEST (OosTest, OosInsertLargerThanPageSize)
 {
   int err;
@@ -751,8 +763,8 @@ TEST (OosTest, OosReadRejectsCallerLengthDisagreeingWithHeader)
       er_clear ();
       int read_err = oos_read (thread_p, oos_oid,
 			       oos_buffer (rec_out.data, static_cast<std::size_t> (claimed_len)));
-      EXPECT_NE (read_err, NO_ERROR) << "actual_size=" << actual_size;
-      EXPECT_NE (er_errid (), NO_ERROR) << "actual_size=" << actual_size;
+      EXPECT_EQ (read_err, ER_HEAP_OOS_CORRUPTED_RECORD) << "actual_size=" << actual_size;
+      EXPECT_EQ (er_errid (), ER_HEAP_OOS_CORRUPTED_RECORD) << "actual_size=" << actual_size;
 
       recdes_free_data_area (&rec_out);
       recdes_free_data_area (&rec_in);

@@ -1429,10 +1429,9 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
-      {
-	assert (false);
-	break;
-      }
+      fprintf (fp, "OOS file\n");
+      break;
+
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
@@ -10929,10 +10928,10 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   switch ((FILE_TYPE) item->type)
     {
     case FILE_OOS:
-      {
-	assert (false);
-	break;
-      }
+      /* FILE_OOS is mutable but does not store owner class information yet. Do not return an unprotected VFID
+       * from interruptible tracker iteration. OOS file table checks can be added after owner metadata exists. */
+      return NO_ERROR;
+
     case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -12233,14 +12232,10 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_OOS:
-      assert_release (false);
-      //TODO: spacedb_ftype = SPACEDB_OOS_FILE;
+      /* OOS is table-owned storage, but FILE_OOS currently has no separate SPACEDB category or owner descriptor. Fold
+       * it into heap totals to keep the spacedb wire/output format stable; a dedicated OOS line requires a separate
+       * output/protocol change. */
       spacedb_ftype = SPACEDB_HEAP_FILE;
-      // TODO oos: why heap file, instead of OOS file?
-      // I did not add SPACEDB_OOS_FILE yet, and
-      // if spacedb_ftype is not initialized,
-      // the build fails in github cubridci.
-      // This is just a workaround.
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:

@@ -1765,13 +1765,21 @@
 
 #define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
 
-#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1375
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
 
-#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1376
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
 
-#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1377
+#define ER_VACUUM_MASTER_DAEMON_NOT_AVAILABLE       -1377
 
-#define ER_LAST_ERROR                               -1378
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1378
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1379
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1380
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1381
+
+#define ER_LAST_ERROR                               -1382
 
 
 
