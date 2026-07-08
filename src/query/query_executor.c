@@ -14553,8 +14553,7 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED,
-							     S_SELECT_WITH_LOCK
+							     LOG_WARNING_IF_DELETED, S_SELECT_WITH_LOCK
 							     /* SELECT...FOR UPDATE keeps the lock-manager path */ );
 	      if (scan_code != S_SUCCESS)
 		{
