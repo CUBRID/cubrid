@@ -34,6 +34,7 @@
 #include "schema_system_catalog_constants.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <cmath>
 #include <string>
 #include <vector>
 #include "parser.h"
@@ -961,14 +962,46 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
 
-  if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
-    {
-      /* probe constant does not match the column's stored value encoding (e.g. an integer column
-       * probed with a fractional constant, or a stale blob after ALTER changed the column type);
-       * decoding the slots with the wrong template would produce garbage. Use default estimates. */
-      *success = false;
-      return;
-    }
+  {
+    const hist::histogram_key_kind col_kind = histogram_key_kind_for_type (histogram_reader.value_type ());
+    if (key.kind != col_kind)
+      {
+	/* Unlike the equality path (whose probe constant arrives coerced to the column domain),
+	 * range probes commonly carry a cross-kind numeric constant -- price < 100 on a
+	 * DOUBLE/NUMERIC column, c_int < 5000.0 -- and rejecting them here would discard the
+	 * histogram for the most common range predicates. Promote safe numeric cases to the
+	 * column's stored kind; anything else (string vs numeric, datetime vs numeric, a stale
+	 * blob after ALTER) still falls back to the default estimate, since decoding the slots
+	 * with the wrong template would produce garbage. */
+	if (col_kind == hist::histogram_key_kind::dbl && key.kind == hist::histogram_key_kind::i64)
+	  {
+	    key.dbl = static_cast<double> (key.i64);
+	    key.kind = hist::histogram_key_kind::dbl;
+	  }
+	else if (col_kind == hist::histogram_key_kind::i64 && key.kind == hist::histogram_key_kind::dbl
+		 && key.dbl >= -9.0e18 && key.dbl <= 9.0e18)
+	  {
+	    const double fl = std::floor (key.dbl);
+	    if (key.dbl == fl)
+	      {
+		key.i64 = static_cast<std::int64_t> (fl);
+	      }
+	    else
+	      {
+		/* over integers, x < c and x <= c are both x < floor(c)+1;
+		 * x > c and x >= c are both x >= floor(c)+1 */
+		key.i64 = static_cast<std::int64_t> (fl) + 1;
+		include_equal = is_ge;
+	      }
+	    key.kind = hist::histogram_key_kind::i64;
+	  }
+	else
+	  {
+	    *success = false;
+	    return;
+	  }
+      }
+  }
 
   const double total_rows = static_cast<double> (histogram_reader.total_rows ());
   if (total_rows <= 0.0)
