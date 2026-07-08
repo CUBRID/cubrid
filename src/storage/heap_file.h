@@ -732,10 +732,10 @@ extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data
 extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 
-/* Heap-record layout and scalar attribute reads shared with heap_oos.cpp's grouped OOS read path
- * (heap_oos_read_dbvalues_grouped). Declared here rather than kept static so that module can drive
- * them; heap_file.c remains their sole definition site. */
-extern bool heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out);
+/* Heap-record layout and scalar attribute reads shared with heap_oos.cpp's grouped OOS read path.
+ * Declared here rather than kept static so that module can drive them; heap_file.c remains their
+ * sole definition site. */
+extern int heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out);
 extern int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
 extern int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);

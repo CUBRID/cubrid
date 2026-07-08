@@ -10480,10 +10480,10 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
  * heap_recdes_get_var_offset_entry () - Read the raw variable offset table entry
  *   (offset value plus flag bits) of a variable attribute.
  *
- *   return: true on success, false when the record's offset size is corrupted
+ *   return: NO_ERROR on success, ER_GENERIC_ERROR when the record's offset size is corrupted
  *           (no error is set; callers decide how to report it).
  */
-bool
+int
 heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
 {
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
@@ -10493,17 +10493,17 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
     case OR_BYTE_SIZE:
       *entry_out =
 	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return true;
+      return NO_ERROR;
     case OR_SHORT_SIZE:
       *entry_out =
 	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return true;
+      return NO_ERROR;
     case OR_INT_SIZE:
       *entry_out =
 	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return true;
+      return NO_ERROR;
     default:
-      return false;
+      return ER_GENERIC_ERROR;
     }
 }
 
@@ -10596,6 +10596,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
 {
   int offset;
+  int error;
 
   *oos_owned_buffer = false;
 
@@ -10607,11 +10608,12 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 
   /* the variable attribute is bound. */
   /* find its location through the variable offset attribute table. */
-  if (!heap_recdes_get_var_offset_entry (recdes, attrepr->location, &offset))
+  error = heap_recdes_get_var_offset_entry (recdes, attrepr->location, &offset);
+  if (error != NO_ERROR)
     {
       /* Case D: corrupt offset_size. Return now so the indeterminate `offset` below is never read. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      return error;
     }
 
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
@@ -10784,31 +10786,19 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  * heap_attrinfo_read_dbvalues_internal () - Read the dbvalues of all requested
  *   attributes from recdes.
  *
- *   OOS dispatch: grouped Resolve pays off only when it can batch OOS page fixes,
- *   so records with two or more requested inline-OOS values take the grouped path
- *   (heap_oos_read_dbvalues_grouped); everything else keeps the scalar loop and its
- *   stack-scratch fast path.
+ *   OOS dispatch is delegated to heap_oos.cpp. If grouped Resolve is not applicable,
+ *   keep the scalar loop and its stack-scratch fast path.
  */
 static int
 heap_attrinfo_read_dbvalues_internal (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i, ret;
+  bool grouped_oos_read = false;
 
-  if (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes))
+  ret = heap_oos_read_dbvalues_grouped_if_needed (thread_p, recdes, attr_info, &grouped_oos_read);
+  if (ret != NO_ERROR || grouped_oos_read)
     {
-      int oos_count = 0;
-
-      for (i = 0; i < attr_info->num_values && oos_count < 2; i++)
-	{
-	  if (heap_oos_attr_inline_ptr (recdes, &attr_info->values[i]) != NULL)
-	    {
-	      oos_count++;
-	    }
-	}
-      if (oos_count >= 2)
-	{
-	  return heap_oos_read_dbvalues_grouped (thread_p, recdes, attr_info);
-	}
+      return ret;
     }
 
   for (i = 0; i < attr_info->num_values; i++)

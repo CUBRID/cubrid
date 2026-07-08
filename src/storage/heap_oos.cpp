@@ -450,7 +450,7 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
  *           value here (any condition the scalar read path either skips or reports itself,
  *           including a corrupt offset size).
  */
-const char *
+static const char *
 heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
@@ -468,7 +468,8 @@ heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value)
       return NULL;
     }
 
-  if (!heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) || !OR_IS_OOS (vot_entry))
+  if (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) != NO_ERROR
+      || !OR_IS_OOS (vot_entry))
     {
       return NULL;
     }
@@ -484,7 +485,7 @@ heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value)
  *   The dispatcher only routes records with at least two requested OOS values here; non-OOS and
  *   single-OOS reads keep the scalar path.
  */
-int
+static int
 heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info)
 {
   const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
@@ -558,6 +559,43 @@ heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
     }
 
   return error;
+}
+
+/*
+ * heap_oos_read_dbvalues_grouped_if_needed () - Try the grouped inline-OOS Resolve path.
+ *
+ *   return: NO_ERROR or error from the grouped read.
+ *   handled(out): true iff this function read all requested values through the grouped path.
+ */
+int
+heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
+    bool *handled)
+{
+  int i;
+  int oos_count = 0;
+
+  *handled = false;
+
+  if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
+    {
+      return NO_ERROR;
+    }
+
+  for (i = 0; i < attr_info->num_values && oos_count < 2; i++)
+    {
+      if (heap_oos_attr_inline_ptr (recdes, &attr_info->values[i]) != NULL)
+	{
+	  oos_count++;
+	}
+    }
+
+  if (oos_count < 2)
+    {
+      return NO_ERROR;
+    }
+
+  *handled = true;
+  return heap_oos_read_dbvalues_grouped (thread_p, recdes, attr_info);
 }
 
 /*
