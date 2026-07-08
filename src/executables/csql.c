@@ -938,6 +938,11 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      /* if eof is reached, execute all */
 	      csql_execute = true;
 	      is_in_block = false;
+
+	      if (!csql_Is_interactive && !uncommented_string)
+		{
+		  start_line_no = line_no;
+		}
 	    }
 	  else
 	    {
