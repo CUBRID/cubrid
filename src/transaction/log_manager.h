@@ -233,7 +233,6 @@ extern void cdc_daemons_destroy ();
 #endif
 
 extern LOG_PAGEID cdc_min_log_pageid_to_keep ();
-extern int cdc_find_lsa_in_progress ();
 
 /* cdc functions */
 extern int cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * input_time, LOG_LSA * start_lsa);

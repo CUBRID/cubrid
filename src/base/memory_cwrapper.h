@@ -36,11 +36,10 @@
  */
 
 #if !defined(WINDOWS)
-#include <stdlib.h>		/* posix_memalign (), size_t */
-#include <assert.h>
-
 #ifdef SERVER_MODE
 #include <string.h>
+#include <stdlib.h>
+#include <assert.h>
 
 #include "memory_monitor_sr.hpp"
 
@@ -189,44 +188,6 @@ cub_strdup (const char *str, const char *file, const int line)
 #define strdup(str) cub_strdup(str, __FILE__, __LINE__)
 #define free(ptr) cub_free(ptr)
 #endif // SERVER_MODE
-
-/* cub_aligned_alloc () - over-aligned allocation usable in every build mode
- * (SERVER_MODE, SA_MODE, ...). It is implemented with posix_memalign () rather
- * than C11 aligned_alloc (): the older glibc CUBRID links against for binary
- * portability does not export the aligned_alloc symbol (added in glibc 2.16),
- * so referencing it makes executables fail to link, whereas posix_memalign ()
- * has existed since glibc 2.1.91. In SERVER_MODE the block is tracked by the
- * memory monitor exactly like cub_alloc (); the returned pointer is released
- * with free () / cub_free () as usual. */
-static inline void *
-cub_aligned_alloc (size_t alignment, size_t size, const char *file, const int line)
-{
-  void *p = NULL;
-
-  /* alignment must be a non-zero power of two (posix_memalign () contract). */
-  assert (alignment != 0 && (alignment & (alignment - 1)) == 0);
-
-#ifdef SERVER_MODE
-  if (mmon_is_memory_monitor_enabled ())
-    {
-      /* reserve room for the metainfo at the tail, same as cub_alloc () */
-      if (posix_memalign (&p, alignment, size + cubmem::MMON_METAINFO_SIZE) != 0)
-	{
-	  return NULL;
-	}
-      mmon_add_stat ((char *) p, malloc_usable_size (p), file, line);
-      return p;
-    }
-#endif // SERVER_MODE
-
-  (void) file;
-  (void) line;
-  if (posix_memalign (&p, alignment, size) != 0)
-    {
-      return NULL;
-    }
-  return p;
-}
 #endif // !WINDOWS
 
 #endif // _MEMORY_CWRAPPER_H_

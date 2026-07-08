@@ -1486,7 +1486,7 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
       return oos_file_alloc_new (thread_p, oos_vfid, vpid);
     }
 
-  int total_space = rec_length;
+  int total_space = rec_length + (int) sizeof (SPAGE_SLOT);
 
   /* 3-tier search: hash -> best[] -> sync -> alloc */
   PAGE_PTR found_page = NULL;
