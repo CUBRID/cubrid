@@ -249,8 +249,9 @@ namespace cubstorage
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
 
-	  void add_estimates (std::uint64_t recs_num, std::uint64_t recs_sumlen);
-	  void get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
+	  void add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
+	  void subtract_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
+	  void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
 	  void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
 			  std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
 
@@ -265,6 +266,7 @@ namespace cubstorage
 	  // information per shard
 	  bestspace &m_parent;
 
+	  std::atomic<int> m_num_pages;
 	  std::atomic<std::uint64_t> m_recs_num;
 	  std::atomic<std::uint64_t> m_recs_sumlen;
 
@@ -315,7 +317,7 @@ namespace cubstorage
       };
 
     public:
-      explicit bestspace (const std::uint64_t recs_num, const std::uint64_t recs_sumlen, std::uint16_t unfill_space = 0,
+      explicit bestspace (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space = 0,
 			  std::size_t shard_count = DEFAULT_SHARD_COUNT);
       ~bestspace () = default;
 
@@ -328,7 +330,8 @@ namespace cubstorage
 
       static tier size_to_tier (std::uint16_t size);
 
-      void get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
+      void set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
+      void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
       void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
 		      std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
 
@@ -339,9 +342,10 @@ namespace cubstorage
       // parameter
       std::uint16_t m_unfill_space;
 
-      // initial value
-      const std::uint64_t m_recs_num;
-      const std::uint64_t m_recs_sumlen;
+      // statistics
+      std::atomic<int> m_num_pages;
+      std::atomic<std::uint64_t> m_recs_num;
+      std::atomic<std::uint64_t> m_recs_sumlen;
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
       static_assert (std::is_trivially_copyable<bitmap>::value, "bestspace::bitmap must be trivially copyable");
@@ -393,7 +397,7 @@ namespace cubstorage
       ~bestspace_registry ();
 
       void create (HFID *hfid, bestspace_entry *entries, std::size_t num_entries, bestspace_entry *candidates,
-		   std::size_t num_candidates, const std::uint64_t recs_num, const std::uint64_t recs_sumlen,
+		   std::size_t num_candidates, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 		   std::size_t shard_count = bestspace::DEFAULT_SHARD_COUNT, std::uint16_t unfill_space = 0);
       void destroy (const VFID *vfid);
       void destroy (const HFID *hfid);

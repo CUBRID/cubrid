@@ -194,7 +194,7 @@ struct heap_hdr_stats
 
   int unfill_space;		/* Stop inserting when page has run below this. leave it for updates */
 
-  int num_pages;		/* Estimation of number of heap pages. Consult file manager if accurate number is needed */
+  int num_pages;		/* Estimation of number of user heap pages. Consult file manager if accurate number is needed */
   uint64_t num_recs;		/* Estimation of number of objects in heap */
   uint64_t recs_sumlen;		/* Estimation total length of records */
 
@@ -610,7 +610,8 @@ static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATC
 // *INDENT-OFF*
 static cubstorage::bestspace *heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 						    PGBUF_WATCHER * header_watcher);
-static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid);
+static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
+						   PGBUF_WATCHER * header_watcher);
 // *INDENT-ON*
 
 STATIC_INLINE int heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
@@ -738,14 +739,8 @@ static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread
 							   RECDES * old_recdes, record_descriptor * new_recdes,
 							   int lob_create_flag);
 
-
-
-
-static int heap_stats_sync_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
-				      VPID * hdr_vpid, bool scan_all, bool can_cycle);
-
-
-
+static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
+				   PGBUF_WATCHER * header_watcher);
 static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p, const OID * subclasses, int *parts_count,
 						OR_PARTITION * partitions);
 static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION * partition_info,
@@ -3905,12 +3900,9 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
 	}
     }
 
-  if (heap_hdr->bestspace.num_pages > 0)
-    {
-      heap_hdr->next_vpid = heap_hdr->bestspace.pages[0];
-      heap_hdr->last_vpid = heap_hdr->bestspace.pages[heap_hdr->bestspace.num_pages - 1];
-      heap_hdr->num_pages += heap_hdr->bestspace.num_pages;
-    }
+  assert (heap_hdr->bestspace.num_pages > 0);
+  heap_hdr->next_vpid = heap_hdr->bestspace.pages[0];
+  heap_hdr->last_vpid = heap_hdr->bestspace.pages[heap_hdr->bestspace.num_pages - 1];
 
   /* insert entries */
   entries = (cubstorage::bestspace_entry *) PTR_ALIGN (pgbuf, MAX_ALIGNMENT);
@@ -4341,7 +4333,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
 
   cubstorage::bestspaces.create (hfid, entries,
 				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
-				 num_candidates, header->num_recs, header->recs_sumlen, num_shards,
+				 num_candidates, header->num_pages, header->num_recs, header->recs_sumlen, num_shards,
 				 (std::uint16_t) header->unfill_space);
 
   bestspace = cubstorage::bestspaces.find (hfid);
@@ -4381,12 +4373,12 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
 // *INDENT-OFF*
 static cubstorage::bestspace *
 // *INDENT-ON*
-heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid)
+heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGBUF_WATCHER * header_watcher)
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
   // *INDENT-ON*
-  PGBUF_WATCHER header_watcher;
+  PGBUF_WATCHER watcher;
   VPID vpid;
   int error;
 
@@ -4398,12 +4390,29 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid)
     }
 
   /* there is no bestspace */
+  if (!class_oid || OID_ISNULL (class_oid))
+    {
+      /* not an error */
+      return NULL;
+    }
+
+  if (header_watcher != NULL)
+    {
+      /* build from the heap page */
+      bestspace = heap_build_bestspace (thread_p, class_oid, hfid, header_watcher);
+      if (!bestspace)
+	{
+	  return NULL;
+	}
+      return bestspace;
+    }
+
   /* fix the header page */
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
 
-  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
-  error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
+  PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+  error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &watcher);
   if (error != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error);
@@ -4416,21 +4425,21 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid)
   if (bestspace)
     {
       /* other threads create the bestspace and found the space */
-      pgbuf_ordered_unfix (thread_p, &header_watcher);
+      pgbuf_ordered_unfix (thread_p, &watcher);
 
       /* found the bestspace */
       return bestspace;
     }
 
   /* build from the heap page */
-  bestspace = heap_build_bestspace (thread_p, class_oid, hfid, &header_watcher);
+  bestspace = heap_build_bestspace (thread_p, class_oid, hfid, &watcher);
   if (!bestspace)
     {
-      pgbuf_ordered_unfix (thread_p, &header_watcher);
+      pgbuf_ordered_unfix (thread_p, &watcher);
       return NULL;
     }
 
-  pgbuf_ordered_unfix (thread_p, &header_watcher);
+  pgbuf_ordered_unfix (thread_p, &watcher);
   return bestspace;
 }
 
@@ -4446,9 +4455,10 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
   cubstorage::bestspace *bestspace;
   // *INDENT-ON*
 
-  bestspace = heap_find_bestspace (thread_p, class_oid, hfid);
+  bestspace = heap_find_bestspace (thread_p, class_oid, hfid, NULL);
   if (!bestspace)
     {
+      assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
   return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
@@ -4477,7 +4487,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
       return;
     }
 
-  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid);
+  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid, NULL);
   if (!bestspace)
     {
       return;
@@ -4950,7 +4960,6 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	      goto error;
 	    }
 
-	  npages++;
 	  last_vpid = vpid;
 
 	  if (heap_vpid_next (thread_p, hfid, pgptr, &vpid) != NO_ERROR)
@@ -8713,6 +8722,100 @@ exit_on_end:
 }
 
 /*
+ * heap_update_statistics () - Update heap object/page statistics from heap pages
+ *   return: NO_ERROR if successful, error code otherwise
+ *   hfid(in): Object heap file identifier
+ *   heap_hdr(in/out): Heap header statistics
+ *   header_watcher(in): Fixed heap header page watcher
+ */
+static int
+heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
+			PGBUF_WATCHER * header_watcher)
+{
+  VPID vpid;
+  PGBUF_WATCHER pg_watcher;
+  PGBUF_WATCHER old_pg_watcher;
+  uint64_t num_recs, recs_sumlen;
+  int npages, nrecords, reclength;
+  int num_pages;
+  int error_code = NO_ERROR;
+
+  assert (thread_p);
+  assert (hfid);
+  assert (heap_hdr);
+  assert (header_watcher && header_watcher->pgptr);
+
+  PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  PGBUF_INIT_WATCHER (&old_pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+
+  spage_collect_statistics (header_watcher->pgptr, &npages, &nrecords, &reclength);
+  num_pages = npages;
+  num_recs = nrecords;
+  recs_sumlen = reclength;
+
+  vpid = heap_hdr->next_vpid;
+  while (!VPID_ISNULL (&vpid))
+    {
+      error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, &pg_watcher);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit_on_error;
+	}
+
+      if (old_pg_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
+	}
+
+#if !defined (NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, pg_watcher.pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+      error_code = heap_vpid_next (thread_p, hfid, pg_watcher.pgptr, &vpid);
+      if (error_code != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto exit_on_error;
+	}
+
+      if (!heap_page_is_bestspace (thread_p, pg_watcher.pgptr))
+	{
+	  spage_collect_statistics (pg_watcher.pgptr, &npages, &nrecords, &reclength);
+	  num_pages += npages;
+	  num_recs += nrecords;
+	  recs_sumlen += reclength;
+	}
+
+      pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
+    }
+
+  if (old_pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
+    }
+  assert (pg_watcher.pgptr == NULL);
+
+  heap_hdr->num_pages = num_pages;
+  heap_hdr->num_recs = num_recs;
+  heap_hdr->recs_sumlen = recs_sumlen;
+
+  return NO_ERROR;
+
+exit_on_error:
+  if (pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &pg_watcher);
+    }
+  if (old_pg_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
+    }
+
+  return (error_code == NO_ERROR && (error_code = er_errid ()) == NO_ERROR) ? ER_FAILED : error_code;
+}
+
+/*
  * heap_get_num_objects () - Count the number of objects
  *   return: number of records or -1 in case of an error
  *   hfid(in): Object heap file identifier
@@ -8727,6 +8830,9 @@ exit_on_end:
 int
 heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length)
 {
+  // *INDENT-OFF*
+  cubstorage::bestspace *bestspace;
+  // *INDENT-ON*
   VPID vpid;			/* Page-volume identifier */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
   RECDES hdr_recdes;		/* Record descriptor to point to space statistics */
@@ -8734,9 +8840,8 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
   PGBUF_WATCHER hdr_pg_watcher;
 
   /*
-   * Get the heap header in exclusive mode and call the synchronization to
-   * update the statistics of the heap. The number of record/objects is
-   * updated.
+   * Get the heap header in exclusive mode and synchronize heap statistics.
+   * The number of records/objects is updated by scanning all heap pages.
    */
 
   PGBUF_INIT_WATCHER (&hdr_pg_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
@@ -8763,13 +8868,22 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-  /*
-     if (heap_stats_sync_bestspace (thread_p, hfid, heap_hdr, pgbuf_get_vpid_ptr (hdr_pg_watcher.pgptr), true, true) < 0)
-     {
-     pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
-     return ER_FAILED;
-     }
-   */
+  if (heap_update_statistics (thread_p, hfid, heap_hdr, &hdr_pg_watcher) != NO_ERROR)
+    {
+      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
+      return ER_FAILED;
+    }
+
+  bestspace = heap_find_bestspace (thread_p, &heap_hdr->class_oid, (HFID *) hfid, &hdr_pg_watcher);
+  if (!bestspace)
+    {
+      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
+
+      assert_release (false);
+      return ER_FAILED;
+    }
+  bestspace->set_estimates (heap_hdr->num_pages, heap_hdr->num_recs, heap_hdr->recs_sumlen);
+
   *npages = heap_hdr->num_pages;
   *nobjs = heap_hdr->num_recs;
   if (*nobjs > 0)
@@ -8801,50 +8915,61 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
 int
 heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length)
 {
+  // *INDENT-OFF*
+  cubstorage::bestspace *bestspace;
+  // *INDENT-ON*
   VPID vpid;			/* Page-volume identifier */
   PAGE_PTR hdr_pgptr = NULL;	/* Page pointer */
   RECDES hdr_recdes;		/* Record descriptor to point to space statistics */
   HEAP_HDR_STATS *heap_hdr;	/* Heap header */
+  std::uint64_t recs_num, recs_sumlen;
+  int num_pages;
 
-  /*
-   * Get the heap header in shared mode since it is an estimation of the
-   * number of objects.
-   */
-
-  vpid.volid = hfid->vfid.volid;
-  vpid.pageid = hfid->hpgid;
-
-  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (hdr_pgptr == NULL)
+  bestspace = heap_find_bestspace (thread_p, NULL, (HFID *) hfid, NULL);
+  if (bestspace)
     {
-      /* something went wrong. Unable to fetch header page */
-      return ER_FAILED;
+      bestspace->get_estimates (num_pages, recs_num, recs_sumlen);
+      *npages = num_pages;
+      *nobjs = (int) recs_num;
     }
+  else
+    {
+      vpid.volid = hfid->vfid.volid;
+      vpid.pageid = hfid->hpgid;
+
+      hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (hdr_pgptr == NULL)
+	{
+	  /* something went wrong. Unable to fetch header page */
+	  return ER_FAILED;
+	}
 
 #if !defined (NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+      (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
 #endif /* !NDEBUG */
 
-  if (spage_get_record (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
-    {
+      if (spage_get_record (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+	{
+	  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+	  return ER_FAILED;
+	}
+
+      heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+      *npages = heap_hdr->num_pages;
+      *nobjs = heap_hdr->num_recs;
+      recs_sumlen = heap_hdr->recs_sumlen;
+
       pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-      return ER_FAILED;
     }
 
-  heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-  *npages = heap_hdr->num_pages;
-  *nobjs = heap_hdr->num_recs;
   if (*nobjs > 0)
     {
-      *avg_length = (int) ((heap_hdr->recs_sumlen / (float) *nobjs) + 0.9);
+      *avg_length = (int) ((recs_sumlen / (float) *nobjs) + 0.9);
     }
   else
     {
       *avg_length = 0;
     }
-
-  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
-
   return *npages;
 }
 

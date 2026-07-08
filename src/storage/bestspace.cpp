@@ -247,6 +247,7 @@ namespace cubstorage
     , m_L2 ()
     , m_L1 ()
     , m_parent (parent)
+    , m_num_pages (0)
     , m_recs_num (0)
     , m_recs_sumlen (0)
     , m_stats { false, 0, 0, 0, 0, 0, 0, 0 }
@@ -327,15 +328,25 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::add_estimates (std::uint64_t recs_num, std::uint64_t recs_sumlen)
+  bestspace::shard::add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
+    m_num_pages.fetch_add (num_pages);
     m_recs_num.fetch_add (recs_num);
     m_recs_sumlen.fetch_add (recs_sumlen);
   }
 
   void
-  bestspace::shard::get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
+  bestspace::shard::subtract_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
+    m_num_pages.fetch_sub (num_pages);
+    m_recs_num.fetch_sub (recs_num);
+    m_recs_sumlen.fetch_sub (recs_sumlen);
+  }
+
+  void
+  bestspace::shard::get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
+  {
+    num_pages += m_num_pages.load ();
     recs_num += m_recs_num.load ();
     recs_sumlen += m_recs_sumlen.load ();
   }
@@ -762,6 +773,8 @@ namespace cubstorage
       {
 	return error;
       }
+    m_num_pages.fetch_add (ALLOC_BATCH_SIZE - num_candidates);
+
     STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
 
     freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
@@ -844,10 +857,11 @@ namespace cubstorage
     return status::FOUND;
   }
 
-  bestspace::bestspace (const std::uint64_t recs_num, const std::uint64_t recs_sumlen, std::uint16_t unfill_space,
+  bestspace::bestspace (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space,
 			std::size_t shard_count)
     : m_shards ()
     , m_unfill_space (unfill_space)
+    , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
   {
@@ -965,7 +979,7 @@ namespace cubstorage
 		    error == status::FAILURE);
 	    if (error == status::FOUND)
 	      {
-		m_shards[ (shard + i) % m_shards.size ()].add_estimates (1, consume_space);
+		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_space);
 		return NO_ERROR;
 	      }
 	    if (error == status::FAILURE)
@@ -1032,15 +1046,36 @@ namespace cubstorage
   }
 
   void
-  bestspace::get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
+  bestspace::set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
+  {
+    std::size_t i;
+    int shard_num_pages;
+    std::uint64_t shard_recs_num, shard_recs_sumlen;
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	shard_num_pages = 0;
+	shard_recs_num = 0;
+	shard_recs_sumlen = 0;
+	m_shards[i].get_estimates (shard_num_pages, shard_recs_num, shard_recs_sumlen);
+	m_shards[i].subtract_estimates (shard_num_pages, shard_recs_num, shard_recs_sumlen);
+      }
+    m_num_pages.store (num_pages);
+    m_recs_num.store (recs_num);
+    m_recs_sumlen.store (recs_sumlen);
+  }
+
+  void
+  bestspace::get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
   {
     std::size_t i;
 
-    recs_num = m_recs_num;
-    recs_sumlen = m_recs_sumlen;
+    num_pages = m_num_pages.load ();
+    recs_num = m_recs_num.load ();
+    recs_sumlen = m_recs_sumlen.load ();
     for (i = 0; i < m_shards.size (); i++)
       {
-	m_shards[i].get_estimates (recs_num, recs_sumlen);
+	m_shards[i].get_estimates (num_pages, recs_num, recs_sumlen);
       }
   }
 
@@ -1111,14 +1146,14 @@ namespace cubstorage
 
   void
   bestspace_registry::create (HFID *hfid, bestspace_entry *entries, std::size_t num_entries, bestspace_entry *candidates,
-			      std::size_t num_candidates, const std::uint64_t recs_num, const std::uint64_t recs_sumlen, std::size_t shard_count,
+			      std::size_t num_candidates, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::size_t shard_count,
 			      std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
-    node->entry = new bestspace (recs_num, recs_sumlen, unfill_space, shard_count);
+    node->entry = new bestspace (num_pages, recs_num, recs_sumlen, unfill_space, shard_count);
     node->entry->initialize_by_entries (entries, num_entries);
     node->entry->add_candidates (candidates, num_candidates);
 
