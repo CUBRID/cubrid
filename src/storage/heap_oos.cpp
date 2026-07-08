@@ -348,7 +348,14 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 {
   RECDES *rec = context->recdes_p;
 
-  if (!context->expand_oos)
+  if (!HEAP_IS_VALID_OOS_EXPAND_POLICY (context->oos_expand_policy))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
+
+  if (context->oos_expand_policy == HEAP_WITHOUT_OOS_EXPAND)
     {
       /* Caller opted out: they handle OOS themselves (e.g. heap_attrinfo_read_dbvalues). */
       return S_SUCCESS;

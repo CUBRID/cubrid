@@ -222,7 +222,7 @@ find_row_by_gtrid_bqual (THREAD_ENTRY * thread_p, int gtrid, int bqual, OID * ou
 	  *out_oid = inst_oid;
 	  return NO_ERROR;
 	}
-      sc = heap_next (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK);
+      sc = heap_next (thread_p, hfid_p, (OID *) class_oid_p, &inst_oid, &recdes, scan_p, PEEK, HEAP_WITHOUT_OOS_EXPAND);
     }
   return ER_FAILED;		/* not found */
 }
@@ -478,7 +478,7 @@ dblink_global_tran_scan_for_recovery (THREAD_ENTRY * thread_p, dblink_global_tra
 	      break;
 	    }
 	}
-      sc = heap_next (thread_p, hfid_p, &class_oid, &inst_oid, &recdes, &scan, PEEK);
+      sc = heap_next (thread_p, hfid_p, &class_oid, &inst_oid, &recdes, &scan, PEEK, HEAP_WITHOUT_OOS_EXPAND);
     }
 
 cleanup:
