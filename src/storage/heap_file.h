@@ -732,13 +732,9 @@ extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data
 extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 
-/* Narrow exports for heap_oos.cpp's grouped lazy Resolve path. Keep the implementations here so
- * grouped reads reuse the same VOT parsing, raw-disk-value transform, default handling, and scalar
- * fallback contracts as heap_file.c. These are not general-purpose heap APIs. */
+/* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
+ * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
 extern int heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out);
-extern int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool oos_owned_buffer);
-extern int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,

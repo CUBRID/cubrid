@@ -27,6 +27,8 @@
 #include "oos_file.hpp"
 #include "storage_common.h"
 
+#include <vector>
+
 enum heap_oos_demote_priority
 {
   HEAP_OOS_DEMOTE_NORMAL = 0,
@@ -67,9 +69,13 @@ extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_
 /* Parse an OOS-marked variable attribute's inline reference [OID (8B) | full_length (8B)]. */
 extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len);
 
-/* Try grouped lazy OOS Resolve. If handled is false, caller should use the scalar reader. */
-extern int heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes,
-    HEAP_CACHE_ATTRINFO *attr_info, bool *handled);
+/* Prefetch every requested OOS-marked attribute of one record through a single oos_read_many().
+ * On *handled == true, raws[i].data holds attribute i's raw OOS bytes (NULL when attr i is not OOS);
+ * heap_file.c's read loop then transforms them and calls heap_oos_free_grouped_payloads(). When
+ * *handled is false the grouped path does not apply and the caller uses the scalar reader. */
+extern int heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes,
+    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &raws, bool *handled);
+extern void heap_oos_free_grouped_payloads (std::vector<RECDES> &raws);
 
 /* Insert already-serialized attribute values into the class OOS file. Attribute serialization stays
  * in heap_file.c; OOS lookup, insert-publication reset, and oos_insert_many live in heap_oos.cpp. */

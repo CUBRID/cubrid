@@ -10651,11 +10651,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *   attrepr(in): The attribute structure
  *   data(in): Disk value pointer
  *   length(in): Disk value length
- *
- * Note: exported only for heap_oos.cpp's grouped lazy Resolve path, which already owns an OOS
- * raw buffer and must transform it with the same scalar read contract.
  */
-int
+static int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 				     bool oos_owned_buffer)
 {
@@ -10713,12 +10710,14 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
  *   recdes(in): Instance record descriptor
  *   value(in): Disk value attribute information
  *   attr_info(in/out): The attribute information structure
+ *   prefetched_oos(in): optional grouped-OOS payload for this attribute (from
+ *                       heap_oos_read_grouped_payloads). When it carries data the value is
+ *                       transformed straight from it; NULL selects the normal scalar read.
  *
  * Note: Read the dbvalue of the given value attribute information.
- * Note: exported only for heap_oos.cpp's grouped lazy Resolve fallback for non-OOS/default attrs.
  */
-int
-heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
+static int
+heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info, RECDES * prefetched_oos)
 {
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
@@ -10727,6 +10726,14 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int error;
+
+  if (prefetched_oos != NULL && prefetched_oos->data != NULL)
+    {
+      /* Grouped OOS: heap_oos_read_grouped_payloads already fetched this attribute's bytes via a
+       * single oos_read_many. Transform straight from that buffer (COPY); it is owned and freed by
+       * heap_oos_free_grouped_payloads, so nothing is reclaimed here. */
+      return heap_attrvalue_transform_to_dbvalue (value, value->read_attrepr, prefetched_oos, true);
+    }
 
   if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
     {
@@ -10797,25 +10804,21 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 static int
 heap_attrinfo_read_dbvalues_internal (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
+  std::vector < RECDES > oos_raws;	/* grouped-prefetched OOS payloads; empty unless the grouped path applies */
+  bool grouped = false;
   int i, ret;
-  bool grouped_oos_read = false;
 
-  ret = heap_oos_read_dbvalues_grouped_if_needed (thread_p, recdes, attr_info, &grouped_oos_read);
-  if (ret != NO_ERROR || grouped_oos_read)
+  /* Grouped OOS records batch their overflow reads into one oos_read_many; the loop below then reads
+   * every attribute the usual way, transforming the prefetched payloads in place. */
+  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_raws, &grouped);
+
+  for (i = 0; ret == NO_ERROR && i < attr_info->num_values; i++)
     {
-      return ret;
+      ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info, grouped ? &oos_raws[i] : NULL);
     }
 
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
-      if (ret != NO_ERROR)
-	{
-	  return ret;
-	}
-    }
-
-  return NO_ERROR;
+  heap_oos_free_grouped_payloads (oos_raws);
+  return ret;
 }
 
 /*
@@ -11167,7 +11170,7 @@ heap_attrinfo_delete_lob (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_A
 	{
 	  if (value->state == HEAP_UNINIT_ATTRVALUE && recdes != NULL)
 	    {
-	      ret = heap_attrvalue_read (recdes, value, attr_info);
+	      ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
 	      if (ret != NO_ERROR)
 		{
 		  goto exit_on_error;
@@ -12052,7 +12055,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
       value = &attr_info->values[i];
       if (value->state == HEAP_UNINIT_ATTRVALUE)
 	{
-	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;
@@ -12066,7 +12069,7 @@ heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_oid, RECDES
 	  pr_clear_value (&value->dbvalue);
 
 	  /* read and delete old value */
-	  ret = heap_attrvalue_read (recdes, value, attr_info);
+	  ret = heap_attrvalue_read (recdes, value, attr_info, NULL);
 	  if (ret != NO_ERROR)
 	    {
 	      goto exit_on_error;

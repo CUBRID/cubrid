@@ -479,101 +479,27 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 }
 
 /*
- * heap_oos_read_dbvalues_grouped () - Resolve all requested OOS-marked attributes of one record
- *   through a single grouped oos_read_many() call and read the remaining attributes with the
- *   scalar reader.
+ * heap_oos_read_grouped_payloads () - Prefetch every requested OOS-marked attribute of one record
+ *   through a single grouped oos_read_many() call.
  *
- *   The dispatcher only routes records with at least two requested OOS values here; non-OOS and
- *   single-OOS reads keep the scalar path.
- */
-static int
-heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info)
-{
-  const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
-  std::vector<RECDES> raws;
-  std::vector<oos_read_request> requests;
-  int error = NO_ERROR;
-  int i;
-
-  try
-    {
-      raws.resize ((std::size_t) attr_info->num_values, empty_raw);
-      requests.reserve ((std::size_t) attr_info->num_values);
-    }
-  catch (std::bad_alloc &)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) attr_info->num_values * (sizeof (RECDES) + sizeof (oos_read_request)));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-
-  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
-    {
-      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
-      OID oos_oid;
-      DB_BIGINT oos_len;
-
-      if (inline_ptr == NULL)
-	{
-	  continue;		/* not OOS here: read below with the scalar reader */
-	}
-
-      error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
-      if (error == NO_ERROR && recdes_allocate_data_area (&raws[i], (int) oos_len) != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      if (error == NO_ERROR)
-	{
-	  raws[i].length = (int) oos_len;
-	  oos_read_request request = { oos_oid, oos_buffer (raws[i].data, (std::size_t) oos_len) };
-	  requests.push_back (request);
-	}
-    }
-
-  if (error == NO_ERROR)
-    {
-      error = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
-    }
-
-  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
-    {
-      if (raws[i].data != NULL)
-	{
-	  /* Heap-backed raw buffer: transform copies the value; the buffer is freed below. */
-	  error = heap_attrvalue_transform_to_dbvalue (&attr_info->values[i], attr_info->values[i].read_attrepr,
-		  &raws[i], true);
-	}
-      else
-	{
-	  error = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
-	}
-    }
-
-  for (i = 0; i < attr_info->num_values; i++)
-    {
-      if (raws[i].data != NULL)
-	{
-	  recdes_free_data_area (&raws[i]);
-	}
-    }
-
-  return error;
-}
-
-/*
- * heap_oos_read_dbvalues_grouped_if_needed () - Try the grouped lazy OOS Resolve path.
- *
- *   return: NO_ERROR or error from the grouped read.
- *   handled(out): true iff this function read all requested values through the grouped path.
+ *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
+ *   raws(out): resized to attr_info->num_values. raws[i].data != NULL holds the raw disk bytes of an
+ *              OOS-resolved attribute (consumed by heap_attrvalue_read's grouped fast path); raws[i].data
+ *              == NULL means "not OOS here: read with the scalar reader". Always release with
+ *              heap_oos_free_grouped_payloads(), including on error (partial buffers may be attached).
+ *   handled(out): true iff the grouped path applies. It only applies to records with at least two
+ *              requested OOS values; non-OOS and single-OOS reads stay on the scalar path (raws is
+ *              left empty and *handled is false).
  */
 int
-heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-    bool *handled)
+heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
+				std::vector<RECDES> &raws, bool *handled)
 {
-  int i;
+  const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
+  std::vector<oos_read_request> requests;
+  int error = NO_ERROR;
   int oos_count = 0;
+  int i;
 
   *handled = false;
 
@@ -596,7 +522,67 @@ heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes
     }
 
   *handled = true;
-  return heap_oos_read_dbvalues_grouped (thread_p, recdes, attr_info);
+
+  try
+    {
+      raws.resize ((std::size_t) attr_info->num_values, empty_raw);
+      requests.reserve ((std::size_t) attr_info->num_values);
+    }
+  catch (std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) attr_info->num_values * (sizeof (RECDES) + sizeof (oos_read_request)));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
+    {
+      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
+      OID oos_oid;
+      DB_BIGINT oos_len;
+
+      if (inline_ptr == NULL)
+	{
+	  continue;		/* not OOS here: the scalar reader handles it */
+	}
+
+      error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
+      if (error == NO_ERROR && recdes_allocate_data_area (&raws[i], (int) oos_len) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (error == NO_ERROR)
+	{
+	  raws[i].length = (int) oos_len;
+	  oos_read_request request = { oos_oid, oos_buffer (raws[i].data, (std::size_t) oos_len) };
+	  requests.push_back (request);
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
+    }
+
+  return error;
+}
+
+/*
+ * heap_oos_free_grouped_payloads () - Release the raw OOS buffers attached by
+ *   heap_oos_read_grouped_payloads(). Safe on an empty vector (grouped path not taken).
+ */
+void
+heap_oos_free_grouped_payloads (std::vector<RECDES> &raws)
+{
+  for (RECDES &raw : raws)
+    {
+      if (raw.data != NULL)
+	{
+	  recdes_free_data_area (&raw);
+	}
+    }
+  raws.clear ();
 }
 
 /*
