@@ -13179,6 +13179,32 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	}
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+      /* A concurrent MVCC DELETE holds no per-row X-lock, so a lock-manager writer (UPDATE, SELECT ... FOR
+       * UPDATE) can reach here on a row stamped delete-in-progress by an active other transaction. Don't treat
+       * it as deleted (the deleter may roll back) -- wait on its transaction self-lock, then re-read. */
+      if (!context->implicit_write_lock && MVCC_IS_HEADER_DELID_VALID (&recdes_header))
+	{
+	  MVCCID delete_mvccid = MVCC_GET_DELID (&recdes_header);
+	  if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
+	    {
+	      heap_clean_get_context (thread_p, context);
+	      if (lock_transaction_mvccid (thread_p, delete_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  scan = S_ERROR;
+		  goto error;
+		}
+	      lock_unlock_transaction_mvccid (thread_p, delete_mvccid, S_LOCK);
+	      scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+	      if (scan != S_SUCCESS)
+		{
+		  goto error;
+		}
+	      continue;
+	    }
+	}
+#endif /* SERVER_MODE */
+
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
       if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED
 	  && logtb_check_class_for_rr_isolation_err (context->class_oid_p))
