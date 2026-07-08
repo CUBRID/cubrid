@@ -1228,8 +1228,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Pagesize is incorrect. We need to undefine anything that has been
        * created with old pagesize and start again
        */
-      /* leave the reuse window so the redefine below rebuilds at the new size */
-      logtb_Reuse_boot_managers = false;
+      if (logtb_Reuse_boot_managers)
+	{
+	  logtb_Reuse_boot_managers = false;
+	  logtb_undefine_trantable (thread_p);
+	}
       if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
 	{
 	  /* Pagesize is incompatible */
@@ -1344,12 +1347,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
    * max_clients+1
    */
   error_code = logtb_define_trantable_log_latch (thread_p, -1);
-  /* End of the redefine window; later undefines (error, shutdown) finalize normally. */
-  logtb_Reuse_boot_managers = false;
   if (error_code != NO_ERROR)
     {
       goto error;
     }
+  /* redefine reused the pool successfully; leave the reuse window */
+  logtb_Reuse_boot_managers = false;
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -1514,8 +1517,12 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 error:
   /* ***** */
 
-  /* clear in case an early error skipped the reset above */
-  logtb_Reuse_boot_managers = false;
+  /* reuse window aborted: finalize the boot-time managers log_final kept alive */
+  if (logtb_Reuse_boot_managers)
+    {
+      logtb_Reuse_boot_managers = false;
+      logtb_undefine_trantable (thread_p);
+    }
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
