@@ -483,25 +483,21 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
  *   through a single grouped oos_read_many() call.
  *
  *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
- *   raws(out): resized to attr_info->num_values. raws[i].data != NULL holds the raw disk bytes of an
- *              OOS-resolved attribute (consumed by heap_attrvalue_read's grouped fast path); raws[i].data
- *              == NULL means "not OOS here: read with the scalar reader". Always release with
- *              heap_oos_free_grouped_payloads(), including on error (partial buffers may be attached).
- *   handled(out): true iff the grouped path applies. It only applies to records with at least two
- *              requested OOS values; non-OOS and single-OOS reads stay on the scalar path (raws is
- *              left empty and *handled is false).
+ *   raws(out): left empty when grouped Resolve does not apply. Otherwise, resized to
+ *              attr_info->num_values. raws[i].data != NULL holds the raw disk bytes of an OOS-resolved
+ *              attribute; raws[i].data == NULL means "not OOS here: read with the scalar reader".
+ *              Always release with heap_oos_free_grouped_payloads(), including on error (partial
+ *              buffers may be attached).
  */
 int
 heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-				std::vector<RECDES> &raws, bool *handled)
+				std::vector<RECDES> &raws)
 {
   const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
   std::vector<oos_read_request> requests;
   int error = NO_ERROR;
   int oos_count = 0;
   int i;
-
-  *handled = false;
 
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
@@ -520,8 +516,6 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
     {
       return NO_ERROR;
     }
-
-  *handled = true;
 
   try
     {

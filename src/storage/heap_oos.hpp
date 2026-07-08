@@ -70,11 +70,11 @@ extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_
 extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len);
 
 /* Prefetch every requested OOS-marked attribute of one record through a single oos_read_many().
- * On *handled == true, raws[i].data holds attribute i's raw OOS bytes (NULL when attr i is not OOS);
- * heap_file.c's read loop then transforms them and calls heap_oos_free_grouped_payloads(). When
- * *handled is false the grouped path does not apply and the caller uses the scalar reader. */
+ * raws is left empty when grouped Resolve does not apply. Otherwise, raws[i].data holds attribute i's
+ * raw OOS bytes (NULL when attr i is not OOS); heap_file.c's grouped read loop transforms them and calls
+ * heap_oos_free_grouped_payloads(). */
 extern int heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes,
-    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &raws, bool *handled);
+    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &raws);
 extern void heap_oos_free_grouped_payloads (std::vector<RECDES> &raws);
 
 /* Insert already-serialized attribute values into the class OOS file. Attribute serialization stays
