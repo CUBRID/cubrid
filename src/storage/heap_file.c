@@ -8204,6 +8204,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  bool is_pc = (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL);
 
 	  scan_cache->cache_last_fix_page = true;
+	  assert (!is_pc || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: copy-mode consumption never holds the live page */
 
 	  scan =
 	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
@@ -8486,6 +8487,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 		      && local_pgptr == pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle));
 
 	scan_cache->cache_last_fix_page = true;
+	assert (!is_pc || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: copy-mode consumption never holds the live page */
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,

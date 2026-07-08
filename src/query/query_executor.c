@@ -7561,9 +7561,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 #if SERVER_MODE && !WINDOWS
 	      error_code =
-		scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, fixed, grouped, vd, curr_spec,
-					      &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec), xasl,
-					      query_id);
+		scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					      vd, curr_spec, &ACCESS_SPEC_CLS_OID (curr_spec),
+					      &ACCESS_SPEC_HFID (curr_spec), xasl, query_id);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -9136,8 +9136,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 #if SERVER_MODE && !WINDOWS
 	      error =
 		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
-					      spec->s_id.fixed, spec->s_id.grouped, spec->s_id.vd, spec, &class_oid,
-					      &class_hfid, xasl, query_id);
+					      spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
+					      spec->s_id.vd, spec, &class_oid, &class_hfid, xasl, query_id);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();

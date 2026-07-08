@@ -135,8 +135,8 @@ extern "C"
   extern void scan_end_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   extern void scan_close_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
   extern int scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed,
-      int fixed_scan, int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid,
-      XASL_NODE *xasl, QUERY_ID query_id);
+      SCAN_OPERATION_TYPE scan_op_type, int fixed_scan, int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec,
+      OID *class_oid, HFID *class_hfid, XASL_NODE *xasl, QUERY_ID query_id);
   extern int scan_start_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);
 
   extern SCAN_CODE scan_next_parallel_list_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id);

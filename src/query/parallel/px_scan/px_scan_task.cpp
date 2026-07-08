@@ -292,6 +292,12 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
+			/* Worker fixed_scan here is a local recompute (xptr->scan_ptr == NULL check above),
+			 * simplified vs the leader's full fixed-scan chain-walk that fed m_is_page_copy_scan.
+			 * The asymmetry is perf-only, not a correctness gap: page-copy is structurally safe
+			 * for any S_SELECT lock-free scan regardless of which path computed fixed_scan, and
+			 * the "&& !fixed_scan" guard below still prevents copy-mode from activating on a scan
+			 * this worker locally determined to be fixed (issue #154, critic gate 2 P3b). */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
