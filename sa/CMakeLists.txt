@@ -782,6 +782,12 @@ target_link_libraries(cubridsa
     cascci
   )
 
+if(UNIX)
+  target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
+  target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  add_dependencies(cubridsa ${TBB_TARGETS})
+endif(UNIX)
+
 add_dependencies(cubridsa
   gen_csql_grammar
   gen_csql_lexer

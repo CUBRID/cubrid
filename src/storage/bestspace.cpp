@@ -36,7 +36,7 @@
 #define STATS_INC(id, value) \
   do \
     { \
-      if (m_stats.enabled) \
+      if (m_stats.enabled.load ()) \
 	{ \
 	  m_stats.id.fetch_add (value); \
 	} \
@@ -246,9 +246,9 @@ namespace cubstorage
     , m_L3 ()
     , m_L2 ()
     , m_L1 ()
+    , m_parent (parent)
     , m_recs_num (0)
     , m_recs_sumlen (0)
-    , m_parent (parent)
     , m_stats { false, 0, 0, 0, 0, 0, 0, 0 }
   {
   }
@@ -326,8 +326,23 @@ namespace cubstorage
     return allocate (hfid, consume_size, page_watcher);
   }
 
-  void bestspace::shard::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
-				    std::uint32_t &fetch_L2, std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated)
+  void
+  bestspace::shard::add_estimates (std::uint64_t recs_num, std::uint64_t recs_sumlen)
+  {
+    m_recs_num.fetch_add (recs_num);
+    m_recs_sumlen.fetch_add (recs_sumlen);
+  }
+
+  void
+  bestspace::shard::get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
+  {
+    recs_num += m_recs_num.load ();
+    recs_sumlen += m_recs_sumlen.load ();
+  }
+
+  void
+  bestspace::shard::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
+			       std::uint32_t &fetch_L2, std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated)
   {
     request += m_stats.request.load ();
     advanced_shard += m_stats.advance_shard.load ();
@@ -829,9 +844,12 @@ namespace cubstorage
     return status::FOUND;
   }
 
-  bestspace::bestspace (std::uint16_t unfill_space, std::size_t shard_count)
+  bestspace::bestspace (const std::uint64_t recs_num, const std::uint64_t recs_sumlen, std::uint16_t unfill_space,
+			std::size_t shard_count)
     : m_shards ()
     , m_unfill_space (unfill_space)
+    , m_recs_num (recs_num)
+    , m_recs_sumlen (recs_sumlen)
   {
     assert (shard_count > 0);
 
@@ -895,8 +913,8 @@ namespace cubstorage
   {
     int consume_space, needed_space;
     std::size_t shard, bias;
-    std::size_t i;
     std::size_t retry;
+    std::size_t i;
     bool continue_check;
     status error;
     int errid;
@@ -947,6 +965,7 @@ namespace cubstorage
 		    error == status::FAILURE);
 	    if (error == status::FOUND)
 	      {
+		m_shards[ (shard + i) % m_shards.size ()].add_estimates (1, consume_space);
 		return NO_ERROR;
 	      }
 	    if (error == status::FAILURE)
@@ -1013,24 +1032,35 @@ namespace cubstorage
   }
 
   void
-  bestspace::show_stats ()
+  bestspace::get_estimates (std::uint64_t &recs_num, std::uint64_t &recs_sumlen)
   {
     std::size_t i;
 
-    std::uint32_t request = 0;
-    std::uint32_t advanced_shard = 0;
-    std::uint32_t fetch_L3 = 0;
-    std::uint32_t fetch_L2 = 0;
-    std::uint32_t fetch_L1 = 0;
-    std::uint32_t found = 0;
-    std::uint32_t allocated = 0;
+    recs_num = m_recs_num;
+    recs_sumlen = m_recs_sumlen;
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	m_shards[i].get_estimates (recs_num, recs_sumlen);
+      }
+  }
+
+  void
+  bestspace::get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3,
+			std::uint32_t &fetch_L2, std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated)
+  {
+    std::size_t i;
+
+    request = 0;
+    advanced_shard = 0;
+    fetch_L3 = 0;
+    fetch_L2 = 0;
+    fetch_L1 = 0;
+    found = 0;
+    allocated = 0;
     for (i = 0; i < m_shards.size (); i++)
       {
 	m_shards[i].get_stats (request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
       }
-
-    printf ("  request: %d, advanced_shard: %d, fetch_L3: %d, fetch_L2: %d, fetch_L1: %d, found: %d, allocated page: %d\n",
-	    request, advanced_shard, fetch_L3, fetch_L2, fetch_L1, found, allocated);
   }
 
   //////////////////////////////////////////////////////////////////////////
@@ -1081,13 +1111,14 @@ namespace cubstorage
 
   void
   bestspace_registry::create (HFID *hfid, bestspace_entry *entries, std::size_t num_entries, bestspace_entry *candidates,
-			      std::size_t num_candidates, std::size_t shard_count, std::uint16_t unfill_space)
+			      std::size_t num_candidates, const std::uint64_t recs_num, const std::uint64_t recs_sumlen, std::size_t shard_count,
+			      std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
-    node->entry = new bestspace (unfill_space, shard_count);
+    node->entry = new bestspace (recs_num, recs_sumlen, unfill_space, shard_count);
     node->entry->initialize_by_entries (entries, num_entries);
     node->entry->add_candidates (candidates, num_candidates);
 
