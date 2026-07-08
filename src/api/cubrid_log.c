@@ -936,7 +936,7 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_HOST, "host must not be null\n");
     }
 
-  if (port < 0 || port > USHRT_MAX)
+  if (port <= 0 || port > USHRT_MAX)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_PORT,
 				 "invalid port number : %d, port must be greater than 0 and less than %d\n", port,
@@ -1093,7 +1093,8 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
 
   if (g_trace_log_level == 1)
     {
-      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage, *timestamp);
+      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] stage (%d), timestamp (%lld)\n", g_stage,
+				 timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION)
@@ -1107,7 +1108,7 @@ cubrid_log_find_lsa (time_t * timestamp, uint64_t * lsa)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_TIMESTAMP,
 				 "timestamp must be greater or equal than 0. Input timestamp is %s, and value is %lld\n",
-				 timestamp ? "not null" : "null", *timestamp);
+				 timestamp ? "not null" : "null", timestamp ? (long long) *timestamp : 0LL);
     }
 
   if (lsa == NULL)
@@ -1202,6 +1203,11 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
 	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_LSA, "Input lsa is not valid (%lld|%d)\n", next_lsa->pageid,
 				     next_lsa->offset);
 	}
+      else
+	{
+	  CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				     "Failed to extract log info metadata. reply code from server is %d\n", reply_code);
+	}
     }
 
   ptr = or_unpack_log_lsa (ptr, next_lsa);
@@ -1214,8 +1220,16 @@ cubrid_log_extract_internal (LOG_LSA * next_lsa, int *num_infos, int *total_leng
       free_and_init (recv_data);
     }
 
-  if (rc == CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
+  if (*num_infos < 0 || *total_length < 0 || (*num_infos > 0 && *total_length <= 0))
     {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				 "Invalid log info metadata. num_infos (%d), total_length (%d)\n", *num_infos,
+				 *total_length);
+    }
+
+  if (*num_infos == 0)
+    {
+      rc = CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
       goto cubrid_log_end;
     }
 
@@ -1676,6 +1690,20 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
       CUBRID_LOG_WRITE_TRACELOG ("[INPUT] num_infos (%d), total_length (%d)\n", num_infos, total_length);
     }
 
+  if (num_infos <= 0)
+    {
+      *log_item_list = NULL;
+      *list_size = 0;
+      return CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM;
+    }
+
+  if (total_length <= 0)
+    {
+      CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_FAILED_EXTRACT,
+				 "Invalid log item list metadata. num_infos (%d), total_length (%d)\n", num_infos,
+				 total_length);
+    }
+
   if (g_log_items_count < num_infos)
     {
       CUBRID_LOG_ITEM *tmp_log_items = NULL;
@@ -1764,12 +1792,18 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 
   rc = cubrid_log_extract_internal (&g_next_lsa, &num_infos, &total_length);
 
-  if (rc != CUBRID_LOG_SUCCESS)
+  if (rc != CUBRID_LOG_SUCCESS && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
     {
       CUBRID_LOG_ERROR_HANDLING (rc, NULL);
     }
 
-  if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) != CUBRID_LOG_SUCCESS)
+  if (rc == CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
+    {
+      *log_item_list = NULL;
+      *list_size = 0;
+    }
+  else if ((rc = cubrid_log_make_log_item_list (num_infos, total_length, log_item_list, list_size)) !=
+	   CUBRID_LOG_SUCCESS && rc != CUBRID_LOG_SUCCESS_WITH_NO_LOGITEM)
     {
       CUBRID_LOG_ERROR_HANDLING (rc, NULL);
     }
