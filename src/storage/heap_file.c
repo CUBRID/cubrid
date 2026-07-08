@@ -6774,6 +6774,14 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
  *   is_queryscan(in):
  *
  */
+/* TEMPORARY (issue #154 Slice 2/2W validation only -- removed in Slice 3): force page-copy read
+ * mode for query scans that do not already keep their page fixed across records, ahead of the
+ * Slice 3 activation predicate (qexec_is_page_copy_eligible ()) being wired through
+ * scan_open_heap_scan () -> heap_scancache_start (). Debug-only; no effect in release builds. */
+#if !defined (NDEBUG)
+#define FORCE_PAGE_COPY_SCAN 1
+#endif /* !NDEBUG */
+
 static int
 heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 			       const OID * class_oid, int cache_last_fix_page, bool is_queryscan,
@@ -6869,6 +6877,13 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->copied_buf_handle = NULL;
   VPID_SET_NULL (&scan_cache->copied_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
+#if defined (FORCE_PAGE_COPY_SCAN)
+  if (!cache_last_fix_page && is_queryscan)
+    {
+      /* TEMPORARY (issue #154 Slice 2/2W validation only) -- removed in Slice 3. */
+      page_copy = true;
+    }
+#endif /* FORCE_PAGE_COPY_SCAN */
   if (page_copy && is_queryscan)
     {
       scan_cache->copied_buf_handle = pgbuf_copy_buffer_alloc ();
@@ -7890,6 +7905,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   bool is_null_recdata;
   PGBUF_WATCHER old_page_watcher;
   PGBUF_WATCHER rec_info_page_watcher;
+  PAGE_PTR local_pgptr = NULL;	/* issue #154: page-copy read pointer (copy buffer or live page) */
 
   assert (scan_cache != NULL);
 
@@ -7971,6 +7987,22 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
 		}
 	    }
+	  /* Page-copy fast path: skip fix entirely if same page already copied (issue #154, Slice 2). */
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY
+	      && scan_cache->copied_buf_handle != NULL && VPID_EQ (&vpid, &scan_cache->copied_vpid))
+	    {
+	      /* Same page already in copy buffer -- use it directly. Unfix any fall-through-parked
+	       * page (heap_clean_get_context can park a live page when cache_last_fix_page was
+	       * temporarily forced true for the previous record's heap_scan_get_visible_version call). */
+	      if (scan_cache->page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		}
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	      goto slot_walk;
+	    }
+	  /* else: fall through to existing fix block */
+
 	  if (scan_cache->page_watcher.pgptr == NULL)
 	    {
 	      scan_cache->page_watcher.pgptr =
@@ -7994,26 +8026,41 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		}
 	    }
 
+	  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+	    {
+	      /* New page (VPID_EQ failed above) -- copy frame and unfix (issue #154, Slice 2). */
+	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->copied_buf_handle);
+	      scan_cache->copied_vpid = vpid;
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->copied_buf_handle);
+	    }
+	  else
+	    {
+	      local_pgptr = scan_cache->page_watcher.pgptr;	/* live page (non-copy mode) */
+	    }
+
+	slot_walk:
+
 	  if (get_rec_info)
 	    {
 	      /* Getting record information means that we need to scan all slots even if they store no object. */
 	      if (reversed_direction)
 		{
 		  scan =
-		    spage_previous_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+		    spage_previous_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
 							   PEEK);
 		}
 	      else
 		{
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+		    spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
 						       PEEK);
 		}
 	      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID)
 		{
 		  /* skip the header */
 		  scan =
-		    spage_next_record_dont_skip_empty (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes,
+		    spage_next_record_dont_skip_empty (local_pgptr, &oid.slotid, &forward_recdes,
 						       PEEK);
 		}
 	    }
@@ -8026,11 +8073,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		{
 		  if (reversed_direction)
 		    {
-		      scan = spage_previous_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		      scan = spage_previous_record (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 		    }
 		  else
 		    {
-		      scan = spage_next_record (scan_cache->page_watcher.pgptr, &oid.slotid, &forward_recdes, PEEK);
+		      scan = spage_next_record (local_pgptr, &oid.slotid, &forward_recdes, PEEK);
 		    }
 		  if (scan != S_SUCCESS)
 		    {
@@ -8056,7 +8103,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* skip the header */
 		      continue;
 		    }
-		  type = spage_get_record_type (scan_cache->page_watcher.pgptr, oid.slotid);
+		  type = spage_get_record_type (local_pgptr, oid.slotid);
 		  if (type == REC_NEWHOME || type == REC_ASSIGN_ADDRESS || type == REC_UNKNOWN)
 		    {
 		      /* skip */
@@ -8072,6 +8119,26 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (scan == S_END)
 		{
 		  /* Find next page of heap and continue scanning */
+		  if (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL)
+		    {
+		      /* page_watcher.pgptr is NULL here (copy mode always unfixes after copying); re-fix the
+		       * copied page so heap_vpid_prev/heap_vpid_next below have a live pointer (issue #154). */
+		      scan_cache->page_watcher.pgptr =
+			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->copied_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK,
+						     scan_cache, &scan_cache->page_watcher);
+		      if (scan_cache->page_watcher.pgptr == NULL)
+			{
+			  if (er_errid () == ER_PB_BAD_PAGEID)
+			    {
+			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid.volid, oid.pageid,
+				      oid.slotid);
+			    }
+
+			  /* something went wrong, return */
+			  assert (scan_cache->page_watcher.pgptr == NULL);
+			  return S_ERROR;
+			}
+		    }
 		  if (reversed_direction)
 		    {
 		      (void) heap_vpid_prev (thread_p, hfid, scan_cache->page_watcher.pgptr, &vpid);
@@ -8120,7 +8187,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
 		    }
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  if (scan_cache->page_watcher.pgptr != NULL)
+		    {
+		      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		    }
 		  return scan;
 		}
 	    }
@@ -8143,12 +8213,13 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       else
 	{
 	  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
+	  bool is_pc = (scan_cache->read_mode == HEAP_SCAN_READ_PAGE_COPY && scan_cache->copied_buf_handle != NULL);
 
 	  scan_cache->cache_last_fix_page = true;
 
 	  scan =
 	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					   NULL_CHN);
+					   NULL_CHN, is_pc);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 	}
 
@@ -25538,9 +25609,6 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  /* is_page_copy: Slice 1 plumbing only; the page-copy REC_HOME shortcut lands in Slice 2. */
-  (void) is_page_copy;
-
   /*
    * The process below should be within heap_get_visible_version_internal(), 
    * but it's an added shortcut for performance improvement. Under certain specific conditions, 
@@ -25599,6 +25667,15 @@ heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * c
 	  if (ispeeking == PEEK)
 	    {
 	      /* recdes may point directly into the still-latched page */
+	      *recdes = *peeked_recdes;
+	      return scan;
+	    }
+
+	  if (is_page_copy)
+	    {
+	      /* Caller guarantees peeked_recdes->data points into the copied_buf_handle frame (issue #154,
+	       * Slice 2/2W): local_pgptr was set from pgbuf_copy_buffer_get_page_ptr () whenever is_pc/is_page_copy
+	       * is true, so peeked_recdes->data is stable copy memory, not a live latched page. */
 	      *recdes = *peeked_recdes;
 	      return scan;
 	    }
