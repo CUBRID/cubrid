@@ -29,6 +29,7 @@
 #include "error_code.h"
 #include "error_manager.h"
 #include "heap_file.h"
+#include "log_impl.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -401,8 +402,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
  * heap_oos_parse_inline_ref () - Validate and parse the inline OOS reference of an OOS-marked
  *   variable attribute. Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
  *
- *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the reference is corrupted
- *           (Cases 1-3 of the inline-OOS read contract).
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the reference is corrupted.
  *   recdes(in): heap record holding the attribute (only data/length are read)
  *   inline_ptr(in): start of the OOS-marked variable region inside recdes
  *   oos_oid(out): forwarder OID of the OOS record
@@ -443,15 +443,16 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
 }
 
 /*
- * heap_oos_attr_inline_ptr () - Probe whether a requested attribute is an inline-OOS variable
- *   attribute in this recdes.
+ * heap_oos_find_attr_inline_ref () - Find the OOS inline reference stored in a heap record for
+ *   a requested variable attribute.
  *
- *   return: pointer to the attribute's inline OOS reference, or NULL when it is not an inline-OOS
- *           value here (any condition the scalar read path either skips or reports itself,
- *           including a corrupt offset size).
+ *   return: pointer to the 16-byte [OOS OID | full length] reference in the variable area, or
+ *           NULL when this requested attribute has no OOS reference in this record. NULL also
+ *           covers conditions the scalar read path skips or reports itself, including corrupt
+ *           offset-size metadata.
  */
 static const char *
-heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value)
+heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
   int vot_entry;
@@ -478,7 +479,7 @@ heap_oos_attr_inline_ptr (RECDES *recdes, HEAP_ATTRVALUE *value)
 }
 
 /*
- * heap_oos_read_dbvalues_grouped () - Resolve all requested inline-OOS attributes of one record
+ * heap_oos_read_dbvalues_grouped () - Resolve all requested OOS-marked attributes of one record
  *   through a single grouped oos_read_many() call and read the remaining attributes with the
  *   scalar reader.
  *
@@ -508,7 +509,7 @@ heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
     {
-      const char *inline_ptr = heap_oos_attr_inline_ptr (recdes, &attr_info->values[i]);
+      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
       OID oos_oid;
       DB_BIGINT oos_len;
 
@@ -562,7 +563,7 @@ heap_oos_read_dbvalues_grouped (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 }
 
 /*
- * heap_oos_read_dbvalues_grouped_if_needed () - Try the grouped inline-OOS Resolve path.
+ * heap_oos_read_dbvalues_grouped_if_needed () - Try the grouped lazy OOS Resolve path.
  *
  *   return: NO_ERROR or error from the grouped read.
  *   handled(out): true iff this function read all requested values through the grouped path.
@@ -583,7 +584,7 @@ heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes
 
   for (i = 0; i < attr_info->num_values && oos_count < 2; i++)
     {
-      if (heap_oos_attr_inline_ptr (recdes, &attr_info->values[i]) != NULL)
+      if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
 	{
 	  oos_count++;
 	}
@@ -596,6 +597,51 @@ heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes
 
   *handled = true;
   return heap_oos_read_dbvalues_grouped (thread_p, recdes, attr_info);
+}
+
+/*
+ * heap_oos_insert_serialized_values () - Insert already-serialized attribute payloads into
+ *   the class OOS file.
+ *
+ * heap_file.c keeps DB_VALUE-to-RECDES serialization, including the BLOB/CLOB ELO-locator copy
+ * step. This helper owns the OOS side of the write: class OOS file lookup, insert-publication state
+ * reset, and the batched OOS API call.
+ */
+SCAN_CODE
+heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
+				   cubbase::span<oos_insert_request> requests)
+{
+  HFID oos_hfid;
+  VFID oos_vfid;
+  LOG_TDES *tdes;
+  int tran_index;
+
+  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+    {
+      return S_ERROR;
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.clear ();
+
+  if (!requests.empty () && oos_insert_many (thread_p, oos_vfid, requests) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  return S_SUCCESS;
 }
 
 /*

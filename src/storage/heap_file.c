@@ -10508,7 +10508,8 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
 }
 
 /*
- * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
+ * heap_attrvalue_read_oos_inline () - Resolve an OOS-marked variable attribute from its inline
+ *   OOS reference.
  *
  *   return: NO_ERROR, or an error code when the inline header / OOS page is
  *           corrupted or the payload buffer cannot be obtained. On every error
@@ -10530,7 +10531,8 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
-  /* Cases 1-3: corrupted inline header; raw->data points at the inline region here. */
+  /* raw->data still points at the heap record's OOS inline reference; parse it before attaching
+   * any scratch/heap buffer to raw. */
   error = heap_oos_parse_inline_ref (recdes, raw->data, &oos_oid, &oos_len);
   if (error != NO_ERROR)
     {
@@ -10580,7 +10582,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
 /*
  * heap_attrvalue_point_variable () -
  *
- *   return: NO_ERROR, or an error code propagated from the inline-OOS read or
+ *   return: NO_ERROR, or an error code propagated from the OOS inline-reference read or
  *           raised when the variable offset table header is inconsistent.
  *   recdes(in): Record
  *   attr_info(in): The attribute information structure
@@ -10650,6 +10652,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *   data(in): Disk value pointer
  *   length(in): Disk value length
  *
+ * Note: exported only for heap_oos.cpp's grouped lazy Resolve path, which already owns an OOS
+ * raw buffer and must transform it with the same scalar read contract.
  */
 int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
@@ -10711,6 +10715,7 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
  *   attr_info(in/out): The attribute information structure
  *
  * Note: Read the dbvalue of the given value attribute information.
+ * Note: exported only for heap_oos.cpp's grouped lazy Resolve fallback for non-OOS/default attrs.
  */
 int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
@@ -10718,7 +10723,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
-  /* Stack scratch for inline-OOS reads up to one I/O page; larger payloads heap-alloc. */
+  /* Stack scratch for OOS inline-reference reads up to one I/O page; larger payloads heap-alloc. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int error;
@@ -10827,7 +10832,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
-  /* Stack scratch for inline-OOS reads up to one I/O page on the hot index-key path. */
+  /* Stack scratch for OOS inline-reference reads up to one I/O page on the hot index-key path. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
   int i;
@@ -12465,40 +12470,24 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
   return S_SUCCESS;
 }
 
+/*
+ * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
+ *
+ * Serialization stays in heap_file.c because it shares DB_VALUE-to-RECDES conversion, including
+ * the BLOB/CLOB ELO-locator copy step, with the inline record writer. heap_oos.cpp owns OOS file
+ * lookup, publication-state reset, and the batched OOS insert call.
+ */
 // *INDENT-OFF*
 static SCAN_CODE
-heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag, std::vector<bool> * oos_columns, std::vector<OID> * oos_oids, std::vector<DB_BIGINT> * oos_lengths)
+heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int lob_create_flag,
+			     std::vector<bool> * oos_columns, std::vector<OID> * oos_oids,
+			     std::vector<DB_BIGINT> * oos_lengths)
 // *INDENT-ON*
 
 {
-  HFID oos_hfid;
-  VFID oos_vfid;
-  LOG_TDES *tdes;
   std::vector < oos_insert_request > requests;
-  int tran_index;
   int i;
   SCAN_CODE scan_code = S_ERROR;
-
-  if (heap_get_class_info (thread_p, &attr_info->class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
-  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
-    {
-      return S_ERROR;
-    }
-
-  /* Find transaction descriptor for current logging transaction */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return S_ERROR;
-    }
-
-  tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.clear ();
 
   try
   {
@@ -12543,9 +12532,9 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
       requests.push_back (request);
     }
 
-  if (!requests.empty ()
-      && oos_insert_many (thread_p, oos_vfid, cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
-      != NO_ERROR)
+  if (heap_oos_insert_serialized_values (thread_p, &attr_info->class_oid,
+					 cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
+      != S_SUCCESS)
     {
       goto cleanup;
     }

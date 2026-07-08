@@ -24,6 +24,7 @@
 #define _HEAP_OOS_HPP_
 
 #include "heap_file.h"
+#include "oos_file.hpp"
 #include "storage_common.h"
 
 enum heap_oos_demote_priority
@@ -61,14 +62,19 @@ heap_oos_demote_candidate_precedes (const heap_oos_demote_candidate &a, const he
 
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
 
-/* Grouped inline-OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
+/* Grouped lazy OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
 
 /* Parse an OOS-marked variable attribute's inline reference [OID (8B) | full_length (8B)]. */
 extern int heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len);
 
-/* Try grouped inline-OOS Resolve. If handled is false, caller should use the scalar reader. */
+/* Try grouped lazy OOS Resolve. If handled is false, caller should use the scalar reader. */
 extern int heap_oos_read_dbvalues_grouped_if_needed (THREAD_ENTRY *thread_p, RECDES *recdes,
     HEAP_CACHE_ATTRINFO *attr_info, bool *handled);
+
+/* Insert already-serialized attribute values into the class OOS file. Attribute serialization stays
+ * in heap_file.c; OOS lookup, insert-publication reset, and oos_insert_many live in heap_oos.cpp. */
+extern SCAN_CODE heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
+    cubbase::span<oos_insert_request> requests);
 
 /* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
  * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */
