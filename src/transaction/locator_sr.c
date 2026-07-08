@@ -5350,8 +5350,6 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       return error_code;
     }
 
-  oos_push_oos_oid (thread_p, &oos_oid);
-
   return error_code;
 }
 

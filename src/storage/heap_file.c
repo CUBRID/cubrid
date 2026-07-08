@@ -82,8 +82,10 @@
 #include "tde.h"
 
 #include <algorithm>
+#include <new>
 #include <set>
 #include <utility>
+#include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -10479,8 +10481,80 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 }
 
 /*
+ * heap_attrvalue_get_vot_entry () - Read the raw variable offset table entry
+ *   (offset value plus flag bits) of a variable attribute.
+ *
+ *   return: true on success, false when the record's offset size is corrupted
+ *           (no error is set; callers decide how to report it).
+ */
+static bool
+heap_attrvalue_get_vot_entry (RECDES * recdes, int location, int *entry_out)
+{
+  int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+
+  switch (offset_size)
+    {
+    case OR_BYTE_SIZE:
+      *entry_out =
+	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
+      return true;
+    case OR_SHORT_SIZE:
+      *entry_out =
+	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
+      return true;
+    case OR_INT_SIZE:
+      *entry_out =
+	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * heap_attrvalue_parse_oos_inline () - Validate and parse the inline header of an
+ *   OOS-marked variable attribute. Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ *
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the header is corrupted
+ *           (Cases 1-3 of the inline-OOS read contract).
+ *   inline_ptr(in): start of the OOS-marked variable region inside recdes
+ */
+static int
+heap_attrvalue_parse_oos_inline (RECDES * recdes, const char *inline_ptr, OID * oos_oid, DB_BIGINT * oos_len)
+{
+  OR_BUF buf;
+  int rc = NO_ERROR;
+
+  /* Keep the OID well-defined before any er_set: Case 1 reports it before it is read. */
+  OID_SET_NULL (oos_oid);
+  *oos_len = 0;
+
+  buf.ptr = (char *) inline_ptr;
+  buf.endptr = recdes->data + recdes->length;
+
+  /* Case 1: the OOS-marked variable region must start with [OID | bigint]. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  or_get_oid (&buf, oos_oid);
+  *oos_len = or_get_bigint (&buf, &rc);
+
+  /* Case 2: bigint read failed or the forwarder OID is NULL.
+   * Case 3: full length out of the (0, INT_MAX] range a single record can hold. */
+  if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * heap_attrvalue_read_oos_inline () - Resolve an inline-OOS variable attribute.
- *   Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
  *
  *   return: NO_ERROR, or an error code when the inline header / OOS page is
  *           corrupted or the payload buffer cannot be obtained. On every error
@@ -10497,47 +10571,18 @@ static int
 heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
 				bool * oos_owned_buffer)
 {
-  OR_BUF buf;
   OID oos_oid;
   DB_BIGINT oos_len;
-  int rc = NO_ERROR;
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
-  /* Keep the OID well-defined before any er_set: Case 1 reports it before it is read. */
-  OID_SET_NULL (&oos_oid);
-
-  buf.ptr = raw->data;
-  buf.endptr = recdes->data + recdes->length;
-
-  /* Case 1: the OOS-marked variable region must start with [OID | bigint]. */
-  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+  /* Cases 1-3: corrupted inline header; raw->data points at the inline region here. */
+  error = heap_attrvalue_parse_oos_inline (recdes, raw->data, &oos_oid, &oos_len);
+  if (error != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
       raw->data = NULL;
       *oos_owned_buffer = false;
-      return ER_HEAP_OOS_BAD_INLINE_HEADER;
-    }
-
-  or_get_oid (&buf, &oos_oid);
-  oos_len = or_get_bigint (&buf, &rc);
-
-  /* Case 2: bigint read failed or the forwarder OID is NULL. */
-  if (rc != NO_ERROR || OID_ISNULL (&oos_oid))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
-      raw->data = NULL;
-      *oos_owned_buffer = false;
-      return ER_HEAP_OOS_BAD_INLINE_HEADER;
-    }
-
-  /* Case 3: full length out of the (0, INT_MAX] range a single record can hold. */
-  if (oos_len <= 0 || oos_len > (DB_BIGINT) INT_MAX)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_oid));
-      raw->data = NULL;
-      *oos_owned_buffer = false;
-      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+      return error;
     }
 
   thread_p = thread_get_thread_entry_info ();
@@ -10597,7 +10642,6 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
 {
   int offset;
-  int offset_size;
 
   *oos_owned_buffer = false;
 
@@ -10609,23 +10653,8 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 
   /* the variable attribute is bound. */
   /* find its location through the variable offset attribute table. */
-  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
-  switch (offset_size)
+  if (!heap_attrvalue_get_vot_entry (recdes, attrepr->location, &offset))
     {
-    case OR_BYTE_SIZE:
-      offset =
-	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
-      break;
-    case OR_SHORT_SIZE:
-      offset =
-	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR
-		      (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
-      break;
-    case OR_INT_SIZE:
-      offset =
-	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), attrepr->location, offset_size));
-      break;
-    default:
       /* Case D: corrupt offset_size. Return now so the indeterminate `offset` below is never read. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
@@ -10795,6 +10824,166 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   return error;
+}
+
+/*
+ * heap_attrvalue_oos_inline_ptr () - Probe whether a requested attribute is an
+ *   inline-OOS variable attribute in this recdes.
+ *
+ *   return: pointer to the attribute's inline OOS header, or NULL when it is not
+ *           an inline-OOS value here (any condition the scalar read path either
+ *           skips or reports itself, including a corrupt offset size).
+ */
+static const char *
+heap_attrvalue_oos_inline_ptr (RECDES * recdes, HEAP_ATTRVALUE * value)
+{
+  OR_ATTRIBUTE *attrepr = value->read_attrepr;
+  int vot_entry;
+
+  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
+    {
+      return NULL;
+    }
+
+  if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
+      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
+      || OR_VAR_IS_NULL (recdes->data, attrepr->location))
+    {
+      return NULL;
+    }
+
+  if (!heap_attrvalue_get_vot_entry (recdes, attrepr->location, &vot_entry) || !OR_IS_OOS (vot_entry))
+    {
+      return NULL;
+    }
+
+  return recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+}
+
+/*
+ * heap_attrinfo_read_dbvalues_batched_oos () - Resolve all requested inline-OOS
+ *   attributes of one record through a single grouped oos_read_many() call and
+ *   read the remaining attributes with the scalar reader.
+ *
+ *   The dispatcher only routes records with at least two requested OOS values
+ *   here; non-OOS and single-OOS reads keep the scalar path.
+ */
+static int
+heap_attrinfo_read_dbvalues_batched_oos (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
+  std::vector < RECDES > raws;
+  std::vector < oos_read_request > requests;
+  int error = NO_ERROR;
+  int i;
+
+  try
+  {
+    raws.resize ((std::size_t) attr_info->num_values, empty_raw);
+    requests.reserve ((std::size_t) attr_info->num_values);
+  }
+  catch (std::bad_alloc &)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	    (size_t) attr_info->num_values * (sizeof (RECDES) + sizeof (oos_read_request)));
+    return ER_OUT_OF_VIRTUAL_MEMORY;
+  }
+
+  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
+    {
+      const char *inline_ptr = heap_attrvalue_oos_inline_ptr (recdes, &attr_info->values[i]);
+      OID oos_oid;
+      DB_BIGINT oos_len;
+
+      if (inline_ptr == NULL)
+	{
+	  continue;		/* not OOS here: read below with the scalar reader */
+	}
+
+      error = heap_attrvalue_parse_oos_inline (recdes, inline_ptr, &oos_oid, &oos_len);
+      if (error == NO_ERROR && recdes_allocate_data_area (&raws[i], (int) oos_len) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (error == NO_ERROR)
+	{
+	  raws[i].length = (int) oos_len;
+	  oos_read_request request = { oos_oid, oos_buffer (raws[i].data, (std::size_t) oos_len) };
+	  requests.push_back (request);
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = oos_read_many (thread_p, cubbase::span < oos_read_request > (requests.data (), requests.size ()));
+    }
+
+  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
+    {
+      if (raws[i].data != NULL)
+	{
+	  /* Heap-backed raw buffer: transform copies the value; the buffer is freed below. */
+	  error = heap_attrvalue_transform_to_dbvalue (&attr_info->values[i], attr_info->values[i].read_attrepr,
+						       &raws[i], true);
+	}
+      else
+	{
+	  error = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
+	}
+    }
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (raws[i].data != NULL)
+	{
+	  recdes_free_data_area (&raws[i]);
+	}
+    }
+
+  return error;
+}
+
+/*
+ * heap_attrinfo_read_dbvalues_internal () - Read the dbvalues of all requested
+ *   attributes from recdes.
+ *
+ *   OOS dispatch: grouped Resolve pays off only when it can batch OOS page fixes,
+ *   so records with two or more requested inline-OOS values take the batched path;
+ *   everything else keeps the scalar loop and its stack-scratch fast path.
+ */
+static int
+heap_attrinfo_read_dbvalues_internal (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+{
+  int i, ret;
+
+  if (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes))
+    {
+      int oos_count = 0;
+
+      for (i = 0; i < attr_info->num_values && oos_count < 2; i++)
+	{
+	  if (heap_attrvalue_oos_inline_ptr (recdes, &attr_info->values[i]) != NULL)
+	    {
+	      oos_count++;
+	    }
+	}
+      if (oos_count >= 2)
+	{
+	  return heap_attrinfo_read_dbvalues_batched_oos (thread_p, recdes, attr_info);
+	}
+    }
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10995,9 +11184,7 @@ int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 			     HEAP_CACHE_ATTRINFO * attr_info)
 {
-  int i;
   REPR_ID reprid;		/* The disk representation of the object */
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
 
   /* check to make sure the attr_info has been used */
@@ -11029,14 +11216,10 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
    * Go over each attribute and read it
    */
 
-  for (i = 0; i < attr_info->num_values; i++)
+  ret = heap_attrinfo_read_dbvalues_internal (thread_p, recdes, attr_info);
+  if (ret != NO_ERROR)
     {
-      value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
 
   /*
@@ -11058,9 +11241,7 @@ exit_on_error:
 int
 heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  int i;
   REPR_ID reprid;		/* The disk representation of the object */
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
 
   /* check to make sure the attr_info has been used */
@@ -11092,14 +11273,10 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
    * Go over each attribute and read it
    */
 
-  for (i = 0; i < attr_info->num_values; i++)
+  ret = heap_attrinfo_read_dbvalues_internal (thread_p, recdes, attr_info);
+  if (ret != NO_ERROR)
     {
-      value = &attr_info->values[i];
-      ret = heap_attrvalue_read (recdes, value, attr_info);
-      if (ret != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
+      goto exit_on_error;
     }
 
   return ret;
@@ -12446,6 +12623,11 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
     {
       recdes->area_size = length;
       recdes->data = (char *) malloc (length);
+      if (recdes->data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) length);
+	  return S_ERROR;
+	}
     }
 
   buf.ptr = buf.buffer = recdes->data;
@@ -12462,19 +12644,13 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 // *INDENT-ON*
 
 {
-  char recbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   HFID oos_hfid;
   VFID oos_vfid;
-  OID oos_oid;
-  RECDES recdes;
   LOG_TDES *tdes;
+  std::vector < oos_insert_request > requests;
   int tran_index;
   int i;
-
-  recdes.area_size = IO_MAX_PAGE_SIZE;
-  recdes.length = 0;
-  recdes.data = PTR_ALIGN (recbuf, MAX_ALIGNMENT);
-  recdes.type = REC_HOME;
+  SCAN_CODE scan_code = S_ERROR;
 
   if (heap_get_class_info (thread_p, &attr_info->class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
     {
@@ -12494,53 +12670,68 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
       return S_ERROR;
     }
 
-  /* init oos tracking info */
   tdes->oos_insert_lsa_queue.clear ();
   thread_p->oos_oids.clear ();
 
+  try
+  {
+    requests.reserve (attr_info->num_values);
+  }
+  catch (std::bad_alloc &)
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	    (size_t) attr_info->num_values * sizeof (oos_insert_request));
+    return S_ERROR;
+  }
+
   for (i = 0; i < attr_info->num_values; i++)
     {
-      /* is this oos column ? */
-      if ((*oos_columns)[i])
+      /* An empty recdes makes heap_attrinfo_dbvalue_to_recdes malloc an exact-size buffer;
+       * ownership moves into requests[] and is released at cleanup on every path. */
+      RECDES recdes = { 0, 0, REC_HOME, NULL };
+
+      if (!(*oos_columns)[i])
 	{
-	  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
-	  assert (!attr_info->values[i].last_attrepr->is_fixed);
-
-	  /* heap_attrinfo_dbvalue_to_recdes may replace recdes.data with a malloc'd
-	   * buffer when the dbvalue doesn't fit the stack scratch. Both failure
-	   * branches below must reach the cleanup at error_oos. */
-	  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
-					       &recdes) != S_SUCCESS)
-	    {
-	      goto error_oos;
-	    }
-	  if (oos_insert (thread_p, oos_vfid, oos_buffer (recdes.data, (size_t) recdes.length), oos_oid) != NO_ERROR)
-	    {
-	      goto error_oos;
-	    }
-
-	  thread_p->oos_oids.push_back (oos_oid);	/* for replication log */
-	  (*oos_oids)[i] = oos_oid;
-	  (*oos_lengths)[i] = (DB_BIGINT) recdes.length;
-	  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
-	    {
-	      free_and_init (recdes.data);
-	      recdes.area_size = IO_MAX_PAGE_SIZE;
-	      recdes.data = PTR_ALIGN (recbuf, MAX_ALIGNMENT);
-	    }
+	  continue;
 	}
+
+      assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[i].dbvalue));
+      assert (!attr_info->values[i].last_attrepr->is_fixed);
+
+      if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[i], attr_info->class_oid, lob_create_flag,
+					   &recdes) != S_SUCCESS)
+	{
+	  goto cleanup;
+	}
+
+      if (recdes.data == NULL || recdes.length <= 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  free_and_init (recdes.data);
+	  goto cleanup;
+	}
+
+      (*oos_lengths)[i] = (DB_BIGINT) recdes.length;
+      oos_insert_request request = { oos_buffer (recdes.data, (size_t) recdes.length), &(*oos_oids)[i] };
+      requests.push_back (request);
     }
 
-  /* here: or vectorize the DB_VALUEs and insert at once */
-
-  return S_SUCCESS;
-
-error_oos:
-  if (recdes.data != PTR_ALIGN (recbuf, MAX_ALIGNMENT))
+  if (!requests.empty ()
+      && oos_insert_many (thread_p, oos_vfid, cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
+      != NO_ERROR)
     {
-      free_and_init (recdes.data);
+      goto cleanup;
     }
-  return S_ERROR;
+
+  scan_code = S_SUCCESS;
+
+cleanup:
+  for (std::size_t request_index = 0; request_index < requests.size (); request_index++)
+    {
+      char *request_data = requests[request_index].src.data ();
+      free_and_init (request_data);
+    }
+  return scan_code;
 }
 
 /*

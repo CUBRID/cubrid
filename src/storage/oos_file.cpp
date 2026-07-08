@@ -18,6 +18,8 @@
 
 #include <cassert>
 #include <cstring>
+#include <new>
+#include <vector>
 #include "byte_span_writer.hpp"
 #include "error_code.h"
 #include "error_manager.h"
@@ -53,11 +55,20 @@ static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			 OID &oid);
 static int
+oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
+			      cubbase::span<oos_insert_request> requests,
+			      int needed_space);
+static int
+oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oid,
+			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
+static int
 oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
 		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out);
 static int
 oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 		       int total_data_length, cubbase::byte_span_writer &writer);
+static int
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid);
 static void
 oos_log_insert_physical (THREAD_ENTRY *thread_p, PAGE_PTR page_p, VFID *vfid_p, OID *oid_p, RECDES *recdes_p);
 static void
@@ -70,6 +81,12 @@ int oos_get_max_chunk_size_within_page ();
 
 static bool
 oos_needs_repl_tracking (THREAD_ENTRY *thread_p);
+
+static void
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid);
+
+static void
+oos_clear_insert_publication_state (THREAD_ENTRY *thread_p);
 
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out);
@@ -116,6 +133,15 @@ static OOS_STATS_BESTSPACE_CACHE oos_Bestspace_cache_area =
 static OOS_STATS_BESTSPACE_CACHE *oos_Bestspace = NULL;
 
 static const int oos_Find_best_page_limit = 100;
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+static oos_debug_counters oos_Debug_counters = { };
+#define OOS_COUNTER_ADD(field, value) (oos_Debug_counters.field += (unsigned long long) (value))
+#define OOS_COUNTER_INC(field) OOS_COUNTER_ADD (field, 1)
+#else
+#define OOS_COUNTER_ADD(field, value) do { } while (0)
+#define OOS_COUNTER_INC(field) do { } while (0)
+#endif
 
 // ****************************************************************************
 // OOS Bestspace — hash and compare functions
@@ -1043,6 +1069,24 @@ oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_REC
   return NO_ERROR;
 }
 
+static void
+oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
+{
+  thread_p->oos_oids.push_back (oid);
+}
+
+static void
+oos_clear_insert_publication_state (THREAD_ENTRY *thread_p)
+{
+  thread_p->oos_oids.clear ();
+
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes != NULL)
+    {
+      tdes->oos_insert_lsa_queue.clear ();
+    }
+}
 
 int
 oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid)
@@ -1075,8 +1119,160 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
       err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
     }
 
+  if (err == NO_ERROR)
+    {
+      oos_publish_oos_oid (thread_p, oid);
+    }
+
   oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
   return err;
+}
+
+static int
+oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
+			      cubbase::span<oos_insert_request> requests,
+			      int needed_space)
+{
+  int err = NO_ERROR;
+  VPID vpid;
+
+  auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, needed_space, vpid);
+  if (auto_page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  PAGE_PTR page_ptr = auto_page_ptr.get ();
+  /* Freshly allocated pages and fully emptied reused pages both give the batch a clean page. */
+  const bool page_was_empty = (spage_number_of_records (page_ptr) == 0);
+
+  for (std::size_t i = 0; i < requests.size (); i++)
+    {
+      oos_insert_request &request = requests[i];
+      const int src_len = static_cast<int> (request.src.size ());
+      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+
+      OOS_RECDES oos_recdes{};
+      err = oos_prepend_header (request.src, header, oos_recdes);
+      if (err != NO_ERROR)
+	{
+	  oos_error ("oos_prepend_header failed in oos_insert_single_page_batch");
+	  return err;
+	}
+
+      scope_exit defer_oos_recdes_free ([&]()
+      {
+	recdes_free_data_area (&oos_recdes);
+      });
+
+      PGSLOTID slotid = NULL_SLOTID;
+      int sp_status = spage_insert (thread_p, page_ptr, &oos_recdes, &slotid);
+      if (sp_status != SP_SUCCESS)
+	{
+	  oos_error ("spage_insert failed with status %d in oos_insert_single_page_batch", sp_status);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+
+      assert (slotid != NULL_SLOTID);
+
+      OID oid;
+      oid.pageid = vpid.pageid;
+      oid.slotid = slotid;
+      oid.volid = vpid.volid;
+
+      *request.oid_out = oid;
+
+      oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
+      oos_publish_oos_oid (thread_p, oid);
+    }
+
+  int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
+  (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
+
+  OOS_COUNTER_INC (single_page_batch_count);
+  OOS_COUNTER_ADD (insert_values_per_fixed_page, requests.size ());
+  if (page_was_empty)
+    {
+      OOS_COUNTER_INC (insert_fresh_pages);
+    }
+  else
+    {
+      OOS_COUNTER_INC (insert_reused_pages);
+    }
+
+  return NO_ERROR;
+}
+
+int
+oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests)
+{
+  OOS_COUNTER_INC (insert_many_calls);
+  OOS_COUNTER_ADD (insert_many_requests, requests.size ());
+
+  for (std::size_t i = 0; i < requests.size (); i++)
+    {
+      if (requests[i].src.data () == nullptr || requests[i].src.size () == 0
+	  || requests[i].src.size () > (std::size_t) INT_MAX || requests[i].oid_out == NULL)
+	{
+	  oos_error ("oos_insert_many rejected invalid request %zu (data=%p, size=%zu, oid_out=%p)",
+		     i, requests[i].src.data (), requests[i].src.size (), (void *) requests[i].oid_out);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+
+  const int max_chunk_size = oos_get_max_chunk_size_within_page ();
+  const int page_capacity = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
+  const auto required_space = [] (const oos_insert_request &request)
+  {
+    return DB_ALIGN (static_cast<int> (request.src.size ()) + OOS_RECORD_HEADER_SIZE, OOS_ALIGNMENT);
+  };
+
+  std::size_t pos = 0;
+  while (pos < requests.size ())
+    {
+      int err;
+
+      if (requests[pos].src.size () > (std::size_t) max_chunk_size)
+	{
+	  OID oid;
+	  err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid);
+	  if (err == NO_ERROR)
+	    {
+	      *requests[pos].oid_out = oid;
+	      oos_publish_oos_oid (thread_p, oid);
+	      pos++;
+	    }
+	}
+      else
+	{
+	  /* Greedy batch: extend while the next single-chunk request still fits the same page. */
+	  int needed_space = required_space (requests[pos]);
+	  std::size_t batch_end = pos + 1;
+
+	  assert (needed_space <= page_capacity);
+	  while (batch_end < requests.size () && requests[batch_end].src.size () <= (std::size_t) max_chunk_size
+		 && needed_space + (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]) <= page_capacity)
+	    {
+	      needed_space += (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]);
+	      batch_end++;
+	    }
+
+	  err = oos_insert_single_page_batch (thread_p, oos_vfid, requests.subspan (pos, batch_end - pos),
+					      needed_space);
+	  pos = batch_end;
+	}
+
+      if (err != NO_ERROR)
+	{
+	  oos_clear_insert_publication_state (thread_p);
+	  return err;
+	}
+    }
+
+  return NO_ERROR;
 }
 
 
@@ -1094,8 +1290,8 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
 //     oos_insert_lsa_queue : [..., dummy_lsa, tail_chunk_lsa]
 //     oos_oids             : [..., oid_Null_oid]
 //
-//   The immediate caller (heap_file.c) will push the real head-chunk OID after this
-//   function returns, so the final pairing becomes oos_oids=[..., null, real_oid]
+//   The public insert API pushes the real head-chunk OID after this function returns,
+//   so the final pairing becomes oos_oids=[..., null, real_oid]
 //   with queue=[..., dummy_lsa, tail_chunk_lsa]. The replication path then emits
 //   one RVREPL_DUMMY_OOS_RECORD for the null OID (pops dummy_lsa) followed by one
 //   RVREPL_OOS_INSERT for the real OID (pops tail_chunk_lsa). Intermediate
@@ -1262,27 +1458,14 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
 }
 
 
+/* Reads one chunk from an already-fixed OOS page: copies the chain header to
+ * header_out and appends the chunk payload to writer. */
 static int
-oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
-		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
+oos_read_chunk_in_page (THREAD_ENTRY *thread_p, PAGE_PTR page_ptr, const OID &oid,
+			cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
 {
-  const auto [pageid, slotid, volid] = oid;
-  auto vpid = VPID{pageid, volid};
-
-  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-  if (page_ptr == nullptr)
-    {
-      oos_error ("pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
-      assert_release_error (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
-  scope_exit page_unfixer ([&]()
-  {
-    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
-  });
-
   OOS_RECDES oos_recdes;
-  SCAN_CODE code = spage_get_record (thread_p, page_ptr, slotid, &oos_recdes, PEEK);
+  SCAN_CODE code = spage_get_record (thread_p, page_ptr, oid.slotid, &oos_recdes, PEEK);
   if (code != S_SUCCESS)
     {
       oos_error ("spage_get_record failed (code=%d) at oid={vol=%d,page=%d,slot=%d}", (int) code, OID_AS_ARGS (&oid));
@@ -1315,6 +1498,28 @@ oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
       return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
   return NO_ERROR;
+}
+
+
+static int
+oos_read_within_page (THREAD_ENTRY *thread_p, const OID &oid,
+		      cubbase::byte_span_writer &writer, OOS_RECORD_HEADER &header_out)
+{
+  auto vpid = VPID{oid.pageid, oid.volid};
+
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      oos_error ("pgbuf_fix failed at oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  scope_exit page_unfixer ([&]()
+  {
+    pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+  });
+
+  return oos_read_chunk_in_page (thread_p, page_ptr, oid, writer, header_out);
 }
 
 
@@ -1362,6 +1567,32 @@ oos_read_across_pages (THREAD_ENTRY *thread_p, const OID &next_oid,
 }
 
 
+/* Head-chunk validation shared by oos_read and oos_read_many: the caller's OID must be
+ * the chain head (a mid-chain target means a corrupted inline OID), and the caller's
+ * inline length (dest.size()) must agree with the chain header. */
+static int
+oos_check_head_header (const OOS_RECORD_HEADER &header, int expected_length, const OID &oid)
+{
+  assert (header.chunk_index == 0);
+  if (header.chunk_index != 0)
+    {
+      oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
+		 header.chunk_index, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
+  if (header.total_data_length != expected_length)
+    {
+      oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",
+		 expected_length, header.total_data_length, OID_AS_ARGS (&oid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+  return NO_ERROR;
+}
+
+
 /* Cross-validates dest.size() against the chain header's total_data_length;
  * mismatch (corruption) is rejected. byte_span_writer guards each chunk
  * against payload_len overflow inside the loop. */
@@ -1376,28 +1607,13 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
   OOS_RECORD_HEADER first_header;
 
   int err = oos_read_within_page (thread_p, oid, writer, first_header);
+  if (err == NO_ERROR)
+    {
+      err = oos_check_head_header (first_header, expected_length, oid);
+    }
   if (err != NO_ERROR)
     {
       return err;
-    }
-
-  /* Caller's OID must be the chain head; mid-chain target = corrupted inline OID. */
-  assert (first_header.chunk_index == 0);
-  if (first_header.chunk_index != 0)
-    {
-      oos_error ("OOS read at non-head chunk: chunk_index=%d at oid={vol=%d,page=%d,slot=%d}",
-		 first_header.chunk_index, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-      return ER_HEAP_OOS_CORRUPTED_RECORD;
-    }
-
-  /* Inline length (dest.size()) and chain header must agree. */
-  if (first_header.total_data_length != expected_length)
-    {
-      oos_error ("OOS length mismatch: caller=%d header=%d at oid={vol=%d,page=%d,slot=%d}",
-		 expected_length, first_header.total_data_length, OID_AS_ARGS (&oid));
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-      return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
 
   if (!OID_ISNULL (&first_header.next_chunk_oid))
@@ -1417,6 +1633,136 @@ oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest)
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
       return ER_HEAP_OOS_CORRUPTED_RECORD;
     }
+  return NO_ERROR;
+}
+
+/* Grouped OOS read: requests whose head chunks share a page are resolved under one
+ * page fix. Multi-chunk chains are continued after the shared page is unfixed so
+ * only one OOS page stays fixed at a time (same as the scalar oos_read). */
+int
+oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests)
+{
+  struct oos_read_continuation
+  {
+    oos_read_request *request;
+    OID next_oid;
+    std::size_t head_payload_size;
+  };
+
+  OOS_COUNTER_INC (read_many_calls);
+  OOS_COUNTER_ADD (read_many_requests, requests.size ());
+
+  for (std::size_t i = 0; i < requests.size (); i++)
+    {
+      if (OID_ISNULL (&requests[i].oid) || requests[i].dest.data () == nullptr || requests[i].dest.size () == 0
+	  || requests[i].dest.size () > (std::size_t) INT_MAX)
+	{
+	  oos_error ("oos_read_many rejected invalid request %zu (oid={vol=%d,page=%d,slot=%d}, data=%p, size=%zu)",
+		     i, OID_AS_ARGS (&requests[i].oid), requests[i].dest.data (), requests[i].dest.size ());
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+    }
+
+  try
+    {
+      std::vector<bool> done (requests.size (), false);
+      std::vector<oos_read_continuation> continuations;
+
+      for (std::size_t i = 0; i < requests.size (); i++)
+	{
+	  if (done[i])
+	    {
+	      continue;
+	    }
+
+	  VPID vpid = { requests[i].oid.pageid, requests[i].oid.volid };
+	  continuations.clear ();
+
+	  {
+	    PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	    if (page_ptr == nullptr)
+	      {
+		oos_error ("pgbuf_fix failed for grouped OOS read at vpid={vol=%d,page=%d}", vpid.volid, vpid.pageid);
+		assert_release_error (er_errid () != NO_ERROR);
+		return er_errid ();
+	      }
+	    scope_exit page_unfixer ([&]()
+	    {
+	      pgbuf_unfix_and_init_after_check (thread_p, page_ptr);
+	    });
+
+	    OOS_COUNTER_INC (read_many_grouped_head_pages);
+
+	    /* Resolve every request whose head chunk lives on this fixed page. */
+	    for (std::size_t j = i; j < requests.size (); j++)
+	      {
+		const VPID request_vpid = { requests[j].oid.pageid, requests[j].oid.volid };
+		if (done[j] || !VPID_EQ (&request_vpid, &vpid))
+		  {
+		    continue;
+		  }
+		done[j] = true;
+		OOS_COUNTER_INC (read_values_per_fixed_page);
+
+		cubbase::byte_span_writer writer (requests[j].dest);
+		OOS_RECORD_HEADER header;
+
+		int err = oos_read_chunk_in_page (thread_p, page_ptr, requests[j].oid, writer, header);
+		if (err == NO_ERROR)
+		  {
+		    err = oos_check_head_header (header, static_cast<int> (requests[j].dest.size ()), requests[j].oid);
+		  }
+		if (err != NO_ERROR)
+		  {
+		    return err;
+		  }
+
+		if (!OID_ISNULL (&header.next_chunk_oid))
+		  {
+		    continuations.push_back ({ &requests[j], header.next_chunk_oid, writer.written () });
+		  }
+		else if (!writer.full ())
+		  {
+		    oos_error ("OOS final length mismatch: written=%zu expected=%zu at oid={vol=%d,page=%d,slot=%d}",
+			       writer.written (), requests[j].dest.size (), OID_AS_ARGS (&requests[j].oid));
+		    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+		    return ER_HEAP_OOS_CORRUPTED_RECORD;
+		  }
+	      }
+	  }
+
+	  for (const oos_read_continuation &continuation : continuations)
+	    {
+	      oos_read_request &request = *continuation.request;
+	      cubbase::byte_span_writer writer (request.dest.subspan (continuation.head_payload_size));
+
+	      int err = oos_read_across_pages (thread_p, continuation.next_oid,
+					       static_cast<int> (request.dest.size ()), writer);
+	      if (err != NO_ERROR)
+		{
+		  return err;
+		}
+
+	      if (!writer.full ())
+		{
+		  oos_error ("OOS final continuation length mismatch: written=%zu expected_remaining=%zu"
+			     " at oid={vol=%d,page=%d,slot=%d}",
+			     writer.written (), request.dest.size () - continuation.head_payload_size,
+			     OID_AS_ARGS (&request.oid));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+		  return ER_HEAP_OOS_CORRUPTED_RECORD;
+		}
+	    }
+	}
+    }
+  catch (std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      requests.size () * sizeof (oos_read_continuation));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
   return NO_ERROR;
 }
 
@@ -1990,12 +2336,6 @@ oos_get_length (THREAD_ENTRY *thread_p, const OID &oid)
 }
 
 
-void
-oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid)
-{
-  thread_p->oos_oids.push_back (*oid);
-}
-
 // ****************************************************************************
 // OOS stats for session-command verification (dev/debug)
 // ****************************************************************************
@@ -2192,5 +2532,17 @@ bridge_oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfi
 {
   return oos_stats_find_page_in_bestspace (thread_p, vfid, bestspace, idx_badspace,
 	 needed_space, out_vpid, out_pgptr);
+}
+
+void
+bridge_oos_debug_counters_reset ()
+{
+  oos_Debug_counters = { };
+}
+
+oos_debug_counters
+bridge_oos_debug_counters_get ()
+{
+  return oos_Debug_counters;
 }
 #endif
