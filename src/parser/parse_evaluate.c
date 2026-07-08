@@ -1173,7 +1173,6 @@ pt_evaluate_tree_internal (PARSER_CONTEXT * parser, PT_NODE * tree, DB_VALUE * d
 	  /* evaluate operands */
 	  if (!arg1 && op == PT_UNIX_TIMESTAMP)
 	    {
-	      assert (!DB_IS_NULL (&parser->sys_datetime));
 	      pr_clone_value (&parser->sys_datetime, &opd1);
 	    }
 	  else
