@@ -720,11 +720,11 @@ static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO *
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_read_dbvalues_scalar (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_read_dbvalues_grouped_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-						    std::vector < RECDES > *oos_raws);
-static int heap_attrinfo_read_dbvalues_from_recdes (THREAD_ENTRY * thread_p, RECDES * recdes,
-						    HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+							    std::vector < RECDES > *oos_raws);
+static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
+							  HEAP_CACHE_ATTRINFO * attr_info);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -10501,24 +10501,39 @@ int
 heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
 {
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  void *var_table;
+  char *entry_ptr;
 
   switch (offset_size)
     {
     case OR_BYTE_SIZE:
-      *entry_out =
-	OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return NO_ERROR;
     case OR_SHORT_SIZE:
-      *entry_out =
-	OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return NO_ERROR;
     case OR_INT_SIZE:
-      *entry_out =
-	OR_GET_INT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data), location, offset_size));
-      return NO_ERROR;
+      break;
     default:
       return ER_GENERIC_ERROR;
     }
+
+  var_table = OR_GET_OBJECT_VAR_TABLE (recdes->data);
+  entry_ptr = OR_VAR_TABLE_ELEMENT_PTR (var_table, location, offset_size);
+
+  switch (offset_size)
+    {
+    case OR_BYTE_SIZE:
+      *entry_out = OR_GET_BYTE (entry_ptr);
+      break;
+    case OR_SHORT_SIZE:
+      *entry_out = OR_GET_SHORT (entry_ptr);
+      break;
+    case OR_INT_SIZE:
+      *entry_out = OR_GET_INT (entry_ptr);
+      break;
+    default:
+      assert_release (false);
+      return ER_GENERIC_ERROR;
+    }
+
+  return NO_ERROR;
 }
 
 /*
@@ -10798,12 +10813,12 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 }
 
 /*
- * heap_attrinfo_read_dbvalues_scalar () - Read all requested DB_VALUEs through scalar attribute reads.
+ * heap_attrinfo_read_dbvalues_individually () - Read requested DB_VALUEs one attribute at a time.
  *
- *   Keeps the scalar OOS Resolve path and its stack-scratch fast path.
+ *   Keeps the per-attribute OOS Resolve path and its stack-scratch fast path.
  */
 static int
-heap_attrinfo_read_dbvalues_scalar (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
 {
   int i, ret;
 
@@ -10817,12 +10832,12 @@ heap_attrinfo_read_dbvalues_scalar (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_
 }
 
 /*
- * heap_attrinfo_read_dbvalues_grouped_oos () - Read requested DB_VALUEs using grouped OOS payloads
- *   where available, and the scalar reader for the remaining attributes.
+ * heap_attrinfo_read_dbvalues_from_prefetched_oos () - Read requested DB_VALUEs using prefetched OOS payloads
+ *   where available, and the per-attribute reader for the remaining attributes.
  */
 static int
-heap_attrinfo_read_dbvalues_grouped_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-					 std::vector < RECDES > *oos_raws)
+heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+						 std::vector < RECDES > *oos_raws)
 {
   int i, ret;
 
@@ -10844,14 +10859,15 @@ heap_attrinfo_read_dbvalues_grouped_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * 
 }
 
 /*
- * heap_attrinfo_read_dbvalues_from_recdes () - Shared read loop used by the public DB_VALUE read
+ * heap_attrinfo_read_dbvalues_with_oos_prefetch () - Shared read loop used by the public DB_VALUE read
  *   entry points after representation recache.
  *
  *   OOS payload prefetch is delegated to heap_oos.cpp. When grouped Resolve does not apply, raws is
- *   left empty and this keeps the scalar loop and its stack-scratch fast path.
+ *   left empty and this keeps the per-attribute loop and its stack-scratch fast path.
  */
 static int
-heap_attrinfo_read_dbvalues_from_recdes (THREAD_ENTRY * thread_p, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
+					       HEAP_CACHE_ATTRINFO * attr_info)
 {
   std::vector < RECDES > oos_raws;	/* grouped-prefetched OOS payloads; empty unless grouped path applies */
   int ret;
@@ -10865,10 +10881,10 @@ heap_attrinfo_read_dbvalues_from_recdes (THREAD_ENTRY * thread_p, RECDES * recde
 
   if (oos_raws.empty ())
     {
-      return heap_attrinfo_read_dbvalues_scalar (recdes, attr_info);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
     }
 
-  ret = heap_attrinfo_read_dbvalues_grouped_oos (recdes, attr_info, &oos_raws);
+  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_raws);
   heap_oos_free_grouped_payloads (oos_raws);
   return ret;
 }
@@ -11103,7 +11119,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
    * Go over each attribute and read it
    */
 
-  ret = heap_attrinfo_read_dbvalues_from_recdes (thread_p, recdes, attr_info);
+  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -11160,7 +11176,7 @@ heap_attrinfo_read_dbvalues_without_oid (THREAD_ENTRY * thread_p, RECDES * recde
    * Go over each attribute and read it
    */
 
-  ret = heap_attrinfo_read_dbvalues_from_recdes (thread_p, recdes, attr_info);
+  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;

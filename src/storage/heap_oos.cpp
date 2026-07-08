@@ -448,7 +448,7 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
  *
  *   return: pointer to the 16-byte [OOS OID | full length] reference in the variable area, or
  *           NULL when this requested attribute has no OOS reference in this record. NULL also
- *           covers conditions the scalar read path skips or reports itself, including corrupt
+ *           covers conditions the per-attribute read path skips or reports itself, including corrupt
  *           offset-size metadata.
  */
 static const char *
@@ -485,7 +485,7 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
  *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
  *   raws(out): left empty when grouped Resolve does not apply. Otherwise, resized to
  *              attr_info->num_values. raws[i].data != NULL holds the raw disk bytes of an OOS-resolved
- *              attribute; raws[i].data == NULL means "not OOS here: read with the scalar reader".
+ *              attribute; raws[i].data == NULL means "not OOS here: read per-attribute".
  *              Always release with heap_oos_free_grouped_payloads(), including on error (partial
  *              buffers may be attached).
  */
@@ -537,7 +537,7 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
       if (inline_ptr == NULL)
 	{
-	  continue;		/* not OOS here: the scalar reader handles it */
+	  continue;		/* not OOS here: the per-attribute reader handles it */
 	}
 
       error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
