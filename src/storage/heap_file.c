@@ -10798,7 +10798,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  * heap_attrinfo_read_dbvalues_internal () - Read the dbvalues of all requested
  *   attributes from recdes.
  *
- *   OOS dispatch is delegated to heap_oos.cpp. If grouped Resolve is not applicable,
+ *   OOS payload prefetch is delegated to heap_oos.cpp. If grouped Resolve is not applicable,
  *   keep the scalar loop and its stack-scratch fast path.
  */
 static int
