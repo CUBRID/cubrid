@@ -479,53 +479,57 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 }
 
 /*
- * heap_oos_read_grouped_payloads () - Prefetch every requested OOS-marked attribute of one record
- *   through a single grouped oos_read_many() call.
+ * heap_oos_read_grouped_payloads () - Prefetch requested OOS-marked attributes of one record
+ *   through a single grouped oos_read_many() call when requested_oos_count >= 2.
  *
  *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
- *   raws(out): left empty when grouped Resolve does not apply. Otherwise, resized to
- *              attr_info->num_values. raws[i].data != NULL holds the raw disk bytes of an OOS-resolved
- *              attribute; raws[i].data == NULL means "not OOS here: read per-attribute".
- *              Always release with heap_oos_free_grouped_payloads(), including on error (partial
- *              buffers may be attached).
+ *   requested_oos_count(out): exact count of requested attributes that have an OOS inline reference
+ *              in this record. The caller dispatches explicitly on 0, 1, or >= 2.
+ *   oos_payloads(out): resized and populated only when requested_oos_count >= 2. oos_payloads[i].data
+ *              != NULL holds the raw disk bytes of an OOS-resolved attribute; oos_payloads[i].data ==
+ *              NULL means "not OOS here: read per-attribute". Always release with
+ *              heap_oos_free_grouped_payloads(), including on error (partial buffers may be attached).
  */
 int
 heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-				std::vector<RECDES> &raws)
+				std::vector<RECDES> &oos_payloads, int *requested_oos_count)
 {
-  const RECDES empty_raw = { -1, -1, REC_UNKNOWN, NULL };
+  const RECDES empty_payload = { -1, -1, REC_UNKNOWN, NULL };
   std::vector<oos_read_request> requests;
   int error = NO_ERROR;
-  int oos_count = 0;
   int i;
+
+  assert (requested_oos_count != NULL);
+  *requested_oos_count = 0;
 
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
       return NO_ERROR;
     }
 
-  for (i = 0; i < attr_info->num_values && oos_count < 2; i++)
+  for (i = 0; i < attr_info->num_values; i++)
     {
       if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
 	{
-	  oos_count++;
+	  (*requested_oos_count)++;
 	}
     }
 
-  if (oos_count < 2)
+  if (*requested_oos_count < 2)
     {
       return NO_ERROR;
     }
 
   try
     {
-      raws.resize ((std::size_t) attr_info->num_values, empty_raw);
-      requests.reserve ((std::size_t) attr_info->num_values);
+      oos_payloads.resize ((std::size_t) attr_info->num_values, empty_payload);
+      requests.reserve ((std::size_t) *requested_oos_count);
     }
   catch (std::bad_alloc &)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) attr_info->num_values * (sizeof (RECDES) + sizeof (oos_read_request)));
+	      (size_t) attr_info->num_values * sizeof (RECDES)
+	      + (size_t) *requested_oos_count * sizeof (oos_read_request));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -541,15 +545,15 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 	}
 
       error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
-      if (error == NO_ERROR && recdes_allocate_data_area (&raws[i], (int) oos_len) != NO_ERROR)
+      if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       if (error == NO_ERROR)
 	{
-	  raws[i].length = (int) oos_len;
-	  oos_read_request request = { oos_oid, oos_buffer (raws[i].data, (std::size_t) oos_len) };
+	  oos_payloads[i].length = (int) oos_len;
+	  oos_read_request request = { oos_oid, oos_buffer (oos_payloads[i].data, (std::size_t) oos_len) };
 	  requests.push_back (request);
 	}
     }
@@ -567,16 +571,16 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
  *   heap_oos_read_grouped_payloads(). Safe on an empty vector (grouped path not taken).
  */
 void
-heap_oos_free_grouped_payloads (std::vector<RECDES> &raws)
+heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads)
 {
-  for (RECDES &raw : raws)
+  for (RECDES &payload : oos_payloads)
     {
-      if (raw.data != NULL)
+      if (payload.data != NULL)
 	{
-	  recdes_free_data_area (&raw);
+	  recdes_free_data_area (&payload);
 	}
     }
-  raws.clear ();
+  oos_payloads.clear ();
 }
 
 /*

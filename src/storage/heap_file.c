@@ -722,7 +722,7 @@ static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRI
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-							    std::vector < RECDES > *oos_raws);
+							    std::vector < RECDES > *oos_payloads);
 static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 							  HEAP_CACHE_ATTRINFO * attr_info);
 
@@ -10837,17 +10837,17 @@ heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO *
  */
 static int
 heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-						 std::vector < RECDES > *oos_raws)
+						 std::vector < RECDES > *oos_payloads)
 {
   int i, ret;
 
   ret = NO_ERROR;
   for (i = 0; ret == NO_ERROR && i < attr_info->num_values; i++)
     {
-      if ((*oos_raws)[i].data != NULL)
+      if ((*oos_payloads)[i].data != NULL)
 	{
 	  ret = heap_attrvalue_transform_to_dbvalue (&attr_info->values[i], attr_info->values[i].read_attrepr,
-						     &(*oos_raws)[i], true);
+						     &(*oos_payloads)[i], true);
 	}
       else
 	{
@@ -10862,30 +10862,33 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
  * heap_attrinfo_read_dbvalues_with_oos_prefetch () - Shared read loop used by the public DB_VALUE read
  *   entry points after representation recache.
  *
- *   OOS payload prefetch is delegated to heap_oos.cpp. When grouped Resolve does not apply, raws is
- *   left empty and this keeps the per-attribute loop and its stack-scratch fast path.
+ *   OOS payload prefetch is delegated to heap_oos.cpp. Dispatch is explicit by requested OOS
+ *   cardinality: 0 or 1 keeps the per-attribute loop and its stack-scratch fast path; >= 2 uses
+ *   grouped Resolve.
  */
 static int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 					       HEAP_CACHE_ATTRINFO * attr_info)
 {
-  std::vector < RECDES > oos_raws;	/* grouped-prefetched OOS payloads; empty unless grouped path applies */
+  std::vector < RECDES > oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
+  int requested_oos_count = 0;
   int ret;
 
-  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_raws);
+  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_payloads, &requested_oos_count);
   if (ret != NO_ERROR)
     {
-      heap_oos_free_grouped_payloads (oos_raws);
+      heap_oos_free_grouped_payloads (oos_payloads);
       return ret;
     }
 
-  if (oos_raws.empty ())
+  if (requested_oos_count <= 1)	/* 0 or 1 */
     {
       return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
     }
+  assert (requested_oos_count >= 2);
 
-  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_raws);
-  heap_oos_free_grouped_payloads (oos_raws);
+  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads);
+  heap_oos_free_grouped_payloads (oos_payloads);
   return ret;
 }
 
