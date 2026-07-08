@@ -12731,6 +12731,8 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       OID_SET_NULL (&attr_info->inst_oid);
       attr_info->inst_chn = NULL_CHN;
       attr_info->num_values = num_found_attrs;
+      attr_info->lazy_recdes = NULL;
+      attr_info->lazy_first_term_marked = false;
 
       if (num_found_attrs <= 0)
 	{
@@ -12761,6 +12763,7 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	  value->state = HEAP_UNINIT_ATTRVALUE;
 	  value->last_attrepr = NULL;
 	  value->read_attrepr = NULL;
+	  value->lazy_always_eager = false;
 	}
 
       /*
