@@ -10137,26 +10137,21 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
 
     case PC_CONST:
-      switch (pc_rhs)
-	{
-	case PC_ATTR:
-	  histogram_get_equal_selectivity (rhs, &lhs->info.value.db_value, &selectivity, &success);
-	  break;
-
-	default:
-	  break;
-	}
-      if (success)
-	{
-	  break;
-	}
-      [[fallthrough]];
-
     case PC_HOST_VAR:
       switch (pc_rhs)
 	{
 	case PC_ATTR:
-	  host_var = &env->parser->host_variables[lhs->info.host_var.index];
+	  /* const = attr : probe the attribute's histogram with the constant / host-var value.
+	   * Read the value slot according to pc_lhs; a fallthrough into a foreign case would
+	   * otherwise read the wrong union member (e.g. host_var.index on a PT_VALUE node). */
+	  if (pc_lhs == PC_HOST_VAR)
+	    {
+	      host_var = &env->parser->host_variables[lhs->info.host_var.index];
+	    }
+	  else
+	    {
+	      host_var = &lhs->info.value.db_value;
+	    }
 	  histogram_get_equal_selectivity (rhs, host_var, &selectivity, &success);
 	  break;
 
