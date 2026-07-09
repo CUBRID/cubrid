@@ -547,16 +547,19 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 
   if (with_fullscan == STATS_WITH_FULLSCAN)
     {
+      int max_pages = prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES);
       int npages = 0;
 
-      /* Bound the cost of the hint-less count(distinct) full scan: when the table has more than
-       * stats_fullscan_max_pages (hidden parameter) heap pages, downgrade WITH FULLSCAN to a sampling scan. If the
-       * page count cannot be determined, downgrade conservatively so a probe failure never falls back to the
-       * expensive full scan this is meant to avoid. */
-      if (stats_get_fullscan_page_count (class_mop, &npages) != NO_ERROR
-	  || npages > prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES))
+      /* Bound the cost of the hint-less count(distinct) full scan: downgrade WITH FULLSCAN to a sampling scan when
+       * the table has more than stats_fullscan_max_pages (hidden parameter) heap pages, or when its size cannot be
+       * determined (fail-safe: a probe failure must not fall back to the expensive full scan). A value of 0 or less
+       * disables the cap and always honors WITH FULLSCAN. */
+      if (max_pages > 0 && (stats_get_fullscan_page_count (class_mop, &npages) != NO_ERROR || npages > max_pages))
 	{
-	  with_fullscan = STATS_WITH_SAMPLING;	/* downgrade */
+	  er_clear ();		/* clear the error a failed probe may have raised; it does not fail the update */
+	  with_fullscan = STATS_WITH_SAMPLING;
+	  er_log_debug (ARG_FILE_LINE, "update stats: %s WITH FULLSCAN -> sampling (pages %d, max %d)\n",
+			class_name_p, npages, max_pages);
 	}
     }
 
