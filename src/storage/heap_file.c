@@ -3728,7 +3728,6 @@ heap_bestspace_add_candidate (cubstorage::bestspace_entry * candidates, std::siz
   std::size_t pos;
 
   assert (candidates && candidate);
-  assert (*num_candidates >= 0);
   assert (*num_candidates <= max_candidates);
 
   if (*num_candidates == max_candidates && candidate->freespace <= candidates[max_candidates - 1].freespace)
@@ -3749,7 +3748,7 @@ heap_bestspace_add_candidate (cubstorage::bestspace_entry * candidates, std::siz
   candidates[pos] = *candidate;
   if (*num_candidates < max_candidates)
     {
-      *num_candidates++;
+      (*num_candidates)++;
     }
 }
 
