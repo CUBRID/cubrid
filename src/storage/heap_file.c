@@ -21670,17 +21670,17 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 #if defined (SERVER_MODE)
 /*
- * heap_delete_home_find_write_owner () - classify the latched home record for an MVCC delete and report a
+ * heap_home_find_write_owner () - classify the latched home record for an MVCC delete or update and report a
  *   conflicting active write-owner, if any
  *   thread_p(in): thread entry
- *   context(in): delete operation context; home_recdes must hold the current record
+ *   context(in): delete/update operation context; home_recdes must hold the current record
  *   owner(out): MVCCID of a conflicting active writer, or MVCCID_NULL when the row is clean, owned by us, or
  *               owned by an already-settled transaction (safe to stamp)
  *   returns: NO_ERROR, ER_HEAP_UNKNOWN_OBJECT when another transaction committed a delete of the row, or an
  *            error code on failure
  */
 static int
-heap_delete_home_find_write_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID * owner)
+heap_home_find_write_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID * owner)
 {
   MVCC_REC_HEADER header;
   MVCC_SATISFIES_DELETE_RESULT satisfies;
@@ -21721,10 +21721,10 @@ heap_delete_home_find_write_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
 }
 
 /*
- * heap_delete_home_wait_for_owner () - wait for a conflicting write-owner to settle, then re-read the home
+ * heap_home_wait_for_owner () - wait for a conflicting write-owner to settle, then re-read the home
  *   record so the caller can re-classify
  *   thread_p(in): thread entry
- *   context(in): delete operation context; the home page latch is released and re-acquired here
+ *   context(in): delete/update operation context; the home page latch is released and re-acquired here
  *   owner(in): the conflicting active writer to wait on
  *   returns: NO_ERROR or an error code on failure
  *
@@ -21732,7 +21732,7 @@ heap_delete_home_find_write_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTE
  *       on the owner's transaction self-lock and re-fixed afterwards.
  */
 static int
-heap_delete_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID owner)
+heap_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID owner)
 {
   VPID home_vpid;
   int peek;
@@ -21764,20 +21764,21 @@ heap_delete_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT
 }
 
 /*
- * heap_delete_home_recheck_write_write () - authoritative write-write re-check for an MVCC home-record delete
+ * heap_home_recheck_write_write () - authoritative write-write re-check for an MVCC home-record delete or update
  *   thread_p(in): thread entry
- *   context(in): delete operation context; the home page must be latched
+ *   context(in): delete/update operation context; the home page must be latched
  *   returns: NO_ERROR when the row is safe to stamp (clean / owned by us / owner settled),
  *            ER_HEAP_UNKNOWN_OBJECT when another transaction committed a delete of the row,
  *            or an error code on failure
  *
- * Note: With no per-row X-lock, two deleters can both pass the locator check and reach heap_delete_home.
- *       The home page latch is held continuously from entry through the physical update, so re-classifying
- *       and stamping under it is atomic against any other writer. If another active writer owns the row,
- *       wait for it to settle (releasing the latch), then re-read and re-classify.
+ * Note: With no per-row X-lock, a lockless MVCC DELETE can reach heap_delete_home behind another deleter, and
+ *       can stamp DELID on a record another transaction is updating (heap_update_home holds only the abstract
+ *       instance X-lock the deleter never checks). The home-page latch is held from entry through the physical
+ *       update, so re-classify+stamp under it is atomic; if an active writer owns the row, wait for it
+ *       (releasing the latch), re-read, re-classify. Shared by heap_delete_home and heap_update_home.
  */
 static int
-heap_delete_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+heap_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   int error_code = NO_ERROR;
 
@@ -21790,7 +21791,7 @@ heap_delete_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CO
     {
       MVCCID owner = MVCCID_NULL;
 
-      error_code = heap_delete_home_find_write_owner (thread_p, context, &owner);
+      error_code = heap_home_find_write_owner (thread_p, context, &owner);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -21802,7 +21803,7 @@ heap_delete_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CO
 	}
 
       /* a concurrent writer owns the row; wait for it, then loop to re-read and re-classify */
-      error_code = heap_delete_home_wait_for_owner (thread_p, context, owner);
+      error_code = heap_home_wait_for_owner (thread_p, context, owner);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -21872,7 +21873,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 
 #if defined (SERVER_MODE)
       /* Authoritative write-write re-check under the held home-page latch (see the helper). */
-      error_code = heap_delete_home_recheck_write_write (thread_p, context);
+      error_code = heap_home_recheck_write_write (thread_p, context);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -22832,6 +22833,28 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 #if defined (SERVER_MODE)
   if (is_mvcc_op)
     {
+      /* Write-write re-check under the home-page latch, symmetric to heap_delete_home: a lockless MVCC DELETE
+       * (no instance X-lock) can stamp DELID on this record mid-update. Overwriting it would capture the delete
+       * into our prev-version image and later crash a reader on TOO_OLD_FOR_SNAPSHOT; wait the deleter out and
+       * re-read (a committed delete -> ER_HEAP_UNKNOWN_OBJECT -> 0 rows via locator_update_force). */
+      if (context->home_page_watcher_p->page_was_unfixed)
+	{
+	  /* home_recdes may be stale after an unfix/re-fix; refresh it from the page before re-classifying */
+	  int is_peeking = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+	  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				&context->home_recdes, is_peeking) != S_SUCCESS)
+	    {
+	      assert (false);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+	}
+      error_code = heap_home_recheck_write_write (thread_p, context);
+      if (error_code != NO_ERROR)
+	{
+	  goto exit;
+	}
+
       undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
     }
   else if (context->home_recdes.type == REC_ASSIGN_ADDRESS && !mvcc_is_mvcc_disabled_class (&context->class_oid))
