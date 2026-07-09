@@ -204,7 +204,7 @@ jobs:
                   - run:
                       name: Download build from artifact
                       command: |
-                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
+                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM_DEBUG)
                         echo "Downloading build from job #\${BUILD_NUM}..."
                         
                         # Fetch artifact list
@@ -238,7 +238,7 @@ jobs:
                   - run:
                       name: Download build to GlusterFS
                       command: |
-                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM)
+                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM_DEBUG)
                         # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
                         BUILD_DIR="/home/build-cache/builds/\${CIRCLE_SHA1}"
                         
@@ -323,7 +323,7 @@ jobs:
                         git submodule sync
                         git submodule update --init
                   - run:
-                      name: Build
+                      name: Build (release)
                       command: |
                         mkdir -p \$CCACHE_DIR
                         ccache --max-size=5G
@@ -332,6 +332,41 @@ jobs:
                         ccache -s
                   - save_cache:
                       key: ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                      paths:
+                        - /home/.ccache
+                  - collect-build-logs
+
+              build_debug:
+                executor: cubrid-default
+                resource_class: xlarge
+                environment:
+                  MAKEFLAGS: -j 8
+                  CC: "ccache gcc"
+                  CXX: "ccache g++"
+                  CCACHE_DIR: /home/.ccache
+                  CCACHE_COMPILERCHECK: content
+                  CCACHE_HARDLINK: 1
+                steps:
+                  - checkout
+                  - restore_cache:
+                      keys:
+                        - ccache-debug-v1-{{ checksum "CMakeLists.txt" }}
+                        - ccache-debug-v1
+                  - run:
+                      name: Submodules
+                      command: |
+                        git submodule sync
+                        git submodule update --init
+                  - run:
+                      name: Build (debug)
+                      command: |
+                        mkdir -p \$CCACHE_DIR
+                        ccache --max-size=5G
+                        ccache -z
+                        scl enable devtoolset-8 -- /entrypoint.sh build -m debug
+                        ccache -s
+                  - save_cache:
+                      key: ccache-debug-v1-{{ checksum "CMakeLists.txt" }}
                       paths:
                         - /home/.ccache
                   - collect-build-logs
@@ -360,11 +395,11 @@ jobs:
                       name: Save build metadata for test jobs
                       command: |
                         mkdir -p workspace
-                        echo "\${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM
-                        echo "Saved BUILD_NUM: \$(cat workspace/BUILD_NUM)"
+                        echo "\${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_DEBUG
+                        echo "Saved BUILD_NUM_DEBUG: \$(cat workspace/BUILD_NUM_DEBUG)"
                   - persist_to_workspace:
                       root: workspace
-                      paths: [ BUILD_NUM ]
+                      paths: [ BUILD_NUM_DEBUG ]
               
               test_medium:
                 executor: cubrid-default
@@ -440,13 +475,14 @@ jobs:
               build_test:
                 jobs:
                   - build
+                  - build_debug
             EOF
-            
+
             echo "[debug] Conditionally add test jobs based on parameters"
-            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium:    {requires: [build]}" >> .circleci/continue.yml
-            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:       {requires: [build]}" >> .circleci/continue.yml
+            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium:    {requires: [build, build_debug]}" >> .circleci/continue.yml
+            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:       {requires: [build, build_debug]}" >> .circleci/continue.yml
             if [ "$RUN_SHELL_TEST" = "true" ]; then
-              echo "      - download-build: {requires: [build]}" >> .circleci/continue.yml
+              echo "      - download-build: {requires: [build, build_debug]}" >> .circleci/continue.yml
               echo "      - test_shell:     {requires: [download-build]}" >> .circleci/continue.yml
             fi
             
