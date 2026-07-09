@@ -753,6 +753,7 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
 #define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
+#define QO_TERM_LIKE_DERIVED_RANGE 1024	/* range term derived from a prefix LIKE; skip in row-count selectivity (CBRD-27036) */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)

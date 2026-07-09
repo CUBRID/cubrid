@@ -2340,6 +2340,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_LIKE_DERIVED_RANGE 2097152	/* 0x200000, BETWEEN range derived from a LIKE with a fixed prefix; excluded from row-count selectivity to avoid double counting with the retained LIKE term (CBRD-27036) */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

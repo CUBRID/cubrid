@@ -2064,6 +2064,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
   double object_IO, index_IO;
+  double sel_rows;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2110,6 +2111,11 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* selectivity of the index terms */
   sel = 1.0;
+  /* row-count selectivity: same as sel but excludes LIKE-derived range terms
+   * so their selectivity is not double counted against the retained LIKE term
+   * (CBRD-27036). Used only for output-row estimates, not for index leaf/page
+   * access cost. */
+  sel_rows = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
@@ -2123,6 +2129,10 @@ qo_iscan_cost (QO_PLAN * planp)
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  sel_rows *= QO_TERM_SELECTIVITY (termp);
+	}
 
       /* each term can have multi index column. e.g.) (a,b) in .. */
       for (int j = 0; j < index_entryp->col_num; j++)
@@ -2136,6 +2146,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
+  sel_rows = MIN (sel_rows, 1.0);
 
   sel_limit = 0.0;		/* init */
 
@@ -2175,6 +2186,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
+  sel_rows = MAX (sel_rows, sel_limit);
 
   /* selectivity of the index key filter terms */
   filter_sel = 1.0;
@@ -2222,8 +2234,8 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      object_IO = opages * sel_rows * filter_sel;
+      heap_access = (double) QO_NODE_NCARD (nodep) * sel_rows * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
@@ -2232,7 +2244,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_rows * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -7838,8 +7850,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  selectivity *= QO_TERM_SELECTIVITY (term);
-		  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		  /* skip LIKE-derived range term in row-count selectivity; it is
+		   * fully correlated with the retained LIKE term (CBRD-27036). */
+		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
+		    {
+		      selectivity *= QO_TERM_SELECTIVITY (term);
+		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		    }
 
 		  double head_factor, tail_factor;
 		  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);

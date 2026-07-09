@@ -2044,6 +2044,14 @@ qo_analyze_term (QO_TERM * term, int term_type)
       goto wrapup;
     }
 
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_DERIVED_RANGE))
+    {
+      /* range derived from a prefix LIKE: keep its real selectivity for
+       * index-access cost, but flag it so row-count aggregation skips it
+       * (CBRD-27036). */
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
+    }
+
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or
    * cond) =/!= (cond and/or cond).
@@ -8657,7 +8665,15 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
   double sel_limit;
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
-  QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
+  /* A range term derived from a prefix LIKE is fully correlated with the
+   * retained LIKE term (its match set is a subset). Skip it here so the row
+   * count is not double counted; the LIKE term already carries the true
+   * selectivity (CBRD-27036). The term stays in QO_NODE_SARGS so it can still
+   * be used as an index key-range term. */
+  if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
+    {
+      QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);
+    }
   sel_limit = (QO_NODE_NCARD (node) == 0) ? 0 : (1.0 / (double) QO_NODE_NCARD (node));
   if (QO_NODE_SELECTIVITY (node) < sel_limit)
     {
