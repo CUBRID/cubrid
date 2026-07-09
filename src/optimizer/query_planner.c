@@ -9822,12 +9822,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 	case PT_LIKE:
 	  {
-	    selectivity = qo_like_selectivity (env, pt_expr);
+	    selectivity = qo_like_selectivity (env, node);
 	    break;
 	  }
 	case PT_NOT_LIKE:
 	  {
-	    selectivity = 1 - qo_like_selectivity (env, pt_expr);
+	    selectivity = 1 - qo_like_selectivity (env, node);
 	    break;
 	  }
 	case PT_SETNEQ:
@@ -9927,56 +9927,51 @@ qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PT_NODE *lhs, *rhs;
   DB_VALUE *host_var = NULL;
   PRED_CLASS pc_lhs, pc_rhs;
+  double selectivity = 0.0;
+  bool success = false;
 
-  double selectivity;
-  double total_selectivity = 0.0;
+  /* Evaluate ONLY the given LIKE node. The caller (qo_expr_selectivity) walks the
+   * OR (or_next) list itself and combines the per-node selectivities; iterating the
+   * list here as well made every non-LIKE sibling contribute twice -- once through
+   * this function (fed to the LIKE estimator with a NULL or stale pattern, so it
+   * degraded to the LIKE default selectivity) and once through its own operator
+   * case in the caller. */
+  lhs = pt_expr->info.expr.arg1;
+  rhs = pt_expr->info.expr.arg2;
 
-  PT_NODE *like_node;
-
-  for (like_node = pt_expr; like_node; like_node = like_node->or_next)
+  if (lhs && rhs)
     {
-      bool success = false;
+      pc_lhs = qo_classify (lhs);
+      pc_rhs = qo_classify (rhs);
 
-      lhs = like_node->info.expr.arg1;
-      rhs = like_node->info.expr.arg2;
-
-      if (lhs && rhs)
+      if (pc_lhs == PC_ATTR)
 	{
-	  pc_lhs = qo_classify (lhs);
-	  pc_rhs = qo_classify (rhs);
-
-	  if (pc_lhs == PC_ATTR)
+	  if (pc_rhs == PC_CONST)
 	    {
-	      if (pc_rhs == PC_CONST)
-		{
-		  host_var = &rhs->info.value.db_value;
-		}
-	      else if (pc_rhs == PC_HOST_VAR)
-		{
-		  host_var = &env->parser->host_variables[rhs->info.host_var.index];
-		}
-
-	      histogram_get_like_selectivity (lhs, host_var, &selectivity, &success);
-
-	      if (!success)
-		{
-		  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
-		}
+	      host_var = &rhs->info.value.db_value;
 	    }
-	  else
+	  else if (pc_rhs == PC_HOST_VAR)
+	    {
+	      host_var = &env->parser->host_variables[rhs->info.host_var.index];
+	    }
+
+	  histogram_get_like_selectivity (lhs, host_var, &selectivity, &success);
+
+	  if (!success)
 	    {
 	      selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	    }
-
-	  total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
-	  total_selectivity = MAX (total_selectivity, 0.0);
-	  total_selectivity = MIN (total_selectivity, 1.0);
+	}
+      else
+	{
+	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	}
 
+      selectivity = MAX (selectivity, 0.0);
+      selectivity = MIN (selectivity, 1.0);
     }
 
-
-  return total_selectivity;
+  return selectivity;
 }
 
 /*
