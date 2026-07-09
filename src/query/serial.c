@@ -39,7 +39,6 @@
 #include "slotted_page.h"
 #include "dbtype.h"
 #include "xasl_cache.h"
-#include "lock_free.h"
 #include "thread_lockfree_hash_map.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -96,13 +95,9 @@ struct serial_entry
   // *INDENT-ON*
 };
 
-typedef struct serial_cache_pool SERIAL_CACHE_POOL;
-struct serial_cache_pool
-{
-  OID db_serial_class_oid;	/* cached _db_serial class OID */
-};
-
-SERIAL_CACHE_POOL serial_Cache_pool = { {NULL_PAGEID, NULL_SLOTID, NULL_VOLID} };
+/* _db_serial class OID; loaded once at boot, read-only afterwards. Used as the class OID
+ * when X-locking a serial's OID on a cache-miss install. */
+static OID db_serial_class_oid = OID_INITIALIZER;
 
 /* Lock-free hash keyed by serial OID; a per-entry mutex guards each value advance so
  * independent serials never contend (same pattern as filter_pred_cache.c). */
@@ -148,15 +143,10 @@ static LF_ENTRY_DESCRIPTOR serial_Cache_entry_descriptor = {
 BTID serial_Cached_btid = BTID_INITIALIZER;
 #endif /* SERVER_MODE */
 
+/* _db_serial attribute layout; loaded from the catalog once at boot (serial_initialize_cache_pool)
+ * and read-only afterwards, so value-generation paths read it without any lock. */
 ATTR_ID serial_Attrs_id[SERIAL_ATTR_MAX_INDEX];
 int serial_Num_attrs = -1;
-
-/* Serializes the one-time lazy load of serial_Attrs_id[] / serial_Num_attrs (and the cached
- * _db_serial class OID) from the catalog, and supplies the barrier that publishes the filled
- * array to readers. The old global cache_pool_mutex used to cover this init; the lock-free pool
- * no longer does. Held only on the cold load/read paths (cache miss, cache-exhaustion
- * writeback), never on the cached value-advance fast path. */
-static pthread_mutex_t serial_Attr_load_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
@@ -350,45 +340,34 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	}
       else
 	{
-	  /* Cache miss: hold no pool mutex, take the serial OID X_LOCK, then install.
-	   * Installs for a given serial are serialized by its OID lock. */
-	  if (OID_ISNULL (&serial_Cache_pool.db_serial_class_oid))
+	  /* Cache miss: take the serial OID X_LOCK, then install; the OID lock serializes installs
+	   * for a given serial. Catalog metadata was loaded at boot, so no catalog load is needed here. */
+	  granted = lock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, LK_UNCOND_LOCK);
+	  if (granted != LK_GRANTED)
 	    {
-	      /* One-time catalog load, serialized (double-checked under the load mutex). */
-	      pthread_mutex_lock (&serial_Attr_load_mutex);
-	      if (serial_Num_attrs < 0)
-		{
-		  ret = serial_load_attribute_info_of_db_serial (thread_p);
-		}
-	      pthread_mutex_unlock (&serial_Attr_load_mutex);
+	      assert (er_errid () != NO_ERROR);
+	      ret = er_errid ();
 	    }
-
-	  if (ret == NO_ERROR)
+	  else
 	    {
-	      granted = lock_object (thread_p, oid_p, &serial_Cache_pool.db_serial_class_oid, X_LOCK, LK_UNCOND_LOCK);
-	      if (granted != LK_GRANTED)
+	      /* Re-check: another thread may have installed it while we waited. */
+	      entry = serial_Cache_hashmap.find (thread_p, key);
+	      if (entry != NULL)
 		{
-		  assert (er_errid () != NO_ERROR);
-		  ret = er_errid ();
+		  /* Another thread installed it first. The OID lock guards only the install, so drop it
+		   * now; the per-entry mutex alone guards the value advance, as on the cache-hit path. */
+		  (void) lock_unlock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, true);
+		  ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
+		  if (ret == NO_ERROR)
+		    {
+		      pr_clone_value (&entry->cur_val, result_num);
+		    }
+		  pthread_mutex_unlock (&entry->mutex);
 		}
 	      else
 		{
-		  /* Re-check: another thread may have installed it while we waited. */
-		  entry = serial_Cache_hashmap.find (thread_p, key);
-		  if (entry != NULL)
-		    {
-		      ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
-		      if (ret == NO_ERROR)
-			{
-			  pr_clone_value (&entry->cur_val, result_num);
-			}
-		      pthread_mutex_unlock (&entry->mutex);
-		    }
-		  else
-		    {
-		      ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
-		    }
-		  (void) lock_unlock_object (thread_p, oid_p, &serial_Cache_pool.db_serial_class_oid, X_LOCK, true);
+		  ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
+		  (void) lock_unlock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, true);
 		}
 	    }
 	}
@@ -862,13 +841,17 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (cached_num > 1)
     {
-      /* Install the entry. The caller holds the serial OID X_LOCK after a re-checked miss, so we
-       * are the sole installer and find_or_insert must report a fresh insert. Never overwrite an
-       * existing entry: that would reset a live cached counter and risk handing out duplicates. */
+      /* Install the entry. Two callers reach here:
+       *   - cache-miss path: caller holds the serial OID X_LOCK, so the install is race-free and
+       *     find_or_insert reports a fresh insert.
+       *   - uncached path (cached_num <= 1, e.g. a plan cached before ALTER SERIAL ... CACHE raised
+       *     the on-disk cached_num): no OID lock held, so a concurrent installer may win and
+       *     find_or_insert returns false.
+       * Either way, never overwrite an existing entry: that would reset a live cached counter and
+       * risk handing out duplicates. */
       OID key = *serial_oidp;
       bool inserted = serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
 
-      assert (inserted);
       if (entry != NULL)
 	{
 	  if (inserted)
@@ -1133,7 +1116,8 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p)
       serial_Attrs_id[i] = -1;
     }
 
-  return NO_ERROR;
+  /* Load the _db_serial attribute layout once, now that the catalog is available. */
+  return serial_load_attribute_info_of_db_serial (thread_p);
 }
 
 /*
@@ -1150,6 +1134,7 @@ serial_finalize_cache_pool (void)
     }
 
   serial_Num_attrs = -1;
+  OID_SET_NULL (&db_serial_class_oid);
 }
 
 /*
@@ -1162,29 +1147,16 @@ serial_finalize_cache_pool (void)
 static int
 serial_get_attrid (THREAD_ENTRY * thread_p, int attr_index, ATTR_ID &attrid)
 {
-  int error = NO_ERROR;
-
   attrid = NOT_FOUND;
 
-  /* Do the lazy load and read serial_Attrs_id[] under the same mutex: a reader that runs after
-   * the load is guaranteed (via the mutex acquire/release barrier) to see the fully-filled
-   * array, and concurrent first callers do not each redo the catalog scan. */
-  pthread_mutex_lock (&serial_Attr_load_mutex);
-  if (serial_Num_attrs < 0)
-    {
-      error = serial_load_attribute_info_of_db_serial (thread_p);
-    }
-  if (error == NO_ERROR && attr_index >= 0 && attr_index <= serial_Num_attrs)
+  /* serial_Attrs_id[] is read-only after boot, so no lock is needed here (see its declaration). */
+  assert (serial_Num_attrs >= 0);
+  if (attr_index >= 0 && attr_index <= serial_Num_attrs)
     {
       attrid = serial_Attrs_id[attr_index];
     }
-  pthread_mutex_unlock (&serial_Attr_load_mutex);
 
-  if (error != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-    }
-  return error;
+  return NO_ERROR;
 }
 // *INDENT-ON*
 
@@ -1204,19 +1176,19 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 
   serial_Num_attrs = -1;
 
-  oid_get_serial_oid (&serial_Cache_pool.db_serial_class_oid);
+  oid_get_serial_oid (&db_serial_class_oid);
 
-  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &serial_Cache_pool.db_serial_class_oid) != NO_ERROR)
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &db_serial_class_oid) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  if (heap_get_class_record (thread_p, &serial_Cache_pool.db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+  if (heap_get_class_record (thread_p, &db_serial_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
     {
       heap_scancache_end (thread_p, &scan);
       return ER_FAILED;
     }
 
-  error = heap_attrinfo_start (thread_p, &serial_Cache_pool.db_serial_class_oid, -1, NULL, &attr_info);
+  error = heap_attrinfo_start (thread_p, &db_serial_class_oid, -1, NULL, &attr_info);
   if (error != NO_ERROR)
     {
       (void) heap_scancache_end (thread_p, &scan);
