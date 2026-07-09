@@ -11348,28 +11348,68 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  for (int i = 0; i < snl->stored_cnt; i++)
-    {
-      if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
-	{
-	  continue;		/* name mismatch: not a duplicate of this slot, keep scanning */
-	}
+  /* An unqualified server reference implicitly resolves to the current session user - the same
+   * rule CREATE SERVER uses to default an owner - so "srv" and "dba.srv" name one server when dba
+   * is the current user.  The name is resolved lazily and at most once per call (mirroring how
+   * server_find() in execute_statement.c defaults it) and released once after the loop, because a
+   * slot that turns out not to be a duplicate keeps the scan running. */
+  {
+    const char *current_user_name = NULL;
+    bool current_user_fetched = false;
+    bool is_duplicate = false;
 
-      if (owner_ptr == NULL && snl->server[i]->next == NULL)
-	{
-	  return node;		/* exact duplicate (no owner qualifier on either side) */
-	}
+    for (int i = 0; i < snl->stored_cnt; i++)
+      {
+	const char *effective_owner;
 
-      if (owner_ptr != NULL && snl->server[i]->next != NULL)
-	{
-	  if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
-	    {
-	      continue;		/* same name, different owner: distinct server, keep scanning */
-	    }
-	  return node;		/* same name and same owner qualifier: exact duplicate */
-	}
-      /* same name, owner-presence differs (one qualified, one not): keep scanning */
-    }
+	if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
+	  {
+	    continue;		/* name mismatch: not a duplicate of this slot, keep scanning */
+	  }
+
+	if (owner_ptr == NULL && snl->server[i]->next == NULL)
+	  {
+	    is_duplicate = true;	/* exact duplicate (no owner qualifier on either side) */
+	    break;
+	  }
+
+	if (owner_ptr != NULL && snl->server[i]->next != NULL)
+	  {
+	    if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
+	      {
+		continue;	/* same name, different owner: distinct server, keep scanning */
+	      }
+	    is_duplicate = true;	/* same name and same owner qualifier: exact duplicate */
+	    break;
+	  }
+
+	/* Same name, owner-presence differs (one qualified, one not): the unqualified side stands for
+	 * the current user, so the two notations are the same server only when the qualified side
+	 * names that user. */
+	if (!current_user_fetched)
+	  {
+	    current_user_name = au_get_current_user_name ();
+	    current_user_fetched = true;
+	  }
+
+	effective_owner = (owner_ptr != NULL) ? owner_ptr : snl->server[i]->next->info.name.original;
+	if (current_user_name != NULL && strcasecmp (effective_owner, current_user_name) == 0)
+	  {
+	    is_duplicate = true;
+	    break;
+	  }
+      }
+
+    if (current_user_name != NULL)
+      {
+	db_string_free ((char *) current_user_name);
+      }
+
+    if (is_duplicate)
+      {
+	return node;
+      }
+  }
 
   if (name_ptr == NULL)
     {
