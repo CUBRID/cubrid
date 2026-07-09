@@ -2418,7 +2418,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
       /* add candidate page into bestspace candidates */
-      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page, 0);
+      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 

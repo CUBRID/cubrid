@@ -670,7 +670,8 @@ extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
 
-extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace);
+extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace =
+			       0, PGBUF_WATCHER * header_watcher = NULL);
 
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);

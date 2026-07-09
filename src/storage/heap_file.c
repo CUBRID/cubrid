@@ -4286,6 +4286,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
     {
       return NULL;
     }
+  assert (recdes.length == sizeof (HEAP_HDR_STATS));
   header = ((HEAP_HDR_STATS *) recdes.data);
 
   /* get the max number of the entries */
@@ -4505,7 +4506,8 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
  *   return:
  */
 void
-heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace)
+heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace,
+		   PGBUF_WATCHER * header_watcher)
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
@@ -4523,7 +4525,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
       return;
     }
 
-  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid, NULL);
+  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid, header_watcher);
   if (!bestspace)
     {
       return;
@@ -8764,6 +8766,8 @@ exit_on_end:
  *   hfid(in): Object heap file identifier
  *   heap_hdr(in/out): Heap header statistics
  *   header_watcher(in): Fixed heap header page watcher
+ *
+ *   NOTE: heap_update_statistics should be called after the in-memory bestspace exist
  */
 static int
 heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
@@ -8822,6 +8826,8 @@ heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STA
 	  num_pages += npages;
 	  num_recs += nrecords;
 	  recs_sumlen += reclength;
+
+	  heap_add_bestpage (thread_p, (HFID *) hfid, pg_watcher.pgptr, 0, header_watcher);
 	}
 
       pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
@@ -8905,12 +8911,7 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-  if (heap_update_statistics (thread_p, hfid, heap_hdr, &hdr_pg_watcher) != NO_ERROR)
-    {
-      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
-      return ER_FAILED;
-    }
-
+  // find or build the in-memory bestspace
   bestspace = heap_find_bestspace (thread_p, &heap_hdr->class_oid, (HFID *) hfid, &hdr_pg_watcher);
   if (!bestspace)
     {
@@ -8919,6 +8920,14 @@ heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, i
       assert_release (false);
       return ER_FAILED;
     }
+
+  // update heap header
+  if (heap_update_statistics (thread_p, hfid, heap_hdr, &hdr_pg_watcher) != NO_ERROR)
+    {
+      pgbuf_ordered_unfix (thread_p, &hdr_pg_watcher);
+      return ER_FAILED;
+    }
+  // update in-memory
   bestspace->set_estimates (heap_hdr->num_pages, heap_hdr->num_recs, heap_hdr->recs_sumlen);
 
   *npages = heap_hdr->num_pages;
@@ -9126,6 +9135,13 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
 	  goto exit_on_error;
 	}
 
+      if (heap_page_is_bestspace (thread_p, pg_watcher.pgptr))
+	{
+	  (void) heap_vpid_next (thread_p, hfid, pg_watcher.pgptr, &vpid);
+	  pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
+	  continue;
+	}
+
       slotid = -1;
       j = spage_number_of_records (pg_watcher.pgptr);
 
@@ -9134,13 +9150,6 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
       *num_pages += 1;
       sum_freespace += last_freespace;
       sum_overhead += j * SPAGE_SLOT_SIZE;
-
-      if (heap_page_is_bestspace (thread_p, pg_watcher.pgptr))
-	{
-	  (void) heap_vpid_next (thread_p, hfid, pg_watcher.pgptr, &vpid);
-	  pgbuf_replace_watcher (thread_p, &pg_watcher, &old_pg_watcher);
-	  continue;
-	}
 
       while ((j--) > 0)
 	{
