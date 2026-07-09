@@ -483,6 +483,19 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
       return ER_FAILED;
     }
 
+  if (with_fullscan == STATS_WITH_FULLSCAN)
+    {
+      int nobjs = 0, npages = 0;
+
+      /* Past stats_fullscan_max_pages (hidden parameter), force sampling scan
+       * even for WITH FULLSCAN to bound the cost of count(distinct) queries. */
+      if (db_get_class_num_objs_and_pages (class_mop, 1, &nobjs, &npages) == NO_ERROR
+	  && npages > prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES))
+	{
+	  with_fullscan = STATS_WITH_SAMPLING;	/* downgrade */
+	}
+    }
+
   /* create sampling SQL statement */
   if (with_fullscan == STATS_WITH_FULLSCAN)
     {
