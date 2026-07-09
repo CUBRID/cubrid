@@ -108,6 +108,14 @@ struct load_args
   PGSLOTID last_leaf_insert_slotid;	/* Slotid of last inserted leaf record. */
 
   VPID vpid_first_leaf;
+
+  /* CBRD-24094: v2 (OID-ordered) overflow chain directory build state. */
+  bool ovf_v2;			/* Build overflow chains in the v2 format (non-unique indexes). */
+  VPID ovf_dir_vpid;		/* Directory head page of the current key's chain; NULL until the chain grows to a
+				 * second data page. */
+  BTREE_OVF_DIR_ENTRY *ovf_dir_entries;	/* Collected (separator, vpid) entries of the current chain. */
+  int ovf_dir_count;
+  int ovf_dir_capacity;
 };
 
 typedef struct btree_scan_partition_info BTREE_SCAN_PART;
@@ -192,7 +200,9 @@ static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, i
 
 static void btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
-				VPID * vpid_new, PAGE_PTR * page_new);
+				VPID * vpid_new, PAGE_PTR * page_new, bool ovf_v2);
+static int bt_load_capture_ovf_dir_entry (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, const OID * first_oid);
+static int bt_load_finalize_ovf_dir (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
@@ -591,6 +601,69 @@ btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OV
     }
 
   return NO_ERROR;
+}
+
+/*
+ * btree_init_overflow_header_v2 () - insert extended (v2) btree overflow node header
+ *
+ *   return:
+ *   page_ptr(in):
+ *   ovf_header(in):
+ *
+ * Note: v2 headers are used by OID-ordered overflow chains of non-unique indexes
+ *       (CBRD-24094). The format is detected by the header record length.
+ */
+int
+btree_init_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER_V2 * ovf_header)
+{
+  RECDES rec;
+  char copy_rec_buf[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+
+  rec.area_size = DB_PAGESIZE;
+  rec.data = PTR_ALIGN (copy_rec_buf, BTREE_MAX_ALIGN);
+  memcpy (rec.data, ovf_header, sizeof (BTREE_OVERFLOW_HEADER_V2));
+  rec.length = sizeof (BTREE_OVERFLOW_HEADER_V2);
+  rec.type = REC_HOME;
+
+  if (spage_insert_at (thread_p, page_ptr, HEADER, &rec) != SP_SUCCESS)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_get_overflow_header_v2 () - get v2 overflow header, or NULL if the page has
+ *				     a legacy (8 byte) header
+ *
+ *   return: header pointer or NULL for legacy pages
+ *   page_ptr(in):
+ */
+BTREE_OVERFLOW_HEADER_V2 *
+btree_get_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
+{
+  RECDES header_record;
+
+  assert (page_ptr != NULL);
+
+#if !defined(NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, page_ptr, PAGE_BTREE);
+#endif
+
+  if (spage_get_record (thread_p, page_ptr, HEADER, &header_record, PEEK) != S_SUCCESS)
+    {
+      assert_release (false);
+      return NULL;
+    }
+
+  if (header_record.length < (int) sizeof (BTREE_OVERFLOW_HEADER_V2))
+    {
+      /* Legacy overflow page. */
+      return NULL;
+    }
+
+  return (BTREE_OVERFLOW_HEADER_V2 *) header_record.data;
 }
 
 /*
@@ -1058,6 +1131,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   load_args->out_recdes = NULL;
 
+  /* CBRD-24094: non-unique indexes build overflow chains in the v2 (OID-ordered) format. */
+  load_args->ovf_v2 = !BTREE_IS_UNIQUE (unique_pk);
+  VPID_SET_NULL (&load_args->ovf_dir_vpid);
+  load_args->ovf_dir_entries = NULL;
+  load_args->ovf_dir_count = 0;
+  load_args->ovf_dir_capacity = 0;
+
   /* Allocate a root page and save the page_id */
   *load_args->btid->sys_btid = *btid;
   btid_global_stats = *btid;
@@ -1129,6 +1209,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* Release the memory area */
       os_free_and_init (load_args->leaf_nleaf_recdes.data);
       os_free_and_init (load_args->ovf_recdes.data);
+      free_and_init (load_args->ovf_dir_entries);
       pr_clear_value (&load_args->current_key);
 
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
@@ -1154,6 +1235,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       os_free_and_init (load_args->leaf_nleaf_recdes.data);
       os_free_and_init (load_args->ovf_recdes.data);
+      free_and_init (load_args->ovf_dir_entries);
       pr_clear_value (&load_args->current_key);
 
       BTID_SET_NULL (btid);
@@ -1232,6 +1314,7 @@ error:
     {
       os_free_and_init (load_args->ovf_recdes.data);
     }
+  free_and_init (load_args->ovf_dir_entries);
   pr_clear_value (&load_args->current_key);
 
   pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
@@ -1294,6 +1377,14 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
       /* Save the current overflow page */
       btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
       load_args->ovf.pgptr = NULL;
+
+      /* CBRD-24094: write the OID directory of the finished chain. */
+      ret = bt_load_finalize_ovf_dir (thread_p, load_args);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
     }
 
   /* Insert leaf record too */
@@ -1446,7 +1537,7 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
 
       /* get a new non-leaf page */
       if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
-			       &load_args->nleaf.vpid, &load_args->nleaf.pgptr) != NO_ERROR)
+			       &load_args->nleaf.vpid, &load_args->nleaf.pgptr, false) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
@@ -1549,7 +1640,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   /* Initialize the first non-leaf page */
   ret =
     btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level, &load_args->nleaf.vpid,
-			 &load_args->nleaf.pgptr);
+			 &load_args->nleaf.pgptr, false);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1760,7 +1851,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       /* Initialize the first non-leaf page of current level */
       ret =
 	btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
-			     &load_args->nleaf.vpid, &load_args->nleaf.pgptr);
+			     &load_args->nleaf.vpid, &load_args->nleaf.pgptr, false);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2025,10 +2116,12 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
  * node_level (in) : Node level for leaf/non-leaf nodes or -1 for overflow OID nodes
  * vpid_new (out)  : Output new page VPID
  * page_new (out)  : Output new page
+ * ovf_v2 (in)     : For overflow OID nodes, true to write the extended v2 header (OID-ordered chains,
+ *		     CBRD-24094). Ignored for leaf/non-leaf nodes.
  */
 static int
 btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
-		     VPID * vpid_new, PAGE_PTR * page_new)
+		     VPID * vpid_new, PAGE_PTR * page_new, bool ovf_v2)
 {
   int error_code = NO_ERROR;
 
@@ -2077,12 +2170,26 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
     }
   else
     {				/* This is going to be an overflow page */
-      BTREE_OVERFLOW_HEADER ovf_header_info;
-
       assert (node_level == -1);
-      VPID_SET_NULL (&ovf_header_info.next_vpid);
 
-      error_code = btree_init_overflow_header (thread_p, *page_new, &ovf_header_info);
+      if (ovf_v2)
+	{
+	  /* CBRD-24094: extended header for OID-ordered chains. */
+	  BTREE_OVERFLOW_HEADER_V2 ovf_header_info_v2;
+
+	  VPID_SET_NULL (&ovf_header_info_v2.next_vpid);
+	  VPID_SET_NULL (&ovf_header_info_v2.dir_vpid);
+
+	  error_code = btree_init_overflow_header_v2 (thread_p, *page_new, &ovf_header_info_v2);
+	}
+      else
+	{
+	  BTREE_OVERFLOW_HEADER ovf_header_info;
+
+	  VPID_SET_NULL (&ovf_header_info.next_vpid);
+
+	  error_code = btree_init_overflow_header (thread_p, *page_new, &ovf_header_info);
+	}
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2132,8 +2239,8 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   temp_recdes.area_size = sizeof (BTREE_NODE_HEADER);
 
   /* Allocate the new leaf page */
-  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr)
-      != NO_ERROR)
+  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr,
+			   false) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -2540,7 +2647,7 @@ bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 {
   /* Allocate the first page for the index */
   int ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
-				 &load_args->leaf.pgptr);
+				 &load_args->leaf.pgptr, false);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2643,6 +2750,14 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
       btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
       load_args->ovf.pgptr = NULL;
 
+      /* CBRD-24094: write the OID directory of the finished chain. */
+      ret = bt_load_finalize_ovf_dir (thread_p, load_args);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return ret;
+	}
+
       /* Turn off the overflowing mode */
       load_args->overflowing = false;
     }				/* Current page is an overflow page */
@@ -2734,6 +2849,136 @@ bt_load_invalidate_mvcc_del_id (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, 
 
 
 /*
+ * bt_load_capture_ovf_dir_entry () - Remember the (separator, vpid) directory entry of a freshly started overflow
+ *				      data page of the current key's chain (CBRD-24094).
+ *   return: NO_ERROR or error code
+ *   thread_p(in):
+ *   load_args(in/out): Loader state; the entry array grows on demand.
+ *   first_oid(in): First OID of the current overflow page (without packed MVCC flags).
+ */
+static int
+bt_load_capture_ovf_dir_entry (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, const OID * first_oid)
+{
+  BTREE_OVF_DIR_ENTRY *entry;
+
+  if (load_args->ovf_dir_count >= load_args->ovf_dir_capacity)
+    {
+      int new_capacity = (load_args->ovf_dir_capacity > 512) ? (load_args->ovf_dir_capacity * 2) : 1024;
+      BTREE_OVF_DIR_ENTRY *new_entries;
+
+      new_entries =
+	(BTREE_OVF_DIR_ENTRY *) realloc (load_args->ovf_dir_entries,
+					 (size_t) new_capacity * sizeof (BTREE_OVF_DIR_ENTRY));
+      if (new_entries == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) new_capacity * sizeof (BTREE_OVF_DIR_ENTRY));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      load_args->ovf_dir_entries = new_entries;
+      load_args->ovf_dir_capacity = new_capacity;
+    }
+
+  entry = &load_args->ovf_dir_entries[load_args->ovf_dir_count];
+  memset (entry, 0, sizeof (*entry));
+  COPY_OID (&entry->sep_oid, first_oid);
+  VPID_COPY (&entry->vpid, &load_args->ovf.vpid);
+  load_args->ovf_dir_count++;
+
+  return NO_ERROR;
+}
+
+/*
+ * bt_load_finalize_ovf_dir () - Write the collected directory entries of the finished chain into directory
+ *				 page(s) and reset the per-key directory state (CBRD-24094).
+ *   return: NO_ERROR or error code
+ *   thread_p(in):
+ *   load_args(in/out): Loader state.
+ */
+static int
+bt_load_finalize_ovf_dir (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
+{
+  PAGE_PTR dir_pgptr = NULL;
+  PAGE_PTR next_pgptr = NULL;
+  VPID next_vpid;
+  RECDES rec;
+  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+  int pos = 0;
+  int chunk;
+  int ret = NO_ERROR;
+
+  if (!load_args->ovf_v2 || VPID_ISNULL (&load_args->ovf_dir_vpid))
+    {
+      /* No directory: the chain had at most one data page. */
+      load_args->ovf_dir_count = 0;
+      return NO_ERROR;
+    }
+  assert (load_args->ovf_dir_count >= 2);
+
+  dir_pgptr = pgbuf_fix (thread_p, &load_args->ovf_dir_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (dir_pgptr == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
+    }
+
+  while (pos < load_args->ovf_dir_count)
+    {
+      chunk = load_args->ovf_dir_count - pos;
+      if (chunk > BTREE_OVF_DIR_MAX_ENTRIES)
+	{
+	  chunk = BTREE_OVF_DIR_MAX_ENTRIES;
+	}
+
+      rec.type = REC_HOME;
+      rec.data = (char *) &load_args->ovf_dir_entries[pos];
+      rec.length = chunk * (int) sizeof (BTREE_OVF_DIR_ENTRY);
+      rec.area_size = rec.length;
+
+      if (spage_insert_at (thread_p, dir_pgptr, 1, &rec) != SP_SUCCESS)
+	{
+	  assert_release (false);
+	  pgbuf_unfix_and_init (thread_p, dir_pgptr);
+	  return ER_FAILED;
+	}
+      pos += chunk;
+
+      if (pos < load_args->ovf_dir_count)
+	{
+	  /* Chain another directory page; link it before the current page is logged. */
+	  ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &next_vpid, &next_pgptr, true);
+	  if (ret != NO_ERROR || next_pgptr == NULL)
+	    {
+	      pgbuf_unfix_and_init (thread_p, dir_pgptr);
+	      pgbuf_unfix_and_init_after_check (thread_p, next_pgptr);
+	      ASSERT_ERROR ();
+	      return (ret != NO_ERROR) ? ret : ER_FAILED;
+	    }
+	  hdr_v2 = btree_get_overflow_header_v2 (thread_p, dir_pgptr);
+	  if (hdr_v2 == NULL)
+	    {
+	      assert_release (false);
+	      pgbuf_unfix_and_init (thread_p, dir_pgptr);
+	      pgbuf_unfix_and_init (thread_p, next_pgptr);
+	      return ER_FAILED;
+	    }
+	  VPID_COPY (&hdr_v2->next_vpid, &next_vpid);
+	}
+
+      btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, dir_pgptr);
+      dir_pgptr = next_pgptr;
+      next_pgptr = NULL;
+    }
+  assert (dir_pgptr == NULL);
+
+  /* Reset the per-key directory state. */
+  VPID_SET_NULL (&load_args->ovf_dir_vpid);
+  load_args->ovf_dir_count = 0;
+
+  return NO_ERROR;
+}
+
+/*
  * bt_load_nospace_for_new_oid () - Create and save the Overflow OID page.
  *   return: int
  *   thread_p(in):
@@ -2768,7 +3013,8 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       assert (slotid > 0);
 
       /* Allocate the new overflow page */
-      ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &new_ovfpgid, &new_ovfpgptr);
+      ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &new_ovfpgid, &new_ovfpgptr,
+				 load_args->ovf_v2);
       if (ret != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
@@ -2793,6 +3039,48 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
 
       ovf_header->next_vpid = new_ovfpgid;
 
+      if (load_args->ovf_v2)
+	{
+	  /* CBRD-24094: the chain just grew to two or more data pages. Make sure the directory head page exists
+	   * and stamp it into both data page headers before they are logged. Directory entries are written at
+	   * key end (bt_load_finalize_ovf_dir). */
+	  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+
+	  if (VPID_ISNULL (&load_args->ovf_dir_vpid))
+	    {
+	      PAGE_PTR dir_pgptr = NULL;
+
+	      ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &load_args->ovf_dir_vpid,
+					 &dir_pgptr, true);
+	      if (ret != NO_ERROR || dir_pgptr == NULL)
+		{
+		  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+		  pgbuf_unfix_and_init_after_check (thread_p, dir_pgptr);
+		  ASSERT_ERROR ();
+		  return (ret != NO_ERROR) ? ret : ER_FAILED;
+		}
+	      pgbuf_unfix_and_init (thread_p, dir_pgptr);
+	    }
+
+	  hdr_v2 = btree_get_overflow_header_v2 (thread_p, load_args->ovf.pgptr);
+	  if (hdr_v2 == NULL)
+	    {
+	      pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  VPID_COPY (&hdr_v2->dir_vpid, &load_args->ovf_dir_vpid);
+
+	  hdr_v2 = btree_get_overflow_header_v2 (thread_p, new_ovfpgptr);
+	  if (hdr_v2 == NULL)
+	    {
+	      pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  VPID_COPY (&hdr_v2->dir_vpid, &load_args->ovf_dir_vpid);
+	}
+
       /* Save the current overflow page */
       btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
       load_args->ovf.pgptr = NULL;
@@ -2808,7 +3096,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       /* Allocate the new overflow page */
       ret =
 	btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &load_args->ovf.vpid,
-			     &load_args->ovf.pgptr);
+			     &load_args->ovf.pgptr, load_args->ovf_v2);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2877,6 +3165,17 @@ bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, 
     {				/* no space for the new OID */
       ret = bt_load_nospace_for_new_oid (thread_p, load_args, sp_success);
       if (ret != NO_ERROR || *sp_success != SP_SUCCESS)
+	{
+	  return ret;
+	}
+    }
+
+  /* CBRD-24094: the first OID of a fresh overflow record is the page's directory separator. Capture it before
+   * MVCC flags are packed into the OID. */
+  if (load_args->ovf_v2 && load_args->overflowing && load_args->curr_rec_obj_count == 1)
+    {
+      ret = bt_load_capture_ovf_dir_entry (thread_p, load_args, &pparam->rec_oid);
+      if (ret != NO_ERROR)
 	{
 	  return ret;
 	}

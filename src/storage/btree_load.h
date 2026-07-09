@@ -244,6 +244,36 @@ struct btree_overflow_header
   VPID next_vpid;
 };
 
+/* CBRD-24094: extended overflow header for OID-ordered overflow chains of non-unique
+ * indexes. The on-disk format is detected by the length of the header record: legacy
+ * pages store BTREE_OVERFLOW_HEADER only (8 bytes), v2 pages store
+ * BTREE_OVERFLOW_HEADER_V2 (16 bytes). next_vpid must stay first so that all
+ * sequential chain traversal code works on both formats unchanged. */
+typedef struct btree_overflow_header_v2 BTREE_OVERFLOW_HEADER_V2;
+struct btree_overflow_header_v2
+{
+  VPID next_vpid;		/* Next page in chain. Must be first (same offset as legacy). */
+  VPID dir_vpid;		/* Head of the OID-directory page list of the chain. NULL while
+				 * the chain has a single data page. Immutable once created. */
+};
+
+/* One OID-directory entry: separator OID and the data page it routes to. Entries are
+ * kept sorted by sep_oid in a single record (slot 1) of directory pages; entry order
+ * matches the chain (next_vpid) order of the data pages. A data page owns the OID
+ * range [sep, next_sep); the first page also catches anything below its separator.
+ * Separators are fixed at page creation; deletions never invalidate them. */
+typedef struct btree_ovf_dir_entry BTREE_OVF_DIR_ENTRY;
+struct btree_ovf_dir_entry
+{
+  OID sep_oid;			/* Lower bound (separator) for OIDs stored in vpid. */
+  VPID vpid;			/* Data page. */
+};
+
+/* Maximum directory entries stored in one directory page record (conservative slack
+ * for the spage header, slot directory and the header record). */
+#define BTREE_OVF_DIR_MAX_ENTRIES \
+  ((int) ((DB_PAGESIZE - 256) / (int) sizeof (BTREE_OVF_DIR_ENTRY)))
+
 typedef struct btree_node_info BTREE_NODE_INFO;
 struct btree_node_info
 {
@@ -326,6 +356,9 @@ STATIC_INLINE bool btree_clear_key_value (bool * clear_flag, DB_VALUE * key_valu
 STATIC_INLINE void btree_init_temp_key_value (bool * clear_flag, DB_VALUE * key_value) __attribute__ ((ALWAYS_INLINE));
 extern int btree_create_overflow_key_file (THREAD_ENTRY * thread_p, BTID_INT * btid);
 extern int btree_init_overflow_header (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, BTREE_OVERFLOW_HEADER * ovf_header);
+extern int btree_init_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr,
+					  BTREE_OVERFLOW_HEADER_V2 * ovf_header);
+extern BTREE_OVERFLOW_HEADER_V2 *btree_get_overflow_header_v2 (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 extern int btree_init_node_header (THREAD_ENTRY * thread_p, const VFID * vfid, PAGE_PTR page_ptr,
 				   BTREE_NODE_HEADER * header, bool redo);
 extern int btree_init_root_header (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr,
