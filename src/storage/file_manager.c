@@ -1429,6 +1429,8 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
+      /* TODO: When the OOS file descriptor stores its owner HFID/class back reference, print the table name and HFID
+       * here. Current FILE_OOS headers do not expose that information from the OOS file itself. */
       fprintf (fp, "OOS file\n");
       break;
 
