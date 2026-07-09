@@ -2129,10 +2129,41 @@ qo_iscan_cost (QO_PLAN * planp)
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
-      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
-	{
-	  sel_rows *= QO_TERM_SELECTIVITY (termp);
-	}
+
+      /* Exclude a LIKE-derived range term from the row-count selectivity only
+       * when the correlated residual LIKE is accounted for elsewhere, i.e. it
+       * became a key-filter term on the same segment (its selectivity is in
+       * filter_sel below). Otherwise - notably a non-covering function index,
+       * where key-filters are disabled (see qo_index_scan_new) and the
+       * residual LIKE falls through to a data filter - keep the range as the
+       * row-count upper bound so scan_rows is not inflated to the whole table
+       * (CBRD-27036). */
+      {
+	bool exclude_from_rows = false;
+
+	if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
+	  {
+	    int kt;
+	    BITSET_ITERATOR kf_iter;
+
+	    for (kt = bitset_iterate (&(planp->plan_un.scan.kf_terms), &kf_iter); kt != -1;
+		 kt = bitset_next_member (&kf_iter))
+	      {
+		QO_TERM *kf_termp = QO_ENV_TERM (QO_NODE_ENV (nodep), kt);
+
+		if (bitset_intersects (&(QO_TERM_SEGS (kf_termp)), &(QO_TERM_SEGS (termp))))
+		  {
+		    exclude_from_rows = true;
+		    break;
+		  }
+	      }
+	  }
+
+	if (!exclude_from_rows)
+	  {
+	    sel_rows *= QO_TERM_SELECTIVITY (termp);
+	  }
+      }
 
       /* each term can have multi index column. e.g.) (a,b) in .. */
       for (int j = 0; j < index_entryp->col_num; j++)
