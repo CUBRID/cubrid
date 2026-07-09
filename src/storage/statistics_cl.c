@@ -426,6 +426,68 @@ end:
 }
 
 /*
+ * stats_get_fullscan_page_count () - Return the approximate number of heap
+ *   pages that a full-table count(distinct) query would scan for a class.
+ *   return: NO_ERROR or error code
+ *   class_mop(in): class object
+ *   npages(out): approximate total heap page count
+ *
+ * Note: For a partitioned table the count(distinct) query scans every
+ *   partition, so the partition heap pages are summed. The parent (catalog)
+ *   heap of a partitioned class is nearly empty and must not be used alone.
+ */
+static int
+stats_get_fullscan_page_count (const MOP class_mop, int *npages)
+{
+  int partition_type = DB_NOT_PARTITIONED_CLASS;
+  MOP *partitions = NULL;
+  int nobjs = 0;
+  int error = NO_ERROR;
+
+  *npages = 0;
+
+  error = sm_partitioned_class_type ((DB_OBJECT *) class_mop, &partition_type, NULL, &partitions);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (partition_type == DB_PARTITIONED_CLASS && partitions != NULL)
+    {
+      int i, part_pages;
+
+      for (i = 0; partitions[i] != NULL; i++)
+	{
+	  part_pages = 0;
+	  error = db_get_class_num_objs_and_pages (partitions[i], 1 /* approximation */ , &nobjs, &part_pages);
+	  if (error != NO_ERROR)
+	    {
+	      free_and_init (partitions);
+	      return error;
+	    }
+	  *npages += part_pages;
+	}
+
+      free_and_init (partitions);
+    }
+  else
+    {
+      if (partitions != NULL)
+	{
+	  free_and_init (partitions);
+	}
+
+      error = db_get_class_num_objs_and_pages ((DB_OBJECT *) class_mop, 1 /* approximation */ , &nobjs, npages);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * stats_get_ndv_by_query () - get NDV by query
  *   return:
  *   class_mop(in):
@@ -485,12 +547,14 @@ stats_get_ndv_by_query (const MOP class_mop, CLASS_ATTR_NDV * class_attr_ndv, FI
 
   if (with_fullscan == STATS_WITH_FULLSCAN)
     {
-      int nobjs = 0, npages = 0;
+      int npages = 0;
 
-      /* Past stats_fullscan_max_pages (hidden parameter), force sampling scan
-       * even for WITH FULLSCAN to bound the cost of count(distinct) queries. */
-      if (db_get_class_num_objs_and_pages (class_mop, 1, &nobjs, &npages) == NO_ERROR
-	  && npages > prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES))
+      /* Bound the cost of the hint-less count(distinct) full scan: when the table has more than
+       * stats_fullscan_max_pages (hidden parameter) heap pages, downgrade WITH FULLSCAN to a sampling scan. If the
+       * page count cannot be determined, downgrade conservatively so a probe failure never falls back to the
+       * expensive full scan this is meant to avoid. */
+      if (stats_get_fullscan_page_count (class_mop, &npages) != NO_ERROR
+	  || npages > prm_get_integer_value (PRM_ID_STATS_FULLSCAN_MAX_PAGES))
 	{
 	  with_fullscan = STATS_WITH_SAMPLING;	/* downgrade */
 	}
