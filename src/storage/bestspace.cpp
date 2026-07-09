@@ -364,6 +364,19 @@ namespace cubstorage
     allocated += m_stats.allocated.load ();
   }
 
+  void
+  bestspace::shard::to_entries (bestspace_entry *entries)
+  {
+    std::size_t i;
+    L1 l1;
+
+    for (i = 0; i < ENTRIES_PER_SHARD; i++)
+      {
+	l1 = m_L1[i].load ();
+	std::memcpy (&entries[i], &l1, sizeof (bestspace_entry));
+      }
+  }
+
   bestspace::status
   bestspace::shard::L3_find (OID *class_oid, tier minimum, std::uint16_t needed_size, std::uint16_t consume_size,
 			     std::size_t bias, PGBUF_WATCHER &page_watcher)
@@ -857,8 +870,8 @@ namespace cubstorage
     return status::FOUND;
   }
 
-  bestspace::bestspace (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space,
-			std::size_t shard_count)
+  bestspace::bestspace (std::size_t shard_count, const VPID *shard_pages, int num_shard_pages, int num_pages,
+			std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space)
     : m_shards ()
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
@@ -866,7 +879,24 @@ namespace cubstorage
     , m_recs_sumlen (recs_sumlen)
   {
     assert (shard_count > 0);
+    assert (num_shard_pages > 0
+	    && static_cast<std::size_t> (num_shard_pages) <= sizeof (m_header.pages) / sizeof (m_header.pages[0]));
 
+    // store the shard page information
+    for (std::size_t i = 0; i < sizeof (m_header.pages) / sizeof (m_header.pages[0]); i++)
+      {
+	if (i < static_cast<std::size_t> (num_shard_pages))
+	  {
+	    m_header.pages[i] = shard_pages[i];
+	  }
+	else
+	  {
+	    m_header.pages[i] = { NULL_PAGEID, NULL_VOLID };
+	  }
+      }
+    m_header.page_num = num_shard_pages;
+
+    // create shards
     for (std::size_t i = 0; i < shard_count; i++)
       {
 	m_shards.emplace_back (*this);
@@ -925,12 +955,8 @@ namespace cubstorage
   bestspace::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
 		   PGBUF_WATCHER &page_watcher)
   {
-    int consume_space, needed_space;
+    int consume_size, needed_size;
     std::size_t shard, bias;
-    std::size_t retry;
-    std::size_t i;
-    bool continue_check;
-    status error;
     int errid;
 
     assert (size > 0 && size < DB_PAGESIZE);
@@ -951,69 +977,21 @@ namespace cubstorage
 	return ER_FAILED;
       }
 
+    // init
     PGBUF_INIT_WATCHER (&page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
-    consume_space = static_cast<int> (size) + SPAGE_SLOT_SIZE;
-    needed_space = consume_space + m_unfill_space;
-    if (needed_space > heap_nonheader_page_capacity ())
+    // strategy
+    consume_size = static_cast<int> (size) + SPAGE_SLOT_SIZE;
+    needed_size = consume_size + m_unfill_space;
+    if (needed_size > heap_nonheader_page_capacity ())
       {
-	needed_space = consume_space;
+	needed_size = consume_size;
       }
-
-    retry = 0;
     shard = 0;
     bias = 0;
-    while (true)
-      {
-	for (i = 0; i < m_shards.size (); i++)
-	  {
-	    error = m_shards[ (shard + i) % m_shards.size ()].find (
-			    class_oid,
-			    hfid,
-			    static_cast<std::uint16_t> (needed_space),
-			    static_cast<std::uint16_t> (consume_space),
-			    bias,
-			    page_watcher);
-	    assert (error == status::FOUND ||
-		    error == status::ALLOCATING ||
-		    error == status::FAILURE);
-	    if (error == status::FOUND)
-	      {
-		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_space);
-		return NO_ERROR;
-	      }
-	    if (error == status::FAILURE)
-	      {
-		ASSERT_ERROR ();
-		errid = er_errid ();
-		return errid != NO_ERROR ? errid : ER_FAILED;
-	      }
-	  }
 
-	assert (error == status::ALLOCATING);
-
-	// NOT FOUND AND CAN'T ALLOCATE
-	if (retry < 20)
-	  {
-	    std::this_thread::yield ();
-	  }
-	else
-	  {
-	    std::this_thread::sleep_for (std::chrono::microseconds (10));
-	  }
-	retry++;
-
-	// IF INTERRUPTED
-	if (logtb_is_interrupted (&thread_ref, true, &continue_check))
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    return ER_INTERRUPTED;
-	  }
-      }
-
-    // impossible !
-    assert (false);
-    return ER_FAILED;
+    // find
+    return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, page_watcher);
   }
 
   bestspace::tier
@@ -1098,6 +1076,94 @@ namespace cubstorage
       }
   }
 
+  void
+  bestspace::get_shard_pages (VPID *pages, int &num_pages)
+  {
+    std::memcpy (pages, m_header.pages, m_header.page_num * sizeof (VPID));
+    num_pages = m_header.page_num;
+  }
+
+  std::size_t
+  bestspace::get_num_shards ()
+  {
+    return m_shards.size ();
+  }
+
+  void
+  bestspace::to_entries (bestspace_entry *entries)
+  {
+    std::size_t i;
+
+    for (i = 0; i < m_shards.size (); i++)
+      {
+	m_shards[i].to_entries (entries + i * ENTRIES_PER_SHARD);
+      }
+  }
+
+  int
+  bestspace::find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
+			       std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, PGBUF_WATCHER &page_watcher)
+  {
+    bool continue_check;
+    std::size_t retry;
+    std::size_t i;
+    status error;
+    int errid;
+
+    retry = 0;
+    while (true)
+      {
+	for (i = 0; i < m_shards.size (); i++)
+	  {
+	    error = m_shards[ (shard + i) % m_shards.size ()].find (
+			    class_oid,
+			    hfid,
+			    needed_size,
+			    consume_size,
+			    bias,
+			    page_watcher);
+	    assert (error == status::FOUND ||
+		    error == status::ALLOCATING ||
+		    error == status::FAILURE);
+	    if (error == status::FOUND)
+	      {
+		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_size);
+		return NO_ERROR;
+	      }
+	    if (error == status::FAILURE)
+	      {
+		ASSERT_ERROR ();
+		errid = er_errid ();
+		return errid != NO_ERROR ? errid : ER_FAILED;
+	      }
+	  }
+
+	assert (error == status::ALLOCATING);
+
+	// NOT FOUND AND CAN'T ALLOCATE
+	if (retry < 20)
+	  {
+	    std::this_thread::yield ();
+	  }
+	else
+	  {
+	    std::this_thread::sleep_for (std::chrono::microseconds (10));
+	  }
+	retry++;
+
+	// IF INTERRUPTED
+	if (logtb_is_interrupted (&thread_ref, true, &continue_check))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	    return ER_INTERRUPTED;
+	  }
+      }
+
+    // impossible !
+    assert (false);
+    return ER_FAILED;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // bestspace register/unregister
   //////////////////////////////////////////////////////////////////////////
@@ -1145,15 +1211,15 @@ namespace cubstorage
   }
 
   void
-  bestspace_registry::create (HFID *hfid, bestspace_entry *entries, std::size_t num_entries, bestspace_entry *candidates,
-			      std::size_t num_candidates, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::size_t shard_count,
-			      std::uint16_t unfill_space)
+  bestspace_registry::create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
+			      bestspace_entry *candidates, std::size_t num_candidates, const VPID *shard_pages, int num_shard_pages, int num_pages,
+			      std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
-    node->entry = new bestspace (num_pages, recs_num, recs_sumlen, unfill_space, shard_count);
+    node->entry = new bestspace (shard_count, shard_pages, num_shard_pages, num_pages, recs_num, recs_sumlen, unfill_space);
     node->entry->initialize_by_entries (entries, num_entries);
     node->entry->add_candidates (candidates, num_candidates);
 

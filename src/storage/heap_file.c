@@ -4333,9 +4333,10 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
       num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
     }
 
-  cubstorage::bestspaces.create (hfid, entries,
+  cubstorage::bestspaces.create (hfid, num_shards, entries,
 				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
-				 num_candidates, header->num_pages, header->num_recs, header->recs_sumlen, num_shards,
+				 num_candidates, header->bestspace.pages, header->bestspace.num_pages,
+				 header->num_pages, header->num_recs, header->recs_sumlen,
 				 (std::uint16_t) header->unfill_space);
 
   bestspace = cubstorage::bestspaces.find (hfid);
@@ -4455,7 +4456,13 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
+  cubstorage::bestspace_entry *entries;
   // *INDENT-ON*
+  std::size_t num_entries;
+  VPID pages[4];
+  int num_pages;
+  bool updatable = false;
+  int error;
 
   bestspace = heap_find_bestspace (thread_p, class_oid, hfid, NULL);
   if (!bestspace)
@@ -4463,7 +4470,34 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-  return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
+
+  error = bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (updatable)
+    {
+      num_entries = bestspace->get_num_shards () * cubstorage::bestspace::ENTRIES_PER_SHARD;
+      entries = (cubstorage::bestspace_entry *) malloc (num_entries * sizeof (cubstorage::bestspace_entry));
+      if (!entries)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  num_entries * sizeof (cubstorage::bestspace_entry));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      // fill
+      bestspace->to_entries (entries);
+      bestspace->get_shard_pages (pages, num_pages);
+      // update the shard pages
+      error = heap_update_bestspace (thread_p, hfid, pages, num_pages, entries, num_entries);
+
+      free_and_init (entries);
+      return error;
+    }
+  return NO_ERROR;
 }
 
 /*
