@@ -9765,6 +9765,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   /* traverse OR list */
   for (node = pt_expr; node; node = node->or_next)
     {
+      /* per-node: an IS [NOT] NULL node must not suppress the null-correction of its siblings */
+      not_null_calculated = false;
+
       switch (node->info.expr.op)
 	{
 	case PT_OR:
@@ -9867,9 +9870,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NULL:
-	  if (pt_expr->info.expr.arg1->node_type == PT_NAME && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
+	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = pt_expr->info.expr.arg1->info.name.null_frequency;
+	      selectivity = node->info.expr.arg1->info.name.null_frequency;
 	    }
 	  else
 	    {
@@ -9879,9 +9882,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NOT_NULL:
-	  if (pt_expr->info.expr.arg1->node_type == PT_NAME && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
+	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = pt_expr->info.expr.arg1->info.name.null_frequency;
+	      selectivity = node->info.expr.arg1->info.name.null_frequency;
 	    }
 	  else
 	    {
@@ -9901,15 +9904,19 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       if (!not_null_calculated)
 	{
-	  if (pt_expr->info.expr.arg1 && pt_expr->info.expr.arg1->node_type == PT_NAME
-	      && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
+	  /* the histogram estimators return a NON-null-conditional selectivity; restore the
+	   * all-rows fraction with the CURRENT node's columns. Using the chain head (pt_expr)
+	   * here applied the head's null fraction to every sibling, so a high-null column
+	   * behind a null-free head kept its conditional selectivity (inflated by 1/(1-nf)). */
+	  if (node->info.expr.arg1 && node->info.expr.arg1->node_type == PT_NAME
+	      && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = selectivity * (1 - pt_expr->info.expr.arg1->info.name.null_frequency);
+	      selectivity = selectivity * (1 - node->info.expr.arg1->info.name.null_frequency);
 	    }
-	  if (pt_expr->info.expr.arg2 && pt_expr->info.expr.arg2->node_type == PT_NAME
-	      && pt_expr->info.expr.arg2->info.name.null_frequency >= 0.0)
+	  if (node->info.expr.arg2 && node->info.expr.arg2->node_type == PT_NAME
+	      && node->info.expr.arg2->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = selectivity * (1 - pt_expr->info.expr.arg2->info.name.null_frequency);
+	      selectivity = selectivity * (1 - node->info.expr.arg2->info.name.null_frequency);
 	    }
 	}
 
