@@ -10438,19 +10438,23 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		}
 	      if (pt_expr->info.expr.op == PT_GE)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, false, &selectivity, &success);
+		  /* v >= col is col <= v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, true, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_GT)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, true, &selectivity, &success);
+		  /* v > col is col < v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, false, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_LE)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, false, &selectivity, &success);
+		  /* v <= col is col >= v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, true, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_LT)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, true, &selectivity, &success);
+		  /* v < col is col > v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, false, &selectivity, &success);
 		}
 	      break;
 	    }
