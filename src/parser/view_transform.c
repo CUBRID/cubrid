@@ -4660,14 +4660,17 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
     {
       return MQ_DBLINK_CORR_SIDE_ERR;
     }
+
   if (expr->node_type == PT_HOST_VAR)
     {
       return MQ_DBLINK_CORR_SIDE_ERR;
     }
+
   if (pt_is_const (expr))
     {
       return MQ_DBLINK_CORR_SIDE_CONST;
     }
+
   if (expr->node_type == PT_NAME)
     {
       if (PT_IS_OID_NAME (expr))
@@ -4690,6 +4693,7 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
 	}
       return MQ_DBLINK_CORR_SIDE_LOCAL;
     }
+
   if (expr->node_type == PT_DOT_)
     {
       leaf = mq_dblink_corr_dot_to_leaf_name (expr);
@@ -4711,9 +4715,63 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
 	  return MQ_DBLINK_CORR_SIDE_LOCAL;
 	}
     }
+
   return MQ_DBLINK_CORR_SIDE_OTHER;
 }
 
+/*
+ * mq_dblink_is_corr_eq () - single predicate for "is this term a pushable correlated
+ *   equality": a PT_EQ whose two sides classify as the inner DBLink column and an outer
+ *   reference.  Shared by the detection loop and the post-push flagging so the two can
+ *   never judge a term differently.  A term with or_next or an on_cond location is not a
+ *   candidate (detection additionally treats those as reasons to abandon the whole push —
+ *   that control-flow decision stays with the caller).
+ *   remote_out/outer_out (optional) receive the DBLink-side and outer-side expressions.
+ */
+static bool
+mq_dblink_is_corr_eq (PT_NODE * term, UINTPTR dblink_sid, PT_NODE * subquery_from, PT_NODE ** remote_out,
+		      PT_NODE ** outer_out)
+{
+  int c1, c2;
+
+  assert (term != NULL);
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ || term->info.expr.location != 0
+      || term->or_next != NULL || term->info.expr.arg1 == NULL || term->info.expr.arg2 == NULL)
+    {
+      return false;
+    }
+
+  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
+  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
+
+  if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+    {
+      if (remote_out != NULL)
+	{
+	  *remote_out = term->info.expr.arg1;
+	}
+      if (outer_out != NULL)
+	{
+	  *outer_out = term->info.expr.arg2;
+	}
+      return true;
+    }
+
+  if (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)
+    {
+      if (remote_out != NULL)
+	{
+	  *remote_out = term->info.expr.arg2;
+	}
+      if (outer_out != NULL)
+	{
+	  *outer_out = term->info.expr.arg1;
+	}
+      return true;
+    }
+  return false;
+}
 
 /*
  * mq_dblink_corr_forbidden_pre () - forbid OR, NOT, host var, method, query block in predicate
@@ -4884,32 +4942,9 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 
       if (!forbidden)
 	{
-	  int c1 = MQ_DBLINK_CORR_SIDE_OTHER;
-	  int c2 = MQ_DBLINK_CORR_SIDE_OTHER;
-	  bool is_corr_eq = false;
-
-	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ
-	      && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
-	    {
-	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
-	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
-	      is_corr_eq = ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-			    || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
-	    }
-
-	  if (is_corr_eq)
+	  if (mq_dblink_is_corr_eq (term, dblink_sid, subquery_from, remote_out, outer_out))
 	    {
 	      corr_eq_count++;
-	      if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE)
-		{
-		  *remote_out = term->info.expr.arg1;
-		  *outer_out = term->info.expr.arg2;
-		}
-	      else
-		{
-		  *remote_out = term->info.expr.arg2;
-		  *outer_out = term->info.expr.arg1;
-		}
 	    }
 	  else if (mq_dblink_corr_term_has_outer_ref (parser, term, subquery_from))
 	    {
@@ -5108,11 +5143,10 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
  *   from access_pred and the plan-dump printers hide them.  The term itself must STAY in the
  *   tree — its outer-name reference is what wires the enclosing subquery as correlated
  *   (spec_ident tagging / dptr attach); physically unlinking it makes the subquery execute
- *   only once and return the first row's value for every outer row.  Flags only a PT_EQ whose
- *   two sides classify as the inner DBLink column and an outer reference — the same
- *   classification the detection used — so constant filters and inner-only equalities are
- *   left untouched.  Terms with or_next or an on_cond location were never pushed and are
- *   skipped for the same reason detection rejected them.
+ *   only once and return the first row's value for every outer row.  Flags only the terms
+ *   mq_dblink_is_corr_eq() accepts — the same predicate mq_detect_dblink_corr_eq() used to
+ *   select the push — so constant filters, inner-only equalities, and or_next/on_cond terms
+ *   are left untouched.
  */
 static void
 mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
@@ -5123,17 +5157,9 @@ mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
 
   for (term = statement->info.query.q.select.where; term != NULL; term = term->next)
     {
-      if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ && term->info.expr.location == 0
-	  && term->or_next == NULL && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
+      if (mq_dblink_is_corr_eq (term, dblink_sid, from, NULL, NULL))
 	{
-	  int c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, from);
-	  int c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, from);
-
-	  if ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-	      || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE))
-	    {
-	      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_DBLINK_PUSHED);
-	    }
+	  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_DBLINK_PUSHED);
 	}
     }
 }
