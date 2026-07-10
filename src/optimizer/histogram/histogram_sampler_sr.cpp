@@ -730,9 +730,18 @@ namespace
 	  }
 
 	OID_SET_NULL (&cur_oid);
-	while ((sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache,
-				      PEEK)) == S_SUCCESS)
+	while (true)
 	  {
+	    /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	     * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	     * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	     * updated row's visible version must be read from the undo log */
+	    recdes.data = NULL;
+	    sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache, PEEK);
+	    if (sc != S_SUCCESS)
+	      {
+		break;
+	      }
 	    (*total_rows)++;
 
 	    error = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &recdes, &attr_info);
@@ -755,6 +764,11 @@ namespace
 	  }
 	if (sc != S_END)
 	  {
+	    /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
 	    ASSERT_ERROR_AND_SET (error);
 	    goto cleanup;
 	  }
@@ -1082,9 +1096,18 @@ cleanup:
 	  }
 
 	OID_SET_NULL (&cur_oid);
-	while ((sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache,
-				      PEEK)) == S_SUCCESS)
+	while (true)
 	  {
+	    /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	     * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	     * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	     * updated row's visible version must be read from the undo log */
+	    recdes.data = NULL;
+	    sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache, PEEK);
+	    if (sc != S_SUCCESS)
+	      {
+		break;
+	      }
 	    (*total_rows)++;
 	    error = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
@@ -1112,6 +1135,11 @@ cleanup:
 	  }
 	if (sc != S_END)
 	  {
+	    /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
 	    ASSERT_ERROR_AND_SET (error);
 	    goto cleanup;
 	  }
@@ -1859,11 +1887,20 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       attrinfo_inited = true;
 
       OID_SET_NULL (&inst_oid);
-      recdes.data = NULL;
       scan_class_oid = *tgt_oid;
 
-      while ((sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
+      while (true)
 	{
+	  /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	   * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	   * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	   * updated row's visible version must be read from the undo log */
+	  recdes.data = NULL;
+	  sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      break;
+	    }
 	  total_rows++;
 
 	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
@@ -1895,6 +1932,11 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 
       if (sc != S_END)
 	{
+	  /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
@@ -2163,11 +2205,20 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   attrinfo_inited = true;
 
   OID_SET_NULL (&inst_oid);
-  recdes.data = NULL;
   scan_class_oid = *class_oid;
 
-  while ((sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
+  while (true)
     {
+      /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+       * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+       * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+       * updated row's visible version must be read from the undo log */
+      recdes.data = NULL;
+      sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+      if (sc != S_SUCCESS)
+	{
+	  break;
+	}
       (*out_total_rows)++;
 
       error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
@@ -2199,6 +2250,11 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
 
   if (sc != S_END)
     {
+      /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }

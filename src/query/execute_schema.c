@@ -4438,7 +4438,9 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	}
     }
-  for (int i = 0; i < nnames; i++)
+  /* cur_column advances in the for header: an in-body `continue` (unsupported column type)
+   * must not pin the cursor on the same name for the remaining iterations */
+  for (int i = 0; i < nnames; i++, cur_column = cur_column->next)
     {
       attname = (char *) cur_column->info.name.original;
       if (do_histogram == DO_HISTOGRAM_DROP)
@@ -4540,7 +4542,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      return error;
 	    }
 	}
-      cur_column = cur_column->next;
     }
 
   if (error != NO_ERROR)
