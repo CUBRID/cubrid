@@ -22155,16 +22155,16 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       context->recdes_p->type = REC_NEWHOME;
       rc = heap_insert_newhome (thread_p, context, context->recdes_p, &new_forward_oid, newhome_pg_watcher_p);
 
-      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation */
-      if (context->do_supplemental_log)
-	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
-	}
-
       if (rc != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+
+      /* redo lsa for SUPPLEMENT_UPDATE log : relocation to relocation */
+      if (context->do_supplemental_log)
+	{
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* new home record will be a REC_RELOCATION and will be placed in the original home page */
@@ -22480,16 +22480,16 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       context->recdes_p->type = REC_NEWHOME;
       error_code = heap_insert_newhome (thread_p, context, context->recdes_p, &forward_oid, newhome_pg_watcher_p);
 
-      /* redo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION */
-      if (context->do_supplemental_log)
-	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
-	}
-
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+
+      /* redo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION */
+      if (context->do_supplemental_log)
+	{
+	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
 	}
 
       /* forwarding record is REC_RELOCATION */
@@ -23172,7 +23172,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
       goto error;
     }
 
-  if (context->do_supplemental_log == true)
+  if (rc == NO_ERROR && context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :
@@ -23183,14 +23183,14 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 error:
 
   /* unfix or keep home page */
-  if (context->scan_cache_p != NULL && context->home_page_watcher_p == &context->home_page_watcher
-      && context->scan_cache_p->cache_last_fix_page == true)
+  if (context->home_page_watcher_p->pgptr != NULL)
     {
-      pgbuf_replace_watcher (thread_p, context->home_page_watcher_p, &context->scan_cache_p->page_watcher);
-    }
-  else
-    {
-      if (context->home_page_watcher_p->pgptr != NULL)
+      if (context->scan_cache_p != NULL && context->home_page_watcher_p == &context->home_page_watcher
+	  && context->scan_cache_p->cache_last_fix_page == true)
+	{
+	  pgbuf_replace_watcher (thread_p, context->home_page_watcher_p, &context->scan_cache_p->page_watcher);
+	}
+      else
 	{
 	  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
 	}
