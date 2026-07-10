@@ -1,5 +1,6 @@
 /*
- * Copyright 2024 CUBRID Corporation
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -21,8 +22,7 @@
  * A cross-cutting concept, not parser-specific: the client/parser uses it to
  * decide DEFAULT-expression folding, and the server will use it at INSERT
  * execution to decide how often a DEFAULT is evaluated (VOLATILE -> once per
- * row).  Lives in base/ so both worlds can include it.  Self-contained so the
- * MAX-propagation rule can be unit-tested without linking the engine.
+ * row).
  */
 
 #ifndef _PT_VOLATILITY_H_
