@@ -93,6 +93,116 @@ namespace parallel_scan
     return (flags & flag) != 0;
   }
 
+  /* returns true if any TYPE_CONSTANT regu var in this subtree points at iv (the inst_num() value). */
+  static bool regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv);
+
+  static bool
+  regu_var_list_refs_instnum (struct regu_variable_list_node *list, DB_VALUE *iv)
+  {
+    for (struct regu_variable_list_node *n = list; n != nullptr; n = n->next)
+      {
+	if (regu_subtree_refs_instnum (&n->value, iv))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
+  static bool
+  regu_subtree_refs_instnum (REGU_VARIABLE *r, DB_VALUE *iv)
+  {
+    if (r == nullptr)
+      {
+	return false;
+      }
+    switch (r->type)
+      {
+      case TYPE_CONSTANT:
+	return r->value.dbvalptr == iv;
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+	{
+	  ARITH_TYPE *a = r->value.arithptr;
+	  if (a == nullptr)
+	    {
+	      return false;
+	    }
+	  return regu_subtree_refs_instnum (a->leftptr, iv) || regu_subtree_refs_instnum (a->rightptr, iv)
+		 || regu_subtree_refs_instnum (a->thirdptr, iv);
+	}
+      case TYPE_FUNC:
+	return regu_var_list_refs_instnum (r->value.funcp->operand, iv);
+      case TYPE_SP:
+	return regu_var_list_refs_instnum (r->value.sp_ptr->args, iv);
+      case TYPE_REGU_VAR_LIST:
+	return regu_var_list_refs_instnum (r->value.regu_var_list, iv);
+      case TYPE_ATTR_ID:
+      case TYPE_SHARED_ATTR_ID:
+      case TYPE_CLASS_ATTR_ID:
+      case TYPE_OID:
+      case TYPE_DBVAL:
+      case TYPE_POSITION:
+      case TYPE_POS_VALUE:
+      case TYPE_LIST_ID:
+      case TYPE_ORDERBY_NUM:
+      case TYPE_CLASSOID:
+      case TYPE_REGUVAL_LIST:
+	return false;
+      default:
+	/* unknown container: conservatively assume it may reference instnum -> block. */
+	return true;
+      }
+  }
+
+  /* true only when inst_num() is a plain pass-through output column that main can renumber at merge.
+   * inst_num() used in WHERE is represented as instnum_pred (required NULL here), so no separate
+   * predicate walk is needed. */
+  static bool
+  is_renumberable_instnum (XASL_NODE *x)
+  {
+    if (x == nullptr || x->instnum_val == nullptr)
+      {
+	return false;
+      }
+    if (x->instnum_pred != nullptr || x->save_instnum_val != nullptr)
+      {
+	return false;
+      }
+    if (x->ordbynum_pred != nullptr || x->ordbynum_val != nullptr)
+      {
+	return false;		/* ORDER BY + LIMIT/topn: parallel topn destroys scan-order ROWNUM. */
+      }
+    if (x->type != BUILDLIST_PROC)
+      {
+	return false;
+      }
+    if (x->proc.buildlist.groupby_list != nullptr || x->proc.buildlist.g_agg_list != nullptr
+	|| x->proc.buildlist.a_eval_list != nullptr)
+      {
+	return false;		/* GROUP BY / aggregate / analytic: out of MVP scope. */
+      }
+    if (x->outptr_list == nullptr)
+      {
+	return false;
+      }
+    int passthrough = 0;
+    for (struct regu_variable_list_node *v = x->outptr_list->valptrp; v != nullptr; v = v->next)
+      {
+	REGU_VARIABLE *r = &v->value;
+	if (r->type == TYPE_CONSTANT && r->value.dbvalptr == x->instnum_val)
+	  {
+	    passthrough++;
+	    continue;
+	  }
+	if (regu_subtree_refs_instnum (r, x->instnum_val))
+	  {
+	    return false;	/* nested use, e.g. ROWNUM + 1. */
+	  }
+      }
+    return passthrough >= 1;
+  }
+
   using rv_list_node = struct regu_variable_list_node;
 
   /* prototypes */
@@ -521,7 +631,7 @@ namespace parallel_scan
 	  }
       }
 
-    if (sibling->instnum_pred || sibling->instnum_val)
+    if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
       }
@@ -704,8 +814,11 @@ namespace parallel_scan
 
     if (arg->instnum_pred || arg->instnum_val)
       {
-	set_flag (result, CANNOT_LIST_MERGE);
 	buildvalue_opt = false;
+	if (!is_renumberable_instnum (arg))
+	  {
+	    set_flag (result, CANNOT_LIST_MERGE);
+	  }
       }
 
     if (arg->outptr_list)
@@ -843,7 +956,7 @@ namespace parallel_scan
     result |= check<false> (arg);
 
     const bool block_index_spec =
-	    (arg->instnum_pred || arg->instnum_val)
+	    ((arg->instnum_pred || arg->instnum_val) && !is_renumberable_instnum (arg))
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
 
