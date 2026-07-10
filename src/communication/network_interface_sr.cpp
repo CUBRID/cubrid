@@ -4481,10 +4481,26 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
+  if (reqlen < OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  if (class_attr_ndv.attr_cnt < 0)
+  if (class_attr_ndv.attr_cnt < 0
+      || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
+      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
     {
+      /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
+       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
+       * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
+       * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
+       * allocations below. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       error = ER_OBJ_INVALID_ARGUMENTS;
       (void) return_error_to_client (thread_p, rid);
