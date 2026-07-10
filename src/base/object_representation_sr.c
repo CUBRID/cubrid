@@ -2666,8 +2666,20 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 	      if (edl_text != NULL)
 		{
-		  att->default_value.default_expr.default_expr_text = strdup (edl_text);
-		  att->current_default_value.default_expr.default_expr_text = strdup (edl_text);
+		  char *dv_text = strdup (edl_text);
+		  char *cdv_text = strdup (edl_text);
+		  if (dv_text == NULL || cdv_text == NULL)
+		    {
+		      free_and_init (dv_text);
+		      free_and_init (cdv_text);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (size_t) (strlen (edl_text) + 1));
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  att->default_value.default_expr.default_expr_text = dv_text;
+		  att->current_default_value.default_expr.default_expr_text = cdv_text;
 		}
 	    }
 
