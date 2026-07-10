@@ -2940,6 +2940,12 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
       r1 = pt_print_bytes (parser, n);
+
+      if (q != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " and ");
+	}
+
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
@@ -2950,11 +2956,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       else
 	{
 	  q = pt_append_varchar (parser, q, r1);
-	}
-
-      if (n->next)
-	{
-	  q = pt_append_nulstring (parser, q, " and ");
 	}
     }
 
