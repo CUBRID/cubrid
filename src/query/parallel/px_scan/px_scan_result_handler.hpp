@@ -97,6 +97,9 @@ namespace parallel_scan
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       trace_handler *trace_handler_p;
+      /* pass-through ROWNUM (instnum_val) support: main renumbers these tuple columns to 1..N at merge. */
+      bool renumber_instnum = false;
+      std::vector<int> rownum_col_indices;
   };
 
   class xasl_snapshot_variables

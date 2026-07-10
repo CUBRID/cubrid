@@ -97,6 +97,28 @@ namespace parallel_scan
 	m_.active_results = parallelism;
 	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
+
+	/* Identify pass-through ROWNUM output columns. The checker only lets an instnum_val query reach
+	 * MERGEABLE_LIST when every reference is a top-level pass-through valptr, so collecting those column
+	 * positions here reproduces the checker's decision. Column index == position in outptr valptr list. */
+	m_.renumber_instnum = false;
+	XASL_NODE *ox = orig_xasl_tree_for_domain_resolve;
+	if (ox->instnum_val != nullptr && ox->instnum_pred == nullptr && ox->save_instnum_val == nullptr
+	    && ox->outptr_list != nullptr)
+	  {
+	    int idx = 0;
+	    for (regu_variable_list_node *v = ox->outptr_list->valptrp; v != nullptr; v = v->next, idx++)
+	      {
+		if (v->value.type == TYPE_CONSTANT && v->value.value.dbvalptr == ox->instnum_val)
+		  {
+		    m_.rownum_col_indices.push_back (idx);
+		  }
+	      }
+	    if (!m_.rownum_col_indices.empty ())
+	      {
+		m_.renumber_instnum = true;
+	      }
+	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -284,6 +306,12 @@ namespace parallel_scan
 	  }
 	tl.val_list_domain_resolved = false;
 	tl.xasl = curr_xasl;
+	if (m_.renumber_instnum && tl.xasl->instnum_val != nullptr)
+	  {
+	    /* guarantee a V_BOUND fixed 8-byte BIGINT slot so main can overwrite ROWNUM in place at merge.
+	     * value is a placeholder (0); the real 1..N is assigned in renumber_instnum_writer_lists(). */
+	    db_make_bigint (tl.xasl->instnum_val, 0);
+	  }
 	tl.agg_hash_state = HS_NONE;
 	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
@@ -600,6 +628,51 @@ namespace parallel_scan
       }
   }
 
+  /* Assign global ROWNUM 1..N in-place across the worker partial lists, in writer_results order, BEFORE
+   * merge_list_ids concatenates them (and before any final ORDER BY sort). Each worker list is one segment
+   * with an independent [base+1 .. base+tuple_cnt] range, so this pass can later be parallelized per segment.
+   * Returns NO_ERROR or ER_FAILED. */
+  static int
+  renumber_instnum_writer_lists (THREAD_ENTRY *thread_p, std::vector<QFILE_LIST_ID *> &lists,
+				 const std::vector<int> &col_indices)
+  {
+    DB_VALUE rownum_val;
+    INT64 counter = 0;
+    for (QFILE_LIST_ID *list_id : lists)
+      {
+	if (list_id == nullptr || list_id->tuple_cnt <= 0)
+	  {
+	    continue;
+	  }
+	QFILE_LIST_SCAN_ID s_id;
+	if (qfile_open_list_scan (list_id, &s_id) != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+	QFILE_TUPLE_RECORD tuple_rec = { NULL, 0 };
+	SCAN_CODE sc;
+	while ((sc = qfile_scan_list_next (thread_p, &s_id, &tuple_rec, PEEK)) == S_SUCCESS)
+	  {
+	    db_make_bigint (&rownum_val, ++counter);
+	    for (int col : col_indices)
+	      {
+		if (qfile_set_tuple_column_value (thread_p, list_id, s_id.curr_pgptr, &s_id.curr_vpid,
+						  tuple_rec.tpl, col, &rownum_val, &tp_Bigint_domain) != NO_ERROR)
+		  {
+		    qfile_close_scan (thread_p, &s_id);
+		    return ER_FAILED;
+		  }
+	      }
+	  }
+	qfile_close_scan (thread_p, &s_id);
+	if (sc == S_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+    return NO_ERROR;
+  }
+
   template <RESULT_TYPE result_type>
   SCAN_CODE result_handler<result_type>::read (THREAD_ENTRY *thread_p, read_dest_type *dest)
   {
@@ -623,6 +696,16 @@ namespace parallel_scan
 	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
 	  {
 	    return S_ERROR;
+	  }
+
+	if (m_.renumber_instnum)
+	  {
+	    if (renumber_instnum_writer_lists (thread_p, m_.writer_results, m_.rownum_col_indices) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this ();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
 	  }
 
 	merge_list_ids (thread_p, dest, m_.writer_results);
