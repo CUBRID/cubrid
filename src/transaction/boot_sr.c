@@ -2767,7 +2767,9 @@ error:
 
 #if defined(SERVER_MODE)
   pl_server_destroy ();
-
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
