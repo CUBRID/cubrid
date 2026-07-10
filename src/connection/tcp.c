@@ -370,10 +370,11 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
   /*
    * Compare with the TCP address with localhost.
-   * If it is, use Unix domain socket rather than TCP for the performance
+   * If it is and the requested port is the local master port, use Unix domain socket rather than TCP for the
+   * performance. Otherwise, keep the explicitly requested port by using TCP.
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+  if (in_addr == inet_addr ("127.0.0.1") && port == prm_get_master_port_id ())
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
