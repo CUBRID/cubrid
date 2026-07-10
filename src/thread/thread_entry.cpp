@@ -146,6 +146,8 @@ namespace cubthread
     , m_uses_px_stats (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
+    , uuidv7_last_ms (0)
+    , uuidv7_seq (0)
       // private:
     , m_id ()
     , m_error ()

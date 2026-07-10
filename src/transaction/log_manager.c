@@ -12934,13 +12934,34 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
+	  db_make_null (&old_values[i]);
+	}
+
+      for (i = 0; i < attr_info.num_values; i++)
+	{
 	  heap_value = &attr_info.values[i];
 
 	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+	  /* reading redo_recdes below reuses attr_info and clears each dbvalue, which frees any buffer
+	   * the dbvalue owns (e.g. the decompressed buffer of a compressed string).
+	   * So the old value must be deep-copied here, not shallow-copied. */
+	  (void) pr_clone_value (&heap_value->dbvalue, &old_values[oldval_deforder]);
+
+	  /* pr_clone_value () returns NO_ERROR even when its internal setval fails (e.g. allocation failure)
+	   * and leaves the clone NULL. Do not pack a NULL old value silently; treat it as an error. */
+	  if (!DB_IS_NULL (&heap_value->dbvalue) && DB_IS_NULL (&old_values[oldval_deforder]))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+
+	      goto exit;
+	    }
 
 	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
 	}
@@ -13257,6 +13278,11 @@ exit:
 
   if (old_values != NULL)
     {
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  pr_clear_value (&old_values[i]);
+	}
+
       free_and_init (old_values);
     }
 
@@ -14023,6 +14049,29 @@ cdc_min_log_pageid_to_keep ()
   return cdc_Gl.consumer.start_lsa.pageid;
 }
 
+/* Number of cdc_find_lsa() resolutions currently scanning archive volumes.  cdc_find_lsa()
+ * is the single point through which both flashback (flashback_verify_time) and CDC
+ * (scdc_find_lsa) resolve a timestamp into a start LSA by mounting archives one by one.
+ * While this is > 0, archive cleanup must defer, otherwise it could delete an archive a scan
+ * is about to mount and trip assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+ * A counter (not a flag) so concurrent flashback and CDC resolutions don't clear each other's
+ * protection.  Incremented/decremented and read only while holding LOG_CS, so a plain int is
+ * enough; it is a transient runtime hint (reset to 0 on restart) and needs no logging or recovery. */
+static int cdc_Find_lsa_in_progress = 0;
+
+/*
+ * cdc_find_lsa_in_progress - number of in-flight cdc_find_lsa() archive scans
+ *
+ * return : count of active resolutions; archive cleanup defers removal while this is > 0
+ *
+ * note : must be called while holding LOG_CS (cleanup already does)
+ */
+int
+cdc_find_lsa_in_progress ()
+{
+  return cdc_Find_lsa_in_progress;
+}
+
 #if defined (SERVER_MODE)
 REGISTER_DAEMON (cdc_loginfo_producer);
 
@@ -14138,14 +14187,15 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 {
   /*
    * 1. get volume list
-   * 2. get fpage from each volume 
-   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * 2. get fpage from each volume
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage
    * */
-  int begin = log_Gl.hdr.last_deleted_arv_num;
-  int end = log_Gl.hdr.nxarv_num - 1;
+
+  int begin;
+  int end;
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr = NULL;
-  int num_arvs = end - begin;
+  int num_arvs;
 
   time_t active_start_time = 0;
   time_t archive_start_time = 0;
@@ -14159,10 +14209,23 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
   time_t input_time = *extraction_time;
   int error = NO_ERROR;
 
+  /* Mark a resolution in progress and capture the scan range atomically under LOG_CS.  While
+   * the count is > 0, archive cleanup (which takes LOG_CS as writer) defers, so no archive in
+   * [begin + 1, end] can be removed between here and the cdc_get_start_point_from_file() mounts
+   * below.  This protects both the flashback and CDC entry points, which share this function.
+   * The count is decremented at the single 'end' exit. */
+  LOG_CS_ENTER (thread_p);
+  cdc_Find_lsa_in_progress++;
+  begin = log_Gl.hdr.last_deleted_arv_num;
+  end = log_Gl.hdr.nxarv_num - 1;
+  LOG_CS_EXIT (thread_p);
+
+  num_arvs = end - begin;
+
   /*
-   * 1. traverse from the latest log volume 
-   * 2. when num_arvs > 0, no logic to handle the active log volume 
-   * 3. check condition when i = begin while finding target_arv_num 
+   * 1. traverse from the latest log volume
+   * 2. when num_arvs > 0, no logic to handle the active log volume
+   * 3. check condition when i = begin while finding target_arv_num
    */
 
   /* At first, compare the time in active log volume. */
@@ -14287,6 +14350,11 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
     }
 
 end:
+  /* Resolution finished (success or failure); cleanup may resume once no scan remains. */
+  LOG_CS_ENTER (thread_p);
+  cdc_Find_lsa_in_progress--;
+  LOG_CS_EXIT (thread_p);
+
   if (is_found)
     {
       cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *extraction_time);
