@@ -3809,8 +3809,8 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
   const VPID *next_vpid;
   PGBUF_WATCHER chain_page_watcher;
   PGBUF_WATCHER page_watcher;
-  std::size_t max_shards, min_shards;
   std::size_t max_entries, max_pages;
+  int max_shards, min_shards;
   int remaining_entries;
   int entries_per_page;
   int page_capacity;
@@ -3833,13 +3833,13 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
   heap_hdr->bestspace.num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
 
   /* calculate the needed pages */
-  error = sysprm_get_range (PRM_ID_BESTSPACE_SHARD_COUNT, (void *) &min_shards, (void *) &max_shards);
+  error = sysprm_get_range (PRM_ID_BESTSPACE_SHARD_COUNT, &min_shards, &max_shards);
   if (error != NO_ERROR)
     {
       assert (false);
       return ER_FAILED;
     }
-  max_entries = max_shards * 64;
+  max_entries = max_shards * cubstorage::bestspace::ENTRIES_PER_SHARD;
 
   page_capacity = spage_max_record_size () - DB_ALIGN (sizeof (HEAP_CHAIN), HEAP_MAX_ALIGN) - SPAGE_SLOT_SIZE;
   entries_per_page = page_capacity / sizeof (cubstorage::bestspace_entry);
@@ -4392,11 +4392,16 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGBU
       return bestspace;
     }
 
-  /* there is no bestspace */
-  if (!class_oid || OID_ISNULL (class_oid))
+  /* NULL pointer requests lookup only. NULL OID value represents the root class during bootstrap. */
+  if (!class_oid)
     {
       /* not an error */
       return NULL;
+    }
+
+  if (OID_ISNULL (class_oid))
+    {
+      class_oid = oid_Root_class_oid;
     }
 
   if (header_watcher != NULL)
@@ -4467,8 +4472,9 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
   bestspace = heap_find_bestspace (thread_p, class_oid, hfid, NULL);
   if (!bestspace)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
+      ASSERT_ERROR ();
+      error = er_errid ();
+      return error != NO_ERROR ? error : ER_FAILED;
     }
 
   error = bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
