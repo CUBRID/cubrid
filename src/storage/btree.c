@@ -11886,6 +11886,7 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
   BTREE_OVF_DIR_ENTRY *entries;
   int num_entries, min, max, mid, idx;
   int error_code = NO_ERROR;
+  bool head_catch_all;
   PERF_UTIME_TRACKER ovf_fix_time_track;
 
   assert (dir_head_vpid != NULL && !VPID_ISNULL (dir_head_vpid));
@@ -11952,6 +11953,14 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
   num_entries = (int) (dir_record.length / sizeof (BTREE_OVF_DIR_ENTRY));
   assert (num_entries > 0);
 
+  /* CBRD-24094: the very first data page (entry 0 of the head directory page) is the catch-all: it owns every
+   * OID below the next separator, so its stored separator is not a real lower bound and must be treated as
+   * -infinity. Anchoring it this way keeps the binary search correct even after the catch-all page absorbs OIDs
+   * smaller than its own separator (OID reuse / multi-volume allocation, where OID order differs from insert
+   * order) and later splits -- a split point below the stale first separator would otherwise leave the
+   * directory record unsorted and mis-route the lookup, raising a spurious ER_BTREE_UNKNOWN_KEY. */
+  head_catch_all = VPID_EQ (pgbuf_get_vpid_ptr (dir_page), dir_head_vpid);
+
   /* Rightmost entry with separator <= oid; 0 when the OID is below all separators. */
   idx = 0;
   min = 0;
@@ -11959,7 +11968,7 @@ btree_ovf_dir_locate (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID *
   while (min <= max)
     {
       mid = (min + max) / 2;
-      if (OID_GT (&entries[mid].sep_oid, (OID *) oid))
+      if (!(head_catch_all && mid == 0) && OID_GT (&entries[mid].sep_oid, (OID *) oid))
 	{
 	  max = mid - 1;
 	}
