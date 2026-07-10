@@ -298,7 +298,12 @@ namespace cubconn::connection
 		std::next (ctx.adjusted_effective->begin (),
 			   std::min (ctx.adjusted_effective->size (), static_cast<std::size_t> (max_connection_workers)))
 	);
-	os::resources::net::map_nic_to_index (cores);
+
+	if (prm_get_bool_value (PRM_ID_HARDWARE_AFFINITY))
+	  {
+	    /* align the irq and RX/TX */
+	    os::resources::net::map_nic_to_index (cores);
+	  }
       }
     return std::min (ctx.adjusted_max, static_cast<std::size_t> (max_connection_workers));
   }
