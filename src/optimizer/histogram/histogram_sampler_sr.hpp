@@ -46,8 +46,9 @@ extern int xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p,
     int max_buckets, int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
     INT64 *out_ndv, INT64 *out_total_rows);
 
-/* true when the NDV collectors can measure a column of this type (mirrors the histogrammable
- * type set). Lets callers distinguish "not measured yet" from "not measurable at all". */
+/* true when the NDV collectors can measure a column of this type (the histogrammable type set
+ * plus OBJECT/OID, which get an exact NDV from the packed OID but never a histogram). Lets
+ * callers distinguish "not measured yet" from "not measurable at all". */
 extern bool xstats_ndv_type_is_supported (DB_TYPE type);
 
 /* Opaque set of per-column HyperLogLog sketches produced by one class's NDV scan. A partitioned

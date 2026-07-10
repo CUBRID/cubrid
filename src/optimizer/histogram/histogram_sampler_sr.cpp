@@ -127,6 +127,13 @@ namespace
       case DB_TYPE_DATETIMELTZ:
       case DB_TYPE_DATETIMETZ:
 	return value_category::datetime;
+      case DB_TYPE_OBJECT:	/* attribute declared type; the server-side value arrives as DB_TYPE_OID */
+      case DB_TYPE_OID:
+	/* an OID (volid, pageid, slotid) packs exactly into the category's u64 key, giving object
+	 * columns (e.g. the catalog classes' *_of references) an exact NDV. NDV only: the client's
+	 * is_histogrammable_type ()/histogram_key_kind_for_type () exclude object, so histograms
+	 * are never requested nor probed for these columns. */
+	return value_category::datetime;
       default:
 	return value_category::unsupported;
       }
@@ -565,6 +572,17 @@ namespace
       {
 	DB_DATETIMETZ *dtz = db_get_datetimetz (v);
 	out = ((std::uint64_t) dtz->datetime.date << 32) | (std::uint64_t) dtz->datetime.time;
+	break;
+      }
+      case DB_TYPE_OID:		/* object column; must pack exactly like ndv_hll_hash () */
+      {
+	const OID *oid = db_get_oid (v);
+	if (oid == NULL)
+	  {
+	    return false;
+	  }
+	out = ((std::uint64_t) (std::uint32_t) oid->pageid << 32)
+	      | ((std::uint64_t) (std::uint16_t) oid->slotid << 16) | (std::uint64_t) (std::uint16_t) oid->volid;
 	break;
       }
       default:
@@ -2117,6 +2135,17 @@ namespace
 	  {
 	    DB_DATETIMETZ *dtz = db_get_datetimetz (v);
 	    out = ((std::uint64_t) dtz->datetime.date << 32) | (std::uint64_t) dtz->datetime.time;
+	    break;
+	  }
+	  case DB_TYPE_OID:	/* object column; must pack exactly like extract<std::uint64_t> () */
+	  {
+	    const OID *oid = db_get_oid (v);
+	    if (oid == NULL)
+	      {
+		return false;
+	      }
+	    out = ((std::uint64_t) (std::uint32_t) oid->pageid << 32)
+		  | ((std::uint64_t) (std::uint16_t) oid->slotid << 16) | (std::uint64_t) (std::uint16_t) oid->volid;
 	    break;
 	  }
 	  default:
