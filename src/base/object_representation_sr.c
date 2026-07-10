@@ -2883,22 +2883,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 error_cleanup:
 
-  if (rep->attributes)
-    {
-      free_and_init (rep->attributes);
-    }
-
-  if (rep->shared_attrs)
-    {
-      free_and_init (rep->shared_attrs);
-    }
-
-  if (rep->class_attrs)
-    {
-      free_and_init (rep->class_attrs);
-    }
-
-  free_and_init (rep);
+  or_free_classrep (rep);
 
   return NULL;
 }
