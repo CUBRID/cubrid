@@ -4429,13 +4429,18 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      error = dump_histogram (obj, (char *) att->header.name, attr_type, false, NO_ERROR, stdout);
 	      if (error != NO_ERROR)
 		{
+		  /* the statistics and histograms are already stored; the dump is presentation
+		   * only, so a failed printout must not roll back the successful update */
 		  assert (false);
-		  return error;
+		  er_clear ();
+		  error = NO_ERROR;
 		}
 	    }
 	}
     }
-  for (int i = 0; i < nnames; i++)
+  /* cur_column advances in the for header: an in-body `continue` (unsupported column type)
+   * must not pin the cursor on the same name for the remaining iterations */
+  for (int i = 0; i < nnames; i++, cur_column = cur_column->next)
     {
       attname = (char *) cur_column->info.name.original;
       if (do_histogram == DO_HISTOGRAM_DROP)
@@ -4473,6 +4478,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
 	  if (!is_histogrammable_type (attr_type))
 	    {
+	      /* NOT a failure path: dump_histogram () prints the TYPE-NOT-SUPPORTED notice and
+	       * returns NO_ERROR, so `error` is reset and the statement still succeeds -- the
+	       * statistics refreshed above stand as a normal, committed-with-the-statement effect.
+	       * No savepoint rollback is needed here. */
 	      error = ER_OBJ_INVALID_ARGUMENTS;
 	      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
 	      continue;
@@ -4533,7 +4542,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      return error;
 	    }
 	}
-      cur_column = cur_column->next;
     }
 
   if (error != NO_ERROR)
@@ -4612,6 +4620,26 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
+  /* The histogram build below runs with authorization disabled and scans every row of the
+   * class server-side; the blob it stores exposes sampled values (MCVs, bucket bounds).
+   * Require the same rights as UPDATE STATISTICS: ALTER, and SELECT for the data read.
+   * (au_check_class_authorization ignores Au_disable, so it still checks under AU_DISABLE.) */
+  error = au_check_class_authorization (obj, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+      AU_ENABLE (save);
+      return error;
+    }
+  error = au_check_class_authorization (obj, AU_SELECT);
+  if (error != NO_ERROR)
+    {
+      PT_ERRORmf2 (parser, cls, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
+		   "SELECT", db_get_class_name (obj));
+      AU_ENABLE (save);
+      return error;
+    }
+
   error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
 
   if (error != NO_ERROR)
@@ -4652,6 +4680,16 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (er_errid () != NO_ERROR);
       AU_ENABLE (save);
       return er_errid ();
+    }
+
+  /* Dropping a histogram is a statistics change on the class; require ALTER like
+   * UPDATE STATISTICS (the drop runs with authorization disabled below). */
+  error = au_check_class_authorization (obj, AU_ALTER);
+  if (error != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
+      AU_ENABLE (save);
+      return error;
     }
 
   error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);
@@ -9681,6 +9719,19 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, insert_into);
       error = er_errid ();
       goto error_exit;
+    }
+
+  /* Name resolution clears parser->sys_datetime, parser->sys_epochtime
+   * for datetime defaults. (see fill_in_insert_default_function_arguments)
+   * Internal do_statement() won't re-request server time,
+   * so restore it here to avoid null evaluation. */
+  if (insert_into->flag.si_datetime)
+    {
+      error = db_ensure_server_info (parser, SI_SYS_DATETIME);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
 
   error = do_statement (parser, insert_into);

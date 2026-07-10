@@ -5874,6 +5874,14 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
       ptr = or_unpack_int (reply, &data_len);
       ptr = or_unpack_int (ptr, &status);
 
+      if (area_size < OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
+	{
+	  /* truncated reply: unpacking the fixed part below would read past the buffer */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+	  free_and_init (area);
+	  return ER_NET_SERVER_DATA_RECEIVE;
+	}
+
       ap = or_unpack_int64 (ap, &tr);
       *out_total_rows = tr;
       for (i = 0; i < attr_cnt; i++)
@@ -5898,6 +5906,13 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
 	{
 	  if (blob_length[i] > 0)
 	    {
+	      if (blob_length[i] > area_size - (int) (ap - area))
+		{
+		  /* the server-declared blob length exceeds what the reply actually carries */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+		  status = ER_NET_SERVER_DATA_RECEIVE;
+		  break;
+		}
 	      blob[i] = (char *) malloc ((size_t) blob_length[i]);
 	      if (blob[i] == NULL)
 		{

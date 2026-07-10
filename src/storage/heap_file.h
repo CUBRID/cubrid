@@ -382,20 +382,6 @@ struct heap_get_context
 				 * (like serial increment) require WRITE mode */
 };
 
-typedef struct sampling_info SAMPLING_INFO;
-struct sampling_info
-{
-  bool prepared;		/* set once; gates re-pick/clobber */
-  int weight;			/* sampling stride (Poisson gap mean); bucketed from total user pages */
-  VPID *picked_vpids;		/* all partitions, pruned order; owned (db_private_alloc) */
-  int picked_count;		/* total = part_offsets[n_parts] */
-  int picked_cursor;		/* read index into picked_vpids */
-  int slice_end;		/* cached part_offsets[pc+1]; hot-path bound */
-  int *part_offsets;		/* prefix-sum, len n_parts+1; slice pc = [off[pc], off[pc+1]) */
-  int n_parts;			/* pruned partitions; 1 if non-partitioned */
-  int partition_cursor;		/* current partition index; written only by qexec_init_next_partition */
-};
-
 /* Forward definition. */
 struct mvcc_reev_data;
 extern int mvcc_header_size_lookup[8];

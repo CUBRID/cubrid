@@ -29,6 +29,7 @@
 
 #include "histogram_sampler_sr.hpp"
 
+#include <new>
 #include <string>
 #include <utility>
 #include <vector>
@@ -107,6 +108,10 @@ namespace
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
       case DB_TYPE_NUMERIC:
+	/* NUMERIC histogram values (MCV/bucket endpoints) are collected as double, so precision
+	 * beyond ~16 significant digits (2^53) is lost and adjacent NUMERIC values can merge into
+	 * one endpoint. NDV is unaffected (it hashes the exact coefficient bytes + scale, see
+	 * hll_hash_numeric_exact); only the histogram value approximation is double. */
 	return value_category::real;
       case DB_TYPE_CHAR:
       case DB_TYPE_VARCHAR:	/* == DB_TYPE_STRING */
@@ -121,6 +126,13 @@ namespace
       case DB_TYPE_DATETIME:
       case DB_TYPE_DATETIMELTZ:
       case DB_TYPE_DATETIMETZ:
+	return value_category::datetime;
+      case DB_TYPE_OBJECT:	/* attribute declared type; the server-side value arrives as DB_TYPE_OID */
+      case DB_TYPE_OID:
+	/* an OID (volid, pageid, slotid) packs exactly into the category's u64 key, giving object
+	 * columns (e.g. the catalog classes' *_of references) an exact NDV. NDV only: the client's
+	 * is_histogrammable_type ()/histogram_key_kind_for_type () exclude object, so histograms
+	 * are never requested nor probed for these columns. */
 	return value_category::datetime;
       default:
 	return value_category::unsupported;
@@ -562,6 +574,17 @@ namespace
 	out = ((std::uint64_t) dtz->datetime.date << 32) | (std::uint64_t) dtz->datetime.time;
 	break;
       }
+      case DB_TYPE_OID:		/* object column; must pack exactly like ndv_hll_hash () */
+      {
+	const OID *oid = db_get_oid (v);
+	if (oid == NULL)
+	  {
+	    return false;
+	  }
+	out = ((std::uint64_t) (std::uint32_t) oid->pageid << 32)
+	      | ((std::uint64_t) (std::uint16_t) oid->slotid << 16) | (std::uint64_t) (std::uint16_t) oid->volid;
+	break;
+      }
       default:
 	return false;
       }
@@ -575,100 +598,6 @@ namespace
 	rs.store (slot, out);
       }
     return true;
-  }
-
-  /* full heap scan; reservoir-sample non-null target values; count nulls and rows */
-  template <typename T>
-  int
-  scan_and_collect (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, ATTR_ID attr_id,
-		    int sample_size, std::vector<T> &out_samples, std::int64_t *total_rows,
-		    std::int64_t *null_rows)
-  {
-    HEAP_SCANCACHE scan_cache;
-    HEAP_CACHE_ATTRINFO attr_info;
-    RECDES recdes;
-    OID inst_oid;
-    OID scan_class_oid;
-    SCAN_CODE sc;
-    int error = NO_ERROR;
-    bool scancache_inited = false;
-    bool attrinfo_inited = false;
-    MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
-    if (snapshot == NULL)
-      {
-	ASSERT_ERROR ();
-	return er_errid ();
-      }
-
-    cubsampling::reservoir_sampler<T> rs (static_cast<std::size_t> (sample_size));
-
-    *total_rows = 0;
-    *null_rows = 0;
-
-    error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
-    if (error != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	goto cleanup;
-      }
-    scancache_inited = true;
-
-    error = heap_attrinfo_start (thread_p, class_oid, 1, &attr_id, &attr_info);
-    if (error != NO_ERROR)
-      {
-	ASSERT_ERROR ();
-	goto cleanup;
-      }
-    attrinfo_inited = true;
-
-    OID_SET_NULL (&inst_oid);
-    recdes.data = NULL;
-    scan_class_oid = *class_oid;
-
-    while ((sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
-      {
-	(*total_rows)++;
-
-	error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
-	if (error != NO_ERROR)
-	  {
-	    ASSERT_ERROR ();
-	    goto cleanup;
-	  }
-
-	DB_VALUE *v = heap_attrinfo_access (attr_id, &attr_info);
-	if (v == NULL || DB_IS_NULL (v))
-	  {
-	    (*null_rows)++;
-	    continue;
-	  }
-
-	if (!extract<T> (v, rs))
-	  {
-	    /* type did not match the expected category: treat as null-ish, skip */
-	    (*null_rows)++;
-	  }
-      }
-
-    if (sc != S_END)
-      {
-	ASSERT_ERROR_AND_SET (error);
-	goto cleanup;
-      }
-
-    out_samples = std::move (rs.samples ());
-    error = NO_ERROR;
-
-cleanup:
-    if (attrinfo_inited)
-      {
-	heap_attrinfo_end (thread_p, &attr_info);
-      }
-    if (scancache_inited)
-      {
-	(void) heap_scancache_end (thread_p, &scan_cache);
-      }
-    return error;
   }
 
 #if defined (SERVER_MODE)
@@ -819,9 +748,18 @@ cleanup:
 	  }
 
 	OID_SET_NULL (&cur_oid);
-	while ((sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache,
-				      PEEK)) == S_SUCCESS)
+	while (true)
 	  {
+	    /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	     * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	     * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	     * updated row's visible version must be read from the undo log */
+	    recdes.data = NULL;
+	    sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache, PEEK);
+	    if (sc != S_SUCCESS)
+	      {
+		break;
+	      }
 	    (*total_rows)++;
 
 	    error = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &recdes, &attr_info);
@@ -844,6 +782,11 @@ cleanup:
 	  }
 	if (sc != S_END)
 	  {
+	    /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
 	    ASSERT_ERROR_AND_SET (error);
 	    goto cleanup;
 	  }
@@ -937,165 +880,7 @@ cleanup:
     return degree;
   }
 
-  template <typename T>
-  struct worker_result
-  {
-    std::vector<T> samples;
-    std::uint64_t seen = 0;
-    std::int64_t total_rows = 0;
-    std::int64_t null_rows = 0;
-    int error = NO_ERROR;
-  };
-
-  template <typename T>
-  class reservoir_scan_task : public cubthread::entry_task
-  {
-    public:
-      reservoir_scan_task (const OID *class_oid, const HFID *hfid, ATTR_ID attr_id, MVCC_SNAPSHOT *snapshot,
-			   int capacity, std::uint64_t seed, ftab_set part, worker_result<T> *result,
-			   THREAD_ENTRY *parent, parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
-	: m_class_oid (*class_oid)
-	, m_hfid (*hfid)
-	, m_attr_id (attr_id)
-	, m_snapshot (snapshot)
-	, m_capacity (capacity)
-	, m_seed (seed)
-	, m_part (std::move (part))
-	, m_result (result)
-	, m_parent (parent)
-	, m_wm (wm)
-	, m_abort (abort_flag)
-      {
-      }
-
-      void execute (cubthread::entry &thread_ref) override
-      {
-	/* borrow the coordinator's transaction/connection so the worker has a valid logging context
-	 * and the same MVCC view (mirrors parallel_scan::task) */
-	thread_ref.m_px_orig_thread_entry = m_parent;
-	thread_ref.conn_entry = m_parent->conn_entry;
-	thread_ref.tran_index = m_parent->tran_index;
-	thread_ref.on_trace = false;
-
-	cubsampling::reservoir_sampler<T> rs ((std::size_t) m_capacity, m_seed);
-	m_result->error = scan_ftab_partition<T> (&thread_ref, &m_class_oid, &m_hfid, m_attr_id, m_snapshot, m_part, rs,
-			  &m_result->total_rows, &m_result->null_rows, m_abort);
-	m_result->seen = rs.seen ();
-	m_result->samples = std::move (rs.samples ());
-	if (m_result->error != NO_ERROR && m_abort != NULL)
-	  {
-	    /* tell sibling workers to stop scanning: the whole request fails anyway */
-	    m_abort->store (true, std::memory_order_relaxed);
-	  }
-
-	/* detach from the coordinator's transaction/connection before the pooled thread goes idle:
-	 * a dangling conn_entry can be matched by connection-scanning code (interrupt/stop paths)
-	 * and act on a client that has since reused the entry (cf. px task_execution_guard) */
-	thread_ref.conn_entry = NULL;
-	thread_ref.tran_index = NULL_TRAN_INDEX;
-	thread_ref.m_px_orig_thread_entry = NULL;
-      }
-
-      void retire () override
-      {
-	m_wm->pop_task ();
-	delete this;
-      }
-
-    private:
-      OID m_class_oid;
-      HFID m_hfid;
-      ATTR_ID m_attr_id;
-      MVCC_SNAPSHOT *m_snapshot;
-      int m_capacity;
-      std::uint64_t m_seed;
-      ftab_page_walker m_part;
-      worker_result<T> *m_result;
-      THREAD_ENTRY *m_parent;
-      parallel_query::worker_manager *m_wm;
-      std::atomic<bool> *m_abort;
-  };
 #endif /* SERVER_MODE */
-
-  /* Parallel full-scan reservoir: distribute the heap's data pages across worker threads (each
-   * with its own page partition, scan_cache and reservoir, sharing the coordinator's snapshot),
-   * then merge the partition samples (population-weighted) and sum exact row/null counts. Falls
-   * back to the single-threaded scan when parallelism is off, the heap is small, or not in
-   * SERVER_MODE. Post-merge bucketizing / blob building stay serial. */
-  template <typename T>
-  static int
-  parallel_scan_and_collect (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, ATTR_ID attr_id,
-			     int sample_size, std::vector<T> &out_samples, std::int64_t *total_rows,
-			     std::int64_t *null_rows)
-  {
-    *total_rows = 0;
-    *null_rows = 0;
-
-#if defined (SERVER_MODE)
-    std::vector<ftab_set> parts;
-    parallel_query::worker_manager *wm = NULL;
-    int degree = reserve_and_split (thread_p, hfid, parts, &wm);
-    if (degree < 2)
-      {
-	/* not worth the worker setup -> single-pass serial reservoir */
-	return scan_and_collect<T> (thread_p, class_oid, hfid, attr_id, sample_size, out_samples, total_rows,
-				    null_rows);
-      }
-
-    MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
-    if (snapshot == NULL)
-      {
-	ASSERT_ERROR ();
-	wm->release_workers ();	/* also frees wm */
-	return er_errid ();
-      }
-    std::vector<worker_result<T>> results (degree);
-    std::atomic<bool> abort_flag (false);
-
-    for (int w = 0; w < degree; w++)
-      {
-	reservoir_scan_task<T> *task =
-		new reservoir_scan_task<T> (class_oid, hfid, attr_id, snapshot, sample_size,
-					    cubsampling::RESERVOIR_DEFAULT_SEED + (std::uint64_t) w,
-					    std::move (parts[w]), &results[w], thread_p, wm, &abort_flag);
-	wm->push_task (task);
-      }
-
-    /* blocks until every pushed task has finished */
-    wm->wait_workers ();
-
-    int error = NO_ERROR;
-    std::vector<std::vector<T>> part_samples (degree);
-    std::vector<std::uint64_t> part_seen (degree);
-    for (int w = 0; w < degree; w++)
-      {
-	if (results[w].error != NO_ERROR)
-	  {
-	    error = results[w].error;
-	  }
-	*total_rows += results[w].total_rows;
-	*null_rows += results[w].null_rows;
-	part_samples[w] = std::move (results[w].samples);
-	part_seen[w] = results[w].seen;
-      }
-    wm->release_workers ();
-    if (error != NO_ERROR && er_errid () == NO_ERROR)
-      {
-	/* the worker er_set () into its own thread-local context, which is gone; without this the
-	 * client would receive an error packet whose id is 0 and whose message is empty */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      }
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-
-    out_samples = cubsampling::merge_partition_samples<T> (part_samples, part_seen, (std::size_t) sample_size);
-    return NO_ERROR;
-#else /* SERVER_MODE */
-    return scan_and_collect<T> (thread_p, class_oid, hfid, attr_id, sample_size, out_samples, total_rows, null_rows);
-#endif /* SERVER_MODE */
-  }
 
   /* Per-column histogram collector used by the single-scan multi-column build: holds one
    * reservoir of the column's typed values plus an exact NULL count. One scan of the heap
@@ -1209,17 +994,28 @@ cleanup:
   static col_collector *
   make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap)
   {
-    switch (category_of (t))
+    /* the engine's operator new is non-throwing, but the constructors allocate through STL
+     * (the 16 KiB HLL register vector, the reservoir's reserve) whose failures arrive as
+     * std::bad_alloc; convert them to the NULL the callers already treat as OOM instead of
+     * letting the exception terminate the server */
+    try
       {
-      case value_category::integer:
-	return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
-      case value_category::real:
-	return new col_collector_t<double> (id, t, value_category::real, cap);
-      case value_category::string:
-	return new col_collector_t<std::string> (id, t, value_category::string, cap);
-      case value_category::datetime:
-	return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
-      default:
+	switch (category_of (t))
+	  {
+	  case value_category::integer:
+	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
+	  case value_category::real:
+	    return new col_collector_t<double> (id, t, value_category::real, cap);
+	  case value_category::string:
+	    return new col_collector_t<std::string> (id, t, value_category::string, cap);
+	  case value_category::datetime:
+	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
+	  default:
+	    return NULL;
+	  }
+      }
+    catch (const std::bad_alloc &)
+      {
 	return NULL;
       }
   }
@@ -1318,9 +1114,18 @@ cleanup:
 	  }
 
 	OID_SET_NULL (&cur_oid);
-	while ((sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache,
-				      PEEK)) == S_SUCCESS)
+	while (true)
 	  {
+	    /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	     * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	     * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	     * updated row's visible version must be read from the undo log */
+	    recdes.data = NULL;
+	    sc = heap_next_1page (thread_p, hfid, &vpid, &local_class_oid, &cur_oid, &recdes, &scan_cache, PEEK);
+	    if (sc != S_SUCCESS)
+	      {
+		break;
+	      }
 	    (*total_rows)++;
 	    error = heap_attrinfo_read_dbvalues (thread_p, &cur_oid, &recdes, &attr_info);
 	    if (error != NO_ERROR)
@@ -1328,16 +1133,31 @@ cleanup:
 		ASSERT_ERROR ();
 		goto cleanup;
 	      }
-	    for (c = 0; c < attr_cnt; c++)
+	    try
 	      {
-		if (cols[c] != NULL)
+		for (c = 0; c < attr_cnt; c++)
 		  {
-		    cols[c]->feed (heap_attrinfo_access (attr_ids[c], &attr_info));
+		    if (cols[c] != NULL)
+		      {
+			cols[c]->feed (heap_attrinfo_access (attr_ids[c], &attr_info));
+		      }
 		  }
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* sampled string copies allocate through STL; fail the scan cleanly */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		goto cleanup;
 	      }
 	  }
 	if (sc != S_END)
 	  {
+	    /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	    if (er_errid () == NO_ERROR)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      }
 	    ASSERT_ERROR_AND_SET (error);
 	    goto cleanup;
 	  }
@@ -1365,7 +1185,9 @@ cleanup:
     std::vector<col_collector *> collectors;	/* one per column, owned by the driver */
     std::int64_t total_rows;
     int error;
-    multi_worker_result () : total_rows (0), error (NO_ERROR) {}
+    int er_area_len;		/* > 0: er_area holds the failed worker's flattened er context */
+    alignas (sizeof (int)) char er_area[1024];
+    multi_worker_result () : total_rows (0), error (NO_ERROR), er_area_len (0) {}
   };
 
   class multi_scan_task : public cubthread::entry_task
@@ -1397,14 +1219,21 @@ cleanup:
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
 			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows, m_abort);
-	if (m_result->error != NO_ERROR && m_abort != NULL)
+	if (m_result->error != NO_ERROR)
 	  {
-	    /* tell sibling workers to stop scanning: the whole request fails anyway */
-	    m_abort->store (true, std::memory_order_relaxed);
+	    /* this worker's er context is thread-local and gone once the pooled thread moves on;
+	     * flatten it so the coordinator can re-raise the actual error for the client */
+	    m_result->er_area_len = (int) sizeof (m_result->er_area);
+	    er_get_area_error (m_result->er_area, &m_result->er_area_len);
+	    if (m_abort != NULL)
+	      {
+		/* tell sibling workers to stop scanning: the whole request fails anyway */
+		m_abort->store (true, std::memory_order_relaxed);
+	      }
 	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
-	 * (see reservoir_scan_task::execute) */
+	 * (see the borrow at the top of execute ()) */
 	thread_ref.conn_entry = NULL;
 	thread_ref.tran_index = NULL_TRAN_INDEX;
 	thread_ref.m_px_orig_thread_entry = NULL;
@@ -1500,30 +1329,54 @@ cleanup:
       }
 
     std::atomic<bool> abort_flag (false);
+    bool push_oom = false;
     for (w = 0; w < degree; w++)
       {
 	multi_scan_task *task =
 		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]), &results[w],
 				     thread_p, wm, &abort_flag);
+	if (task == NULL)
+	  {
+	    /* non-throwing operator new: OOM. The partitions of the unpushed workers would go
+	     * unscanned, so the request must fail; flag the pushed siblings to stop early. */
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (multi_scan_task));
+	    abort_flag.store (true, std::memory_order_relaxed);
+	    push_oom = true;
+	    break;
+	  }
 	wm->push_task (task);
       }
     wm->wait_workers ();
     wm->release_workers ();
 
     int error = NO_ERROR;
+    int failed_w = -1;
     std::int64_t total_rows = 0;
     for (w = 0; w < degree; w++)
       {
 	if (results[w].error != NO_ERROR)
 	  {
 	    error = results[w].error;
+	    failed_w = w;
 	  }
 	total_rows += results[w].total_rows;
       }
+    if (push_oom && error == NO_ERROR)
+      {
+	error = ER_OUT_OF_VIRTUAL_MEMORY;
+      }
     if (error != NO_ERROR && er_errid () == NO_ERROR)
       {
-	/* worker errors were set in the workers' own (gone) er contexts; see above */
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	if (failed_w >= 0 && results[failed_w].er_area_len > 0)
+	  {
+	    /* re-raise the failed worker's captured error (code + message) in this thread's
+	     * er context, so the client sees the actual cause instead of a generic error */
+	    (void) er_set_area_error (results[failed_w].er_area);
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  }
       }
 
     if (error == NO_ERROR)
@@ -1548,20 +1401,30 @@ cleanup:
 	      {
 		fin->unique = true;
 	      }
-	    std::vector<col_collector *> peers;
-	    std::int64_t nulls = 0;
-	    peers.reserve (degree);
-	    for (w = 0; w < degree; w++)
+	    try
 	      {
-		if (results[w].collectors[c] != NULL)
+		std::vector<col_collector *> peers;
+		std::int64_t nulls = 0;
+		peers.reserve (degree);
+		for (w = 0; w < degree; w++)
 		  {
-		    peers.push_back (results[w].collectors[c]);
-		    nulls += results[w].collectors[c]->null_rows;
+		    if (results[w].collectors[c] != NULL)
+		      {
+			peers.push_back (results[w].collectors[c]);
+			nulls += results[w].collectors[c]->null_rows;
+		      }
 		  }
+		fin->null_rows = nulls;
+		fin->merge_peers (peers, (std::size_t) sample_size);
+		merged[c] = fin;
 	      }
-	    fin->null_rows = nulls;
-	    fin->merge_peers (peers, (std::size_t) sample_size);
-	    merged[c] = fin;
+	    catch (const std::bad_alloc &)
+	      {
+		/* merge buffers allocate through STL; fail the request instead of terminating */
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		error = ER_OUT_OF_VIRTUAL_MEMORY;
+		delete fin;
+	      }
 	  }
       }
 
@@ -1575,7 +1438,9 @@ cleanup:
 
     if (error != NO_ERROR)
       {
-	for (c = 0; c < attr_cnt; c++)
+	/* on a worker error `merged` was never assigned (still empty); on a merge-phase error it
+	 * holds attr_cnt slots -- iterate its actual size, not attr_cnt */
+	for (c = 0; c < (int) merged.size (); c++)
 	  {
 	    delete merged[c];
 	    merged[c] = NULL;
@@ -1656,11 +1521,21 @@ cleanup:
 	while ((c = m_next_col->fetch_add (1)) < m_attr_cnt)
 	  {
 	    build_out &o = (*m_outs)[c];
-	    build_column_blob (&thread_ref, (*m_merged)[c], m_max_buckets, m_total_rows, o.blob, o.ndv, o.null_rows);
+	    try
+	      {
+		build_column_blob (&thread_ref, (*m_merged)[c], m_max_buckets, m_total_rows, o.blob, o.ndv,
+				   o.null_rows);
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* leave the blob empty: the coordinator reports a supported column with an empty
+		 * blob as ER_OUT_OF_VIRTUAL_MEMORY, failing the request cleanly */
+		o.blob.clear ();
+	      }
 	  }
 
 	/* detach from the coordinator's transaction/connection before the pooled thread goes idle
-	 * (see reservoir_scan_task::execute) */
+	 * (see the borrow at the top of execute ()) */
 	thread_ref.conn_entry = NULL;
 	thread_ref.tran_index = NULL_TRAN_INDEX;
 	thread_ref.m_px_orig_thread_entry = NULL;
@@ -1720,13 +1595,23 @@ cleanup:
 	    if (bdeg >= 2)
 	      {
 		std::atomic<int> next_col (0);
+		int pushed = 0;
 		for (int t = 0; t < bdeg; t++)
 		  {
-		    bwm->push_task (new build_task (thread_p, bwm, &merged, &outs, &next_col, attr_cnt, max_buckets,
-						    total_rows));
+		    build_task *btask = new build_task (thread_p, bwm, &merged, &outs, &next_col, attr_cnt, max_buckets,
+							total_rows);
+		    if (btask == NULL)
+		      {
+			/* OOM under the non-throwing operator new: the tasks already pushed still
+			 * drain every column via next_col, so a partial push is complete; with
+			 * zero pushed, fall through to the serial build below. */
+			break;
+		      }
+		    bwm->push_task (btask);
+		    pushed++;
 		  }
 		bwm->wait_workers ();
-		built_parallel = true;
+		built_parallel = (pushed > 0);
 	      }
 	    bwm->release_workers ();
 	  }
@@ -1736,8 +1621,16 @@ cleanup:
       {
 	for (int c = 0; c < attr_cnt; c++)
 	  {
-	    build_column_blob (thread_p, merged[c], max_buckets, total_rows, outs[c].blob, outs[c].ndv,
-			       outs[c].null_rows);
+	    try
+	      {
+		build_column_blob (thread_p, merged[c], max_buckets, total_rows, outs[c].blob, outs[c].ndv,
+				   outs[c].null_rows);
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		/* an empty blob on a supported column is reported as OOM just below */
+		outs[c].blob.clear ();
+	      }
 	  }
       }
 
@@ -1888,157 +1781,6 @@ histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID
 }
 
 int
-xhistogram_build_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-					ATTR_ID attr_id, DB_TYPE attr_type, int max_buckets, int sample_size,
-					double *null_frequency, char **histogram_blob, int *blob_length)
-{
-  int error = NO_ERROR;
-  std::int64_t total_rows = 0;
-  std::int64_t null_rows = 0;
-
-  *histogram_blob = NULL;
-  *blob_length = 0;
-  *null_frequency = 0.0;
-
-  if (max_buckets < 1)
-    {
-      max_buckets = 1;
-    }
-  if (sample_size <= 0)
-    {
-      /* size the row reservoir to the bucket count, clamped to [MIN, MAX] rows */
-      std::int64_t s = (std::int64_t) HISTOGRAM_SAMPLE_ROWS_PER_BUCKET * max_buckets;
-      if (s < HISTOGRAM_MIN_SAMPLE_ROWS)
-	{
-	  s = HISTOGRAM_MIN_SAMPLE_ROWS;
-	}
-      if (s > HISTOGRAM_MAX_SAMPLE_ROWS)
-	{
-	  s = HISTOGRAM_MAX_SAMPLE_ROWS;
-	}
-      sample_size = (int) s;
-    }
-
-  value_category cat = category_of (attr_type);
-  if (cat == value_category::unsupported)
-    {
-      /* not histogrammable; nothing to build (caller pre-checks is_histogrammable_type) */
-      return NO_ERROR;
-    }
-
-  {
-    /* a partitioned class's rows live in the partition heaps, not the parent heap this function
-     * scans; delegate to the multi-column builder, whose scan loop covers every partition heap */
-    std::vector<std::pair<OID, HFID>> targets;
-    error = histogram_scan_targets (thread_p, class_oid, hfid, targets);
-    if (error != NO_ERROR)
-      {
-	return error;
-      }
-    if (targets.size () != 1 || !OID_EQ (&targets[0].first, class_oid))
-      {
-	INT64 one_ndv = -1;
-	INT64 one_total = 0;
-	return xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, hfid, &attr_id, &attr_type,
-	       NULL /* attr_unique */, 1, max_buckets, sample_size,
-	       null_frequency, histogram_blob, blob_length, &one_ndv,
-	       &one_total);
-      }
-  }
-
-  switch (cat)
-    {
-    case value_category::integer:
-    {
-      std::vector<std::int64_t> samples;
-      error = parallel_scan_and_collect<std::int64_t> (thread_p, class_oid, hfid, attr_id, sample_size, samples,
-	      &total_rows, &null_rows);
-      if (error == NO_ERROR)
-	{
-	  /* always build: an empty sample yields a header-only blob (matches the old path) */
-	  *histogram_blob = build_blob<std::int64_t> (thread_p, samples, attr_type, max_buckets, total_rows,
-			    total_rows - null_rows, blob_length);
-	}
-      break;
-    }
-    case value_category::real:
-    {
-      std::vector<double> samples;
-      error = parallel_scan_and_collect<double> (thread_p, class_oid, hfid, attr_id, sample_size, samples, &total_rows,
-	      &null_rows);
-      if (error == NO_ERROR)
-	{
-	  *histogram_blob = build_blob<double> (thread_p, samples, attr_type, max_buckets, total_rows,
-						total_rows - null_rows, blob_length);
-	}
-      break;
-    }
-    case value_category::string:
-    {
-      std::vector<std::string> samples;
-      error = parallel_scan_and_collect<std::string> (thread_p, class_oid, hfid, attr_id, sample_size, samples,
-	      &total_rows, &null_rows);
-      if (error == NO_ERROR)
-	{
-	  *histogram_blob = build_blob<std::string> (thread_p, samples, attr_type, max_buckets, total_rows,
-			    total_rows - null_rows, blob_length);
-	}
-      break;
-    }
-    case value_category::datetime:
-    {
-      /* DATE/TIME family: encode as u64 (same key encoding the multi-column path uses). Without this
-       * case DATE/TIME columns fell through to default, returning NO_ERROR with a NULL/zero blob so the
-       * caller treated ANALYZE as successful and left the previous histogram in place. */
-      std::vector<std::uint64_t> samples;
-      error = parallel_scan_and_collect<std::uint64_t> (thread_p, class_oid, hfid, attr_id, sample_size, samples,
-	      &total_rows, &null_rows);
-      if (error == NO_ERROR)
-	{
-	  *histogram_blob = build_blob<std::uint64_t> (thread_p, samples, attr_type, max_buckets, total_rows,
-			    total_rows - null_rows, blob_length);
-	}
-      break;
-    }
-    default:
-      break;
-    }
-
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (total_rows > 0)
-    {
-      *null_frequency = static_cast<double> (null_rows) / static_cast<double> (total_rows);
-    }
-
-  /* A supported column reaches here only after build_blob (); a NULL blob means an OOM / serialization
-   * failure (an all-null column still yields a valid header-only blob, not NULL). Do not report
-   * success -- the caller would then flush the new null_frequency over the stale histogram blob. */
-  if (*histogram_blob == NULL)
-    {
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	}
-      return ER_FAILED;
-    }
-  if (*blob_length <= 0)
-    {
-      db_private_free_and_init (thread_p, *histogram_blob);
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	}
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-int
 xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
     int sample_size, double *null_frequency, char **histogram_blob, int *blob_length, INT64 *out_ndv,
@@ -2163,11 +1905,20 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       attrinfo_inited = true;
 
       OID_SET_NULL (&inst_oid);
-      recdes.data = NULL;
       scan_class_oid = *tgt_oid;
 
-      while ((sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
+      while (true)
 	{
+	  /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+	   * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+	   * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+	   * updated row's visible version must be read from the undo log */
+	  recdes.data = NULL;
+	  sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+	  if (sc != S_SUCCESS)
+	    {
+	      break;
+	    }
 	  total_rows++;
 
 	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
@@ -2177,18 +1928,33 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	      goto cleanup;
 	    }
 
-	  for (i = 0; i < attr_cnt; i++)
+	  try
 	    {
-	      if (collectors[i] == NULL)
+	      for (i = 0; i < attr_cnt; i++)
 		{
-		  continue;
+		  if (collectors[i] == NULL)
+		    {
+		      continue;
+		    }
+		  collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
 		}
-	      collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      /* sampled string copies allocate through STL; fail the scan cleanly */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
 	    }
 	}
 
       if (sc != S_END)
 	{
+	  /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
@@ -2371,6 +2137,17 @@ namespace
 	    out = ((std::uint64_t) dtz->datetime.date << 32) | (std::uint64_t) dtz->datetime.time;
 	    break;
 	  }
+	  case DB_TYPE_OID:	/* object column; must pack exactly like extract<std::uint64_t> () */
+	  {
+	    const OID *oid = db_get_oid (v);
+	    if (oid == NULL)
+	      {
+		return false;
+	      }
+	    out = ((std::uint64_t) (std::uint32_t) oid->pageid << 32)
+		  | ((std::uint64_t) (std::uint16_t) oid->slotid << 16) | (std::uint64_t) (std::uint16_t) oid->volid;
+	    break;
+	  }
 	  default:
 	    return false;
 	  }
@@ -2457,11 +2234,20 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   attrinfo_inited = true;
 
   OID_SET_NULL (&inst_oid);
-  recdes.data = NULL;
   scan_class_oid = *class_oid;
 
-  while ((sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK)) == S_SUCCESS)
+  while (true)
     {
+      /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
+       * pointer left by the previous row makes heap_get_visible_version_from_log () treat
+       * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
+       * updated row's visible version must be read from the undo log */
+      recdes.data = NULL;
+      sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+      if (sc != S_SUCCESS)
+	{
+	  break;
+	}
       (*out_total_rows)++;
 
       error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
@@ -2493,6 +2279,11 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
 
   if (sc != S_END)
     {
+      /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
       ASSERT_ERROR_AND_SET (error);
       goto cleanup;
     }

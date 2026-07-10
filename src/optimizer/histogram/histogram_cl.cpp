@@ -34,6 +34,7 @@
 #include "schema_system_catalog_constants.h"
 #include <stdio.h>
 #include <stdbool.h>
+#include <cmath>
 #include <string>
 #include <vector>
 #include "parser.h"
@@ -747,15 +748,30 @@ comp_parts (const hist::HistogramReader &r, const T &v, FracFn frac,
 	}
       /* The first bucket has no previous endpoint stored (its lower bound is unknown), so
        * bucket_hi (b - 1) would read bucket record (uint) -1 -> assert in debug / out-of-bounds in
-       * release. Interpolation inside it is therefore impossible; but its mass must still count:
-       * at (or above) its endpoint the whole bucket lies below-or-equal v, and for a value inside
-       * it we assume half. (Treating it as a point dropped the entire first-bucket mass for
-       * predicates like col <= first_endpoint, badly underestimating range selectivity.) */
+       * release. At (or above) its endpoint the whole bucket lies below-or-equal v. For a value
+       * inside it, mirror the second bucket's width below `hi` to approximate the missing lower
+       * bound: with q = dist(v,hi) / dist(v,hi2) (via the kind's frac), the mirrored in-bucket
+       * fraction is 1 - q/(1-q) -- ~1 just below the endpoint, 0 at one bucket-width below and
+       * beyond. A probe far below the histogram's actual minimum thus contributes ~nothing (the
+       * caller's 1/total_rows floor takes over) instead of half the first bucket's mass. */
       const T hi = r.bucket_hi<T> (b);
       double f;
       if (b == 0)
 	{
-	  f = (v >= hi) ? 1.0 : 0.5;
+	  if (v >= hi)
+	    {
+	      f = 1.0;
+	    }
+	  else if (nb > 1)
+	    {
+	      const T hi2 = r.bucket_hi<T> (1);
+	      const double q = frac (v, hi2, hi);
+	      f = (q >= 0.5) ? 0.0 : clamp01 (1.0 - q / (1.0 - q));
+	    }
+	  else
+	    {
+	      f = 0.5;		/* single bucket: no width information to extrapolate from */
+	    }
 	}
       else
 	{
@@ -961,14 +977,46 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
 
-  if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
-    {
-      /* probe constant does not match the column's stored value encoding (e.g. an integer column
-       * probed with a fractional constant, or a stale blob after ALTER changed the column type);
-       * decoding the slots with the wrong template would produce garbage. Use default estimates. */
-      *success = false;
-      return;
-    }
+  {
+    const hist::histogram_key_kind col_kind = histogram_key_kind_for_type (histogram_reader.value_type ());
+    if (key.kind != col_kind)
+      {
+	/* Unlike the equality path (whose probe constant arrives coerced to the column domain),
+	 * range probes commonly carry a cross-kind numeric constant -- price < 100 on a
+	 * DOUBLE/NUMERIC column, c_int < 5000.0 -- and rejecting them here would discard the
+	 * histogram for the most common range predicates. Promote safe numeric cases to the
+	 * column's stored kind; anything else (string vs numeric, datetime vs numeric, a stale
+	 * blob after ALTER) still falls back to the default estimate, since decoding the slots
+	 * with the wrong template would produce garbage. */
+	if (col_kind == hist::histogram_key_kind::dbl && key.kind == hist::histogram_key_kind::i64)
+	  {
+	    key.dbl = static_cast<double> (key.i64);
+	    key.kind = hist::histogram_key_kind::dbl;
+	  }
+	else if (col_kind == hist::histogram_key_kind::i64 && key.kind == hist::histogram_key_kind::dbl
+		 && key.dbl >= -9.0e18 && key.dbl <= 9.0e18)
+	  {
+	    const double fl = std::floor (key.dbl);
+	    if (key.dbl == fl)
+	      {
+		key.i64 = static_cast<std::int64_t> (fl);
+	      }
+	    else
+	      {
+		/* over integers, x < c and x <= c are both x < floor(c)+1;
+		 * x > c and x >= c are both x >= floor(c)+1 */
+		key.i64 = static_cast<std::int64_t> (fl) + 1;
+		include_equal = is_ge;
+	      }
+	    key.kind = hist::histogram_key_kind::i64;
+	  }
+	else
+	  {
+	    *success = false;
+	    return;
+	  }
+      }
+  }
 
   const double total_rows = static_cast<double> (histogram_reader.total_rows ());
   if (total_rows <= 0.0)
@@ -1038,6 +1086,16 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
   if (sel > 1.0)
     {
       sel = 1.0;
+    }
+
+  /* Out-of-range hedge, symmetric with the equal/LIKE paths: a probe value past the histogram's
+   * upper bound (e.g. col > stored_max on an append-only key/date column whose statistics have
+   * gone stale) otherwise collapses to exactly 0. Floor it at 1/total_rows so a slightly stale
+   * histogram never estimates a genuinely-populated range at zero rows. The lower out-of-range
+   * side is already hedged by the first bucket's half-mass in comp_parts (). */
+  if (sel <= 0.0)
+    {
+      sel = 1.0 / total_rows;
     }
 
   *selectivity = sel;
@@ -1682,6 +1740,11 @@ error_end:
 	    }
 	  db_ws_free ((*histogram)->histogram);
 	  (*histogram)->histogram = NULL;
+	}
+      if ((*histogram)->attr_ids != NULL)
+	{
+	  db_ws_free ((*histogram)->attr_ids);
+	  (*histogram)->attr_ids = NULL;
 	}
       if ((*histogram)->null_frequency != NULL)
 	{

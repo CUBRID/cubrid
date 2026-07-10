@@ -2107,13 +2107,25 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
+  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &max_buckets);
   ptr = or_unpack_int (ptr, &sample_size);
   ptr = or_unpack_int (ptr, &attr_cnt);
 
-  if (attr_cnt <= 0)
+  if (attr_cnt <= 0
+      || (INT64) OR_OID_SIZE + 3 * OR_INT_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
     {
+      /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
+       * the received request -- prevents unpacking past the request buffer and absurd allocations */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       status = ER_OBJ_INVALID_ARGUMENTS;
       (void) return_error_to_client (thread_p, rid);
@@ -2160,6 +2172,16 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       (void) return_error_to_client (thread_p, rid);
       goto cleanup;
     }
+
+  /* TODO(CBRD-26936 follow-up): enforce per-class authorization on the server here.
+   * The client SQL/API paths (do_update_histogram/do_drop_histogram, do_update_stats) already
+   * check AU_ALTER + AU_SELECT before issuing this request, so no legitimate client bypasses it.
+   * A client crafting the raw request directly, however, could pass a class OID it lacks rights
+   * on and infer that class's data distribution (MCV values, bucket bounds) or trigger repeated
+   * full scans. CUBRID authorization is client-side only (the server has no au_ layer and even
+   * DBA checks are passed as client-computed flags), so closing this needs a new server-side
+   * _db_auth reader that evaluates owner / direct grant / PUBLIC / DBA for (current user,
+   * class_oid) -- deferred to a dedicated security follow-up PR. */
 
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
 	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
@@ -4459,10 +4481,26 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
+  if (reqlen < OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
 
-  if (class_attr_ndv.attr_cnt < 0)
+  if (class_attr_ndv.attr_cnt < 0
+      || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
+      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
     {
+      /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
+       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
+       * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
+       * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
+       * allocations below. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       error = ER_OBJ_INVALID_ARGUMENTS;
       (void) return_error_to_client (thread_p, rid);

@@ -344,8 +344,9 @@ namespace cubsampling
 	  }
       }
 
-    /* spread any rounding remainder over partitions that still have spare samples */
-    std::size_t rr = 0;
+    /* spread any rounding remainder over partitions that still have spare samples; start at a
+     * random partition so tiny capacities do not deterministically favor the first partition */
+    std::size_t rr = (m > 1) ? std::uniform_int_distribution<std::size_t> (0, m - 1) (rng) : 0;
     while (assigned < want)
       {
 	bool progressed = false;
