@@ -747,7 +747,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PL_TRANSACTION_CONTROL "pl_transaction_control"
 
-#define PRM_NAME_PAGE_LATCH_TIMEOUT "page_latch_timeout"
+#define PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS "page_latch_timeout_in_msecs"
 
 #define PRM_VALUE_DEFAULT "DEFAULT"
 #define PRM_VALUE_MAX "MAX"
@@ -800,7 +800,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
-#define PRM_NAME_ENABLE_HEAP_FIXED_SCAN "enable_heap_fixed_scan"
+#define PRM_NAME_HARDWARE_AFFINITY "hardware_affinity"
 
 // #endregion 
 
@@ -5300,14 +5300,14 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PAGE_LATCH_TIMEOUT,
-   PRM_NAME_PAGE_LATCH_TIMEOUT,
+  {PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS,
+   PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 300}},
-   {false, {.i = 300}},
-   {false, {.i = 3000}},
+   {false, {.i = 300 * 1000}},
+   {false, {.i = 300 * 1000}},
+   {false, {.i = 3000 * 1000}},
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
@@ -5360,17 +5360,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_ENABLE_HEAP_FIXED_SCAN,
-   PRM_NAME_ENABLE_HEAP_FIXED_SCAN,
-   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_FOR_QRY_STRING),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = true}},
-   {false, {.b = true}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
    PRM_NAME_UPDATE_STATISTICS_UPDATE_HISTOGRAM,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE),
@@ -5382,7 +5371,19 @@ SYSPRM_PARAM prm_Def[] = {
    NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL}
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HARDWARE_AFFINITY,
+   PRM_NAME_HARDWARE_AFFINITY,
+   (PRM_FOR_SERVER),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];

@@ -187,6 +187,12 @@ namespace cubmethod
     return m_query_result;
   }
 
+  void
+  query_handler::detach_result_for_out_rs ()
+  {
+    m_query_result.result = NULL;
+  }
+
   int
   query_handler::prepare (std::string sql, int flag)
   {

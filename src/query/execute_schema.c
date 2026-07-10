@@ -9621,6 +9621,19 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  /* Name resolution clears parser->sys_datetime, parser->sys_epochtime
+   * for datetime defaults. (see fill_in_insert_default_function_arguments)
+   * Internal do_statement() won't re-request server time,
+   * so restore it here to avoid null evaluation. */
+  if (insert_into->flag.si_datetime)
+    {
+      error = db_ensure_server_info (parser, SI_SYS_DATETIME);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   error = do_statement (parser, insert_into);
   pt_free_statement_xasl_id (insert_into);
   if (error < 0)
@@ -10061,6 +10074,13 @@ do_create_entity (PARSER_CONTEXT * parser, PT_NODE * node)
 	    }
 	}
       error = do_cache_empty_histogram (class_obj);
+      if (error != NO_ERROR)
+	{
+	  /* histogram cache warm-up failed (e.g. _db_histogram missing, lock abort);
+	   * fail the statement cleanly instead of falling through to the
+	   * assert (error == NO_ERROR) below (CBRD-26895). */
+	  goto error_exit;
+	}
       break;
 
     default:
@@ -13795,9 +13815,8 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
       return error;
     }
 
-  PT_OP_TYPE op = pt_op_type_from_default_expr_type (on_update_expr_type);
+  PT_NODE *on_update_default_expr = pt_make_expression_default_expr (parser, NULL, on_update_expr_type);
 
-  PT_NODE *on_update_default_expr = parser_make_expression (parser, op, NULL, NULL, NULL);
   if (on_update_default_expr == NULL)
     {
       PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
@@ -13824,22 +13843,26 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
   db_make_null (&on_update_val);
 
   pt_evaluate_tree_having_serial (parser, on_update_default_expr, &on_update_val, 1);
-  temp_ptval = pt_dbval_to_value (parser, &on_update_val);
-  if (temp_ptval == NULL)
+  if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
-
-      pr_clear_value (&on_update_val);
-      if (on_update_default_expr != NULL)
-	{
-	  parser_free_node (parser, on_update_default_expr);
-	}
-      return error;
     }
-
-  error = pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
-					     on_update_expr_type, true);
+  else
+    {
+      temp_ptval = pt_dbval_to_value (parser, &on_update_val);
+      if (temp_ptval == NULL)
+	{
+	  pt_report_to_ersys (parser, PT_SEMANTIC);
+	  error = er_errid ();
+	}
+      else
+	{
+	  error =
+	    pt_coerce_value_for_default_value (parser, temp_ptval, temp_ptval, desired_type, attribute->data_type,
+					       on_update_expr_type, true);
+	}
+    }
 
   if (pt_has_error (parser))
     {
@@ -13874,6 +13897,7 @@ check_default_on_update_clause (PARSER_CONTEXT * parser, PT_NODE * attribute)
   pr_clear_value (&on_update_val);
   if (temp_ptval != NULL)
     {
+      temp_ptval->info.value.db_value_is_in_workspace = 0;
       parser_free_node (parser, temp_ptval);
     }
   if (on_update_default_expr != NULL)
@@ -14028,6 +14052,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	      goto exit;
 	    }
 
+
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (pt_has_error (parser))
 	    {
@@ -14050,6 +14075,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  db_value_clear (&src);
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);
+
 	  if (error != NO_ERROR)
 	    {
 	      goto exit_on_coerce_error;

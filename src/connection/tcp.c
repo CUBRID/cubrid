@@ -370,10 +370,11 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
   /*
    * Compare with the TCP address with localhost.
-   * If it is, use Unix domain socket rather than TCP for the performance
+   * If it is and the requested port is the local master port, use Unix domain socket rather than TCP for the
+   * performance. Otherwise, keep the explicitly requested port by using TCP.
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+  if (in_addr == inet_addr ("127.0.0.1") && port == prm_get_master_port_id ())
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;
@@ -1097,6 +1098,13 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
 	  break;
 	}
     }
+  if (rc != (int) sizeof (unsigned short))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_TCP_RECVMSG, 0);
+
+      css_shutdown_socket (new_fd);
+      return INVALID_SOCKET;
+    }
 
   if (IS_INVALID_SOCKET (new_fd))
     {
@@ -1105,6 +1113,7 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
     }
 
   *rid = ntohs (req_id);
+
   pid = getpid ();
   fcntl (new_fd, F_SETOWN, pid);
   css_sockopt (new_fd);
@@ -1120,9 +1129,10 @@ css_open_new_socket_from_master (SOCKET fd, unsigned short *rid)
  *   rid(in):
  */
 bool
-css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server)
+css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request_for_server,
+		 int client_type)
 {
-  int request;
+  unsigned int request;
   unsigned short req_id;
   struct iovec iov[1];
   struct msghdr msg;
@@ -1130,7 +1140,7 @@ css_transfer_fd (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SER
   static struct cmsghdr *cmptr = NULL;
 #endif /* LINUX || AIX */
 
-  request = htonl (request_for_server);
+  request = htonl (CSS_PACK_SERVER_REQUEST (request_for_server, client_type));
   if (send (server_fd, (char *) &request, sizeof (int), 0) < 0)
     {
       /* Master->Server link down. remove old link, and try again. */

@@ -521,6 +521,20 @@ sc_current_schema_owner (void)
   return Current_Schema.owner;
 }
 
+/*
+ * sc_clear_current_schema()
+ *   return: void
+ *
+ * Note :
+ *   Clears the owner and name of the current schema.
+ */
+void
+sc_clear_current_schema (void)
+{
+  Current_Schema.owner = NULL;
+  Current_Schema.name[0] = '\0';
+}
+
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2084,6 +2098,9 @@ void
 sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
+
+  /* Clear the current schema before ws_final () frees the owner MOP. */
+  sc_clear_current_schema ();
 
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
