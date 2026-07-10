@@ -960,6 +960,12 @@ enum pt_custom_print
   PT_PRINT_LOWER = (0x1 << 30)
 };
 
+/* Hide terms flagged PT_EXPR_INFO_DBLINK_PUSHED (already shipped into the DBLink conn_sql, not evaluated
+ * locally) when printing CNF lists.  Set only by the plan-dump printers: the XASL cache key print must keep
+ * the term, since two queries that differ only in the pushed term's outer side would otherwise collide.
+ * Defined outside enum pt_custom_print: (0x1 << 31) does not fit the enum's underlying int. */
+#define PT_PRINT_SUPPRESS_DBLINK_PUSHED (0x80000000U)
+
 /* all statement node types should be assigned their API statement enumeration */
 enum pt_node_type
 {

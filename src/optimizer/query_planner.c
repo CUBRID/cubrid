@@ -12951,7 +12951,7 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
-  parser->custom_print |= PT_CONVERT_RANGE;
+  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 
   json_object_set_new (json, "rewritten query", json_string (parser_print_tree (parser, select)));
 
@@ -13283,7 +13283,7 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
-  parser->custom_print |= PT_CONVERT_RANGE;
+  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
   sql = parser_print_tree (parser, select);
   parser->custom_print = save_custom;
 
