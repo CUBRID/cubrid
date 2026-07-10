@@ -753,8 +753,7 @@ jsp_call_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, sig, &flag_si_datetime);
       if (default_next_node_list != NULL && flag_si_datetime)
 	{
-	  // consider using 'db_calculate_current_server_time' in db_vdb.c for less server communication
-	  error = qp_get_server_info (parser, SI_SYS_DATETIME);
+	  error = db_ensure_server_info (parser, SI_SYS_DATETIME);
 	}
       statement->info.method_call.arg_list = parser_append_node (default_next_node_list,
 					     statement->info.method_call.arg_list);
