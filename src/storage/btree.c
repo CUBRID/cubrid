@@ -7128,7 +7128,7 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   int n, i;
   int key_cnt;
   int leafs_max = STATS_SAMPLING_LEAFS_MAX;
-  bool retried = false;
+  int retry_cnt = 0;
   double exp_ratio;
   int ret = NO_ERROR;
 #if !defined(NDEBUG)
@@ -7205,10 +7205,11 @@ resample:
 
   /* Some keys were sampled but none of them has a non-NULL leading column (pkeys[0] == 0):
    * the NDV of every key column will be estimated as 1 even though non-NULL values may exist
-   * in the leaf pages that were not sampled. Retry sampling once more to get a chance to read them. */
-  if (!retried && env->pkeys_val_num > 0 && env->stat_info->keys > 0 && env->stat_info->pkeys[0] == 0)
+   * in the leaf pages that were not sampled. Retry sampling to get a chance to read them. */
+  if (retry_cnt < STATS_SAMPLING_RETRY_MAX && env->pkeys_val_num > 0 && env->stat_info->keys > 0
+      && env->stat_info->pkeys[0] == 0)
     {
-      retried = true;
+      retry_cnt++;
       leafs_max += STATS_SAMPLING_LEAFS_MAX;
       goto resample;
     }
