@@ -12826,44 +12826,20 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
 }
 
 /*
- * pt_dblink_corr_side_has_spec () - return true if node is a PT_NAME
- *   that belongs to the given spec (identified by spec_id).
- */
-static bool
-pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
-{
-  return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
-}
-
-/*
- * pt_dblink_corr_side_is_outer_ref () - return true
- *   if node is a PT_NAME that belongs to an outer query block (correlation_level > 0) and is not
- *   the inner DBLink spec.  Using correlation_level mirrors mq_dblink_corr_classify_side() and
- *   correctly excludes same-level tables (e.g. a local table joined with DBLink in the same subquery).
- *   A literal or NULL has no spec_id (== 0) and returns false.
- *   An inner-spec column (spec_id == dblink_sid) also returns false.
- */
-static bool
-pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
-{
-  return node != NULL && node->node_type == PT_NAME
-    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid && node->info.name.correlation_level > 0;
-}
-
-/*
  * pt_remove_corr_dblink_term () - remove the correlated-equality term that was push-downed
- *   into conn_sql from the access_pred AND list.  Unlinks only a PT_EQ that is a cross-spec equality:
- *   exactly one side must belong to the inner DBLink spec (dblink_sid) and the other side must be an outer
- *   column reference (spec_id != 0 and spec_id != dblink_sid).  This avoids removing constant filters such
- *   as "r.status = 'A'" (literal has spec_id == 0) or inner-only equalities like "r.a = r.b" (both sides have
- *   spec_id == dblink_sid).  Returns the (possibly new) list head.  Does NOT free unlinked nodes.
+ *   into conn_sql from the access_pred AND list.  Unlinks exactly the terms the push marked
+ *   with PT_EXPR_INFO_DBLINK_PUSHED when it finalized the remote SQL — the remote side
+ *   already filters via "WHERE col = ?", so evaluating the term locally again is redundant.
+ *   Keying on the flag keeps detection and removal in lockstep by construction (no separate
+ *   re-classification that could drift).  Returns the (possibly new) list head.  Does NOT
+ *   free unlinked nodes.
  *
  * NOTE: This function mutates the ->next links of the list in place.  The caller must use the returned head
  *   and must NOT re-walk the original where_list pointer after this call, as the first node may have been
  *   unlinked (its ->next is set to NULL).
  */
 static PT_NODE *
-pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
+pt_remove_corr_dblink_term (PT_NODE * where_list)
 {
   PT_NODE *prev = NULL, *curr, *next;
   PT_NODE *head = where_list;
@@ -12875,27 +12851,18 @@ pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
       PT_NODE *actual = curr;
       CAST_POINTER_TO_NODE (actual);
 
-      if (actual != NULL && actual->node_type == PT_EXPR && actual->info.expr.op == PT_EQ)
+      if (actual != NULL && actual->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (actual, PT_EXPR_INFO_DBLINK_PUSHED))
 	{
-	  PT_NODE *arg1 = actual->info.expr.arg1;
-	  PT_NODE *arg2 = actual->info.expr.arg2;
-	  bool is_corr_term = (pt_dblink_corr_side_has_spec (arg1, dblink_sid)
-			       && pt_dblink_corr_side_is_outer_ref (arg2, dblink_sid))
-	    || (pt_dblink_corr_side_has_spec (arg2, dblink_sid) && pt_dblink_corr_side_is_outer_ref (arg1, dblink_sid));
-
-	  if (is_corr_term)
+	  if (prev == NULL)
 	    {
-	      if (prev == NULL)
-		{
-		  head = next;
-		}
-	      else
-		{
-		  prev->next = next;
-		}
-	      curr->next = NULL;
-	      continue;
+	      head = next;
 	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  curr->next = NULL;
+	  continue;
 	}
       prev = curr;
     }
@@ -12938,15 +12905,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   effective_where = where_part;
   if (subquery_proc != NULL && IS_CORR_DBLINK_XASL (subquery_proc))
     {
-      PT_NODE *inner_spec;
-      for (inner_spec = subquery->info.query.q.select.from; inner_spec; inner_spec = inner_spec->next)
-	{
-	  if (inner_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      effective_where = pt_remove_corr_dblink_term (where_part, inner_spec->info.spec.id);
-	      break;
-	    }
-	}
+      effective_where = pt_remove_corr_dblink_term (where_part);
     }
 
   tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
@@ -13218,8 +13177,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
    * equality from the local access_pred — the remote side already filters via "WHERE col = ?".
    * pt_remove_corr_dblink_term mutates the list in place — use effective_where_p exclusively from here on;
    * do NOT re-walk where_p after this point. */
-  PT_NODE *effective_where_p = (pdblink->corr_key_count > 0)
-    ? pt_remove_corr_dblink_term (where_p, spec->info.spec.id) : where_p;
+  PT_NODE *effective_where_p = (pdblink->corr_key_count > 0) ? pt_remove_corr_dblink_term (where_p) : where_p;
 
   PRED_EXPR *where = pt_to_pred_expr (parser, effective_where_p);
 
