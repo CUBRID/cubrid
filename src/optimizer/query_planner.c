@@ -59,7 +59,6 @@
 #define TEST_DUMP_PLAN_JOIN_COST 0
 #define TEST_DUMP_PLAN_FOLLOW_COST 0
 
-#define TEST_HASH_JOIN_ENABLE 0
 #define TEST_HASH_JOIN_FORCE_ENABLE 0
 
 #define INDENT_INCR		4
@@ -89,6 +88,13 @@
 					   ~1500 cost observed for NL with ~3000 rows,
 					   preventing hash join selection for small inputs */
 #define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
+#define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
+					   the executor spills to a partitioned hash join once the build
+					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
+#define HJ_HASH_ENTRY_POS_SIZE 12	/* sizeof (QFILE_TUPLE_SIMPLE_POS): the per-entry tuple-position size
+					   added to sizeof (HENTRY_HLS) for the spill threshold. The struct is
+					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
+					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
@@ -3602,19 +3608,21 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
   outer_build_io_cost = outer_pages;
 
-  /* Partitioned hash join spills to disk when the build input exceeds the in-memory
-   * hash limit (max_hash_list_scan_size). The in-memory cost above omits that spill IO,
-   * so charge it here; an oversized build then prefers NL/idx join.
+  /* Partitioned hash join spills to disk once the build input exceeds the in-memory
+   * hash limit. The executor switches to a partitioned (spilling) hash join at
+   * mem_limit * PARTITION_FILL_FACTOR, not the raw max_hash_list_scan_size, so apply the
+   * same fill-factor here; otherwise a build sized in (fill-factor*limit, limit] spills at
+   * run time while the cost model omits the spill IO and underestimates the hash join.
    * Per-entry size = sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS). */
   {
     UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
-    if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    if ((inner_cardinality * (sizeof (HENTRY_HLS) + HJ_HASH_ENTRY_POS_SIZE)) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
 	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
       }
 
-    if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
+    if ((outer_cardinality * (sizeof (HENTRY_HLS) + HJ_HASH_ENTRY_POS_SIZE)) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
 	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
       }
@@ -6272,30 +6280,33 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  }			/* for (t = ...) */
       }
 
-      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
-      if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
-	{
-	  /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
-	  goto exit;
-	}
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+	{			/* single class spec */
+	  inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_ORDERED)
+	    {
+	      /* join hint: force join left-to-right; skip idx-join because, these are only support left outer join */
+	      goto exit;
+	    }
 
-      if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
-	{
-	  /* join hint: force nl-join */
-	}
-      else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-	{
-	  /* join hint: force idx-join, merge-join; skip nl-join */
-	  goto exit;
-	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
-	{
-	  /* join hint: force hash-join; skip nl-join */
-	  goto exit;
-	}
-      else
-	{
-	  /* fall through */
+	  if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
+	    {
+	      /* join hint: force nl-join */
+	    }
+	  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	    {
+	      /* join hint: force idx-join, merge-join; skip nl-join */
+	      goto exit;
+	    }
+	  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
+	    {
+	      /* join hint: force hash-join; skip nl-join */
+	      goto exit;
+	    }
+	  else
+	    {
+	      /* fall through */
+	    }
 	}
 
       outer_plan = qo_find_best_plan_on_info (inner, QO_UNORDERED, 1.0);
@@ -6565,7 +6576,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *outer_node, *inner_node;
+  QO_NODE *outer_node, *inner_node, *hint_node;
   QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
@@ -6620,37 +6631,51 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* For a right outer join the operands are swapped (converted to left outer join),
-   * so the join-method hint is carried on the 'outer' node. Read the hint from the
-   * correct side - as qo_examine_idx_join / qo_examine_nl_join do - so that
-   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins
-   * (otherwise hash join would be generated even when the hint forbids it). */
+  /* inner_node is the single-class inner used for the key-limit / index checks below. */
+  inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+  /* Determine the node that carries the join-method hint.  For a right outer join the
+   * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
+   * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
+   * table-level hint applies only when that side is a single class; for a multi-node
+   * (temp) inner the table hint is not applicable and the cost decides. */
   if (join_type == JOIN_RIGHT)
     {
-      inner_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+	{
+	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	}
+      else
+	{
+	  hint_node = NULL;
+	}
     }
   else
     {
-      inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+      hint_node = inner_node;
     }
 
-  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+  if (hint_node != NULL)
     {
-      /* join hint: disable hash-join */
-      goto exit;
-    }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-    {
-      /* join hint: force hash-join */
-    }
-  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-    {
-      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-      goto exit;
-    }
-  else
-    {
-      /* fall through */
+      if (QO_NODE_HINT (hint_node) & PT_HINT_NO_USE_HASH)
+	{
+	  /* join hint: disable hash-join */
+	  goto exit;
+	}
+      else if (QO_NODE_HINT (hint_node) & PT_HINT_USE_HASH)
+	{
+	  /* join hint: force hash-join */
+	}
+      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	{
+	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+	  goto exit;
+	}
+      else
+	{
+	  /* fall through */
+	}
     }
 
   /* Check if a click counter is set. */
