@@ -841,6 +841,12 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVBT_BULK_BUILD_DURABLE,
+   "RVBT_BULK_BUILD_DURABLE",
+   btree_rv_bulk_build_durable_nop,
+   btree_rv_bulk_build_durable_nop,
+   NULL,
+   NULL},
 };
 
 /*

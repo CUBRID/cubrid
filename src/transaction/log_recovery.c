@@ -28,6 +28,9 @@
 #include "dblink_2pc_daemon.h"
 #endif
 #include "boot_sr.h"
+#include "btree.h"
+#include "file_manager.h"
+#include "heap_file.h"
 #include "locator_sr.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
@@ -6512,4 +6515,83 @@ log_find_unilaterally_largest_undo_lsa (THREAD_ENTRY * thread_p, LOG_LSA & max_u
 
   TR_TABLE_CS_EXIT (thread_p);
   // *INDENT-ON*
+}
+
+int
+log_recovery_bulk_classify_candidate (const BTREE_BULK_RECOVERY_CANDIDATE *candidate,
+				      const BTREE_BULK_RECOVERY_EVENT *events, unsigned int event_count,
+				      bool *is_candidate)
+{
+  bool normal_commit = false;
+  bool commit_decision = false;
+  unsigned int i;
+
+  if (candidate == NULL || is_candidate == NULL || (event_count != 0 && events == NULL))
+    {
+      return ER_FAILED;
+    }
+  *is_candidate = false;
+  for (i = 0; i < event_count; i++)
+    {
+      if (events[i] == BTREE_BULK_RECOVERY_2PC_ABORT)
+	{
+	  return NO_ERROR;
+	}
+      normal_commit |= events[i] == BTREE_BULK_RECOVERY_NORMAL_COMMIT;
+      commit_decision |= events[i] == BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION;
+    }
+
+  *is_candidate = candidate->media_recovery && candidate->marker_in_redo && candidate->create_in_redo
+		  && candidate->publication_chain_valid
+		  && (normal_commit || (commit_decision && candidate->decision_flushed && candidate->commit_irreversible));
+  return NO_ERROR;
+}
+
+int
+log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_RECOVERY_CANDIDATE *candidate)
+{
+  int error = NO_ERROR;
+
+  if (thread_p == NULL || candidate == NULL || VFID_ISNULL (&candidate->marker.main_vfid))
+    {
+      return ER_FAILED;
+    }
+
+  log_sysop_start_atomic (thread_p);
+  if (!VFID_ISNULL (&candidate->marker.ovfid))
+    {
+      error = file_destroy (thread_p, &candidate->marker.ovfid, false);
+    }
+  if (error == NO_ERROR)
+    {
+      error = file_destroy (thread_p, &candidate->marker.main_vfid, false);
+    }
+  if (error == NO_ERROR)
+    {
+      error = heap_classrepr_restart_cache ();
+    }
+  if (error == NO_ERROR)
+    {
+      log_sysop_commit (thread_p);
+    }
+  else
+    {
+      log_sysop_abort (thread_p);
+    }
+  return error;
+}
+
+int
+log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDATE *candidate)
+{
+  if (fp == NULL || candidate == NULL || candidate->marker.constraint_name == NULL)
+    {
+      return ER_FAILED;
+    }
+  if (fprintf (fp, "%.*s\t%d\n", (int) candidate->marker.constraint_name_length,
+	       candidate->marker.constraint_name, candidate->marker.constraint_type) < 0)
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
 }

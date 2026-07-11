@@ -185,7 +185,10 @@ typedef enum
   RVFL_FHEAD_SET_TDE_ALGORITHM = 128,
   RVHF_LOB_REMOVE_DIR = 129,
 
-  RV_LAST_LOGID = RVHF_LOB_REMOVE_DIR,
+  /* Append-only: inactive bulk index publication marker. */
+  RVBT_BULK_BUILD_DURABLE = 130,
+
+  RV_LAST_LOGID = RVBT_BULK_BUILD_DURABLE,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

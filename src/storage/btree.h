@@ -49,6 +49,65 @@ struct key_val_range;
 struct or_buf;
 typedef struct or_buf OR_BUF;
 
+#define BTREE_BULK_MARKER_VERSION 1
+#define BTREE_BULK_MARKER_MAX_CLASSES 4096
+#define BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME 4096
+
+typedef struct btree_bulk_marker_v1 BTREE_BULK_MARKER_V1;
+struct btree_bulk_marker_v1
+{
+  unsigned int flags;
+  int trid;
+  BTID btid;
+  VFID main_vfid;
+  VFID ovfid;
+  VPID root_vpid;
+  LOG_LSA create_lsa;
+  LOG_LSA parent_lsa;
+  const OID *class_oids;
+  unsigned int class_count;
+  const char *constraint_name;
+  unsigned int constraint_name_length;
+  int constraint_type;
+};
+
+extern int btree_bulk_marker_v1_packed_size (const BTREE_BULK_MARKER_V1 *marker, unsigned int *packed_size);
+extern int btree_bulk_marker_v1_pack (const BTREE_BULK_MARKER_V1 *marker, char *buffer, unsigned int buffer_size,
+				     unsigned int *packed_size);
+extern int btree_bulk_marker_v1_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER_V1 *marker,
+				       OID *class_oids, unsigned int class_capacity, char *constraint_name,
+				       unsigned int constraint_name_capacity);
+extern int btree_rv_bulk_build_durable_nop (THREAD_ENTRY *thread_p, LOG_RCV *logrcv);
+
+typedef enum btree_bulk_recovery_event
+{
+  BTREE_BULK_RECOVERY_NORMAL_COMMIT,
+  BTREE_BULK_RECOVERY_2PC_PREPARE,
+  BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION,
+  BTREE_BULK_RECOVERY_2PC_ABORT
+} BTREE_BULK_RECOVERY_EVENT;
+
+typedef struct btree_bulk_recovery_candidate BTREE_BULK_RECOVERY_CANDIDATE;
+struct btree_bulk_recovery_candidate
+{
+  BTREE_BULK_MARKER_V1 marker;
+  LOG_LSA marker_lsa;
+  LOG_LSA marker_prev_lsa;
+  bool media_recovery;
+  bool marker_in_redo;
+  bool create_in_redo;
+  bool publication_chain_valid;
+  bool decision_flushed;
+  bool commit_irreversible;
+};
+
+extern int log_recovery_bulk_classify_candidate (const BTREE_BULK_RECOVERY_CANDIDATE *candidate,
+						 const BTREE_BULK_RECOVERY_EVENT *events,
+						 unsigned int event_count, bool *is_candidate);
+extern int log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p,
+					       const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
+extern int log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
+
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
 #define SINGLE_ROW_UPDATE    3
