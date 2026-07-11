@@ -42,6 +42,18 @@
 
 extern const VPID vpid_Null_vpid;
 
+typedef enum
+{
+  PGBUF_WAL_FLUSH_LEGACY,
+  PGBUF_WAL_FLUSH_SKIP
+} PGBUF_WAL_FLUSH_POLICY;
+
+typedef enum
+{
+  PGBUF_DWB_FLUSH_LEGACY,
+  PGBUF_DWB_FLUSH_SKIP
+} PGBUF_DWB_FLUSH_POLICY;
+
 /* Get page VPID for OID */
 #define VPID_GET_FROM_OID(vpid_ptr, oid_ptr) \
   VPID_SET (vpid_ptr, (oid_ptr)->volid, (oid_ptr)->pageid);

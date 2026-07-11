@@ -1111,8 +1111,8 @@ STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bc
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
-STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
-					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, PGBUF_WAL_FLUSH_POLICY wal_policy,
+					    PGBUF_DWB_FLUSH_POLICY dwb_policy, bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
@@ -3959,7 +3959,8 @@ repeat:
 	}
       else
 	{
-	  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, &is_bcb_locked);
+	  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+				    PGBUF_DWB_FLUSH_LEGACY, &is_bcb_locked);
 	  if (is_bcb_locked)
 	    {
 	      PGBUF_BCB_UNLOCK (bufptr);
@@ -8724,7 +8725,8 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
   if (immediate_flush)
     {
       /* don't have to wait for writer/flush */
-      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, locked);
+      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, PGBUF_WAL_FLUSH_LEGACY,
+				      PGBUF_DWB_FLUSH_LEGACY, locked);
     }
 
   /* page is write latched. notify the holder to flush it on unfix. */
@@ -10572,7 +10574,8 @@ pgbuf_remove_private_from_aout_list (const int lru_idx)
  * is_bcb_locked (out)       : output whether bcb remains locked or not.
  */
 STATIC_INLINE int
-pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked)
+pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, PGBUF_WAL_FLUSH_POLICY wal_policy,
+			   PGBUF_DWB_FLUSH_POLICY dwb_policy, bool * is_bcb_locked)
 {
   char page_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   FILEIO_PAGE *iopage = NULL;
@@ -10642,7 +10645,7 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
 
   was_dirty = pgbuf_bcb_mark_is_flushing (thread_p, bufptr);
 
-  uses_dwb = dwb_is_created () && !is_temp;
+  uses_dwb = dwb_policy == PGBUF_DWB_FLUSH_LEGACY && dwb_is_created () && !is_temp;
 
 start_copy_page:
   iopage = (FILEIO_PAGE *) PTR_ALIGN (page_buf, MAX_ALIGNMENT);
@@ -10683,7 +10686,7 @@ copy_unflushed_lsa:
   PGBUF_BCB_UNLOCK (bufptr);
   *is_bcb_locked = false;
 
-  if (!LSA_ISNULL (&oldest_unflush_lsa))
+  if (wal_policy == PGBUF_WAL_FLUSH_LEGACY && !LSA_ISNULL (&oldest_unflush_lsa))
     {
       /* confirm WAL protocol */
       /* force log record to disk */
@@ -11997,7 +12000,8 @@ pgbuf_flush_neighbor_safe (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, VPID * e
     }
 
   /* flush even if it is not dirty. todo: is this necessary? */
-  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, &is_bcb_locked);
+  error = pgbuf_bcb_flush_with_wal (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+				    PGBUF_DWB_FLUSH_LEGACY, &is_bcb_locked);
   if (is_bcb_locked)
     {
       PGBUF_BCB_UNLOCK (bufptr);
