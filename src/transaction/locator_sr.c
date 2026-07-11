@@ -6914,6 +6914,32 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
 }
 
 /*
+ * xlocator_force_validate_bulk_tail () - Validate optional FORCE bulk marker.
+ *
+ * An empty tail is the legacy request.  A non-empty tail is exactly one
+ * versioned marker payload; no trailing bytes are accepted.
+ */
+int
+xlocator_force_validate_bulk_tail (const char *tail, int tail_size)
+{
+  BTREE_BULK_MARKER_V1 marker;
+  OID class_oids[BTREE_BULK_MARKER_MAX_CLASSES];
+  char constraint_name[BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME + 1];
+
+  if (tail_size == 0)
+    {
+      return NO_ERROR;
+    }
+  if (tail == NULL || tail_size < 0)
+    {
+      return ER_FAILED;
+    }
+
+  return btree_bulk_marker_v1_unpack (tail, (unsigned int) tail_size, &marker, class_oids,
+				     BTREE_BULK_MARKER_MAX_CLASSES, constraint_name,
+				     sizeof (constraint_name));
+}
+/*
  * xlocator_force () - Updates objects sent by log applier
  *
  * return: NO_ERROR if all OK, ER_ status otherwise

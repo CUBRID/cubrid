@@ -1405,6 +1405,7 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
+  int bulk_tail_size;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &multi_update_flags);
@@ -1415,6 +1416,13 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   for (i = 0; i < num_ignore_error_list; i++)
     {
       ptr = or_unpack_int (ptr, &ignore_error_list[i]);
+    }
+  bulk_tail_size = reqlen - (int) (ptr - request);
+  if (bulk_tail_size < 0 || xlocator_force_validate_bulk_tail (ptr, bulk_tail_size) != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
+      css_send_abort_to_client (thread_p->conn_entry, rid);
+      goto end;
     }
 
   csserror = 0;

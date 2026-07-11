@@ -119,6 +119,7 @@ extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOC
 				int need_fetching, int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area, int num_ignore_error_list,
 			   int *ignore_error_list);
+extern int xlocator_force_validate_bulk_tail (const char *tail, int tail_size);
 extern int xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area, LC_COPYAREA ** reply_area);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_area);
 

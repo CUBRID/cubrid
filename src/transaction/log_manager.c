@@ -3590,6 +3590,71 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
 }
 
 /*
+ * Inactive bulk-publication helpers.  Activation is intentionally deferred
+ * until the FORCE publication path can append the marker immediately before
+ * attaching its top operation to the outer transaction.
+ */
+int
+log_get_current_sysop_parent_lsa (THREAD_ENTRY *thread_p, LOG_LSA *parent_lsa)
+{
+  LOG_TDES *tdes;
+  int tran_index;
+
+  if (parent_lsa == NULL)
+    {
+      return ER_FAILED;
+    }
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL || tdes->topops.last < 0)
+    {
+      LSA_SET_NULL (parent_lsa);
+      return ER_FAILED;
+    }
+
+  LSA_COPY (parent_lsa, LOG_TDES_LAST_SYSOP_PARENT_LSA (tdes));
+  return NO_ERROR;
+}
+
+bool
+log_is_irreversible_2pc_state (TRAN_STATE state)
+{
+  return state == TRAN_UNACTIVE_2PC_COMMIT_DECISION;
+}
+
+int
+log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER_V1 *marker)
+{
+  char *payload;
+  unsigned int payload_size;
+
+  if (btree_bulk_marker_v1_packed_size (marker, &payload_size) != NO_ERROR || payload_size > INT_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  payload = (char *) malloc (payload_size);
+  if (payload == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, payload_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  if (btree_bulk_marker_v1_pack (marker, payload, payload_size, NULL) != NO_ERROR)
+    {
+      free (payload);
+      return ER_FAILED;
+    }
+
+  log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, NULL, (int) payload_size, payload);
+  free (payload);
+  return er_errid () == NO_ERROR ? NO_ERROR : er_errid ();
+}
+/*
  * log_sysop_start () - Start a new system operation. This can also be nested in another system operation.
  *
  * return	 : Error code.
