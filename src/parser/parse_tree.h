@@ -2340,6 +2340,11 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_DBLINK_PUSHED 2097152	/* 0x200000, correlated equality shipped into the DBLink conn_sql
+						 * ("WHERE col = ?").  The term must stay in the tree - its outer-name
+						 * reference is what wires the enclosing subquery as correlated
+						 * (spec_ident tagging / dptr attach) - but it is excluded from the
+						 * local access_pred and hidden from the plan dump. */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)

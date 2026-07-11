@@ -246,6 +246,7 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * subquery, FIND_ID_INFO * infop);
 static bool mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di);
+static void mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec, bool remove_sel_list);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -5101,6 +5102,43 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 }
 
 /*
+ * mq_dblink_mark_pushed_corr_eq () - flag the correlated equality term(s) already shipped
+ *   into conn_sql ("WHERE col = ?") in the enclosing SELECT's WHERE list.  The remote server
+ *   filters the rows, so the term never runs locally: XASL generation excludes flagged terms
+ *   from access_pred and the plan-dump printers hide them.  The term itself must STAY in the
+ *   tree — its outer-name reference is what wires the enclosing subquery as correlated
+ *   (spec_ident tagging / dptr attach); physically unlinking it makes the subquery execute
+ *   only once and return the first row's value for every outer row.  Flags only a PT_EQ whose
+ *   two sides classify as the inner DBLink column and an outer reference — the same
+ *   classification the detection used — so constant filters and inner-only equalities are
+ *   left untouched.  Terms with or_next or an on_cond location were never pushed and are
+ *   skipped for the same reason detection rejected them.
+ */
+static void
+mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
+{
+  PT_NODE *term;
+  PT_NODE *from = statement->info.query.q.select.from;
+  UINTPTR dblink_sid = spec->info.spec.id;
+
+  for (term = statement->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ && term->info.expr.location == 0
+	  && term->or_next == NULL && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
+	{
+	  int c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, from);
+	  int c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, from);
+
+	  if ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+	      || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE))
+	    {
+	      PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_DBLINK_PUSHED);
+	    }
+	}
+    }
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -5273,6 +5311,16 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  mq_dblink_clear_corr_keys (parser, &subquery->info.dblink_table);
 	}
+    }
+
+  /* Corr push-down finalized on either path (mixed via pt_copypush_terms, pure-corr above):
+   * the corr equality now runs on the remote side only.  Flag it so access_pred generation
+   * and the plan-dump printers can exclude it.  When the push failed (corr_sql_built ==
+   * false), the term is left unflagged for the local-evaluation fallback. */
+  if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && subquery != NULL
+      && subquery->node_type == PT_DBLINK_TABLE && subquery->info.dblink_table.corr_sql_built)
+    {
+      mq_dblink_mark_pushed_corr_eq (statement, spec);
     }
 
   return push_cnt;
