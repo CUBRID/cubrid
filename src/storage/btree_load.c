@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <stdint.h>
 
 #include "btree_load.h"
 
@@ -108,6 +109,12 @@ struct load_args
   PGSLOTID last_leaf_insert_slotid;	/* Slotid of last inserted leaf record. */
 
   VPID vpid_first_leaf;
+
+  MVCCID build_mvccid;
+  BT_LOAD_VACUUM_ITEM *vacuum_items;
+  size_t vacuum_count;
+  size_t vacuum_capacity;
+  size_t vacuum_payload_size;
 };
 
 typedef struct btree_scan_partition_info BTREE_SCAN_PART;
@@ -259,6 +266,8 @@ static int bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * 
 					   int *sp_success);
 static int bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
 				     char **notify_vacuum_rv_data, char *notify_vacuum_rv_data_bufalign);
+static int bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
+static void bt_load_clear_vacuum_notifications (LOAD_ARGS * load_args);
 
 /*
  * btree_get_node_header () -
@@ -894,6 +903,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->out_recdes = NULL;
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
+  load_args->build_mvccid = MVCCID_NULL;
+  load_args->vacuum_items = NULL;
+  load_args->vacuum_count = 0;
+  load_args->vacuum_capacity = 0;
+  load_args->vacuum_payload_size = 0;
 
   /*
    * Start a TOP SYSTEM OPERATION.
@@ -1071,19 +1085,25 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		     sort_args->btid->sys_btid->vfid.volid, sort_args->btid->sys_btid->vfid.fileid);
     }
 
-  /* Build the leaf pages of the btree as the output of the sort. We do not estimate the number of pages required. */
+  /* Build the leaf pages of the btree as the output of the sort. */
   if (btree_index_sort (thread_p, sort_args, btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
     }
 
-#if !defined (SERVER_MODE)
-  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
-#endif /* !SERVER_MODE */
-
 #if defined (SERVER_MODE)
   is_sysop_started = true;
 #endif /* SERVER_MODE */
+
+  if (bt_load_append_vacuum_notifications (thread_p, load_args) != NO_ERROR)
+    {
+      goto error;
+    }
+  bt_load_clear_vacuum_notifications (load_args);
+
+#if !defined (SERVER_MODE)
+  bt_load_heap_scancache_end_for_attrinfo (thread_p, sort_args, NULL, NULL);
+#endif /* !SERVER_MODE */
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -1233,6 +1253,7 @@ error:
       os_free_and_init (load_args->ovf_recdes.data);
     }
   pr_clear_value (&load_args->current_key);
+  bt_load_clear_vacuum_notifications (load_args);
 
   pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
   pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
@@ -2986,11 +3007,98 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 	{
 	  return ret;
 	}
-      log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
-			     notify_vacuum_rv_data_length, *notify_vacuum_rv_data);
+      size_t new_capacity = load_args->vacuum_capacity == 0 ? 16 : load_args->vacuum_capacity * 2;
+      size_t reserved_size;
+      BT_LOAD_VACUUM_ITEM *new_items;
+      char *data;
+
+      if (load_args->vacuum_count == load_args->vacuum_capacity)
+        {
+          if (new_capacity < load_args->vacuum_capacity || new_capacity > SIZE_MAX / sizeof (*new_items))
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
+              return ER_OUT_OF_VIRTUAL_MEMORY;
+            }
+        }
+      else
+        {
+          new_capacity = load_args->vacuum_capacity;
+        }
+
+      reserved_size = new_capacity * sizeof (*new_items);
+      if ((size_t) notify_vacuum_rv_data_length > BT_LOAD_VACUUM_SLOT_LIMIT
+          || load_args->vacuum_payload_size > BT_LOAD_VACUUM_SLOT_LIMIT - (size_t) notify_vacuum_rv_data_length
+          || reserved_size > BT_LOAD_VACUUM_SLOT_LIMIT
+          || load_args->vacuum_payload_size + (size_t) notify_vacuum_rv_data_length
+               > BT_LOAD_VACUUM_SLOT_LIMIT - reserved_size)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, BT_LOAD_VACUUM_SLOT_LIMIT);
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+
+      if (new_capacity != load_args->vacuum_capacity)
+        {
+          new_items = (BT_LOAD_VACUUM_ITEM *) realloc (load_args->vacuum_items, reserved_size);
+          if (new_items == NULL)
+            {
+              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, reserved_size);
+              return ER_OUT_OF_VIRTUAL_MEMORY;
+            }
+          load_args->vacuum_items = new_items;
+          load_args->vacuum_capacity = new_capacity;
+        }
+
+      data = (char *) malloc ((size_t) notify_vacuum_rv_data_length);
+      if (data == NULL)
+        {
+          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, notify_vacuum_rv_data_length);
+          return ER_OUT_OF_VIRTUAL_MEMORY;
+        }
+      memcpy (data, *notify_vacuum_rv_data, (size_t) notify_vacuum_rv_data_length);
+      load_args->vacuum_items[load_args->vacuum_count].data = data;
+      load_args->vacuum_items[load_args->vacuum_count].length = notify_vacuum_rv_data_length;
+      load_args->vacuum_count++;
+      load_args->vacuum_payload_size += (size_t) notify_vacuum_rv_data_length;
       pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
     }
 
+  return NO_ERROR;
+}
+
+static void
+bt_load_clear_vacuum_notifications (LOAD_ARGS * load_args)
+{
+  size_t i;
+
+  for (i = 0; i < load_args->vacuum_count; i++)
+    {
+      free (load_args->vacuum_items[i].data);
+    }
+  free (load_args->vacuum_items);
+  load_args->vacuum_items = NULL;
+  load_args->vacuum_count = 0;
+  load_args->vacuum_capacity = 0;
+  load_args->vacuum_payload_size = 0;
+}
+
+static int
+bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
+{
+  size_t i;
+  for (i = 0; i < load_args->vacuum_count; i++)
+    {
+      int error_before = er_errid ();
+      if (error_before != NO_ERROR)
+        {
+          return error_before;
+        }
+      log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
+                             load_args->vacuum_items[i].length, load_args->vacuum_items[i].data);
+      if (er_errid () != NO_ERROR)
+        {
+          return er_errid ();
+        }
+    }
   return NO_ERROR;
 }
 
@@ -3027,8 +3135,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   sparam.orig_class_oid = oid_Null_oid;
 
 #if defined (SERVER_MODE)
-  /* Make sure MVCCID for current transaction is generated. */
-  (void) logtb_get_current_mvccid (thread_p);
+  if (load_args->build_mvccid == MVCCID_NULL)
+    {
+      /* Preserve the legacy lazy acquisition point on the first construct callback. */
+      load_args->build_mvccid = logtb_get_current_mvccid (thread_p);
+    }
 #endif /* SERVER_MODE */
 
   sort_key_recdes = *in_recdes;

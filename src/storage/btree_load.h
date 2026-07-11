@@ -27,8 +27,18 @@
 #ident "$Id$"
 
 #include <assert.h>
+#include <stddef.h>
 
 #include "btree.h"
+
+#define BT_LOAD_VACUUM_SLOT_LIMIT ((size_t) 64 * 1024 * 1024)
+
+typedef struct bt_load_vacuum_item BT_LOAD_VACUUM_ITEM;
+struct bt_load_vacuum_item
+{
+  char *data;
+  int length;
+};
 #include "dbtype.h"
 #include "object_representation_constants.h"
 #include "error_manager.h"
