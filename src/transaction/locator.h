@@ -32,6 +32,28 @@
 #include "storage_common.h"
 #include "lock_table.h"		// lock_conv
 #include "thread_compat.hpp"
+#define LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES 4096
+#define LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME 4096
+
+typedef struct locator_bulk_index_descriptor LOCATOR_BULK_INDEX_DESCRIPTOR;
+struct locator_bulk_index_descriptor
+{
+  BTID btid;
+  const OID *class_oids;
+  unsigned int class_count;
+  const OID *fk_class_oids;
+  unsigned int fk_class_count;
+  const char *constraint_name;
+  unsigned int constraint_name_length;
+  int constraint_type;
+};
+
+/*
+ * Descriptor members are immutable borrowed views.  The producer retains
+ * ownership through packing.  Unpack points them at caller-owned arrays and
+ * name storage, which must outlive every use of the unpacked descriptor.
+ * Both OID arrays are exact, strictly sorted sets (duplicates are invalid).
+ */
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \

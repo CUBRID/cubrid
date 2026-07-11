@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <algorithm>
 
@@ -686,6 +687,215 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 #endif /* !CS_MODE */
 }
 
+#define LOCATOR_BULK_FORCE_TAIL_MAGIC 0x42494654
+#define LOCATOR_BULK_FORCE_TAIL_VERSION 1
+#define LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE (OR_INT_SIZE * 7 + OR_BTID_ALIGNED_SIZE)
+
+static bool
+locator_bulk_oid_set_is_sorted (const OID *oids, unsigned int count)
+{
+  unsigned int i;
+
+  if (count != 0 && oids == NULL)
+    {
+      return false;
+    }
+
+  for (i = 1; i < count; i++)
+    {
+      if (oids[i - 1].volid > oids[i].volid
+	  || (oids[i - 1].volid == oids[i].volid && oids[i - 1].pageid > oids[i].pageid)
+	  || (oids[i - 1].volid == oids[i].volid && oids[i - 1].pageid == oids[i].pageid
+	      && oids[i - 1].slotid >= oids[i].slotid))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+static bool
+locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor)
+{
+  if (descriptor == NULL
+      || descriptor->class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
+      || descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
+      || descriptor->class_count + descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
+      || descriptor->constraint_name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
+      || (descriptor->constraint_name_length != 0 && descriptor->constraint_name == NULL))
+    {
+      return false;
+    }
+
+  return locator_bulk_oid_set_is_sorted (descriptor->class_oids, descriptor->class_count)
+    && locator_bulk_oid_set_is_sorted (descriptor->fk_class_oids, descriptor->fk_class_count);
+}
+
+static int
+locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, unsigned int *packed_size)
+{
+  UINT64 size;
+
+  if (packed_size == NULL || !locator_bulk_force_descriptor_is_valid (descriptor))
+    {
+      return ER_FAILED;
+    }
+
+  size = LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE
+    + (UINT64) (descriptor->class_count + descriptor->fk_class_count) * OR_OID_SIZE
+    + descriptor->constraint_name_length;
+  if (size > UINT_MAX)
+    {
+      return ER_FAILED;
+    }
+
+  *packed_size = (unsigned int) size;
+  return NO_ERROR;
+}
+
+int
+locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, unsigned int *packed_size)
+{
+  return locator_bulk_force_tail_compute_size (descriptor, packed_size);
+}
+
+int
+locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, char *buffer, unsigned int buffer_size,
+			      unsigned int *packed_size)
+{
+  char *ptr = buffer;
+  unsigned int size, i;
+
+  if (buffer == NULL || locator_bulk_force_tail_compute_size (descriptor, &size) != NO_ERROR || buffer_size < size)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_MAGIC);
+  ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_VERSION);
+  ptr = or_pack_int (ptr, (int) size);
+  ptr = or_pack_btid (ptr, &descriptor->btid);
+  ptr = or_pack_int (ptr, (int) descriptor->class_count);
+  for (i = 0; i < descriptor->class_count; i++)
+    {
+      ptr = or_pack_oid (ptr, &descriptor->class_oids[i]);
+    }
+  ptr = or_pack_int (ptr, (int) descriptor->fk_class_count);
+  for (i = 0; i < descriptor->fk_class_count; i++)
+    {
+      ptr = or_pack_oid (ptr, &descriptor->fk_class_oids[i]);
+    }
+  ptr = or_pack_int (ptr, descriptor->constraint_type);
+  ptr = or_pack_int (ptr, (int) descriptor->constraint_name_length);
+  if (descriptor->constraint_name_length != 0)
+    {
+      memcpy (ptr, descriptor->constraint_name, descriptor->constraint_name_length);
+      ptr += descriptor->constraint_name_length;
+    }
+
+  assert ((unsigned int) (ptr - buffer) == size);
+  if (packed_size != NULL)
+    {
+      *packed_size = size;
+    }
+  return NO_ERROR;
+}
+
+int
+locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
+				LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, OID *class_oids,
+				unsigned int class_capacity, OID *fk_class_oids, unsigned int fk_class_capacity,
+				char *constraint_name, unsigned int constraint_name_capacity)
+{
+  char *ptr = (char *) buffer;
+  int magic, version, packed_length, count, name_length, i;
+  unsigned int remaining;
+
+  if (buffer == NULL || descriptor == NULL || buffer_size < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = or_unpack_int (ptr, &magic);
+  ptr = or_unpack_int (ptr, &version);
+  ptr = or_unpack_int (ptr, &packed_length);
+  if (magic != LOCATOR_BULK_FORCE_TAIL_MAGIC || version != LOCATOR_BULK_FORCE_TAIL_VERSION
+      || packed_length < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE || (unsigned int) packed_length != buffer_size)
+    {
+      return ER_FAILED;
+    }
+
+  ptr = or_unpack_btid (ptr, &descriptor->btid);
+  ptr = or_unpack_int (ptr, &count);
+  if (count < 0 || (unsigned int) count > class_capacity
+      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
+      || (count != 0 && class_oids == NULL))
+    {
+      return ER_FAILED;
+    }
+  remaining = buffer_size - (unsigned int) (ptr - buffer);
+  if ((unsigned int) count > remaining / OR_OID_SIZE)
+    {
+      return ER_FAILED;
+    }
+  descriptor->class_count = (unsigned int) count;
+  descriptor->class_oids = class_oids;
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_unpack_oid (ptr, &class_oids[i]);
+    }
+
+  if ((unsigned int) (ptr - buffer) + OR_INT_SIZE > buffer_size)
+    {
+      return ER_FAILED;
+    }
+  ptr = or_unpack_int (ptr, &count);
+  if (count < 0 || (unsigned int) count > fk_class_capacity
+      || descriptor->class_count + (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
+      || (count != 0 && fk_class_oids == NULL))
+    {
+      return ER_FAILED;
+    }
+  remaining = buffer_size - (unsigned int) (ptr - buffer);
+  if ((unsigned int) count > remaining / OR_OID_SIZE
+      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 2 > buffer_size)
+    {
+      return ER_FAILED;
+    }
+  descriptor->fk_class_count = (unsigned int) count;
+  descriptor->fk_class_oids = fk_class_oids;
+  for (i = 0; i < count; i++)
+    {
+      ptr = or_unpack_oid (ptr, &fk_class_oids[i]);
+    }
+
+  ptr = or_unpack_int (ptr, &descriptor->constraint_type);
+  ptr = or_unpack_int (ptr, &name_length);
+  if (name_length < 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
+      || (name_length != 0
+	  && ((unsigned int) name_length >= constraint_name_capacity || constraint_name == NULL))
+      || (name_length == 0 && constraint_name != NULL && constraint_name_capacity == 0)
+      || (unsigned int) (ptr - buffer) + (unsigned int) name_length != buffer_size)
+    {
+      return ER_FAILED;
+    }
+  if (name_length != 0)
+    {
+      memcpy (constraint_name, ptr, name_length);
+    }
+  if (constraint_name != NULL)
+    {
+      constraint_name[name_length] = '\0';
+    }
+  descriptor->constraint_name = constraint_name;
+  descriptor->constraint_name_length = (unsigned int) name_length;
+
+  if (!locator_bulk_force_descriptor_is_valid (descriptor))
+    {
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
 /*
  * locator_force -
  *

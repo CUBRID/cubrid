@@ -57,6 +57,7 @@
 #include "pl_struct_compile.hpp"
 #include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
+#include "locator.h"
 #if defined (CS_MODE)
 #include "network_cl.h"
 #endif
@@ -102,6 +103,15 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, 
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size);
+extern int locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor,
+						unsigned int *packed_size);
+extern int locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, char *buffer,
+					 unsigned int buffer_size, unsigned int *packed_size);
+extern int locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
+					   LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, OID *class_oids,
+					   unsigned int class_capacity, OID *fk_class_oids,
+					   unsigned int fk_class_capacity, char *constraint_name,
+					   unsigned int constraint_name_capacity);
 extern int locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock,
