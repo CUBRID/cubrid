@@ -438,6 +438,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   SM_PARTITION_ALTER_INFO pinfo;
   bool partition_savepoint = false;
   bool change_might_affect_visibility = false;
+  bool flush_deferral_open = false;
   const PT_ALTER_CODE alter_code = alter->info.alter.code;
 #if defined (ENABLE_RENAME_CONSTRAINT)
   SM_CONSTRAINT_FAMILY constraint_family;
@@ -446,6 +447,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
   PT_NODE *super_node = NULL;
   MOP super_class;
   DB_DEFAULT_EXPR default_expr;
+  extern int sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan);
 
   entity_name = alter->info.alter.entity_name->info.name.original;
   if (entity_name == NULL)
@@ -575,12 +577,17 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	error = tran_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 	if (error == NO_ERROR)
 	  {
+	    locator_class_flush_deferral_enter ();
+	    flush_deferral_open = true;
 	    error =
 	      do_add_attributes (parser, ctemplate, alter->info.alter.alter_clause.attr_mthd.attr_def_list,
 				 alter->info.alter.constraint_list, NULL);
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -592,6 +599,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 		assert (er_errid () != NO_ERROR);
 		error = er_errid ();
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -601,6 +611,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	      {
 		assert (er_errid () != NO_ERROR);
 		error = er_errid ();
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -609,6 +622,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -617,6 +633,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (error != NO_ERROR)
 	      {
 		(void) dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		(void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -628,6 +647,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -640,6 +662,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -650,6 +675,9 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    if (error != NO_ERROR)
 	      {
 		dbt_abort_class (ctemplate);
+		locator_class_flush_deferral_abort ();
+		locator_class_flush_deferral_leave ();
+		flush_deferral_open = false;
 		tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
 		return error;
 	      }
@@ -1339,6 +1367,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+      if (flush_deferral_open)
+	{
+	  locator_class_flush_deferral_abort ();
+	  locator_class_flush_deferral_leave ();
+	  flush_deferral_open = false;
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	}
       return error;
     }
 
@@ -1352,6 +1390,16 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  if (partition_savepoint)
 	    {
 	      goto alter_partition_fail;
+	    }
+	  if (flush_deferral_open)
+	    {
+	      locator_class_flush_deferral_abort ();
+	      locator_class_flush_deferral_leave ();
+	      flush_deferral_open = false;
+	      if (error != ER_LK_UNILATERALLY_ABORTED)
+		{
+		  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		}
 	    }
 	  return error;
 	}
@@ -1369,7 +1417,51 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	{
 	  goto alter_partition_fail;
 	}
+      if (flush_deferral_open)
+	{
+	  locator_class_flush_deferral_abort ();
+	  locator_class_flush_deferral_leave ();
+	  flush_deferral_open = false;
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	}
       return error;
+    }
+  if (flush_deferral_open)
+    {
+      MOP stats_mop;
+
+      error = locator_flush_class_set ();
+      if (error != NO_ERROR)
+	{
+	  locator_class_flush_deferral_abort ();
+	  locator_class_flush_deferral_leave ();
+	  flush_deferral_open = false;
+	  if (error != ER_LK_UNILATERALLY_ABORTED)
+	    {
+	      tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+	    }
+	  goto alter_partition_fail;
+	}
+      while ((stats_mop = locator_class_flush_deferral_pop_stats ()) != NULL)
+	{
+	  error = sm_update_statistics_without_gathering_stats (stats_mop, STATS_WITH_SAMPLING);
+	  if (error != NO_ERROR)
+	    {
+	      locator_class_flush_deferral_abort ();
+	      locator_class_flush_deferral_leave ();
+	      flush_deferral_open = false;
+	      if (error != ER_LK_UNILATERALLY_ABORTED)
+		{
+		  tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_ADD_ATTR_MTHD);
+		}
+	      goto alter_partition_fail;
+	    }
+	}
+      locator_class_flush_deferral_leave ();
+      flush_deferral_open = false;
     }
 
   /* If we have an ADD COLUMN x NOT NULL without a default value, the existing rows will be filled with NULL for the

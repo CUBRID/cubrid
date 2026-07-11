@@ -84,6 +84,7 @@ struct locator_mflush_cache
   RECDES recdes;		/* Record descriptor */
   bool decache;			/* true, if objects are decached after they are mflushed. */
   bool isone_mflush;		/* true, if we are not doing a massive flushing of objects */
+  bool explicit_force_only;	/* true when the caller is the sole force point */
 };
 
 typedef struct locator_cache_lock LOCATOR_CACHE_LOCK;
@@ -142,6 +143,7 @@ static int locator_cache (LC_COPYAREA * copy_area, MOP hint_class_mop, MOBJ hint
 			  void (*fun) (MOP mop, MOBJ object, void *args), void *args);
 static LC_FIND_CLASSNAME locator_find_class_by_name (const char *classname, LOCK lock, MOP * class_mop);
 static int locator_mflush (MOP mop, void *mf);
+static bool locator_class_flush_deferral_is_pending (MOP mop);
 static int locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ clazz, HFID * hfid,
 				      bool decache, bool isone_mflush);
 static void locator_mflush_reset (LOCATOR_MFLUSH_CACHE * mflush);
@@ -3819,6 +3821,7 @@ locator_mflush_initialize (LOCATOR_MFLUSH_CACHE * mflush, MOP class_mop, MOBJ cl
   mflush->hfid = hfid;
   mflush->decache = decache;
   mflush->isone_mflush = isone_mflush;
+  mflush->explicit_force_only = false;
 
   return error_code;
 }
@@ -4225,6 +4228,11 @@ locator_class_to_disk (LOCATOR_MFLUSH_CACHE * mflush, MOBJ object, bool * has_in
 	    }
 	  else
 	    {
+	      if (mflush->explicit_force_only)
+		{
+		  *map_status = WS_MAP_FAIL;
+		  return ER_FAILED;
+		}
 	      error_code = locator_mflush_force (mflush);
 	      if (error_code == NO_ERROR)
 		{
@@ -4451,6 +4459,10 @@ locator_mflush (MOP mop, void *mf)
   int wasted_length;
 
   mflush = (LOCATOR_MFLUSH_CACHE *) mf;
+  if (!mflush->explicit_force_only && locator_class_flush_deferral_is_pending (mop))
+    {
+      return WS_MAP_CONTINUE;
+    }
 
   /* Flush the instance only if it is dirty */
   if (!WS_ISDIRTY (mop))
@@ -4864,6 +4876,10 @@ locator_mflush (MOP mop, void *mf)
   if (mflush->recdes.area_size <= 0)
     {
       /* Force the mflush area */
+      if (mflush->explicit_force_only)
+	{
+	  return WS_MAP_FAIL;
+	}
       error_code = locator_mflush_force (mflush);
       if (error_code != NO_ERROR)
 	{
@@ -4874,6 +4890,554 @@ locator_mflush (MOP mop, void *mf)
   return WS_MAP_CONTINUE;
 }
 
+typedef struct locator_class_flush_deferral LOCATOR_CLASS_FLUSH_DEFERRAL;
+struct locator_class_flush_deferral
+{
+  int depth;
+  bool active;
+  BTID btid;
+  LOG_LSA create_lsa;
+  int constraint_type;
+  char constraint_name[LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1];
+  MOP mops[LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES];
+  unsigned int mop_count;
+  MOP *stats_mops;
+  unsigned int stats_count;
+  unsigned int stats_capacity;
+  MOP *rollback_mops;
+  unsigned int rollback_count;
+  unsigned int rollback_capacity;
+};
+
+static LOCATOR_CLASS_FLUSH_DEFERRAL locator_Class_flush_deferral;
+static bool
+locator_class_flush_deferral_is_pending (MOP mop)
+{
+  unsigned int i;
+
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      if (locator_Class_flush_deferral.mops[i] == mop)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+extern int locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list,
+			       int content_size, const LOCATOR_BULK_INDEX_DESCRIPTOR * bulk_index);
+
+void
+locator_class_flush_deferral_enter (void)
+{
+  locator_Class_flush_deferral.depth++;
+}
+
+void
+locator_class_flush_deferral_leave (void)
+{
+  assert (locator_Class_flush_deferral.depth > 0);
+  if (--locator_Class_flush_deferral.depth == 0)
+    {
+      locator_Class_flush_deferral.active = false;
+      locator_Class_flush_deferral.mop_count = 0;
+      locator_Class_flush_deferral.stats_count = 0;
+      free (locator_Class_flush_deferral.stats_mops);
+      locator_Class_flush_deferral.stats_mops = NULL;
+      locator_Class_flush_deferral.stats_capacity = 0;
+      free (locator_Class_flush_deferral.rollback_mops);
+      locator_Class_flush_deferral.rollback_mops = NULL;
+      locator_Class_flush_deferral.rollback_count = 0;
+      locator_Class_flush_deferral.rollback_capacity = 0;
+    }
+}
+
+bool
+locator_class_flush_deferral_is_active (void)
+{
+  return locator_Class_flush_deferral.depth > 0 && locator_Class_flush_deferral.active;
+}
+bool
+locator_class_flush_deferral_is_open (void)
+{
+#if defined (CS_MODE)
+  return locator_Class_flush_deferral.depth > 1
+    || (locator_Class_flush_deferral.depth > 0 && locator_Class_flush_deferral.active);
+#else
+  return false;
+#endif
+}
+
+bool
+locator_class_flush_deferral_is_outermost (void)
+{
+  return locator_Class_flush_deferral.depth == 1;
+}
+
+int
+locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,
+					const LOG_LSA * create_lsa)
+{
+  size_t name_length;
+
+  if (locator_Class_flush_deferral.active)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (locator_Class_flush_deferral.depth <= 0 || btid == NULL || constraint_name == NULL || create_lsa == NULL
+      || LSA_ISNULL (create_lsa))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  name_length = strlen (constraint_name);
+  if (name_length == 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  locator_Class_flush_deferral.active = true;
+  locator_Class_flush_deferral.btid = *btid;
+  locator_Class_flush_deferral.create_lsa = *create_lsa;
+  locator_Class_flush_deferral.constraint_type = constraint_type;
+  memcpy (locator_Class_flush_deferral.constraint_name, constraint_name, name_length + 1);
+  return NO_ERROR;
+}
+static int locator_flush_class_set_internal (bool final_publication);
+static int locator_class_flush_serialized_size (MOP class_mop, size_t *serialized_size);
+static int locator_class_flush_set_required_size (size_t *required);
+static int locator_class_flush_reserve_mops (MOP **mops, unsigned int count, unsigned int *capacity,
+					    unsigned int additional);
+static void locator_class_flush_append_rollback (void);
+
+
+
+static int
+locator_class_flush_deferral_add_unique (MOP * mops, unsigned int *count, MOP mop)
+{
+  unsigned int i;
+
+  for (i = 0; i < *count; i++)
+    {
+      if (mops[i] == mop)
+	{
+	  return NO_ERROR;
+	}
+    }
+  if (*count >= LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  mops[(*count)++] = mop;
+  return NO_ERROR;
+}
+
+int
+locator_class_flush_deferral_add (MOP class_mop)
+{
+  int error;
+  unsigned int i;
+  size_t class_size, required;
+
+  /* Membership must win over capacity: adding the same class never publishes. */
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      if (locator_Class_flush_deferral.mops[i] == class_mop)
+	{
+	  return NO_ERROR;
+	}
+    }
+  error = locator_class_flush_serialized_size (class_mop, &class_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  /* An individual class must fit the explicit one-area wire representation. */
+  if (class_size > SIZE_MAX - sizeof (LC_COPYAREA_MANYOBJS)
+      || sizeof (LC_COPYAREA_MANYOBJS) + class_size >= INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  error = locator_class_flush_set_required_size (&required);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (required > SIZE_MAX - class_size || required + class_size >= INT_MAX)
+    {
+      if (locator_Class_flush_deferral.active || locator_Class_flush_deferral.depth != 1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+      /* Only an outermost inactive scope is proven to be legacy. */
+      error = locator_flush_class_set_internal (false);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+
+  if (locator_Class_flush_deferral.mop_count >= LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES)
+    {
+      if (locator_Class_flush_deferral.active || locator_Class_flush_deferral.depth != 1)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	  return ER_OBJ_INVALID_ARGUMENTS;
+	}
+      /* Only an outermost inactive scope is proven to be legacy. */
+      error = locator_flush_class_set_internal (false);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return locator_class_flush_deferral_add_unique (locator_Class_flush_deferral.mops,
+						  &locator_Class_flush_deferral.mop_count, class_mop);
+}
+
+int
+locator_class_flush_deferral_queue_stats (MOP class_mop)
+{
+  unsigned int i;
+  int error;
+
+  for (i = 0; i < locator_Class_flush_deferral.stats_count; i++)
+    {
+      if (locator_Class_flush_deferral.stats_mops[i] == class_mop)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  error = locator_class_flush_reserve_mops (&locator_Class_flush_deferral.stats_mops,
+					    locator_Class_flush_deferral.stats_count,
+					    &locator_Class_flush_deferral.stats_capacity, 1);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  locator_Class_flush_deferral.stats_mops[locator_Class_flush_deferral.stats_count++] = class_mop;
+  return NO_ERROR;
+}
+
+MOP
+locator_class_flush_deferral_pop_stats (void)
+{
+  if (locator_Class_flush_deferral.stats_count == 0)
+    {
+      return NULL;
+    }
+  return locator_Class_flush_deferral.stats_mops[--locator_Class_flush_deferral.stats_count];
+}
+
+void
+locator_class_flush_deferral_abort (void)
+{
+  unsigned int i, j;
+
+  for (i = 0; i < locator_Class_flush_deferral.rollback_count; i++)
+    {
+      ws_decache (locator_Class_flush_deferral.rollback_mops[i]);
+    }
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      for (j = 0; j < locator_Class_flush_deferral.rollback_count; j++)
+	{
+	  if (locator_Class_flush_deferral.mops[i] == locator_Class_flush_deferral.rollback_mops[j])
+	    {
+	      break;
+	    }
+	}
+      if (j == locator_Class_flush_deferral.rollback_count)
+	{
+	  ws_decache (locator_Class_flush_deferral.mops[i]);
+	}
+    }
+  locator_Class_flush_deferral.active = false;
+  locator_Class_flush_deferral.mop_count = 0;
+  locator_Class_flush_deferral.stats_count = 0;
+  free (locator_Class_flush_deferral.stats_mops);
+  locator_Class_flush_deferral.stats_mops = NULL;
+  locator_Class_flush_deferral.stats_capacity = 0;
+  free (locator_Class_flush_deferral.rollback_mops);
+  locator_Class_flush_deferral.rollback_mops = NULL;
+  locator_Class_flush_deferral.rollback_count = 0;
+  locator_Class_flush_deferral.rollback_capacity = 0;
+}
+
+static int
+locator_class_flush_serialized_size (MOP class_mop, size_t *serialized_size)
+{
+  MOBJ object;
+  int object_size;
+  size_t aligned_size;
+
+  if (ws_find (class_mop, &object) == WS_FIND_MOP_DELETED || object == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  object_size = tf_object_size ((MOBJ) sm_Root_class_mop->object, object);
+  if (object_size < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  aligned_size = (size_t) object_size;
+  if (aligned_size > SIZE_MAX - (MAX_ALIGNMENT - 1))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  aligned_size += DB_WASTED_ALIGN (aligned_size, MAX_ALIGNMENT);
+  /* Class MOPs are instances of the root class, so there is no MVCC reserve. */
+  if (aligned_size > SIZE_MAX - sizeof (LC_COPYAREA_ONEOBJ))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  *serialized_size = sizeof (LC_COPYAREA_ONEOBJ) + aligned_size;
+  return NO_ERROR;
+}
+
+static int
+locator_class_flush_set_required_size (size_t *required)
+{
+  unsigned int i;
+  size_t class_size;
+
+  *required = sizeof (LC_COPYAREA_MANYOBJS);
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      int error = locator_class_flush_serialized_size (locator_Class_flush_deferral.mops[i], &class_size);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (*required > SIZE_MAX - class_size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+      *required += class_size;
+    }
+  return NO_ERROR;
+}
+
+static int
+locator_class_flush_reserve_mops (MOP **mops, unsigned int count, unsigned int *capacity_ptr,
+				  unsigned int additional)
+{
+  unsigned int needed, capacity;
+  MOP *new_mops;
+  size_t bytes;
+
+  if (additional > UINT_MAX - count)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  needed = count + additional;
+  if (needed <= *capacity_ptr)
+    {
+      return NO_ERROR;
+    }
+  if (*capacity_ptr == 0)
+    {
+      capacity = MAX (needed, 16);
+    }
+  else if (*capacity_ptr > UINT_MAX / 2)
+    {
+      capacity = needed;
+    }
+  else
+    {
+      capacity = MAX (needed, *capacity_ptr * 2);
+    }
+  bytes = (size_t) capacity * sizeof (*new_mops);
+  new_mops = (MOP *) realloc (*mops, bytes);
+  if (new_mops == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  *mops = new_mops;
+  *capacity_ptr = capacity;
+  return NO_ERROR;
+}
+
+static void
+locator_class_flush_append_rollback (void)
+{
+  unsigned int i, j;
+
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      for (j = 0; j < locator_Class_flush_deferral.rollback_count; j++)
+	{
+	  if (locator_Class_flush_deferral.mops[i] == locator_Class_flush_deferral.rollback_mops[j])
+	    {
+	      break;
+	    }
+	}
+      if (j == locator_Class_flush_deferral.rollback_count)
+	{
+	  locator_Class_flush_deferral.rollback_mops[locator_Class_flush_deferral.rollback_count++]
+	    = locator_Class_flush_deferral.mops[i];
+	}
+    }
+}
+
+static int
+locator_oid_compare_for_bulk (const void *left, const void *right)
+{
+  const OID *a = (const OID *) left;
+  const OID *b = (const OID *) right;
+
+  if (a->volid != b->volid)
+    {
+      return a->volid < b->volid ? -1 : 1;
+    }
+  if (a->pageid != b->pageid)
+    {
+      return a->pageid < b->pageid ? -1 : 1;
+    }
+  return a->slotid == b->slotid ? 0 : (a->slotid < b->slotid ? -1 : 1);
+}
+
+static int
+locator_flush_class_set_internal (bool final_publication)
+{
+  LOCATOR_MFLUSH_CACHE mflush;
+  LOCATOR_BULK_INDEX_DESCRIPTOR descriptor;
+  const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor_p = NULL;
+  OID class_oids[LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES];
+  size_t required;
+  unsigned int i;
+  int map_status;
+  int error = NO_ERROR;
+  int content_size;
+
+
+  if (locator_Class_flush_deferral.mop_count == 0)
+    {
+      return NO_ERROR;
+    }
+
+  error = locator_class_flush_set_required_size (&required);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      class_oids[i] = *ws_oid (locator_Class_flush_deferral.mops[i]);
+    }
+
+  /* Keep terminal area_size positive; locator_mflush treats zero as a force request. */
+  if (required >= INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  required++;
+  if (!final_publication)
+    {
+      error = locator_class_flush_reserve_mops (&locator_Class_flush_deferral.rollback_mops,
+						locator_Class_flush_deferral.rollback_count,
+						&locator_Class_flush_deferral.rollback_capacity,
+						locator_Class_flush_deferral.mop_count);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  memset (&mflush, 0, sizeof (mflush));
+  error = locator_mflush_reallocate_copy_area (&mflush, (int) required);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  mflush.decache = DONT_DECACHE;
+  mflush.isone_mflush = ONE_MFLUSH;
+  mflush.explicit_force_only = true;
+
+  for (i = 0; i < locator_Class_flush_deferral.mop_count; i++)
+    {
+      map_status = locator_mflush (locator_Class_flush_deferral.mops[i], &mflush);
+      if (map_status != WS_MAP_CONTINUE)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+    }
+
+  if (locator_Class_flush_deferral.active)
+    {
+      qsort (class_oids, locator_Class_flush_deferral.mop_count, sizeof (*class_oids), locator_oid_compare_for_bulk);
+      memset (&descriptor, 0, sizeof (descriptor));
+      descriptor.btid = locator_Class_flush_deferral.btid;
+      descriptor.create_lsa = locator_Class_flush_deferral.create_lsa;
+      descriptor.class_oids = class_oids;
+      descriptor.class_count = locator_Class_flush_deferral.mop_count;
+      descriptor.constraint_name = locator_Class_flush_deferral.constraint_name;
+      descriptor.constraint_name_length = (unsigned int) strlen (descriptor.constraint_name);
+      descriptor.constraint_type = locator_Class_flush_deferral.constraint_type;
+      descriptor_p = &descriptor;
+    }
+
+  if (mflush.recdes.data < mflush.copy_area->mem
+      || (size_t) (mflush.recdes.data - mflush.copy_area->mem) > INT_MAX)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+      goto end;
+    }
+  content_size = (int) (mflush.recdes.data - mflush.copy_area->mem);
+  error = locator_force_bulk (mflush.copy_area, ws_Error_ignore_count, ws_Error_ignore_list, content_size, descriptor_p);
+  if (error != NO_ERROR)
+    {
+      unsigned int j;
+      for (j = 0; j < locator_Class_flush_deferral.mop_count; j++)
+	{
+	  ws_dirty (locator_Class_flush_deferral.mops[j]);
+	}
+    }
+
+end:
+  locator_mflush_end (&mflush);
+  if (error != NO_ERROR)
+    {
+      locator_class_flush_deferral_abort ();
+    }
+  else if (!final_publication)
+    {
+      locator_class_flush_append_rollback ();
+      locator_Class_flush_deferral.active = false;
+      locator_Class_flush_deferral.mop_count = 0;
+    }
+  /* Final publication retains membership until leave, so abort can decache it. */
+  return error;
+}
+
+int
+locator_flush_class_set (void)
+{
+  return locator_flush_class_set_internal (true);
+}
 /*
  * locator_flush_class () - Flush a dirty class
  *
@@ -4898,6 +5462,12 @@ locator_flush_class (MOP class_mop)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (WS_ISDIRTY (class_mop)
+      && (locator_class_flush_deferral_is_open () || locator_class_flush_deferral_is_pending (class_mop)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
     }
 
   if (WS_ISDIRTY (class_mop) && (ws_find (class_mop, &class_obj) == WS_FIND_MOP_DELETED || class_obj != NULL))

@@ -219,6 +219,13 @@ extern int file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID 
 extern int file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user_pages_out);
 extern int file_get_num_total_user_pages (THREAD_ENTRY * thread_p, OID * class_oid, int *n_user_pages_out);
 extern DISK_ISVALID file_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup);
+enum
+{
+  FILE_RECOVERY_VPID_NOT_MEMBER = 0,
+  FILE_RECOVERY_VPID_MEMBER = 1
+};
+extern int file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup,
+				     int *membership);
 extern int file_get_type (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE * ftype_out);
 extern int file_is_temp (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_temp);
 extern int file_map_pages (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_MODE latch_mode,

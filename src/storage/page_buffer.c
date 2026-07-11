@@ -1061,10 +1061,14 @@ static PGBUF_BCB *pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID *
 					   PGBUF_BUFFER_HASH * hash_anchor, PGBUF_FIX_PERF * perf, bool * try_again,
 					   bool already_locked);
 static int pgbuf_victimize_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
-static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked);
+static int pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous,
+					  PGBUF_WAL_FLUSH_POLICY wal_policy,
+					  PGBUF_DWB_FLUSH_POLICY dwb_policy, bool * locked);
 static int pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 static int pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
-static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous);
+static int pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous,
+					      PGBUF_WAL_FLUSH_POLICY wal_policy,
+					      PGBUF_DWB_FLUSH_POLICY dwb_policy);
 static PGBUF_BCB *pgbuf_get_bcb_from_invalid_list (THREAD_ENTRY * thread_p);
 static int pgbuf_put_bcb_into_invalid_list (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 
@@ -3108,7 +3112,8 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
 	      if (pgbuf_bcb_is_dirty (bufptr))
 		{
 		  /* flush the page with PGBUF_LATCH_FLUSH mode */
-		  (void) pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true);
+		  (void) pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+							    PGBUF_DWB_FLUSH_LEGACY);
 		  /*
 		   * Since above function releases bufptr->mutex,
 		   * the caller must hold bufptr->mutex again.
@@ -3482,12 +3487,38 @@ pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
   PGBUF_BCB_LOCK (bufptr);
 
   /* Flush the page only when it is dirty */
-  if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true) != NO_ERROR)
+  if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+					 PGBUF_DWB_FLUSH_LEGACY) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
     }
 
+  return pgptr;
+}
+
+PAGE_PTR
+pgbuf_flush_with_wal_policy (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PGBUF_WAL_FLUSH_POLICY wal_policy,
+			     PGBUF_DWB_FLUSH_POLICY dwb_policy)
+{
+  PGBUF_BCB *bufptr;
+
+  if (pgbuf_get_check_page_validation_level (PGBUF_DEBUG_PAGE_VALIDATION_ALL)
+      && pgbuf_is_valid_page_ptr (pgptr) == false)
+    {
+      return NULL;
+    }
+
+  CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+  assert (!VPID_ISNULL (&bufptr->vpid));
+  assert (get_latch (&bufptr->atomic_latch) >= PGBUF_LATCH_READ && pgbuf_find_thrd_holder (thread_p, bufptr) != NULL);
+  PGBUF_BCB_LOCK (bufptr);
+
+  if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true, wal_policy, dwb_policy) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return NULL;
+    }
   return pgptr;
 }
 
@@ -3524,7 +3555,8 @@ pgbuf_flush_if_requested (THREAD_ENTRY * thread_p, PAGE_PTR page)
   if (pgbuf_bcb_is_async_flush_request (bcb))
     {
       PGBUF_BCB_LOCK (bcb);
-      if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bcb, false) != NO_ERROR)
+      if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bcb, false, PGBUF_WAL_FLUSH_LEGACY,
+					     PGBUF_DWB_FLUSH_LEGACY) != NO_ERROR)
 	{
 	  assert (false);
 	}
@@ -3564,7 +3596,8 @@ pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_unfixed_on
 	}
 
       /* flush */
-      if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true) != NO_ERROR)
+      if (pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+					     PGBUF_DWB_FLUSH_LEGACY) != NO_ERROR)
 	{
 	  /* best efforts */
 	  assert (false);
@@ -4430,7 +4463,8 @@ pgbuf_flush_seq_list (THREAD_ENTRY * thread_p, PGBUF_SEQ_FLUSHER * seq_flusher, 
 	      detailed_er_log ("pgbuf_flush_seq_list: flush again %d|%d; oldest_unflush_lsa=%lld|%d, "
 			       "flush_upto_lsa=%lld|%d \n", VPID_AS_ARGS (&bufptr->vpid),
 			       LSA_AS_ARGS (&bufptr->oldest_unflush_lsa), LSA_AS_ARGS (&seq_flusher->flush_upto_lsa));
-	      if (pgbuf_bcb_safe_flush_internal (thread_p, bufptr, true, &locked_bcb) == NO_ERROR)
+	      if (pgbuf_bcb_safe_flush_internal (thread_p, bufptr, true, PGBUF_WAL_FLUSH_LEGACY,
+						 PGBUF_DWB_FLUSH_LEGACY, &locked_bcb) == NO_ERROR)
 		{
 		  /* now we should be ok. */
 		  assert (LSA_ISNULL (&bufptr->oldest_unflush_lsa)
@@ -6726,7 +6760,8 @@ pgbuf_unlatch_bcb_upon_unfix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, int h
 	      || get_latch (&bufptr->atomic_latch) == PGBUF_LATCH_READ);
 
       /* we need to flush bcb. we won't need the bcb mutex afterwards */
-      error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, false);
+      error_code = pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, false, PGBUF_WAL_FLUSH_LEGACY,
+						       PGBUF_DWB_FLUSH_LEGACY);
       /* what to do with the error? we failed to flush it... */
       if (error_code != NO_ERROR)
 	{
@@ -8611,12 +8646,13 @@ pgbuf_invalidate_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
  *                    blocked). if false, the caller will only request flush and continue.
  */
 static int
-pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous)
+pgbuf_bcb_safe_flush_force_unlock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous,
+				   PGBUF_WAL_FLUSH_POLICY wal_policy, PGBUF_DWB_FLUSH_POLICY dwb_policy)
 {
   int error_code = NO_ERROR;
   bool locked = true;
 
-  error_code = pgbuf_bcb_safe_flush_internal (thread_p, bufptr, synchronous, &locked);
+  error_code = pgbuf_bcb_safe_flush_internal (thread_p, bufptr, synchronous, wal_policy, dwb_policy, &locked);
   if (locked)
     {
       PGBUF_BCB_UNLOCK (bufptr);
@@ -8639,7 +8675,8 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bo
   int error_code = NO_ERROR;
   bool locked = true;
 
-  error_code = pgbuf_bcb_safe_flush_internal (thread_p, bufptr, synchronous, &locked);
+  error_code = pgbuf_bcb_safe_flush_internal (thread_p, bufptr, synchronous, PGBUF_WAL_FLUSH_LEGACY,
+					      PGBUF_DWB_FLUSH_LEGACY, &locked);
   if (error_code != NO_ERROR)
     {
       if (locked)
@@ -8667,7 +8704,8 @@ pgbuf_bcb_safe_flush_force_lock (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bo
  * locked (out)     : output if bcb is locked.
  */
 static int
-pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous, bool * locked)
+pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool synchronous,
+			       PGBUF_WAL_FLUSH_POLICY wal_policy, PGBUF_DWB_FLUSH_POLICY dwb_policy, bool * locked)
 {
   int error_code = NO_ERROR;
   PGBUF_ATOMIC_LATCH_IMPL impl, impl_new;
@@ -8725,8 +8763,7 @@ pgbuf_bcb_safe_flush_internal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool
   if (immediate_flush)
     {
       /* don't have to wait for writer/flush */
-      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, PGBUF_WAL_FLUSH_LEGACY,
-				      PGBUF_DWB_FLUSH_LEGACY, locked);
+      return pgbuf_bcb_flush_with_wal (thread_p, bufptr, false, wal_policy, dwb_policy, locked);
     }
 
   /* page is write latched. notify the holder to flush it on unfix. */

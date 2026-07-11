@@ -256,6 +256,7 @@ extern int vacuum_create_file_for_dropped_files (THREAD_ENTRY * thread_p, VFID *
 extern int vacuum_load_dropped_files_from_disk (THREAD_ENTRY * thread_p);
 extern int vacuum_is_file_dropped (THREAD_ENTRY * thread_p, bool * is_file_dropped, VFID * vfid, MVCCID mvccid);
 extern int vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int vacuum_notify_dropped_file_during_recovery (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern void vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const OID * class_oid,
 					 bool postpone_or_undo);
 extern int vacuum_rv_redo_add_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

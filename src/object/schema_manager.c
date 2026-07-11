@@ -10686,8 +10686,8 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
 */
 
 /*
- * This predicate records the complete provenance gate for the future bulk
- * branch.  It is deliberately disconnected until R3-04 activates publication.
+ * This predicate records the complete provenance gate for no-redo bulk index
+ * loading and its matching cleanup marker publication.
  */
 static bool __attribute__ ((unused))
 sm_bulk_index_provenance_is_eligible (bool actual_new_btid, bool load_from_heap, bool has_instances,
@@ -10716,7 +10716,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   OID *oids = NULL;
   HFID *hfids = NULL;
   TP_DOMAIN *domain = NULL;
-  int max_classes, n_classes, has_instances;
+  int max_classes, n_classes = 0, has_instances = 0;
   DB_OBJLIST *sub;
 
   SM_ATTRIBUTE **attrs = con->attributes;
@@ -10729,6 +10729,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   SM_PREDICATE_INFO *filter_index = con->filter_predicate;
   SM_FUNCTION_INFO *function_index = con->func_index_info;
   SM_INDEX_STATUS index_status = con->index_status;
+  LOG_LSA create_lsa = LSA_INITIALIZER;
+  bool actual_new_btid = BTID_IS_NULL (index);
+  bool eligible_no_redo = false;
 
   const int *asc_desc = con->asc_desc;
   int unique_pk = 0;
@@ -10881,6 +10884,13 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	    }
 	}
     }
+#if defined (CS_MODE)
+  eligible_no_redo =
+    sm_bulk_index_provenance_is_eligible (actual_new_btid, class_->load_index_from_heap, has_instances,
+					 index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS,
+					 SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
+					 || con->type == SM_CONSTRAINT_FOREIGN_KEY, true);
+#endif
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
    * btree_load_index () to load all of the instances (including applicable subclasses) into a new B-tree */
@@ -10901,16 +10911,24 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
 				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), function_index->expr_stream,
 				    function_index->expr_stream_size, function_index->col_id,
-				    function_index->attr_index_start, index_status);
+				    function_index->attr_index_start, index_status, eligible_no_redo, &create_lsa);
 	}
       else
 	{
 	  error = btree_load_index (index, constraint_name, domain, oids, n_classes, n_attrs, attr_ids,
 				    (int *) attrs_prefix_length, hfids, unique_pk, not_null, fk_refcls_oid,
 				    fk_refcls_pk_btid, fk_name, SM_GET_FILTER_PRED_STREAM (filter_index),
-				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1, index_status);
+				    SM_GET_FILTER_PRED_STREAM_SIZE (filter_index), NULL, -1, -1, -1, index_status,
+				    eligible_no_redo, &create_lsa);
 	}
     }
+
+#if defined (CS_MODE)
+  if (error == NO_ERROR && eligible_no_redo)
+    {
+      error = locator_class_flush_deferral_activate (index, constraint_name, con->type, &create_lsa);
+    }
+#endif
 
   free_and_init (attr_ids);
   free_and_init (oids);
@@ -11677,7 +11695,14 @@ allocate_disk_structures (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasse
 	  goto structure_error;
 	}
 
-      if (locator_flush_class (classop) != NO_ERROR)
+      if (locator_class_flush_deferral_is_open ())
+	{
+	  if (locator_class_flush_deferral_add (classop) != NO_ERROR)
+	    {
+	      goto structure_error;
+	    }
+	}
+      else if (locator_flush_class (classop) != NO_ERROR)
 	{
 	  goto structure_error;
 	}
@@ -13130,7 +13155,14 @@ update_subclasses (DB_OBJLIST * subclasses)
 		    }
 		  else if (!class_->dont_decache_constraints_or_flush && class_->class_type == SM_CLASS_CT)
 		    {
-		      error = sm_update_statistics_without_gathering_stats (sub->op, STATS_WITH_SAMPLING);
+		      if (locator_class_flush_deferral_is_open ())
+			{
+			  error = locator_class_flush_deferral_queue_stats (sub->op);
+			}
+		      else
+			{
+			  error = sm_update_statistics_without_gathering_stats (sub->op, STATS_WITH_SAMPLING);
+			}
 		    }
 
 		  classobj_free_template (class_->new_);
@@ -13251,6 +13283,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   SM_TEMPLATE *flat;
   char owner_name[SM_MAX_USER_LENGTH] = { '\0' };
   MOP owner = NULL;
+  bool deferral_entered = false;
 
   sm_bump_local_schema_version ();
   class_ = NULL;
@@ -13279,6 +13312,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
     {
       goto end;
     }
+
+  locator_class_flush_deferral_enter ();
+  deferral_entered = true;
 
   if (needs_hierarchy_lock)
     {
@@ -13467,6 +13503,35 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
       goto error_return;
     }
 
+  /* Queue the owner before the outermost publication/drain. */
+  if (template_->class_type == SM_CLASS_CT && locator_class_flush_deferral_is_open ())
+    {
+      error = locator_class_flush_deferral_queue_stats (template_->op);
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+    }
+
+  if (locator_class_flush_deferral_is_open () && locator_class_flush_deferral_is_outermost ())
+    {
+      MOP stats_mop;
+
+      error = locator_flush_class_set ();
+      if (error != NO_ERROR)
+	{
+	  goto error_return;
+	}
+      while ((stats_mop = locator_class_flush_deferral_pop_stats ()) != NULL)
+	{
+	  error = sm_update_statistics_without_gathering_stats (stats_mop, STATS_WITH_SAMPLING);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+	}
+    }
+
   /* we're done */
   if (classmop != NULL)
     {
@@ -13475,7 +13540,7 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
   class_->new_ = NULL;
 
   /* All objects are updated, now we can update class statistics also. */
-  if (template_->class_type == SM_CLASS_CT)
+  if (template_->class_type == SM_CLASS_CT && !locator_class_flush_deferral_is_open ())
     {
       error = sm_update_statistics_without_gathering_stats (template_->op, STATS_WITH_SAMPLING);
       if (error != NO_ERROR)
@@ -13492,6 +13557,10 @@ end:
   ml_free (newsupers);
   ml_free (newsubs);
 
+  if (deferral_entered)
+    {
+      locator_class_flush_deferral_leave ();
+    }
   return error;
 
 error_return:
@@ -13507,6 +13576,7 @@ error_return:
     }
 
   abort_subclasses (newsubs);
+  locator_class_flush_deferral_abort ();
 
   if (error != ER_TM_SERVER_DOWN_UNILATERALLY_ABORTED && error != ER_LK_UNILATERALLY_ABORTED)
     {
@@ -16788,7 +16858,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate),
 				con->func_index_info->expr_stream, con->func_index_info->expr_stream_size,
 				con->func_index_info->col_id, con->func_index_info->attr_index_start,
-				con->index_status);
+				con->index_status, false, NULL);
     }
   else
     {
@@ -16796,7 +16866,7 @@ sm_load_online_index (MOP classmop, const char *constraint_name)
 				(int *) con->attrs_prefix_length, hfids, unique_pk, not_null, NULL,
 				NULL, NULL, SM_GET_FILTER_PRED_STREAM (con->filter_predicate),
 				SM_GET_FILTER_PRED_STREAM_SIZE (con->filter_predicate), NULL, -1, -1, -1,
-				con->index_status);
+				con->index_status, false, NULL);
     }
 
   if (error != NO_ERROR)

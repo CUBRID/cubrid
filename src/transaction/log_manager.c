@@ -160,6 +160,7 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    && ((RCVI) != RVBT_BULK_BUILD_DURABLE) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
@@ -3632,6 +3633,7 @@ log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER_V1
 {
   char *payload;
   unsigned int payload_size;
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
   if (btree_bulk_marker_v1_packed_size (marker, &payload_size) != NO_ERROR || payload_size > INT_MAX)
     {
@@ -3650,9 +3652,9 @@ log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER_V1
       return ER_FAILED;
     }
 
-  log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, NULL, (int) payload_size, payload);
+  log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, (int) payload_size, payload);
   free (payload);
-  return er_errid () == NO_ERROR ? NO_ERROR : er_errid ();
+  return NO_ERROR;
 }
 /*
  * log_sysop_start () - Start a new system operation. This can also be nested in another system operation.

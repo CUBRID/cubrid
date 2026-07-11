@@ -687,9 +687,6 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 #endif /* !CS_MODE */
 }
 
-#define LOCATOR_BULK_FORCE_TAIL_MAGIC 0x42494654
-#define LOCATOR_BULK_FORCE_TAIL_VERSION 1
-#define LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE (OR_INT_SIZE * 7 + OR_BTID_ALIGNED_SIZE)
 
 static bool
 locator_bulk_oid_set_is_sorted (const OID *oids, unsigned int count)
@@ -775,6 +772,7 @@ locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, c
   ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_VERSION);
   ptr = or_pack_int (ptr, (int) size);
   ptr = or_pack_btid (ptr, &descriptor->btid);
+  ptr = or_pack_log_lsa (ptr, &descriptor->create_lsa);
   ptr = or_pack_int (ptr, (int) descriptor->class_count);
   for (i = 0; i < descriptor->class_count; i++)
     {
@@ -826,6 +824,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     }
 
   ptr = or_unpack_btid (ptr, &descriptor->btid);
+  ptr = or_unpack_log_lsa (ptr, &descriptor->create_lsa);
   ptr = or_unpack_int (ptr, &count);
   if (count < 0 || (unsigned int) count > class_capacity
       || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
@@ -906,7 +905,8 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
  * NOTE:
  */
 int
-locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size)
+locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size,
+		    const LOCATOR_BULK_INDEX_DESCRIPTOR * bulk_index)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -917,6 +917,8 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   char *reply;
   char *desc_ptr = NULL;
   int desc_size;
+  unsigned int bulk_tail_size = 0;
+  char *bulk_tail;
   char *content_ptr;
   int num_objs = 0;
   int req_error;
@@ -925,7 +927,16 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  request_size = OR_INT_SIZE * (5 + num_ignore_error_list);
+  if (bulk_index != NULL && locator_bulk_force_tail_packed_size (bulk_index, &bulk_tail_size) != NO_ERROR)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  if (bulk_tail_size > (unsigned int) (INT_MAX - OR_INT_SIZE * (5 + num_ignore_error_list)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATA_TRUNCATED, 0);
+      return ER_NET_DATA_TRUNCATED;
+    }
+  request_size = OR_INT_SIZE * (5 + num_ignore_error_list) + (int) bulk_tail_size;
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -953,6 +964,13 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
   for (i = 0; i < num_ignore_error_list; i++)
     {
       request_ptr = or_pack_int (request_ptr, ignore_error_list[i]);
+    }
+  bulk_tail = request_ptr;
+  if (bulk_tail_size > 0
+      && locator_bulk_force_tail_pack (bulk_index, bulk_tail, bulk_tail_size, &bulk_tail_size) != NO_ERROR)
+    {
+      free_and_init (request);
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
 
   req_error =
@@ -992,7 +1010,7 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list);
+  error_code = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list, bulk_index);
 
   exit_server (*thread_p);
 
@@ -1013,6 +1031,12 @@ locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_e
 
   return error_code;
 #endif /* !CS_MODE */
+}
+
+int
+locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size)
+{
+  return locator_force_bulk (copy_area, num_ignore_error_list, ignore_error_list, content_size, NULL);
 }
 
 /*
@@ -6278,19 +6302,26 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream,
 		  int pred_stream_size, char *expr_stream, int expr_stream_size, int func_col_id,
-		  int func_attr_index_start, SM_INDEX_STATUS index_status)
+		  int func_attr_index_start, SM_INDEX_STATUS index_status, bool eligible_no_redo,
+		  LOG_LSA * out_create_lsa)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
   LOCK curr_cls_lock = SCH_M_LOCK;
+  LOG_LSA create_lsa;
+  LSA_SET_NULL (&create_lsa);
+  if (out_create_lsa != NULL)
+    {
+      LSA_SET_NULL (out_create_lsa);
+    }
 
   // online index should have created the empty b-tree already
   assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
@@ -6322,7 +6353,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
-		  + OR_INT_SIZE /* Thread count */ );
+		  + OR_INT_SIZE	/* Thread count */
+		  + OR_INT_SIZE	/* eligible_no_redo */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6398,6 +6430,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
+  ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
@@ -6429,6 +6462,11 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	    {
 	      btid = NULL;
 	    }
+	}
+      ptr = or_unpack_log_lsa (ptr, &create_lsa);
+      if (error == NO_ERROR && index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && out_create_lsa != NULL)
+	{
+	  LSA_COPY (out_create_lsa, &create_lsa);
 	}
     }
   else
@@ -6471,7 +6509,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
 			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-			   func_attr_index_start);
+			   func_attr_index_start, eligible_no_redo, out_create_lsa);
     }
 
   if (btid == NULL)

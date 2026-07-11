@@ -206,6 +206,7 @@ struct log_rcv
   int length = 0;		/* Length of data */
   const char *data = nullptr;	/* Replacement data. Pointer becomes invalid once the recovery of the data is finished */
   LOG_LSA reference_lsa = NULL_LSA;	/* Next LSA used by compensate/postpone. */
+  bool is_bulk_recovery_undo = false;	/* In-memory only. Set only for committed publication reversal; never serialized. */
 
   // *INDENT-OFF*
   log_rcv () = default;

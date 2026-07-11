@@ -107,6 +107,9 @@ extern int log_recovery_bulk_classify_candidate (const BTREE_BULK_RECOVERY_CANDI
 extern int log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p,
 					       const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
 extern int log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
+extern int log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *record_lsa,
+					       const VPID *rcv_vpid, bool *skip);
+extern void log_recovery_bulk_set_redo_rcvindex (LOG_RCVINDEX rcvindex);
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
@@ -608,9 +611,11 @@ enum btree_op_purpose
   BTREE_OP_DELETE_OBJECT_PHYSICAL,	/* Physically delete an object from b-tree when MVCC is enabled. */
   BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED,	/* Physical delete was postponed. */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
+  BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY,	/* Undo committed bulk publication insert. */
   BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique
 						 * constraint violation is applied. Previous visible object must be
 						 * returned to first position in record. */
+  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY,	/* Bulk recovery counterpart. */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an object in b-tree. It is called when object
 					 * deletion is roll-backed. */
   BTREE_OP_DELETE_VACUUM_OBJECT,	/* All object info is removed from b-tree. It is called by vacuum when the

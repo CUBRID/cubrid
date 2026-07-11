@@ -7060,6 +7060,142 @@ exit:
 }
 
 /*
+ * file_recovery_check_vpid () - recovery-safe check for file page membership
+ *
+ * A stale file identifier is not an error during media recovery.  Only inspect
+ * file tables after the fixed header page is proved to be the requested file.
+ */
+int
+file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup, int *membership)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  PAGE_PTR page_ftab = NULL;
+  FILE_HEADER *fhead;
+  FILE_EXTENSIBLE_DATA *extdata;
+  VSID vsid_lookup;
+  bool found;
+  int pos;
+  int error = NO_ERROR;
+
+  *membership = FILE_RECOVERY_VPID_NOT_MEMBER;
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  if (pgbuf_get_page_ptype (thread_p, page_fhead) != PAGE_FTAB || !VFID_EQ (&fhead->self, vfid))
+    {
+      goto exit;
+    }
+  if (fhead->offset_to_partial_ftab < FILE_HEADER_ALIGNED_SIZE
+      || fhead->offset_to_partial_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+      || (!FILE_IS_TEMPORARY (fhead)
+	  && (fhead->offset_to_full_ftab < FILE_HEADER_ALIGNED_SIZE
+	      || fhead->offset_to_full_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE))
+      || (FILE_IS_NUMERABLE (fhead)
+	  && (fhead->offset_to_user_page_ftab < FILE_HEADER_ALIGNED_SIZE
+	      || fhead->offset_to_user_page_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE)))
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  VSID_FROM_VPID (&vsid_lookup, vpid_lookup);
+  extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_partial_ftab);
+  if (extdata->size_of_item != sizeof (FILE_PARTIAL_SECTOR) || extdata->n_items < 0
+      || extdata->max_size < extdata->size_of_item
+      || extdata->max_size > DB_PAGESIZE - fhead->offset_to_partial_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+      || extdata->n_items * extdata->size_of_item > extdata->max_size)
+    {
+      error = ER_FAILED;
+      goto exit;
+    }
+  error = file_extdata_search_item (thread_p, &extdata, &vsid_lookup, disk_compare_vsids, true, false, &found, &pos,
+				    &page_ftab);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  if (found)
+    {
+      FILE_PARTIAL_SECTOR *partsect = (FILE_PARTIAL_SECTOR *) file_extdata_at (extdata, pos);
+      if (!file_partsect_is_bit_set (partsect, file_partsect_pageid_to_offset (partsect, vpid_lookup->pageid)))
+	{
+	  goto exit;
+	}
+    }
+  else
+    {
+      if (page_ftab != NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ftab);
+	}
+      if (FILE_IS_TEMPORARY (fhead))
+	{
+	  goto exit;
+	}
+      extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_full_ftab);
+      if (extdata->size_of_item != sizeof (VSID) || extdata->n_items < 0
+	  || extdata->max_size < extdata->size_of_item
+	  || extdata->max_size > DB_PAGESIZE - fhead->offset_to_full_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+	  || extdata->n_items * extdata->size_of_item > extdata->max_size)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+      error = file_extdata_search_item (thread_p, &extdata, &vsid_lookup, disk_compare_vsids, true, false, &found, &pos,
+					&page_ftab);
+      if (error != NO_ERROR || !found)
+	{
+	  goto exit;
+	}
+    }
+
+  if (page_ftab != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page_ftab);
+    }
+  if (FILE_IS_NUMERABLE (fhead))
+    {
+      VPID *vpid_in_table;
+
+      extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_user_page_ftab);
+      if (extdata->size_of_item != sizeof (VPID) || extdata->n_items < 0
+	  || extdata->max_size < extdata->size_of_item
+	  || extdata->max_size > DB_PAGESIZE - fhead->offset_to_user_page_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+	  || extdata->n_items * extdata->size_of_item > extdata->max_size)
+	{
+	  error = ER_FAILED;
+	  goto exit;
+	}
+      error = file_extdata_search_item (thread_p, &extdata, vpid_lookup, file_compare_vpids, false, false, &found, &pos,
+					&page_ftab);
+      if (error != NO_ERROR || !found)
+	{
+	  goto exit;
+	}
+      vpid_in_table = (VPID *) file_extdata_at (extdata, pos);
+      if (FILE_USER_PAGE_IS_MARKED_DELETED (vpid_in_table))
+	{
+	  goto exit;
+	}
+    }
+  *membership = FILE_RECOVERY_VPID_MEMBER;
+
+exit:
+  if (page_ftab != NULL)
+    {
+      pgbuf_unfix (thread_p, page_ftab);
+    }
+  pgbuf_unfix (thread_p, page_fhead);
+  return error;
+}
+
+/*
  * file_get_type () - Get file type for VFID.
  *
  * return          : Error code

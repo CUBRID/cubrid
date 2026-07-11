@@ -36,6 +36,7 @@
 #include "deduplicate_key.h"
 #include "external_sort.h"
 #include "heap_file.h"
+#include "file_io.h"
 #include "log_append.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
@@ -76,6 +77,7 @@ struct load_args
 {				/* This structure is never written to disk; thus logical ordering of fields is ok. */
   BTID_INT *btid;
   const char *bt_name;		/* index name */
+  bool no_redo;			/* Bulk-build pages are written directly without WAL or DWB. */
 
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
@@ -197,7 +199,7 @@ static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int
 				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
 
-static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr);
+static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
@@ -866,7 +868,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		   int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 		   int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 		   char *pred_stream, int pred_stream_size, char *func_pred_stream, int func_pred_stream_size,
-		   int func_col_id, int func_attr_index_start)
+		   int func_col_id, int func_attr_index_start, bool eligible_no_redo, LOG_LSA * create_lsa)
 {
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
@@ -883,6 +885,10 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
+  if (create_lsa != NULL)
+    {
+      LSA_SET_NULL (create_lsa);
+    }
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -907,6 +913,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_items = NULL;
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
+#if defined (SERVER_MODE)
+  load_args->no_redo = eligible_no_redo;
+#else
+  load_args->no_redo = false;
+#endif
   load_args->vacuum_payload_size = 0;
 
   /*
@@ -1092,7 +1103,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 
 #if defined (SERVER_MODE)
-  is_sysop_started = true;
+  is_sysop_started = log_check_system_op_is_started (thread_p);
+  if (create_lsa != NULL && tdes != NULL)
+    {
+      LSA_COPY (create_lsa, &tdes->tail_lsa);
+    }
 #endif /* SERVER_MODE */
 
   if (bt_load_append_vacuum_notifications (thread_p, load_args) != NO_ERROR)
@@ -1196,6 +1211,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	  notification_class_oid = &btid_int.topclass_oid;
 	}
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL, notification_class_oid, btid, bt_name);
+    }
+
+  if (load_args->no_redo && fileio_synchronize_all (thread_p) != NO_ERROR)
+    {
+      goto error;
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
@@ -1313,7 +1333,7 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -1369,7 +1389,7 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Save the current leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo);
   load_args->leaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -1464,7 +1484,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
       *header = load_args->nleaf.hdr;
 
       /* Flush the current non-leaf page */
-      if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr) != NO_ERROR)
+      if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo)
+	  != NO_ERROR)
 	{
 	  load_args->nleaf.pgptr = NULL;
 	  return NULL;
@@ -1761,7 +1782,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   *header = load_args->nleaf.hdr;
 
   /* Flush the last non-leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -1895,7 +1916,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       *header = load_args->nleaf.hdr;
 
       /* Flush the last non-leaf page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
       load_args->nleaf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -2008,7 +2029,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   load_args->nleaf.vpid = cur_nleafpgid;
 
   /* The root page must be logged, otherwise, in the event of a crash. The index may be gone. */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2047,18 +2068,29 @@ end:
  * the page after setting on the dirty bit.
  */
 static int
-btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr)
+btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo)
 {
-  LOG_DATA_ADDR addr;		/* For recovery purposes */
+  if (no_redo)
+    {
+      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+      if (pgbuf_flush_with_wal_policy (thread_p, page_ptr, PGBUF_WAL_FLUSH_SKIP, PGBUF_DWB_FLUSH_SKIP) == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
+  else
+    {
+      LOG_DATA_ADDR addr;
 
-  /* log the whole page for redo purposes. */
-  addr.vfid = vfid;
-  addr.pgptr = page_ptr;
-  addr.offset = -1;		/* irrelevant */
-  log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
+      addr.vfid = vfid;
+      addr.pgptr = page_ptr;
+      addr.offset = -1;
+      log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
+      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+    }
 
-  pgbuf_set_dirty (thread_p, page_ptr, FREE);
-  page_ptr = NULL;
+  pgbuf_unfix_and_init (thread_p, page_ptr);
   return NO_ERROR;
 }
 
@@ -2081,7 +2113,6 @@ btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEAD
 
   assert ((header != NULL && node_level >= 1)	/* leaf, non-leaf */
 	  || (header == NULL && node_level == -1));	/* overflow */
-  assert (log_check_system_op_is_started (thread_p));	/* need system operation */
 
   /* we need to commit page allocations. if loading index is aborted, the entire file is destroyed. */
   log_sysop_start (thread_p);
@@ -2218,7 +2249,8 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Flush the current leaf page */
-  if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr) != NO_ERROR)
+  if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo)
+      != NO_ERROR)
     {
       load_args->leaf.pgptr = NULL;
       pgbuf_unfix_and_init (thread_p, new_leafpgptr);
@@ -2692,7 +2724,7 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -2850,7 +2882,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       ovf_header->next_vpid = new_ovfpgid;
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{

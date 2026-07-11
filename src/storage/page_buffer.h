@@ -354,6 +354,9 @@ extern int pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_invalidate (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 #endif /* NDEBUG */
 extern PAGE_PTR pgbuf_flush_with_wal (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
+extern PAGE_PTR pgbuf_flush_with_wal_policy (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
+					     PGBUF_WAL_FLUSH_POLICY wal_policy,
+					     PGBUF_DWB_FLUSH_POLICY dwb_policy);
 extern void pgbuf_flush_if_requested (THREAD_ENTRY * thread_p, PAGE_PTR page);
 extern int pgbuf_flush_victim_candidates (THREAD_ENTRY * thread_p, float flush_ratio,
 					  PERF_UTIME_TRACKER * time_tracker, bool * stop);

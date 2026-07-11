@@ -6428,6 +6428,43 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * vacuum_notify_dropped_file_during_recovery () - Register a file destroyed by media-recovery
+ *				   bulk cleanup as dropped, so vacuum skips log entries that
+ *				   reference the destroyed b-tree.  Delegates to
+ *				   vacuum_rv_notify_dropped_file so the log_Gl.hdr.mvcc_next_id
+ *				   borderline semantics remain authoritative.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * vfid (in)	 : Destroyed file identifier.
+ */
+int
+vacuum_notify_dropped_file_during_recovery (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
+  LOG_RCV rcv = LOG_RCV ();
+
+  if (vfid == NULL || VFID_ISNULL (vfid))
+    {
+      return ER_FAILED;
+    }
+  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
+    {
+      /* vacuum is not initialized and will never consume the entries; nothing to register. */
+      return NO_ERROR;
+    }
+
+  VFID_COPY (&rcv_data.vfid, vfid);
+  OID_SET_NULL (&rcv_data.class_oid);
+
+  rcv.data = (char *) &rcv_data;
+  rcv.length = (int) sizeof (rcv_data);
+  rcv.mvcc_id = MVCCID_NULL;
+
+  return vacuum_rv_notify_dropped_file (thread_p, &rcv);
+}
+
+/*
  * vacuum_cleanup_dropped_files () - Clean unnecessary dropped files.
  *
  * return	 : Error code.

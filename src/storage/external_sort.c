@@ -5017,6 +5017,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
   vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+  log_sysop_attach_to_outer (thread_p);
 
   {
     int result_file_idx = px_sort_param[0].px_result_file_idx;
@@ -5028,7 +5029,6 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
     {
-      log_sysop_abort (thread_p);
       error = ER_FAILED;
     }
 

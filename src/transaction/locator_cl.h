@@ -88,6 +88,18 @@ extern MOBJ locator_fetch_set (int num_mops, MOP * mop_set, DB_FETCH_MODE inst_p
 			       int quit_on_errors);
 extern MOBJ locator_fetch_nested (MOP mop, DB_FETCH_MODE purpose, int prune_level, int quit_on_errors);
 extern int locator_flush_class (MOP class_mop);
+extern void locator_class_flush_deferral_enter (void);
+extern void locator_class_flush_deferral_leave (void);
+extern bool locator_class_flush_deferral_is_active (void);
+extern bool locator_class_flush_deferral_is_open (void);
+extern bool locator_class_flush_deferral_is_outermost (void);
+extern int locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,
+						   const LOG_LSA * create_lsa);
+extern int locator_class_flush_deferral_add (MOP class_mop);
+extern int locator_class_flush_deferral_queue_stats (MOP class_mop);
+extern MOP locator_class_flush_deferral_pop_stats (void);
+extern int locator_flush_class_set (void);
+extern void locator_class_flush_deferral_abort (void);
 extern int locator_flush_instance (MOP mop);
 #if defined (ENABLE_UNUSED_FUNCTION)
 extern int locator_flush_and_decache_instance (MOP mop);

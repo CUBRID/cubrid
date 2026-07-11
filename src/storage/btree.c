@@ -34,6 +34,7 @@
 #include "db_value_printer.hpp"
 #include "deduplicate_key.h"
 #include "file_manager.h"
+#include "heap_file.h"
 #include "slotted_page.h"
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -1041,6 +1042,8 @@ btree_perf_track_time (THREAD_ENTRY * thread_p, Helper * helper)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_DELETE);
       break;
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_UNDO_INSERT);
       break;
@@ -1086,6 +1089,8 @@ btree_perf_track_traverse_time (THREAD_ENTRY * thread_p, Helper * helper)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_DELETE_TRAVERSE);
       break;
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_UNDO_INSERT_TRAVERSE);
       break;
@@ -1813,11 +1818,12 @@ static void btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 static int btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				   OID * class_oid, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
-				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa);
+				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa,
+				     BTREE_OP_PURPOSE purpose);
 static int btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 						     BTREE_OBJECT_INFO * inserted_object,
 						     BTREE_OBJECT_INFO * second_object, MVCCID insert_mvccid,
-						     LOG_LSA * undo_nxlsa);
+						     LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose);
 static int btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 						  BTREE_DELETE_HELPER * delete_helper,
 						  BTREE_SEARCH_KEY_HELPER * search_key, PAGE_PTR leaf_page,
@@ -1840,6 +1846,10 @@ static int btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_I
 static void btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					 BTREE_NODE_TYPE node_type, int *offset_to_replaced,
 					 BTREE_OBJECT_INFO * replacement, char **rv_undo_data, char **rv_redo_data);
+static int btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+					    BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page,
+					    RECDES * leaf_record, LEAF_REC * leaf_rec_info, int offset_after_key,
+					    BTREE_SEARCH_KEY_HELPER * search_key);
 
 static int btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
@@ -12054,6 +12064,28 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 
       return NO_ERROR;
 
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
+      if (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (match_mvccinfo)
+	  && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (mvcc_info)
+	  && BTREE_MVCC_INFO_INSID (mvcc_info) != match_mvccinfo->insert_mvccid)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		  "BULK_RESTORE_UNDO_DIFFERENT_INSERT_ID: contradiction in proven non-reuse population");
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bulk recovery undo branch=BULK_RESTORE_UNDO_DIFFERENT_INSERT_ID "
+			 "insert_mvccid=%lld delete_mvccid=%lld logged_insert_mvccid=%lld\n",
+			 (long long) BTREE_MVCC_INFO_INSID (mvcc_info),
+			 (long long) BTREE_MVCC_INFO_DELID (mvcc_info),
+			 (long long) match_mvccinfo->insert_mvccid);
+	  return ER_FAILED;
+	}
+      *is_match = true;
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=%s insert_mvccid=%lld delete_mvccid=%lld\n",
+		     BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (mvcc_info) ? "exact" : "all-visible",
+		     (long long) BTREE_MVCC_INFO_INSID (mvcc_info), (long long) BTREE_MVCC_INFO_DELID (mvcc_info));
+      return NO_ERROR;
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
       /* We just inserted this object and want to remove it. Insert MVCCID must match and should not be deleted. */
@@ -18739,11 +18771,15 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   /* Undo insert: just delete object and all its information. */
   err =
-    btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, insert_mvccid, &recv->reference_lsa);
+    btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, insert_mvccid, &recv->reference_lsa,
+			      recv->is_bulk_recovery_undo ? BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
+			      : BTREE_OP_DELETE_UNDO_INSERT);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
-      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED);
+      /* The bulk-recovery undo context returns er_set fail-stop families by design. */
+      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED
+	      || recv->is_bulk_recovery_undo);
       return err;
     }
 
@@ -18791,11 +18827,15 @@ btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Undo insert. */
   err =
     btree_undo_insert_object_unique_multiupd (thread_p, btid.sys_btid, &key_buf, &undo_insert_object, &second_object,
-					      insert_mvccid, &recv->reference_lsa);
+					      insert_mvccid, &recv->reference_lsa,
+					      recv->is_bulk_recovery_undo
+					      ? BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY
+					      : BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
   if (err != NO_ERROR)
     {
-      assert_release (false);
-      return ER_FAILED;
+      /* The bulk-recovery undo context returns er_set fail-stop families by design. */
+      assert_release (recv->is_bulk_recovery_undo);
+      return err;
     }
 
   return NO_ERROR;
@@ -30582,6 +30622,63 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 				BTREE_OP_DELETE_UNDO_INSERT_DELID);
 }
 
+static int
+btree_bulk_undo_verify_population (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
+				   MVCCID insert_mvccid)
+{
+  HFID hfid;
+  FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
+  char *class_name = NULL;
+  bool is_catalog_class = false;
+  int c;
+  int error_code;
+
+  /* tf_is_catalog_class compares against class OIDs cached at server boot; during standalone media recovery the
+   * cache is not populated yet, so fall back to the compile-time catalog class names read from the class record. */
+  is_catalog_class = tf_is_catalog_class (class_oid);
+  if (!is_catalog_class)
+    {
+      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR && class_name != NULL)
+	{
+	  for (c = 0; ct_Classes[c] != NULL; c++)
+	    {
+	      if (strcmp (ct_Classes[c]->cc_name, class_name) == 0)
+		{
+		  is_catalog_class = true;
+		  break;
+		}
+	    }
+	  free_and_init (class_name);
+	}
+      else
+	{
+	  er_clear ();
+	}
+    }
+
+  HFID_SET_NULL (&hfid);
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, &file_type, NULL);
+  if (error_code != NO_ERROR || !is_catalog_class || HFID_IS_NULL (&hfid) || file_type != FILE_HEAP)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: bulk undo object is not in a system catalog FILE_HEAP");
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN BTID=%d|%d OID=%d|%d|%d "
+		     "class=%d|%d|%d insert_mvccid=%lld delete_mvccid=unknown file_type=%d is_catalog=%d\n",
+		     btid->vfid.volid, btid->root_pageid, oid->volid, oid->pageid, oid->slotid,
+		     class_oid->volid, class_oid->pageid, class_oid->slotid, (long long) insert_mvccid,
+		     (int) file_type, (int) is_catalog_class);
+      return error_code == NO_ERROR ? ER_FAILED : error_code;
+    }
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "bulk recovery undo branch=population-proven BTID=%d|%d OID=%d|%d|%d class=%d|%d|%d "
+		 "insert_mvccid=%lld delete_mvccid=unknown\n",
+		 btid->vfid.volid, btid->root_pageid, oid->volid, oid->pageid, oid->slotid,
+		 class_oid->volid, class_oid->pageid, class_oid->slotid, (long long) insert_mvccid);
+  return NO_ERROR;
+}
+
 /*
  * btree_undo_insert_object () - Delete object from index as part of an undo of insert object operation.
  *
@@ -30596,7 +30693,7 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
  */
 static int
 btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
+			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -30614,9 +30711,11 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
     {
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
+  assert (purpose == BTREE_OP_DELETE_UNDO_INSERT || purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY);
+  /* The stage-32 population gate runs in btree_fix_root_for_delete, where the class OID is resolved even for
+   * non-unique records that do not pack it. */
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
-				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL,
-				BTREE_OP_DELETE_UNDO_INSERT);
+				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL, purpose);
 }
 
 /*
@@ -30636,7 +30735,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
 static int
 btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 					  BTREE_OBJECT_INFO * inserted_object, BTREE_OBJECT_INFO * second_object,
-					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
+					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -30657,9 +30756,12 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
     {
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
+  assert (purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	  || purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
+  /* The stage-32 population gate runs in btree_fix_root_for_delete (see btree_undo_insert_object). */
   return btree_delete_internal (thread_p, btid, &inserted_object->oid, &inserted_object->class_oid, &mvcc_info, NULL,
 				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa,
-				second_object, BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+				second_object, purpose);
 }
 
 /*
@@ -30745,6 +30847,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
       LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
@@ -30754,6 +30857,7 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       key_func = btree_key_delete_remove_object;
       break;
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
       key_func = btree_key_remove_object_and_keep_visible_first;
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
@@ -30985,7 +31089,9 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       return NO_ERROR;
     }
   if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
+      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY
       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID
       || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
       || delete_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
@@ -31002,7 +31108,8 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	      assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED || !LOG_ISRESTARTED ()
 		      || mvcc_is_mvcc_disabled_class (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
-	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	  if ((delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
 	      && OID_ISNULL (&delete_helper->second_object_info.class_oid))
 	    {
 	      COPY_OID (&delete_helper->second_object_info.class_oid, &btid_int->topclass_oid);
@@ -31012,6 +31119,27 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	{
 	  /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for unique indexes. */
 	  assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
+	}
+      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
+	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
+	{
+	  /* Population gate (stage-32): the bulk walker may tolerate vacuum effects only for the proven
+	   * system-catalog non-reuse heap population.  Class identity is resolved here because non-unique
+	   * undo records do not pack a class OID. */
+	  OID *gate_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
+
+	  if (OID_ISNULL (gate_class_oid))
+	    {
+	      gate_class_oid = &btid_int->topclass_oid;
+	    }
+	  error_code =
+	    btree_bulk_undo_verify_population (thread_p, btid, BTREE_DELETE_OID (delete_helper), gate_class_oid,
+					       delete_helper->match_mvccinfo.insert_mvccid);
+	  if (error_code != NO_ERROR)
+	    {
+	      pgbuf_unfix_and_init (thread_p, *root_page);
+	      return error_code;
+	    }
 	}
       /* Undo operations don't need to go further. */
       return NO_ERROR;
@@ -31779,6 +31907,17 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 			    BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
 	  goto exit;
 	}
+      else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bulk recovery undo branch=absent BTID=%d|%d OID=%d|%d|%d class=%d|%d|%d\n",
+			 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+			 BTREE_DELETE_OID (delete_helper)->volid, BTREE_DELETE_OID (delete_helper)->pageid,
+			 BTREE_DELETE_OID (delete_helper)->slotid, BTREE_DELETE_CLASS_OID (delete_helper)->volid,
+			 BTREE_DELETE_CLASS_OID (delete_helper)->pageid, BTREE_DELETE_CLASS_OID (delete_helper)->slotid);
+	  error_code = NO_ERROR;
+	  goto exit;
+	}
       else
 	{
 	  /* Key/oid should be found. */
@@ -31932,6 +32071,287 @@ exit:
 }
 
 /*
+ * btree_bulk_unique_absent_repair () - Bulk-recovery-only repair for the unique multi-update undo when the
+ *					logged inserted object is absent (already removed by replayed vacuum).
+ *					Locate the logged second object S with a complete tuple-aware scan; if S is
+ *					already first, succeed without mutation; if S is a non-first leaf object,
+ *					perform a compensated object-preserving exchange (current first F moves into
+ *					S's fixed-size slot, S becomes first); everything else fails closed into the
+ *					boss-approved limitation families. See planner stage-32/34 and critic
+ *					stage-33/35 receipts.
+ *
+ * return		    : Error code.
+ * thread_p (in)	    : Thread entry.
+ * btid_int (in)	    : B-tree info.
+ * key (in)		    : Key value.
+ * delete_helper (in)	    : Delete helper (bulk unique purpose; second_object_info is the logged S).
+ * leaf_page (in)	    : Leaf page (write latched).
+ * leaf_record (in)	    : COPY of the key's leaf record.
+ * leaf_rec_info (in)	    : Leaf record info (overflow chain head).
+ * offset_after_key (in)    : Offset in leaf record where packed key ends.
+ * search_key (in)	    : Search key result (key was found).
+ */
+static int
+btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+				 BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
+				 LEAF_REC * leaf_rec_info, int offset_after_key, BTREE_SEARCH_KEY_HELPER * search_key)
+{
+  BTREE_OBJECT_INFO *logged_second = &delete_helper->second_object_info;
+  BTREE_OBJECT_INFO first_object = BTREE_OBJECT_INFO_INITIALIZER;
+  BTREE_OBJECT_INFO observed = BTREE_OBJECT_INFO_INITIALIZER;
+  BTREE_OBJECT_INFO s_observed = BTREE_OBJECT_INFO_INITIALIZER;
+  VPID overflow_vpid;
+  PAGE_PTR overflow_page = NULL;
+  RECDES overflow_record;
+  char overflow_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
+  char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
+  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
+  char *rv_redo_data_ptr = rv_redo_data;
+  char *rv_undo_data_ptr = NULL;
+  char *object_ptr;
+  int rv_redo_data_length = 0;
+  int object_fixed_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int compatible_count = 0;
+  int offset_to_s = NOT_FOUND;
+  bool s_in_overflow = false;
+  bool identity_conflict = false;
+  int old_length;
+  int n_objects;
+  int n;
+  int error_code = NO_ERROR;
+
+  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
+  assert (search_key->result == BTREE_KEY_FOUND);
+
+  /* Complete tuple-aware scan of the key population: leaf objects first. */
+  n_objects = btree_record_get_num_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE);
+  if (n_objects <= 0)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  error_code =
+    btree_leaf_get_first_object (btid_int, leaf_record, &first_object.oid, &first_object.class_oid,
+				 &first_object.mvcc_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  for (n = 0; n < n_objects; n++)
+    {
+      if (n == 0)
+	{
+	  observed = first_object;
+	  object_ptr = leaf_record->data;
+	}
+      else
+	{
+	  object_ptr =
+	    btree_leaf_get_nth_oid_ptr (btid_int, leaf_record, BTREE_LEAF_NODE, offset_after_key, n);
+	  if (object_ptr == NULL)
+	    {
+	      assert_release (false);
+	      return ER_FAILED;
+	    }
+	  (void) btree_unpack_object (object_ptr, btid_int, BTREE_LEAF_NODE, leaf_record, offset_after_key,
+				      &observed.oid, &observed.class_oid, &observed.mvcc_info);
+	}
+      if (!OID_EQ (&observed.oid, &logged_second->oid))
+	{
+	  continue;
+	}
+      if (!OID_EQ (&observed.class_oid, &logged_second->class_oid)
+	  || (BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&observed.mvcc_info)
+	      && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&logged_second->mvcc_info)
+	      && BTREE_MVCC_INFO_INSID (&observed.mvcc_info) != BTREE_MVCC_INFO_INSID (&logged_second->mvcc_info))
+	  || BTREE_MVCC_INFO_HAS_DELID (&observed.mvcc_info) != BTREE_MVCC_INFO_HAS_DELID (&logged_second->mvcc_info)
+	  || (BTREE_MVCC_INFO_HAS_DELID (&observed.mvcc_info)
+	      && BTREE_MVCC_INFO_DELID (&observed.mvcc_info) != BTREE_MVCC_INFO_DELID (&logged_second->mvcc_info)))
+	{
+	  identity_conflict = true;
+	  continue;
+	}
+      compatible_count++;
+      offset_to_s = CAST_BUFLEN (object_ptr - leaf_record->data);
+      s_observed = observed;
+    }
+
+  /* Overflow objects: scan read-only for classification only. */
+  if (btree_leaf_is_flaged (leaf_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
+    {
+      overflow_vpid = leaf_rec_info->ovfl;
+      while (!VPID_ISNULL (&overflow_vpid))
+	{
+	  overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ,
+				     PGBUF_UNCONDITIONAL_LATCH);
+	  if (overflow_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  overflow_record.data = PTR_ALIGN (overflow_data_buffer, BTREE_MAX_ALIGN);
+	  overflow_record.area_size = IO_MAX_PAGE_SIZE;
+	  if (spage_get_record (thread_p, overflow_page, 1, &overflow_record, COPY) != S_SUCCESS)
+	    {
+	      assert_release (false);
+	      pgbuf_unfix_and_init (thread_p, overflow_page);
+	      return ER_FAILED;
+	    }
+	  n_objects = btree_record_get_num_oids (thread_p, btid_int, &overflow_record, 0, BTREE_OVERFLOW_NODE);
+	  for (n = 0; n < n_objects; n++)
+	    {
+	      object_ptr = overflow_record.data + n * object_fixed_size;
+	      (void) btree_unpack_object (object_ptr, btid_int, BTREE_OVERFLOW_NODE, &overflow_record, 0,
+					  &observed.oid, &observed.class_oid, &observed.mvcc_info);
+	      if (!OID_EQ (&observed.oid, &logged_second->oid))
+		{
+		  continue;
+		}
+	      if (OID_EQ (&observed.class_oid, &logged_second->class_oid))
+		{
+		  compatible_count++;
+		  s_in_overflow = true;
+		}
+	      else
+		{
+		  identity_conflict = true;
+		}
+	    }
+	  error_code = btree_get_next_overflow_vpid (thread_p, overflow_page, &overflow_vpid);
+	  pgbuf_unfix_and_init (thread_p, overflow_page);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
+    }
+
+  /* Classification. */
+  if (compatible_count == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      identity_conflict
+	      ? "BULK_RESTORE_UNQ_SECOND_REUSED: logged second object identity is incompatible"
+	      : "BULK_RESTORE_UNQ_SECOND_ABSENT: logged second object is absent from the key");
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=%s BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d\n",
+		     identity_conflict ? "BULK_RESTORE_UNQ_SECOND_REUSED" : "BULK_RESTORE_UNQ_SECOND_ABSENT",
+		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+		     OID_AS_ARGS (&logged_second->oid), OID_AS_ARGS (&logged_second->class_oid));
+      return ER_FAILED;
+    }
+  if (compatible_count > 1 || identity_conflict)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "BULK_RESTORE_UNQ_SECOND_REUSED: ambiguous or conflicting second-object generations");
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=BULK_RESTORE_UNQ_SECOND_REUSED BTID=%d|%d second_OID=%d|%d|%d "
+		     "class=%d|%d|%d compatible=%d conflict=%d\n",
+		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+		     OID_AS_ARGS (&logged_second->oid), OID_AS_ARGS (&logged_second->class_oid), compatible_count,
+		     (int) identity_conflict);
+      return ER_FAILED;
+    }
+  if (s_in_overflow)
+    {
+      /* Fail-before-mutation: the compensated overflow exchange is not implemented in this candidate; keep the
+       * state untouched and stop closed rather than guess.  Mapped to the population family per stage-34
+       * (unrepresentable shape => POPULATION_UNPROVEN before mutation). */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: second object resides in an overflow record; "
+	      "exchange not representable in this candidate");
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN(overflow-second) "
+		     "BTID=%d|%d second_OID=%d|%d|%d\n",
+		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+		     OID_AS_ARGS (&logged_second->oid));
+      return ER_FAILED;
+    }
+  if (offset_to_s == 0)
+    {
+      /* S is already first: repeat-restore/no-op branch.  No mutation, no logging. */
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=unq-second-already-first BTID=%d|%d second_OID=%d|%d|%d "
+		     "class=%d|%d|%d insert_mvccid=%lld delete_mvccid=%lld\n",
+		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+		     OID_AS_ARGS (&s_observed.oid), OID_AS_ARGS (&s_observed.class_oid),
+		     (long long) BTREE_MVCC_INFO_INSID (&s_observed.mvcc_info),
+		     (long long) BTREE_MVCC_INFO_DELID (&s_observed.mvcc_info));
+      return NO_ERROR;
+    }
+
+  /* Compensated object-preserving exchange: current first F moves into S's fixed-size slot, observed S becomes
+   * first.  Mirrors the established unique swap shape in btree_remove_delete_mvccid_unique_internal; the record is
+   * a COPY, so every check below happens before any page mutation. */
+  delete_helper->leaf_addr.pgptr = leaf_page;
+  delete_helper->leaf_addr.offset = search_key->slotid;
+  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
+#if !defined (NDEBUG)
+  BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
+				BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
+#endif /* !NDEBUG */
+  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
+
+  old_length = leaf_record->length;
+  BTREE_MVCC_INFO_SET_FIXED_SIZE (&first_object.mvcc_info);
+  if (!btree_leaf_is_flaged (leaf_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
+    {
+      BTREE_MVCC_INFO_CLEAR_FIXED_SIZE (&s_observed.mvcc_info);
+    }
+
+  object_ptr = leaf_record->data + offset_to_s;
+  (void) btree_pack_object (object_ptr, btid_int, BTREE_LEAF_NODE, leaf_record, &first_object);
+  rv_redo_data_ptr =
+    log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset_to_s, object_fixed_size, object_fixed_size,
+				     object_ptr);
+  btree_leaf_change_first_object (thread_p, leaf_record, btid_int, &s_observed.oid, &s_observed.class_oid,
+				  &s_observed.mvcc_info, NULL, &rv_undo_data_ptr, &rv_redo_data_ptr);
+#if !defined (NDEBUG)
+  (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, NULL);
+#endif /* !NDEBUG */
+
+  /* Preflight before the first page mutation. */
+  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
+  if (rv_redo_data_length > BTREE_RV_BUFFER_SIZE
+      || (leaf_record->length > old_length
+	  && spage_get_free_space_without_saving (thread_p, leaf_page, NULL)
+	  < leaf_record->length - old_length))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: unique second-object exchange is not representable "
+	      "(recovery buffer or leaf space)");
+      _er_log_debug (ARG_FILE_LINE,
+		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN(exchange-preflight) "
+		     "BTID=%d|%d redo_len=%d grow=%d\n",
+		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid, rv_redo_data_length,
+		     leaf_record->length - old_length);
+      return ER_FAILED;
+    }
+
+  if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_record) != SP_SUCCESS)
+    {
+      assert_release (false);
+      return ER_FAILED;
+    }
+  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
+					 delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
+					 rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
+					 &delete_helper->reference_lsa);
+
+  _er_log_debug (ARG_FILE_LINE,
+		 "bulk recovery undo branch=unq-second-exchanged BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d "
+		 "former_first_OID=%d|%d|%d offset_to_s=%d insert_mvccid=%lld delete_mvccid=%lld\n",
+		 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
+		 OID_AS_ARGS (&s_observed.oid), OID_AS_ARGS (&s_observed.class_oid),
+		 OID_AS_ARGS (&first_object.oid), offset_to_s,
+		 (long long) BTREE_MVCC_INFO_INSID (&s_observed.mvcc_info),
+		 (long long) BTREE_MVCC_INFO_DELID (&s_observed.mvcc_info));
+  return NO_ERROR;
+}
+
+/*
  * btree_key_remove_object_and_keep_visible_first () - Remove one object and all its info from b-tree key. Then find
  *						       other visible version and move it first in leaf record.
  *                                                     Special case of unique index.
@@ -31989,7 +32409,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   assert (leaf_page != NULL && *leaf_page != NULL && pgbuf_get_latch_mode (*leaf_page) >= PGBUF_LATCH_WRITE);
   assert (search_key != NULL);
   assert (delete_helper != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
+	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
 
   if (search_key->result == BTREE_KEY_FOUND)
     {
@@ -32031,6 +32452,23 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Key/object was not found. */
       assert (found_page == NULL && prev_found_page == NULL);
 
+      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
+	{
+	  if (search_key->result == BTREE_KEY_FOUND)
+	    {
+	      /* Key exists but the logged inserted object is already gone (replayed vacuum).  Run the
+	       * stage-34 tuple-aware second-object repair: no-op when S is first, compensated exchange
+	       * when S is a non-first leaf object, boss-approved fail-stop families otherwise. */
+	      error_code =
+		btree_bulk_unique_absent_repair (thread_p, btid_int, key, delete_helper, *leaf_page, &leaf_record,
+						 &leaf_rec_info, offset_after_key, search_key);
+	      goto exit;
+	    }
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		  "BULK_RESTORE_UNQ_SECOND_ABSENT: key is absent; inserted and logged second object are gone");
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
       /* Key/oid should be found. */
       assert_release (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
@@ -34097,7 +34535,9 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
       break;
 
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       log_sysop_end_logical_compensate (thread_p, &helper->reference_lsa);
@@ -34203,8 +34643,12 @@ btree_purpose_to_string (BTREE_OP_PURPOSE purpose)
       return "BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED";
     case BTREE_OP_DELETE_UNDO_INSERT:
       return "BTREE_OP_DELETE_UNDO_INSERT";
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
+      return "BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY";
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
       return "BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD";
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
+      return "BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY";
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
       return "BTREE_OP_DELETE_UNDO_INSERT_DELID";
     case BTREE_OP_DELETE_VACUUM_INSID:
@@ -35994,7 +36438,9 @@ btree_is_delete_data_purpose (BTREE_OP_PURPOSE purpose)
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
     case BTREE_OP_DELETE_VACUUM_INSID:
@@ -36015,7 +36461,9 @@ btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
+    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
     case BTREE_OP_ONLINE_INDEX_IB_DELETE:
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
@@ -36070,7 +36518,9 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 				   redo_length, redo_data, &delete_helper.reference_lsa);
 	  break;
 	case BTREE_OP_DELETE_UNDO_INSERT:
+	case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
 	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
+	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
 						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,

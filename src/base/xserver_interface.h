@@ -118,8 +118,13 @@ extern int xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOC
 				LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oid, int class_chn,
 				int need_fetching, int prefetching, LC_COPYAREA ** fetch_area);
 extern int xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area, int num_ignore_error_list,
-			   int *ignore_error_list);
-extern int xlocator_force_validate_bulk_tail (const char *tail, int tail_size);
+			   int *ignore_error_list, const LOCATOR_BULK_INDEX_DESCRIPTOR * bulk_index);
+extern int xlocator_force_validate_bulk_tail (const char *tail, int tail_size,
+					      LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor,
+					      OID * class_oids, unsigned int class_capacity,
+					      OID * fk_class_oids, unsigned int fk_class_capacity,
+					      char *constraint_name, unsigned int constraint_name_capacity,
+					      bool * has_descriptor);
 extern int xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area, LC_COPYAREA ** reply_area);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_area);
 
@@ -180,7 +185,8 @@ extern BTID *xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char
 				OID * class_oids, int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length,
 				HFID * hfids, int unique_pk, int not_null_flag, OID * fk_refcls_oid,
 				BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream, int pred_stream_size,
-				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start);
+				char *expr_stream, int expr_steram_size, int func_col_id, int func_attr_index_start,
+				bool eligible_no_redo, LOG_LSA * create_lsa);
 extern BTID *xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP_DOMAIN * key_type,
 				       OID * class_oids, int n_classes, int n_attrs, int *attr_ids,
 				       int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
