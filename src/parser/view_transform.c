@@ -5141,9 +5141,10 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
  *   into conn_sql ("WHERE col = ?") in the enclosing SELECT's WHERE list.  The remote server
  *   filters the rows, so the term never runs locally: XASL generation excludes flagged terms
  *   from access_pred and the plan-dump printers hide them.  The term itself must STAY in the
- *   tree — its outer-name reference is what wires the enclosing subquery as correlated
- *   (spec_ident tagging / dptr attach); physically unlinking it makes the subquery execute
- *   only once and return the first row's value for every outer row.  Flags only the terms
+ *   tree — the planner re-derives correlation by scanning the tree for outer references
+ *   (get_local_subqueries), so a subquery whose only outer reference is unlinked is reset to
+ *   uncorrelated, executes only once, and returns the first row's value for every outer row.
+ *   Flags only the terms
  *   mq_dblink_is_corr_eq() accepts — the same predicate mq_detect_dblink_corr_eq() used to
  *   select the push — so constant filters, inner-only equalities, and or_next/on_cond terms
  *   are left untouched.
