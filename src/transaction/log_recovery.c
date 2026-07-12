@@ -7305,6 +7305,17 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
     {
       error = vacuum_notify_dropped_file_during_recovery (thread_p, &candidate->marker.ovfid);
     }
+  /* Mirror the drop path's RVBT_REMOVE_UNIQUE_STATS obligation (xbtree_delete_index): recovery
+   * redo repopulated the global unique stats entry for the candidate from post-publication DML
+   * commits, and the end-of-recovery checkpoint reflects every entry into its b-tree root page
+   * (logtb_reflect_global_unique_stats_to_btree).  The entry must be removed before the root's
+   * sectors are unreserved, or the reflection fixes a deallocated page.  Deleting a missing
+   * entry is a no-op, so non-unique candidates are unaffected. */
+  if (error == NO_ERROR && !BTID_IS_NULL (&candidate->marker.btid))
+    {
+      BTID stats_btid = candidate->marker.btid;
+      error = logtb_delete_global_unique_stats (thread_p, &stats_btid);
+    }
   if (error == NO_ERROR && !VFID_ISNULL (&candidate->marker.ovfid))
     {
       error = file_destroy (thread_p, &candidate->marker.ovfid, false);
