@@ -18048,6 +18048,22 @@ pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_no
       return;
     }
 
+  /* skip correlated subqueries: they are planned per outer row and the min/max-only
+   * scan gives no benefit there; keep their original plans (and plan dumps) intact */
+  if (select_node->info.query.correlation_level != 0)
+    {
+      return;
+    }
+
+  /* skip when index skip scan or loose index scan is hinted: the extra filter term can
+   * disqualify those scans (e.g. loose index scan eligibility), and with ISS/LIS the
+   * min/max column is not the leading sort column anyway, so the min/max-only scan
+   * would not engage */
+  if (select_node->info.query.q.select.hint & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
+    {
+      return;
+    }
+
   /* only a single table */
   from = select_node->info.query.q.select.from;
   if (from == NULL || from->next != NULL)
