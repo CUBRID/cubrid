@@ -509,9 +509,6 @@ static void lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_ind
 static void lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p, int tran_index,
 					      LK_RES * res, LOCK lock);
 static void lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * res, LOCK lock);
-#if defined(ENABLE_UNUSED_FUNCTION)
-static void lock_initialize_resource (LK_RES * res_ptr);
-#endif
 static void lock_initialize_resource_as_allocated (LK_RES * res_ptr, LOCK lock);
 static unsigned int lock_get_hash_value (const OID * oid, int htsize);
 static LK_CONFIG lock_make_runtime_config (void);
@@ -889,7 +886,6 @@ lock_res_key_copy (void *src, void *dest)
       dest_k->mvccid = src_k->mvccid;
       break;
 
-    case LOCK_RESOURCE_OBJECT:
     default:
       /* something is wrong */
       assert (false);
@@ -928,7 +924,6 @@ lock_res_key_compare (void *k1, void *k2)
       /* transaction self-lock: compare the full 64-bit MVCCID */
       return (k1_k->mvccid == k2_k->mvccid) ? 0 : 1;
 
-    case LOCK_RESOURCE_OBJECT:
     default:
       /* unfortunately, there's no error reporting here, but an always-true comparison will generate errors early on
        * and is easier to spot */
@@ -1035,24 +1030,6 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/* initialize lock resource as free state */
-static void
-lock_initialize_resource (LK_RES * res_ptr)
-{
-  pthread_mutex_init (&(res_ptr->res_mutex), NULL);
-  res_ptr->key.type = LOCK_RESOURCE_OBJECT;
-  OID_SET_NULL (&(res_ptr->key.oid));
-  OID_SET_NULL (&(res_ptr->key.class_oid));
-  res_ptr->total_holders_mode = NULL_LOCK;
-  res_ptr->total_waiters_mode = NULL_LOCK;
-  res_ptr->holder = NULL;
-  res_ptr->waiter = NULL;
-  res_ptr->non2pl = NULL;
-  res_ptr->hash_next = NULL;
-}
-#endif
 
 /* initialize lock resource as allocated state */
 static void
