@@ -7092,13 +7092,13 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       goto exit;
     }
   if (fhead->offset_to_partial_ftab < FILE_HEADER_ALIGNED_SIZE
-      || fhead->offset_to_partial_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+      || fhead->offset_to_partial_ftab > (int) (DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
       || (!FILE_IS_TEMPORARY (fhead)
 	  && (fhead->offset_to_full_ftab < FILE_HEADER_ALIGNED_SIZE
-	      || fhead->offset_to_full_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE))
+	      || fhead->offset_to_full_ftab > (int) (DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE)))
       || (FILE_IS_NUMERABLE (fhead)
 	  && (fhead->offset_to_user_page_ftab < FILE_HEADER_ALIGNED_SIZE
-	      || fhead->offset_to_user_page_ftab > DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE)))
+	      || fhead->offset_to_user_page_ftab > (int) (DB_PAGESIZE - FILE_EXTDATA_HEADER_ALIGNED_SIZE))))
     {
       error = ER_FAILED;
       goto exit;
@@ -7108,7 +7108,7 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
   extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_partial_ftab);
   if (extdata->size_of_item != sizeof (FILE_PARTIAL_SECTOR) || extdata->n_items < 0
       || extdata->max_size < extdata->size_of_item
-      || extdata->max_size > DB_PAGESIZE - fhead->offset_to_partial_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+      || extdata->max_size > (int) (DB_PAGESIZE - fhead->offset_to_partial_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
       || extdata->n_items * extdata->size_of_item > extdata->max_size)
     {
       error = ER_FAILED;
@@ -7141,7 +7141,7 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_full_ftab);
       if (extdata->size_of_item != sizeof (VSID) || extdata->n_items < 0
 	  || extdata->max_size < extdata->size_of_item
-	  || extdata->max_size > DB_PAGESIZE - fhead->offset_to_full_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+	  || extdata->max_size > (int) (DB_PAGESIZE - fhead->offset_to_full_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
 	  || extdata->n_items * extdata->size_of_item > extdata->max_size)
 	{
 	  error = ER_FAILED;
@@ -7166,7 +7166,7 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_user_page_ftab);
       if (extdata->size_of_item != sizeof (VPID) || extdata->n_items < 0
 	  || extdata->max_size < extdata->size_of_item
-	  || extdata->max_size > DB_PAGESIZE - fhead->offset_to_user_page_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE
+	  || extdata->max_size > (int) (DB_PAGESIZE - fhead->offset_to_user_page_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
 	  || extdata->n_items * extdata->size_of_item > extdata->max_size)
 	{
 	  error = ER_FAILED;

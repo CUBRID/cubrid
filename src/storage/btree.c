@@ -32314,7 +32314,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
 
   /* Preflight before the first page mutation. */
   BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
-  if (rv_redo_data_length > BTREE_RV_BUFFER_SIZE
+  if ((size_t) rv_redo_data_length > BTREE_RV_BUFFER_SIZE
       || (leaf_record->length > old_length
 	  && spage_get_free_space_without_saving (thread_p, leaf_page, NULL)
 	  < leaf_record->length - old_length))
