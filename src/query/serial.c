@@ -150,7 +150,7 @@ int serial_Num_attrs = -1;
 
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
-					    int num_alloc);
+					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
@@ -322,7 +322,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
   if (cached_num <= 1)
     {
       /* not used serial cache */
-      ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
+      ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc, NULL);
     }
   else
     {
@@ -340,11 +340,38 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	}
       else
 	{
-	  /* Cache miss: install via xserial_get_next_value_internal (its find_or_insert makes the
-	   * install race-free; the catalog read-modify-write is serialized by the _db_serial page
-	   * latch). No OID X_LOCK here: blocking on the lock manager while the query holds a fixed page
-	   * trips lock_suspend's !pgbuf_has_perm_pages_fixed assertion (page-latch / lock ordering). */
-	  ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
+	  /* Cache miss: find_or_insert claims the entry (locked). The inserter is the initializer and
+	   * loads one block; others wait on the entry mutex and reuse it. No OID X_LOCK (so no blocking
+	   * lock while a query page is fixed); one block reserved (so a first-access burst leaves no gap). */
+	  bool inserted = serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
+	  if (entry == NULL)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      ret = er_errid ();
+	    }
+	  else if (inserted)
+	    {
+	      /* Initializer: on success internal fills+unlocks the entry (or drops it if the on-disk
+	       * serial is no longer cached). On failure it leaves it locked, so drop the placeholder. */
+	      ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc, entry);
+	      if (ret != NO_ERROR)
+		{
+		  if (!serial_Cache_hashmap.erase_locked (thread_p, key, entry) && entry != NULL)
+		    {
+		      pthread_mutex_unlock (&entry->mutex);
+		    }
+		}
+	    }
+	  else
+	    {
+	      /* Another thread initialized the entry first; reuse it. */
+	      ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
+	      if (ret == NO_ERROR)
+		{
+		  pr_clone_value (&entry->cur_val, result_num);
+		}
+	      pthread_mutex_unlock (&entry->mutex);
+	    }
 	}
     }
 
@@ -582,7 +609,8 @@ exit_on_error:
  *   serial_oidp(in)    :
  */
 static int
-xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp, int num_alloc)
+xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
+				 int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -814,11 +842,33 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   heap_scancache_end (thread_p, &scan_cache);
 
-  if (cached_num > 1)
+  if (claimed_entry != NULL)
     {
-      /* Install the entry. No OID lock is held, so a concurrent thread may install this serial
-       * first; find_or_insert then returns the existing entry (inserted == false). Never overwrite
-       * it: that would reset a live cached counter and risk handing out duplicate values. */
+      /* Initializer's pre-claimed entry (owned here on success; caller cleans up only on error). */
+      if (cached_num > 1)
+	{
+	  /* Fill and release it. */
+	  pr_share_value (&next_val, &cur_val);
+	  serial_set_cache_entry (claimed_entry, &inc_val, &cur_val, &min_val, &max_val, &started, &cyclic, &last_val,
+				  cached_num);
+	  pthread_mutex_unlock (&claimed_entry->mutex);
+	}
+      else
+	{
+	  /* On-disk serial is no longer cached (e.g. ALTER SERIAL ... NOCACHE after the plan compiled);
+	   * drop the placeholder. erase_locked releases the mutex; on the rare mismatch, unlock it. */
+	  OID key = *serial_oidp;
+	  if (!serial_Cache_hashmap.erase_locked (thread_p, key, claimed_entry) && claimed_entry != NULL)
+	    {
+	      pthread_mutex_unlock (&claimed_entry->mutex);
+	    }
+	}
+    }
+  else if (cached_num > 1)
+    {
+      /* No pre-claimed entry (cached_num <= 1 plan whose on-disk cached_num was raised by
+       * ALTER SERIAL ... CACHE). Install now; never overwrite an entry a concurrent thread won
+       * -- that would reset a live cached counter and risk handing out duplicates. */
       OID key = *serial_oidp;
       bool inserted = serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
 
