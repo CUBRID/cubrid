@@ -2766,8 +2766,10 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif
   pl_server_destroy ();
-
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
