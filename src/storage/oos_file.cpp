@@ -2081,12 +2081,15 @@ oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_I
 
   INT64 total_recs = 0;
   INT64 total_sumlen = 0;
+  INT64 total_free_bytes = 0;
+  const int usable_page_capacity = DB_PAGESIZE - (int) SPAGE_HEADER_SIZE;
   for (int i = 0; i < num_user_pages; i++)
     {
       VPID scan_vpid;
       if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
 	  || VPID_ISNULL (&scan_vpid))
 	{
+	  out->num_pages_skipped++;
 	  er_clear ();
 	  continue;
 	}
@@ -2099,8 +2102,33 @@ oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_I
 				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
+	  out->num_pages_skipped++;
 	  er_clear ();
 	  continue;		/* page busy — accept a slight undercount */
+	}
+
+      int free_space = spage_get_free_space_without_saving (thread_p, page_ptr, NULL);
+      total_free_bytes += free_space;
+
+      if (spage_number_of_records (page_ptr) == 0)
+	{
+	  out->num_empty_pages++;
+	}
+      else if (free_space * 4 <= usable_page_capacity)
+	{
+	  out->num_pages_free_0_25++;
+	}
+      else if (free_space * 2 <= usable_page_capacity)
+	{
+	  out->num_pages_free_25_50++;
+	}
+      else if (free_space * 4 <= usable_page_capacity * 3)
+	{
+	  out->num_pages_free_50_75++;
+	}
+      else
+	{
+	  out->num_pages_free_75_100++;
 	}
 
       /* Walk slots explicitly: spage_collect_statistics skips slot 0 (a heap-page
@@ -2118,6 +2146,7 @@ oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_I
 
   out->num_recs = (int) total_recs;
   out->recs_sumlen = total_sumlen;
+  out->free_bytes = total_free_bytes;
 
   return NO_ERROR;
 }

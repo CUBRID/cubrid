@@ -114,8 +114,15 @@ struct oos_stats_info
   VFID oos_vfid;
   int num_user_pages;		/* physical user pages allocated to OOS file */
   int page_size;		/* DB_PAGESIZE */
-  int num_recs;			/* live OOS records tracked by OOS_HDR_STATS */
+  int num_recs;			/* live OOS chunk records found on scanned data pages */
   INT64 recs_sumlen;		/* sum of live OOS record body bytes */
+  INT64 free_bytes;		/* sum of total_free for scanned OOS data pages */
+  int num_pages_free_0_25;	/* scanned nonempty pages with at most 25% free space */
+  int num_pages_free_25_50;	/* scanned nonempty pages with more than 25% and at most 50% free space */
+  int num_pages_free_50_75;	/* scanned nonempty pages with more than 50% and at most 75% free space */
+  int num_pages_free_75_100;	/* scanned nonempty pages with more than 75% free space */
+  int num_empty_pages;		/* scanned data pages with no OOS chunk records */
+  int num_pages_skipped;	/* pages skipped because enumeration or conditional page fix failed */
 };
 using OOS_STATS_INFO = struct oos_stats_info;
 

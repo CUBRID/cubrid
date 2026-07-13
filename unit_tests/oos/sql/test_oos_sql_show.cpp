@@ -20,8 +20,6 @@
  * test_oos_sql_show.cpp - SHOW HEAP OOS diagnostic SQL tests (CBRD-26972)
  */
 
-#include <algorithm>
-
 #include "test_oos_sql_common.hpp"
 
 namespace
@@ -41,7 +39,13 @@ namespace
     COL_OOS_NUM_RECS,
     COL_OOS_RECS_SUMLEN,
     COL_OOS_PHYSICAL_BYTES,
-    COL_OOS_UNUSED_BYTES
+    COL_OOS_FREE_BYTES,
+    COL_OOS_NUM_PAGES_FREE_0_25,
+    COL_OOS_NUM_PAGES_FREE_25_50,
+    COL_OOS_NUM_PAGES_FREE_50_75,
+    COL_OOS_NUM_PAGES_FREE_75_100,
+    COL_OOS_NUM_EMPTY_PAGES,
+    COL_OOS_NUM_PAGES_SKIPPED
   };
 
   static int
@@ -221,9 +225,16 @@ TEST_F (OosSqlShow, HeapWithoutOosReportsZeroStats)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (bigint_val, 0);
 
-  rc = get_bigint_column (result, COL_OOS_UNUSED_BYTES, &bigint_val);
+  rc = get_bigint_column (result, COL_OOS_FREE_BYTES, &bigint_val);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (bigint_val, 0);
+
+  for (int column = COL_OOS_NUM_PAGES_FREE_0_25; column <= COL_OOS_NUM_PAGES_SKIPPED; column++)
+    {
+      rc = get_int_column (result, column, &int_val);
+      ASSERT_EQ (rc, NO_ERROR);
+      EXPECT_EQ (int_val, 0);
+    }
 
   db_query_end (result);
 }
@@ -247,7 +258,7 @@ TEST_F (OosSqlShow, HeapWithOosReportsPositiveStats)
   int num_recs = 0;
   DB_BIGINT recs_sumlen = 0;
   DB_BIGINT physical_bytes = 0;
-  DB_BIGINT unused_bytes = 0;
+  DB_BIGINT free_bytes = 0;
   bool is_null = true;
 
   rc = get_int_column (result, COL_HAS_OOS_FILE, &has_oos);
@@ -282,9 +293,39 @@ TEST_F (OosSqlShow, HeapWithOosReportsPositiveStats)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (physical_bytes, (DB_BIGINT) num_pages * (DB_BIGINT) page_size);
 
-  rc = get_bigint_column (result, COL_OOS_UNUSED_BYTES, &unused_bytes);
+  rc = get_bigint_column (result, COL_OOS_FREE_BYTES, &free_bytes);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (unused_bytes, std::max ((DB_BIGINT) 0, physical_bytes - recs_sumlen));
+  EXPECT_GT (free_bytes, 0);
+  EXPECT_LT (free_bytes, physical_bytes - recs_sumlen);
+
+  int pages_free_0_25 = 0;
+  int pages_free_25_50 = 0;
+  int pages_free_50_75 = 0;
+  int pages_free_75_100 = 0;
+  int empty_pages = 0;
+  int skipped_pages = 0;
+
+  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_0_25, &pages_free_0_25);
+  ASSERT_EQ (rc, NO_ERROR);
+  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_25_50, &pages_free_25_50);
+  ASSERT_EQ (rc, NO_ERROR);
+  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_50_75, &pages_free_50_75);
+  ASSERT_EQ (rc, NO_ERROR);
+  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_75_100, &pages_free_75_100);
+  ASSERT_EQ (rc, NO_ERROR);
+  rc = get_int_column (result, COL_OOS_NUM_EMPTY_PAGES, &empty_pages);
+  ASSERT_EQ (rc, NO_ERROR);
+  rc = get_int_column (result, COL_OOS_NUM_PAGES_SKIPPED, &skipped_pages);
+  ASSERT_EQ (rc, NO_ERROR);
+
+  EXPECT_EQ (pages_free_0_25, 0);
+  EXPECT_EQ (pages_free_25_50, 1);
+  EXPECT_EQ (pages_free_50_75, 0);
+  EXPECT_EQ (pages_free_75_100, 0);
+  EXPECT_EQ (empty_pages, 0);
+  EXPECT_EQ (skipped_pages, 0);
+  EXPECT_EQ (pages_free_0_25 + pages_free_25_50 + pages_free_50_75 + pages_free_75_100 + empty_pages,
+	     num_pages - 1);
 
   db_query_end (result);
 }

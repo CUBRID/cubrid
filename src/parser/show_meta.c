@@ -407,7 +407,13 @@ metadata_of_heap_oos (SHOW_ONLY_ALL flag)
     {"Oos_num_recs", "int"},
     {"Oos_recs_sumlen", "bigint"},
     {"Oos_physical_bytes", "bigint"},
-    {"Oos_unused_bytes", "bigint"}
+    {"Oos_free_bytes", "bigint"},
+    {"Oos_num_pages_free_0_25", "int"},
+    {"Oos_num_pages_free_25_50", "int"},
+    {"Oos_num_pages_free_50_75", "int"},
+    {"Oos_num_pages_free_75_100", "int"},
+    {"Oos_num_empty_pages", "int"},
+    {"Oos_num_pages_skipped", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
