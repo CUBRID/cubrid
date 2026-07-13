@@ -4049,6 +4049,45 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_ensure_mvccid_self_lock () - Acquire the transaction self-lock on the current MVCCID, at most once per
+ *				      (sub-)transaction.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ * Note: the self-lock (LOCK_RESOURCE_TRANSACTION) lets unique/FK checkers wait for an in-progress inserter that
+ *	 takes no per-row X-lock. INSERT/UPDATE call this once per row; re-acquiring the same MVCCID is idempotent,
+ *	 so the lock-table round trip is skipped when the current MVCCID is already self-locked. Safe because
+ *	 MVCCIDs are monotonic and never reused: a stale marker can never match a future MVCCID.
+ */
+int
+logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+  int error_code = NO_ERROR;
+
+  if (curr_mvcc_info->self_locked_mvccid == my_mvccid)
+    {
+      /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  curr_mvcc_info->self_locked_mvccid = my_mvccid;
+  return NO_ERROR;
+#else /* SERVER_MODE */
+  return NO_ERROR;
+#endif /* SERVER_MODE */
+}
+
+/*
  * logtb_is_current_mvccid - check whether given mvccid is current mvccid
  *
  * return: bool

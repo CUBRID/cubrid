@@ -20960,13 +20960,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 #if defined (SERVER_MODE)
   if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
-      /* Invariant: key by the same MVCCID stamped on the row's insert id, since the checker waits on exactly
-       * this key. logtb_get_current_mvccid is sub-transaction aware; a sub self-lock is released at sub end
-       * by logtb_complete_sub_mvcc. */
-      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
-      if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      /* Take the inserter's MVCCID self-lock (keyed by the row's insert-id stamp) so unique/FK checkers can wait
+       * on it; logtb_ensure_mvccid_self_lock acquires it at most once per (sub-)transaction. */
+      error_code = logtb_ensure_mvccid_self_lock (thread_p);
+      if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
     }
@@ -23985,10 +23983,9 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
    * self-lock the insert path takes, keyed by the row's insert MVCCID (logtb_get_current_mvccid, sub-aware). */
   if (is_mvcc_op)
     {
-      MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
-      if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
 	{
-	  ASSERT_ERROR_AND_SET (rc);
 	  return rc;
 	}
     }
