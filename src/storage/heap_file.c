@@ -813,12 +813,12 @@ static SCAN_CODE heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, R
 				       DB_VALUE ** record_info);
 static SCAN_CODE heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, bool ispeeking,
-				     HEAP_OOS_EXPAND_POLICY oos_expand_policy, bool reversed_direction,
+				     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy, bool reversed_direction,
 				     DB_VALUE ** cache_recordinfo, sampling_info * sampling);
 static SCAN_CODE heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						     RECDES * recdes, RECDES * peeked_recdes,
 						     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-						     HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+						     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 
 static SCAN_CODE heap_get_page_info (THREAD_ENTRY * thread_p, const OID * cls_oid, const HFID * hfid, const VPID * vpid,
 				     const PAGE_PTR pgptr, DB_VALUE ** page_info);
@@ -7946,8 +7946,9 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  */
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, bool ispeeking, HEAP_OOS_EXPAND_POLICY oos_expand_policy,
-		    bool reversed_direction, DB_VALUE ** cache_recordinfo, sampling_info * sampling)
+		    HEAP_SCANCACHE * scan_cache, bool ispeeking,
+		    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy, bool reversed_direction,
+		    DB_VALUE ** cache_recordinfo, sampling_info * sampling)
 {
   VPID vpid;
   VPID *vpidptr_incache;
@@ -8217,7 +8218,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
 	  scan =
 	    heap_scan_get_visible_version_impl (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache,
-						ispeeking, NULL_CHN, oos_expand_policy);
+						ispeeking, NULL_CHN, recdes_consumption_policy);
 	  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
 	}
 
@@ -8464,7 +8465,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
-					 NULL_CHN, HEAP_WITHOUT_OOS_EXPAND);
+					 NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	scan_cache->cache_last_fix_page = cache_last_fix_page_save;
       }
 
@@ -8539,8 +8540,8 @@ heap_first (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * o
   OID_SET_NULL (oid);
   oid->volid = hfid->vfid.volid;
 
-  /* hardcoded HEAP_WITHOUT_OOS_EXPAND: pre-policy behavior; see the CBRD-26847 caller audit */
-  return heap_next (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: pre-policy behavior; see the CBRD-26847 caller audit */
+  return heap_next (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 }
 
 /*
@@ -8568,8 +8569,8 @@ heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oi
   OID_SET_NULL (oid);
   oid->volid = hfid->vfid.volid;
 
-  /* hardcoded HEAP_WITHOUT_OOS_EXPAND: pre-policy behavior; see the CBRD-26847 caller audit */
-  return heap_prev (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: pre-policy behavior; see the CBRD-26847 caller audit */
+  return heap_prev (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -8732,14 +8733,16 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
 	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
-					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN, HEAP_WITH_OOS_EXPAND);
+					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN,
+					   HEAP_RECDES_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 		{
 		  scan =
 		    heap_next (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_WITHOUT_OOS_EXPAND);
+			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -8761,7 +8764,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
       scan_range->first_oid = scan_range->last_oid;
       scan =
 	heap_next (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-		   &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_WITHOUT_OOS_EXPAND);
+		   &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  return scan;
@@ -8842,14 +8845,15 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	  scan_range->last_oid = *last_oid;
 	  scan =
 	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
-				      &scan_range->scan_cache, PEEK, NULL_CHN, HEAP_WITH_OOS_EXPAND);
+				      &scan_range->scan_cache, PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
 	      if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 		{
 		  scan =
 		    heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_WITHOUT_OOS_EXPAND);
+			       &scan_range->first_oid, &recdes, &scan_range->scan_cache, PEEK,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan != S_SUCCESS)
 		    {
 		      return scan;
@@ -8867,7 +8871,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
       scan_range->last_oid = scan_range->first_oid;
       scan =
 	heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-		   &scan_range->last_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_WITHOUT_OOS_EXPAND);
+		   &scan_range->last_oid, &recdes, &scan_range->scan_cache, PEEK, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  return scan;
@@ -8939,12 +8943,12 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
       *next_oid = scan_range->first_oid;
       scan =
 	heap_get_visible_version (thread_p, next_oid, &scan_range->scan_cache.node.class_oid, recdes,
-				  &scan_range->scan_cache, ispeeking, NULL_CHN, HEAP_WITH_OOS_EXPAND);
+				  &scan_range->scan_cache, ispeeking, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
       if (scan == S_DOESNT_EXIST || scan == S_SNAPSHOT_NOT_SATISFIED)
 	{
 	  scan =
 	    heap_next (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-		       next_oid, recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		       next_oid, recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	}
       /* Make sure that we did not go overboard */
       if (scan == S_SUCCESS && OID_GT (next_oid, &scan_range->last_oid))
@@ -8965,7 +8969,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
 	{
 	  scan =
 	    heap_next (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid,
-		       next_oid, recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		       next_oid, recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  /* Make sure that we did not go overboard */
 	  if (scan == S_SUCCESS && OID_GT (next_oid, &scan_range->last_oid))
 	    {
@@ -9015,7 +9019,7 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes, H
 	{
 	  scan =
 	    heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid, prev_oid,
-		       recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		       recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	}
       /* Make sure that we did not go underboard */
       if (scan == S_SUCCESS && OID_LT (prev_oid, &scan_range->last_oid))
@@ -9036,7 +9040,7 @@ heap_scanrange_prev (THREAD_ENTRY * thread_p, OID * prev_oid, RECDES * recdes, H
 	{
 	  scan =
 	    heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid, prev_oid,
-		       recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		       recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (scan == S_SUCCESS && OID_LT (prev_oid, &scan_range->last_oid))
 	    {
 	      OID_SET_NULL (prev_oid);
@@ -9081,7 +9085,7 @@ heap_scanrange_first (THREAD_ENTRY * thread_p, OID * first_oid, RECDES * recdes,
     {
       scan =
 	heap_next (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid, first_oid,
-		   recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		   recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     }
   /* Make sure that we did not go overboard */
   if (scan == S_SUCCESS && OID_GT (first_oid, &scan_range->last_oid))
@@ -9126,7 +9130,7 @@ heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, RECDES * recdes, H
     {
       scan =
 	heap_prev (thread_p, &scan_range->scan_cache.node.hfid, &scan_range->scan_cache.node.class_oid, last_oid,
-		   recdes, &scan_range->scan_cache, ispeeking, HEAP_WITHOUT_OOS_EXPAND);
+		   recdes, &scan_range->scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
     }
   /* Make sure that we did not go underboard */
   if (scan == S_SUCCESS && OID_LT (last_oid, &scan_range->last_oid))
@@ -9336,7 +9340,8 @@ heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * o
 
   /* Check only if the last version of the object is not deleted, see mvcc_is_not_deleted_for_snapshot return values */
   scan =
-    heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN, HEAP_WITHOUT_OOS_EXPAND);
+    heap_get_visible_version (thread_p, oid, class_oid, NULL, &scan_cache, PEEK, NULL_CHN,
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       goto exit_on_end;
@@ -15780,7 +15785,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 	  oid.volid = hfid->vfid.volid;
 
 	  while (heap_next (thread_p, hfid, NULL, &oid, &peek_recdes, &scan_cache, PEEK,
-			    HEAP_WITHOUT_OOS_EXPAND) == S_SUCCESS)
+			    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
 	    {
 	      fprintf (fp, "Object-OID = %2d|%4d|%2d,\n  Length on disk = %d,\n", oid.volid, oid.pageid, oid.slotid,
 		       peek_recdes.length);
@@ -20291,10 +20296,10 @@ heap_get_record_info (THREAD_ENTRY * thread_p, const OID oid, RECDES * recdes, R
  */
 SCAN_CODE
 heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-	   HEAP_SCANCACHE * scan_cache, int ispeeking, HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+	   HEAP_SCANCACHE * scan_cache, int ispeeking, HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, oos_expand_policy,
-			     false, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking,
+			     recdes_consumption_policy, false, NULL, NULL);
 }
 
 /*
@@ -20314,11 +20319,11 @@ heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * ne
  */
 SCAN_CODE
 heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, int ispeeking, HEAP_OOS_EXPAND_POLICY oos_expand_policy,
-		    sampling_info * sampling)
+		    HEAP_SCANCACHE * scan_cache, int ispeeking,
+		    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy, sampling_info * sampling)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, oos_expand_policy,
-			     false, NULL, sampling);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking,
+			     recdes_consumption_policy, false, NULL, sampling);
 }
 
 /*
@@ -20345,7 +20350,7 @@ heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking,
-			     HEAP_WITHOUT_OOS_EXPAND, false, cache_recordinfo, NULL);
+			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES, false, cache_recordinfo, NULL);
 }
 
 /*
@@ -20365,10 +20370,10 @@ heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
  */
 SCAN_CODE
 heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
-	   HEAP_SCANCACHE * scan_cache, int ispeeking, HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+	   HEAP_SCANCACHE * scan_cache, int ispeeking, HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
-  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, oos_expand_policy,
-			     true, NULL, NULL);
+  return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking,
+			     recdes_consumption_policy, true, NULL, NULL);
 }
 
 /*
@@ -20395,7 +20400,7 @@ heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_o
 		       HEAP_SCANCACHE * scan_cache, int ispeeking, DB_VALUE ** cache_recordinfo)
 {
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking,
-			     HEAP_WITHOUT_OOS_EXPAND, true, cache_recordinfo, NULL);
+			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES, true, cache_recordinfo, NULL);
 }
 
 /*
@@ -26484,12 +26489,13 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 SCAN_CODE
 heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			  HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-			  HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+			  HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn, oos_expand_policy);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
 
   scan = heap_get_visible_version_internal (thread_p, &context, false);
 
@@ -26523,12 +26529,12 @@ heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_
 static SCAN_CODE
 heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 				    RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-				    HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+				    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   SCAN_CODE scan = S_SUCCESS;
   HEAP_GET_CONTEXT context;
 
-  const bool expand_oos = oos_expand_policy == HEAP_WITH_OOS_EXPAND;
+  const bool expand_oos = recdes_consumption_policy == HEAP_RECDES_CONSUME_RAW_BYTES;
 
   /*
    * The process below should be within heap_get_visible_version_internal(),
@@ -26623,7 +26629,8 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
       /* fall through.. */
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn, oos_expand_policy);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
 
   scan = heap_get_visible_version_internal (thread_p, &context, true);
 
@@ -26635,10 +26642,10 @@ heap_scan_get_visible_version_impl (THREAD_ENTRY * thread_p, const OID * oid, OI
 SCAN_CODE
 heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			       RECDES * peeked_recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-			       HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+			       HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   return heap_scan_get_visible_version_impl (thread_p, oid, class_oid, recdes, peeked_recdes, scan_cache, ispeeking,
-					     old_chn, oos_expand_policy);
+					     old_chn, recdes_consumption_policy);
 }
 
 /*
@@ -27049,9 +27056,9 @@ heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 void
 heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid, OID * class_oid,
 		       RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-		       HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+		       HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
-  assert (HEAP_IS_VALID_OOS_EXPAND_POLICY (oos_expand_policy));
+  assert (HEAP_IS_VALID_RECDES_CONSUMPTION_POLICY (recdes_consumption_policy));
 
   context->oid_p = oid;
   OID_SET_NULL (&context->forward_oid);
@@ -27078,7 +27085,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
   context->scan_cache = scan_cache;
   context->ispeeking = ispeeking;
   context->old_chn = old_chn;
-  context->oos_expand_policy = oos_expand_policy;
+  context->recdes_consumption_policy = recdes_consumption_policy;
   const bool data_is_scan_cache_area =
     scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
   /* Caller-positioned buffers remain owned by the caller even after their writable area is exhausted. */
@@ -27150,7 +27157,7 @@ heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * 
   OID_SET_NULL (&root_oid);
 #endif /* !NDEBUG */
   heap_init_get_context (thread_p, &context, class_oid, &root_oid, recdes_p, scan_cache, ispeeking, NULL_CHN,
-			 HEAP_WITHOUT_OOS_EXPAND);
+			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
   scan = heap_get_last_version (thread_p, &context);
 

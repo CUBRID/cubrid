@@ -10727,7 +10727,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 		      /* read lob attributes */
 		      scan_code =
 			heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache,
-						  PEEK, NULL_CHN, HEAP_WITHOUT_OOS_EXPAND);
+						  PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		      if (scan_code == S_ERROR)
 			{
 			  GOTO_EXIT_ON_ERROR;
@@ -11537,7 +11537,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		  /* read lob attributes */
 		  scan_code =
 		    heap_get_visible_version (thread_p, oid, class_oid, &recdes, internal_class->scan_cache, PEEK,
-					      NULL_CHN, HEAP_WITHOUT_OOS_EXPAND);
+					      NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code == S_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -12372,7 +12372,7 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 
   scan_code =
     heap_get_visible_version (thread_p, &unique_oid, NULL, &rec_descriptor, local_scan_cache, ispeeking, NULL_CHN,
-			      HEAP_WITHOUT_OOS_EXPAND);
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan_code != S_SUCCESS)
     {
       assert (er_errid () == ER_INTERRUPTED);
@@ -13801,7 +13801,7 @@ qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 
       /* fetch the object and the class oid */
       scan = locator_get_object (thread_p, &dbvaloid, &cls_oid, &oRec, &scan_cache, scan_operation_type, lock_mode,
-				 PEEK, NULL_CHN, HEAP_WITHOUT_OOS_EXPAND);
+				 PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  /* setting ER_HEAP_UNKNOWN_OBJECT error for deleted or invisible objects should be replaced by a more clear
@@ -14501,7 +14501,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	      scan_code =
 		locator_lock_and_get_object_with_evaluation (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid,
 							     NULL, &scan_cache, COPY, NULL_CHN, p_mvcc_reev_data,
-							     LOG_WARNING_IF_DELETED, HEAP_WITHOUT_OOS_EXPAND);
+							     LOG_WARNING_IF_DELETED,
+							     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan_code != S_SUCCESS)
 		{
 		  int er_id = er_errid ();

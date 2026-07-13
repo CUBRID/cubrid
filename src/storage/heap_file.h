@@ -358,16 +358,16 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
-/* TODO (CBRD-26847): audit HEAP_WITH_OOS_EXPAND sites - several are conservative; see the census. */
+/* TODO (CBRD-26847): audit HEAP_RECDES_CONSUME_RAW_BYTES sites - several are conservative; see the census. */
 typedef enum
 {
-  HEAP_OOS_EXPAND_POLICY_INVALID = 0,
-  HEAP_WITH_OOS_EXPAND,		/* replace inline OOS OID slots with actual values */
-  HEAP_WITHOUT_OOS_EXPAND	/* leave inline OOS OID slots for attr-level resolve */
-} HEAP_OOS_EXPAND_POLICY;
+  HEAP_RECDES_CONSUMPTION_POLICY_INVALID = 0,
+  HEAP_RECDES_CONSUME_RAW_BYTES,	/* materialize OOS values before the caller consumes raw RECDES bytes */
+  HEAP_RECDES_DONT_CONSUME_RAW_BYTES	/* preserve stored RECDES; resolve values through the attr layer */
+} HEAP_RECDES_CONSUMPTION_POLICY;
 
-#define HEAP_IS_VALID_OOS_EXPAND_POLICY(policy) \
-  ((policy) == HEAP_WITH_OOS_EXPAND || (policy) == HEAP_WITHOUT_OOS_EXPAND)
+#define HEAP_IS_VALID_RECDES_CONSUMPTION_POLICY(policy) \
+  ((policy) == HEAP_RECDES_CONSUME_RAW_BYTES || (policy) == HEAP_RECDES_DONT_CONSUME_RAW_BYTES)
 
 typedef struct heap_get_context HEAP_GET_CONTEXT;
 struct heap_get_context
@@ -392,7 +392,7 @@ struct heap_get_context
   PGBUF_LATCH_MODE latch_mode;	/* normally, we need READ latch for get_context, but some operations
 				 * (like serial increment) require WRITE mode */
 
-  HEAP_OOS_EXPAND_POLICY oos_expand_policy;
+  HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy;
   bool keep_recdes_buffer;	/* true if caller-positioned recdes_p->data must not be rebound to scan cache */
 };
 
@@ -440,16 +440,17 @@ extern void heap_scancache_end_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE *
 extern SCAN_CODE heap_get_class_oid (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid);
 extern SCAN_CODE heap_next (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-			    HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+			    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 				     RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				     HEAP_OOS_EXPAND_POLICY oos_expand_policy, sampling_info * sampling);
+				     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy,
+				     sampling_info * sampling);
 extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);
 extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * prev_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-			    HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+			    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid,
 					 HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
@@ -705,15 +706,16 @@ extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rc
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
-					   HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+					   HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
-						int ispeeking, int old_chn, HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+						int ispeeking, int old_chn,
+						HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
 				   OID * class_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
-				   int old_chn, HEAP_OOS_EXPAND_POLICY oos_expand_policy);
+				   int old_chn, HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy);
 extern int heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * page_watcher_p,
 				     PGBUF_LATCH_MODE latch_mode);
 extern SCAN_CODE heap_prepare_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, bool is_heap_scan,

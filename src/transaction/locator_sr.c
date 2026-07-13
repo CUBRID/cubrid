@@ -300,7 +300,7 @@ locator_initialize (THREAD_ENTRY * thread_p)
   OID_SET_NULL (&class_oid);
 
   while (heap_next (thread_p, &root_hfid, NULL, &class_oid, &peek, &scan_cache, PEEK,
-		    HEAP_WITHOUT_OOS_EXPAND) == S_SUCCESS)
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
       assert (!OID_ISNULL (&class_oid));
 
@@ -1973,7 +1973,7 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
 
   isvalid = DISK_VALID;
   while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK,
-		    HEAP_WITHOUT_OOS_EXPAND) == S_SUCCESS)
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
       classname = or_class_name (&peek);
       assert (classname != NULL);
@@ -2338,7 +2338,7 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
    * outgrows the copy area returns S_DOESNT_FIT with the needed size as a negative recdes length,
    * which the callers' standard grow-and-retry protocol already handles. */
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
-			     chn, HEAP_WITH_OOS_EXPAND);
+			     chn, HEAP_RECDES_CONSUME_RAW_BYTES);
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
@@ -2910,7 +2910,7 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       offset = 0;
 
       while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY,
-				HEAP_WITH_OOS_EXPAND)) == S_SUCCESS)
+				HEAP_RECDES_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -3497,7 +3497,7 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
       OID_SET_NULL (&class_oid);
       scan =
 	heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
-				  PEEK, NULL_CHN, HEAP_WITH_OOS_EXPAND);
+				  PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST && (quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -3963,7 +3963,7 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 	  (void) heap_scancache_quick_start (&scan_cache);
 
 	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, &scan_cache, op_type, lock, PEEK, NULL_CHN,
-					  HEAP_WITHOUT_OOS_EXPAND);
+					  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  heap_scancache_end (thread_p, &scan_cache);
 	  if (scan_code == S_ERROR)
 	    {
@@ -4445,7 +4445,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED,
-							   HEAP_WITHOUT_OOS_EXPAND);
+							   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4801,7 +4801,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED,
-							   HEAP_WITHOUT_OOS_EXPAND);
+							   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -5806,13 +5806,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED, HEAP_WITHOUT_OOS_EXPAND);
+								      LOG_ERROR_IF_DELETED,
+								      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 	      else
 		{
 		  scan =
 		    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
-					      HEAP_WITH_OOS_EXPAND);
+					      HEAP_RECDES_CONSUME_RAW_BYTES);
 		}
 
 
@@ -5955,7 +5956,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
 	      scan =
 		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
-					  HEAP_WITH_OOS_EXPAND);
+					  HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6296,7 +6297,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-						 mvcc_reev_data, LOG_WARNING_IF_DELETED, HEAP_WITHOUT_OOS_EXPAND);
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
+						 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -6593,7 +6595,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 
 	  scan =
 	    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN,
-				      HEAP_WITH_OOS_EXPAND);
+				      HEAP_RECDES_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -6957,7 +6959,7 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
 
       scan =
 	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN,
-				  HEAP_WITH_OOS_EXPAND);
+				  HEAP_RECDES_CONSUME_RAW_BYTES);
 
       if (scan != S_SUCCESS)
 	{
@@ -7615,7 +7617,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
 	  /* don't consider visiblity, just get the last version of the object */
 	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-				 HEAP_WITHOUT_OOS_EXPAND);
+				 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
@@ -7635,7 +7637,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED, HEAP_WITHOUT_OOS_EXPAND);
+					      NULL_CHN, LOG_ERROR_IF_DELETED, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
@@ -9158,7 +9160,9 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  dbvalue_ptr = NULL;
 	}
 
-      scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &copy_rec, &scan_cache, COPY, HEAP_WITHOUT_OOS_EXPAND);
+      scan =
+	heap_next (thread_p, hfid, class_oid, &inst_oid, &copy_rec, &scan_cache, COPY,
+		   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_FIT)
@@ -9613,7 +9617,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   inst_oid.slotid = NULL_SLOTID;
 
   while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &record, &scan_cache, COPY,
-			    HEAP_WITHOUT_OOS_EXPAND)) == S_SUCCESS)
+			    HEAP_RECDES_DONT_CONSUME_RAW_BYTES)) == S_SUCCESS)
     {
       num_heap_oids++;
 
@@ -10068,7 +10072,7 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
       inst_oid.slotid = NULL_SLOTID;
 
       while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache[j], PEEK,
-				HEAP_WITHOUT_OOS_EXPAND)) == S_SUCCESS)
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
 	  num_heap_oids++;
 
@@ -10782,7 +10786,7 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
     {
       copy_rec.data = NULL;
       code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid, &copy_rec, &scan, COPY,
-			HEAP_WITHOUT_OOS_EXPAND);
+			HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (code != S_SUCCESS)
 	{
 	  break;
@@ -11967,7 +11971,8 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   oid.volid = hfid->vfid.volid;
 
   copy_recdes.data = NULL;
-  while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache, COPY, HEAP_WITHOUT_OOS_EXPAND) == S_SUCCESS)
+  while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache, COPY, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       key_val =
 	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
@@ -12121,7 +12126,9 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	    {
 	      int lock_result = 0;
 
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY, HEAP_WITHOUT_OOS_EXPAND);
+	      scan =
+		heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
 		  break;
@@ -12146,7 +12153,7 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 
 	      scan =
 		heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN,
-					  HEAP_WITH_OOS_EXPAND);
+					  HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
 		  if (scan == S_DOESNT_FIT)
@@ -12161,7 +12168,8 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	    }
 	  else
 	    {
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY, HEAP_WITH_OOS_EXPAND);
+	      scan =
+		heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY, HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
 		  break;
@@ -13041,7 +13049,7 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      if (heap_get_visible_version
 		  (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN,
-		   HEAP_WITH_OOS_EXPAND) != S_SUCCESS)
+		   HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -13289,7 +13297,7 @@ error:
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
- * oos_expand_policy (in) : Whether to expand inline OOS values in the returned recdes.
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  *
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  */
@@ -13298,7 +13306,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					     MVCC_REEV_DATA * mvcc_reev_data,
 					     NON_EXISTENT_HANDLING non_ex_handling_type,
-					     HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+					     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan = S_SUCCESS;
@@ -13330,7 +13338,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  return S_ERROR;
 	}
     }
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn, oos_expand_policy);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13427,7 +13436,7 @@ exit:
  * op_type (in)	  : Requested type of operation.
  * lock_mode (in) : Lock type, see note.
  * ispeeking (in) : Peek record or copy.
- * oos_expand_policy (in) : Whether to expand inline OOS values in the returned recdes.
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  *
  * Note: This function should be used when class_oid is unknown, which is required to decide lock_mode;
  *       When lock_mode is known, a more appropriate function is recommended.
@@ -13439,7 +13448,7 @@ exit:
 SCAN_CODE
 locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode, int ispeeking, int chn,
-		    HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+		    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   SCAN_CODE scan_code;
   OID class_oid_local = OID_INITIALIZER;
@@ -13465,7 +13474,8 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn, oos_expand_policy);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn,
+			 recdes_consumption_policy);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13547,12 +13557,13 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
- * oos_expand_policy (in) : Whether to expand inline OOS values in the returned recdes.
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  */
 SCAN_CODE
 locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
-			     NON_EXISTENT_HANDLING non_ex_handling_type, HEAP_OOS_EXPAND_POLICY oos_expand_policy)
+			     NON_EXISTENT_HANDLING non_ex_handling_type,
+			     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
@@ -13566,7 +13577,8 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn, oos_expand_policy);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
   heap_clean_get_context (thread_p, &context);
   return scan_code;
@@ -13802,7 +13814,7 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
       scan_cache_inited = true;
       scan_code =
 	heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN,
-				  HEAP_WITH_OOS_EXPAND);
+				  HEAP_RECDES_CONSUME_RAW_BYTES);
       if (scan_code != S_SUCCESS)
 	{
 	  ev_res = V_ERROR;
