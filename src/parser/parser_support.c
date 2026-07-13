@@ -11816,7 +11816,7 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *insert, *spec;
+  PT_NODE *spec;
   int remote_ins = 0;
   bool is_insert = true;
 
@@ -11830,6 +11830,20 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (spec->info.spec.remote_server_name)
     {
       remote_ins = 1;
+    }
+
+  /* remote INSERT SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
+   *
+   * Only plain INSERT ... SELECT is carved out to the remote sink path. REPLACE INTO ... SELECT and
+   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE are intentionally excluded: the remote path emits a
+   * plain INSERT (dblink_insert_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
+   * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
+   * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
+   * remote target is deferred. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
+      && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
+    {
+      snl->is_remote_insert_select = true;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -11998,6 +12012,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
+  int sub_sel_server_cnt = 0;	/* remote server count found in INSERT SELECT subquery */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12022,6 +12037,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	      parser_walk_tree (parser, list, pt_get_server_name_list, snl, NULL, NULL);
 	    }
 	}
+      sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
       sub_sel = NULL;
       break;
     case PT_DELETE:
@@ -12062,7 +12078,35 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0)
+  /* A remote SELECT source means this is not the remote<-local sink (CCI streaming) case.
+   * Drop the flag and defer to the serialized pushdown path below (qstr is set, then
+   * pt_to_xasl_for_dblink): a single shared remote server pushes the whole INSERT ... SELECT
+   * down to that server, while local-mixed and multi-remote sources fall through to their
+   * existing rejections. */
+  if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
+    {
+      if (snl->local_cnt > 0 && snl->server_node_cnt == 1)
+	{
+	  /* Same-server mixed source (local + remote, all on the target server). Full pushdown is
+	   * impossible (the remote server has no local table) but the CCI sink can run it: rewrite
+	   * the remote source spec(s) into dblink scans. The derived sub-queries are marked as
+	   * sub-queries (so XASL generation gathers them into aptr_list and executes them) by the
+	   * canonical mq_translate run on the SELECT subquery in pt_semantic_check (semantic_check.c).
+	   * Cross-server / multi-remote mixed sources are left to the existing rejections below
+	   * (server_node_cnt >= 2). */
+	  PT_NODE *vlist;
+	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
+	    {
+	      parser_walk_tree (parser, vlist, pt_check_sub_query_spec, snl, NULL, NULL);
+	    }
+	}
+      else
+	{
+	  snl->is_remote_insert_select = false;
+	}
+    }
+
+  if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
       return;
@@ -12074,7 +12118,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->has_dblink_query)
+  if (snl->has_dblink_query && !snl->is_remote_insert_select)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: remote DML has DBLINK query is not allowed");
       return;
@@ -12083,6 +12127,53 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   if (snl->server_node_cnt >= 2 && remote_upd > 0)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: multi-remote DML is not allowed");
+      return;
+    }
+
+  /* INSERT SELECT: skip DML text serialization; preserve value_clauses for XASL generation.
+   * Set up connection info (ct + pt_resolve_server_names) — runtime inserts via CCI bind. */
+  if (snl->is_remote_insert_select)
+    {
+      node->flag.cannot_prepare = 0;
+
+      PT_NODE *server = into_spec->info.spec.remote_server_name;
+      if (server == NULL)
+	{
+	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+	  return;
+	}
+      if (server->node_type == PT_DBLINK_TABLE_DML)
+	{
+	  return;		/* already converted */
+	}
+
+      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+      if (!ct)
+	{
+	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+	  return;
+	}
+
+      ct->info.dblink_table.is_name = true;
+      ct->info.dblink_table.conn = server;
+      if (server->next)
+	{
+	  assert (server->next->node_type == PT_NAME);
+	  ct->info.dblink_table.owner_name = server->next;
+	  server->next = NULL;
+	}
+
+      for (i = 0; i < snl->server_node_cnt; i++)
+	{
+	  if (snl->server[i]->next)
+	    {
+	      parser_free_node (parser, snl->server[i]->next);
+	    }
+	  parser_free_node (parser, snl->server[i]);
+	}
+
+      into_spec->info.spec.remote_server_name = ct;
+      pt_resolve_server_names (parser, into_spec);
       return;
     }
 
