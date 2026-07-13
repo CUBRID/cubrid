@@ -8327,8 +8327,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   bool is_null_recdata;
-  bool is_cached_scan =
-    (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL);
+  bool is_cached_scan = (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL);
   PAGE_PTR local_pgptr = NULL;	/* cached-scan read pointer (local cache or live page) */
 
   if (!OID_ISNULL (&scan_cache->node.class_oid))
