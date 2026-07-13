@@ -301,7 +301,7 @@ int
 xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * oid_p, int cached_num,
 			int num_alloc, int is_auto_increment, bool force_set_last_insert_id)
 {
-  int ret = NO_ERROR, granted;
+  int ret = NO_ERROR;
   SERIAL_CACHE_ENTRY *entry;
 
   assert (oid_p != NULL);
@@ -340,36 +340,11 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	}
       else
 	{
-	  /* Cache miss: take the serial OID X_LOCK, then install; the OID lock serializes installs
-	   * for a given serial. Catalog metadata was loaded at boot, so no catalog load is needed here. */
-	  granted = lock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, LK_UNCOND_LOCK);
-	  if (granted != LK_GRANTED)
-	    {
-	      assert (er_errid () != NO_ERROR);
-	      ret = er_errid ();
-	    }
-	  else
-	    {
-	      /* Re-check: another thread may have installed it while we waited. */
-	      entry = serial_Cache_hashmap.find (thread_p, key);
-	      if (entry != NULL)
-		{
-		  /* Another thread installed it first. The OID lock guards only the install, so drop it
-		   * now; the per-entry mutex alone guards the value advance, as on the cache-hit path. */
-		  (void) lock_unlock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, true);
-		  ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
-		  if (ret == NO_ERROR)
-		    {
-		      pr_clone_value (&entry->cur_val, result_num);
-		    }
-		  pthread_mutex_unlock (&entry->mutex);
-		}
-	      else
-		{
-		  ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
-		  (void) lock_unlock_object (thread_p, oid_p, &db_serial_class_oid, X_LOCK, true);
-		}
-	    }
+	  /* Cache miss: install via xserial_get_next_value_internal (its find_or_insert makes the
+	   * install race-free; the catalog read-modify-write is serialized by the _db_serial page
+	   * latch). No OID X_LOCK here: blocking on the lock manager while the query holds a fixed page
+	   * trips lock_suspend's !pgbuf_has_perm_pages_fixed assertion (page-latch / lock ordering). */
+	  ret = xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc);
 	}
     }
 
@@ -841,14 +816,9 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   if (cached_num > 1)
     {
-      /* Install the entry. Two callers reach here:
-       *   - cache-miss path: caller holds the serial OID X_LOCK, so the install is race-free and
-       *     find_or_insert reports a fresh insert.
-       *   - uncached path (cached_num <= 1, e.g. a plan cached before ALTER SERIAL ... CACHE raised
-       *     the on-disk cached_num): no OID lock held, so a concurrent installer may win and
-       *     find_or_insert returns false.
-       * Either way, never overwrite an existing entry: that would reset a live cached counter and
-       * risk handing out duplicates. */
+      /* Install the entry. No OID lock is held, so a concurrent thread may install this serial
+       * first; find_or_insert then returns the existing entry (inserted == false). Never overwrite
+       * it: that would reset a live cached counter and risk handing out duplicate values. */
       OID key = *serial_oidp;
       bool inserted = serial_Cache_hashmap.find_or_insert (thread_p, key, entry);
 
