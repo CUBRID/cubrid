@@ -4753,6 +4753,15 @@ lock_remove_all_inst_locks (THREAD_ENTRY * thread_p, int tran_index, const OID *
       assert (tran_index == curr->tran_index);
 
       next = curr->tran_next;
+
+      /* inst_hold_list also holds transaction self-locks (LOCK_RESOURCE_TRANSACTION), which have no class_oid
+       * (the key union holds an MVCCID); never release them through class/instance cleanup. */
+      if (curr->res_head->key.type != LOCK_RESOURCE_INSTANCE)
+	{
+	  curr = next;
+	  continue;
+	}
+
       if (class_oid == NULL || OID_ISNULL (class_oid) || OID_EQ (&curr->res_head->key.class_oid, class_oid))
 	{
 	  if (curr->granted_mode <= lock || lock == X_LOCK)
@@ -8851,11 +8860,22 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
+	  /* Transaction self-locks share inst_hold_list but are keyed by MVCCID, not OID; never serialize them as
+	   * object locks for 2PC. They are inert after restart (recovery de-activates the MVCCID), so there is
+	   * nothing to reacquire -- saving one would only restore a bogus OID lock from the key's union overlay. */
+	  if (entry_ptr->res_head->key.type != LOCK_RESOURCE_INSTANCE)
+	    {
+	      continue;
+	    }
+
 	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
 	  COPY_OID (&acqlocks->obj[idx].class_oid, &entry_ptr->res_head->key.class_oid);
 	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
+
+      /* skipped transaction self-locks mean idx may be < the precomputed count; store the actual count. */
+      acqlocks->nobj_locks = idx;
 
       /* release transaction lock hold mutex */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
