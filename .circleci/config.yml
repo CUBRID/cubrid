@@ -366,6 +366,7 @@ jobs:
                   - run:
                       name: Build (debug)
                       command: |
+                        # POC CBRD-27049: test-feeding artifact built in debug mode
                         mkdir -p \$CCACHE_DIR
                         ccache --max-size=5G
                         ccache -z
