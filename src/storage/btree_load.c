@@ -86,6 +86,7 @@ struct load_args
   DB_VALUE current_key;		/* Current key value */
   int max_key_size;		/* The maximum key size encountered so far; used for string types */
   int cur_key_len;		/* The length of the current key */
+  std::atomic<int> *max_disk_key_size;	/* Shared with sort get workers; owned by the main thread */
 
   /* Linked list variables */
   BTREE_NODE *push_list;
@@ -873,6 +874,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
+  std::atomic<int> max_disk_key_size (0);
   BTID_INT btid_int;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
 #if defined (SERVER_MODE)
@@ -986,6 +988,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = false;
   sort_args->attrinfo_inited = false;
   sort_args->btid = &btid_int;
+  sort_args->max_disk_key_size = &max_disk_key_size;
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->fk_name = fk_name;
@@ -1059,6 +1062,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
+  load_args->max_disk_key_size = &max_disk_key_size;
   db_make_null (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
@@ -3812,7 +3816,18 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	  continue;
 	}
 
-      key_len = sort_args->key_type->type->get_disk_size_of_value (dbvalue_ptr);
+      key_len = btree_get_disk_size_of_key (dbvalue_ptr);
+      if (sort_args->max_disk_key_size != NULL)
+	{
+	  int observed_max = sort_args->max_disk_key_size->load (std::memory_order_relaxed);
+	  while (observed_max < key_len
+		 && !sort_args->max_disk_key_size->compare_exchange_weak (observed_max, key_len,
+									 std::memory_order_relaxed,
+									 std::memory_order_relaxed))
+	    {
+	      /* observed_max is refreshed by compare_exchange_weak. */
+	    }
+	}
       if (key_len > 0)
 	{
 	  result = bt_load_put_buf_to_record (temp_recdes, sort_args, value_has_null, &prev_oid, &mvcc_header,
@@ -3862,6 +3877,15 @@ nofit:
     }
 
   return SORT_REC_DOESNT_FIT;
+}
+
+bool
+btree_load_parallel_construct_allowed (const SORT_ARGS * sort_args)
+{
+  assert (sort_args != NULL);
+  assert (sort_args->max_disk_key_size != NULL);
+
+  return sort_args->max_disk_key_size->load (std::memory_order_relaxed) < BTREE_MAX_KEYLEN_INPAGE;
 }
 
 /*
