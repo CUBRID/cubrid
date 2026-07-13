@@ -7246,26 +7246,29 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		{
 		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
 
-		  /* Remote column's physical codeset, from the CCI column metadata.  This is
-		   * authoritative and unaffected by how the attr_def later declares the
-		   * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		   * Fall back to the declared codeset, then to -1 (non-character / no type). */
-		  int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
-		  if (remote_cs < 0)
-		    {
-		      remote_cs = (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
-		    }
-
 		  /* Cross-codeset guard: a character key whose remote physical codeset differs
 		   * from the local outer codeset must not be pushed.  The outer value is bound as
 		   * a host variable in the local codeset, so a remote comparison against a
 		   * different-codeset column does a wrong raw-byte comparison and silently drops
 		   * rows.  Local evaluation is correct instead: the dblink fetch transcodes the
 		   * remote value into the local codeset, so the IN/EXISTS/JOIN comparison runs on
-		   * matching codesets. */
-		  int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
-		  bool cross_codeset = (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum)
-					&& remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		   * matching codesets.  Only a character key needs the codeset lookup below. */
+		  bool cross_codeset = false;
+		  if (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum))
+		    {
+		      /* Remote column's physical codeset, from the CCI column metadata.  This is
+		       * authoritative and unaffected by how the attr_def later declares the
+		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
+		       * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
+		      if (remote_cs < 0)
+			{
+			  remote_cs =
+			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
+			}
+		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
+		      cross_codeset = (remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		    }
 
 		  if (corr_col != NULL && !cross_codeset)
 		    {
