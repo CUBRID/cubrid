@@ -7674,6 +7674,7 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
 
   log_Gl.backup_in_progress = true;
   LOG_CS_EXIT (thread_p);
+  log_online_backup_enter ();
 #endif /* SERVER_MODE */
 
   memset (&session, 0, sizeof (FILEIO_BACKUP_SESSION));
@@ -8284,6 +8285,7 @@ loop:
   fileio_abort_backup (thread_p, &session, false);
 
 #if defined(SERVER_MODE)
+  log_online_backup_exit ();
   LOG_CS_ENTER (thread_p);
   log_Gl.run_nxchkpt_atpageid = saved_run_nxchkpt_atpageid;
   log_Gl.backup_in_progress = false;
@@ -8313,6 +8315,7 @@ error:
 #endif
 
 #if defined(SERVER_MODE)
+  log_online_backup_exit ();
   LOG_CS_ENTER (thread_p);
   if (saved_run_nxchkpt_atpageid != NULL_PAGEID)
     {
