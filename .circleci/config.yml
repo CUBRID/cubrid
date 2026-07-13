@@ -364,12 +364,13 @@ jobs:
                         git submodule sync
                         git submodule update --init
                   - run:
-                      name: Build (debug)
+                      name: Build (release)
                       command: |
+                        # POC CBRD-27049: test-feeding artifact built in release mode
                         mkdir -p \$CCACHE_DIR
                         ccache --max-size=5G
                         ccache -z
-                        scl enable devtoolset-8 -- /entrypoint.sh build -m debug
+                        scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
             EOF
             # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
