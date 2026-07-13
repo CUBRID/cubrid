@@ -1866,6 +1866,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
+	      db_make_null (&parser->sys_epochtime);
 	      break;
 	    }
 	}
