@@ -330,8 +330,8 @@ jobs:
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
             EOF
-            # ccache save: develop(non-PR) 빌드에서만 write -> 단일 공유 warm 캐시 (PR은 restore-only, 5G x PR 저장 방지)
-            if [[ "$CIRCLE_BRANCH" != pull/* ]]; then
+            # ccache save: develop 브랜치 빌드에서만 write -> 단일 공유 warm 캐시 (그 외 브랜치/PR은 restore-only; 5G 저장·비-develop 오염 방지)
+            if [ "$CIRCLE_BRANCH" = "develop" ]; then
             cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
                       key: ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
@@ -372,8 +372,8 @@ jobs:
                         scl enable devtoolset-8 -- /entrypoint.sh build -m debug
                         ccache -s
             EOF
-            # ccache save: develop(non-PR) 빌드에서만 write -> 단일 공유 warm 캐시 (PR은 restore-only, 5G x PR 저장 방지)
-            if [[ "$CIRCLE_BRANCH" != pull/* ]]; then
+            # ccache save: develop 브랜치 빌드에서만 write -> 단일 공유 warm 캐시 (그 외 브랜치/PR은 restore-only; 5G 저장·비-develop 오염 방지)
+            if [ "$CIRCLE_BRANCH" = "develop" ]; then
             cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
                       key: ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
