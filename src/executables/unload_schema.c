@@ -4428,7 +4428,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
   DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
     rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
-  int sp_type, rtn_type, arg_cnt, directive, save;
+  int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
@@ -4495,6 +4495,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      sp_lang = db_get_int (&lang_val);
       sp_type = db_get_int (&sp_type_val);
 
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
@@ -4534,7 +4535,14 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
 	  if (rtn_type == DB_TYPE_RESULTSET)
 	    {
-	      output_ctx ("RETURN CURSOR ");
+	      if (sp_lang == SP_LANG_PLCSQL)
+		{
+		  output_ctx ("RETURN SYS_REFCURSOR ");
+		}
+	      else
+		{
+		  output_ctx ("RETURN CURSOR ");
+		}
 	    }
 	  else
 	    {
@@ -4559,7 +4567,6 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("DETERMINISTIC ");
 	}
 
-      int sp_lang = db_get_int (&lang_val);
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");

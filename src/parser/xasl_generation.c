@@ -6888,7 +6888,11 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
+      if (default_next_node_list == NULL && pt_has_error (parser))
+	{
+	  return NULL;
+	}
       node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
 
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
@@ -7103,6 +7107,9 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
+	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
+	       * stash owning predicate-operand regu at the regu<->xasl linkage. */
+	      xasl->precomp_owner_regu = regu;
 	    }
 	  else
 	    {
@@ -7861,6 +7868,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_DECRYPT || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5 || node->info.expr.op == PT_SHA_ONE
 		       || node->info.expr.op == PT_SPACE || node->info.expr.op == PT_PRIOR
+		       || node->info.expr.op == PT_UUID_FORMAT || node->info.expr.op == PT_UUID
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT || node->info.expr.op == PT_QPRIOR
 		       || node->info.expr.op == PT_BIT_NOT || node->info.expr.op == PT_REVERSE
 		       || node->info.expr.op == PT_BIT_COUNT || node->info.expr.op == PT_ISNULL
@@ -8756,6 +8764,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_TO_BASE64, domain);
 		  break;
 
+		case PT_UUID_FORMAT:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID_FORMAT, domain);
+		  break;
+
 		case PT_SPACE:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SPACE, domain);
 		  break;
@@ -9290,6 +9302,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SYS_GUID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
+		  break;
+
+		case PT_UUID:
+		  if (node->info.expr.arg1 == NULL)
+		    {
+		      /* UUID() with no argument defaults to version 4; use an integer constant so that the server can
+		       * distinguish it from an actual NULL argument, which is an error */
+		      regu_alloc (val);
+		      db_make_int (val, 4);
+		      r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
+		    }
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:
@@ -22538,8 +22562,8 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	  new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
 	  new_lhs_of_assign->info.name.spec_id = spec_id;
 
-	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
-	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  PT_NODE *new_rhs_of_assign = pt_make_expression_default_expr (parser, NULL, att->on_update_default_expr);
+
 	  if (new_rhs_of_assign == NULL)
 	    {
 	      if (new_lhs_of_assign != NULL)
@@ -22732,7 +22756,6 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   return node;
 }
-
 
 /*
  * parser_generate_xasl () - Creates xasl proc for parse tree.
@@ -26092,6 +26115,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_FROM_UNIXTIME:
 	case T_SUBSTRING_INDEX:
 	case T_MD5:
+	case T_UUID_FORMAT:
 	case T_AES_ENCRYPT:
 	case T_AES_DECRYPT:
 	case T_SHA_ONE:
@@ -28857,6 +28881,7 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_RAND:
 	case PT_DRAND:
 	case PT_RANDOM:
