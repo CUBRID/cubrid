@@ -4181,8 +4181,11 @@ sm_get_class_with_statistics (MOP classop)
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
+	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
+	       * rewriting _db_histogram) must not fail the query -- proceed without it */
 	      stats_free_histogram_and_init (class_->histogram);
-	      return NULL;
+	      class_->histogram = NULL;
+	      er_clear ();
 	    }
 	}
     }
@@ -4195,9 +4198,10 @@ sm_get_class_with_statistics (MOP classop)
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
+	      /* optional; see above -- do not fail the query on a transient fetch error */
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
-	      return NULL;
+	      er_clear ();
 	    }
 	}
     }
