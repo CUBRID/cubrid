@@ -624,51 +624,58 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 }
 
 /*
- * qdata_alloc_hscan_value () - allocate new hash value
- *   returns: pointer to new structure or NULL on error
+ * qdata_alloc_hscan_value () - allocate a new hash entry holding a copy of the tuple
+ *   returns: the entry to put into the table, or NULL on error
  *   thread_p(in): thread
  */
-QFILE_TUPLE
+MHT_HLS_ENTRY *
 qdata_alloc_hscan_value (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl)
 {
   QFILE_TUPLE tuple;
   int tuple_size = QFILE_GET_TUPLE_LENGTH (tpl);
+  MHT_HLS_ENTRY *entry;
+  size_t alloc_size = sizeof (MHT_HLS_ENTRY) + tuple_size;
 
-  /* allocated from the table obstack; freed all at once on table destroy */
-  tuple = (QFILE_TUPLE) db_ostk_alloc (heap_id, tuple_size);
-  if (tuple == NULL)
+  /* entry + tuple copy in one allocation from the table obstack; freed all at once on table destroy */
+  entry = (MHT_HLS_ENTRY *) db_ostk_alloc (heap_id, alloc_size);
+  if (entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
       return NULL;
     }
 
+  tuple = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
   memcpy (tuple, tpl, tuple_size);
-  return tuple;
+  return entry;
 }
 
 /*
- * qdata_alloc_hscan_value_OID () - allocate new hash OID value
- *   returns: pointer to new structure or NULL on error
+ * qdata_alloc_hscan_value_OID () - allocate a new hash entry holding a tuple position
+ *   returns: the entry to put into the table, or NULL on error
  *   thread_p(in): thread
  */
-QFILE_TUPLE_SIMPLE_POS *
+MHT_HLS_ENTRY *
 qdata_alloc_hscan_value_OID (cubthread::entry * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p)
 {
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
+  MHT_HLS_ENTRY *entry;
+  size_t alloc_size = sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
 
-  /* allocated from the table obstack; freed all at once on table destroy */
-  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) db_ostk_alloc (heap_id, sizeof (QFILE_TUPLE_SIMPLE_POS));
-  if (simple_pos == NULL)
+  /* entry + tuple position in one allocation from the table obstack; freed all at once on table destroy */
+  entry = (MHT_HLS_ENTRY *) db_ostk_alloc (heap_id, alloc_size);
+  if (entry == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QFILE_TUPLE_SIMPLE_POS));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, alloc_size);
       return NULL;
     }
+
+  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
 
   /* save position */
   simple_pos->offset = scan_id_p->curr_offset;
   simple_pos->vpid = scan_id_p->curr_vpid;
 
-  return simple_pos;
+  return entry;
 }
 
 /*

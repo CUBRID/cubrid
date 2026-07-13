@@ -130,15 +130,27 @@ extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * h
  * It has the following features.
  * 1. lru, act is not used. (remove variable related to lru, act)
  * 2. key comparison is performed in executor. (remove key of hash entry)
- * 3. put data orderly. (add tail pointer for it)
- * 4. Since hash size is fixed, rehashing the hash table is not necessary.
+ * 3. Since hash size is fixed, rehashing the hash table is not necessary.
+ * 4. Open addressing (linear probing) gives each distinct hash one slot;
+ *    same-hash rows chain through their entries (MHT_HLS_ENTRY), so duplicates take no extra slots.
  */
 
-/* Open-addressing slot for HASH LIST SCAN. data == NULL means an empty slot. */
+/* An entry precedes its payload; same-hash entries form a chain. */
+typedef struct mht_hls_entry MHT_HLS_ENTRY;
+struct mht_hls_entry
+{
+  MHT_HLS_ENTRY *next;		/* next entry in the same-hash chain */
+  /* the payload (tuple copy / tuple position) is stored right after this entry */
+};
+
+/* The payload of an entry; the result is not an entry anymore, hence void. */
+#define MHT_HLS_ENTRY_PAYLOAD(e) ((void *) ((e) + 1))
+
+/* Open-addressing slot for HASH LIST SCAN. entry == NULL means an empty slot. */
 typedef struct mht_hls_slot MHT_HLS_SLOT;
 struct mht_hls_slot
 {
-  void *data;			/* Data associated with key entry; NULL means empty slot */
+  MHT_HLS_ENTRY *entry;		/* head of the same-hash entry chain; NULL means empty slot */
   unsigned int hash;		/* full 32-bit hash key */
 };
 
@@ -157,9 +169,9 @@ struct mht_hls_table
   bool build_lru_list;		/* true if LRU list must be built */
 };
 
-extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data);
-extern void *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
-extern void *mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
+extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry);
+extern MHT_HLS_ENTRY *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last);
+extern MHT_HLS_ENTRY *mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last);
 extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
 				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
 				      int (*cmp_func) (const void *key1, const void *key2));

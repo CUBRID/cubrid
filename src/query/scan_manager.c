@@ -8817,6 +8817,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
   HASH_SCAN_KEY *key, *new_key;
   unsigned int hash_key;
+  MHT_HLS_ENTRY *entry;
   TFTID tftid;
 
   llsidp = &scan_id->s.llsid;
@@ -8868,14 +8869,13 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	case HASH_METH_IN_MEM:
 	  {
 	    /* store the tuple in the table obstack */
-	    QFILE_TUPLE tuple =
-	      qdata_alloc_hscan_value (thread_p, llsidp->hlsid.memory.hash_table->heap_id, tplrec.tpl);
-	    if (tuple == NULL)
+	    entry = qdata_alloc_hscan_value (thread_p, llsidp->hlsid.memory.hash_table->heap_id, tplrec.tpl);
+	    if (entry == NULL)
 	      {
 		return S_ERROR;
 	      }
 	    /* add to hash table */
-	    if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) tuple) == NULL)
+	    if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, entry) == NULL)
 	      {
 		return S_ERROR;
 	      }
@@ -8884,14 +8884,13 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	case HASH_METH_HYBRID:
 	  {
 	    /* store the tuple position in the table obstack */
-	    QFILE_TUPLE_SIMPLE_POS *simple_pos =
-	      qdata_alloc_hscan_value_OID (thread_p, llsidp->hlsid.memory.hash_table->heap_id, &llsidp->lsid);
-	    if (simple_pos == NULL)
+	    entry = qdata_alloc_hscan_value_OID (thread_p, llsidp->hlsid.memory.hash_table->heap_id, &llsidp->lsid);
+	    if (entry == NULL)
 	      {
 		return S_ERROR;
 	      }
 	    /* add to hash table */
-	    if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, (void *) simple_pos) == NULL)
+	    if (mht_put_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, entry) == NULL)
 	      {
 		return S_ERROR;
 	      }
@@ -9033,12 +9032,13 @@ static SCAN_CODE
 scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple)
 {
   LLIST_SCAN_ID *llsidp;
-  HASH_SCAN_KEY *key;
-  void *hvalue;
   QFILE_LIST_SCAN_ID *scan_id_p;
+  HASH_SCAN_KEY *key;
+  unsigned int hash_key;
+  MHT_HLS_ENTRY *entry;
+  QFILE_TUPLE_SIMPLE_POS *simple_pos;
   QFILE_TUPLE_POSITION tuple_pos;
   QFILE_TUPLE_RECORD tplrec = { NULL, 0 };
-  unsigned int hash_key;
   EH_SEARCH eh_search;
   TFTID result;
 
@@ -9064,20 +9064,20 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	  /* init curr_hash_entry */
 	  llsidp->hlsid.memory.curr_hash_entry = NULL;
 	  /* get value from hash table */
-	  hvalue =
-	    mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key,
-			 (void **) &llsidp->hlsid.memory.curr_hash_entry);
-	  if (hvalue == NULL)
+	  entry =
+	    mht_get_hls (llsidp->hlsid.memory.hash_table, (void *) &hash_key, &llsidp->hlsid.memory.curr_hash_entry);
+	  if (entry == NULL)
 	    {
 	      return S_END;
 	    }
 	  if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	    {
-	      *tuple = (QFILE_TUPLE) hvalue;
+	      *tuple = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION (tuple_pos, (QFILE_TUPLE_SIMPLE_POS *) hvalue, scan_id_p);
+	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -9122,10 +9122,10 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	{
 	case HASH_METH_IN_MEM:
 	case HASH_METH_HYBRID:
-	  hvalue =
+	  entry =
 	    mht_get_next_hls (llsidp->hlsid.memory.hash_table,
-			      (void *) &llsidp->hlsid.curr_hash_key, (void **) &llsidp->hlsid.memory.curr_hash_entry);
-	  if (hvalue == NULL)
+			      (void *) &llsidp->hlsid.curr_hash_key, &llsidp->hlsid.memory.curr_hash_entry);
+	  if (entry == NULL)
 	    {
 	      if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 		{
@@ -9136,11 +9136,12 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	    }
 	  if (llsidp->hlsid.hash_list_scan_type == HASH_METH_IN_MEM)
 	    {
-	      *tuple = (QFILE_TUPLE) hvalue;
+	      *tuple = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
 	    }
 	  else if (llsidp->hlsid.hash_list_scan_type == HASH_METH_HYBRID)
 	    {
-	      MAKE_TUPLE_POSTION (tuple_pos, (QFILE_TUPLE_SIMPLE_POS *) hvalue, scan_id_p);
+	      simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
+	      MAKE_TUPLE_POSTION (tuple_pos, simple_pos, scan_id_p);
 	      if (qfile_jump_scan_tuple_position (thread_p, scan_id_p, &tuple_pos, &tplrec, PEEK) != S_SUCCESS)
 		{
 		  return S_ERROR;
@@ -9212,7 +9213,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
   DB_TYPE vtype1, vtype2;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
-  UINT64 slot_array_size;
+  UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
   /* no_hash_list_scan sql hint check */
@@ -9282,15 +9283,22 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
     }
 
   slot_array_size = (UINT64) mht_hls_slot_count ((int) tuple_cnt) * sizeof (MHT_HLS_SLOT);
+  entries_size = (UINT64) tuple_cnt *sizeof (MHT_HLS_ENTRY);
 
-  if (slot_array_size + ((UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE) <= mem_limit)
+  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+  payload_size = (UINT64) llsidp->list_id->page_cnt * DB_PAGESIZE;
+  in_mem_size = slot_array_size + entries_size + payload_size;
+
+  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+  payload_size = (UINT64) tuple_cnt *sizeof (QFILE_TUPLE_SIMPLE_POS);
+  hybrid_size = slot_array_size + entries_size + payload_size;
+
+  if (in_mem_size <= mem_limit)
     {
-      /* IN_MEM: slot array + tuples in memory */
       return HASH_METH_IN_MEM;
     }
-  else if (slot_array_size + ((UINT64) tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+  else if (hybrid_size <= mem_limit)
     {
-      /* HYBRID: slot array + tuple positions in memory; tuples stay on temp file */
       return HASH_METH_HYBRID;
     }
   else

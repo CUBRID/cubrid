@@ -109,7 +109,7 @@ static int mht_rehash (MHT_TABLE * ht);
 
 static const void *mht_put_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
 static const void *mht_put2_internal (MHT_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
-static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt);
+static const void *mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry, MHT_PUT_OPT opt);
 
 static unsigned int mht_get_shiftmult32 (unsigned int key, const unsigned int ht_size);
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -1093,7 +1093,7 @@ mht_create_hls (const char *name, int est_size, unsigned int (*hash_func) (const
     }
 
   /* Allocate the open-addressing slot array.
-   * calloc zeroes every slot, so data == NULL marks each slot empty. */
+   * calloc zeroes every slot, so entry == NULL marks each slot empty. */
   ht->table = (MHT_HLS_SLOT *) calloc (ht_estsize, sizeof (MHT_HLS_SLOT));
   if (ht->table == NULL)
     {
@@ -1386,7 +1386,7 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
 				 void *args), const void *type_list, void *func_args)
 {
   unsigned int i;
-  int cont = TRUE;
+  MHT_HLS_ENTRY *entry;
 
   assert (ht != NULL);
 
@@ -1402,19 +1402,33 @@ mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, 
   if (print_id_opt)
     {
       /* Need to print the slot id. Therefore, scan the whole table */
-      for (i = 0; cont == TRUE && i < ht->size; i++)
+      for (i = 0; i < ht->size; i++)
 	{
-	  if (ht->table[i].data != NULL)
+	  if (ht->table[i].entry == NULL)
 	    {
-	      fprintf (out_fp, "HASH AT %d\n", i);
+	      continue;
+	    }
+
+	  fprintf (out_fp, "HASH AT %d\n", i);
+
+	  /* walk the same-hash entry chain of this slot */
+	  for (entry = ht->table[i].entry; entry != NULL; entry = entry->next)
+	    {
+	      int keep_going;
+
 	      fprintf (out_fp, "  KEY %10u, ", ht->table[i].hash);
-	      cont = (*print_func) (thread_p, out_fp, ht->table[i].data, type_list, func_args);
+	      keep_going = (*print_func) (thread_p, out_fp, MHT_HLS_ENTRY_PAYLOAD (entry), type_list, func_args);
 	      fprintf (out_fp, "\n");
+
+	      if (keep_going != TRUE)
+		{
+		  return FALSE;
+		}
 	    }
 	}
     }
 
-  return (cont);
+  return TRUE;
 }
 
 /*
@@ -1548,15 +1562,15 @@ mht_get2 (const MHT_TABLE * ht, const void *key, void **last)
 
 /*
  * mht_get_hls - Probe for the first entry whose hash matches the key
- *   return: data of the matching slot, or NULL if none
+ *   return: the matching entry, or NULL if none
  *   ht(in): hash table to probe
  *   key(in): pointer to the hash to look up
- *   last(in/out): on a match, set to the matched slot to resume from
+ *   last(in/out): on a match, set to the matched entry to resume from
  *
  * NOTE: a match is a hash candidate; the caller confirms the real key.
  */
-void *
-mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
+MHT_HLS_ENTRY *
+mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last)
 {
   unsigned int hash, mask, idx, probes;
 
@@ -1565,26 +1579,27 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
   /*
    * Table size is a power of two, so a bit-mask replaces the modulo.
    * Open addressing (linear probing): scan from the home slot until
-   *   - the probe hash matches   -> candidate, or
+   *   - the probe hash matches   -> candidate (head of the same-hash chain), or
    *   - an empty slot is reached -> miss.
-   * The size-bounded loop is a defensive guard against a full table.
    */
   hash = *((unsigned int *) key);
   mask = ht->size - 1;
   idx = hash & mask;
 
+  /* the probes bound is a defensive guard against a full table */
   for (probes = 0; probes < ht->size; probes++)
     {
-      if (ht->table[idx].data == NULL)
+      if (ht->table[idx].entry == NULL)
 	{
 	  return NULL;		/* miss */
 	}
 
       if (ht->table[idx].hash == hash)
 	{
-	  /* candidate */
-	  *((MHT_HLS_SLOT **) last) = &ht->table[idx];
-	  return ht->table[idx].data;
+	  /* A hash occupies at most one slot, so this first match ends the slot scan;
+	   * further candidates hang off the entry chain (mht_get_next_hls). */
+	  *last = ht->table[idx].entry;
+	  return ht->table[idx].entry;
 	}
 
       /* conflict */
@@ -1596,53 +1611,34 @@ mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
 }
 
 /*
- * mht_get_next_hls - Probe for the next entry whose hash matches the key
- *   return: data of the next matching slot, or NULL if none
+ * mht_get_next_hls - Get the next entry whose hash matches the key
+ *   return: the next matching entry, or NULL if none
  *   ht(in): hash table to probe
  *   key(in): pointer to the hash to look up
- *   last(in/out): in, the slot from the previous mht_get_hls/mht_get_next_hls;
- *                 on a match, set to the next matched slot to resume from
+ *   last(in/out): in, the entry from the previous mht_get_hls/mht_get_next_hls;
+ *                 on a match, set to the next matched entry to resume from
  *
  * NOTE: a match is a hash candidate; the caller confirms the real key.
  */
-void *
-mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last)
+MHT_HLS_ENTRY *
+mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last)
 {
-  unsigned int hash, mask, idx, probes;
-  MHT_HLS_SLOT *prev_slot;
+  MHT_HLS_ENTRY *next;
 
   assert (ht != NULL && key != NULL && last != NULL);
   assert (*last != NULL);	/* mht_get_next_hls resumes after a successful mht_get_hls */
 
-  hash = *((unsigned int *) key);
-  mask = ht->size - 1;
-
-  /* Resume linear probing from the slot after the last result. */
-  prev_slot = *((MHT_HLS_SLOT **) last);
-  idx = (unsigned int) (prev_slot - ht->table);
-  idx = (idx + 1) & mask;
-
-  /* size - 1 so the scan never wraps back to prev_slot and re-returns it */
-  for (probes = 0; probes < ht->size - 1; probes++)
+  /* Same-hash entries are chained;
+   * a hash occupies at most one slot, so there is nothing more to probe in the slot array. */
+  next = (*last)->next;
+  if (next == NULL)
     {
-      if (ht->table[idx].data == NULL)
-	{
-	  return NULL;		/* miss */
-	}
-
-      if (ht->table[idx].hash == hash)
-	{
-	  /* candidate */
-	  *((MHT_HLS_SLOT **) last) = &ht->table[idx];
-	  return ht->table[idx].data;
-	}
-
-      /* conflict */
-      idx = (idx + 1) & mask;
+      /* end of chain: no more candidates */
+      return NULL;
     }
 
-  /* table full (rare): a miss is normally caught at the empty slot above */
-  return NULL;
+  *last = next;
+  return next;
 }
 
 /*
@@ -1795,10 +1791,10 @@ mht_put_new (MHT_TABLE * ht, const void *key, void *data)
 }
 
 const void *
-mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data)
+mht_put_hls (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry)
 {
   assert (ht != NULL && key != NULL);
-  return mht_put_hls_internal (ht, key, data, MHT_OPT_INSERT_ONLY);
+  return mht_put_hls_internal (ht, key, entry, MHT_OPT_INSERT_ONLY);
 }
 
 /*
@@ -2665,17 +2661,20 @@ mht_get_linear_hash32 (const unsigned int key, const unsigned int ht_size)
 #endif /* ENABLE_UNUSED_FUNCTION */
 
 /*
- * mht_put_hls_internal - Insert an entry into the first free slot
+ * mht_put_hls_internal - Insert an entry
  *   return: key on success, or NULL if the table is full
  *   ht(in/out): hash table to insert into
  *   key(in): pointer to the hash to insert under
- *   data(in): payload stored in the slot
+ *   entry(in): entry (with its payload) to insert
  *   opt(in): put options
  *
  * NOTE: the key itself is not stored, only its hash; lookups confirm the real key.
+ *       A hash value occupies at most one slot:
+ *       entries sharing a hash are prepended to that slot's chain,
+ *       so duplicates never lengthen the probe runs.
  */
 static const void *
-mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_OPT opt)
+mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry, MHT_PUT_OPT opt)
 {
   unsigned int hash, mask, idx, probes;
 
@@ -2686,25 +2685,37 @@ mht_put_hls_internal (MHT_HLS_TABLE * ht, const void *key, void *data, MHT_PUT_O
   mask = ht->size - 1;
   idx = hash & mask;
 
-  /* linear probing: walk to the first free slot (sizing keeps nentries < size) */
-  for (probes = 0; probes < ht->size && ht->table[idx].data != NULL; probes++)
+  /* linear probing over distinct hashes (sizing keeps occupied slots < size) */
+  for (probes = 0; probes < ht->size; probes++)
     {
+      if (ht->table[idx].entry == NULL)
+	{
+	  /* free slot: store the first entry of a new distinct hash */
+	  entry->next = NULL;
+	  ht->table[idx].entry = entry;
+	  ht->table[idx].hash = hash;
+	  ht->nentries++;
+	  return key;
+	}
+
+      if (ht->table[idx].hash == hash)
+	{
+	  /* same hash: prepend to the chain so duplicates take no extra slot (a collision, as in mht_put_internal) */
+	  entry->next = ht->table[idx].entry;
+	  ht->table[idx].entry = entry;
+	  ht->nentries++;
+	  ht->ncollisions++;
+	  return key;
+	}
+
+      /* another hash occupies this slot */
       ht->ncollisions++;
       idx = (idx + 1) & mask;
     }
 
-  if (ht->table[idx].data != NULL)
-    {
-      /* no free slot found - should never happen (sizing keeps nentries < size) */
-      assert_release_error (false);
-      return NULL;
-    }
-
-  ht->table[idx].data = data;
-  ht->table[idx].hash = hash;
-  ht->nentries++;
-
-  return key;
+  /* no free slot found - should never happen (sizing keeps occupied slots < size) */
+  assert_release_error (false);
+  return NULL;
 }
 
 /*

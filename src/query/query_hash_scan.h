@@ -111,7 +111,7 @@ struct hash_list_scan
     struct
     {
       MHT_HLS_TABLE *hash_table;	/* memory hash table for hash list scan */
-      MHT_HLS_SLOT *curr_hash_entry;	/* opaque resume handle for get_next (open-addressing slot) */
+      MHT_HLS_ENTRY *curr_hash_entry;	/* resume handle for get_next (same-hash entry chain cursor) */
     } memory;
     struct
     {
@@ -126,9 +126,8 @@ struct hash_list_scan
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
-QFILE_TUPLE qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
-QFILE_TUPLE_SIMPLE_POS *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id,
-						     QFILE_LIST_SCAN_ID * scan_id_p);
+MHT_HLS_ENTRY *qdata_alloc_hscan_value (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_TUPLE tpl);
+MHT_HLS_ENTRY *qdata_alloc_hscan_value_OID (THREAD_ENTRY * thread_p, HL_HEAPID heap_id, QFILE_LIST_SCAN_ID * scan_id_p);
 
 void qdata_free_hscan_key (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, int val_count);
 
