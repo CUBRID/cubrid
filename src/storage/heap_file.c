@@ -7888,6 +7888,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
   SCAN_CODE scan = S_ERROR;
   int get_rec_info = cache_recordinfo != NULL;
   bool is_null_recdata;
+  bool is_cached_scan =
+    (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL);
   PGBUF_WATCHER old_page_watcher;
   PGBUF_WATCHER rec_info_page_watcher;
   PAGE_PTR local_pgptr = NULL;	/* cached-scan read pointer (local cache or live page) */
@@ -7978,13 +7980,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
 	      && scan_cache->local_cache_handle != NULL && VPID_EQ (&vpid, &scan_cache->local_cache_vpid))
 	    {
-	      /* Same page already in the local cache -- use it directly. Unfix any fall-through-parked
-	       * page (heap_clean_get_context can park a live page when cache_last_fix_page was
-	       * temporarily forced true for the previous record's heap_scan_get_visible_version call). */
-	      if (scan_cache->page_watcher.pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-		}
+	      /* Same page already in the local cache -- use it directly. Keep a live watcher, if any, until a
+	       * visible record is returned or traversal moves to another page. */
 	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	      goto slot_walk;
 	    }
@@ -8016,11 +8013,12 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (!get_rec_info && scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
 	      && scan_cache->local_cache_handle != NULL)
 	    {
-	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache and unfix.
+	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache. Keep the live page fixed
+	       * until a visible record is returned or traversal moves to another page, so vacuum cannot deallocate
+	       * the page while slots from the local copy are still being inspected.
 	       * record-info scans never use the cached scan. */
 	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
 	      scan_cache->local_cache_vpid = vpid;
-	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	    }
 	  else
@@ -8102,10 +8100,11 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	      if (scan == S_END)
 		{
 		  /* Find next page of heap and continue scanning */
-		  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL)
+		  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL
+		      && scan_cache->page_watcher.pgptr == NULL)
 		    {
-		      /* page_watcher.pgptr is NULL here (a cached scan always unfixes after copying); re-fix
-		       * the cached page so heap_vpid_prev/heap_vpid_next below have a live pointer. */
+		      /* A prior visible-record return released the live page. Re-fix it before reading the current
+		       * live page chain; the links in the local copy may be stale. */
 		      scan_cache->page_watcher.pgptr =
 			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
 						     S_LOCK, scan_cache, &scan_cache->page_watcher);
@@ -8196,11 +8195,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
       else
 	{
 	  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
-	  bool is_cached_scan = (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
-				 && scan_cache->local_cache_handle != NULL);
 
 	  scan_cache->cache_last_fix_page = true;
-	  assert (!is_cached_scan || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: cached-scan consumption never holds the live page */
 
 	  scan =
 	    heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
@@ -8255,6 +8251,7 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
     {
       pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
     }
+  assert (!is_cached_scan || scan != S_SUCCESS || scan_cache->page_watcher.pgptr == NULL);
 
   return scan;
 }
@@ -8330,6 +8327,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
   RECDES forward_recdes;
   SCAN_CODE scan = S_ERROR;
   bool is_null_recdata;
+  bool is_cached_scan =
+    (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL);
   PAGE_PTR local_pgptr = NULL;	/* cached-scan read pointer (local cache or live page) */
 
   if (!OID_ISNULL (&scan_cache->node.class_oid))
@@ -8364,13 +8363,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
 	      && scan_cache->local_cache_handle != NULL && VPID_EQ (vpid, &scan_cache->local_cache_vpid))
 	    {
-	      /* Unfix any fall-through-parked page (heap_clean_get_context can park a live page when
-	       * cache_last_fix_page was temporarily forced true for the previous record's
-	       * heap_scan_get_visible_version call). */
-	      if (scan_cache->page_watcher.pgptr != NULL)
-		{
-		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
-		}
+	      /* Same page already in the local cache -- use it directly. Keep the live watcher until a visible
+	       * record is returned or the input handler hands off to another page. */
 	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	      goto slot_walk_1page;
 	    }
@@ -8410,10 +8404,11 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 	  if (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE && scan_cache->local_cache_handle != NULL)
 	    {
-	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache and unfix. */
+	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache. Keep the live page fixed
+	       * until a visible record is returned or traversal/handoff completes, so vacuum cannot deallocate
+	       * the page while slots from the local copy are still being inspected. */
 	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
 	      scan_cache->local_cache_vpid = *vpid;
-	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
 	    }
 	  else
@@ -8478,12 +8473,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
       {
 	int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
-	bool is_cached_scan = (scan_cache->read_mode == HEAP_SCAN_READ_LOCAL_CACHE
-			       && scan_cache->local_cache_handle != NULL
-			       && local_pgptr == pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle));
 
 	scan_cache->cache_last_fix_page = true;
-	assert (!is_cached_scan || scan_cache->page_watcher.pgptr == NULL);	/* latch-free invariant: cached-scan consumption never holds the live page */
 
 	scan =
 	  heap_scan_get_visible_version (thread_p, &oid, class_oid, recdes, &forward_recdes, scan_cache, ispeeking,
@@ -8534,6 +8525,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
     {
       pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
     }
+  assert (!is_cached_scan || scan != S_SUCCESS || scan_cache->page_watcher.pgptr == NULL);
 
   return scan;
 }
