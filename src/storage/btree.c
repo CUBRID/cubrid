@@ -23679,7 +23679,7 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 static bool
 btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
 {
-  return MVCCID_IS_VALID (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
+  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
     && log_Gl.mvcc_table.is_active (insert_mvccid);
 }
 

@@ -707,6 +707,9 @@ lock_create_search_key (const OID * oid, const OID * class_oid)
 	}
     }
 
+  /* object-typed keys only; TRANSACTION keys come from lock_create_mvccid_search_key */
+  assert (search_key.type != LOCK_RESOURCE_TRANSACTION);
+
   /* done! */
   return search_key;
 }
@@ -947,7 +950,8 @@ lock_res_key_hash (void *key, int htsize)
 
   if (key_k->type == LOCK_RESOURCE_TRANSACTION)
     {
-      /* transaction self-lock: hash the inserter's MVCCID (sequential, so it spreads across buckets) */
+      /* transaction self-lock: hash the MVCCID (one LK_RES per MVCCID). Bucket collisions with other
+       * keys/MVCCIDs are disambiguated by lock_res_key_compare. */
       return (unsigned int) (key_k->mvccid % (unsigned int) htsize);
     }
 
@@ -5604,9 +5608,12 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 
   memset (time_val, 0, sizeof (time_val));
 
-  /* dump object identifier */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID), res_ptr->key.oid.volid,
-	   res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+  /* object identifier; a transaction self-lock has no OID (MVCCID printed in the switch below) */
+  if (res_ptr->key.type != LOCK_RESOURCE_TRANSACTION)
+    {
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID), res_ptr->key.oid.volid,
+	       res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+    }
 
   /* dump object type related information */
   switch (res_ptr->key.type)
@@ -6451,9 +6458,9 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
   int granted;
   LK_ENTRY *tran_entry = NULL;
 
-  if (!MVCCID_IS_VALID (mvccid))
+  if (!MVCCID_IS_NORMAL (mvccid))
     {
-      /* Nothing to serialize on. */
+      /* special MVCCIDs (NULL/ALL_VISIBLE) have no inserter to serialize on; grant is a no-op */
       return LK_GRANTED;
     }
 
@@ -6501,7 +6508,7 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
   LK_RES *res_ptr;
   LK_ENTRY *entry_ptr;
 
-  if (!MVCCID_IS_VALID (mvccid))
+  if (!MVCCID_IS_NORMAL (mvccid))
     {
       return;
     }
@@ -6565,7 +6572,7 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
   LK_ENTRY *entry_ptr;
   LOCK granted_lock_mode = NULL_LOCK;
 
-  if (!MVCCID_IS_VALID (mvccid))
+  if (!MVCCID_IS_NORMAL (mvccid))
     {
       return 0;
     }
@@ -10034,6 +10041,13 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 
   res_ptr = entry->res_head;
 
+  if (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION)
+    {
+      /* transaction self-lock: no OID, print MVCCID only */
+      fprintf (log_fp, " (transaction self-lock, mvccid=%llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      return;
+    }
+
   fprintf (log_fp, " (oid=%d|%d|%d", res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
 
   switch (res_ptr->key.type)
@@ -10100,10 +10114,6 @@ lock_event_log_lock_info (THREAD_ENTRY * thread_p, FILE * log_fp, LK_ENTRY * ent
 	      free_and_init (classname);
 	    }
 	}
-      break;
-
-    case LOCK_RESOURCE_TRANSACTION:
-      fprintf (log_fp, ", transaction self-lock, mvccid=%llu", (unsigned long long) res_ptr->key.mvccid);
       break;
 
     default:
