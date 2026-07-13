@@ -5061,58 +5061,6 @@ heap_vpid_next (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, VPID
 }
 
 /*
- * heap_vpid_skip_next () - Skip pages by skip_cnt
- *   return: NO_ERROR
- *   hfid(in): Object heap file identifier
- *   pgptr(in): Current page pointer
- *   next_vpid(in/out): Next volume-page identifier
- *   skip_cnt(in): skip pages by skip_cnt
- *
- * Note: Find the next page of heap file.
- */
-int
-heap_vpid_skip_next (THREAD_ENTRY * thread_p, const HFID * hfid, PGBUF_WATCHER * curr_page_watcher,
-		     PGBUF_WATCHER * old_page_watcher, int skip_cnt, VPID * vpid, HEAP_SCANCACHE * scan_cache)
-{
-  int ret = NO_ERROR;
-
-#if !defined (NDEBUG)
-  (void) pgbuf_check_page_ptype (thread_p, curr_page_watcher->pgptr, PAGE_HEAP);
-#endif /* !NDEBUG */
-
-  for (int i = 0; i < skip_cnt - 1; i++)
-    {
-      (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-      if (vpid->pageid == NULL_PAGEID)
-	{
-	  /* must be last page, end scanning */
-	  return ret;
-	}
-      pgbuf_replace_watcher (thread_p, curr_page_watcher, old_page_watcher);
-      curr_page_watcher->pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache, curr_page_watcher);
-      if (old_page_watcher->pgptr != NULL)
-	{
-	  pgbuf_ordered_unfix (thread_p, old_page_watcher);
-	}
-      if (curr_page_watcher->pgptr == NULL)
-	{
-	  if (er_errid () == ER_PB_BAD_PAGEID)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 1);
-	    }
-
-	  /* something went wrong, return */
-	  return S_ERROR;
-	}
-    }
-
-  (void) heap_vpid_next (thread_p, hfid, curr_page_watcher->pgptr, vpid);
-
-  return ret;
-}
-
-/*
  * heap_vpid_prev () - Find previous page of heap
  *   return: NO_ERROR
  *   hfid(in): Object heap file identifier
@@ -7870,6 +7818,14 @@ heap_get_record_data_when_all_ready (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT *
  * cache_recordinfo (in/out) : DB_VALUE pointer array that caches record
  *			       information values.
  */
+static void
+heap_sampling_set_oid_from_vpid (const HFID * hfid, const VPID * vpid, OID * oid)
+{
+  oid->volid = vpid->volid;
+  oid->pageid = vpid->pageid;
+  oid->slotid = (vpid->volid == hfid->vfid.volid && vpid->pageid == hfid->hpgid) ? HEAP_HEADER_AND_CHAIN_SLOTID : -1;
+}
+
 static SCAN_CODE
 heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, bool ispeeking, bool reversed_direction, DB_VALUE ** cache_recordinfo,
@@ -7913,6 +7869,12 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 
+  if (sampling != NULL)
+    {
+      assert (!reversed_direction);
+      assert (sampling->prepared);
+    }
+
   if (OID_ISNULL (next_oid))
     {
       if (reversed_direction)
@@ -7926,6 +7888,19 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  oid.volid = vpid.volid;
 	  oid.pageid = vpid.pageid;
 	  oid.slotid = NULL_SLOTID;
+	}
+      else if (sampling != NULL)
+	{
+	  assert (sampling->picked_cursor <= sampling->slice_end);
+	  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
+	  if (sampling->picked_cursor >= sampling->slice_end)
+	    {
+	      OID_SET_NULL (next_oid);
+	      return S_END;
+	    }
+
+	  vpid = sampling->picked_vpids[sampling->picked_cursor++];
+	  heap_sampling_set_oid_from_vpid (hfid, &vpid, &oid);
 	}
       else
 	{
@@ -7976,6 +7951,21 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		}
 	      if (scan_cache->page_watcher.pgptr == NULL)
 		{
+		  if (sampling != NULL && er_errid () == ER_PB_BAD_PAGEID)
+		    {
+		      er_clear ();
+		      assert (sampling->picked_cursor <= sampling->slice_end);
+		      if (sampling->picked_cursor >= sampling->slice_end)
+			{
+			  OID_SET_NULL (next_oid);
+			  return S_END;
+			}
+
+		      vpid = sampling->picked_vpids[sampling->picked_cursor++];
+		      heap_sampling_set_oid_from_vpid (hfid, &vpid, &oid);
+		      continue;
+		    }
+
 		  if (er_errid () == ER_PB_BAD_PAGEID)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid.volid, oid.pageid,
@@ -8074,11 +8064,15 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		    {
 		      if (sampling)
 			{
-			  /* skip pages */
-			  if (heap_vpid_skip_next (thread_p, hfid, &scan_cache->page_watcher, &old_page_watcher,
-						   sampling->weight, &vpid, scan_cache) == S_ERROR)
+			  assert (sampling->picked_cursor <= sampling->slice_end);
+			  assert (sampling->picked_vpids != NULL || sampling->picked_count == 0);
+			  if (sampling->picked_cursor >= sampling->slice_end)
 			    {
-			      return S_ERROR;
+			      VPID_SET_NULL (&vpid);
+			    }
+			  else
+			    {
+			      vpid = sampling->picked_vpids[sampling->picked_cursor++];
 			    }
 			}
 		      else
@@ -8090,6 +8084,10 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		  oid.volid = vpid.volid;
 		  oid.pageid = vpid.pageid;
 		  oid.slotid = -1;
+		  if (sampling != NULL)
+		    {
+		      heap_sampling_set_oid_from_vpid (hfid, &vpid, &oid);
+		    }
 		  if (oid.pageid == NULL_PAGEID)
 		    {
 		      /* must be last page, end scanning */
@@ -19064,6 +19062,8 @@ SCAN_CODE
 heap_next_sampling (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid, RECDES * recdes,
 		    HEAP_SCANCACHE * scan_cache, int ispeeking, sampling_info * sampling)
 {
+  assert (sampling != NULL);
+  assert (sampling->prepared);
   return heap_next_internal (thread_p, hfid, class_oid, next_oid, recdes, scan_cache, ispeeking, false, NULL, sampling);
 }
 
