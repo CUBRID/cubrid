@@ -12097,7 +12097,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * existing rejections. */
   if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
     {
-      if (snl->local_cnt > 0 && snl->server_node_cnt == 1)
+      if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
 	{
 	  /* Same-server mixed source (local + remote, all on the target server). Full pushdown is
 	   * impossible (the remote server has no local table) but the CCI sink can run it: rewrite
@@ -12105,7 +12105,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	   * sub-queries (so XASL generation gathers them into aptr_list and executes them) by the
 	   * canonical mq_translate run on the SELECT subquery in pt_semantic_check (semantic_check.c).
 	   * Cross-server / multi-remote mixed sources are left to the existing rejections below
-	   * (server_node_cnt >= 2). */
+	   * (distinct_cnt >= 2). */
 	  PT_NODE *vlist;
 	  for (vlist = node->info.insert.value_clauses->info.node_list.list; vlist != NULL; vlist = vlist->next)
 	    {
@@ -12175,7 +12175,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	  server->next = NULL;
 	}
 
-      for (i = 0; i < snl->server_node_cnt; i++)
+      for (i = 0; i < snl->stored_cnt; i++)
 	{
 	  if (snl->server[i]->next)
 	    {

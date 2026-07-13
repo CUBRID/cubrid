@@ -4039,7 +4039,7 @@ typedef struct
   bool has_dblink_query;
   bool is_remote_insert_select;	/* remote-target INSERT SELECT routed to the CCI streaming sink.
 				 * Set for a local source, and kept for a same-server local+remote mixed
-				 * source (local_cnt > 0 && server_node_cnt == 1) whose remote part is
+				 * source (local_cnt > 0 && distinct_cnt == 1) whose remote part is
 				 * rewritten to a dblink scan. Cleared when the source is purely remote
 				 * (same-server @A<-@A falls back to full-pushdown) or spans other/multiple
 				 * servers (then multi-remote / local-mixed are rejected). */
