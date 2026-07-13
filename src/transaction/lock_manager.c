@@ -3618,7 +3618,7 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 		}
 	    }
 
-	  /* find or add the lockable object in the lock table (search_key was built by the caller) */
+	  /* find or add the lockable object in the lock table */
 	  (void) lk_Gl.m_obj_hash_table.find_or_insert (thread_p, search_key, res_ptr);
 	  if (res_ptr == NULL)
 	    {
@@ -5597,8 +5597,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   /* object identifier; a transaction self-lock has no OID (MVCCID printed in the switch below) */
   if (res_ptr->key.type != LOCK_RESOURCE_TRANSACTION)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID), res_ptr->key.oid.volid,
-	       res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
+      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_OID),
+	       res_ptr->key.oid.volid, res_ptr->key.oid.pageid, res_ptr->key.oid.slotid);
     }
 
   /* dump object type related information */
@@ -6503,7 +6503,6 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
 
   /* Build the TRANSACTION-typed search key directly from the MVCCID (full 64-bit, no OID packing). */
   search_key = lock_create_mvccid_search_key (mvccid);
-  assert (search_key.type == LOCK_RESOURCE_TRANSACTION);
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
@@ -6512,6 +6511,7 @@ lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK loc
       return;
     }
   /* find() leaves the resource mutex locked. */
+  assert (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && res_ptr->key.mvccid == mvccid);
 
   entry_ptr = res_ptr->holder;
   for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
@@ -6566,7 +6566,6 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
   search_key = lock_create_mvccid_search_key (mvccid);
-  assert (search_key.type == LOCK_RESOURCE_TRANSACTION);
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
@@ -6575,6 +6574,7 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
       return 0;
     }
   /* find() leaves the resource mutex locked. */
+  assert (res_ptr->key.type == LOCK_RESOURCE_TRANSACTION && res_ptr->key.mvccid == mvccid);
 
   entry_ptr = res_ptr->holder;
   for (; entry_ptr != NULL; entry_ptr = entry_ptr->next)
