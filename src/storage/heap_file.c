@@ -1262,12 +1262,14 @@ heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_p
   PGBUF_LATCH_MODE page_latch_mode;
 
   assert (latch_mode == PGBUF_LATCH_READ || latch_mode == PGBUF_LATCH_WRITE);
+  /* A live scan cache always records a real per-page latch intent (READ or WRITE).
+   * PGBUF_LATCH_INVALID only appears before start / after end, and must not reach here. */
+  assert (scan_cache == NULL
+	  || scan_cache->page_latch == PGBUF_LATCH_READ || scan_cache->page_latch == PGBUF_LATCH_WRITE);
 
-  /* scan_cache->page_latch can escalate latch_mode to WRITE: PGBUF_LATCH_WRITE or PGBUF_LATCH_INVALID
-   * force a WRITE latch on every page; PGBUF_LATCH_READ (or no scan cache) leaves latch_mode as-is. */
+  /* A scan cache with a WRITE intent escalates every page latch to WRITE. */
   page_latch_mode = latch_mode;
-  if (scan_cache != NULL
-      && (scan_cache->page_latch == PGBUF_LATCH_WRITE || scan_cache->page_latch == PGBUF_LATCH_INVALID))
+  if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {
       page_latch_mode = PGBUF_LATCH_WRITE;
     }
