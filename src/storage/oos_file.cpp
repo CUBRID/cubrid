@@ -55,6 +55,9 @@ static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header, OID &oid);
 static int
+oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid);
+static int
 oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			 OID &oid);
 static int
@@ -1180,39 +1183,15 @@ oos_insert_single_page_batch (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
       oos_insert_request &request = requests[i];
       const int src_len = static_cast<int> (request.src.size ());
       const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+      OID oid;
 
-      OOS_RECDES oos_recdes{};
-      err = oos_prepend_header (request.src, header, oos_recdes);
+      err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, request.src, header, oid);
       if (err != NO_ERROR)
 	{
-	  oos_error ("oos_prepend_header failed in oos_insert_single_page_batch");
 	  return err;
 	}
 
-      scope_exit defer_oos_recdes_free ([&]()
-      {
-	recdes_free_data_area (&oos_recdes);
-      });
-
-      PGSLOTID slotid = NULL_SLOTID;
-      int sp_status = spage_insert (thread_p, page_ptr, &oos_recdes, &slotid);
-      if (sp_status != SP_SUCCESS)
-	{
-	  oos_error ("spage_insert failed with status %d in oos_insert_single_page_batch", sp_status);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-
-      assert (slotid != NULL_SLOTID);
-
-      OID oid;
-      oid.pageid = vpid.pageid;
-      oid.slotid = slotid;
-      oid.volid = vpid.volid;
-
       *request.oid_out = oid;
-
-      oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
       oos_publish_oos_oid (thread_p, oid);
     }
 
@@ -1423,6 +1402,42 @@ oos_insert_across_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffe
 
 
 static int
+oos_insert_record_in_fixed_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, PAGE_PTR page_ptr,
+				 const VPID &vpid, oos_buffer src, const OOS_RECORD_HEADER &header, OID &oid)
+{
+  OOS_RECDES oos_recdes{};
+  int err = oos_prepend_header (src, header, oos_recdes);
+  if (err != NO_ERROR)
+    {
+      oos_error ("oos_prepend_header failed");
+      return err;
+    }
+
+  scope_exit defer_oos_recdes_free ([&]()
+  {
+    recdes_free_data_area (&oos_recdes);
+  });
+
+  PGSLOTID slotid = NULL_SLOTID;
+  int sp_status = spage_insert (thread_p, page_ptr, &oos_recdes, &slotid);
+  if (sp_status != SP_SUCCESS)
+    {
+      oos_error ("spage_insert failed with status %d", sp_status);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  assert (slotid != NULL_SLOTID);
+
+  oid.pageid = vpid.pageid;
+  oid.slotid = slotid;
+  oid.volid = vpid.volid;
+
+  oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
+  return NO_ERROR;
+}
+
+static int
 oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src,
 			const OOS_RECORD_HEADER &header,
 			OID &oid)
@@ -1438,49 +1453,17 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
   auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
-
-  OOS_RECDES oos_recdes{};
-  {
-    err = oos_prepend_header (src, header, oos_recdes);
-    if (err != NO_ERROR)
-      {
-	oos_error ("oos_prepend_header failed");
-	assert_release_error (er_errid () != NO_ERROR);
-	assert (false);
-	return err;
-      }
-
-    // oos_prepend_header allocates data area for oos_recdes
-    // therefore, we need to free it after use
-    scope_exit defer_oos_recdes_free ([&]()
+  PAGE_PTR page_ptr = auto_page_ptr.get ();
+  err = oos_insert_record_in_fixed_page (thread_p, oos_vfid, page_ptr, vpid, src, header, oid);
+  if (err != NO_ERROR)
     {
-      recdes_free_data_area (&oos_recdes);
-    });
+      return err;
+    }
 
-    PGSLOTID slotid = NULL_SLOTID;
-    PAGE_PTR page_ptr = auto_page_ptr.get();
-    int sp_status = spage_insert (thread_p, page_ptr, &oos_recdes, &slotid);
-    if (sp_status != SP_SUCCESS)
-      {
-	oos_error ("spage_insert failed with status %d", sp_status);
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	return ER_GENERIC_ERROR;
-      }
-
-    assert (slotid != NULL_SLOTID);
-
-    oid.pageid = vpid.pageid;
-    oid.slotid = slotid;
-    oid.volid = vpid.volid;
-
-    oos_log_insert_physical (thread_p, page_ptr, const_cast<VFID *> (&oos_vfid), &oid, &oos_recdes);
-
-    /* Update bestspace cache after insert — use spage_max_space_for_new_record
-     * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
-    int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
-    (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
-  }
-  assert (oos_recdes.data == nullptr); // should be freed by scope_exit
+  /* Update bestspace cache after insert — use spage_max_space_for_new_record
+   * for consistency with the lookup check in oos_stats_find_page_in_bestspace */
+  int freespace_after = spage_max_space_for_new_record (thread_p, page_ptr);
+  (void) oos_stats_add_bestspace (thread_p, &oos_vfid, &vpid, freespace_after);
 
   return NO_ERROR;
 }

@@ -414,14 +414,14 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
   OR_BUF buf;
   int rc = NO_ERROR;
 
-  /* Keep the OID well-defined before any er_set: Case 1 reports it before it is read. */
+  /* Keep the OOS OID well-defined for corruption errors raised before it is read. */
   OID_SET_NULL (oos_oid);
   *oos_len = 0;
 
   buf.ptr = (char *) inline_ptr;
   buf.endptr = recdes->data + recdes->length;
 
-  /* Case 1: the OOS-marked variable region must start with [OID | bigint]. */
+  /* The OOS-marked variable region must start with [OID | bigint]. */
   if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
@@ -431,8 +431,7 @@ heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid,
   or_get_oid (&buf, oos_oid);
   *oos_len = or_get_bigint (&buf, &rc);
 
-  /* Case 2: bigint read failed or the forwarder OID is NULL.
-   * Case 3: full length out of the (0, DB_MAX_STRING_LENGTH] range a stored value can hold. */
+  /* Reject an unreadable length, a NULL OOS OID, or a length outside the stored-value range. */
   if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
@@ -480,27 +479,27 @@ heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 
 /*
  * heap_oos_read_grouped_payloads () - Prefetch requested OOS-marked attributes of one record
- *   through a single grouped oos_read_many() call when requested_oos_count >= 2.
+ *   through a single grouped oos_read_many() call when at least two requested attributes are OOS-backed.
  *
  *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
- *   requested_oos_count(out): exact count of requested attributes that have an OOS inline reference
- *              in this record. The caller dispatches explicitly on 0, 1, or >= 2.
- *   oos_payloads(out): resized and populated only when requested_oos_count >= 2. oos_payloads[i].data
+ *   grouped_applied(out): true when grouped Resolve was selected; false when the caller must use scalar Resolve.
+ *   oos_payloads(out): resized and populated only when grouped_applied is true. oos_payloads[i].data
  *              != NULL holds the raw disk bytes of an OOS-resolved attribute; oos_payloads[i].data ==
  *              NULL means "not OOS here: read per-attribute". Always release with
  *              heap_oos_free_grouped_payloads(), including on error (partial buffers may be attached).
  */
 int
 heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-				std::vector<RECDES> &oos_payloads, int *requested_oos_count)
+				std::vector<RECDES> &oos_payloads, bool *grouped_applied)
 {
   const RECDES empty_payload = { -1, -1, REC_UNKNOWN, NULL };
   std::vector<oos_read_request> requests;
+  int requested_oos_count = 0;
   int error = NO_ERROR;
   int i;
 
-  assert (requested_oos_count != NULL);
-  *requested_oos_count = 0;
+  assert (grouped_applied != NULL);
+  *grouped_applied = false;
 
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
@@ -511,25 +510,26 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
     {
       if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
 	{
-	  (*requested_oos_count)++;
+	  requested_oos_count++;
 	}
     }
 
-  if (*requested_oos_count < 2)
+  if (requested_oos_count < 2)
     {
       return NO_ERROR;
     }
+  *grouped_applied = true;
 
   try
     {
       oos_payloads.resize ((std::size_t) attr_info->num_values, empty_payload);
-      requests.reserve ((std::size_t) *requested_oos_count);
+      requests.reserve ((std::size_t) requested_oos_count);
     }
   catch (std::bad_alloc &)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      (size_t) attr_info->num_values * sizeof (RECDES)
-	      + (size_t) *requested_oos_count * sizeof (oos_read_request));
+	      + (size_t) requested_oos_count * sizeof (oos_read_request));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 

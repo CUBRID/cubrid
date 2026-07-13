@@ -50,7 +50,7 @@ namespace
    * synthetic inline-OOS payload region. `inline_len` is the byte length of the
    * variable region the reader sees (recdes->length); when < 16 the [OID|bigint]
    * header is treated as truncated. oos_owned_buffer is pre-poisoned to true so the
-   * Case 1-4 contract (reset to false) is actually exercised. */
+   * error contract (reset to false) is actually exercised. */
   int probe_oos_inline (char *payload, int inline_len, bool *oos_owned_buffer)
   {
     RECDES recdes{};
@@ -778,7 +778,7 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
   constexpr int kInlineHeaderSize = OR_OID_SIZE + OR_BIGINT_SIZE;	// 16 bytes
   alignas (MAX_ALIGNMENT) char payload[64];
 
-  // ---- Case 1: variable region shorter than the [OID|bigint] header ----
+  // Variable region shorter than the [OID|bigint] header.
   {
     bool owned = false;
     int err = probe_oos_inline (payload, kInlineHeaderSize - 1, &owned);
@@ -787,7 +787,7 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
     EXPECT_FALSE (owned);
   }
 
-  // ---- Case 2: full 16-byte header but the forwarder OID is NULL ----
+  // Full 16-byte header with a NULL OOS OID.
   {
     OR_BUF ob;
     or_init (&ob, payload, sizeof (payload));
@@ -801,7 +801,7 @@ TEST (OosTest, HeapAttrvalueReadOosInlineCorruptHeader)
     EXPECT_FALSE (owned);
   }
 
-  // ---- Case 3: valid OID but a length outside the (0, DB_MAX_STRING_LENGTH] range ----
+  // Valid OOS OID with a length outside the (0, DB_MAX_STRING_LENGTH] range.
   const DB_BIGINT bad_lengths[] = { 0, -1, (DB_BIGINT) DB_MAX_STRING_LENGTH + 1, (DB_BIGINT) INT_MAX + 1 };
   for (DB_BIGINT bad_len : bad_lengths)
     {

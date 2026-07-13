@@ -10543,10 +10543,8 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
  *   return: NO_ERROR, or an error code when the inline header / OOS page is
  *           corrupted or the payload buffer cannot be obtained. On every error
  *           path raw->data is set to NULL so the caller never reads stale data.
- *   oos_owned_buffer(out): true iff raw->data must be cleaned up by the caller
- *           (success, or Case 5 where it is freed here but the caller's
- *           NULL-tolerant free is a harmless no-op). false on Cases 1-4 where
- *           neither the scratch nor the heap allocator was engaged.
+ *   oos_owned_buffer(out): true iff Resolve succeeds and raw->data contains transient OOS data.
+ *           The caller must copy it and free it when it is not backed by oos_scratch. false on error.
  *
  *   On success raw->data is either the caller scratch (when oos_len fits) or a
  *   heap-allocated buffer the caller must free via recdes_free_data_area.
@@ -10560,13 +10558,14 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
+  *oos_owned_buffer = false;
+
   /* raw->data still points at the heap record's OOS inline reference; parse it before attaching
    * any scratch/heap buffer to raw. */
   error = heap_oos_parse_inline_ref (recdes, raw->data, &oos_oid, &oos_len);
   if (error != NO_ERROR)
     {
       raw->data = NULL;
-      *oos_owned_buffer = false;
       return error;
     }
 
@@ -10579,17 +10578,15 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
       raw->data = oos_scratch;
       raw->area_size = oos_scratch_size;
     }
-  /* Case 4: heap allocation failed. recdes_allocate_data_area does not er_set itself. */
+  /* recdes_allocate_data_area does not set an error itself. */
   else if (recdes_allocate_data_area (raw, (int) oos_len) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
       raw->data = NULL;
-      *oos_owned_buffer = false;
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  /* Case 5: oos_read failed. It has already er_set; just propagate its code.
-   * raw->data is a live buffer here, so free it (scratch is stack-backed) and NULL it. */
+  /* oos_read has already set an error. Release any heap buffer here; scratch is stack-backed. */
   error = oos_read (thread_p, oos_oid, oos_buffer (raw->data, (std::size_t) oos_len));
   if (error != NO_ERROR)
     {
@@ -10599,7 +10596,6 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
 	  recdes_free_data_area (raw);
 	}
       raw->data = NULL;
-      *oos_owned_buffer = true;
       return error;
     }
 
@@ -10617,9 +10613,9 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
  *   attr_info(in): The attribute information structure
  *   attrepr(in): The attribute structure
  *   raw(out): Disk value pointer + length
- *   oos_owned_buffer(out): true iff this attribute is OOS. Caller then owns
- *                          raw->data, must use COPY in data_readval, and must
- *                          recdes_free_data_area unless raw->data == oos_scratch.
+ *   oos_owned_buffer(out): true iff successful OOS Resolve produced transient raw data.
+ *                          Caller must use COPY in data_readval and call recdes_free_data_area
+ *                          unless raw->data == oos_scratch.
  *   oos_scratch / oos_scratch_size(in): optional fast-path buffer; NULL forces heap alloc.
  */
 static int
@@ -10650,7 +10646,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      /* The helper owns oos_owned_buffer from here: false on Cases 1-4, true on success / Case 5. */
+      /* The helper reports transient OOS data only after a successful Resolve. */
       return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
     }
   else
@@ -10716,7 +10712,7 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
       pr_type = pr_type_from_id (attrepr->type);
       if (pr_type)
 	{
-	  /* OOS-owned buffer => COPY (PEEK dangles once caller frees raw). */
+	  /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
 	  rv = pr_type->data_readval (&buf, &value->dbvalue, attrepr->domain, raw->length, oos_owned_buffer, NULL, 0);
 	}
       value->state = HEAP_READ_ATTRVALUE;
@@ -10789,13 +10785,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 						 IO_MAX_PAGE_SIZE);
 	  if (error != NO_ERROR)
 	    {
-	      /* Contract: only oos_owned_buffer (Case 5) leaves a buffer to reclaim; the free is
-	       * NULL-tolerant so it is a no-op on Cases 1-4. Do not fall through to transform,
-	       * which would otherwise turn the corruption into a silent NULL dbvalue. */
-	      if (oos_owned_buffer && raw.data != oos_scratch)
-		{
-		  recdes_free_data_area (&raw);
-		}
 	      return error;
 	    }
 	}
@@ -10871,21 +10860,20 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
 					       HEAP_CACHE_ATTRINFO * attr_info)
 {
   std::vector < RECDES > oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
-  int requested_oos_count = 0;
+  bool grouped_applied = false;
   int ret;
 
-  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_payloads, &requested_oos_count);
+  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_payloads, &grouped_applied);
   if (ret != NO_ERROR)
     {
       heap_oos_free_grouped_payloads (oos_payloads);
       return ret;
     }
 
-  if (requested_oos_count <= 1)	/* 0 or 1 */
+  if (!grouped_applied)
     {
       return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
     }
-  assert (requested_oos_count >= 2);
 
   ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads);
   heap_oos_free_grouped_payloads (oos_payloads);
@@ -10954,11 +10942,6 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 						     IO_MAX_PAGE_SIZE);
 	      if (error != NO_ERROR)
 		{
-		  /* value is already db_make_null at entry; only Case 5 leaves a buffer (NULL-tolerant free). */
-		  if (oos_owned_buffer && raw.data != oos_scratch)
-		    {
-		      recdes_free_data_area (&raw);
-		    }
 		  return error;
 		}
 	    }
@@ -10975,7 +10958,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, raw.data, raw.length);
-      /* OOS-owned buffer => COPY (PEEK would dangle once we free it below). */
+      /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
       att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
     }
 
@@ -28118,9 +28101,8 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 /*
  * bridge_heap_attrvalue_read_oos_inline () - Unit-test seam exposing the static
- *   inline-OOS reader so unit_tests/oos can drive the corrupt-header paths
- *   (Cases 1-3) and assert the error code + cleanup contract. See
- *   unit_tests/oos/test_oos.cpp.
+ *   inline-OOS reader so unit_tests/oos can drive corrupt-header paths and
+ *   assert the error code + cleanup contract. See unit_tests/oos/test_oos.cpp.
  */
 int
 bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,

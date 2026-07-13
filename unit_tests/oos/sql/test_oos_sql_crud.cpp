@@ -216,9 +216,8 @@ TEST_F (OosSqlCrud, Cbrd27006MixedSingleChunkAndMultiChunkRow)
 
 }
 
-// CBRD-27006 follow-up: lazy OOS Resolve is batched through oos_read_many() only
-// when at least two requested attributes are OOS values. Non-OOS projections and
-// single-OOS projections must stay on the scalar path.
+// Lazy OOS Resolve uses oos_read_many() only when at least two requested attributes
+// are OOS-backed. Non-OOS and single-OOS projections stay on the scalar path.
 TEST_F (OosSqlCrud, Cbrd27006ReadDispatchBatchesOnlyMultiOosProjections)
 {
   int rc;
