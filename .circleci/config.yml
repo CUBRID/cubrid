@@ -330,7 +330,7 @@ jobs:
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
             EOF
-            # ccache save: develop 브랜치 빌드에서만 write -> 단일 공유 warm 캐시 (그 외 브랜치/PR은 restore-only; 5G 저장·비-develop 오염 방지)
+            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
             if [ "$CIRCLE_BRANCH" = "develop" ]; then
             cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
@@ -372,7 +372,7 @@ jobs:
                         scl enable devtoolset-8 -- /entrypoint.sh build -m debug
                         ccache -s
             EOF
-            # ccache save: develop 브랜치 빌드에서만 write -> 단일 공유 warm 캐시 (그 외 브랜치/PR은 restore-only; 5G 저장·비-develop 오염 방지)
+            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
             if [ "$CIRCLE_BRANCH" = "develop" ]; then
             cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
