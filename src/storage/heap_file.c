@@ -12173,6 +12173,33 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
   return header_size;
 }
 
+#define HEAP_OOS_MIN_RECS_PER_PAGE 4
+
+/*
+ * heap_oos_inline_target_size () - Return the maximum inline record target used by OOS demotion
+ *
+ * Compute the PostgreSQL-style physical target: four aligned records and their slots must fit in the usable heap page
+ * capacity. Heap unfill space is a page-selection policy and must not affect the OOS trigger or demotion target.
+ */
+int
+heap_oos_inline_target_size (void)
+{
+  const int page_capacity = heap_nonheader_page_capacity ();
+  int target_size;
+  int packed_size;
+  int next_packed_size;
+
+  target_size = (page_capacity - HEAP_OOS_MIN_RECS_PER_PAGE * SPAGE_SLOT_SIZE) / HEAP_OOS_MIN_RECS_PER_PAGE;
+  target_size = DB_ALIGN_BELOW (target_size, HEAP_MAX_ALIGN);
+
+  packed_size = HEAP_OOS_MIN_RECS_PER_PAGE * ((int) DB_ALIGN (target_size, HEAP_MAX_ALIGN) + SPAGE_SLOT_SIZE);
+  next_packed_size = HEAP_OOS_MIN_RECS_PER_PAGE * ((int) DB_ALIGN (target_size + 1, HEAP_MAX_ALIGN) + SPAGE_SLOT_SIZE);
+  assert (packed_size <= page_capacity);
+  assert (next_packed_size > page_capacity);
+
+  return target_size;
+}
+
 /*
  * heap_attrinfo_determine_disk_layout () - Determine the disk layout needed to transform the object
  *                        represented by attr_info
@@ -12199,6 +12226,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 // *INDENT-ON*
   int payload_size, header_size;
   int mvcc_extra;
+  const int oos_inline_target_size = heap_oos_inline_target_size ();
   int i;
 
   *has_oos = false;
@@ -12209,9 +12237,9 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
 
   /* TODO: change the statistics */
-  /* push the largest variable column to OOS one by one until the heap record
-   * fits within DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column */
-  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
+  /* Push the largest variable column to OOS one by one until at least four resulting heap records can fit on a page
+   * (PG TOAST style), instead of pushing every eligible column. */
+  if (header_size + payload_size + mvcc_extra > oos_inline_target_size)
     {
       // *INDENT-OFF*
       std::vector<heap_oos_demote_candidate> oos_candidates;
@@ -12242,7 +12270,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       for (auto& cand : oos_candidates)
 	// *INDENT-ON*
       {
-	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
+	if (header_size + payload_size + mvcc_extra <= oos_inline_target_size)
 	  {
 	    break;
 	  }
