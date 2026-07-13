@@ -26855,7 +26855,10 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
 	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
 	  {
-	    /* Already committed or our own insert -- treat as not yet visible. */
+	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
+	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
+	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	    *stop = true;
 	    return NO_ERROR;
 	  }
 
