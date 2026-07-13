@@ -10970,6 +10970,11 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	  goto error;
 	}
 
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
