@@ -314,8 +314,8 @@ jobs:
                   - checkout
                   - restore_cache:
                       keys:
-                        - ccache-global-v1-{{ checksum "CMakeLists.txt" }}
-                        - ccache-global-v1
+                        - ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
+                        - ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
                   - run:
                       name: Submodules
                       command: |
@@ -329,10 +329,17 @@ jobs:
                         ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build
                         ccache -s
+            EOF
+            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
+            if [ "$CIRCLE_BRANCH" = "develop" ]; then
+            cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
-                      key: ccache-global-v1-{{ checksum "CMakeLists.txt" }}
+                      key: ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
                       paths:
                         - /home/.ccache
+            EOF
+            fi
+            cat \<<EOF >> .circleci/continue.yml
                   - collect-build-logs
 
               build_debug:
@@ -349,8 +356,8 @@ jobs:
                   - checkout
                   - restore_cache:
                       keys:
-                        - ccache-debug-v1-{{ checksum "CMakeLists.txt" }}
-                        - ccache-debug-v1
+                        - ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
+                        - ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
                   - run:
                       name: Submodules
                       command: |
@@ -364,10 +371,17 @@ jobs:
                         ccache -z
                         scl enable devtoolset-8 -- /entrypoint.sh build -m debug
                         ccache -s
+            EOF
+            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
+            if [ "$CIRCLE_BRANCH" = "develop" ]; then
+            cat \<<EOF >> .circleci/continue.yml
                   - save_cache:
-                      key: ccache-debug-v1-{{ checksum "CMakeLists.txt" }}
+                      key: ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
                       paths:
                         - /home/.ccache
+            EOF
+            fi
+            cat \<<EOF >> .circleci/continue.yml
                   - collect-build-logs
                   - run:
                       name: Stop after build logs on default trigger
