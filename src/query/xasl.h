@@ -421,6 +421,14 @@ struct insert_proc_node
   int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
+  /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
+  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
+  char *remote_url;		/* DBLink connection URL */
+  char *remote_user;		/* DBLink connection user */
+  char *remote_pwd;		/* DBLink connection password */
+  char *remote_table_name;	/* remote target table name */
+  char **remote_attr_names;	/* remote target column names (array) */
+  int remote_num_attrs;		/* length of remote_attr_names */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -985,6 +993,13 @@ struct groupby_stat
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
+  int parallel_num;
+  UINT64 px_min_groupby_time;
+  UINT64 px_max_groupby_time;
+  UINT64 px_min_groupby_pages;
+  UINT64 px_max_groupby_pages;
+  UINT64 px_min_groupby_ioreads;
+  UINT64 px_max_groupby_ioreads;
 };
 
 struct analytic_stat
@@ -995,6 +1010,13 @@ struct analytic_stat
   int rows;
   bool analytic_stopkey;
   bool analytic_sort;
+  int parallel_num;
+  UINT64 px_min_analytic_time;
+  UINT64 px_max_analytic_time;
+  UINT64 px_min_analytic_pages;
+  UINT64 px_max_analytic_pages;
+  UINT64 px_min_analytic_ioreads;
+  UINT64 px_max_analytic_ioreads;
   struct analytic_stat *next;
 };
 
@@ -1094,6 +1116,10 @@ struct xasl_node
   VAL_LIST *single_tuple;	/* single tuple result */
 
   int is_single_tuple;		/* single tuple subquery? */
+
+  /* predicate-operand regu owning this uncorrelated scalar subquery (NULL otherwise);
+   * gates the precompute/inject/checker-relax path. */
+  REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */

@@ -30,27 +30,21 @@
 
 package com.cubrid.plcsql.compiler.ast;
 
-import java.util.List;
+import com.cubrid.plcsql.compiler.visitor.AstVisitor;
 import org.antlr.v4.runtime.ParserRuleContext;
 
-public abstract class StmtOpenFor extends Stmt {
+public class StmtOpenForDynamic extends StmtOpenFor {
 
-    public final boolean dynamic;
-    public final ExprId id;
-    public final Expr sql;
-    public final List<? extends Expr> usedExprList;
+    @Override
+    public <R> R accept(AstVisitor<R> visitor) {
+        return visitor.visitStmtOpenForDynamic(this);
+    }
 
-    public StmtOpenFor(
+    public StmtOpenForDynamic(
             ParserRuleContext ctx,
-            boolean dynamic,
             ExprId id,
-            Expr sql,
-            List<? extends Expr> usedExprList) {
-        super(ctx);
-
-        this.dynamic = dynamic;
-        this.id = id;
-        this.sql = sql;
-        this.usedExprList = usedExprList;
+            Expr dynamicSql,
+            NodeList<? extends Expr> usedExprList) {
+        super(ctx, true, id, dynamicSql, (usedExprList == null) ? null : usedExprList.nodes);
     }
 }

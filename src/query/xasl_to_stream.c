@@ -2902,6 +2902,15 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
 
   ptr = or_pack_int (ptr, xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (NULL -> offset 0);
+   * source-pointer dedup re-aliases it to the predicate regu on unpack. */
+  offset = xts_save_regu_variable (xasl->precomp_owner_regu);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   ptr = or_pack_int (ptr, xasl->option);
 
   offset = xts_save_outptr_list (xasl->outptr_list);
@@ -4240,6 +4249,49 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  /* remote INSERT SELECT fields */
+  ptr = or_pack_int (ptr, (int) insert_info->is_remote_insert);
+
+  offset = xts_save_string (insert_info->remote_url);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (insert_info->remote_user);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (insert_info->remote_pwd);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  offset = xts_save_string (insert_info->remote_table_name);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
+  ptr = or_pack_int (ptr, insert_info->remote_num_attrs);
+
+  for (i = 0; i < insert_info->remote_num_attrs; i++)
+    {
+      offset = xts_save_string (insert_info->remote_attr_names[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
 
   return ptr;
 }
@@ -6000,6 +6052,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
+  size += PTR_SIZE;		/* precomp_owner_regu offset */
+
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
   for (access_spec = xasl->spec_list; access_spec; access_spec = access_spec->next)
     {
@@ -6502,7 +6556,15 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* pruning_type */
 	   + OR_INT_SIZE	/* num_val_lists */
 	   + PTR_SIZE		/* obj_oid */
-	   + (insert_info->num_val_lists * PTR_SIZE));	/* valptr_lists */
+	   + (insert_info->num_val_lists * PTR_SIZE)	/* valptr_lists */
+	   /* remote INSERT SELECT fields */
+	   + OR_INT_SIZE	/* is_remote_insert */
+	   + PTR_SIZE		/* remote_url */
+	   + PTR_SIZE		/* remote_user */
+	   + PTR_SIZE		/* remote_pwd */
+	   + PTR_SIZE		/* remote_table_name */
+	   + OR_INT_SIZE	/* remote_num_attrs */
+	   + (insert_info->remote_num_attrs * PTR_SIZE));	/* remote_attr_names */
 
   return size;
 }
