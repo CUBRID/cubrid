@@ -2134,6 +2134,18 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 	  goto end;
 	}
     }
+  if (load_args->provider != NULL && load_args->report_overflow_key_count == 0
+      && !VFID_ISNULL (&load_args->btid->ovfid))
+    {
+      /*
+       * V3-7 pre-creates the overflow key file for parallel builds with >= 2 shards even when no shard ends up
+       * storing an overflow key.  Clear the reference and schedule the file for destruction here, before the
+       * root header below is built, so the WAL-published root copy is the only mutation to the sticky root page
+       * and never carries a dangling VFID through media recovery.
+       */
+      file_postpone_destroy (thread_p, &load_args->btid->ovfid);
+      VFID_SET_NULL (&load_args->btid->ovfid);
+    }
 
   /* Retrieve the last non-leaf page (the current one); guaranteed to exist */
   /* Fetch the current page */
@@ -2731,8 +2743,13 @@ bt_load_return_page (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, const
 {
   if (VFID_EQ (vfid, &provider->main_vfid) && VPID_EQ (vpid, &provider->root_vpid))
     {
-      provider->consumed_pages++;
-      return NO_ERROR;
+      /*
+       * The sticky root page must never be handed back to the pool for deallocation; if it is, a double
+       * allocation has aliased a pool span with the root VPID.  Surface this loudly instead of quietly treating
+       * it as an already-consumed page, while still refusing to deallocate the root itself.
+       */
+      assert (false);
+      return ER_FAILED;
     }
 
   int error = file_dealloc (thread_p, vfid, vpid, file_type);
@@ -2815,7 +2832,7 @@ bt_load_assert_ledger_has_unique_vpids (BT_LOAD_PROVIDER * provider)
       for (int i = 0; i < entry->n; i++)
 	{
 	  /* A file may allocate pages on extension volumes; only the VPID itself must be valid. */
-	  assert (!VPID_ISNULL (&entry->vpids[i]));
+	  assert (entry->vpids[i].volid != NULL_VOLID && entry->vpids[i].pageid != NULL_PAGEID);
 	}
       memcpy (&vpids[offset], entry->vpids, (size_t) entry->n * sizeof (*vpids));
       offset += entry->n;
@@ -4923,33 +4940,6 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
       return ER_FAILED;
     }
   main_load_args->report_overflow_key_count = overflow_key_count;
-
-  if (overflow_key_count == 0 && !VFID_ISNULL (&main_load_args->btid->ovfid))
-    {
-      VPID root_vpid;
-      PAGE_PTR root_page;
-      BTREE_ROOT_HEADER *root_header;
-      btree_get_root_vpid_from_btid (thread_p, main_load_args->btid->sys_btid, &root_vpid);
-      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (root_page == NULL)
-	{
-	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-	}
-      root_header = btree_get_root_header (thread_p, root_page);
-      if (root_header == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, root_page);
-	  return ER_FAILED;
-	}
-      VFID_SET_NULL (&root_header->ovfid);
-      error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, root_page, true);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      file_postpone_destroy (thread_p, &main_load_args->btid->ovfid);
-      VFID_SET_NULL (&main_load_args->btid->ovfid);
-    }
   return NO_ERROR;
 }
 #if defined(CUBRID_DEBUG)
