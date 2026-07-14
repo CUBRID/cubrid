@@ -1669,11 +1669,10 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
  * dblink_dml_rollback () - Rollback remote transaction immediately on error.
  *   state(in) : connection handle to rollback
  *
- * Note: Called from error paths in qexec_execute_remote_insert_select()/
- *   qexec_execute_remote_delete_subquery() to prevent partial writes. Rollback is best-effort on
- *   the remote connection; if it fails, the conn remains in the dblink pool and
- *   qmgr_check_dblink_trans() will attempt remote ROLLBACK again at local transaction end
- *   (idempotent for already-rolled-back remote transactions).
+ * Note: Called from qexec_execute_remote_dml_sink()'s error path to prevent partial writes.
+ *   Rollback is best-effort on the remote connection; if it fails, the conn remains in the
+ *   dblink pool and qmgr_check_dblink_trans() will attempt remote ROLLBACK again at local
+ *   transaction end (idempotent for already-rolled-back remote transactions).
  */
 void
 dblink_dml_rollback (DBLINK_DML_STATE * state)

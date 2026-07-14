@@ -555,7 +555,12 @@ static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * b
 static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
-static int qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, INSERT_PROC_NODE * insert,
+					     int val_no);
+static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** bindv,
+					    bool * skip_row);
+static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
@@ -12450,45 +12455,159 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 }
 
 /*
- * qexec_execute_remote_insert_select () - Stream SELECT results to a remote table via CCI.
- *   return: NO_ERROR or ER_FAILED
- *   xasl(in)       : XASL Tree block (INSERT_PROC with sink.is_remote set)
- *   xasl_state(in) : XASL state
- *
- * Note: The aptr (SELECT) has already been executed by qexec_execute_insert.
- *       This function opens the local scan, streams rows to the remote table
- *       via CCI bind/execute, and accumulates affected rows in list_id->tuple_cnt.
+ * qexec_collect_remote_insert_vals () - Collect the leading val_no (visible) column values for the
+ *   scan's current row into insert->vals, for one row of the remote INSERT SELECT sink.
+ *   return: NO_ERROR on success, ER_FAILED if the scan row is malformed (asserted, should not happen)
+ *   s_id(in)       : scan id positioned at the current row
+ *   xasl_state(in) : XASL state, for qexec_failure_line on error
+ *   insert(in/out) : insert->vals[0..val_no) is filled in
+ *   val_no(in)     : number of leading (visible) columns to collect
  */
 static int
-qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, INSERT_PROC_NODE * insert, int val_no)
 {
-  INSERT_PROC_NODE *insert = &xasl->proc.insert;
+  QPROC_DB_VALUE_LIST vallist;
+  int k;
+
+  for (k = 0, vallist = s_id->val_list->valp; k < val_no && vallist != NULL; k++, vallist = vallist->next)
+    {
+      if (vallist->val == NULL)
+	{
+	  assert (0);
+	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+      insert->vals[k] = vallist->val;
+    }
+
+  /* verify we collected the leading val_no (visible) columns. Trailing hidden columns added for
+   * ORDER BY / GROUP BY keys not in the select list may remain in vallist and are intentionally
+   * ignored (they are not part of the remote INSERT), matching the canonical local INSERT path. */
+  if (k != val_no)
+    {
+      assert (0);
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_collect_remote_delete_key () - Collect the single WHERE-key value for the scan's current row,
+ *   for one row of the remote DELETE local-subquery sink.
+ *   return: NO_ERROR on success (bindv[0] set, or skip_row set for a no-op row), ER_FAILED if the scan
+ *           row is malformed (asserted, should not happen)
+ *   s_id(in)      : scan id positioned at the current row
+ *   xasl_state(in): XASL state, for qexec_failure_line on error
+ *   bindv(out)    : bindv[0] set to the key value to push, unless skip_row is set
+ *   skip_row(out) : set to true when the key is NULL -- the caller must skip this row (DELETE WHERE
+ *                   key op NULL is a no-op) without touching bindv
+ */
+static int
+qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** bindv, bool * skip_row)
+{
+  QPROC_DB_VALUE_LIST vallist;
+
+  *skip_row = false;
+
+  /* take the leading (visible) column; XASL generation forces a single-column subquery
+   * (pt_length_of_select_list EXCLUDE_HIDDEN_COLUMNS == 1), so any trailing hidden column is ignored. */
+  vallist = s_id->val_list->valp;
+  if (vallist == NULL || vallist->val == NULL)
+    {
+      assert (0);
+      qexec_failure_line (__LINE__, xasl_state);
+      return ER_FAILED;
+    }
+  bindv[0] = vallist->val;
+
+  /* A NULL value never matches in IN / = ANY or a scalar comparison, so it deletes nothing; skip it
+   * (DELETE WHERE key op NULL is a no-op) rather than binding NULL, which the row executor rejects. */
+  if (DB_IS_NULL (bindv[0]))
+    {
+      *skip_row = true;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_execute_remote_dml_sink () - Push local rows to a remote table via CCI: either streaming a local
+ *   SELECT into a remote INSERT, or pushing one remote DELETE per value from a local WHERE subquery.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : XASL Tree block (INSERT_PROC or DELETE_PROC with sink.is_remote set, per kind)
+ *   xasl_state(in) : XASL state
+ *   kind(in)       : DBLINK_DML_INSERT or DBLINK_DML_DELETE
+ *
+ * Note: The aptr producing xasl->val_list has already been executed and xasl->list_id set up by the
+ *       caller (qexec_execute_insert directly; qexec_execute_remote_delete_subquery for DELETE, since
+ *       the local subquery there is not the generic local-DELETE aptr path). This function opens the
+ *       remote connection, opens the local scan, streams rows to the remote table via CCI bind/execute,
+ *       and accumulates affected rows in list_id->tuple_cnt. Only the per-row value collection differs
+ *       by kind: INSERT collects the leading num_vals (visible) columns positionally; DELETE collects a
+ *       single WHERE-key value and skips (no-op) a NULL key rather than binding it.
+ */
+static int
+qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, DBLINK_DML_KIND kind)
+{
+  REMOTE_DML_SINK *sink;
   ACCESS_SPEC_TYPE *specp = xasl->spec_list;
   SCAN_CODE xb_scan, ls_scan;
   SCAN_ID *s_id = NULL;
-  QPROC_DB_VALUE_LIST vallist;
-  int k, val_no;
+  DB_VALUE *bindv[1];
+  int val_no = 0, row_affected;
+  char **attr_names = NULL;
+  int num_attrs = 0;
+  const char *key_col = NULL, *op = NULL;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
 
   assert (specp != NULL);
-  assert (insert->sink.is_remote);
 
-  val_no = insert->num_vals;
+  /* switch (not if/kind==INSERT-else) + default so a future DBLINK_DML_UPDATE that forgets to add a
+   * case here fails with a clear error instead of silently taking the wrong branch. */
+  switch (kind)
+    {
+    case DBLINK_DML_INSERT:
+      {
+	INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
-  /* stx_build_insert_proc() (server-side XASL unpack) always allocates insert->vals when
-   * num_vals > 0, so it is non-NULL on this path. */
-  assert (val_no == 0 || insert->vals != NULL);
+	sink = &insert->sink;
+	attr_names = insert->remote_attr_names;
+	num_attrs = insert->remote_num_attrs;
+	val_no = insert->num_vals;
 
-  /* open remote connection and prepare INSERT statement */
-  if (dblink_dml_open (thread_p, DBLINK_DML_INSERT, insert->sink.url, insert->sink.user, insert->sink.pwd,
-		       insert->sink.table_name, insert->remote_attr_names, insert->remote_num_attrs, val_no,
-		       NULL, NULL, &dblink_state) != NO_ERROR)
+	/* stx_build_insert_proc() (server-side XASL unpack) always allocates insert->vals when
+	 * num_vals > 0, so it is non-NULL on this path. */
+	assert (val_no == 0 || insert->vals != NULL);
+	break;
+      }
+    case DBLINK_DML_DELETE:
+      {
+	DELETE_PROC_NODE *del = &xasl->proc.delete_;
+
+	sink = &del->sink;
+	key_col = del->remote_key_col;
+	op = del->remote_op;
+	break;
+      }
+    default:
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  assert (sink->is_remote);
+
+  /* open remote connection and prepare the INSERT/DELETE statement */
+  if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
+		       val_no, key_col, op, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
     }
 
-  /* open local scan on SELECT result */
+  /* open local scan on the SELECT / WHERE-subquery result */
   if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
 		       specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
 		       NULL, xasl) != NO_ERROR)
@@ -12497,46 +12616,66 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       goto exit_on_error;
     }
 
-  /* stream rows to remote */
+  /* stream rows to remote (DELETE: 0 rows -> loop runs 0 times -> remote unchanged, FR-4) */
   while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
     {
       s_id = &xasl->curr_spec->s_id;
 
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
-	  /* collect column values from scan */
-	  for (k = 0, vallist = s_id->val_list->valp; k < val_no && vallist != NULL; k++, vallist = vallist->next)
+	  switch (kind)
 	    {
-	      if (vallist->val == NULL)
-		{
-		  assert (0);
-		  qexec_failure_line (__LINE__, xasl_state);
-		  goto exit_on_error;
-		}
-	      insert->vals[k] = vallist->val;
-	    }
+	    case DBLINK_DML_INSERT:
+	      {
+		INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
-	  /* verify we collected the leading val_no (visible) columns. Trailing hidden columns added for
-	   * ORDER BY / GROUP BY keys not in the select list may remain in vallist and are intentionally
-	   * ignored (they are not part of the remote INSERT), matching the canonical local INSERT path. */
-	  if (k != val_no)
-	    {
-	      assert (0);
+		if (qexec_collect_remote_insert_vals (s_id, xasl_state, insert, val_no) != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+
+		/* affected_rows is not read here: a positional INSERT row is expected to affect exactly one
+		 * row, though a remote-side trigger/constraint could in principle alter that. Reconciling
+		 * INSERT accounting against such cases is out of scope here. */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
+		  {
+		    qexec_failure_line (__LINE__, xasl_state);
+		    goto exit_on_error;
+		  }
+
+		xasl->list_id->tuple_cnt++;
+		break;
+	      }
+	    case DBLINK_DML_DELETE:
+	      {
+		bool skip_row;
+
+		if (qexec_collect_remote_delete_key (s_id, xasl_state, bindv, &skip_row) != NO_ERROR)
+		  {
+		    goto exit_on_error;
+		  }
+		if (skip_row)
+		  {
+		    continue;
+		  }
+
+		/* affected_rows is the remote's own reported count for this DELETE execute: it can be 0
+		 * (key has no remote match) or more than 1 (remote key is not unique), neither of which
+		 * equals "one local subquery row" -- accumulate it instead of counting local rows. */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
+		  {
+		    qexec_failure_line (__LINE__, xasl_state);
+		    goto exit_on_error;
+		  }
+
+		xasl->list_id->tuple_cnt += row_affected;
+		break;
+	      }
+	    default:
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
 	      qexec_failure_line (__LINE__, xasl_state);
 	      goto exit_on_error;
 	    }
-
-	  /* send row to remote. affected_rows is not read here: this pre-dates the C-03 DELETE fix and is
-	   * unrelated to it -- a positional INSERT row is expected to affect exactly one row, though a
-	   * remote-side trigger/constraint could in principle alter that. Reconciling INSERT accounting
-	   * against such cases is out of scope here. */
-	  if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
-	    {
-	      qexec_failure_line (__LINE__, xasl_state);
-	      goto exit_on_error;
-	    }
-
-	  xasl->list_id->tuple_cnt++;
 	}
 
       if (ls_scan != S_END)
@@ -12759,28 +12898,22 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 }
 
 /*
- * qexec_execute_remote_delete_subquery () - Evaluate a local WHERE subquery and push one remote DELETE per
- *   value via CCI. Mirrors qexec_execute_remote_insert_select, but runs the aptr (local
- *   subquery) itself (the dispatch is at qexec_execute_delete entry, before the local delete path) and binds
- *   a single value per row to "DELETE FROM <table> WHERE <key> <op> ?".
+ * qexec_execute_remote_delete_subquery () - Evaluate a local WHERE subquery, then hand off to
+ *   qexec_execute_remote_dml_sink() to push one remote DELETE per value via CCI.
  *   return: NO_ERROR or ER_FAILED
  *   xasl(in)       : DELETE_PROC XASL with sink.is_remote set; aptr_list = local subquery
  *   xasl_state(in) : XASL state
+ *
+ * Note: Unlike remote INSERT SELECT (whose aptr is executed generically by qexec_execute_insert
+ *   before dispatch), the dispatch here is at qexec_execute_delete entry, before the local-DELETE
+ *   path's class-locking setup -- so this function runs the aptr (local subquery) itself.
  */
 static int
 qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
 {
-  DELETE_PROC_NODE *del = &xasl->proc.delete_;
   XASL_NODE *aptr = xasl->aptr_list;
-  ACCESS_SPEC_TYPE *specp = NULL;
-  SCAN_CODE xb_scan, ls_scan;
-  SCAN_ID *s_id = NULL;
-  QPROC_DB_VALUE_LIST vallist;
-  DB_VALUE *bindv[1];
-  DBLINK_DML_STATE dblink_state = { -1, -1 };
-  int row_affected;
 
-  assert (del->sink.is_remote);
+  assert (xasl->proc.delete_.sink.is_remote);
   assert (aptr != NULL);	/* the sink XASL always carries the local subquery as aptr */
 
   /* run the local subquery (aptr) to materialize the value list-file */
@@ -12791,107 +12924,23 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  if (qexec_execute_subquery_for_result_cache (thread_p, aptr, xasl_state) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
-	      goto exit_on_error;
+	      return ER_FAILED;
 	    }
 	}
       else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
-	  goto exit_on_error;
+	  return ER_FAILED;
 	}
     }
 
   if (qexec_setup_list_id (thread_p, xasl) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
-      goto exit_on_error;
+      return ER_FAILED;
     }
 
-  specp = xasl->spec_list;
-  assert (specp != NULL);
-
-  /* open remote connection and prepare the DELETE statement */
-  if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, del->sink.url, del->sink.user, del->sink.pwd,
-		       del->sink.table_name, NULL, 0, 0, del->remote_key_col, del->remote_op,
-		       &dblink_state) != NO_ERROR)
-    {
-      qexec_failure_line (__LINE__, xasl_state);
-      goto exit_on_error;
-    }
-
-  /* open local scan on the subquery result */
-  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
-		       specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
-		       NULL, xasl) != NO_ERROR)
-    {
-      qexec_failure_line (__LINE__, xasl_state);
-      goto exit_on_error;
-    }
-
-  /* push one remote DELETE per local value (0 rows -> loop runs 0 times -> remote unchanged, FR-4) */
-  while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
-    {
-      s_id = &xasl->curr_spec->s_id;
-
-      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
-	{
-	  /* take the leading (visible) column; XASL generation forces a single-column subquery
-	   * (pt_length_of_select_list EXCLUDE_HIDDEN_COLUMNS == 1), so any trailing hidden column is ignored. */
-	  vallist = s_id->val_list->valp;
-	  if (vallist == NULL || vallist->val == NULL)
-	    {
-	      assert (0);
-	      qexec_failure_line (__LINE__, xasl_state);
-	      goto exit_on_error;
-	    }
-	  bindv[0] = vallist->val;
-
-	  /* A NULL value never matches in IN / = ANY or a scalar comparison, so it deletes nothing; skip it
-	   * (DELETE WHERE key op NULL is a no-op) rather than binding NULL, which the row executor rejects. */
-	  if (DB_IS_NULL (bindv[0]))
-	    {
-	      continue;
-	    }
-
-	  /* affected_rows is the remote's own reported count for this DELETE execute: it can be 0
-	   * (key has no remote match) or more than 1 (remote key is not unique), neither of which
-	   * equals "one local subquery row" -- accumulate it instead of counting local rows. */
-	  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
-	    {
-	      qexec_failure_line (__LINE__, xasl_state);
-	      goto exit_on_error;
-	    }
-
-	  xasl->list_id->tuple_cnt += row_affected;
-	}
-
-      if (ls_scan != S_END)
-	{
-	  qexec_failure_line (__LINE__, xasl_state);
-	  goto exit_on_error;
-	}
-    }
-
-  if (xb_scan != S_END)
-    {
-      qexec_failure_line (__LINE__, xasl_state);
-      goto exit_on_error;
-    }
-
-  dblink_dml_close (&dblink_state);
-  qexec_close_scan (thread_p, specp);
-
-  return NO_ERROR;
-
-exit_on_error:
-  dblink_dml_rollback (&dblink_state);
-  dblink_dml_close (&dblink_state);
-  if (specp != NULL)
-    {
-      qexec_end_scan (thread_p, specp);
-      qexec_close_scan (thread_p, specp);
-    }
-  return ER_FAILED;
+  return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_DELETE);
 }
 
 /*
@@ -12985,7 +13034,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->sink.is_remote)
     {
-      return qexec_execute_remote_insert_select (thread_p, xasl, xasl_state);
+      return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_INSERT);
     }
 
   /* We might not hold a strong enough lock on the class yet. */
