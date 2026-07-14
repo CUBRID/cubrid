@@ -1780,10 +1780,10 @@ do_alter_change_auto_increment (PARSER_CONTEXT * const parser, PT_NODE * const a
       goto change_ai_error;
     }
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   error =
     do_change_auto_increment_serial (parser, ai_serial, alter->info.alter.alter_clause.auto_increment.start_value);
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
 
   return error;
@@ -1839,7 +1839,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 	  assert (crt_result == crt_clause);
 	}
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       /* HANDLE HISTOGRAM DROP WHILE COLUMN MODIFY, CHANGE, RENAME, DROP */
       switch (alter_code)
 	{
@@ -1860,7 +1860,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 					    &histogram_obj);
 			if (error_code != NO_ERROR)
 			  {
-			    AU_ENABLE (au_save);
+			    AU_RESTORE (au_save);
 			    goto error_exit;
 			  }
 			if (histogram_obj != NULL)
@@ -1868,7 +1868,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			    error_code = db_drop (histogram_obj);
 			    if (error_code != NO_ERROR)
 			      {
-				AU_ENABLE (au_save);
+				AU_RESTORE (au_save);
 				goto error_exit;
 			      }
 			  }
@@ -1888,7 +1888,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 					    &histogram_obj);
 			if (error_code != NO_ERROR)
 			  {
-			    AU_ENABLE (au_save);
+			    AU_RESTORE (au_save);
 			    goto error_exit;
 			  }
 			if (histogram_obj != NULL)
@@ -1896,7 +1896,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			    error_code = db_drop (histogram_obj);
 			    if (error_code != NO_ERROR)
 			      {
-				AU_ENABLE (au_save);
+				AU_RESTORE (au_save);
 				goto error_exit;
 			      }
 			  }
@@ -1912,7 +1912,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 						   &histogram_obj);
 		    if (error_code != NO_ERROR)
 		      {
-			AU_ENABLE (au_save);
+			AU_RESTORE (au_save);
 			goto error_exit;
 		      }
 		    if (histogram_obj != NULL)
@@ -1920,7 +1920,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			error_code = db_drop (histogram_obj);
 			if (error_code != NO_ERROR)
 			  {
-			    AU_ENABLE (au_save);
+			    AU_RESTORE (au_save);
 			    goto error_exit;
 			  }
 		      }
@@ -1940,7 +1940,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 						   &histogram_obj);
 		    if (error_code != NO_ERROR)
 		      {
-			AU_ENABLE (au_save);
+			AU_RESTORE (au_save);
 			goto error_exit;
 		      }
 		    if (histogram_obj != NULL)
@@ -1948,7 +1948,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 			error_code = db_drop (histogram_obj);
 			if (error_code != NO_ERROR)
 			  {
-			    AU_ENABLE (au_save);
+			    AU_RESTORE (au_save);
 			    goto error_exit;
 			  }
 		      }
@@ -1963,7 +1963,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	default:
 	  break;
 	}
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
@@ -4535,7 +4535,7 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *obj;
   int error = NO_ERROR, save;
   CHECK_MODIFICATION_ERROR ();
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* class should be already available */
   assert (statement->info.histogram.target_table_spec);
@@ -4546,7 +4546,7 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return er_errid ();
     }
 
@@ -4556,11 +4556,11 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -4577,7 +4577,7 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   DB_OBJECT *obj;
   int error = NO_ERROR, save;
   CHECK_MODIFICATION_ERROR ();
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* class should be already available */
   assert (statement->info.histogram.target_table_spec);
@@ -4588,7 +4588,7 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return er_errid ();
     }
 
@@ -4598,11 +4598,11 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -4618,7 +4618,7 @@ do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *cls;
   DB_OBJECT *obj;
   int error = NO_ERROR, save;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* class should be already available */
   assert (statement->info.histogram.target_table_spec);
@@ -4628,7 +4628,7 @@ do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (obj == NULL)
     {
       assert (er_errid () != NO_ERROR);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return er_errid ();
     }
 
@@ -4638,10 +4638,10 @@ do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       assert (er_errid () != NO_ERROR);
       error = er_errid ();
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return NO_ERROR;
 }
@@ -5358,7 +5358,7 @@ do_get_partition_parent (DB_OBJECT * const classop, MOP * const parentop)
     }
   *parentop = NULL;
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
@@ -5386,13 +5386,13 @@ do_get_partition_parent (DB_OBJECT * const classop, MOP * const parentop)
   *parentop = smclass->inheritance->op;
 
 end:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   smclass = NULL;
 
   return error;
 
 error_exit:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   smclass = NULL;
   *parentop = NULL;
 
@@ -9621,6 +9621,19 @@ execute_create_select_query (PARSER_CONTEXT * parser, const char *const class_na
       goto error_exit;
     }
 
+  /* Name resolution clears parser->sys_datetime, parser->sys_epochtime
+   * for datetime defaults. (see fill_in_insert_default_function_arguments)
+   * Internal do_statement() won't re-request server time,
+   * so restore it here to avoid null evaluation. */
+  if (insert_into->flag.si_datetime)
+    {
+      error = db_ensure_server_info (parser, SI_SYS_DATETIME);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
   error = do_statement (parser, insert_into);
   pt_free_statement_xasl_id (insert_into);
   if (error < 0)
@@ -11736,11 +11749,11 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
 	  COPY_OID (&serial_obj_id, oidp);
 	}
 
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
 
       error = obj_delete (found_att->auto_increment);
 
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       if (error != NO_ERROR)
 	{

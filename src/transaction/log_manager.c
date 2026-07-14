@@ -11142,6 +11142,18 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
+      /* Re-sync to the requested extraction LSA.  When a new extraction LSA is
+       * set (queue reinit / initialize / cleanup), the local process_lsa may
+       * still point past it from the previous session; the block below would
+       * then copy that stale local position back into next_extraction_lsa and
+       * resume ahead of the requested LSA, skipping log records.  Reset it to
+       * NULL so the block below adopts next_extraction_lsa instead. */
+      if (cdc_Gl.producer.is_reset_process_lsa)
+	{
+	  LSA_SET_NULL (&process_lsa);
+	  cdc_Gl.producer.is_reset_process_lsa = false;
+	}
+
       if (LSA_ISNULL (&process_lsa))
 	{
 	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
@@ -11189,16 +11201,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->length = log_info_entry.length;
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
-
-	  if (cdc_Gl.is_queue_reinitialized)
-	    {
-	      free_and_init (tmp->log_info);
-	      free_and_init (tmp);
-
-	      cdc_Gl.is_queue_reinitialized = false;
-
-	      continue;
-	    }
 
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
@@ -12934,13 +12936,34 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
+	  db_make_null (&old_values[i]);
+	}
+
+      for (i = 0; i < attr_info.num_values; i++)
+	{
 	  heap_value = &attr_info.values[i];
 
 	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+	  /* reading redo_recdes below reuses attr_info and clears each dbvalue, which frees any buffer
+	   * the dbvalue owns (e.g. the decompressed buffer of a compressed string).
+	   * So the old value must be deep-copied here, not shallow-copied. */
+	  (void) pr_clone_value (&heap_value->dbvalue, &old_values[oldval_deforder]);
+
+	  /* pr_clone_value () returns NO_ERROR even when its internal setval fails (e.g. allocation failure)
+	   * and leaves the clone NULL. Do not pack a NULL old value silently; treat it as an error. */
+	  if (!DB_IS_NULL (&heap_value->dbvalue) && DB_IS_NULL (&old_values[oldval_deforder]))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+
+	      goto exit;
+	    }
 
 	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
 	}
@@ -13257,6 +13280,11 @@ exit:
 
   if (old_values != NULL)
     {
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  pr_clear_value (&old_values[i]);
+	}
+
       free_and_init (old_values);
     }
 
@@ -14529,8 +14557,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       goto end;
     }
 
-  cdc_Gl.is_queue_reinitialized = true;
-
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
       cdc_log
@@ -14570,6 +14596,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
+      cdc_Gl.producer.is_reset_process_lsa = true;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -15036,6 +15063,8 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
+  cdc_Gl.producer.is_reset_process_lsa = true;
+
   return 0;
 }
 
@@ -15072,6 +15101,8 @@ cdc_cleanup ()
     {
       cdc_pause_producer ();
     }
+
+  cdc_Gl.producer.is_reset_process_lsa = true;
 
   cdc_free_extraction_filter ();
 
