@@ -12081,6 +12081,66 @@ pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   return node;
 }
 
+/*
+ * pt_setup_dblink_sink_spec () - Rewrite <spec>'s remote_server_name into a PT_DBLINK_TABLE_DML sink
+ *   node, shared by the remote INSERT SELECT and remote DELETE + local-subquery sink setup: allocate
+ *   the PT_DBLINK_TABLE_DML wrapper, split off the owner name (server->next) if present, free the raw
+ *   SERVER_NAME_LIST server nodes, and re-resolve the spec's connection info.
+ *   parser(in)   : parser context
+ *   node(in)     : statement node, for error reporting when remote_server_name is missing
+ *   spec(in/out) : the into/upd spec whose remote_server_name is rewritten
+ *   snl(in)      : SERVER_NAME_LIST -- server[]/stored_cnt raw server nodes to free
+ *
+ * Note: every caller unconditionally returns from its own function right after calling this (on
+ *   error, on an already-converted spec, or on success), so this sets a parser error via PT_ERRORm
+ *   and returns rather than reporting a status.
+ */
+static void
+pt_setup_dblink_sink_spec (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec, SERVER_NAME_LIST * snl)
+{
+  PT_NODE *server = spec->info.spec.remote_server_name;
+  PT_NODE *ct;
+  int i;
+
+  if (server == NULL)
+    {
+      PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
+      return;
+    }
+  if (server->node_type == PT_DBLINK_TABLE_DML)
+    {
+      return;			/* already converted */
+    }
+
+  ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
+  if (!ct)
+    {
+      PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
+      return;
+    }
+
+  ct->info.dblink_table.is_name = true;
+  ct->info.dblink_table.conn = server;
+  if (server->next)
+    {
+      assert (server->next->node_type == PT_NAME);
+      ct->info.dblink_table.owner_name = server->next;
+      server->next = NULL;
+    }
+
+  for (i = 0; i < snl->stored_cnt; i++)
+    {
+      if (snl->server[i]->next)
+	{
+	  parser_free_node (parser, snl->server[i]->next);
+	}
+      parser_free_node (parser, snl->server[i]);
+    }
+
+  spec->info.spec.remote_server_name = ct;
+  pt_resolve_server_names (parser, spec);
+}
+
 static void
 pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			     int local_upd, int remote_upd, SERVER_NAME_LIST * snl)
@@ -12184,10 +12244,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* remote DELETE + local subquery: keep the carve-out only when the WHERE subquery is purely local
    * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
    * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
-   * multi-remote (server_node_cnt >= 2) and dblink() forms are rejected. */
+   * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected. */
   if (snl->is_remote_delete_local_subq)
     {
-      if (!(snl->local_cnt > 0 && snl->server_node_cnt == 1 && !snl->has_dblink_query))
+      if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
 	{
 	  snl->is_remote_delete_local_subq = false;
 	}
@@ -12223,45 +12283,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   if (snl->is_remote_delete_local_subq)
     {
       node->flag.cannot_prepare = 0;
-
-      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
-      if (!ct)
-	{
-	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-	  return;
-	}
-
-      PT_NODE *server = upd_spec->info.spec.remote_server_name;
-      if (server == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
-	  return;
-	}
-      if (server->node_type == PT_DBLINK_TABLE_DML)
-	{
-	  return;		/* already converted */
-	}
-
-      ct->info.dblink_table.is_name = true;
-      ct->info.dblink_table.conn = server;
-      if (server->next)
-	{
-	  assert (server->next->node_type == PT_NAME);
-	  ct->info.dblink_table.owner_name = server->next;
-	  server->next = NULL;
-	}
-
-      for (i = 0; i < snl->server_node_cnt; i++)
-	{
-	  if (snl->server[i]->next)
-	    {
-	      parser_free_node (parser, snl->server[i]->next);
-	    }
-	  parser_free_node (parser, snl->server[i]);
-	}
-
-      upd_spec->info.spec.remote_server_name = ct;
-      pt_resolve_server_names (parser, upd_spec);
+      pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
       return;
     }
 
@@ -12270,45 +12292,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   if (snl->is_remote_insert_select)
     {
       node->flag.cannot_prepare = 0;
-
-      PT_NODE *server = into_spec->info.spec.remote_server_name;
-      if (server == NULL)
-	{
-	  PT_ERRORm (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UPDATE_DERIVED_TABLE);
-	  return;
-	}
-      if (server->node_type == PT_DBLINK_TABLE_DML)
-	{
-	  return;		/* already converted */
-	}
-
-      PT_NODE *ct = parser_new_node (parser, PT_DBLINK_TABLE_DML);
-      if (!ct)
-	{
-	  PT_ERRORmf (parser, ct, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_OUT_OF_MEMORY, sizeof (PT_NODE));
-	  return;
-	}
-
-      ct->info.dblink_table.is_name = true;
-      ct->info.dblink_table.conn = server;
-      if (server->next)
-	{
-	  assert (server->next->node_type == PT_NAME);
-	  ct->info.dblink_table.owner_name = server->next;
-	  server->next = NULL;
-	}
-
-      for (i = 0; i < snl->stored_cnt; i++)
-	{
-	  if (snl->server[i]->next)
-	    {
-	      parser_free_node (parser, snl->server[i]->next);
-	    }
-	  parser_free_node (parser, snl->server[i]);
-	}
-
-      into_spec->info.spec.remote_server_name = ct;
-      pt_resolve_server_names (parser, into_spec);
+      pt_setup_dblink_sink_spec (parser, node, into_spec, snl);
       return;
     }
 
