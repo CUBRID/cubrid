@@ -2121,6 +2121,20 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       PHASE III: Update the root page
    *****************************************/
 
+  /*
+   * Reconcile unused provider pages before publishing the root.  file_alloc_multiple/file_dealloc may touch the
+   * sticky root while the index file is still being built; the final root copy must be the last page mutation.
+   */
+  if (load_args->provider != NULL)
+    {
+      ret = bt_load_provider_reconcile (thread_p, load_args->provider,
+					load_args->report_overflow_key_count == 0);
+      if (ret != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
   /* Retrieve the last non-leaf page (the current one); guaranteed to exist */
   /* Fetch the current page */
   load_args->nleaf.pgptr =
@@ -4926,8 +4940,7 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
       file_postpone_destroy (thread_p, &main_load_args->btid->ovfid);
       VFID_SET_NULL (&main_load_args->btid->ovfid);
     }
-  error = bt_load_provider_reconcile (thread_p, provider, overflow_key_count == 0);
-  return error;
+  return NO_ERROR;
 }
 #if defined(CUBRID_DEBUG)
 /*
