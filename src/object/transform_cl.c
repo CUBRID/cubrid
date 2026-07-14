@@ -4670,7 +4670,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 
 	      if (attr->properties == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 	    }
@@ -4688,7 +4688,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 		      classobj_free_prop (attr->properties);
 		      attr->properties = NULL;
 		    }
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 
@@ -4744,7 +4744,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 	      attr->properties = classobj_make_prop ();
 	      if (attr->properties == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 	    }
@@ -4767,7 +4767,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 
 	      if (attr->properties == NULL)
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, sizeof (DB_SEQ));
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_SEQ));
 		  return er_errid ();
 		}
 	    }

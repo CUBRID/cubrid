@@ -20,7 +20,6 @@
  * type_checking.c - auxiliary functions for parse tree translation
  */
 
-#include "pt_volatility.h"
 #ident "$Id$"
 
 #include "config.h"
@@ -62,6 +61,7 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
+#include "pt_volatility.h"
 
 #include "dbtype.h"
 
