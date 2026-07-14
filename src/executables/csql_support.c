@@ -1060,7 +1060,7 @@ csql_walk_statement (const char *str)
   bool is_last_stmt_valid = true;
   const char *p;
   int str_length;
-  bool uncommented_string = false;
+  bool found_noncomment = false;
 
   if (str == NULL)
     {
@@ -1114,7 +1114,7 @@ csql_walk_statement (const char *str)
 	    }
 	  else
 	    {
-	      uncommented_string = true;
+	      found_noncomment = true;
 	    }
 
 	substate_transition:
@@ -1496,7 +1496,7 @@ csql_walk_statement (const char *str)
   csql_Edit_contents.plcsql_begin_end_balance = plcsql_begin_end_balance;
   csql_Edit_contents.plcsql_nest_level = plcsql_nest_level;
 
-  return uncommented_string;
+  return found_noncomment;
 }
 
 /*

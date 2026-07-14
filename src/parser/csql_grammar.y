@@ -280,13 +280,13 @@ static bool is_in_sp_func_type = false;
     }
 
 /* Correct a node's reported line/column to the source location of a parsed token (e.g. @1).
- * parser_new_node() stamps line_number/column_number from the scanner's CURRENT position (csql_yyget_lineno()/yycolumn).
+ * parser_new_node() stamps line_number/column_number from the scanner's CURRENT position (csql_yyget_lineno()/node_column_position).
  *  A reduce action runs only after bison has fetched the look-ahead token,
  * so that position has already moved past the token (and across any blank lines).
  */
 #define PARSER_SET_LINE_COL(node, loc) \
-  if (node) \
     { \
+      assert (node);                            \
       (node)->line_number   = (loc).first_line; \
       (node)->column_number = (loc).first_column; \
     }    

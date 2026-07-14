@@ -674,7 +674,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
   bool is_first_read_line = true;
   bool read_whole_line;
   char *prompt;
-  bool uncommented_string = false;
+  bool found_noncomment = false;
 
   /* check in string block or comment block or identifier block */
   bool is_in_block = false;
@@ -762,7 +762,6 @@ start_csql (CSQL_ARGUMENT * csql_arg)
       change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
     }
 
-  uncommented_string = false;
   start_line_no = 1;
   for (line_no = 1; true; line_no++)
     {
@@ -920,7 +919,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
-	  uncommented_string = false;
+	  found_noncomment = false;
 
 	  continue;
 	}
@@ -939,7 +938,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      csql_execute = true;
 	      is_in_block = false;
 
-	      if (!csql_Is_interactive && !uncommented_string)
+	      if (!csql_Is_interactive && !found_noncomment)
 		{
 		  start_line_no = line_no;
 		}
@@ -948,9 +947,9 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      if (csql_walk_statement (line_read))
 		{
-		  if (!csql_Is_interactive && !uncommented_string)
+		  if (!csql_Is_interactive && !found_noncomment)
 		    {
-		      uncommented_string = true;
+		      found_noncomment = true;
 		      start_line_no = line_no;
 		    }
 		}
@@ -974,7 +973,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
 	      csql_yyset_lineno (csql_Is_interactive ? 1 : line_no + 1);
 	      csql_edit_contents_clear ();
-	      uncommented_string = false;
+	      found_noncomment = false;
 	    }
 	}
 

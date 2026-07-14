@@ -21,8 +21,8 @@
  * csql_grammar_scan.h 
  */
 
-#ifndef _SCANNER_SUPPORT_H_
-#define _SCANNER_SUPPORT_H_
+#ifndef _CSQL_GRAMMAR_SCAN_H_
+#define _CSQL_GRAMMAR_SCAN_H_
 
 #ident "$Id$"
 
@@ -87,4 +87,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _SCANNER_SUPPORT_H_ */
+#endif				/* _CSQL_GRAMMAR_SCAN_H_ */

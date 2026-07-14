@@ -76,7 +76,7 @@ static enum {
  */
 
 /* Stores the previous state (INITIAL or PL_LANG_SPEC) prior to handling hints/comments */
-int saved_yy_start = 0;  
+static int saved_yy_start = 0;  
 
 /* byte offset (in yybuffer_pos units) of the first character of the line that
  * is currently being scanned; column = yybuffer_pos - yyline_start_pos + 1 */
@@ -1976,7 +1976,6 @@ parser_yyinput_identifier (char *buff, int max_size, int end_char, int *pos)
 static bool
 parser_yyinput_line_comment (char *buff, int max_size, int *pos)
 {
-  int i = 0;
   int c;
 
   while ((*pos) < max_size)
@@ -1995,7 +1994,6 @@ parser_yyinput_line_comment (char *buff, int max_size, int *pos)
 static bool
 parser_yyinput_c_style_comment (char *buff, int max_size, int *pos)
 {
-  int i = 0;
   int c;
 
   while ((*pos) < max_size)
