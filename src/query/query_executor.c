@@ -11216,7 +11216,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   /* remote DELETE + local subquery sink: evaluate the WHERE subquery locally and push one remote
    * DELETE per value via CCI; this has no local class (num_classes == 0) so it must not enter the local delete
    * path below. */
-  if (delete_->is_remote_delete)
+  if (delete_->sink.is_remote)
     {
       return qexec_execute_remote_delete_subquery (thread_p, xasl, xasl_state);
     }
@@ -12452,7 +12452,7 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 /*
  * qexec_execute_remote_insert_select () - Stream SELECT results to a remote table via CCI.
  *   return: NO_ERROR or ER_FAILED
- *   xasl(in)       : XASL Tree block (INSERT_PROC with is_remote_insert set)
+ *   xasl(in)       : XASL Tree block (INSERT_PROC with sink.is_remote set)
  *   xasl_state(in) : XASL state
  *
  * Note: The aptr (SELECT) has already been executed by qexec_execute_insert.
@@ -12471,7 +12471,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   DBLINK_INSERT_STATE dblink_state = { -1, -1 };
 
   assert (specp != NULL);
-  assert (insert->is_remote_insert);
+  assert (insert->sink.is_remote);
 
   val_no = insert->num_vals;
 
@@ -12480,8 +12480,8 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   assert (val_no == 0 || insert->vals != NULL);
 
   /* open remote connection and prepare INSERT statement */
-  if (dblink_insert_open (thread_p, insert->remote_url, insert->remote_user, insert->remote_pwd,
-			  insert->remote_table_name, insert->remote_attr_names,
+  if (dblink_insert_open (thread_p, insert->sink.url, insert->sink.user, insert->sink.pwd,
+			  insert->sink.table_name, insert->remote_attr_names,
 			  insert->remote_num_attrs, val_no, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -12764,7 +12764,7 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
  *   subquery) itself (the dispatch is at qexec_execute_delete entry, before the local delete path) and binds
  *   a single value per row to "DELETE FROM <table> WHERE <key> <op> ?".
  *   return: NO_ERROR or ER_FAILED
- *   xasl(in)       : DELETE_PROC XASL with is_remote_delete set; aptr_list = local subquery
+ *   xasl(in)       : DELETE_PROC XASL with sink.is_remote set; aptr_list = local subquery
  *   xasl_state(in) : XASL state
  */
 static int
@@ -12780,7 +12780,7 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   DBLINK_INSERT_STATE dblink_state = { -1, -1 };
   int row_affected;
 
-  assert (del->is_remote_delete);
+  assert (del->sink.is_remote);
   assert (aptr != NULL);	/* the sink XASL always carries the local subquery as aptr */
 
   /* run the local subquery (aptr) to materialize the value list-file */
@@ -12811,7 +12811,7 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   assert (specp != NULL);
 
   /* open remote connection and prepare the DELETE statement */
-  if (dblink_delete_open (thread_p, del->remote_url, del->remote_user, del->remote_pwd, del->remote_table_name,
+  if (dblink_delete_open (thread_p, del->sink.url, del->sink.user, del->sink.pwd, del->sink.table_name,
 			  del->remote_key_col, del->remote_op, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
@@ -12982,7 +12982,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       return ER_FAILED;
     }
 
-  if (insert->is_remote_insert)
+  if (insert->sink.is_remote)
     {
       return qexec_execute_remote_insert_select (thread_p, xasl, xasl_state);
     }

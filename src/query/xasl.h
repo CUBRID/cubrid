@@ -402,6 +402,18 @@ struct update_proc_node
 				 * in conditions and assignment reevaluation */
 };
 
+/* common DBLink remote push-sink fields, shared by any DML proc that pushes rows to a remote
+ * table via a per-row CCI bind (INSERT SELECT, DELETE + local subquery, and UPDATE to follow) */
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct remote_dml_sink
+{
+  bool is_remote;		/* true if this proc pushes to a remote table via DBLink */
+  char *url;			/* DBLink connection URL */
+  char *user;			/* DBLink connection user */
+  char *pwd;			/* DBLink connection password */
+  char *table_name;		/* remote target table name */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -422,11 +434,7 @@ struct insert_proc_node
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
   /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
-  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
-  char *remote_url;		/* DBLink connection URL */
-  char *remote_user;		/* DBLink connection user */
-  char *remote_pwd;		/* DBLink connection password */
-  char *remote_table_name;	/* remote target table name */
+  REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
 };
@@ -443,11 +451,7 @@ struct delete_proc_node
   int *mvcc_reev_classes;	/* array of indexes into the SELECT list that references pairs of OID - CLASS OID used
 				 * in conditions */
   /* remote DELETE + local subquery sink fields (DELETE FROM remote WHERE col op (SELECT FROM local)) */
-  bool is_remote_delete;	/* true if deleting from a remote table via DBLink per-row value push */
-  char *remote_url;		/* DBLink connection URL */
-  char *remote_user;		/* DBLink connection user */
-  char *remote_pwd;		/* DBLink connection password */
-  char *remote_table_name;	/* remote target table name */
+  REMOTE_DML_SINK sink;
   char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
   char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<", ">", "<=", ">=" */
 };

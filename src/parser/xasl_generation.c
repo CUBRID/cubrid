@@ -19200,10 +19200,10 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert = &xasl->proc.insert;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  insert->is_remote_insert = true;
-  insert->remote_url = (char *) pdblink->url->info.value.data_value.str->bytes;
-  insert->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
-  insert->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+  insert->sink.is_remote = true;
+  insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
 
   /* build qualified remote table name: [owner.]table
    *
@@ -19219,14 +19219,14 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    *       remote table/column names that require quoting (reserved words, mixed-case, special chars)
    *       are not supported in remote INSERT SELECT. */
   entity_name = into_spec->info.spec.entity_name;
-  insert->remote_table_name = NULL;
+  insert->sink.table_name = NULL;
   if (entity_name->info.name.resolved)
     {
-      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.resolved);
-      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, ".");
+      insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, entity_name->info.name.resolved);
+      insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, ".");
     }
-  insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.original);
-  if (insert->remote_table_name == NULL || pt_has_error (parser))
+  insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, entity_name->info.name.original);
+  if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
     }
@@ -19471,24 +19471,24 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->num_classes = 0;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  del->is_remote_delete = true;
-  del->remote_url = (char *) pdblink->url->info.value.data_value.str->bytes;
-  del->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
-  del->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+  del->sink.is_remote = true;
+  del->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  del->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  del->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
 
   /* qualified remote table name: [owner.]table (unquoted, same limitation as remote INSERT SELECT) */
   entity_name = from->info.spec.entity_name;
-  del->remote_table_name = NULL;
+  del->sink.table_name = NULL;
   if (entity_name->info.name.resolved)
     {
-      del->remote_table_name = pt_append_string (parser, del->remote_table_name, entity_name->info.name.resolved);
-      del->remote_table_name = pt_append_string (parser, del->remote_table_name, ".");
+      del->sink.table_name = pt_append_string (parser, del->sink.table_name, entity_name->info.name.resolved);
+      del->sink.table_name = pt_append_string (parser, del->sink.table_name, ".");
     }
-  del->remote_table_name = pt_append_string (parser, del->remote_table_name, entity_name->info.name.original);
+  del->sink.table_name = pt_append_string (parser, del->sink.table_name, entity_name->info.name.original);
 
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
-  if (del->remote_table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
+  if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {
       return NULL;
     }

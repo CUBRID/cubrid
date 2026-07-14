@@ -106,6 +106,7 @@ static char *stx_build_ls_merge_info (THREAD_ENTRY * thread_p, char *tmp, QFILE_
 static char *stx_build_update_class_info (THREAD_ENTRY * thread_p, char *tmp, UPDDEL_CLASS_INFO * ptr);
 static char *stx_build_update_assignment (THREAD_ENTRY * thread_p, char *tmp, UPDATE_ASSIGNMENT * ptr);
 static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_PROC_NODE * ptr);
+static char *stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK * sink);
 static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
@@ -3849,6 +3850,27 @@ error:
   return NULL;
 }
 
+/*
+ * stx_restore_remote_dml_sink () - restore the common DBLink remote push-sink fields (is_remote flag +
+ *   url/user/pwd/table_name), shared by INSERT SELECT and DELETE local-subquery procs.
+ *   return: advanced ptr
+ */
+static char *
+stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK * sink)
+{
+  int is_remote;
+
+  ptr = or_unpack_int (ptr, &is_remote);
+  sink->is_remote = (bool) is_remote;
+
+  sink->url = stx_restore_string (thread_p, ptr);
+  sink->user = stx_restore_string (thread_p, ptr);
+  sink->pwd = stx_restore_string (thread_p, ptr);
+  sink->table_name = stx_restore_string (thread_p, ptr);
+
+  return ptr;
+}
+
 static char *
 stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * delete_info)
 {
@@ -3895,16 +3917,8 @@ stx_build_delete_proc (THREAD_ENTRY * thread_p, char *ptr, DELETE_PROC_NODE * de
     }
 
   /* remote DELETE + local subquery sink fields */
-  {
-    int is_remote;
-    ptr = or_unpack_int (ptr, &is_remote);
-    delete_info->is_remote_delete = (bool) is_remote;
-  }
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &delete_info->sink);
 
-  delete_info->remote_url = stx_restore_string (thread_p, ptr);
-  delete_info->remote_user = stx_restore_string (thread_p, ptr);
-  delete_info->remote_pwd = stx_restore_string (thread_p, ptr);
-  delete_info->remote_table_name = stx_restore_string (thread_p, ptr);
   delete_info->remote_key_col = stx_restore_string (thread_p, ptr);
   delete_info->remote_op = stx_restore_string (thread_p, ptr);
 
@@ -4044,16 +4058,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
     }
 
   /* remote INSERT SELECT fields */
-  {
-    int is_remote;
-    ptr = or_unpack_int (ptr, &is_remote);
-    insert_info->is_remote_insert = (bool) is_remote;
-  }
-
-  insert_info->remote_url = stx_restore_string (thread_p, ptr);
-  insert_info->remote_user = stx_restore_string (thread_p, ptr);
-  insert_info->remote_pwd = stx_restore_string (thread_p, ptr);
-  insert_info->remote_table_name = stx_restore_string (thread_p, ptr);
+  ptr = stx_restore_remote_dml_sink (thread_p, ptr, &insert_info->sink);
 
   ptr = or_unpack_int (ptr, &insert_info->remote_num_attrs);
   if (insert_info->remote_num_attrs == 0)
