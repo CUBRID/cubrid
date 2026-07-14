@@ -201,6 +201,7 @@ struct bt_load_provider
   BT_LOAD_VPID_POOL ovf_pool;
   VFID main_vfid;
   VFID ovf_vfid;
+  VPID root_vpid;
   int est_ovf_pages;
   BT_LOAD_WORKER_SLOT *slots;
   int n_workers;
@@ -2497,6 +2498,8 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->ovf_pool.n_published = 0;
   provider->ovf_pool.cursor.store (0, std::memory_order_relaxed);
   provider->main_vfid = btid->vfid;
+  provider->root_vpid.volid = btid->vfid.volid;
+  provider->root_vpid.pageid = btid->root_pageid;
   VFID_SET_NULL (&provider->ovf_vfid);
   provider->est_ovf_pages = need_ovf_file ? MAX (est_ovf_pages, 0) : 0;
   provider->n_workers = n_workers;
@@ -2693,17 +2696,34 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
 }
 
 static int
+bt_load_return_page (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, const VFID * vfid, FILE_TYPE file_type,
+		     const VPID * vpid)
+{
+  if (VFID_EQ (vfid, &provider->main_vfid) && VPID_EQ (vpid, &provider->root_vpid))
+    {
+      provider->consumed_pages++;
+      return NO_ERROR;
+    }
+
+  int error = file_dealloc (thread_p, vfid, vpid, file_type);
+  if (error == NO_ERROR)
+    {
+      provider->returned_pages++;
+    }
+  return error;
+}
+
+static int
 bt_load_dealloc_span_tail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, const VFID * vfid,
 			   FILE_TYPE file_type, BT_LOAD_SPAN * span)
 {
   for (int i = span->used; i < span->n; i++)
     {
-      int error = file_dealloc (thread_p, vfid, &span->vpids[i], file_type);
+      int error = bt_load_return_page (thread_p, provider, vfid, file_type, &span->vpids[i]);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      provider->returned_pages++;
     }
   return NO_ERROR;
 }
@@ -2793,25 +2813,24 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
   int cursor = provider->main_pool.cursor.load (std::memory_order_relaxed);
   for (int i = cursor; i < provider->main_pool.n_published; i++)
     {
-      error = file_dealloc (thread_p, &provider->main_vfid, &provider->main_pool.vpids[i], FILE_BTREE);
+      error =
+	bt_load_return_page (thread_p, provider, &provider->main_vfid, FILE_BTREE, &provider->main_pool.vpids[i]);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      provider->returned_pages++;
     }
   if (!skip_ovf_file)
     {
       cursor = provider->ovf_pool.cursor.load (std::memory_order_relaxed);
       for (int i = cursor; i < provider->ovf_pool.n_published; i++)
 	{
-	  error = file_dealloc (thread_p, &provider->ovf_vfid, &provider->ovf_pool.vpids[i],
-				FILE_BTREE_OVERFLOW_KEY);
+	  error = bt_load_return_page (thread_p, provider, &provider->ovf_vfid, FILE_BTREE_OVERFLOW_KEY,
+				       &provider->ovf_pool.vpids[i]);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
-	  provider->returned_pages++;
 	}
     }
   for (int i = 0; i < provider->n_workers; i++)
