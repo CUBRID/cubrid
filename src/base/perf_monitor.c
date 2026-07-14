@@ -2262,8 +2262,6 @@ perfmon_stat_lock_mode_name (const int lock_mode)
       return "IX_LOCK";
     case SIX_LOCK:
       return "SIX_LOCK";
-    case U_LOCK:
-      return "U_LOCK";
     case X_LOCK:
       return "X_LOCK";
     case SCH_M_LOCK:
