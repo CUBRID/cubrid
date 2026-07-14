@@ -184,16 +184,7 @@ set(BUILD_NUMBER ${CUBRID_MAJOR_VERSION}.${CUBRID_MINOR_VERSION}.${CUBRID_PATCH_
 set(BUILD_OS ${CMAKE_SYSTEM_NAME})
 
 # BUILD_TYPE
-# NOTE: "OptDebug" must be checked before "Debug" because CMake's MATCHES does a
-#       regex substring search - the value "OptDebug" also matches "Debug", so a
-#       "Debug" branch placed first would wrongly claim it.
 if(CMAKE_BUILD_TYPE MATCHES "OptDebug")
-  # The optdebug build reports "optdebug" in the version string (cubrid_rel).
-  # Because "optdebug" contains the substring "debug", every CTP check - which
-  # detects debug via substring match (grep debug / indexOf("debug") /
-  # contains("debug")) - still classifies it as a debug build, so no external
-  # code needs to change. At the same time the string is visibly distinct from a
-  # real "debug build", which is exactly what we want.
   set(BUILD_TYPE "optdebug")
 elseif(CMAKE_BUILD_TYPE MATCHES "Debug")
   set(BUILD_TYPE "debug")
@@ -240,16 +231,9 @@ if(UNIX)
     # C++ flags for release build
     set(CMAKE_CXX_RELEASE_FLAGS "-O2 -DNDEBUG -finline-functions ${CMAKE_CXX_COMMON_FLAGS}")
 
-    # C/C++ flags for optdebug build (release-level optimization, asserts enabled)
-    # NOTE: -DNDEBUG is intentionally omitted so that assert() and the !NDEBUG
-    #       debug logs stay active, while -O2/-finline keep performance close to
-    #       release. Frame pointer and -ggdb3 preserve usable core stack traces.
-    # NOTE: -DCUBRID_OPTDEBUG is a dedicated marker for the optdebug build. Since
-    #       both optdebug and debug leave NDEBUG undefined - and the optdebug
-    #       build masquerades as debug for CTP (package name is -debug) - this
-    #       macro is the only compile-time way to tell an optdebug build apart
-    #       from a real debug build.
+    # C flags for optdebug build (release-level optimization, asserts enabled)
     set(CMAKE_C_OPTDEBUG_FLAGS "-O2 -finline-functions -ggdb3 -Wall -fstack-protector-strong -DCUBRID_OPTDEBUG ${CMAKE_C_COMMON_FLAGS}")
+    # C++ flags for optdebug build (release-level optimization, asserts enabled)
     set(CMAKE_CXX_OPTDEBUG_FLAGS "-O2 -finline-functions -ggdb3 -Wall -DCUBRID_OPTDEBUG ${CMAKE_CXX_COMMON_FLAGS}")
 
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} ${CMAKE_C_DEBUG_FLAGS}")
@@ -897,14 +881,6 @@ install(FILES
   DESTINATION ${CUBRID_TMPDIR}
   RENAME README.txt)
 
-# OptDebug build marker.
-# The optdebug build uses a "-debug" package name so CTP handles it exactly like
-# a debug build (the version string reports "optdebug", which still contains the
-# "debug" substring every CTP check relies on - see BUILD_TYPE note). This marker
-# file is an extra, machine-readable signal that the install is actually an
-# optdebug build (assert + debug logs, release-level optimization). CTP never
-# reads it, so it triggers no parsing errors; check it with:
-#   cat $CUBRID/build_mode.txt
 if(CMAKE_BUILD_TYPE MATCHES "OptDebug")
   file(WRITE "${CMAKE_BINARY_DIR}/build_mode.txt" "build_mode=optdebug\n")
   install(FILES "${CMAKE_BINARY_DIR}/build_mode.txt" DESTINATION ${CUBRID_PREFIXDIR})
@@ -948,9 +924,6 @@ set(CPACK_PACKAGE_VERSION_MINOR "${CUBRID_MINOR_VERSION}")
 set(CPACK_PACKAGE_VERSION_PATCH "${CUBRID_PATCH_VERSION}")
 set(CPACK_PACKAGE_VERSION "${CUBRID_VERSION}")
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
-  # This also matches "OptDebug" (MATCHES is a regex substring search), which is
-  # intended: the optdebug build ships under a "-debug" package name so CTP and
-  # other tooling treat it exactly like a debug build.
   set(CUBRID_PACKAGE_FILE_SUFFIX "-debug")
 elseif(CMAKE_BUILD_TYPE MATCHES "Coverage")
   set(CUBRID_PACKAGE_FILE_SUFFIX "-coverage")

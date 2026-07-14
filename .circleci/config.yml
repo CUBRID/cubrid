@@ -357,12 +357,12 @@ jobs:
                         git submodule sync
                         git submodule update --init
                   - run:
-                      name: Build (debug)
+                      name: Build (optdebug)
                       command: |
                         mkdir -p \$CCACHE_DIR
                         ccache --max-size=5G
                         ccache -z
-                        scl enable devtoolset-8 -- /entrypoint.sh build -m debug
+                        scl enable devtoolset-8 -- /entrypoint.sh build -m optdebug
                         ccache -s
                   - save_cache:
                       key: ccache-debug-v1-{{ checksum "CMakeLists.txt" }}
