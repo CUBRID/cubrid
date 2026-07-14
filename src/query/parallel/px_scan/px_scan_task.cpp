@@ -292,12 +292,10 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
-			/* Worker fixed_scan here is a local recompute (xptr->scan_ptr == NULL check above),
-			 * simplified vs the leader's full fixed-scan chain-walk that fed m_is_cached_scan.
-			 * The asymmetry is perf-only, not a correctness gap: a cached scan is structurally safe
-			 * for any S_SELECT lock-free scan regardless of which path computed fixed_scan, and
-			 * the "&& !fixed_scan" guard below still prevents a cached scan from activating on a
-			 * scan this worker locally determined to be fixed. */
+			/* Cached scan is restricted to the driving (level-0) scan, opened above with
+			 * m_is_cached_scan. Intermediate scans of the chain always open with cached
+			 * scan off (defaulted last argument), matching the serial-path gate in
+			 * qexec_execute_mainblock_internal (). */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,
@@ -306,8 +304,7 @@ namespace parallel_scan
 							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-							specp->s.cls_node.cls_regu_list_reserved,
-							m_is_cached_scan && !fixed_scan);
+							specp->s.cls_node.cls_regu_list_reserved);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;

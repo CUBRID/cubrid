@@ -120,7 +120,7 @@ namespace parallel_scan
       pre_execution_info m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
-      bool m_is_cached_scan;	/* cached-scan activation, computed via qexec_is_cached_scan_eligible () */
+      bool m_is_cached_scan;	/* cached-scan activation for the driving scan, decided in qexec_open_scan () */
       bool m_uses_xasl_clone;
       bool m_g_agg_domain_resolve_need;
       QFILE_LIST_ID *m_list_id;

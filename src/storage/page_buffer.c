@@ -902,6 +902,12 @@ pgbuf_copy_buffer_alloc (void)
 void
 pgbuf_copy_buffer_free (PGBUF_COPY_BUFFER_HANDLE handle)
 {
+  if (handle != NULL)
+    {
+      /* end the lifetime started by the placement new in pgbuf_copy_buffer_alloc (); currently a
+       * no-op, but keeps construction/destruction symmetric if PGBUF_BCB members change */
+      handle->dummy_bcb. ~ pgbuf_bcb ();
+    }
   free_and_init (handle);
 }
 

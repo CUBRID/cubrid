@@ -454,11 +454,11 @@ extern "C"
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
       }
 
-    /* By construction, mvcc_select_lock_needed is false here: the gate above (spec->curent == nullptr
-     * branch) sets ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN and returns early whenever it is true, and that
-     * flag persists across subsequent calls for the same spec. */
-    bool cached_scan = qexec_is_cached_scan_eligible (spec, scan_op_type, mvcc_select_lock_needed, fixed_scan,
-		       grouped_scan);
+    /* Cached-scan activation was already decided by qexec_open_scan () for this spec: the
+     * driving-scan gate from qexec_execute_mainblock_internal () ANDed with the eligibility
+     * predicate. The flag also persists across partition reopens (see the reopen caller in
+     * query_executor.c). */
+    bool cached_scan = spec->cached_scan;
 
     scan_id->s.phsid.manager = nullptr;	/* init */
 
