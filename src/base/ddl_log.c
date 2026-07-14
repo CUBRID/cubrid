@@ -209,7 +209,7 @@ logddl_set_db_name (const char *db_name)
       return;
     }
 
-  snprintf (ddl_audit_handle->db_name, sizeof (ddl_audit_handle->db_name), db_name);
+  snprintf (ddl_audit_handle->db_name, sizeof (ddl_audit_handle->db_name), "%s", db_name);
 
   pstr = (char *) strchr (ddl_audit_handle->db_name, '@');
   if (pstr != NULL)
@@ -223,7 +223,7 @@ logddl_set_user_name (const char *user_name)
 {
   if (ddl_audit_handle != NULL && user_name != NULL && ddl_logging_enabled)
     {
-      snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), user_name);
+      snprintf (ddl_audit_handle->user_name, sizeof (ddl_audit_handle->user_name), "%s", user_name);
     }
 }
 
@@ -232,7 +232,7 @@ logddl_set_ip (const char *ip_addr)
 {
   if (ddl_audit_handle != NULL && ip_addr != NULL && ddl_logging_enabled)
     {
-      snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), ip_addr);
+      snprintf (ddl_audit_handle->ip_addr, sizeof (ddl_audit_handle->ip_addr), "%s", ip_addr);
     }
 }
 
@@ -250,7 +250,7 @@ logddl_set_br_name (const char *br_name)
 {
   if (ddl_audit_handle != NULL && br_name != NULL && ddl_logging_enabled)
     {
-      snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, br_name);
+      snprintf (ddl_audit_handle->br_name, BROKER_NAME_LEN, "%s", br_name);
     }
 }
 
