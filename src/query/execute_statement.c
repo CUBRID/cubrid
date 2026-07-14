@@ -5455,22 +5455,25 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
     case TRAN_READ_COMMITTED:
       *tran_isolation = TRAN_READ_COMMITTED;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
     case TRAN_REPEATABLE_READ:
       *tran_isolation = TRAN_REPEATABLE_READ;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
     case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_S_SERIAL_I));
       break;
     case 0:

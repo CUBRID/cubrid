@@ -4807,7 +4807,7 @@ la_flush_repl_items (bool immediate)
 
 	      sb.clear ();
 	      db_sprint_value (&flush_err->pkey_value, sb);
-	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, "%s", sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{

@@ -1792,7 +1792,7 @@ display_error (int adjust)
 
   display_error_line (adjust);
   msg = db_error_string (3);
-  fprintf (stderr, msg);
+  fprintf (stderr, "%s", msg);
   fprintf (stderr, "\n");
 }
 
@@ -4740,7 +4740,7 @@ check_commit (LDR_CONTEXT *context)
 	{
 	  CHECK_ERR (err, db_abort_transaction ());
 	  display_error_line (-1);
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
+	  fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_ABORT));
 	  if (context->args->periodic_commit && Total_objects >= context->args->periodic_commit)
 	    {
 	      committed_instances = Total_objects - (context->args->periodic_commit - context->commit_counter);
@@ -4760,7 +4760,7 @@ check_commit (LDR_CONTEXT *context)
 	      committed_instances = Total_objects + 1;
 	      display_error_line (-1);
 	      fprintf (stderr,
-		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_COMMIT));
+		       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_LOADDB, LOADDB_MSG_INTERRUPTED_COMMIT));
 	    }
 	}
 

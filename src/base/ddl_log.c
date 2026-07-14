@@ -265,7 +265,7 @@ logddl_set_user_name (const char *user_name)
 {
   if (ddl_logging_enabled && user_name)
     {
-      snprintf (ddl_audit_handle.user_name, sizeof (ddl_audit_handle.user_name), user_name);
+      snprintf (ddl_audit_handle.user_name, sizeof (ddl_audit_handle.user_name), "%s", user_name);
     }
 }
 
@@ -274,7 +274,7 @@ logddl_set_ip (const char *ip_addr)
 {
   if (ddl_logging_enabled && ip_addr)
     {
-      snprintf (ddl_audit_handle.ip_addr, sizeof (ddl_audit_handle.ip_addr), ip_addr);
+      snprintf (ddl_audit_handle.ip_addr, sizeof (ddl_audit_handle.ip_addr), "%s", ip_addr);
     }
 }
 
@@ -286,7 +286,7 @@ logddl_set_broker_info (const int index, const char *br_name)
       ddl_audit_handle.br_index = index;
       if (br_name)
 	{
-	  snprintf (ddl_audit_handle.br_name, BROKER_NAME_LEN, br_name);
+	  snprintf (ddl_audit_handle.br_name, BROKER_NAME_LEN, "%s", br_name);
 	}
       else
 	{

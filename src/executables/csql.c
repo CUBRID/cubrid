@@ -2752,7 +2752,7 @@ csql_exit_session (int error, bool exit_flag)
       tf = csql_Error_fp;
 
       /* interactive, default action is abort but there was update */
-      fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
+      fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
       fflush (tf);
       for (; fgets (line_buf, LINE_BUFFER_SIZE, csql_Input_fp) != NULL;)
 	{
@@ -2769,7 +2769,7 @@ csql_exit_session (int error, bool exit_flag)
 	      break;
 	    }
 
-	  fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
+	  fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
 	  fflush (tf);
 	}
 

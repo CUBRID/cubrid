@@ -2047,7 +2047,7 @@ au_print_grants (MOP auth, FILE *fp)
     }
   else
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
+      fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
     }
 
   get_grants (auth, &grants, 1);

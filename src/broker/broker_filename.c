@@ -138,7 +138,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	    }
 	  else
 	    {
-	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	      ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	    }
 	}
       else
@@ -175,7 +175,7 @@ set_cubrid_file (T_CUBRID_FILE_ID fid, char *value)
 	}
       else
 	{
-	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, value);
+	  ret = snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", value);
 	}
       break;
     }
@@ -308,7 +308,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_SHARD_DBINFO:
       envvar_confdir_file (buf, BROKER_PATH_MAX, "shard_databases.txt");
-      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf) < 0)
 	{
 	  assert (false);
 	  buf[0] = '\0';
@@ -316,7 +316,7 @@ get_cubrid_file (T_CUBRID_FILE_ID fid, char *buf, size_t len)
       break;
     case FID_SHARD_PROXY_LOG_DIR:
       envvar_logdir_file (buf, BROKER_PATH_MAX, "broker/proxy_log/");
-      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, buf) < 0)
+      if (snprintf (cubrid_file[fid].file_name, BROKER_PATH_MAX, "%s", buf) < 0)
 	{
 	  assert (false);
 	  buf[0] = '\0';

@@ -568,7 +568,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  util_byte_to_size_string (vol_buf, 64, db_volume_size);
 	}
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
 
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_BAD_RANGE),
 			     prm_get_name (PRM_ID_DB_VOLUME_SIZE), vol_buf, min_buf, max_buf);
@@ -602,7 +602,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 	{
 	  util_byte_to_size_string (vol_buf, 64, log_volume_size);
 	}
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
       PRINT_AND_LOG_ERR_MSG (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_BAD_RANGE),
 			     prm_get_name (PRM_ID_LOG_VOLUME_SIZE), vol_buf, min_buf, max_buf);
 
@@ -661,7 +661,7 @@ createdb (UTIL_FUNCTION_ARG * arg)
 
   if (status != NO_ERROR)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_CREATEDB, CREATEDB_MSG_FAILURE));
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
       goto error_exit;
     }
@@ -1036,7 +1036,8 @@ restoredb (UTIL_FUNCTION_ARG * arg)
       if (error_code != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTOREDB, RESTOREDB_MSG_FAILURE));
+	  fprintf (stderr, "%s",
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTOREDB, RESTOREDB_MSG_FAILURE));
 	  goto error_exit;
 	}
 
@@ -1054,7 +1055,7 @@ restoredb (UTIL_FUNCTION_ARG * arg)
   if (status == NULL_TRAN_INDEX)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTOREDB, RESTOREDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTOREDB, RESTOREDB_MSG_FAILURE));
       goto error_exit;
     }
   else
@@ -1823,7 +1824,8 @@ patchdb (UTIL_FUNCTION_ARG * arg)
       fprintf (stderr, "emergency patch fail:%s\n", db_error_string (3));
       if (error == ER_LOG_TOO_SANE_TO_RECREATE)
 	{
-	  fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PATCHDB, PATCHDB_RECREATE_FAILURE));
+	  fprintf (stderr, "%s",
+		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_PATCHDB, PATCHDB_RECREATE_FAILURE));
 	}
       er_final (ER_ALL_FINAL);
       goto error_exit;
@@ -1941,8 +1943,8 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
 						       &blt_wrs_npages);
 
 		      fprintf (stdout,
-			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_INDEX,
-					       ESTIMATEDB_INDEX_MSG_INPUT));
+			       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_INDEX,
+						     ESTIMATEDB_INDEX_MSG_INPUT));
 		      fprintf (stdout,
 			       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_INDEX,
 					       ESTIMATEDB_INDEX_MSG_INSTANCES), num_instance);
@@ -1979,7 +1981,8 @@ estimatedb_index (UTIL_FUNCTION_ARG * arg)
       break;
     case 1:
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_INDEX, ESTIMATEDB_INDEX_BAD_ARGUMENTS));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_ESTIMATEDB_INDEX,
+				     ESTIMATEDB_INDEX_BAD_ARGUMENTS));
       break;
     default:
       fprintf (stdout,
@@ -2775,7 +2778,8 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
       if (!is_force)
 	{
 	  fprintf (stdout,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_SYNC_CONTINUE));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB,
+					 SYNCCOLLDB_MSG_SYNC_CONTINUE));
 	  scanf ("%1s", yn);
 	  if (yn[0] != 'y')
 	    {
@@ -2791,7 +2795,7 @@ synccolldb (UTIL_FUNCTION_ARG * arg)
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_abort_transaction ();
 	  fprintf (stdout,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_SYNC_ABORT));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_SYNC_ABORT));
 	  goto exit;
 	}
       else
@@ -3051,7 +3055,8 @@ synccoll_check (const char *db_name, int *db_obs_coll_cnt, int *new_sys_coll_cnt
   if (*db_obs_coll_cnt == 0 && *new_sys_coll_cnt == 0)
     {
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB, SYNCCOLLDB_MSG_REPORT_NOT_NEEDED));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_SYNCCOLLDB,
+				     SYNCCOLLDB_MSG_REPORT_NOT_NEEDED));
     }
   else
     {
@@ -4695,7 +4700,8 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   if (check_ha_db_and_node_list (database_name, master_host_name) == false)
     {
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_INVAILD_OPTIONS));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE,
+				     RESTORESLAVE_MSG_INVAILD_OPTIONS));
       goto error_exit;
     }
 
@@ -4710,7 +4716,7 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  fprintf (stderr,
-		   msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_FAILURE));
+		   "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_FAILURE));
 	  goto error_exit;
 	}
 
@@ -4725,7 +4731,8 @@ restoreslave (UTIL_FUNCTION_ARG * arg)
   if (status == NULL_TRAN_INDEX)
     {
       PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_FAILURE));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_RESTORESLAVE, RESTORESLAVE_MSG_FAILURE));
       goto error_exit;
     }
   else
@@ -4868,12 +4875,12 @@ gen_tz (UTIL_FUNCTION_ARG * arg)
       /* This is a temporary fix to show usages until we have the update option.
        * Please remove the following when you are going to implement it.
        */
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_INVALID_MODE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_INVALID_MODE));
       goto print_gen_tz_usage;
     }
   else
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_INVALID_MODE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_GEN_TZ, GEN_TZ_MSG_INVALID_MODE));
       goto print_gen_tz_usage;
     }
 
@@ -5046,7 +5053,8 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_OUT_OF_RANGE, 1, zone);
 	      fprintf (stderr,
-		       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMP_TZ, DUMP_TZ_MSG_ID_OUT_OF_RANGE));
+		       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMP_TZ,
+					     DUMP_TZ_MSG_ID_OUT_OF_RANGE));
 	      err_status = EXIT_FAILURE;
 	      goto exit;
 	    }
@@ -5065,7 +5073,8 @@ dump_tz (UTIL_FUNCTION_ARG * arg)
   if (is_dump_zone && zone_id < -1 && zone_id >= tzd->timezone_count)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_OUT_OF_RANGE, 1, zone);
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMP_TZ, DUMP_TZ_MSG_ID_OUT_OF_RANGE));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_DUMP_TZ, DUMP_TZ_MSG_ID_OUT_OF_RANGE));
       err_status = EXIT_FAILURE;
       goto exit;
     }
