@@ -11855,7 +11855,7 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
       && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
     {
-      snl->is_remote_insert_select = true;
+      snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
 
   pt_convert_dblink_dml_query (parser, node, (remote_ins == 0), remote_ins, snl);
@@ -11995,7 +11995,7 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * pt_dblink_delete_where_is_inscope's comment for the exact rejection points). */
   if (remote_del == 1 && local_del == 0 && pt_dblink_delete_where_is_inscope (node))
     {
-      snl->is_remote_delete_local_subq = true;
+      snl->sink_kind = DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ;
     }
 
   pt_convert_dblink_dml_query (parser, node, local_del, remote_del, snl);
@@ -12218,7 +12218,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * pt_to_xasl_for_dblink): a single shared remote server pushes the whole INSERT ... SELECT
    * down to that server, while local-mixed and multi-remote sources fall through to their
    * existing rejections. */
-  if (snl->is_remote_insert_select && sub_sel_server_cnt > 0)
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT && sub_sel_server_cnt > 0)
     {
       if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
 	{
@@ -12237,7 +12237,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
       else
 	{
-	  snl->is_remote_insert_select = false;
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
 	}
     }
 
@@ -12245,15 +12245,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
    * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
    * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected. */
-  if (snl->is_remote_delete_local_subq)
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
     {
       if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
 	{
-	  snl->is_remote_delete_local_subq = false;
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
 	}
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0 && !snl->is_remote_insert_select && !snl->is_remote_delete_local_subq)
+  if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
       return;
@@ -12265,7 +12265,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->has_dblink_query && !snl->is_remote_insert_select)
+  if (snl->has_dblink_query && snl->sink_kind != DBLINK_REMOTE_SINK_INSERT_SELECT)
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: remote DML has DBLINK query is not allowed");
       return;
@@ -12280,7 +12280,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* remote DELETE + pure-local subquery: set up the value-push sink. Like the INSERT SELECT sink, skip the
    * DML text serialization (qstr stays NULL) and preserve the WHERE subquery (delete_.search_cond) for XASL
    * generation; the runtime evaluates the subquery locally and pushes per-row DELETEs via CCI bind. */
-  if (snl->is_remote_delete_local_subq)
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, upd_spec, snl);
@@ -12289,7 +12289,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
   /* INSERT SELECT: skip DML text serialization; preserve value_clauses for XASL generation.
    * Set up connection info (ct + pt_resolve_server_names) — runtime inserts via CCI bind. */
-  if (snl->is_remote_insert_select)
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_INSERT_SELECT)
     {
       node->flag.cannot_prepare = 0;
       pt_setup_dblink_sink_spec (parser, node, into_spec, snl);

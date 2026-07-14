@@ -4022,6 +4022,19 @@ enum cdc_ddl_object_type
 };
 typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 
+/* Which remote DML value-push sink (if any) a statement is routed to. A statement is exactly one of
+ * INSERT/DELETE/UPDATE, so these are mutually exclusive by construction -- unlike the bool pair this
+ * replaces, the type itself rules out an (INSERT_SELECT, DELETE_LOCAL_SUBQ) state that could never
+ * happen, and pt_convert_dblink_dml_query's "no sink" guard becomes a single ==NONE check instead of
+ * accumulating a !flag per sink kind as more are added (UPDATE to follow). */
+typedef enum dblink_remote_sink_kind
+{
+  DBLINK_REMOTE_SINK_NONE = 0,
+  DBLINK_REMOTE_SINK_INSERT_SELECT,	/* INSERT INTO remote SELECT ... FROM local */
+  DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ	/* DELETE FROM remote WHERE ... (local subquery) */
+    /* DBLINK_REMOTE_SINK_UPDATE_... to follow */
+} DBLINK_REMOTE_SINK_KIND;
+
 typedef struct
 {
   int local_cnt;
@@ -4037,18 +4050,9 @@ typedef struct
   char *server_full_name[2];
   PT_NODE *server[2];
   bool has_dblink_query;
-  bool is_remote_insert_select;	/* remote-target INSERT SELECT routed to the CCI streaming sink.
-				 * Set for a local source, and kept for a same-server local+remote mixed
-				 * source (local_cnt > 0 && distinct_cnt == 1) whose remote part is
-				 * rewritten to a dblink scan. Cleared when the source is purely remote
-				 * (same-server @A<-@A falls back to full-pushdown) or spans other/multiple
-				 * servers (then multi-remote / local-mixed are rejected). */
-  bool is_remote_delete_local_subq;	/* remote-target DELETE whose WHERE references a pure-local subquery,
-					 * routed to the value-push sink. Set optimistically for a single remote
-					 * target with a WHERE clause (pt_convert_dblink_delete_query) and kept only
-					 * when the subquery is purely local (local_cnt > 0 && server_node_cnt == 1
-					 * && !has_dblink_query). Cleared otherwise so same-server all-remote
-					 * (full-pushdown) and multi-remote / dblink() cases fall to existing guards. */
+  DBLINK_REMOTE_SINK_KIND sink_kind;	/* which remote DML sink (if any) this statement is routed to;
+					 * eligibility is decided/cleared in pt_convert_dblink_dml_query
+					 * (parser_support.c) per sink kind */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
