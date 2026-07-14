@@ -591,6 +591,14 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       pgbuf_finalize ();
       file_manager_final ();
     }
+#if !defined (NDEBUG)
+  else
+    {
+      /* Carried into recovery while pristine: pre-recovery logs nothing (WAL),
+       * so no lock is held (hence no MVCCID assigned). */
+      assert (lock_get_number_object_locks () == 0);
+    }
+#endif /* !NDEBUG */
 
   if (log_Gl.trantable.area != NULL)
     {
