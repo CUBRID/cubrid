@@ -491,6 +491,45 @@ au_auth_accessor::delete_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, M
   return error;
 }
 
+int
+au_auth_accessor::delete_all_auth (void)
+{
+  int error = NO_ERROR;
+  DB_OBJLIST *list, *mop;
+
+  if (m_au_class_mop == nullptr)
+    {
+      m_au_class_mop = sm_find_class (CT_CLASSAUTH_NAME);
+      if (m_au_class_mop == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_MISSING_CLASS, 1, CT_CLASSAUTH_NAME);
+	  return ER_AU_MISSING_CLASS;
+	}
+    }
+
+  list = sm_fetch_all_objects (m_au_class_mop, DB_FETCH_CLREAD_INSTREAD);
+  if (list == NULL)
+    {
+      error = er_errid ();
+      return error;
+    }
+
+  for (mop = list; mop != NULL; mop = mop->next)
+    {
+      error = obj_delete (mop->op);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+    }
+
+  if (list != NULL)
+    {
+      ml_ext_free (list);
+    }
+
+  return error;
+}
 
 /*
  * au_delete_auth_of_dropping_user - delete _db_auth records refers to the given grantee user.

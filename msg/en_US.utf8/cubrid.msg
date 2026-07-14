@@ -1475,7 +1475,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1374 Cannot create the partition table. The combined length of the table name and partition name must be less than %1$d.
 
-1375 Last Error
+1375 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1376 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1377 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

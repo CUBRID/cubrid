@@ -106,6 +106,7 @@
 #include "crypt_opfunc.h"
 #include "object_representation.h"
 #include "flashback.h"
+#include "system_metadata_version.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1357,6 +1358,7 @@ logpb_initialize_header (THREAD_ENTRY * thread_p, LOG_HEADER * loghdr, const cha
   loghdr->avg_nlocks = LOG_ESTIMATE_NOBJ_LOCKS;
   loghdr->npages = npages - 1;	/* Hdr pg is stolen */
   loghdr->db_charset = lang_charset ();
+  loghdr->sysmeta_version = SYSTEM_METADATA_VERSION;
 #if !defined(NDEBUG)
   loghdr->fpageid = (LOG_PAGEID) prm_get_bigint_value (PRM_ID_FIRST_LOG_PAGEID);	/* loghdr->fpageid should always be 0 except for QA or TEST purposes. */
 #else

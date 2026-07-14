@@ -10852,12 +10852,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_CREATE_ENTITY:
       {
-	bool is_dba_group_member = au_is_dba_group_member (Au_user);
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node)))
+	    && !sm_is_catcls_disabled ())
 	  {
-	    int error = NO_ERROR;
-	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
-	    PT_ERRORc (parser, node, er_msg ());
+	    PT_ERROR (parser, node, "It is not allowed to create a table/view with a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10866,9 +10864,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_RENAME:
       {
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))) && !sm_is_catcls_disabled ())
 	  {
-	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    PT_ERROR (parser, node, "It is not allowed to rename a table/view to a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 

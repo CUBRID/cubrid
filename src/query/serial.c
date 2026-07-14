@@ -53,20 +53,25 @@ static int rc;
 #endif /* !SERVER_MODE */
 
 /* attribute of _db_serial class */
+#define SERIAL_ATTR_LIST \
+  MAP_LIST_ITEM (UNIQUE_NAME) \
+  MAP_LIST_ITEM (NAME) \
+  MAP_LIST_ITEM (OWNER) \
+  MAP_LIST_ITEM (CURRENT_VAL) \
+  MAP_LIST_ITEM (INCREMENT_VAL) \
+  MAP_LIST_ITEM (MAX_VAL) \
+  MAP_LIST_ITEM (MIN_VAL) \
+  MAP_LIST_ITEM (CYCLIC) \
+  MAP_LIST_ITEM (STARTED) \
+  MAP_LIST_ITEM (CLASS_NAME) \
+  MAP_LIST_ITEM (ATTR_NAME) \
+  MAP_LIST_ITEM (CACHED_NUM)
+
 typedef enum
 {
-  SERIAL_ATTR_UNIQUE_NAME_INDEX,
-  SERIAL_ATTR_NAME_INDEX,
-  SERIAL_ATTR_OWNER_INDEX,
-  SERIAL_ATTR_CURRENT_VAL_INDEX,
-  SERIAL_ATTR_INCREMENT_VAL_INDEX,
-  SERIAL_ATTR_MAX_VAL_INDEX,
-  SERIAL_ATTR_MIN_VAL_INDEX,
-  SERIAL_ATTR_CYCLIC_INDEX,
-  SERIAL_ATTR_STARTED_INDEX,
-  SERIAL_ATTR_CLASS_NAME_INDEX,
-  SERIAL_ATTR_ATTR_NAME_INDEX,
-  SERIAL_ATTR_CACHED_NUM_INDEX,
+#define MAP_LIST_ITEM(item)     SERIAL_ATTR_##item##_INDEX,
+  SERIAL_ATTR_LIST
+#undef MAP_LIST_ITEM
   SERIAL_ATTR_MAX_INDEX
 } SR_ATTRIBUTES;
 
@@ -1223,10 +1228,7 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
 {
   HEAP_SCANCACHE scan;
   RECDES class_record;
-  HEAP_CACHE_ATTRINFO attr_info;
-  int i, error = NO_ERROR;
-  char *attr_name_p, *string = NULL;
-  int alloced_string = 0;
+  int error = NO_ERROR;
 
   serial_Num_attrs = -1;
 
@@ -1242,97 +1244,36 @@ serial_load_attribute_info_of_db_serial (THREAD_ENTRY * thread_p)
       return ER_FAILED;
     }
 
-  error = heap_attrinfo_start (thread_p, &serial_Cache_pool.db_serial_class_oid, -1, NULL, &attr_info);
-  if (error != NO_ERROR)
-    {
-      (void) heap_scancache_end (thread_p, &scan);
-      return error;
-    }
+  static const char *const serial_attr_names[] = {
+#define MAP_LIST_ITEM(item)     SERIAL_ATTR_##item,
+    SERIAL_ATTR_LIST
+#undef MAP_LIST_ITEM
+  };
 
-  for (i = 0; i < attr_info.num_values; i++)
+  for (int i = 0; i < SERIAL_ATTR_MAX_INDEX; i++)
     {
-      string = NULL;
-      alloced_string = 0;
-
-      error = or_get_attrname (&class_record, i, &string, &alloced_string);
+      error = or_get_attrid (&class_record, serial_attr_names[i], &serial_Attrs_id[i]);
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-
-      attr_name_p = string;
-      if (attr_name_p == NULL)
+      if (serial_Attrs_id[i] == NULL_ATTRID)
 	{
+	  assert (false);
 	  error = ER_FAILED;
 	  goto exit_on_error;
 	}
-
-      if (strcmp (attr_name_p, SERIAL_ATTR_UNIQUE_NAME) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_UNIQUE_NAME_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_NAME) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_NAME_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_OWNER) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_OWNER_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_CURRENT_VAL) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_INCREMENT_VAL) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_INCREMENT_VAL_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_MAX_VAL) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_MAX_VAL_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_MIN_VAL) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_MIN_VAL_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_CYCLIC) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_CYCLIC_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_STARTED) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_CLASS_NAME) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_CLASS_NAME_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_ATTR_NAME) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_ATTR_NAME_INDEX] = i;
-	}
-      else if (strcmp (attr_name_p, SERIAL_ATTR_CACHED_NUM) == 0)
-	{
-	  serial_Attrs_id[SERIAL_ATTR_CACHED_NUM_INDEX] = i;
-	}
-
-      if (string != NULL && alloced_string)
-	{
-	  db_private_free_and_init (NULL, string);
-	}
     }
 
-  serial_Num_attrs = attr_info.num_values;
+  serial_Num_attrs = SERIAL_ATTR_MAX_INDEX;
 
-  heap_attrinfo_end (thread_p, &attr_info);
   error = heap_scancache_end (thread_p, &scan);
 
   return error;
 
 exit_on_error:
 
-  heap_attrinfo_end (thread_p, &attr_info);
   (void) heap_scancache_end (thread_p, &scan);
 
   return error;

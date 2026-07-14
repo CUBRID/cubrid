@@ -2121,10 +2121,17 @@ au_force_write_new_auth (void)
   int gindex, gsize;
   int save;
   int error = NO_ERROR;
+  au_auth_accessor accessor;
 
   list = NULL;
 
   AU_DISABLE (save);
+
+  error = accessor.delete_all_auth ();
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
 
   au_class = sm_find_class (AU_AUTH_CLASS_NAME);
   if (au_class == NULL)
@@ -2162,7 +2169,6 @@ au_force_write_new_auth (void)
 
       gsize = set_size (grants);
 
-      au_auth_accessor accessor;
       for (gindex = 0; gindex < gsize; gindex += GRANT_ENTRY_LENGTH)
 	{
 	  error = set_get_element (grants, GRANT_ENTRY_TYPE (gindex), &type_val);

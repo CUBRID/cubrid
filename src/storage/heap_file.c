@@ -775,8 +775,6 @@ static int heap_get_partitions_from_subclasses (THREAD_ENTRY * thread_p, const O
 						OR_PARTITION * partitions);
 static int heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, OR_PARTITION * partition_info,
 					  HFID * class_hfid, REPR_ID * repr_id, int *has_partition_info);
-static int heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id,
-					  ATTR_ID * values_id);
 static int heap_get_class_subclasses (THREAD_ENTRY * thread_p, const OID * class_oid, int *count, OID ** subclasses);
 static unsigned int heap_hash_vpid (const void *key_vpid, unsigned int htsize);
 static int heap_compare_vpid (const void *key_vpid1, const void *key_vpid2);
@@ -11118,108 +11116,6 @@ heap_class_get_partition_info (THREAD_ENTRY * thread_p, const OID * class_oid, O
 cleanup:
   heap_scancache_end (thread_p, &scan_cache);
 
-  return error;
-}
-
-/*
- * heap_get_partition_attributes () - get attribute ids for columns of
- *				      _db_partition class
- * return : error code or NO_ERROR
- * thread_p (in)      :
- * cls_oid (in)	      : _db_partition class OID
- * type_id (in/out)   : holder for the type attribute id
- * values_id (in/out) : holder for the values attribute id
- */
-static int
-heap_get_partition_attributes (THREAD_ENTRY * thread_p, const OID * cls_oid, ATTR_ID * type_id, ATTR_ID * values_id)
-{
-  RECDES recdes;
-  HEAP_SCANCACHE scan;
-  HEAP_CACHE_ATTRINFO attr_info;
-  int error = NO_ERROR;
-  int i = 0;
-  char *attr_name = NULL;
-  bool is_scan_cache_started = false, is_attrinfo_started = false;
-  char *string = NULL;
-  int alloced_string = 0;
-
-  if (type_id == NULL || values_id == NULL)
-    {
-      assert (false);
-      error = ER_FAILED;
-      goto cleanup;
-    }
-  *type_id = *values_id = NULL_ATTRID;
-
-  if (heap_scancache_quick_start_root_hfid (thread_p, &scan) != NO_ERROR)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-  is_scan_cache_started = true;
-
-  error = heap_attrinfo_start (thread_p, cls_oid, -1, NULL, &attr_info);
-  if (error != NO_ERROR)
-    {
-      goto cleanup;
-    }
-  is_attrinfo_started = true;
-
-  if (heap_get_class_record (thread_p, cls_oid, &recdes, &scan, PEEK) != S_SUCCESS)
-    {
-      error = ER_FAILED;
-      goto cleanup;
-    }
-
-  for (i = 0; i < attr_info.num_values && (*type_id == NULL_ATTRID || *values_id == NULL_ATTRID); i++)
-    {
-      alloced_string = 0;
-      string = NULL;
-
-      error = or_get_attrname (&recdes, i, &string, &alloced_string);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-
-      attr_name = string;
-      if (attr_name == NULL)
-	{
-	  error = ER_FAILED;
-	  goto cleanup;
-	}
-      if (strcmp (attr_name, "ptype") == 0)
-	{
-	  *type_id = i;
-	}
-
-      if (strcmp (attr_name, "pvalues") == 0)
-	{
-	  *values_id = i;
-	}
-
-      if (string != NULL && alloced_string == 1)
-	{
-	  db_private_free_and_init (thread_p, string);
-	}
-    }
-
-  if (*type_id == NULL_ATTRID || *values_id == NULL_ATTRID)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      error = ER_FAILED;
-    }
-
-cleanup:
-  if (is_attrinfo_started)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-    }
-  if (is_scan_cache_started)
-    {
-      heap_scancache_end (thread_p, &scan);
-    }
   return error;
 }
 

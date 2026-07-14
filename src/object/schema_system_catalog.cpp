@@ -21,10 +21,15 @@
 #include "db.h"
 #include "authenticate_constants.h"
 #include "dbtype_function.h"
+#include "error_manager.h"
 #include "identifier_store.hpp"
 #include "oid.h"
 #include "schema_information_schema.hpp"
 #include "schema_system_catalog_constants.h"
+#if defined (SA_MODE)
+#include "authenticate.h"
+#include "schema_manager.h"
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -146,3 +151,40 @@ bool sm_is_system_vclass (const std::string_view name)
 {
   return cubschema::sm_catalog_vclass_names.is_exists (name);
 }
+
+#if defined (SA_MODE)
+int
+sm_mark_system_classes (void)
+{
+  int error = NO_ERROR;
+  int au_save;
+
+  const std::vector<std::string> *name_lists[] =
+  { &cubschema::sm_system_class_names, &cubschema::sm_system_vclass_names };
+
+  AU_DISABLE (au_save);
+
+  for (const std::vector<std::string> *names : name_lists)
+    {
+      for (const std::string &name : *names)
+	{
+	  MOP class_mop = db_find_class (name.c_str ());
+	  if (class_mop == NULL)
+	    {
+	      er_clear ();
+	      continue;
+	    }
+
+	  error = sm_mark_system_class (class_mop, 1);
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+end:
+  AU_ENABLE (au_save);
+  return error;
+}
+#endif

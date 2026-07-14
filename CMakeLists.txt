@@ -768,6 +768,7 @@ if(WIN32)
 endif(WIN32)
 
 # include subdirectories
+add_subdirectory(upgrade)
 add_subdirectory(sa)
 add_subdirectory(cs)
 add_subdirectory(cubrid)
