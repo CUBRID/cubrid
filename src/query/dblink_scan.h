@@ -109,4 +109,20 @@ extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
+/* remote INSERT SELECT state */
+typedef struct dblink_insert_state DBLINK_INSERT_STATE;
+struct dblink_insert_state
+{
+  int conn_handle;
+  int stmt_handle;
+};
+
+extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
+			       const char *table_name, char **attr_names, int num_attrs, int num_bind,
+			       DBLINK_INSERT_STATE * state);
+extern int dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals,
+				      int num_vals);
+extern void dblink_insert_rollback (DBLINK_INSERT_STATE * state);
+extern void dblink_insert_close (DBLINK_INSERT_STATE * state);
+
 #endif

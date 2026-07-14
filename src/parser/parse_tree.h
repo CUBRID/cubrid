@@ -4025,12 +4025,24 @@ typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 typedef struct
 {
   int local_cnt;
-  int server_cnt;
-  int server_node_cnt;
+  int server_cnt;		/* raw count of dblink spec nodes walked so far (no dedup); unrelated to
+				 * stored_cnt/distinct_cnt below, used only to detect whether a sub-walk
+				 * encountered any new dblink spec (before/after diff) */
+  /* invariant: 0 <= stored_cnt <= 2; server[i] (0 <= i < stored_cnt) is always non-NULL */
+  int stored_cnt;		/* # entries actually stored in server[]/len[]/server_full_name[];
+				 * the only bound used for indexing/iterating those arrays */
+  int distinct_cnt;		/* # distinct remote servers found so far; multi-remote decision only,
+				 * may exceed 2 (array capacity) on overflow */
   int len[2];
   char *server_full_name[2];
   PT_NODE *server[2];
   bool has_dblink_query;
+  bool is_remote_insert_select;	/* remote-target INSERT SELECT routed to the CCI streaming sink.
+				 * Set for a local source, and kept for a same-server local+remote mixed
+				 * source (local_cnt > 0 && distinct_cnt == 1) whose remote part is
+				 * rewritten to a dblink scan. Cleared when the source is purely remote
+				 * (same-server @A<-@A falls back to full-pushdown) or spans other/multiple
+				 * servers (then multi-remote / local-mixed are rejected). */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
