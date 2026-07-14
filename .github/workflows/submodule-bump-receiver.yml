@@ -24,7 +24,7 @@ env:
   FALLBACK_TAG: "[CBRD-0000]"
 
 concurrency:
-  group: submodule-bump-${{ github.event.client_payload.submodule_path || inputs.submodule_path }}
+  group: submodule-bump-${{ github.event.client_payload.submodule_path || inputs.submodule_path || github.run_id }}
   cancel-in-progress: true
 
 jobs:
