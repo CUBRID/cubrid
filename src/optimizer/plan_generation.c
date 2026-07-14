@@ -5811,6 +5811,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   BITSET outer_input_segs_set, inner_input_segs_set;
   BITSET_ITERATOR term_iter, seg_iter;
   int term_index, seg_index;
+  bool has_subquery;
 
   PROJECTION_PART_INFO *outer_info, *inner_info;
   PROJECTION_FINAL_INFO *final_info;
@@ -5982,6 +5983,22 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	  if (!bitset_is_empty (&(QO_TERM_SUBQUERIES (term))))
 	    {
 	      /* correlated subquery: must run per-row via dptr in the parent scan, not the probe loop. */
+	      continue;
+	    }
+
+	  /* QO_TERM_SUBQUERIES covers only correlated ones; catch uncorrelated subqueries too. */
+	  has_subquery = false;
+	  if (QO_TERM_PT_EXPR (term) != NULL)
+	    {
+	      (void) parser_walk_tree (parser, QO_TERM_PT_EXPR (term), pt_check_subquery_pre, NULL,
+				       pt_check_subquery_post, &has_subquery);
+	    }
+	  if (has_subquery)
+	    {
+	      /* An uncorrelated subquery could in principle stay in the probe loop,
+	       * since its value is fixed and the parallel spawner could share it once computed.
+	       * But that widens the spawner's coverage,
+	       * so for now defer it and evaluate the predicate in the parent scan. */
 	      continue;
 	    }
 
