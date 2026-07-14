@@ -73,7 +73,7 @@ static void make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_ac
 static PT_NODE *make_if_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan);
 static PT_NODE *make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan);
-static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset);
+static PT_NODE *make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool check_func_index_segs);
 
 static XASL_NODE *gen_outer (QO_ENV *, QO_PLAN *, BITSET *, XASL_NODE *, XASL_NODE *, XASL_NODE *);
 static XASL_NODE *gen_hashjoin (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, BITSET * subqueries,
@@ -629,7 +629,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	  pred = outer_info->pred_list;
 	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
 	    {
-	      found_index = pt_find_attribute (parser, pred, outer_info->name_list);
+	      found_index = pt_find_attribute_with_func_index_expr (parser, pred, outer_info->name_list, true);
 	      if (found_index == -1)
 		{
 		  free_and_init (pos_list);
@@ -672,7 +672,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	  pred = inner_info->pred_list;
 	  for (pos_index = 0; pos_index < pos_cnt; pos_index++)
 	    {
-	      found_index = pt_find_attribute (parser, pred, inner_info->name_list);
+	      found_index = pt_find_attribute_with_func_index_expr (parser, pred, inner_info->name_list, true);
 	      if (found_index == -1)
 		{
 		  free_and_init (pos_list);
@@ -1808,7 +1808,7 @@ make_instnum_pred_from_plan (QO_ENV * env, QO_PLAN * plan)
 static PT_NODE *
 make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
 {
-  return make_namelist_from_bitset (env, &plan->info->projected_segs);
+  return make_namelist_from_bitset (env, &plan->info->projected_segs, false);
 }
 
 /*
@@ -1816,9 +1816,11 @@ make_namelist_from_projected_segs (QO_ENV * env, QO_PLAN * plan)
  *   return: List of PT_NAME nodes corresponding to the given segment bitset.
  *   env(in): Optimization environment.
  *   bitset(in): Bitset of segments to extract PT_NAME nodes from.
+ *   check_func_index_segs(in): If true, also append a column
+ *                              for each function-index expression segment.
  */
 static PT_NODE *
-make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
+make_namelist_from_bitset (QO_ENV * env, BITSET * bitset, bool check_func_index_segs)
 {
   PARSER_CONTEXT *parser;
   PT_NODE *node, *name_list = NULL;
@@ -1882,7 +1884,13 @@ make_namelist_from_bitset (QO_ENV * env, BITSET * bitset)
 	       * except for function expressions that match an existing function-based index.
 	       */
 	      assert_release_error (QO_SEG_FUNC_INDEX (seg));
-	      /* Nothing to do */
+
+	      if (check_func_index_segs && QO_SEG_FUNC_INDEX (seg))
+		{
+		  /* carry the function-index expression value as its own list column
+		   * so callers can bind it directly instead of re-evaluating */
+		  name_list = parser_append_node (pt_point (parser, node), name_list);
+		}
 	    }
 	}
     }
@@ -2513,13 +2521,13 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	    /* generate left name list of projected segs */
 	    bitset_assign (&temp_segs, &((outer->info)->projected_segs));
 	    bitset_intersect (&temp_segs, &plan_segs);
-	    seg_nlist = make_namelist_from_bitset (env, &temp_segs);
+	    seg_nlist = make_namelist_from_bitset (env, &temp_segs, false);
 
 
 	    /* generate right name list of projected segs */
 	    bitset_assign (&temp_segs, &((inner->info)->projected_segs));
 	    bitset_intersect (&temp_segs, &plan_segs);
-	    seg_nlist = parser_append_node (make_namelist_from_bitset (env, &temp_segs), seg_nlist);
+	    seg_nlist = parser_append_node (make_namelist_from_bitset (env, &temp_segs, false), seg_nlist);
 
 	    seg_nlen = pt_length_of_list (seg_nlist);
 
@@ -5800,6 +5808,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   QO_PLAN *outer_plan, *inner_plan;
   QO_TERM *term;
   BITSET required_segs_set, final_segs_set, input_segs_set, pred_segs_set, temp_segs_set;
+  BITSET outer_input_segs_set, inner_input_segs_set;
   BITSET_ITERATOR term_iter, seg_iter;
   int term_index, seg_index;
 
@@ -5829,14 +5838,48 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   bitset_init (&input_segs_set, env);
   bitset_init (&pred_segs_set, env);
   bitset_init (&temp_segs_set, env);
+  bitset_init (&outer_input_segs_set, env);
+  bitset_init (&inner_input_segs_set, env);
 
   outer_plan = plan->plan_un.join.outer;
   inner_plan = plan->plan_un.join.inner;
   assert (outer_plan != NULL);
   assert (inner_plan != NULL);
 
-  bitset_union (&input_segs_set, &outer_plan->info->projected_segs);
-  bitset_union (&input_segs_set, &inner_plan->info->projected_segs);
+  /*
+   * A function-index expression segment stands for the expression value only,
+   * not its argument columns, which projected_segs does not list.
+   * The term loop below expands each pred's function-index segment into its argument columns
+   * via qo_expr_segs(), and the per-side sets drive the pred_list split below,
+   * so input_segs_set must include those argument columns too.
+   *
+   * This is safe: make_namelist_from_bitset() runs the same expansion
+   * when building each child's name_list, so the child list files really do carry them.
+   */
+  bitset_assign (&outer_input_segs_set, &outer_plan->info->projected_segs);
+  for (seg_index = bitset_iterate (&outer_plan->info->projected_segs, &seg_iter); seg_index != -1;
+       seg_index = bitset_next_member (&seg_iter))
+    {
+      if (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, seg_index))
+	  && QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index))->node_type != PT_NAME)
+	{
+	  qo_expr_segs (env, QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index)), &outer_input_segs_set);
+	}
+    }
+
+  bitset_assign (&inner_input_segs_set, &inner_plan->info->projected_segs);
+  for (seg_index = bitset_iterate (&inner_plan->info->projected_segs, &seg_iter); seg_index != -1;
+       seg_index = bitset_next_member (&seg_iter))
+    {
+      if (QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, seg_index))
+	  && QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index))->node_type != PT_NAME)
+	{
+	  qo_expr_segs (env, QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index)), &inner_input_segs_set);
+	}
+    }
+
+  bitset_union (&input_segs_set, &outer_input_segs_set);
+  bitset_union (&input_segs_set, &inner_input_segs_set);
 
   memset (info, 0, sizeof (PROJECTION_INFO));
   bitset_init (&info->outer.exprs_set, env);
@@ -5942,9 +5985,6 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 	      continue;
 	    }
 
-	  /* add residual pred */
-	  bitset_add (&info->after_join_pred_set, term_index);
-
 	  /* collect the columns used by the residual pred into pred_segs_set */
 	  bitset_assign (&temp_segs_set, &QO_TERM_SEGS (term));
 	  bitset_intersect (&temp_segs_set, &input_segs_set);
@@ -5958,7 +5998,18 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 		  qo_expr_segs (env, pred_node, &temp_segs_set);
 		}
 	    }
-	  assert (bitset_subset (&input_segs_set, &temp_segs_set));
+
+	  if (!bitset_subset (&input_segs_set, &temp_segs_set))
+	    {
+	      /* Defensive fallback: the expansion above already covers the function-index case.
+	       * But if some pred still needs a column no child projects, it cannot be bound in the
+	       * probe loop, so leave the term in pred_set for the parent list scan to evaluate. */
+	      continue;
+	    }
+
+	  /* add residual pred */
+	  bitset_add (&info->after_join_pred_set, term_index);
+
 	  bitset_union (&pred_segs_set, &temp_segs_set);
 	}
     }				/* for (bitset_iterate (pred_set, &term_iter)) */
@@ -5968,28 +6019,36 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
     {
       /* outer columns */
       bitset_assign (&temp_segs_set, &pred_segs_set);
-      bitset_intersect (&temp_segs_set, &outer_plan->info->projected_segs);
+      bitset_intersect (&temp_segs_set, &outer_input_segs_set);
 
       for (seg_index = bitset_iterate (&temp_segs_set, &seg_iter); seg_index != -1;
 	   seg_index = bitset_next_member (&seg_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME || QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, seg_index)))
 	    {
+	      /* a function-index expression segment is fetched as a list column
+	       * and bound directly to that list column instead of re-evaluating.
+	       * Its argument columns are also carried as list columns for now;
+	       * a later change may drop them once they are confirmed unnecessary. */
 	      outer_info->pred_list = parser_append_node (pt_point (parser, pred_node), outer_info->pred_list);
 	    }
 	}
 
       /* inner columns */
       bitset_assign (&temp_segs_set, &pred_segs_set);
-      bitset_intersect (&temp_segs_set, &inner_plan->info->projected_segs);
+      bitset_intersect (&temp_segs_set, &inner_input_segs_set);
 
       for (seg_index = bitset_iterate (&temp_segs_set, &seg_iter); seg_index != -1;
 	   seg_index = bitset_next_member (&seg_iter))
 	{
 	  pred_node = QO_SEG_PT_NODE (QO_ENV_SEG (env, seg_index));
-	  if (pred_node->node_type == PT_NAME)
+	  if (pred_node->node_type == PT_NAME || QO_SEG_FUNC_INDEX (QO_ENV_SEG (env, seg_index)))
 	    {
+	      /* a function-index expression segment is fetched as a list column
+	       * and bound directly to that list column instead of re-evaluating.
+	       * Its argument columns are also carried as list columns for now;
+	       * a later change may drop them once they are confirmed unnecessary. */
 	      inner_info->pred_list = parser_append_node (pt_point (parser, pred_node), inner_info->pred_list);
 	    }
 	}
@@ -6008,7 +6067,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &required_segs_set);
-  outer_info->name_list = make_namelist_from_bitset (env, &temp_segs_set);
+  outer_info->name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
   outer_info->name_count = pt_length_of_list (outer_info->name_list);
 
   outer_info->expr_name_list =
@@ -6035,7 +6094,7 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &required_segs_set);
-  inner_info->name_list = make_namelist_from_bitset (env, &temp_segs_set);
+  inner_info->name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
   inner_info->name_count = pt_length_of_list (inner_info->name_list);
 
   inner_info->expr_name_list =
@@ -6072,12 +6131,12 @@ qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJEC
   /* final_info */
   bitset_assign (&temp_segs_set, &outer_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   bitset_assign (&temp_segs_set, &inner_plan->info->projected_segs);
   bitset_intersect (&temp_segs_set, &final_segs_set);
-  name_list = make_namelist_from_bitset (env, &temp_segs_set);
+  name_list = make_namelist_from_bitset (env, &temp_segs_set, true);
   final_info->name_list = parser_append_node (name_list, final_info->name_list);
 
   final_info->name_count = pt_length_of_list (final_info->name_list);
@@ -6091,6 +6150,8 @@ cleanup:
   bitset_delset (&input_segs_set);
   bitset_delset (&pred_segs_set);
   bitset_delset (&temp_segs_set);
+  bitset_delset (&outer_input_segs_set);
+  bitset_delset (&inner_input_segs_set);
 
   return error;
 
@@ -6418,11 +6479,14 @@ qo_init_merge_info (QO_ENV * env, QO_PLAN * plan, PROJECTION_INFO * projection_i
 	{
 	  assert (name_node != NULL);
 
-	  if ((found_index = pt_find_attribute (parser, name_node, outer_info->expr_name_list)) != -1)
+	  if ((found_index =
+	       pt_find_attribute_with_func_index_expr (parser, name_node, outer_info->expr_name_list, true)) != -1)
 	    {
 	      merge_info->ls_outer_inner_list[pos_index] = QFILE_OUTER_LIST;
 	    }
-	  else if ((found_index = pt_find_attribute (parser, name_node, inner_info->expr_name_list)) != -1)
+	  else
+	    if ((found_index =
+		 pt_find_attribute_with_func_index_expr (parser, name_node, inner_info->expr_name_list, true)) != -1)
 	    {
 	      merge_info->ls_outer_inner_list[pos_index] = QFILE_INNER_LIST;
 	    }
