@@ -19243,6 +19243,208 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
+ *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
+ *   the executor can stream rows via CCI into the remote table.
+ *
+ * return      : XASL node, or NULL on error.
+ * parser (in) : Parser context.
+ * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
+ */
+static XASL_NODE *
+pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL;
+  INSERT_PROC_NODE *insert = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *into_spec = NULL;
+  PT_NODE *server_node = NULL;
+  PT_DBLINK_INFO *pdblink = NULL;
+  PT_NODE *entity_name = NULL;
+  const OID *oid = NULL;
+
+  assert (parser != NULL && statement != NULL);
+
+  aptr_statement = pt_get_subquery_of_insert_select (statement);
+  assert (aptr_statement != NULL);
+
+  /* build XASL skeleton: aptr (SELECT) + val_list + list scan spec */
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (aptr_statement->info.query.flag.subquery_cached)
+    {
+      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+    }
+
+  into_spec = statement->info.insert.spec;
+  server_node = into_spec->info.spec.remote_server_name;
+
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_node->info.dblink_table.is_name);
+
+  pdblink = &server_node->info.dblink_table;
+
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      PT_ERRORm (parser, server_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      return NULL;
+    }
+
+  insert = &xasl->proc.insert;
+
+  /* remote sink: connection info resolved by pt_resolve_server_names */
+  insert->is_remote_insert = true;
+  insert->remote_url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  insert->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  insert->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+
+  /* build qualified remote table name: [owner.]table
+   *
+   * TODO: The remote table name (here) and remote column names (remote_attr_names, below) are
+   *       emitted to the remote server unquoted (dblink_insert_open builds "INSERT INTO <table>
+   *       [(<cols>)] VALUES (?, ...)").  Quoting makes identifiers case-sensitive, but unquoted
+   *       identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase) and
+   *       the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`).  The remote DBMS
+   *       type is unknown at XASL generation (remote INSERT SELECT also targets Oracle/MySQL via the
+   *       gateway), and info.name.original has already dropped the user's quoting, so faithful
+   *       requoting is not possible here.  Proper per-DB quoting is deferred, consistent with the
+   *       correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql).  Consequence:
+   *       remote table/column names that require quoting (reserved words, mixed-case, special chars)
+   *       are not supported in remote INSERT SELECT. */
+  entity_name = into_spec->info.spec.entity_name;
+  insert->remote_table_name = NULL;
+  if (entity_name->info.name.resolved)
+    {
+      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.resolved);
+      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, ".");
+    }
+  insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.original);
+  if (insert->remote_table_name == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  /* num_vals drives the val_list read loop in the executor. Count only the visible projection
+   * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
+   * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
+   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
+   * trailing ones. */
+  insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
+  insert->num_default_expr = 0;
+  insert->att_id = NULL;
+
+  /* remote column names:
+   *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
+   *                         → remote_attr_names[i] = attr_list column names
+   *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
+   *                         → remote_attr_names = NULL; dblink_insert_open uses INSERT INTO t VALUES (?,?)
+   */
+  if (statement->info.insert.attr_list != NULL)
+    {
+      PT_NODE *col;
+      int n, i;
+      char **names;
+
+      n = pt_length_of_list (statement->info.insert.attr_list);
+      if (n != insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: attr_list and SELECT column count mismatch");
+	  return NULL;
+	}
+
+      names = (char **) parser_alloc (parser, n * sizeof (char *));
+      if (names == NULL)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  return NULL;
+	}
+
+      for (col = statement->info.insert.attr_list, i = 0; col != NULL && i < n; col = col->next, i++)
+	{
+	  const char *col_name = NULL;
+
+	  if (col->node_type == PT_NAME)
+	    {
+	      col_name = col->info.name.original;
+	    }
+	  else if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+	    {
+	      col_name = col->info.dot.arg2->info.name.original;
+	    }
+	  else
+	    {
+	      col_name = col->alias_print;
+	    }
+
+	  if (col_name == NULL)
+	    {
+	      PT_ERROR (parser, col, "dblink: remote INSERT SELECT column has no resolvable name");
+	      return NULL;
+	    }
+	  names[i] = (char *) col_name;
+	}
+
+      insert->remote_attr_names = names;
+      insert->remote_num_attrs = n;
+    }
+  else
+    {
+      /* positional insert: dblink_insert_open builds INSERT INTO t VALUES (?,?) */
+      insert->remote_attr_names = NULL;
+      insert->remote_num_attrs = 0;
+    }
+
+  /* no local class for remote INSERT */
+  OID_SET_NULL (&insert->class_oid);
+  HFID_SET_NULL (&insert->class_hfid);
+  insert->vals = NULL;
+
+  /* XASL cache: OID of the user creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* copy aptr class OID list (local SELECT tables) for locking */
+  if (xasl->aptr_list != NULL)
+    {
+      XASL_NODE *aptr = xasl->aptr_list;
+
+      xasl->dbval_cnt = aptr->dbval_cnt;
+
+      if (aptr->n_oid_list > 0)
+	{
+	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
+	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
+	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
+	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  xasl->n_oid_list = aptr->n_oid_list;
+	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
+	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+	}
+    }
+
+  return xasl;
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -19292,6 +19494,18 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return NULL;
+	}
+
+      /* Remote INSERT SELECT with a local source (CCI streaming sink) takes its own XASL path.
+       * It is identified by the absence of a remote DML text (qstr): the sink path only carries
+       * connection info. The same-server case (target and source on one remote server) instead
+       * carries a qstr -- the whole statement is pushed down to that server -- and goes through
+       * pt_to_xasl_for_dblink. */
+      PT_NODE *remote_spec = statement->info.insert.spec->info.spec.remote_server_name;
+      if (pt_get_subquery_of_insert_select (statement) != NULL
+	  && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	{
+	  return pt_to_insert_xasl_remote_select (parser, statement);
 	}
 
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
@@ -19680,6 +19894,20 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       xasl->query_alias = statement->alias_print;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
+    {
+      if (xasl != NULL)
+	{
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL generation>\n");
+	}
+    }
+#endif /* !NDEBUG */
 
   return xasl;
 }
