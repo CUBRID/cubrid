@@ -2226,8 +2226,11 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   next_pageptr = NULL;
   load_args->nleaf.vpid = cur_nleafpgid;
 
-  /* The root page must be logged, otherwise, in the event of a crash. The index may be gone. */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
+  /*
+   * The sticky root predates the no-redo provider allocations.  Publish it through WAL so commit/recovery cannot
+   * expose its original empty slotted-page image.
+   */
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, false);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
