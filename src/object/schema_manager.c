@@ -67,6 +67,7 @@
 #include "trigger_manager.h"
 #include "oid.h"
 #include "storage_common.h"
+#include "locator.h"
 #include "transform.h"
 #include "system_parameter.h"
 #include "object_template.h"
@@ -10887,9 +10888,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 #if defined (CS_MODE)
   eligible_no_redo =
     sm_bulk_index_provenance_is_eligible (actual_new_btid, class_->load_index_from_heap, has_instances,
-					 index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS,
-					 SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
-					 || con->type == SM_CONSTRAINT_FOREIGN_KEY, true);
+					 index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS, true);
 #endif
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
@@ -10926,7 +10925,21 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 #if defined (CS_MODE)
   if (error == NO_ERROR && eligible_no_redo)
     {
-      error = locator_class_flush_deferral_activate (index, constraint_name, con->type, &create_lsa);
+      const char *owner_class_name = sm_get_ch_name (classop);
+      int object_kind =
+	(SM_IS_CONSTRAINT_UNIQUE_FAMILY (con->type)
+	 || con->type == SM_CONSTRAINT_FOREIGN_KEY) ? BULK_MARKER_KIND_CONSTRAINT : BULK_MARKER_KIND_INDEX;
+
+      if (owner_class_name == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	}
+      else
+	{
+	  error =
+	    locator_class_flush_deferral_activate (index, constraint_name, con->type, &create_lsa, owner_class_name,
+						      object_kind);
+	}
     }
 #endif
 

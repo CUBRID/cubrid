@@ -4899,6 +4899,8 @@ struct locator_class_flush_deferral
   LOG_LSA create_lsa;
   int constraint_type;
   char constraint_name[LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1];
+  char owner_class_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+  int object_kind;
   MOP mops[LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES];
   unsigned int mop_count;
   MOP *stats_mops;
@@ -4977,9 +4979,9 @@ locator_class_flush_deferral_is_outermost (void)
 
 int
 locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,
-					const LOG_LSA * create_lsa)
+					const LOG_LSA * create_lsa, const char *owner_class_name, int object_kind)
 {
-  size_t name_length;
+  size_t name_length, owner_name_length;
 
   if (locator_Class_flush_deferral.active)
     {
@@ -4988,14 +4990,17 @@ locator_class_flush_deferral_activate (const BTID * btid, const char *constraint
     }
 
   if (locator_Class_flush_deferral.depth <= 0 || btid == NULL || constraint_name == NULL || create_lsa == NULL
-      || LSA_ISNULL (create_lsa))
+      || LSA_ISNULL (create_lsa) || owner_class_name == NULL
+      || (object_kind != BULK_MARKER_KIND_INDEX && object_kind != BULK_MARKER_KIND_CONSTRAINT))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
   name_length = strlen (constraint_name);
-  if (name_length == 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME)
+  owner_name_length = strlen (owner_class_name);
+  if (name_length == 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME || owner_name_length == 0
+      || owner_name_length > SM_MAX_IDENTIFIER_LENGTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
       return ER_OBJ_INVALID_ARGUMENTS;
@@ -5005,7 +5010,9 @@ locator_class_flush_deferral_activate (const BTID * btid, const char *constraint
   locator_Class_flush_deferral.btid = *btid;
   locator_Class_flush_deferral.create_lsa = *create_lsa;
   locator_Class_flush_deferral.constraint_type = constraint_type;
+  locator_Class_flush_deferral.object_kind = object_kind;
   memcpy (locator_Class_flush_deferral.constraint_name, constraint_name, name_length + 1);
+  memcpy (locator_Class_flush_deferral.owner_class_name, owner_class_name, owner_name_length + 1);
   return NO_ERROR;
 }
 static int locator_flush_class_set_internal (bool final_publication);
@@ -5389,6 +5396,7 @@ locator_flush_class_set_internal (bool final_publication)
     {
       qsort (class_oids, locator_Class_flush_deferral.mop_count, sizeof (*class_oids), locator_oid_compare_for_bulk);
       memset (&descriptor, 0, sizeof (descriptor));
+      descriptor.version = LOCATOR_BULK_FORCE_TAIL_VERSION;
       descriptor.btid = locator_Class_flush_deferral.btid;
       descriptor.create_lsa = locator_Class_flush_deferral.create_lsa;
       descriptor.class_oids = class_oids;
@@ -5396,6 +5404,9 @@ locator_flush_class_set_internal (bool final_publication)
       descriptor.constraint_name = locator_Class_flush_deferral.constraint_name;
       descriptor.constraint_name_length = (unsigned int) strlen (descriptor.constraint_name);
       descriptor.constraint_type = locator_Class_flush_deferral.constraint_type;
+      descriptor.owner_class_name = locator_Class_flush_deferral.owner_class_name;
+      descriptor.owner_class_name_length = (unsigned int) strlen (descriptor.owner_class_name);
+      descriptor.object_kind = locator_Class_flush_deferral.object_kind;
       descriptor_p = &descriptor;
     }
 

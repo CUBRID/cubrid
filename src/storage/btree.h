@@ -42,6 +42,7 @@
 #include "recovery.h"
 #include "statistics.h"
 #include "storage_common.h"
+#include "locator.h"
 
 // forward definition
 class btree_unique_stats;
@@ -49,12 +50,14 @@ struct key_val_range;
 struct or_buf;
 typedef struct or_buf OR_BUF;
 
-#define BTREE_BULK_MARKER_VERSION 1
+#define BTREE_BULK_MARKER_V1_VERSION 1
+#define BTREE_BULK_MARKER_VERSION 2
 #define BTREE_BULK_MARKER_MAX_CLASSES 4096
 #define BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME 4096
 
-typedef struct btree_bulk_marker_v1 BTREE_BULK_MARKER_V1;
-struct btree_bulk_marker_v1
+
+typedef struct btree_bulk_marker BTREE_BULK_MARKER;
+struct btree_bulk_marker
 {
   unsigned int flags;
   int trid;
@@ -69,14 +72,18 @@ struct btree_bulk_marker_v1
   const char *constraint_name;
   unsigned int constraint_name_length;
   int constraint_type;
+  const char *owner_class_name;
+  unsigned int owner_class_name_length;
+  int object_kind;
 };
 
-extern int btree_bulk_marker_v1_packed_size (const BTREE_BULK_MARKER_V1 *marker, unsigned int *packed_size);
-extern int btree_bulk_marker_v1_pack (const BTREE_BULK_MARKER_V1 *marker, char *buffer, unsigned int buffer_size,
-				     unsigned int *packed_size);
-extern int btree_bulk_marker_v1_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER_V1 *marker,
-				       OID *class_oids, unsigned int class_capacity, char *constraint_name,
-				       unsigned int constraint_name_capacity);
+extern int btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *packed_size);
+extern int btree_bulk_marker_pack (const BTREE_BULK_MARKER *marker, char *buffer, unsigned int buffer_size,
+				   unsigned int *packed_size);
+extern int btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER *marker,
+				     OID *class_oids, unsigned int class_capacity, char *constraint_name,
+				     unsigned int constraint_name_capacity, char *owner_class_name,
+				     unsigned int owner_class_name_capacity, int *decoded_version);
 extern int btree_rv_bulk_build_durable_nop (THREAD_ENTRY *thread_p, LOG_RCV *logrcv);
 
 typedef enum btree_bulk_recovery_event
@@ -90,7 +97,10 @@ typedef enum btree_bulk_recovery_event
 typedef struct btree_bulk_recovery_candidate BTREE_BULK_RECOVERY_CANDIDATE;
 struct btree_bulk_recovery_candidate
 {
-  BTREE_BULK_MARKER_V1 marker;
+  BTREE_BULK_MARKER marker;
+  int decoded_version;
+  char owner_name[SM_MAX_IDENTIFIER_LENGTH + 1];
+  int object_kind;
   LOG_LSA marker_lsa;
   LOG_LSA marker_prev_lsa;
   bool media_recovery;

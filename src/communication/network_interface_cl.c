@@ -55,6 +55,7 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "locator.h"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
@@ -714,12 +715,16 @@ locator_bulk_oid_set_is_sorted (const OID *oids, unsigned int count)
 static bool
 locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor)
 {
-  if (descriptor == NULL
+  if (descriptor == NULL || descriptor->version != LOCATOR_BULK_FORCE_TAIL_VERSION
       || descriptor->class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
       || descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
       || descriptor->class_count + descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
       || descriptor->constraint_name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
-      || (descriptor->constraint_name_length != 0 && descriptor->constraint_name == NULL))
+      || (descriptor->constraint_name_length != 0 && descriptor->constraint_name == NULL)
+      || descriptor->owner_class_name_length == 0 || descriptor->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
+      || descriptor->owner_class_name == NULL
+      || (descriptor->object_kind != BULK_MARKER_KIND_INDEX
+	  && descriptor->object_kind != BULK_MARKER_KIND_CONSTRAINT))
     {
       return false;
     }
@@ -740,7 +745,8 @@ locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descr
 
   size = LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE
     + (UINT64) (descriptor->class_count + descriptor->fk_class_count) * OR_OID_SIZE
-    + descriptor->constraint_name_length;
+    + DB_ALIGN (descriptor->constraint_name_length, INT_ALIGNMENT)
+    + DB_ALIGN (descriptor->owner_class_name_length, INT_ALIGNMENT);
   if (size > UINT_MAX)
     {
       return ER_FAILED;
@@ -761,7 +767,7 @@ locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, c
 			      unsigned int *packed_size)
 {
   char *ptr = buffer;
-  unsigned int size, i;
+  unsigned int size, i, padded_length;
 
   if (buffer == NULL || locator_bulk_force_tail_compute_size (descriptor, &size) != NO_ERROR || buffer_size < size)
     {
@@ -769,7 +775,7 @@ locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, c
     }
 
   ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_MAGIC);
-  ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_VERSION);
+  ptr = or_pack_int (ptr, descriptor->version);
   ptr = or_pack_int (ptr, (int) size);
   ptr = or_pack_btid (ptr, &descriptor->btid);
   ptr = or_pack_log_lsa (ptr, &descriptor->create_lsa);
@@ -785,11 +791,20 @@ locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, c
     }
   ptr = or_pack_int (ptr, descriptor->constraint_type);
   ptr = or_pack_int (ptr, (int) descriptor->constraint_name_length);
+  padded_length = DB_ALIGN (descriptor->constraint_name_length, INT_ALIGNMENT);
   if (descriptor->constraint_name_length != 0)
     {
       memcpy (ptr, descriptor->constraint_name, descriptor->constraint_name_length);
-      ptr += descriptor->constraint_name_length;
     }
+  memset (ptr + descriptor->constraint_name_length, '\0', padded_length - descriptor->constraint_name_length);
+  ptr += padded_length;
+
+  ptr = or_pack_int (ptr, (int) descriptor->owner_class_name_length);
+  padded_length = DB_ALIGN (descriptor->owner_class_name_length, INT_ALIGNMENT);
+  memcpy (ptr, descriptor->owner_class_name, descriptor->owner_class_name_length);
+  memset (ptr + descriptor->owner_class_name_length, '\0', padded_length - descriptor->owner_class_name_length);
+  ptr += padded_length;
+  ptr = or_pack_int (ptr, descriptor->object_kind);
 
   assert ((unsigned int) (ptr - buffer) == size);
   if (packed_size != NULL)
@@ -806,8 +821,8 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
 				char *constraint_name, unsigned int constraint_name_capacity)
 {
   char *ptr = (char *) buffer;
-  int magic, version, packed_length, count, name_length, i;
-  unsigned int remaining;
+  int magic, version, packed_length, count, name_length, owner_name_length, i;
+  unsigned int remaining, padded_length;
 
   if (buffer == NULL || descriptor == NULL || buffer_size < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE)
     {
@@ -822,6 +837,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     {
       return ER_FAILED;
     }
+  descriptor->version = version;
 
   ptr = or_unpack_btid (ptr, &descriptor->btid);
   ptr = or_unpack_log_lsa (ptr, &descriptor->create_lsa);
@@ -857,7 +873,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     }
   remaining = buffer_size - (unsigned int) (ptr - buffer);
   if ((unsigned int) count > remaining / OR_OID_SIZE
-      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 2 > buffer_size)
+      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 4 > buffer_size)
     {
       return ER_FAILED;
     }
@@ -873,8 +889,13 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
   if (name_length < 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
       || (name_length != 0
 	  && ((unsigned int) name_length >= constraint_name_capacity || constraint_name == NULL))
-      || (name_length == 0 && constraint_name != NULL && constraint_name_capacity == 0)
-      || (unsigned int) (ptr - buffer) + (unsigned int) name_length != buffer_size)
+      || (name_length == 0 && constraint_name != NULL && constraint_name_capacity == 0))
+    {
+      return ER_FAILED;
+    }
+  padded_length = DB_ALIGN ((unsigned int) name_length, INT_ALIGNMENT);
+  remaining = buffer_size - (unsigned int) (ptr - buffer);
+  if ((UINT64) padded_length + OR_INT_SIZE * 2 > remaining)
     {
       return ER_FAILED;
     }
@@ -888,8 +909,25 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     }
   descriptor->constraint_name = constraint_name;
   descriptor->constraint_name_length = (unsigned int) name_length;
+  ptr += padded_length;
 
-  if (!locator_bulk_force_descriptor_is_valid (descriptor))
+  ptr = or_unpack_int (ptr, &owner_name_length);
+  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH)
+    {
+      return ER_FAILED;
+    }
+  padded_length = DB_ALIGN ((unsigned int) owner_name_length, INT_ALIGNMENT);
+  remaining = buffer_size - (unsigned int) (ptr - buffer);
+  if ((UINT64) padded_length + OR_INT_SIZE != remaining)
+    {
+      return ER_FAILED;
+    }
+  descriptor->owner_class_name = ptr;
+  descriptor->owner_class_name_length = (unsigned int) owner_name_length;
+  ptr += padded_length;
+  ptr = or_unpack_int (ptr, &descriptor->object_kind);
+
+  if ((unsigned int) (ptr - buffer) != buffer_size || !locator_bulk_force_descriptor_is_valid (descriptor))
     {
       return ER_FAILED;
     }

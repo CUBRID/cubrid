@@ -144,6 +144,9 @@ static void log_recovery_bulk_reset_analysis (void);
 static int log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event);
 static int log_recovery_bulk_collect_marker (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *record_lsa,
 					     const LOG_LSA *prev_tran_lsa, LOG_PAGE *log_page_p);
+static int log_recovery_bulk_compare_markers (const LOG_BULK_RECOVERY_MARKER *left,
+					       const LOG_BULK_RECOVERY_MARKER *right);
+static void log_recovery_bulk_sort_markers (void);
 static void log_recovery_bulk_cleanup_candidates (THREAD_ENTRY *thread_p, const LOG_LSA *start_redo_lsa,
 						  const LOG_LSA *end_redo_lsa, bool is_media_crash);
 static void log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY *thread_p, const LOG_LSA *start_redo_lsa,
@@ -6681,6 +6684,84 @@ log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event)
 }
 
 static int
+log_recovery_bulk_compare_bytes (const char *left, unsigned int left_length, const char *right,
+				 unsigned int right_length)
+{
+  unsigned int common_length = MIN (left_length, right_length);
+  int result = common_length == 0 ? 0 : memcmp (left, right, common_length);
+
+  if (result != 0)
+    {
+      return result;
+    }
+  return left_length < right_length ? -1 : left_length > right_length ? 1 : 0;
+}
+
+static int
+log_recovery_bulk_compare_markers (const LOG_BULK_RECOVERY_MARKER *left,
+				   const LOG_BULK_RECOVERY_MARKER *right)
+{
+  const BTREE_BULK_RECOVERY_CANDIDATE *left_candidate = &left->candidate;
+  const BTREE_BULK_RECOVERY_CANDIDATE *right_candidate = &right->candidate;
+  int result;
+
+  result = log_recovery_bulk_compare_bytes (left_candidate->owner_name,
+					    left_candidate->marker.owner_class_name_length,
+					    right_candidate->owner_name,
+					    right_candidate->marker.owner_class_name_length);
+  if (result != 0)
+    {
+      return result;
+    }
+  if (left_candidate->object_kind != right_candidate->object_kind)
+    {
+      return left_candidate->object_kind < right_candidate->object_kind ? -1 : 1;
+    }
+  result = log_recovery_bulk_compare_bytes (left_candidate->marker.constraint_name,
+					    left_candidate->marker.constraint_name_length,
+					    right_candidate->marker.constraint_name,
+					    right_candidate->marker.constraint_name_length);
+  if (result != 0)
+    {
+      return result;
+    }
+  if (left_candidate->marker.constraint_type != right_candidate->marker.constraint_type)
+    {
+      return left_candidate->marker.constraint_type < right_candidate->marker.constraint_type ? -1 : 1;
+    }
+  if (left_candidate->marker_lsa.pageid != right_candidate->marker_lsa.pageid)
+    {
+      return left_candidate->marker_lsa.pageid < right_candidate->marker_lsa.pageid ? -1 : 1;
+    }
+  if (left_candidate->marker_lsa.offset != right_candidate->marker_lsa.offset)
+    {
+      return left_candidate->marker_lsa.offset < right_candidate->marker_lsa.offset ? -1 : 1;
+    }
+  return 0;
+}
+
+static void
+log_recovery_bulk_sort_markers (void)
+{
+  LOG_BULK_RECOVERY_MARKER *marker;
+  LOG_BULK_RECOVERY_MARKER *sorted = NULL;
+
+  while ((marker = log_Bulk_recovery_markers) != NULL)
+    {
+      LOG_BULK_RECOVERY_MARKER **link = &sorted;
+
+      log_Bulk_recovery_markers = marker->next;
+      while (*link != NULL && log_recovery_bulk_compare_markers (*link, marker) <= 0)
+	{
+	  link = &(*link)->next;
+	}
+      marker->next = *link;
+      *link = marker;
+    }
+  log_Bulk_recovery_markers = sorted;
+}
+
+static int
 log_recovery_bulk_collect_marker (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *record_lsa,
 				  const LOG_LSA *prev_tran_lsa, LOG_PAGE *log_page_p)
 {
@@ -6694,6 +6775,15 @@ log_recovery_bulk_collect_marker (THREAD_ENTRY *thread_p, TRANID trid, const LOG
   LOG_ZIP *unzip = NULL;
   LOG_BULK_RECOVERY_MARKER *entry = NULL;
   int error = ER_FAILED;
+  LOG_BULK_RECOVERY_MARKER *existing;
+
+  for (existing = log_Bulk_recovery_markers; existing != NULL; existing = existing->next)
+    {
+      if (LSA_EQ (&existing->candidate.marker_lsa, record_lsa))
+	{
+	  return NO_ERROR;
+	}
+    }
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &data_lsa, data_page_p);
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_REDO), &data_lsa, data_page_p);
@@ -6742,13 +6832,15 @@ log_recovery_bulk_collect_marker (THREAD_ENTRY *thread_p, TRANID trid, const LOG
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       goto exit;
     }
-  if (btree_bulk_marker_v1_unpack (marker_data, marker_length, &entry->candidate.marker, entry->class_oids,
-				    BTREE_BULK_MARKER_MAX_CLASSES, entry->constraint_name,
-				    BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME + 1) != NO_ERROR
+  if (btree_bulk_marker_unpack (marker_data, marker_length, &entry->candidate.marker, entry->class_oids,
+				 BTREE_BULK_MARKER_MAX_CLASSES, entry->constraint_name,
+				 BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME + 1, entry->candidate.owner_name,
+				 SM_MAX_IDENTIFIER_LENGTH + 1, &entry->candidate.decoded_version) != NO_ERROR
       || entry->candidate.marker.trid != trid)
     {
       goto exit;
     }
+  entry->candidate.object_kind = entry->candidate.marker.object_kind;
 
   entry->candidate.marker_lsa = *record_lsa;
   entry->candidate.marker_prev_lsa = *prev_tran_lsa;
@@ -6894,6 +6986,8 @@ log_recovery_bulk_cleanup_candidates (THREAD_ENTRY *thread_p, const LOG_LSA *sta
   LOG_BULK_RECOVERY_MARKER *marker;
   bool is_candidate;
   int error;
+
+  log_recovery_bulk_sort_markers ();
 
   for (marker = log_Bulk_recovery_markers; marker != NULL; marker = marker->next)
     {
@@ -7353,14 +7447,30 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
 int
 log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDATE *candidate)
 {
+  int result;
+
   if (fp == NULL || candidate == NULL || candidate->marker.constraint_name == NULL)
     {
       return ER_FAILED;
     }
-  if (fprintf (fp, "%.*s\t%d\n", (int) candidate->marker.constraint_name_length,
-	       candidate->marker.constraint_name, candidate->marker.constraint_type) < 0)
+  if (candidate->decoded_version == BTREE_BULK_MARKER_V1_VERSION)
+    {
+      result = fprintf (fp, "%.*s\t%d\n", (int) candidate->marker.constraint_name_length,
+			candidate->marker.constraint_name, candidate->marker.constraint_type);
+    }
+  else if (candidate->decoded_version == BTREE_BULK_MARKER_VERSION
+	   && candidate->marker.owner_class_name != NULL
+	   && (candidate->object_kind == BULK_MARKER_KIND_INDEX
+	       || candidate->object_kind == BULK_MARKER_KIND_CONSTRAINT))
+    {
+      const char *kind = candidate->object_kind == BULK_MARKER_KIND_INDEX ? "INDEX" : "CONSTRAINT";
+      result = fprintf (fp, "%.*s\t%d\t%s\t%.*s\n", (int) candidate->marker.constraint_name_length,
+			candidate->marker.constraint_name, candidate->marker.constraint_type, kind,
+			(int) candidate->marker.owner_class_name_length, candidate->marker.owner_class_name);
+    }
+  else
     {
       return ER_FAILED;
     }
-  return NO_ERROR;
+  return result < 0 ? ER_FAILED : NO_ERROR;
 }

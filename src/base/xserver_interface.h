@@ -124,6 +124,7 @@ extern int xlocator_force_validate_bulk_tail (const char *tail, int tail_size,
 					      OID * class_oids, unsigned int class_capacity,
 					      OID * fk_class_oids, unsigned int fk_class_capacity,
 					      char *constraint_name, unsigned int constraint_name_capacity,
+					      char *owner_class_name, unsigned int owner_class_name_capacity,
 					      bool * has_descriptor);
 extern int xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * copy_area, LC_COPYAREA ** reply_area);
 extern bool xlocator_notify_isolation_incons (THREAD_ENTRY * thread_p, LC_COPYAREA ** synch_area);

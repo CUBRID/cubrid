@@ -320,7 +320,7 @@ static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_EN
 				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
+
 
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -3629,13 +3629,13 @@ log_is_irreversible_2pc_state (TRAN_STATE state)
 }
 
 int
-log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER_V1 *marker)
+log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER *marker)
 {
   char *payload;
   unsigned int payload_size;
   LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
-  if (btree_bulk_marker_v1_packed_size (marker, &payload_size) != NO_ERROR || payload_size > INT_MAX)
+  if (btree_bulk_marker_packed_size (marker, &payload_size) != NO_ERROR || payload_size > INT_MAX)
     {
       return ER_FAILED;
     }
@@ -3646,7 +3646,7 @@ log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER_V1
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, payload_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  if (btree_bulk_marker_v1_pack (marker, payload, payload_size, NULL) != NO_ERROR)
+  if (btree_bulk_marker_pack (marker, payload, payload_size, NULL) != NO_ERROR)
     {
       free (payload);
       return ER_FAILED;
@@ -4203,13 +4203,13 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_sysop_get_level () - Get current system operation level. If no system operation is started, it returns -1.
+ * log_get_system_op_level () - Get current system operation level. If no system operation is started, it returns -1.
  *
  * return        : System op level
  * thread_p (in) : Thread entry
  */
-STATIC_INLINE int
-log_sysop_get_level (THREAD_ENTRY * thread_p)
+int
+log_get_system_op_level (THREAD_ENTRY * thread_p)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;

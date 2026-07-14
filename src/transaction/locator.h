@@ -45,12 +45,18 @@ struct log_lsa
 #define LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES 4096
 #define LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME 4096
 #define LOCATOR_BULK_FORCE_TAIL_MAGIC 0x42494654
-#define LOCATOR_BULK_FORCE_TAIL_VERSION 1
-#define LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE (OR_INT_SIZE * 7 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE)
+#define LOCATOR_BULK_FORCE_TAIL_VERSION 2
+#define LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE (OR_INT_SIZE * 9 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE)
+typedef enum locator_bulk_marker_kind
+{
+  BULK_MARKER_KIND_INDEX = 0,
+  BULK_MARKER_KIND_CONSTRAINT = 1
+} LOCATOR_BULK_MARKER_KIND;
 
 typedef struct locator_bulk_index_descriptor LOCATOR_BULK_INDEX_DESCRIPTOR;
 struct locator_bulk_index_descriptor
 {
+  int version;
   BTID btid;
   LOG_LSA create_lsa;
   const OID *class_oids;
@@ -60,12 +66,15 @@ struct locator_bulk_index_descriptor
   const char *constraint_name;
   unsigned int constraint_name_length;
   int constraint_type;
+  const char *owner_class_name;
+  unsigned int owner_class_name_length;
+  int object_kind;
 };
 
 /*
  * Descriptor members are immutable borrowed views.  The producer retains
  * ownership through packing.  Unpack points them at caller-owned arrays and
- * name storage, which must outlive every use of the unpacked descriptor.
+ * string storage, which must outlive every use of the unpacked descriptor.
  * Both OID arrays are exact, strictly sorted sets (duplicates are invalid).
  */
 

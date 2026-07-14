@@ -67,7 +67,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#define BTREE_BULK_MARKER_FIXED_SIZE 88U
+#define BTREE_BULK_MARKER_V1_FIXED_SIZE 88U
+#define BTREE_BULK_MARKER_FIXED_SIZE 96U
 
 static void
 btree_bulk_put_u32 (char **ptr, unsigned int value)
@@ -104,19 +105,24 @@ btree_bulk_get_u64 (const char **ptr)
 }
 
 int
-btree_bulk_marker_v1_packed_size (const BTREE_BULK_MARKER_V1 *marker, unsigned int *packed_size)
+btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *packed_size)
 {
   UINT64 size;
 
   if (marker == NULL || packed_size == NULL || marker->class_count > BTREE_BULK_MARKER_MAX_CLASSES
       || marker->constraint_name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME
+      || marker->owner_class_name_length == 0 || marker->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
       || (marker->class_count != 0 && marker->class_oids == NULL)
-      || (marker->constraint_name_length != 0 && marker->constraint_name == NULL))
+      || (marker->constraint_name_length != 0 && marker->constraint_name == NULL)
+      || marker->owner_class_name == NULL
+      || (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT))
     {
       return ER_FAILED;
     }
 
-  size = BTREE_BULK_MARKER_FIXED_SIZE + (UINT64) marker->class_count * 12 + marker->constraint_name_length;
+  size = BTREE_BULK_MARKER_FIXED_SIZE + (UINT64) marker->class_count * 12
+    + DB_ALIGN ((UINT64) marker->constraint_name_length, INT_ALIGNMENT)
+    + DB_ALIGN ((UINT64) marker->owner_class_name_length, INT_ALIGNMENT);
   if (size > UINT_MAX)
     {
       return ER_FAILED;
@@ -126,13 +132,13 @@ btree_bulk_marker_v1_packed_size (const BTREE_BULK_MARKER_V1 *marker, unsigned i
 }
 
 int
-btree_bulk_marker_v1_pack (const BTREE_BULK_MARKER_V1 *marker, char *buffer, unsigned int buffer_size,
-			   unsigned int *packed_size)
+btree_bulk_marker_pack (const BTREE_BULK_MARKER *marker, char *buffer, unsigned int buffer_size,
+			unsigned int *packed_size)
 {
   char *ptr = buffer;
-  unsigned int size, i;
+  unsigned int size, padded_length, i;
 
-  if (buffer == NULL || btree_bulk_marker_v1_packed_size (marker, &size) != NO_ERROR || buffer_size < size)
+  if (buffer == NULL || btree_bulk_marker_packed_size (marker, &size) != NO_ERROR || buffer_size < size)
     {
       return ER_FAILED;
     }
@@ -161,13 +167,24 @@ btree_bulk_marker_v1_pack (const BTREE_BULK_MARKER_V1 *marker, char *buffer, uns
       btree_bulk_put_u32 (&ptr, (unsigned int) marker->class_oids[i].pageid);
       btree_bulk_put_u32 (&ptr, (unsigned int) marker->class_oids[i].slotid);
     }
+
   btree_bulk_put_u32 (&ptr, marker->constraint_name_length);
+  padded_length = DB_ALIGN (marker->constraint_name_length, INT_ALIGNMENT);
   if (marker->constraint_name_length != 0)
     {
       memcpy (ptr, marker->constraint_name, marker->constraint_name_length);
-      ptr += marker->constraint_name_length;
     }
+  memset (ptr + marker->constraint_name_length, 0, padded_length - marker->constraint_name_length);
+  ptr += padded_length;
   btree_bulk_put_u32 (&ptr, (unsigned int) marker->constraint_type);
+
+  btree_bulk_put_u32 (&ptr, marker->owner_class_name_length);
+  padded_length = DB_ALIGN (marker->owner_class_name_length, INT_ALIGNMENT);
+  memcpy (ptr, marker->owner_class_name, marker->owner_class_name_length);
+  memset (ptr + marker->owner_class_name_length, 0, padded_length - marker->owner_class_name_length);
+  ptr += padded_length;
+  btree_bulk_put_u32 (&ptr, (unsigned int) marker->object_kind);
+
   assert ((unsigned int) (ptr - buffer) == size);
   if (packed_size != NULL)
     {
@@ -177,24 +194,38 @@ btree_bulk_marker_v1_pack (const BTREE_BULK_MARKER_V1 *marker, char *buffer, uns
 }
 
 int
-btree_bulk_marker_v1_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER_V1 *marker,
-			     OID *class_oids, unsigned int class_capacity, char *constraint_name,
-			     unsigned int constraint_name_capacity)
+btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER *marker,
+			  OID *class_oids, unsigned int class_capacity, char *constraint_name,
+			  unsigned int constraint_name_capacity, char *owner_class_name,
+			  unsigned int owner_class_name_capacity, int *decoded_version)
 {
   const char *ptr = buffer;
-  unsigned int version, size, class_count, name_length, i;
+  unsigned int version, size, fixed_size, class_count, name_length, owner_name_length, padded_length, i;
 
-  if (buffer == NULL || marker == NULL || buffer_size < BTREE_BULK_MARKER_FIXED_SIZE)
+  if (buffer == NULL || marker == NULL || decoded_version == NULL || buffer_size < 3 * sizeof (unsigned int))
     {
       return ER_FAILED;
     }
   version = btree_bulk_get_u32 (&ptr);
   marker->flags = btree_bulk_get_u32 (&ptr);
   size = btree_bulk_get_u32 (&ptr);
-  if (version != BTREE_BULK_MARKER_VERSION || size != buffer_size)
+  if (version == BTREE_BULK_MARKER_V1_VERSION)
+    {
+      fixed_size = BTREE_BULK_MARKER_V1_FIXED_SIZE;
+    }
+  else if (version == BTREE_BULK_MARKER_VERSION)
+    {
+      fixed_size = BTREE_BULK_MARKER_FIXED_SIZE;
+    }
+  else
     {
       return ER_FAILED;
     }
+  if (size != buffer_size || size < fixed_size)
+    {
+      return ER_FAILED;
+    }
+
   marker->trid = (int) btree_bulk_get_u32 (&ptr);
   marker->btid.vfid.volid = (VOLID) btree_bulk_get_u32 (&ptr);
   marker->btid.vfid.fileid = (FILEID) btree_bulk_get_u32 (&ptr);
@@ -212,7 +243,7 @@ btree_bulk_marker_v1_unpack (const char *buffer, unsigned int buffer_size, BTREE
   class_count = btree_bulk_get_u32 (&ptr);
   if (class_count > BTREE_BULK_MARKER_MAX_CLASSES || class_count > class_capacity
       || (class_count != 0 && class_oids == NULL)
-      || (UINT64) class_count * 12 + BTREE_BULK_MARKER_FIXED_SIZE > size)
+      || (UINT64) (ptr - buffer) + (UINT64) class_count * 12 + sizeof (unsigned int) > size)
     {
       return ER_FAILED;
     }
@@ -222,28 +253,71 @@ btree_bulk_marker_v1_unpack (const char *buffer, unsigned int buffer_size, BTREE
       class_oids[i].pageid = (PAGEID) btree_bulk_get_u32 (&ptr);
       class_oids[i].slotid = (PGSLOTID) btree_bulk_get_u32 (&ptr);
     }
+
   name_length = btree_bulk_get_u32 (&ptr);
-  if (name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME || name_length >= constraint_name_capacity
-      || (name_length != 0 && constraint_name == NULL)
-      || (UINT64) (ptr - buffer) + name_length + 4 != size)
+  if (name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME || constraint_name == NULL
+      || name_length >= constraint_name_capacity)
     {
       return ER_FAILED;
+    }
+  if (version == BTREE_BULK_MARKER_V1_VERSION)
+    {
+      padded_length = name_length;
+      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) != size)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      padded_length = DB_ALIGN (name_length, INT_ALIGNMENT);
+      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) * 3 > size)
+	{
+	  return ER_FAILED;
+	}
     }
   if (name_length != 0)
     {
       memcpy (constraint_name, ptr, name_length);
-      ptr += name_length;
     }
-  if (constraint_name != NULL)
-    {
-      constraint_name[name_length] = '\0';
-    }
+  constraint_name[name_length] = '\0';
+  ptr += padded_length;
   marker->constraint_type = (int) btree_bulk_get_u32 (&ptr);
+
+  marker->owner_class_name = "";
+  marker->owner_class_name_length = 0;
+  marker->object_kind = BULK_MARKER_KIND_INDEX;
+  if (version == BTREE_BULK_MARKER_VERSION)
+    {
+      owner_name_length = btree_bulk_get_u32 (&ptr);
+      if (owner_name_length == 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_class_name == NULL
+	  || owner_name_length >= owner_class_name_capacity)
+	{
+	  return ER_FAILED;
+	}
+      padded_length = DB_ALIGN (owner_name_length, INT_ALIGNMENT);
+      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) != size)
+	{
+	  return ER_FAILED;
+	}
+      memcpy (owner_class_name, ptr, owner_name_length);
+      owner_class_name[owner_name_length] = '\0';
+      ptr += padded_length;
+      marker->object_kind = (int) btree_bulk_get_u32 (&ptr);
+      if (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT)
+	{
+	  return ER_FAILED;
+	}
+      marker->owner_class_name = owner_class_name;
+      marker->owner_class_name_length = owner_name_length;
+    }
+
   marker->class_oids = class_oids;
   marker->class_count = class_count;
   marker->constraint_name = constraint_name;
   marker->constraint_name_length = name_length;
-  return NO_ERROR;
+  *decoded_version = (int) version;
+  return (unsigned int) (ptr - buffer) == size ? NO_ERROR : ER_FAILED;
 }
 
 int

@@ -1411,6 +1411,7 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   OID *bulk_class_oids = NULL;
   OID *bulk_fk_class_oids = NULL;
   char *bulk_constraint_name = NULL;
+  char *bulk_owner_class_name = NULL;
   bool has_bulk_desc = false;
 
   ptr = or_unpack_int (request, &num_objs);
@@ -1429,7 +1430,7 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
       size_t bulk_area_size = sizeof (*bulk_desc)
 	+ sizeof (*bulk_class_oids) * LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
 	+ sizeof (*bulk_fk_class_oids) * LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-	+ LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1;
+	+ LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1 + SM_MAX_IDENTIFIER_LENGTH + 1;
       bulk_area = (char *) db_private_alloc (thread_p, bulk_area_size);
       if (bulk_area == NULL)
 	{
@@ -1441,12 +1442,14 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
       bulk_class_oids = (OID *) (bulk_area + sizeof (*bulk_desc));
       bulk_fk_class_oids = bulk_class_oids + LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES;
       bulk_constraint_name = (char *) (bulk_fk_class_oids + LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES);
+      bulk_owner_class_name = bulk_constraint_name + LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1;
     }
   if (bulk_tail_size < 0
       || xlocator_force_validate_bulk_tail (ptr, bulk_tail_size, bulk_desc, bulk_class_oids,
 					    LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES, bulk_fk_class_oids,
 					    LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES, bulk_constraint_name,
 					    LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1,
+					    bulk_owner_class_name, SM_MAX_IDENTIFIER_LENGTH + 1,
 					    &has_bulk_desc) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);

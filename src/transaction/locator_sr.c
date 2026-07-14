@@ -6916,10 +6916,12 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
 static int
 locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_INDEX_DESCRIPTOR *desc,
 			   OID *classes, unsigned int class_capacity, OID *fk_classes, unsigned int fk_capacity,
-			   char *name, unsigned int name_capacity)
+			   char *name, unsigned int name_capacity, char *owner_name,
+			   unsigned int owner_name_capacity)
 {
   char *ptr = (char *) buffer;
-  int magic, version, packed_size, count, name_length, i;
+  unsigned int padded_length;
+  int magic, version, packed_size, count, name_length, owner_name_length, i;
 
   if (buffer == NULL || desc == NULL || size < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE)
     {
@@ -6933,10 +6935,12 @@ locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_I
     {
       return ER_FAILED;
     }
+  desc->version = version;
   ptr = or_unpack_btid (ptr, &desc->btid);
   ptr = or_unpack_log_lsa (ptr, &desc->create_lsa);
   ptr = or_unpack_int (ptr, &count);
   if (count < 0 || (unsigned int) count > class_capacity
+      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES || (count != 0 && classes == NULL)
       || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE > size)
     {
       return ER_FAILED;
@@ -6954,10 +6958,11 @@ locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_I
 	  return ER_FAILED;
 	}
     }
+
   ptr = or_unpack_int (ptr, &count);
-  if (count < 0 || (unsigned int) count > fk_capacity
+  if (count < 0 || (unsigned int) count > fk_capacity || (count != 0 && fk_classes == NULL)
       || desc->class_count + (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 2 > size)
+      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 5 > size)
     {
       return ER_FAILED;
     }
@@ -6974,17 +6979,48 @@ locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_I
 	  return ER_FAILED;
 	}
     }
+
   ptr = or_unpack_int (ptr, &desc->constraint_type);
   ptr = or_unpack_int (ptr, &name_length);
-  if (name_length < 0 || (unsigned int) name_length >= name_capacity
-      || (unsigned int) (ptr - buffer) + (unsigned int) name_length != size)
+  if (name_length < 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME || name == NULL
+      || (unsigned int) name_length >= name_capacity)
+    {
+      return ER_FAILED;
+    }
+  padded_length = DB_ALIGN ((unsigned int) name_length, INT_ALIGNMENT);
+  if ((UINT64) (ptr - buffer) + padded_length + OR_INT_SIZE * 2 > size)
     {
       return ER_FAILED;
     }
   memcpy (name, ptr, name_length);
   name[name_length] = '\0';
+  ptr += padded_length;
   desc->constraint_name = name;
   desc->constraint_name_length = (unsigned int) name_length;
+
+  ptr = or_unpack_int (ptr, &owner_name_length);
+  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_name == NULL
+      || (unsigned int) owner_name_length >= owner_name_capacity)
+    {
+      return ER_FAILED;
+    }
+  padded_length = DB_ALIGN ((unsigned int) owner_name_length, INT_ALIGNMENT);
+  if ((UINT64) (ptr - buffer) + padded_length + OR_INT_SIZE != size)
+    {
+      return ER_FAILED;
+    }
+  memcpy (owner_name, ptr, owner_name_length);
+  owner_name[owner_name_length] = '\0';
+  ptr += padded_length;
+  desc->owner_class_name = owner_name;
+  desc->owner_class_name_length = (unsigned int) owner_name_length;
+
+  ptr = or_unpack_int (ptr, &desc->object_kind);
+  if ((desc->object_kind != BULK_MARKER_KIND_INDEX && desc->object_kind != BULK_MARKER_KIND_CONSTRAINT)
+      || (unsigned int) (ptr - buffer) != size)
+    {
+      return ER_FAILED;
+    }
   return NO_ERROR;
 }
 /*
@@ -6997,7 +7033,8 @@ int
 xlocator_force_validate_bulk_tail (const char *tail, int tail_size, LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor,
 				   OID * class_oids, unsigned int class_capacity, OID * fk_class_oids,
 				   unsigned int fk_class_capacity, char *constraint_name,
-				   unsigned int constraint_name_capacity, bool * has_descriptor)
+				   unsigned int constraint_name_capacity, char *owner_class_name,
+				   unsigned int owner_class_name_capacity, bool * has_descriptor)
 {
   if (has_descriptor == NULL)
     {
@@ -7014,8 +7051,8 @@ xlocator_force_validate_bulk_tail (const char *tail, int tail_size, LOCATOR_BULK
     }
 
   if (locator_force_tail_unpack (tail, (unsigned int) tail_size, descriptor, class_oids, class_capacity,
-				      fk_class_oids, fk_class_capacity, constraint_name,
-				      constraint_name_capacity) != NO_ERROR)
+				 fk_class_oids, fk_class_capacity, constraint_name, constraint_name_capacity,
+				 owner_class_name, owner_class_name_capacity) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -7252,7 +7289,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   LOG_TDES *tdes = NULL;
   PAGE_PTR root_page = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_BULK_MARKER_V1 marker;
+  BTREE_BULK_MARKER marker;
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
@@ -7265,7 +7302,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (tdes == NULL || LSA_ISNULL (&bulk_index->create_lsa) || LSA_ISNULL (&tdes->head_lsa)
 	  || LSA_LT (&bulk_index->create_lsa, &tdes->head_lsa)
-	  || !LSA_LT (&bulk_index->create_lsa, &tdes->tail_lsa))
+	  || LSA_GT (&bulk_index->create_lsa, &tdes->tail_lsa))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
@@ -7483,6 +7520,9 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       marker.constraint_name = bulk_index->constraint_name;
       marker.constraint_name_length = bulk_index->constraint_name_length;
       marker.constraint_type = bulk_index->constraint_type;
+      marker.owner_class_name = bulk_index->owner_class_name;
+      marker.owner_class_name_length = bulk_index->owner_class_name_length;
+      marker.object_kind = bulk_index->object_kind;
       pgbuf_unfix_and_init (thread_p, root_page);
 
       error_code = log_get_current_sysop_parent_lsa (thread_p, &marker.parent_lsa);
