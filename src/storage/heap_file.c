@@ -4466,7 +4466,6 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
   std::size_t num_entries;
   VPID pages[4];
   int num_pages;
-  bool updatable = false;
   int error;
 
   bestspace = heap_find_bestspace (thread_p, class_oid, hfid, NULL);
@@ -4477,13 +4476,8 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
       return error != NO_ERROR ? error : ER_FAILED;
     }
 
-  error = bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (updatable)
+  /* update may unfix the fixed page (best page) so sync in-memory bestspace with disk first */
+  if (bestspace->updatable ())
     {
       num_entries = bestspace->get_num_shards () * cubstorage::bestspace::ENTRIES_PER_SHARD;
       entries = (cubstorage::bestspace_entry *) malloc (num_entries * sizeof (cubstorage::bestspace_entry));
@@ -4494,16 +4488,20 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
-      // fill
+      /* fill */
       bestspace->to_entries (entries);
       bestspace->get_shard_pages (pages, num_pages);
-      // update the shard pages
+      /* update the shard pages */
       error = heap_update_bestspace (thread_p, hfid, pages, num_pages, entries, num_entries);
-
       free_and_init (entries);
-      return error;
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
-  return NO_ERROR;
+
+  /* find */
+  return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
 }
 
 /*

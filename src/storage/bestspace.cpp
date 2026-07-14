@@ -29,6 +29,7 @@
 #include <mutex>
 #include <utility>
 #include <cstdint>
+#include <chrono>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -42,6 +43,13 @@
 	} \
     } \
   while (0)
+
+static std::uint64_t
+monotonic_seconds () noexcept
+{
+  return static_cast<std::uint64_t> (std::chrono::duration_cast<std::chrono::seconds>
+				     (std::chrono::steady_clock::now ().time_since_epoch ()).count ());
+}
 
 namespace cubstorage
 {
@@ -896,6 +904,9 @@ namespace cubstorage
       }
     m_header.page_num = num_shard_pages;
 
+    // last updated time
+    m_last_updated.store (monotonic_seconds ());
+
     // create shards
     for (std::size_t i = 0; i < shard_count; i++)
       {
@@ -949,6 +960,21 @@ namespace cubstorage
   bestspace::pop_candidate (bestspace_entry &candidate)
   {
     return m_candidates.try_pop (candidate);
+  }
+
+  bool
+  bestspace::updatable ()
+  {
+    constexpr std::uint64_t UPDATE_TIME_THRESHOLD = 30;
+    std::uint64_t last_updated, now;
+
+    last_updated = m_last_updated.load ();
+    now = monotonic_seconds ();
+    if (now >= last_updated && now - last_updated >= UPDATE_TIME_THRESHOLD)
+      {
+	return m_last_updated.compare_exchange_strong (last_updated, now);
+      }
+    return false;
   }
 
   int

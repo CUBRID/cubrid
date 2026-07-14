@@ -328,6 +328,8 @@ namespace cubstorage
       void add_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       bool pop_candidate (bestspace_entry &candidate);
 
+      bool updatable ();
+
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
@@ -353,6 +355,8 @@ namespace cubstorage
       std::atomic<int> m_num_pages;
       std::atomic<std::uint64_t> m_recs_num;
       std::atomic<std::uint64_t> m_recs_sumlen;
+
+      std::atomic<std::uint64_t> m_last_updated;
 
       // base. update bestspace without fixing the heap header page
       struct
