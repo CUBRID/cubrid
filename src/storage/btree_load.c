@@ -2202,8 +2202,15 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       goto end;
     }
 
-  /* move current ROOT page content to the first page allocated */
-  btree_get_root_vpid_from_btid (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
+  /* Publish on the file's authoritative sticky root page. */
+  if (load_args->provider != NULL)
+    {
+      cur_nleafpgid = load_args->provider->root_vpid;
+    }
+  else
+    {
+      btree_get_root_vpid_from_btid (thread_p, load_args->btid->sys_btid, &cur_nleafpgid);
+    }
   next_pageptr = pgbuf_fix (thread_p, &cur_nleafpgid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
   if (next_pageptr == NULL)
     {
