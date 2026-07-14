@@ -24722,7 +24722,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
 /*
  * heap_get_hfid_if_cached () - get HFID and file type for class if cached.
-
+ *
  *   return: error code
  *   thread_p  (in)     :
  *   class_oid (in)     : the class OID for which the entry will be returned
