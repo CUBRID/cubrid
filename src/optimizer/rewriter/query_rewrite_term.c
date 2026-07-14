@@ -2355,11 +2355,9 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
   between->next = like->next;
   like->next = between;
 
-  /* Mark the derived range so the optimizer does not double count its
-   * selectivity against the retained LIKE term (CBRD-27036). The retained
-   * LIKE is a subset of this range, so multiplying both collapses the
-   * cardinality estimate. Set the flag on 'between' before the copy below so
-   * parser_copy_tree_list preserves it on the returned tree. */
+  /* Mark the derived range: the retained LIKE is a subset, so row-count
+   * aggregation must skip it to avoid double counting (CBRD-27036). Set before
+   * the copy so parser_copy_tree_list preserves it. */
   PT_EXPR_INFO_SET_FLAG (between, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
 
   /* fold range bounds : this will allow auto-parametrization */

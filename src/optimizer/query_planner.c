@@ -2111,10 +2111,9 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* selectivity of the index terms */
   sel = 1.0;
-  /* row-count selectivity: same as sel but excludes LIKE-derived range terms
-   * so their selectivity is not double counted against the retained LIKE term
-   * (CBRD-27036). Used only for output-row estimates, not for index leaf/page
-   * access cost. */
+  /* like sel, but excludes LIKE-derived range terms: used for output-row
+   * estimates only, not index access cost, to avoid double counting the
+   * retained LIKE (CBRD-27036). */
   sel_rows = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
@@ -2130,14 +2129,10 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
-      /* Exclude a LIKE-derived range term from the row-count selectivity only
-       * when the correlated residual LIKE is accounted for elsewhere, i.e. it
-       * became a key-filter term on the same segment (its selectivity is in
-       * filter_sel below). Otherwise - notably a non-covering function index,
-       * where key-filters are disabled (see qo_index_scan_new) and the
-       * residual LIKE falls through to a data filter - keep the range as the
-       * row-count upper bound so scan_rows is not inflated to the whole table
-       * (CBRD-27036). */
+      /* Exclude the LIKE-derived range from row-count only if the residual LIKE
+       * is captured elsewhere (a key-filter on the same segment). Otherwise
+       * (e.g. func index with no key-filter) keep it as the upper bound so
+       * scan_rows is not inflated to the whole table (CBRD-27036). */
       {
 	bool exclude_from_rows = false;
 
@@ -7881,8 +7876,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  /* skip LIKE-derived range term in row-count selectivity; it is
-		   * fully correlated with the retained LIKE term (CBRD-27036). */
+		  /* skip LIKE-derived range: subset-correlated with the retained LIKE (CBRD-27036) */
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
 		    {
 		      selectivity *= QO_TERM_SELECTIVITY (term);
