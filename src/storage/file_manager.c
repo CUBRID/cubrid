@@ -6161,7 +6161,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
   /* read file type from header if caller doesn't know it. debug always reads the type from file header to check caller
    * is not wrong. */
 #if defined (NDEBUG)
-  if (file_type_hint == FILE_UNKNOWN_TYPE || file_type_hint == FILE_BTREE
+  if (file_type_hint == FILE_UNKNOWN_TYPE
       || file_type_hint == FILE_EXTENDIBLE_HASH || file_type_hint == FILE_EXTENDIBLE_HASH_DIRECTORY)
 #endif /* NDEBUG */
     {
@@ -6183,10 +6183,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 	      || (file_type_hint == FILE_HEAP && fhead->type == FILE_HEAP_REUSE_SLOTS));
       file_type_hint = fhead->type;
 
-      if (VPID_EQ (&fhead->vpid_sticky_first, vpid))
-	{
-	  goto exit;
-	}
+      assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
     }
 
   if ((fhead != NULL && !FILE_IS_TEMPORARY (fhead)) || file_type_hint != FILE_TEMP)
@@ -6226,10 +6223,7 @@ file_dealloc (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid, FIL
 
   assert (page_fhead != NULL);
   assert (fhead != NULL);
-  if (VPID_EQ (&fhead->vpid_sticky_first, vpid))
-    {
-      goto exit;
-    }
+  assert (!VPID_EQ (&fhead->vpid_sticky_first, vpid));
 
   if (!FILE_IS_NUMERABLE (fhead))
     {
