@@ -523,6 +523,47 @@ db_set_base_server_time (DB_VALUE * db_val)
 }
 
 /*
+ * db_ensure_server_info() - fills the parser fields selected by server_info_bits, batching whatever must be fetched
+ *			     into a single qp_get_server_info () request. For SI_SYS_DATETIME, the current server
+ *			     time is computed from the cached base time when possible and the cache is re-anchored
+ *			     whenever the time comes from the server, so that later cache-derived times cannot go
+ *			     backwards. Any previous sys_datetime value is overwritten, so stale values left by an
+ *			     earlier statement cannot leak into this one.
+ * return: Error code
+ * parser(in/out) :
+ * server_info_bits(in) : bitset of SI_SYS_DATETIME, SI_LOCAL_TRANSACTION_ID
+ */
+int
+db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits)
+{
+  int err = NO_ERROR;
+
+  if (server_info_bits & SI_SYS_DATETIME)
+    {
+      db_make_null (&parser->sys_datetime);
+      db_make_null (&parser->sys_epochtime);
+
+      db_calculate_current_server_time (parser);
+      if (!DB_IS_NULL (&parser->sys_datetime) && !DB_IS_NULL (&parser->sys_epochtime))
+	{
+	  /* satisfied from the cached base time; no need to ask the server */
+	  server_info_bits &= ~SI_SYS_DATETIME;
+	}
+    }
+
+  if (server_info_bits)
+    {
+      err = qp_get_server_info (parser, server_info_bits);
+      if (err == NO_ERROR && (server_info_bits & SI_SYS_DATETIME))
+	{
+	  db_set_base_server_time (&parser->sys_datetime);
+	}
+    }
+
+  return err;
+}
+
+/*
  * db_compile_statement_local() -
  * return:
  * session(in) :
@@ -1803,12 +1844,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       /* Some create and alter statement require the server timestamp even though it does not explicitly refer
        * timestamp-related pseudocolumns. For instance, create table foo (a timestamp default systimestamp); create
        * view v_foo as select * from foo; */
-      db_calculate_current_server_time (parser);
-
-      if (base_server_timeb.time == 0)
-	{
-	  server_info_bits |= SI_SYS_DATETIME;
-	}
+      server_info_bits |= SI_SYS_DATETIME;
     }
 
   if (statement->flag.si_tran_id && DB_IS_NULL (&parser->local_transaction_id))
@@ -1817,19 +1853,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
 
-  /* request to the server */
   if (server_info_bits)
     {
-      err = qp_get_server_info (parser, server_info_bits);
+      err = db_ensure_server_info (parser, server_info_bits);
       if (err != NO_ERROR)
 	{
 	  return err;
 	}
-    }
-
-  if (server_info_bits & SI_SYS_DATETIME)
-    {
-      db_set_base_server_time (&parser->sys_datetime);
     }
 
   /* All CTE sub-queries included in the query must be executed first. */
@@ -1989,6 +2019,23 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
+	    }
+
+	  /* pt_resolve_names () above clears parser->sys_datetime, parser->sys_epochtime when the statement needs
+	   * datetime default expressions (see fill_in_insert_default_function_arguments), discarding the server time
+	   * already fetched at the beginning of this function. Restore it so that do_statement () does not evaluate
+	   * default expressions with a null system datetime. */
+	  if (statement->flag.si_datetime)
+	    {
+	      err = db_ensure_server_info (parser, SI_SYS_DATETIME);
+	      if (err != NO_ERROR)
+		{
+		  if (statement != session->statements[stmt_ndx])
+		    {
+		      parser_free_tree (parser, statement);
+		    }
+		  return err;
+		}
 	    }
 	}
 
@@ -2153,7 +2200,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
 
   /* reset the parser values */
-  if (statement->flag.si_datetime)
+  if (statement->flag.si_datetime || statement->node_type == PT_CREATE_ENTITY || statement->node_type == PT_ALTER)
     {
       db_make_null (&parser->sys_datetime);
       db_make_null (&parser->sys_epochtime);

@@ -390,7 +390,7 @@ typedef struct pgbuf_status PGBUF_STATUS;
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
 typedef struct pgbuf_status_old PGBUF_STATUS_OLD;
 
-struct pgbuf_status
+struct alignas (64) pgbuf_status
 {
   unsigned long long num_hit;
   unsigned long long num_page_request;
@@ -399,7 +399,6 @@ struct pgbuf_status
   unsigned long long num_pages_read;
   unsigned int num_flusher_waiting_threads;
   unsigned int dummy;
-  char m_pad[64 - 5 * sizeof (unsigned long long) - 2 * sizeof (unsigned int)];
 };
 
 struct pgbuf_status_snapshot
@@ -1768,7 +1767,10 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
+  /* cache-line aligned so each per-thread slot owns its own line (no false sharing) */
+  pgbuf_Pool.show_status =
+    (PGBUF_STATUS *) cub_aligned_alloc (64, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1),
+					__FILE__, __LINE__);
   if (pgbuf_Pool.show_status == NULL)
     {
       ASSERT_ERROR ();

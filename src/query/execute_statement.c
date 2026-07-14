@@ -89,6 +89,7 @@
 #include "xasl_to_stream.h"
 #include "query_cl.h"
 #include "parser_support.h"
+#include "string_opfunc.h"
 #include "tz_support.h"
 #include "dbtype.h"
 #include "crypt_opfunc.h"
@@ -428,19 +429,24 @@ is_stmt_based_repl_type (const PT_NODE * node)
   return false;
 }
 
+typedef enum
+{
+  DEFAULT_EXPR_EVAL_BY_ROW_ONLY,
+  DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY
+} DEFAULT_EXPR_EVAL_MODE;
+
 /*
- * do_evaluate_default_expr() - evaluates the default expressions, if any, for
- *				the attributes of a given class
+ * do_evaluate_default_expr_by_smclass () - evaluates default expressions for class attributes.
  *   return: Error code
  *   parser(in):
- *   class_name(in):
+ *   smclass(in):
+ *   eval_mode(in): 
  */
-int
-do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+static int
+do_evaluate_default_expr_by_smclass (PARSER_CONTEXT * parser, SM_CLASS * smclass, DEFAULT_EXPR_EVAL_MODE eval_mode)
 {
   SM_ATTRIBUTE *att;
-  SM_CLASS *smclass;
-  int error;
+  int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
   char *user_name;
   DB_DATETIME *datetime;
@@ -451,128 +457,161 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
   TP_DOMAIN *result_domain = NULL;
   bool has_user_format;
 
-  assert (class_name->node_type == PT_NAME);
-
-  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
+  assert (smclass != NULL);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
-      if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+      DB_DEFAULT_EXPR_TYPE default_expr_type = att->default_value.default_expr.default_expr_type;
+
+      if (default_expr_type != DB_DEFAULT_NONE)
 	{
-	  switch (att->default_value.default_expr.default_expr_type)
+	  /* DB_IS_DEFAULT_DETERMINE_BY_STATEMENT same as !DB_IS_DEFAULT_DETERMINE_BY_ROW */
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_ROW_ONLY && !DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+	  if (eval_mode == DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY && DB_IS_DEFAULT_DETERMINE_BY_ROW (default_expr_type))
+	    {
+	      continue;
+	    }
+
+	  error = NO_ERROR;
+	  switch (default_expr_type)
 	    {
 	    case DB_DEFAULT_SYSTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
-				      &hour, &minute, &second, &millisecond);
-		  db_make_time (&default_value, hour, minute, second);
-		}
-	      break;
+	      {
+		// The default expression must be evaluated only after server information (SI_SYS_DATETIME) is received
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		db_datetime_decode ((DB_DATETIME *) db_get_datetime (&parser->sys_datetime), &month, &day, &year,
+				    &hour, &minute, &second, &millisecond);
+		db_make_time (&default_value, hour, minute, second);
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTTIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_TIME cur_time, db_time;
-		  const char *t_source, *t_dest;
-		  DB_DATETIME *datetime;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		DB_TIME cur_time, db_time;
+		const char *t_source, *t_dest;
+		DB_DATETIME *datetime;
 
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  t_source = tz_get_system_timezone ();
-		  t_dest = tz_get_session_local_timezone ();
-		  db_time = datetime->time / 1000;
-		  error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
-						       strlen (t_dest), &cur_time);
-		  db_value_put_encoded_time (&default_value, &cur_time);
-		}
-	      break;
+		datetime = db_get_datetime (&parser->sys_datetime);
+		t_source = tz_get_system_timezone ();
+		t_dest = tz_get_session_local_timezone ();
+		db_time = datetime->time / 1000;
+		error = tz_conv_tz_time_w_zone_name (&db_time, t_source, strlen (t_source), t_dest,
+						     strlen (t_dest), &cur_time);
+		db_value_put_encoded_time (&default_value, &cur_time);
+		break;
+	      }
 	    case DB_DEFAULT_SYSDATE:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  datetime = db_get_datetime (&parser->sys_datetime);
-		  error = db_value_put_encoded_date (&default_value, &datetime->date);
-		}
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		datetime = db_get_datetime (&parser->sys_datetime);
+		error = db_value_put_encoded_date (&default_value, &datetime->date);
+		break;
+	      }
 	    case DB_DEFAULT_SYSDATETIME:
-	      error = pr_clone_value (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = pr_clone_value (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_SYSTIMESTAMP:
-	      error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = db_datetime_to_timestamp (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_UNIX_TIMESTAMP:
-	      error = db_unix_timestamp (&parser->sys_datetime, &default_value);
-	      break;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		error = db_unix_timestamp (&parser->sys_datetime, &default_value);
+		break;
+	      }
 	    case DB_DEFAULT_USER:
-	      user_name = db_get_user_and_host_name ();
-	      error = db_make_string (&default_value, user_name);
-	      default_value.need_clear = true;
-	      break;
+	      {
+		user_name = db_get_user_and_host_name ();
+		error = db_make_string (&default_value, user_name);
+		default_value.need_clear = true;
+		break;
+	      }
 	    case DB_DEFAULT_CURR_USER:
-	      user_name = db_get_user_name ();
-	      error = db_make_string (&default_value, user_name);
-	      default_value.need_clear = true;
-	      break;
+	      {
+		user_name = db_get_user_name ();
+		error = db_make_string (&default_value, user_name);
+		default_value.need_clear = true;
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTDATE:
 	    case DB_DEFAULT_CURRENTDATETIME:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  TZ_REGION system_tz_region, session_tz_region;
-		  DB_DATETIME dest_dt;
-		  DB_DATETIME *src_dt;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		TZ_REGION system_tz_region, session_tz_region;
+		DB_DATETIME dest_dt;
+		DB_DATETIME *src_dt;
 
-		  src_dt = db_get_datetime (&parser->sys_datetime);
-		  tz_get_system_tz_region (&system_tz_region);
-		  tz_get_session_tz_region (&session_tz_region);
-		  error =
-		    tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
-		  if (att->default_value.default_expr.default_expr_type == DB_DEFAULT_CURRENTDATE)
-		    {
-		      db_value_put_encoded_date (&default_value, &dest_dt.date);
-		    }
-		  else
-		    {
-		      db_make_datetime (&default_value, &dest_dt);
-		    }
-		}
-	      break;
+		src_dt = db_get_datetime (&parser->sys_datetime);
+		tz_get_system_tz_region (&system_tz_region);
+		tz_get_session_tz_region (&session_tz_region);
+		error =
+		  tz_conv_tz_datetime_w_region (src_dt, &system_tz_region, &session_tz_region, &dest_dt, NULL, NULL);
+		if (default_expr_type == DB_DEFAULT_CURRENTDATE)
+		  {
+		    db_value_put_encoded_date (&default_value, &dest_dt.date);
+		  }
+		else
+		  {
+		    db_make_datetime (&default_value, &dest_dt);
+		  }
+		break;
+	      }
 	    case DB_DEFAULT_CURRENTTIMESTAMP:
-	      if (DB_IS_NULL (&parser->sys_datetime))
-		{
-		  db_make_null (&default_value);
-		}
-	      else
-		{
-		  DB_DATE tmp_date;
-		  DB_TIME tmp_time;
-		  DB_TIMESTAMP tmp_timestamp;
-		  DB_DATETIME *sys_datetime;
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		DB_DATE tmp_date;
+		DB_TIME tmp_time;
+		DB_TIMESTAMP tmp_timestamp;
+		DB_DATETIME *sys_datetime;
 
-		  sys_datetime = db_get_datetime (&parser->sys_datetime);
-		  tmp_date = sys_datetime->date;
-		  tmp_time = sys_datetime->time / 1000;
-		  db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
-		  db_make_timestamp (&default_value, tmp_timestamp);
-		}
-	      break;
+		sys_datetime = db_get_datetime (&parser->sys_datetime);
+		tmp_date = sys_datetime->date;
+		tmp_time = sys_datetime->time / 1000;
+		db_timestamp_encode_sys (&tmp_date, &tmp_time, &tmp_timestamp, NULL);
+		db_make_timestamp (&default_value, tmp_timestamp);
+		break;
+	      }
+	    case DB_DEFAULT_SYSGUID:
+	      {
+		error = db_uuidv4 (&default_value);
+		break;
+	      }
+	    case DB_DEFAULT_UUIDV4:
+	      {
+		error = db_uuid_bin (UUID_V4, NULL, 0, &default_value);
+		break;
+	      }
+	    case DB_DEFAULT_UUIDV7:
+	      {
+		assert (!DB_IS_NULL (&parser->sys_epochtime));
+		assert (!DB_IS_NULL (&parser->sys_datetime));
+		UUID_STATE uuid_state;
+
+		uuid_state.last_ms = &parser->uuidv7_last_ms;
+		uuid_state.seq = &parser->uuidv7_seq;
+		error =
+		  db_uuid_bin (UUID_V7, &uuid_state,
+			       ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+			       + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000), &default_value);
+		break;
+	      }
 	    default:
 	      break;
 	    }
@@ -582,6 +621,7 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
 	      break;
 	    }
 
+	  pr_clear_value (&att->default_value.value);
 	  if (att->default_value.default_expr.default_expr_op == T_TO_CHAR)
 	    {
 	      if (att->default_value.default_expr.default_expr_format != NULL)
@@ -652,6 +692,46 @@ do_evaluate_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
     }
 
   return error;
+}
+
+/*
+ * do_evaluate_statement_default_expr() - evaluates the default expressions determined by statement, if any, for
+ *				the attributes of a given class
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+static int
+do_evaluate_statement_default_expr (PARSER_CONTEXT * parser, PT_NODE * class_name)
+{
+  SM_CLASS *smclass;
+  int error = NO_ERROR;
+
+  assert (class_name->node_type == PT_NAME);
+
+  error = au_fetch_class_force (class_name->info.name.db_object, &smclass, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return do_evaluate_default_expr_by_smclass (parser, smclass, DEFAULT_EXPR_EVAL_BY_STATEMENT_ONLY);
+}
+
+/*
+ * do_evaluate_row_default_expr_for_otemplate() - evaluates the default expressions determined by row, if any, for
+ *				the attributes of a given class's object template
+ *   return: Error code
+ *   parser(in):
+ *   class_name(in):
+ */
+static int
+do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * otemplate)
+{
+  assert (otemplate != NULL);
+  assert (otemplate->class_ != NULL);
+
+  return do_evaluate_default_expr_by_smclass (parser, otemplate->class_, DEFAULT_EXPR_EVAL_BY_ROW_ONLY);
 }
 
 /*
@@ -3633,13 +3713,25 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 	}
 
-      if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+      if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
 	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
 	}
     }
 
 end:
+  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
+   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
+  if (cls_info[0] != NULL)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
+    }
+
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
@@ -4326,12 +4418,24 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
+  if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
       (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
     }
 
 end:
+
+  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
+   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
+  if (cls_info[0] != NULL)
+    {
+      int i = 0;
+
+      while (cls_info[i] != NULL)
+	{
+	  free_and_init (cls_info[i++]);
+	}
+    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -12996,6 +13100,12 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
 	      i++;
 	    }
 
+	  error = do_evaluate_row_default_expr_for_otemplate (parser, *otemplate);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+
 	  /* inserted one more row */
 	  row_count++;
 
@@ -13494,6 +13604,15 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 			}
 		    }
 
+		  error = do_evaluate_row_default_expr_for_otemplate (parser, otemplate);
+		  if (error != NO_ERROR)
+		    {
+		      dbt_abort_object (otemplate);
+		      otemplate = NULL;
+		      cnt = error;
+		      goto cleanup;
+		    }
+
 		  if (statement->node_type == PT_INSERT && statement->info.insert.odku_assignments)
 		    {
 		      if (update == NULL)
@@ -13883,7 +14002,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  error = do_evaluate_default_expr (parser, class_);
+  error = do_evaluate_statement_default_expr (parser, class_);
   if (error != NO_ERROR)
     {
       return error;
@@ -15961,7 +16080,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_CREATE_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15970,8 +16089,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_CREATE;
 	objtype = CDC_INDEX;
@@ -15980,7 +16103,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_ALTER_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -15989,8 +16112,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* the index must be resolved by its constraint name; sm_get_index () looks up attribute names only */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_ALTER;
 	objtype = CDC_INDEX;
@@ -15999,7 +16126,7 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
       }
     case PT_DROP_INDEX:
       {
-	BTID index;
+	SM_CLASS_CONSTRAINT *cons;
 	MOP classop;
 
 	classname = statement->info.index.indexed_class->info.spec.entity_name->info.name.original;
@@ -16008,8 +16135,12 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	classop = sm_find_class (classname);
 
 	classoid = ws_oid (classop);
-	error = sm_get_index (classop, objname, &index);
-	memcpy (oid, &index, sizeof (OID));
+	/* after a successful DROP INDEX the constraint is already gone; oid then remains a NULL OID */
+	cons = classobj_find_constraint_by_name (sm_class_constraints (classop), objname);
+	if (cons != NULL)
+	  {
+	    memcpy (oid, &cons->index_btid, sizeof (OID));
+	  }
 
 	ddl_type = CDC_DROP;
 	objtype = CDC_INDEX;
@@ -17721,12 +17852,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  goto cleanup;
 	}
 
-      err = do_evaluate_default_expr (parser, flat);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup;
-	}
-
       /* check update part */
       if (statement->info.merge.update.assignment && !insert_only)
 	{
@@ -18350,6 +18475,12 @@ do_execute_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  PT_NODE *save_list;
 	  PT_MISC_TYPE save_type;
+
+	  err = do_evaluate_statement_default_expr (parser, flat);
+	  if (err != NO_ERROR)
+	    {
+	      goto exit;
+	    }
 
 	  /* save node list */
 	  save_type = values_list->info.node_list.list_type;
@@ -21794,12 +21925,8 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
   return error;
 }
 
-#define DBLINK_PASSWORD_MAX_LENGTH      (128)
-#define DBLINK_PASSWORD_CONFUSED_LENGTH (6)	// include 4(int) + 1(unsigned char) +  1(unsigned char)
-// Valid data size is the largest multiple of 3 less than or equal to DBLINK_PASSWORD_CIPHER_LENGTH.
-#define DBLINK_PASSWORD_CIPHER_LENGTH   (DBLINK_PASSWORD_MAX_LENGTH + DBLINK_PASSWORD_CONFUSED_LENGTH)
-#define DBLINK_PASSWORD_PAD_LENGTH      (40)	// include 2(length) + 2(mk) + 2(length) + 32(mk), Must be 4 or more
-#define DBLINK_PASSWORD_MAX_BUFSIZE  ((int)(DBLINK_PASSWORD_CIPHER_LENGTH / 3 * 4) + DBLINK_PASSWORD_PAD_LENGTH)
+/* DBLINK_PASSWORD_* cipher sizing macros now live in crypt_opfunc.h (shared with the server-side
+ * _db_global_tran catalog). The encrypt/decrypt logic is centralized in crypt_dblink_password_*(). */
 
 /*
  * pt_check_dblink_password ()  : Check the validity of the entered password.
@@ -21926,56 +22053,16 @@ ret_pos:
 static int
 get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 {
-  int err, length, buf_size;
-  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
-  char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
-  struct timeval check_time = { 0, 0 };
-  struct tm *lt;
-  char empty_str[4] = { 0x00, };
-
-  srand (time (NULL));
+  int err;
+  char newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
 
   db_make_null (encrypt_val);
-  if (!passwd)
-    {
-      passwd = empty_str;
-    }
 
-  if (strlen (passwd) > DBLINK_PASSWORD_MAX_LENGTH)
-    {
-      return ER_DBLINK_PASSWORD_OVER_MAX_LENGTH;
-    }
-
-  length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
-  passwd = confused;
-
-  if ((lt = localtime ((time_t *) & check_time.tv_sec)) == NULL)
-    {
-      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
-    }
-  else
-    {
-      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
-		    lt->tm_year + 1900, lt->tm_mon + 1, lt->tm_mday, lt->tm_hour, lt->tm_min, lt->tm_sec,
-		    check_time.tv_usec) >= (int) sizeof (private_key))
-	{
-	  assert_release (0);
-	  private_key[sizeof (private_key) - 1] = '\0';
-	}
-    }
-
-  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher, private_key);
+  err = crypt_dblink_password_encrypt (passwd, newpwd, sizeof (newpwd));
   if (err == NO_ERROR)
     {
-      err =
-	crypt_dblink_bin_to_str (cipher, length, newpwd, DBLINK_PASSWORD_MAX_BUFSIZE, private_key,
-				 (long) check_time.tv_usec);
-      if (err == NO_ERROR)
-	{
-	  // byte stream to hex string   
-	  err = db_make_string_copy (encrypt_val, newpwd);
-	}
+      // byte stream to hex string
+      err = db_make_string_copy (encrypt_val, newpwd);
     }
 
   return err;
@@ -21995,9 +22082,8 @@ get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val)
 static int
 get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
 {
-  int err, length, new_length;
-  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
-  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  int err;
+  char rawpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
 
   db_make_null (decrypt_val);
   if (!passwd_cipher || !*passwd_cipher)
@@ -22005,34 +22091,10 @@ get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val)
       return NO_ERROR;
     }
 
-  new_length = DBLINK_PASSWORD_MAX_BUFSIZE;
-  /* Adjust the length so that it is a multiple of 4. */
-  new_length >>= 2;
-  new_length <<= 2;
-
-  length = strlen (passwd_cipher);
-  if (length != new_length)
-    {
-      return ER_DBLINK_PASSWORD_INVALID_LENGTH;
-    }
-
-  // hex string  to byte stream 
-  err = crypt_dblink_str_to_bin (passwd_cipher, length, cipher, &new_length, private_key);
-  if (err != NO_ERROR)
-    {
-      return ER_DBLINK_PASSWORD_INVALID_FMT;
-    }
-
-  err = crypt_dblink_decrypt ((unsigned char *) cipher, new_length, (unsigned char *) newpwd, private_key);
+  err = crypt_dblink_password_decrypt (passwd_cipher, rawpwd, sizeof (rawpwd));
   if (err == NO_ERROR)
     {
-      newpwd[new_length] = '\0';	// Do NOT omit this line.
-      err = reverse_shake_dblink_password (newpwd, new_length, cipher);
-      if (err != NO_ERROR)
-	{
-	  return ER_DBLINK_PASSWORD_CHECKSUM;
-	}
-      err = db_make_string_copy (decrypt_val, cipher);
+      err = db_make_string_copy (decrypt_val, rawpwd);
     }
 
   return err;
