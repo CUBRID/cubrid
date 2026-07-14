@@ -2064,7 +2064,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
   double object_IO, index_IO;
-  double sel_rows;
+  double sel_no_derived_range;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2114,7 +2114,7 @@ qo_iscan_cost (QO_PLAN * planp)
   /* like sel, but excludes LIKE-derived range terms: used for output-row
    * estimates only, not index access cost, to avoid double counting the
    * retained LIKE (CBRD-27036). */
-  sel_rows = 1.0;
+  sel_no_derived_range = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
@@ -2156,7 +2156,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
 	if (!exclude_from_rows)
 	  {
-	    sel_rows *= QO_TERM_SELECTIVITY (termp);
+	    sel_no_derived_range *= QO_TERM_SELECTIVITY (termp);
 	  }
       }
 
@@ -2172,7 +2172,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
-  sel_rows = MIN (sel_rows, 1.0);
+  sel_no_derived_range = MIN (sel_no_derived_range, 1.0);
 
   sel_limit = 0.0;		/* init */
 
@@ -2212,7 +2212,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
-  sel_rows = MAX (sel_rows, sel_limit);
+  sel_no_derived_range = MAX (sel_no_derived_range, sel_limit);
 
   /* selectivity of the index key filter terms */
   filter_sel = 1.0;
@@ -2260,8 +2260,8 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel_rows * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel_rows * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      object_IO = opages * sel_no_derived_range * filter_sel;
+      heap_access = (double) QO_NODE_NCARD (nodep) * sel_no_derived_range * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
@@ -2270,7 +2270,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_rows * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_no_derived_range * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
