@@ -32,6 +32,7 @@
 #include <math.h>
 #include <assert.h>
 #include <errno.h>
+#include <time.h>
 #if defined (WINDOWS)
 #include <winsock2.h>
 #else
@@ -895,6 +896,9 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   unsigned char *enc_ptr = NULL;
   int enc_len = 0;
   unsigned char empty_str[4] = { 0x00, };
+  /* Thread-safe RNG seed (filler bytes only, not the cipher key). Mix the per-call time with the
+   * destination address so concurrent callers within the same microsecond do not correlate. */
+  unsigned int rand_seed = (unsigned int) tm ^ (unsigned int) (size_t) dest;
 
   assert (src != NULL && dest != NULL);
 
@@ -968,7 +972,7 @@ crypt_dblink_bin_to_str (const char *src, int src_len, char *dest, int dest_len,
   even = 0;
   for (i = enc_len + pk_len; i < dest_len; i++)
     {
-      dest[i] = hextable[rand () % hextable_mod];
+      dest[i] = hextable[(unsigned int) rand_r (&rand_seed) % hextable_mod];
       even += (dest[i] + i);
     }
   dest[i++] = ((even >> 8) % 26) + 'A';
@@ -1088,11 +1092,15 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
   unsigned char *p;
   unsigned char checksum;
   int tmpx_len = 90;		/* strlen(tmpx) */
+  unsigned int rand_seed;
 
   p = (unsigned char *) confused;
   pwdlen = (int) strlen (passwd);
 
   gettimeofday (chk_time, NULL);
+  /* Thread-safe RNG seed for the garbage filler (not the cipher key). Mix the per-call time with the
+   * buffer address so concurrent callers within the same microsecond do not correlate. */
+  rand_seed = (unsigned int) chk_time->tv_usec ^ (unsigned int) (size_t) confused;
   shift = (chk_time->tv_usec & 0x7FFF);
   memcpy (p, &shift, sizeof (int));
   p += sizeof (int);
@@ -1113,7 +1121,7 @@ shake_dblink_password (const char *passwd, char *confused, int confused_size, st
 
   for (i = 0; i < start; i++)
     {
-      p[i] = tmpx[rand () % tmpx_len];
+      p[i] = tmpx[(unsigned int) rand_r (&rand_seed) % tmpx_len];
     }
   p += start;
 
@@ -1234,4 +1242,160 @@ reverse_shake_dblink_password (char *confused, int length, char *passwd)
   while (++pwdlen % 3);
 
   return NO_ERROR;
+}
+
+/*
+ * crypt_dblink_password_encrypt ()  : Encrypt a raw dblink password into a self-contained cipher string.
+ *
+ * return	      : NO_ERROR or error code.
+ * passwd(in)         : Raw password (may be NULL/empty).
+ * cipher_buf(out)    : Buffer to receive the encrypted (printable) password string.
+ * cipher_buf_size(in): Size of cipher_buf; must be larger than DBLINK_PASSWORD_MAX_BUFSIZE.
+ *
+ * Remark:
+ *      The private key is derived from the creation time and embedded in the cipher string, so the
+ *      result is self-describing and can be decrypted by crypt_dblink_password_decrypt() alone.
+ *      This is the single source of truth shared by DDL handling (server objects) and the
+ *      _db_global_tran catalog for distributed-transaction recovery.
+ */
+int
+crypt_dblink_password_encrypt (const char *passwd, char *cipher_buf, int cipher_buf_size)
+{
+  int err, length, max_len;
+  char cipher[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_MAX_BUFSIZE + 1];
+  char confused[DBLINK_PASSWORD_CIPHER_LENGTH + 1] = { 0, };
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+  struct timeval check_time = { 0, 0 };
+  struct tm tm_buf;
+  time_t sec;
+  char empty_str[4] = { 0x00, };
+
+  if (cipher_buf == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* Adjust the length so that it is a multiple of 4. */
+  max_len = DBLINK_PASSWORD_MAX_BUFSIZE;
+  max_len >>= 2;
+  max_len <<= 2;
+  if (cipher_buf_size <= max_len)
+    {
+      return ER_TF_BUFFER_OVERFLOW;
+    }
+
+  /* Thread-safe: localtime_r writes into the caller's tm_buf instead of a
+   * process-wide static buffer, so concurrent calls from multiple worker
+   * threads (_db_global_tran insert path) cannot corrupt each other's keys.
+   * The filler RNG also uses rand_r (seeded per-call), not the global RNG. */
+
+  if (!passwd)
+    {
+      passwd = empty_str;
+    }
+
+  if (strlen (passwd) > DBLINK_PASSWORD_MAX_LENGTH)
+    {
+      return ER_DBLINK_PASSWORD_OVER_MAX_LENGTH;
+    }
+
+  length = shake_dblink_password (passwd, confused, DBLINK_PASSWORD_CIPHER_LENGTH, &check_time);
+  passwd = confused;
+
+  sec = (time_t) check_time.tv_sec;
+  if (localtime_r (&sec, &tm_buf) == NULL)
+    {
+      sprintf ((char *) private_key, "%08ld%06ld", check_time.tv_sec, check_time.tv_usec);
+    }
+  else
+    {
+      if (snprintf ((char *) private_key, sizeof (private_key), "%04d%02d%02d%02d%02d%02d%06ld",
+		    tm_buf.tm_year + 1900, tm_buf.tm_mon + 1, tm_buf.tm_mday, tm_buf.tm_hour, tm_buf.tm_min,
+		    tm_buf.tm_sec, check_time.tv_usec) >= (int) sizeof (private_key))
+	{
+	  assert_release (0);
+	  private_key[sizeof (private_key) - 1] = '\0';
+	}
+    }
+
+  err = crypt_dblink_encrypt ((unsigned char *) passwd, length, (unsigned char *) cipher, private_key);
+  if (err == NO_ERROR)
+    {
+      err = crypt_dblink_bin_to_str (cipher, length, newpwd, DBLINK_PASSWORD_MAX_BUFSIZE, private_key,
+				     (long) check_time.tv_usec);
+      if (err == NO_ERROR)
+	{
+	  // byte stream to hex string
+	  if ((int) strlen (newpwd) >= cipher_buf_size)
+	    {
+	      return ER_TF_BUFFER_OVERFLOW;
+	    }
+	  strcpy (cipher_buf, newpwd);
+	}
+    }
+
+  return err;
+}
+
+/*
+ * crypt_dblink_password_decrypt ()  : Decrypt a cipher string back to the raw dblink password.
+ *
+ * return	      : NO_ERROR or error code.
+ * cipher(in)         : Encrypted password produced by crypt_dblink_password_encrypt().
+ * raw_buf(out)       : Buffer to receive the decrypted raw password.
+ * raw_buf_size(in)   : Size of raw_buf.
+ */
+int
+crypt_dblink_password_decrypt (const char *cipher, char *raw_buf, int raw_buf_size)
+{
+  int err, length, new_length;
+  char bin[DBLINK_PASSWORD_CIPHER_LENGTH + 1], newpwd[DBLINK_PASSWORD_CIPHER_LENGTH + 1];
+  unsigned char private_key[DBLINK_CRYPT_KEY_LENGTH] = { 0, };	// Do NOT omit this initialize.
+
+  if (raw_buf == NULL || raw_buf_size <= 0)
+    {
+      return ER_FAILED;
+    }
+  raw_buf[0] = '\0';
+
+  if (!cipher || !*cipher)
+    {
+      return NO_ERROR;
+    }
+
+  new_length = DBLINK_PASSWORD_MAX_BUFSIZE;
+  /* Adjust the length so that it is a multiple of 4. */
+  new_length >>= 2;
+  new_length <<= 2;
+
+  length = strlen (cipher);
+  if (length != new_length)
+    {
+      return ER_DBLINK_PASSWORD_INVALID_LENGTH;
+    }
+
+  // hex string to byte stream
+  err = crypt_dblink_str_to_bin (cipher, length, bin, &new_length, private_key);
+  if (err != NO_ERROR)
+    {
+      return ER_DBLINK_PASSWORD_INVALID_FMT;
+    }
+
+  err = crypt_dblink_decrypt ((unsigned char *) bin, new_length, (unsigned char *) newpwd, private_key);
+  if (err == NO_ERROR)
+    {
+      newpwd[new_length] = '\0';	// Do NOT omit this line.
+      err = reverse_shake_dblink_password (newpwd, new_length, bin);
+      if (err != NO_ERROR)
+	{
+	  return ER_DBLINK_PASSWORD_CHECKSUM;
+	}
+      if ((int) strlen (bin) >= raw_buf_size)
+	{
+	  return ER_DBLINK_PASSWORD_INVALID_LENGTH;
+	}
+      strcpy (raw_buf, bin);
+    }
+
+  return err;
 }
