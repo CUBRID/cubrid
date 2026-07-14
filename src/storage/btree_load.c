@@ -2485,10 +2485,17 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
 {
   BT_LOAD_PROVIDER *provider;
   int error;
+  VPID root_vpid;
 
   if (out == NULL || btid == NULL || n_workers < 2)
     {
       return ER_FAILED;
+    }
+
+  error = file_get_sticky_first_page (thread_p, &btid->vfid, &root_vpid);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
   provider = new BT_LOAD_PROVIDER ();
   provider->main_pool.vpids = NULL;
@@ -2498,8 +2505,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->ovf_pool.n_published = 0;
   provider->ovf_pool.cursor.store (0, std::memory_order_relaxed);
   provider->main_vfid = btid->vfid;
-  provider->root_vpid.volid = btid->vfid.volid;
-  provider->root_vpid.pageid = btid->root_pageid;
+  provider->root_vpid = root_vpid;
   VFID_SET_NULL (&provider->ovf_vfid);
   provider->est_ovf_pages = need_ovf_file ? MAX (est_ovf_pages, 0) : 0;
   provider->n_workers = n_workers;
