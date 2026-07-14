@@ -10691,9 +10691,9 @@ collect_hier_class_info (MOP classop, DB_OBJLIST * subclasses, const char *const
  */
 static bool __attribute__ ((unused))
 sm_bulk_index_provenance_is_eligible (bool actual_new_btid, bool load_from_heap, bool has_instances,
-				      bool online_index_build, bool add_constraint, bool server_mode)
+				      bool online_index_build, bool server_mode)
 {
-  return actual_new_btid && load_from_heap && has_instances && !online_index_build && add_constraint && server_mode;
+  return actual_new_btid && load_from_heap && has_instances && !online_index_build && server_mode;
 }
 /*
  * allocate_index() - Allocates an index on disk for an attribute of a class.
