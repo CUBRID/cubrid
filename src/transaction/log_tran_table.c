@@ -1237,10 +1237,9 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
-
-      TR_TABLE_CS_ENTER (thread_p);
       logtb_decrement_number_of_assigned_tran_indices ();
       if (log_Gl.trantable.hint_free_index > tran_index)
 	{
