@@ -19649,7 +19649,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
 
-	      AU_DISABLE (save_au);
+	      AU_SAVE_AND_DISABLE (save_au);
 
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
@@ -19670,7 +19670,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		}
 
-	      AU_ENABLE (save_au);
+	      AU_RESTORE (save_au);
 
 	      insert->vals = NULL;
 	      insert->num_vals = num_vals + num_default_expr;
