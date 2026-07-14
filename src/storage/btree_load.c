@@ -86,7 +86,6 @@ struct load_args
   DB_VALUE current_key;		/* Current key value */
   int max_key_size;		/* The maximum key size encountered so far; used for string types */
   int cur_key_len;		/* The length of the current key */
-  std::atomic<int> *max_disk_key_size;	/* Shared with sort get workers; owned by the main thread */
 
   /* Linked list variables */
   BTREE_NODE *push_list;
@@ -874,7 +873,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
-  std::atomic<int> max_disk_key_size (0);
+  int n_ovf_keys = 0;
+  INT64 sum_ovf_pages = 0;
   BTID_INT btid_int;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
 #if defined (SERVER_MODE)
@@ -988,7 +988,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = false;
   sort_args->attrinfo_inited = false;
   sort_args->btid = &btid_int;
-  sort_args->max_disk_key_size = &max_disk_key_size;
+  sort_args->n_ovf_keys = n_ovf_keys;
+  sort_args->sum_ovf_pages = sum_ovf_pages;
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->fk_name = fk_name;
@@ -1062,7 +1063,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /** Initialize the fields of loading argument structures **/
   load_args->btid = &btid_int;
   load_args->bt_name = bt_name;
-  load_args->max_disk_key_size = &max_disk_key_size;
   db_make_null (&load_args->current_key);
   VPID_SET_NULL (&load_args->nleaf.vpid);
   load_args->nleaf.pgptr = NULL;
@@ -3817,17 +3817,6 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	}
 
       key_len = btree_get_disk_size_of_key (dbvalue_ptr);
-      if (sort_args->max_disk_key_size != NULL)
-	{
-	  int observed_max = sort_args->max_disk_key_size->load (std::memory_order_relaxed);
-	  while (observed_max < key_len
-		 && !sort_args->max_disk_key_size->compare_exchange_weak (observed_max, key_len,
-									 std::memory_order_relaxed,
-									 std::memory_order_relaxed))
-	    {
-	      /* observed_max is refreshed by compare_exchange_weak. */
-	    }
-	}
       if (key_len > 0)
 	{
 	  result = bt_load_put_buf_to_record (temp_recdes, sort_args, value_has_null, &prev_oid, &mvcc_header,
@@ -3879,14 +3868,6 @@ nofit:
   return SORT_REC_DOESNT_FIT;
 }
 
-bool
-btree_load_parallel_construct_allowed (const SORT_ARGS * sort_args)
-{
-  assert (sort_args != NULL);
-  assert (sort_args->max_disk_key_size != NULL);
-
-  return sort_args->max_disk_key_size->load (std::memory_order_relaxed) < BTREE_MAX_KEYLEN_INPAGE;
-}
 
 /*
  * btree_sort_get_next () - Get_key function for index sorting
@@ -5379,6 +5360,17 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
 
       /* Assign the snapshot to the scan_cache. */
+	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
+	    {
+	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
+	      int pages = 1;
+	      if (remaining > 0)
+		{
+		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
+		}
+	      sort_args->n_ovf_keys++;
+	      sort_args->sum_ovf_pages += pages;
+	    }
       scan_cache.mvcc_snapshot = builder_snapshot;
 
       ret = heap_get_btid_from_index_name (thread_p, &class_oids[cur_class], bt_name, btid_int.sys_btid);
@@ -5672,6 +5664,17 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
     }
 
+	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
+	    {
+	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
+	      int pages = 1;
+	      if (remaining > 0)
+		{
+		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
+		}
+	      sort_args->n_ovf_keys++;
+	      sort_args->sum_ovf_pages += pages;
+	    }
   /* Check if the worker pool is empty */
   if (ret == NO_ERROR)
     {

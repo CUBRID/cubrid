@@ -5354,6 +5354,8 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
  *   parallel_num(in):
  *   sort_parallel_type(in):
  */
+      sort_args_p->n_ovf_keys += px_sort_args_p->n_ovf_keys;
+      sort_args_p->sum_ovf_pages += px_sort_args_p->sum_ovf_pages;
 int
 sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
 {
@@ -5856,6 +5858,8 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   else
     {
       /* not implemented yet */
+	  px_sort_args_p->n_ovf_keys = 0;
+	  px_sort_args_p->sum_ovf_pages = 0;
       return ER_FAILED;
     }
 

@@ -319,7 +319,8 @@ struct sort_args
   FUNCTION_INDEX_INFO *func_index_info;
 
   MVCCID oldest_visible_mvccid;
-  std::atomic<int> *max_disk_key_size;	/* Main-owned maximum observed while generating sort records */
+  int n_ovf_keys;
+  INT64 sum_ovf_pages;
 
   /* for parallel processing */
   /* *INDENT-OFF* */
@@ -351,7 +352,6 @@ extern int btree_change_root_header_delta (THREAD_ENTRY * thread_p, VFID * vfid,
 					   long long null_delta, long long oid_delta, long long key_delta);
 
 extern int btree_get_disk_size_of_key (DB_VALUE *);
-extern bool btree_load_parallel_construct_allowed (const SORT_ARGS * sort_args);
 extern TP_DOMAIN *btree_generate_prefix_domain (BTID_INT * btid);
 extern int btree_glean_root_header_info (THREAD_ENTRY * thread_p, BTREE_ROOT_HEADER * root_header, BTID_INT * btid,
 					 bool is_key_type);
