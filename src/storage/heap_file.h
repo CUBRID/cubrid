@@ -145,9 +145,9 @@ struct heap_scancache
   public:
     int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
     HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
-    PGBUF_LATCH_MODE page_latch;	/* Page latch to acquire on heap pages for the whole scan: PGBUF_LATCH_READ or
-					 * PGBUF_LATCH_WRITE, or PGBUF_LATCH_INVALID when no per-page latch intent is
-					 * recorded (e.g. the class is already locked with S_LOCK, SIX_LOCK, or X_LOCK) */
+    PGBUF_LATCH_MODE page_latch;	/* Page latch to acquire on heap pages for the whole scan:
+					 * PGBUF_LATCH_READ or PGBUF_LATCH_WRITE. PGBUF_LATCH_INVALID marks an
+					 * uninitialized / ended scan cache and is never used to fetch a page. */
     bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
     bool mvcc_disabled_class;	/* Indicates if the class is MVCC disabled */
     PGBUF_WATCHER page_watcher;
