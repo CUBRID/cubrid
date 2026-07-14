@@ -2816,16 +2816,9 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_max_concurrency ())
-    {
-      // all threads are suspended
-      return true;
-    }
-  else
-    {
-      // at least one thread is free
-      return false;
-    }
+  // the elastic target may be above max_request_concurrency, and waiting handlers may already have returned their slots.
+  // decide from actual worker headroom instead of comparing the context count with the normal slot target.
+  return checked_threads_count > 0 && !css_Server_request_worker_pool->has_available_execution_capacity ();
 }
 
 //

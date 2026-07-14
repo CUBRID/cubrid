@@ -32,6 +32,28 @@
 
 namespace cubthread
 {
+  thread_local worker_pool *worker_pool::m_current_worker_pool = nullptr;
+
+  bool
+  worker_pool::is_current_thread_worker (void) const
+  {
+    return m_current_worker_pool == this;
+  }
+
+  void
+  worker_pool::register_current_worker_thread (void)
+  {
+    assert (m_current_worker_pool == nullptr);
+    m_current_worker_pool = this;
+  }
+
+  void
+  worker_pool::unregister_current_worker_thread (void)
+  {
+    assert (m_current_worker_pool == this);
+    m_current_worker_pool = nullptr;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // functions
   //////////////////////////////////////////////////////////////////////////
