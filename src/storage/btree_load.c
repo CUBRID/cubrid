@@ -191,6 +191,8 @@ struct bt_load_worker_slot
   BT_LOAD_SPAN *ready_span;
   BT_LOAD_SPAN *main_spans;
   BT_LOAD_SPAN *ovf_spans;
+  INT64 consumed_pages;
+  INT64 consumed_ovf_pages;
 };
 
 struct bt_load_provider
@@ -2410,10 +2412,10 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
       if (span != NULL && span->used < span->n)
 	{
 	  *vpid = span->vpids[span->used++];
-	  __atomic_add_fetch (&provider->consumed_pages, 1, __ATOMIC_RELAXED);
+	  slot->consumed_pages++;
 	  if (is_ovf)
 	    {
-	      __atomic_add_fetch (&provider->consumed_ovf_pages, 1, __ATOMIC_RELAXED);
+	      slot->consumed_ovf_pages++;
 	    }
 	  if (span->n - span->used <= span->n / 4
 	      && pool->cursor.load (std::memory_order_relaxed) >= pool->n_published)
@@ -2782,6 +2784,7 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
   int error;
   INT64 ledger_pages;
   INT64 consumed_pages;
+  INT64 consumed_ovf_pages;
   if (bt_load_ledger_page_count (provider, false) != provider->allocated_pages)
     {
       assert (false);
@@ -2862,8 +2865,28 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
 	  return error;
 	}
     }
+  consumed_pages = provider->consumed_pages;
+  consumed_ovf_pages = provider->consumed_ovf_pages;
+  for (int i = 0; i < provider->n_workers; i++)
+    {
+      if (provider->slots[i].consumed_pages < 0
+	  || consumed_pages > LLONG_MAX - provider->slots[i].consumed_pages
+	  || provider->slots[i].consumed_ovf_pages < 0
+	  || consumed_ovf_pages > LLONG_MAX - provider->slots[i].consumed_ovf_pages)
+	{
+	  assert (false);
+	  return ER_FAILED;
+	}
+      consumed_pages += provider->slots[i].consumed_pages;
+      consumed_ovf_pages += provider->slots[i].consumed_ovf_pages;
+    }
+  if (consumed_ovf_pages > consumed_pages)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
   ledger_pages = bt_load_ledger_page_count (provider, skip_ovf_file);
-  consumed_pages = provider->consumed_pages - (skip_ovf_file ? provider->consumed_ovf_pages : 0);
+  consumed_pages -= skip_ovf_file ? consumed_ovf_pages : 0;
   if (ledger_pages != consumed_pages + provider->returned_pages)
     {
       assert (false);
