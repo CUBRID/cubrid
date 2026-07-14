@@ -1,0 +1,99 @@
+name: Submodule bump (receiver)
+
+on:
+  repository_dispatch:
+    types: [submodule-bump]
+  workflow_dispatch:
+    inputs:
+      submodule_path:
+        description: "cubrid-jdbc | cubrid-cci | cubridmanager"
+        required: true
+      commit_message:
+        description: "Original commit subject (for issue-key inheritance)"
+        default: ""
+      pusher:
+        description: "GitHub id to set as assignee"
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+
+env:
+  BASE_BRANCH: develop
+  FALLBACK_TAG: "[CBRD-0000]"
+
+concurrency:
+  group: submodule-bump-${{ github.event.client_payload.submodule_path || inputs.submodule_path }}
+  cancel-in-progress: true
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    env:
+      SUB_PATH:   ${{ github.event.client_payload.submodule_path || inputs.submodule_path }}
+      COMMIT_MSG: ${{ github.event.client_payload.commit_message || inputs.commit_message }}
+      PUSHER:     ${{ github.event.client_payload.pusher || inputs.pusher }}
+    steps:
+      - name: Validate submodule path
+        run: |
+          set -euo pipefail
+          case "$SUB_PATH" in
+            cubrid-jdbc|cubrid-cci|cubridmanager) ;;
+            *) echo "::error::Unknown submodule path: '$SUB_PATH'"; exit 1 ;;
+          esac
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.SUBMODULE_BOT_APP_ID }}
+          private-key: ${{ secrets.SUBMODULE_BOT_APP_PRIVATE_KEY }}
+
+      - name: Checkout parent
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BASE_BRANCH }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Update submodule pointer
+        id: bump
+        run: |
+          set -euo pipefail
+          git submodule update --init -- "$SUB_PATH"
+          git submodule update --remote -- "$SUB_PATH"
+          if git diff --quiet -- "$SUB_PATH"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "new_sha=$(git -C "$SUB_PATH" rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build PR title
+        if: steps.bump.outputs.changed == 'true'
+        id: title
+        run: |
+          set -euo pipefail
+          TAG=$(printf '%s' "$COMMIT_MSG" | head -n1 | grep -oE '^\[[A-Z]+-[0-9]+\]' || true)
+          [ -z "$TAG" ] && TAG="$FALLBACK_TAG"
+          echo "value=${TAG} Update ${SUB_PATH} submodule" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update PR
+        if: steps.bump.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: bump/${{ env.SUB_PATH }}
+          base: ${{ env.BASE_BRANCH }}
+          title: ${{ steps.title.outputs.value }}
+          commit-message: ${{ steps.title.outputs.value }}
+          body: |
+            Automated submodule bump for `${{ env.SUB_PATH }}`.
+
+            - New SHA: `${{ steps.bump.outputs.new_sha }}`
+            - Source commit: `${{ env.COMMIT_MSG }}`
+            - Pushed by: @${{ env.PUSHER }}
+          labels: Submodule Auto Update
+          assignees: ${{ env.PUSHER }}
+          delete-branch: true
