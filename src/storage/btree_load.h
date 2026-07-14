@@ -40,6 +40,16 @@ struct bt_load_vacuum_item
   char *data;
   int length;
 };
+
+typedef struct load_args LOAD_ARGS;
+typedef struct bt_load_provider BT_LOAD_PROVIDER;
+
+typedef enum bt_load_px_outcome
+{
+  BT_PX_NOT_ATTEMPTED = 0,
+  BT_PX_TREE_DONE,
+  BT_PX_ERROR
+} BT_LOAD_PX_OUTCOME;
 #include "dbtype.h"
 #include "object_representation_constants.h"
 #include "error_manager.h"
@@ -330,6 +340,23 @@ struct sort_args
   /* *INDENT-ON* */
 };
 
+extern int bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const BTID * btid, int n_workers,
+				  int est_main_pages, int est_ovf_pages, bool need_ovf_file);
+extern int bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider);
+extern int bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, bool skip_ovf_file);
+extern void bt_load_provider_close (BT_LOAD_PROVIDER * provider);
+extern int bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src,
+					  BT_LOAD_PROVIDER * provider, int worker_idx, LOAD_ARGS ** out);
+extern void bt_load_free_shard_load_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
+extern int bt_load_worker_put_range (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, RECDES * recdes);
+extern int bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
+extern int bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int error);
+extern void bt_load_set_px_outcome (LOAD_ARGS * load_args, BT_LOAD_PX_OUTCOME outcome);
+extern int bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args,
+				     LOAD_ARGS * shard_load_args[], int n_shards);
+extern int bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES * recdes,
+					   LOAD_ARGS * load_args, DB_VALUE * key_out);
+extern bool bt_load_parallel_enabled (const LOAD_ARGS * load_args);
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,

@@ -37,6 +37,8 @@
 #include "external_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
+#include "file_manager.h"
+#include "overflow_file.h"
 #include "log_append.hpp"
 #include "log_manager.h"
 #include "memory_alloc.h"
@@ -72,7 +74,7 @@ struct btree_page
   BTREE_NODE_HEADER hdr;
 };
 
-typedef struct load_args LOAD_ARGS;
+typedef int (*BT_LOAD_NEW_PAGE_FUNC) (THREAD_ENTRY *, LOAD_ARGS *, BTREE_NODE_HEADER *, int, VPID *, PAGE_PTR *);
 struct load_args
 {				/* This structure is never written to disk; thus logical ordering of fields is ok. */
   BTID_INT *btid;
@@ -117,6 +119,102 @@ struct load_args
   size_t vacuum_count;
   size_t vacuum_capacity;
   size_t vacuum_payload_size;
+
+  SORT_ARGS *sort_args;
+  BT_LOAD_PROVIDER *provider;
+  int worker_idx;
+  BT_LOAD_NEW_PAGE_FUNC new_page_fn;
+  BT_LOAD_PX_OUTCOME px_outcome;
+  VPID report_first_leaf_vpid;
+  VPID report_last_leaf_vpid;
+  int report_local_max_key_len;
+  INT64 report_n_keys;
+  INT64 report_n_oids;
+  INT64 report_n_nulls;
+  INT64 report_overflow_key_count;
+  int report_first_error;
+  bool report_published;
+};
+
+typedef enum bt_load_slot_state
+{
+  BT_LOAD_SLOT_IDLE = 0,
+  BT_LOAD_SLOT_NEED_BTREE,
+  BT_LOAD_SLOT_NEED_OVF,
+  BT_LOAD_SLOT_ALLOCATING,
+  BT_LOAD_SLOT_READY,
+  BT_LOAD_SLOT_DONE,
+  BT_LOAD_SLOT_ERROR
+} BT_LOAD_SLOT_STATE;
+
+typedef struct bt_load_span BT_LOAD_SPAN;
+struct bt_load_span
+{
+  VPID *vpids;
+  int n;
+  int used;
+  bool owns_vpids;
+  bool is_ovf;
+  BT_LOAD_SPAN *next;
+};
+
+typedef enum bt_load_allocation_origin
+{
+  BT_LOAD_ORIGIN_POOL_INIT = 0,
+  BT_LOAD_ORIGIN_REFILL,
+  BT_LOAD_ORIGIN_MAIN_INLINE
+} BT_LOAD_ALLOCATION_ORIGIN;
+
+typedef struct bt_load_allocation_ledger BT_LOAD_ALLOCATION_LEDGER;
+struct bt_load_allocation_ledger
+{
+  VFID vfid;
+  VPID *vpids;
+  int n;
+  BT_LOAD_ALLOCATION_ORIGIN origin;
+  BT_LOAD_ALLOCATION_LEDGER *next;
+};
+
+typedef struct bt_load_vpid_pool BT_LOAD_VPID_POOL;
+struct bt_load_vpid_pool
+{
+  VPID *vpids;
+  int n_published;
+  std::atomic<int> cursor;
+};
+
+typedef struct bt_load_worker_slot BT_LOAD_WORKER_SLOT;
+struct bt_load_worker_slot
+{
+  BT_LOAD_SLOT_STATE state;
+  int req_npages;
+  BT_LOAD_SPAN *ready_span;
+  BT_LOAD_SPAN *main_spans;
+  BT_LOAD_SPAN *ovf_spans;
+};
+
+struct bt_load_provider
+{
+  BT_LOAD_VPID_POOL main_pool;
+  BT_LOAD_VPID_POOL ovf_pool;
+  VFID main_vfid;
+  VFID ovf_vfid;
+  int est_ovf_pages;
+  BT_LOAD_WORKER_SLOT *slots;
+  int n_workers;
+  pthread_mutex_t mtx;
+  pthread_cond_t *cond_worker;
+  pthread_cond_t cond_main;
+  int first_error;
+  BT_LOAD_SPAN *main_inline_spans;
+  BT_LOAD_SPAN *main_inline_current;
+  BT_LOAD_SPAN *ovf_inline_spans;
+  BT_LOAD_SPAN *ovf_inline_current;
+  BT_LOAD_ALLOCATION_LEDGER *ledger;
+  INT64 allocated_pages;
+  INT64 consumed_pages;
+  INT64 consumed_ovf_pages;
+  INT64 returned_pages;
 };
 
 typedef struct btree_scan_partition_info BTREE_SCAN_PART;
@@ -202,10 +300,21 @@ static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, i
 static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new);
+static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
+				    int node_level, VPID * vpid_new, PAGE_PTR * page_new);
+static int bt_load_new_page_from_provider (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
+					   BTREE_NODE_HEADER * header, int node_level, VPID * vpid_new,
+					   PAGE_PTR * page_new);
+static int bt_load_new_page_main_inline (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args,
+					 BTREE_NODE_HEADER * header, int node_level, VPID * vpid_new,
+					 PAGE_PTR * page_new);
 static PAGE_PTR btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args);
 static int btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, OID * first_oid,
 			    MVCC_REC_HEADER * p_mvcc_rec_header, LOAD_ARGS * load_args);
 static int btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *arg);
+static int bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node_rec, DB_VALUE * key,
+				 BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+				 BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
 static int btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_PTR leaf_ptr,
 					   int slot_id, DB_VALUE * key, bool * clear_key);
 #if defined(CUBRID_DEBUG)
@@ -913,6 +1022,20 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->push_list = NULL;
   load_args->pop_list = NULL;
   load_args->build_mvccid = MVCCID_NULL;
+  load_args->provider = NULL;
+  load_args->worker_idx = -1;
+  load_args->new_page_fn = bt_load_new_page_serial;
+  load_args->px_outcome = BT_PX_NOT_ATTEMPTED;
+  load_args->sort_args = sort_args;
+  load_args->report_local_max_key_len = 0;
+  load_args->report_n_keys = 0;
+  load_args->report_n_oids = 0;
+  load_args->report_n_nulls = 0;
+  load_args->report_overflow_key_count = 0;
+  load_args->report_first_error = NO_ERROR;
+  load_args->report_published = false;
+  VPID_SET_NULL (&load_args->report_first_leaf_vpid);
+  VPID_SET_NULL (&load_args->report_last_leaf_vpid);
   load_args->vacuum_items = NULL;
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
@@ -922,6 +1045,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       log_no_redo_bulk_build_enter ();
       no_redo_backup_gate_entered = true;
+    }
+  else
+    {
+      log_sysop_start (thread_p);
+      is_sysop_started = true;
     }
 #else
   load_args->no_redo = false;
@@ -1106,19 +1234,28 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		     sort_args->btid->sys_btid->vfid.volid, sort_args->btid->sys_btid->vfid.fileid);
     }
 
+#if defined (SERVER_MODE)
+  load_args->build_mvccid = logtb_get_current_mvccid (thread_p);
+#endif
   /* Build the leaf pages of the btree as the output of the sort. */
   if (btree_index_sort (thread_p, sort_args, btree_construct_leafs, load_args) != NO_ERROR)
     {
       goto error;
     }
+#if defined (SERVER_MODE) && !defined (NDEBUG)
+  assert (!load_args->no_redo || tdes == NULL
+	  || (load_args->px_outcome == BT_PX_NOT_ATTEMPTED ? tdes->topops.last >= 0 : tdes->topops.last < 0));
+#endif
 
 #if defined (SERVER_MODE)
-  if (!load_args->no_redo)
+  if (!load_args->no_redo || load_args->px_outcome == BT_PX_NOT_ATTEMPTED)
     {
+      /* Legacy builds and the no-redo serial fallback leave a build sysop for this layer to attach. */
       is_sysop_started = log_check_system_op_is_started (thread_p);
     }
   if (create_lsa != NULL && tdes != NULL)
     {
+      /* This is the lower bound for media-recovery cleanup; later vacuum WAL must not move it. */
       LSA_COPY (create_lsa, &tdes->tail_lsa);
     }
 #endif /* SERVER_MODE */
@@ -1141,7 +1278,20 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
 
   /* Just to make sure that there were entries to put into the tree */
-  if (load_args->leaf.pgptr != NULL)
+  if (load_args->px_outcome == BT_PX_TREE_DONE)
+    {
+      if (has_fk && btree_load_check_fk (thread_p, load_args, sort_args) != NO_ERROR)
+	{
+	  goto error;
+	}
+      os_free_and_init (load_args->leaf_nleaf_recdes.data);
+      os_free_and_init (load_args->ovf_recdes.data);
+      pr_clear_value (&load_args->current_key);
+#if !defined(NDEBUG)
+      (void) btree_verify_tree (thread_p, &class_oids[0], &btid_int, bt_name);
+#endif
+    }
+  else if (load_args->leaf.pgptr != NULL)
     {
       /* Save the last leaf record */
 
@@ -1246,15 +1396,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       /* todo: we have the option to commit & undo here. on undo, we can destroy the file directly. */
       log_sysop_attach_to_outer (thread_p);
-      if (unique_pk)
-	{
-	  /* drop statistics if aborted */
-	  log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
-	}
     }
-  else
+  if (unique_pk && (is_sysop_started || load_args->px_outcome == BT_PX_TREE_DONE))
     {
-      /* index was not loaded and xbtree_add_index was called instead. we have nothing to log here. */
+      /* drop statistics if aborted */
+      log_append_undo_data2 (thread_p, RVBT_REMOVE_UNIQUE_STATS, NULL, NULL, NULL_OFFSET, sizeof (BTID), btid);
     }
 
   logpb_force_flush_pages (thread_p);
@@ -1404,6 +1550,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
 	  load_args->leaf.hdr.max_key_len = load_args->cur_key_len;
 	}
     }
+  load_args->report_local_max_key_len =
+    MAX (load_args->report_local_max_key_len, (int) load_args->leaf.hdr.max_key_len);
 
   /* Update the leaf header of the current leaf page */
   header = btree_get_node_header (thread_p, load_args->leaf.pgptr);
@@ -1488,8 +1636,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
 	}
     }
 
-  if (btree_write_record (thread_p, load_args->btid, &nleaf_rec, key, BTREE_NON_LEAF_NODE, key_type, key_len, true,
-			  NULL, NULL, NULL, &load_args->leaf_nleaf_recdes) != NO_ERROR)
+  if (bt_load_write_record (thread_p, load_args, &nleaf_rec, key, BTREE_NON_LEAF_NODE, key_type, key_len,
+			    NULL, NULL, NULL, &load_args->leaf_nleaf_recdes) != NO_ERROR)
     {
       return NULL;
     }
@@ -1525,8 +1673,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
 	}
 
       /* get a new non-leaf page */
-      if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
-			       &load_args->nleaf.vpid, &load_args->nleaf.pgptr) != NO_ERROR)
+      if ((*load_args->new_page_fn) (thread_p, load_args, &load_args->nleaf.hdr, node_level,
+				     &load_args->nleaf.vpid, &load_args->nleaf.pgptr) != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  return NULL;
@@ -1628,8 +1776,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
   /* Initialize the first non-leaf page */
   ret =
-    btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level, &load_args->nleaf.vpid,
-			 &load_args->nleaf.pgptr);
+    (*load_args->new_page_fn) (thread_p, load_args, &load_args->nleaf.hdr, node_level, &load_args->nleaf.vpid,
+			       &load_args->nleaf.pgptr);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -1843,8 +1991,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
       /* Initialize the first non-leaf page of current level */
       ret =
-	btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->nleaf.hdr, node_level,
-			     &load_args->nleaf.vpid, &load_args->nleaf.pgptr);
+	(*load_args->new_page_fn) (thread_p, load_args, &load_args->nleaf.hdr, node_level,
+				   &load_args->nleaf.vpid, &load_args->nleaf.pgptr);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2120,6 +2268,774 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
   return NO_ERROR;
 }
 
+static int
+bt_load_allocate_span_start (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_ovf, int npages,
+			     VPID ** vpids_out)
+{
+  VPID *vpids;
+  PAGE_TYPE ptype = PAGE_OVERFLOW;
+  int error;
+
+  if (npages <= 0 || (size_t) npages > SIZE_MAX / sizeof (VPID))
+    {
+      return ER_FAILED;
+    }
+  vpids = (VPID *) malloc ((size_t) npages * sizeof (VPID));
+  if (vpids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) npages * sizeof (VPID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  log_sysop_start (thread_p);
+  error = file_alloc_multiple (thread_p, vfid, is_ovf ? file_init_page_type : btree_initialize_new_page,
+			       is_ovf ? &ptype : NULL, npages, vpids);
+  if (error != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      free_and_init (vpids);
+      return error;
+    }
+  *vpids_out = vpids;
+  return NO_ERROR;
+}
+
+static int
+bt_load_allocate_span (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_ovf, int npages, VPID ** vpids_out)
+{
+  int error = bt_load_allocate_span_start (thread_p, vfid, is_ovf, npages, vpids_out);
+  if (error == NO_ERROR)
+    {
+      log_sysop_attach_to_outer (thread_p);
+    }
+  return error;
+}
+
+static BT_LOAD_ALLOCATION_LEDGER *
+bt_load_make_ledger_entry (const VFID * vfid, const VPID * vpids, int n, BT_LOAD_ALLOCATION_ORIGIN origin)
+{
+  BT_LOAD_ALLOCATION_LEDGER *entry;
+
+  if (n <= 0 || (size_t) n > SIZE_MAX / sizeof (VPID))
+    {
+      return NULL;
+    }
+  entry = (BT_LOAD_ALLOCATION_LEDGER *) malloc (sizeof (*entry));
+  if (entry == NULL)
+    {
+      return NULL;
+    }
+  entry->vpids = (VPID *) malloc ((size_t) n * sizeof (*entry->vpids));
+  if (entry->vpids == NULL)
+    {
+      free_and_init (entry);
+      return NULL;
+    }
+  entry->vfid = *vfid;
+  memcpy (entry->vpids, vpids, (size_t) n * sizeof (*entry->vpids));
+  entry->n = n;
+  entry->origin = origin;
+  entry->next = NULL;
+  return entry;
+}
+
+static void
+bt_load_append_ledger_entry (BT_LOAD_PROVIDER * provider, BT_LOAD_ALLOCATION_LEDGER * entry)
+{
+  entry->next = provider->ledger;
+  provider->ledger = entry;
+  provider->allocated_pages += entry->n;
+}
+
+static void
+bt_load_free_ledger_entry (BT_LOAD_ALLOCATION_LEDGER * entry)
+{
+  if (entry != NULL)
+    {
+      free_and_init (entry->vpids);
+      free_and_init (entry);
+    }
+}
+
+static BT_LOAD_SPAN *
+bt_load_make_span (VPID * vpids, int n, bool owns_vpids, bool is_ovf)
+{
+  BT_LOAD_SPAN *span = (BT_LOAD_SPAN *) malloc (sizeof (*span));
+  if (span != NULL)
+    {
+      span->vpids = vpids;
+      span->n = n;
+      span->used = 0;
+      span->owns_vpids = owns_vpids;
+      span->is_ovf = is_ovf;
+      span->next = NULL;
+    }
+  return span;
+}
+
+static int
+bt_load_claim_pool_span (BT_LOAD_VPID_POOL * pool, bool is_ovf, BT_LOAD_SPAN ** out)
+{
+  int current = pool->cursor.load (std::memory_order_relaxed);
+  while (current < pool->n_published)
+    {
+      int take = MIN (64, pool->n_published - current);
+      if (pool->cursor.compare_exchange_weak (current, current + take, std::memory_order_acq_rel,
+					      std::memory_order_relaxed))
+	{
+	  *out = bt_load_make_span (&pool->vpids[current], take, false, is_ovf);
+	  return *out == NULL ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
+	}
+    }
+  return ER_FAILED;
+}
+
+static void
+bt_load_add_span (BT_LOAD_SPAN ** list, BT_LOAD_SPAN * span)
+{
+  span->next = *list;
+  *list = span;
+}
+
+static int
+bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool is_ovf, VPID * vpid)
+{
+  BT_LOAD_WORKER_SLOT *slot = &provider->slots[worker_idx];
+  BT_LOAD_SPAN **list = is_ovf ? &slot->ovf_spans : &slot->main_spans;
+  BT_LOAD_VPID_POOL *pool = is_ovf ? &provider->ovf_pool : &provider->main_pool;
+  BT_LOAD_SPAN *span = *list;
+  int error;
+
+  for (;;)
+    {
+      if (span != NULL && span->used < span->n)
+	{
+	  *vpid = span->vpids[span->used++];
+	  __atomic_add_fetch (&provider->consumed_pages, 1, __ATOMIC_RELAXED);
+	  if (is_ovf)
+	    {
+	      __atomic_add_fetch (&provider->consumed_ovf_pages, 1, __ATOMIC_RELAXED);
+	    }
+	  if (span->n - span->used <= span->n / 4
+	      && pool->cursor.load (std::memory_order_relaxed) >= pool->n_published)
+	    {
+	      pthread_mutex_lock (&provider->mtx);
+	      if (slot->state == BT_LOAD_SLOT_IDLE)
+		{
+		  slot->state = is_ovf ? BT_LOAD_SLOT_NEED_OVF : BT_LOAD_SLOT_NEED_BTREE;
+		  slot->req_npages = 64;
+		  pthread_cond_signal (&provider->cond_main);
+		}
+	      pthread_mutex_unlock (&provider->mtx);
+	    }
+	  return NO_ERROR;
+	}
+      error = bt_load_claim_pool_span (pool, is_ovf, &span);
+      if (error == NO_ERROR)
+	{
+	  bt_load_add_span (list, span);
+	  continue;
+	}
+      if (error != ER_FAILED)
+	{
+	  return error;
+	}
+
+      pthread_mutex_lock (&provider->mtx);
+      if (slot->state == BT_LOAD_SLOT_READY)
+	{
+	  span = slot->ready_span;
+	  slot->ready_span = NULL;
+	  slot->state = BT_LOAD_SLOT_IDLE;
+	  bt_load_add_span (span->is_ovf ? &slot->ovf_spans : &slot->main_spans, span);
+	  span = *list;
+	  pthread_mutex_unlock (&provider->mtx);
+	  continue;
+	}
+      if (slot->state == BT_LOAD_SLOT_IDLE)
+	{
+	  slot->state = is_ovf ? BT_LOAD_SLOT_NEED_OVF : BT_LOAD_SLOT_NEED_BTREE;
+	  slot->req_npages = 64;
+	  pthread_cond_signal (&provider->cond_main);
+	}
+      while (slot->state != BT_LOAD_SLOT_READY && provider->first_error == NO_ERROR)
+	{
+	  pthread_cond_wait (&provider->cond_worker[worker_idx], &provider->mtx);
+	}
+      if (provider->first_error != NO_ERROR)
+	{
+	  error = provider->first_error;
+	  pthread_mutex_unlock (&provider->mtx);
+	  return error;
+	}
+      span = slot->ready_span;
+      slot->ready_span = NULL;
+      slot->state = BT_LOAD_SLOT_IDLE;
+      bt_load_add_span (span->is_ovf ? &slot->ovf_spans : &slot->main_spans, span);
+      span = *list;
+      pthread_mutex_unlock (&provider->mtx);
+    }
+}
+
+int
+bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const BTID * btid, int n_workers,
+		       int est_main_pages, int est_ovf_pages, bool need_ovf_file)
+{
+  BT_LOAD_PROVIDER *provider;
+  int error;
+
+  if (out == NULL || btid == NULL || n_workers < 2)
+    {
+      return ER_FAILED;
+    }
+  provider = new BT_LOAD_PROVIDER ();
+  provider->main_pool.vpids = NULL;
+  provider->main_pool.n_published = MAX (est_main_pages, 64);
+  provider->main_pool.cursor.store (0, std::memory_order_relaxed);
+  provider->ovf_pool.vpids = NULL;
+  provider->ovf_pool.n_published = 0;
+  provider->ovf_pool.cursor.store (0, std::memory_order_relaxed);
+  provider->main_vfid = btid->vfid;
+  VFID_SET_NULL (&provider->ovf_vfid);
+  provider->est_ovf_pages = need_ovf_file ? MAX (est_ovf_pages, 0) : 0;
+  provider->n_workers = n_workers;
+  provider->slots = (BT_LOAD_WORKER_SLOT *) calloc ((size_t) n_workers, sizeof (*provider->slots));
+  provider->cond_worker = (pthread_cond_t *) malloc ((size_t) n_workers * sizeof (*provider->cond_worker));
+  provider->first_error = NO_ERROR;
+  provider->main_inline_spans = NULL;
+  provider->main_inline_current = NULL;
+  provider->ovf_inline_spans = NULL;
+  provider->ovf_inline_current = NULL;
+  provider->ledger = NULL;
+  provider->allocated_pages = 0;
+  provider->consumed_pages = 0;
+  provider->consumed_ovf_pages = 0;
+  provider->returned_pages = 0;
+  if (provider->slots == NULL || provider->cond_worker == NULL)
+    {
+      if (provider->slots != NULL)
+	{
+	  free_and_init (provider->slots);
+	}
+      if (provider->cond_worker != NULL)
+	{
+	  free_and_init (provider->cond_worker);
+	}
+      delete provider;
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  pthread_mutex_init (&provider->mtx, NULL);
+  pthread_cond_init (&provider->cond_main, NULL);
+  for (int i = 0; i < n_workers; i++)
+    {
+      pthread_cond_init (&provider->cond_worker[i], NULL);
+      provider->slots[i].state = BT_LOAD_SLOT_IDLE;
+    }
+  error = bt_load_allocate_span (thread_p, &provider->main_vfid, false, provider->main_pool.n_published,
+				 &provider->main_pool.vpids);
+  if (error != NO_ERROR)
+    {
+      bt_load_provider_close (provider);
+      return error;
+    }
+  {
+    BT_LOAD_ALLOCATION_LEDGER *entry =
+      bt_load_make_ledger_entry (&provider->main_vfid, provider->main_pool.vpids,
+				 provider->main_pool.n_published, BT_LOAD_ORIGIN_POOL_INIT);
+    if (entry == NULL)
+      {
+	bt_load_provider_close (provider);
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+    bt_load_append_ledger_entry (provider, entry);
+  }
+  *out = provider;
+  return NO_ERROR;
+}
+
+int
+bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider)
+{
+  for (;;)
+    {
+      int selected = -1;
+      bool all_done = true;
+      bool is_ovf = false;
+      int npages = 0;
+      VPID *vpids = NULL;
+      BT_LOAD_SPAN *published = NULL;
+      BT_LOAD_ALLOCATION_LEDGER *ledger_entry = NULL;
+      const VFID *vfid;
+      int error;
+
+      pthread_mutex_lock (&provider->mtx);
+      for (int i = 0; i < provider->n_workers; i++)
+	{
+	  BT_LOAD_SLOT_STATE state = provider->slots[i].state;
+	  if (state != BT_LOAD_SLOT_DONE && state != BT_LOAD_SLOT_ERROR)
+	    {
+	      all_done = false;
+	    }
+	  if (selected < 0 && (state == BT_LOAD_SLOT_NEED_BTREE || state == BT_LOAD_SLOT_NEED_OVF))
+	    {
+	      selected = i;
+	      is_ovf = state == BT_LOAD_SLOT_NEED_OVF;
+	      npages = provider->slots[i].req_npages;
+	      provider->slots[i].state = BT_LOAD_SLOT_ALLOCATING;
+	    }
+	}
+      if (all_done)
+	{
+	  pthread_mutex_unlock (&provider->mtx);
+	  return provider->first_error;
+	}
+      if (selected < 0)
+	{
+	  pthread_cond_wait (&provider->cond_main, &provider->mtx);
+	  pthread_mutex_unlock (&provider->mtx);
+	  continue;
+	}
+
+      /* Recheck after collecting NEED and before opening the allocation sysop. */
+      if (provider->first_error != NO_ERROR)
+	{
+	  if (provider->slots[selected].state == BT_LOAD_SLOT_ALLOCATING)
+	    {
+	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
+	    }
+	  for (int i = 0; i < provider->n_workers; i++)
+	    {
+	      pthread_cond_broadcast (&provider->cond_worker[i]);
+	    }
+	  pthread_mutex_unlock (&provider->mtx);
+	  continue;
+	}
+      pthread_mutex_unlock (&provider->mtx);
+
+      vfid = is_ovf ? &provider->ovf_vfid : &provider->main_vfid;
+      error = bt_load_allocate_span_start (thread_p, vfid, is_ovf, npages, &vpids);
+      if (error == NO_ERROR)
+	{
+	  published = bt_load_make_span (vpids, npages, true, is_ovf);
+	  ledger_entry = bt_load_make_ledger_entry (vfid, vpids, npages, BT_LOAD_ORIGIN_REFILL);
+	  if (published == NULL || ledger_entry == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      log_sysop_abort (thread_p);
+	    }
+	}
+
+      if (error != NO_ERROR)
+	{
+	  if (published != NULL)
+	    {
+	      free_and_init (published);
+	    }
+	  bt_load_free_ledger_entry (ledger_entry);
+	  free_and_init (vpids);
+	  pthread_mutex_lock (&provider->mtx);
+	  if (provider->first_error == NO_ERROR)
+	    {
+	      provider->first_error = error;
+	    }
+	  if (provider->slots[selected].state == BT_LOAD_SLOT_ALLOCATING)
+	    {
+	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
+	    }
+	  for (int i = 0; i < provider->n_workers; i++)
+	    {
+	      pthread_cond_broadcast (&provider->cond_worker[i]);
+	    }
+	  pthread_mutex_unlock (&provider->mtx);
+	  continue;
+	}
+
+      /* Allocation raced with workers; abort before attach when the first error is already latched. */
+      pthread_mutex_lock (&provider->mtx);
+      if (provider->first_error != NO_ERROR)
+	{
+	  if (provider->slots[selected].state == BT_LOAD_SLOT_ALLOCATING)
+	    {
+	      provider->slots[selected].state = BT_LOAD_SLOT_IDLE;
+	    }
+	  for (int i = 0; i < provider->n_workers; i++)
+	    {
+	      pthread_cond_broadcast (&provider->cond_worker[i]);
+	    }
+	  pthread_mutex_unlock (&provider->mtx);
+	  log_sysop_abort (thread_p);
+	  bt_load_free_ledger_entry (ledger_entry);
+	  free_and_init (published);
+	  free_and_init (vpids);
+	  continue;
+	}
+      pthread_mutex_unlock (&provider->mtx);
+
+      log_sysop_attach_to_outer (thread_p);
+
+      /* Recheck after attach; an unpublished span remains ledgered for statement rollback accounting. */
+      pthread_mutex_lock (&provider->mtx);
+      bt_load_append_ledger_entry (provider, ledger_entry);
+      if (provider->slots[selected].state != BT_LOAD_SLOT_ALLOCATING || provider->first_error != NO_ERROR)
+	{
+	  bt_load_add_span (is_ovf ? &provider->slots[selected].ovf_spans
+			    : &provider->slots[selected].main_spans, published);
+	}
+      else
+	{
+	  provider->slots[selected].ready_span = published;
+	  provider->slots[selected].state = BT_LOAD_SLOT_READY;
+	}
+      pthread_cond_signal (&provider->cond_worker[selected]);
+      pthread_mutex_unlock (&provider->mtx);
+    }
+}
+
+static int
+bt_load_dealloc_span_tail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, const VFID * vfid,
+			   FILE_TYPE file_type, BT_LOAD_SPAN * span)
+{
+  for (int i = span->used; i < span->n; i++)
+    {
+      int error = file_dealloc (thread_p, vfid, &span->vpids[i], file_type);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      provider->returned_pages++;
+    }
+  return NO_ERROR;
+}
+static INT64
+bt_load_ledger_page_count (BT_LOAD_PROVIDER * provider, bool skip_ovf_file)
+{
+  INT64 count = 0;
+  for (BT_LOAD_ALLOCATION_LEDGER *entry = provider->ledger; entry != NULL; entry = entry->next)
+    {
+      if (!skip_ovf_file || !VFID_EQ (&entry->vfid, &provider->ovf_vfid))
+	{
+	  count += entry->n;
+	}
+    }
+  return count;
+}
+
+#if !defined (NDEBUG)
+static int
+bt_load_compare_vpid (const void *left, const void *right)
+{
+  const VPID *left_vpid = (const VPID *) left;
+  const VPID *right_vpid = (const VPID *) right;
+
+  if (left_vpid->volid != right_vpid->volid)
+    {
+      return left_vpid->volid < right_vpid->volid ? -1 : 1;
+    }
+  if (left_vpid->pageid != right_vpid->pageid)
+    {
+      return left_vpid->pageid < right_vpid->pageid ? -1 : 1;
+    }
+  return 0;
+}
+
+static void
+bt_load_assert_ledger_has_unique_vpids (BT_LOAD_PROVIDER * provider)
+{
+  INT64 count = bt_load_ledger_page_count (provider, false);
+  VPID *vpids;
+  INT64 offset = 0;
+  if (count == 0)
+    {
+      return;
+    }
+
+  assert (count >= 0 && (UINT64) count <= SIZE_MAX / sizeof (*vpids));
+  vpids = (VPID *) malloc ((size_t) count * sizeof (*vpids));
+  assert (vpids != NULL);
+  if (vpids == NULL)
+    {
+      return;
+    }
+  for (BT_LOAD_ALLOCATION_LEDGER *entry = provider->ledger; entry != NULL; entry = entry->next)
+    {
+      assert (entry->n > 0);
+      assert (entry->origin == BT_LOAD_ORIGIN_POOL_INIT || entry->origin == BT_LOAD_ORIGIN_REFILL
+	      || entry->origin == BT_LOAD_ORIGIN_MAIN_INLINE);
+      for (int i = 0; i < entry->n; i++)
+	{
+	  assert (entry->vpids[i].volid == entry->vfid.volid);
+	}
+      memcpy (&vpids[offset], entry->vpids, (size_t) entry->n * sizeof (*vpids));
+      offset += entry->n;
+    }
+  qsort (vpids, (size_t) count, sizeof (*vpids), bt_load_compare_vpid);
+  for (INT64 i = 1; i < count; i++)
+    {
+      assert (!VPID_EQ (&vpids[i - 1], &vpids[i]));
+    }
+  free_and_init (vpids);
+}
+#endif
+
+int
+bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider, bool skip_ovf_file)
+{
+  int error;
+  INT64 ledger_pages;
+  INT64 consumed_pages;
+  if (bt_load_ledger_page_count (provider, false) != provider->allocated_pages)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  int cursor = provider->main_pool.cursor.load (std::memory_order_relaxed);
+  for (int i = cursor; i < provider->main_pool.n_published; i++)
+    {
+      error = file_dealloc (thread_p, &provider->main_vfid, &provider->main_pool.vpids[i], FILE_BTREE);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      provider->returned_pages++;
+    }
+  if (!skip_ovf_file)
+    {
+      cursor = provider->ovf_pool.cursor.load (std::memory_order_relaxed);
+      for (int i = cursor; i < provider->ovf_pool.n_published; i++)
+	{
+	  error = file_dealloc (thread_p, &provider->ovf_vfid, &provider->ovf_pool.vpids[i],
+				FILE_BTREE_OVERFLOW_KEY);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  provider->returned_pages++;
+	}
+    }
+  for (int i = 0; i < provider->n_workers; i++)
+    {
+      for (BT_LOAD_SPAN *span = provider->slots[i].main_spans; span != NULL; span = span->next)
+	{
+	  error = bt_load_dealloc_span_tail (thread_p, provider, &provider->main_vfid, FILE_BTREE, span);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+      if (!skip_ovf_file)
+	{
+	  for (BT_LOAD_SPAN *span = provider->slots[i].ovf_spans; span != NULL; span = span->next)
+	    {
+	      error = bt_load_dealloc_span_tail (thread_p, provider, &provider->ovf_vfid,
+						FILE_BTREE_OVERFLOW_KEY, span);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	}
+      if (provider->slots[i].ready_span != NULL
+	  && !(skip_ovf_file && provider->slots[i].ready_span->is_ovf))
+	{
+	  BT_LOAD_SPAN *span = provider->slots[i].ready_span;
+	  error = bt_load_dealloc_span_tail (thread_p, provider,
+					     span->is_ovf ? &provider->ovf_vfid : &provider->main_vfid,
+					     span->is_ovf ? FILE_BTREE_OVERFLOW_KEY : FILE_BTREE, span);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+  for (BT_LOAD_SPAN *span = provider->main_inline_spans; span != NULL; span = span->next)
+    {
+      error = bt_load_dealloc_span_tail (thread_p, provider, &provider->main_vfid, FILE_BTREE, span);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  for (BT_LOAD_SPAN *span = provider->ovf_inline_spans; !skip_ovf_file && span != NULL; span = span->next)
+    {
+      error = bt_load_dealloc_span_tail (thread_p, provider, &provider->ovf_vfid, FILE_BTREE_OVERFLOW_KEY, span);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  ledger_pages = bt_load_ledger_page_count (provider, skip_ovf_file);
+  consumed_pages = provider->consumed_pages - (skip_ovf_file ? provider->consumed_ovf_pages : 0);
+  if (ledger_pages != consumed_pages + provider->returned_pages)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+  return NO_ERROR;
+}
+
+static void
+bt_load_free_spans (BT_LOAD_SPAN * span)
+{
+  while (span != NULL)
+    {
+      BT_LOAD_SPAN *next = span->next;
+      if (span->owns_vpids)
+	{
+	  free_and_init (span->vpids);
+	}
+      free_and_init (span);
+      span = next;
+    }
+}
+static void
+bt_load_free_ledger (BT_LOAD_ALLOCATION_LEDGER * entry)
+{
+  while (entry != NULL)
+    {
+      BT_LOAD_ALLOCATION_LEDGER *next = entry->next;
+      bt_load_free_ledger_entry (entry);
+      entry = next;
+    }
+}
+
+void
+bt_load_provider_close (BT_LOAD_PROVIDER * provider)
+{
+  if (provider == NULL)
+    {
+      return;
+    }
+#if !defined (NDEBUG)
+  bt_load_assert_ledger_has_unique_vpids (provider);
+#endif
+  for (int i = 0; i < provider->n_workers; i++)
+    {
+      bt_load_free_spans (provider->slots[i].main_spans);
+      bt_load_free_spans (provider->slots[i].ovf_spans);
+      bt_load_free_spans (provider->slots[i].ready_span);
+      pthread_cond_destroy (&provider->cond_worker[i]);
+    }
+  free_and_init (provider->slots);
+  free_and_init (provider->main_pool.vpids);
+  free_and_init (provider->ovf_pool.vpids);
+  bt_load_free_spans (provider->main_inline_spans);
+  bt_load_free_spans (provider->ovf_inline_spans);
+  bt_load_free_ledger (provider->ledger);
+  free_and_init (provider->cond_worker);
+  pthread_cond_destroy (&provider->cond_main);
+  pthread_mutex_destroy (&provider->mtx);
+  delete provider;
+}
+
+static int
+bt_load_init_claimed_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header, int node_level,
+			   VPID * vpid_new, PAGE_PTR * page_new)
+{
+  int error;
+  *page_new = pgbuf_fix (thread_p, vpid_new, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (*page_new == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  if (header != NULL)
+    {
+      header->node_level = node_level;
+      header->max_key_len = 0;
+      VPID_SET_NULL (&header->next_vpid);
+      VPID_SET_NULL (&header->prev_vpid);
+      header->split_info.pivot = 0.0f;
+      header->split_info.index = 0;
+      header->common_prefix = 0;
+      error = btree_init_node_header (thread_p, &load_args->btid->sys_btid->vfid, *page_new, header, false);
+    }
+  else
+    {
+      BTREE_OVERFLOW_HEADER ovf_header;
+      VPID_SET_NULL (&ovf_header.next_vpid);
+      error = btree_init_overflow_header (thread_p, *page_new, &ovf_header);
+    }
+  if (error != NO_ERROR)
+    {
+      pgbuf_unfix_and_init (thread_p, *page_new);
+    }
+  return error;
+}
+
+static int
+bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header, int node_level,
+			 VPID * vpid_new, PAGE_PTR * page_new)
+{
+  return btree_load_new_page (thread_p, load_args->btid->sys_btid, header, node_level, vpid_new, page_new);
+}
+
+static int
+bt_load_new_page_from_provider (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
+				int node_level, VPID * vpid_new, PAGE_PTR * page_new)
+{
+  int error = bt_load_provider_claim_page (load_args->provider, load_args->worker_idx, false, vpid_new);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  return bt_load_init_claimed_page (thread_p, load_args, header, node_level, vpid_new, page_new);
+}
+
+static int
+bt_load_new_page_main_inline (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
+			      int node_level, VPID * vpid_new, PAGE_PTR * page_new)
+{
+  BT_LOAD_PROVIDER *provider = load_args->provider;
+  BT_LOAD_SPAN *span = provider->main_inline_current;
+  int error;
+
+  if (span == NULL || span->used == span->n)
+    {
+      error = bt_load_claim_pool_span (&provider->main_pool, false, &span);
+      if (error != NO_ERROR)
+	{
+	  VPID *vpids = NULL;
+	  error = bt_load_allocate_span (thread_p, &provider->main_vfid, false, 64, &vpids);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  {
+	    BT_LOAD_ALLOCATION_LEDGER *entry =
+	      bt_load_make_ledger_entry (&provider->main_vfid, vpids, 64, BT_LOAD_ORIGIN_MAIN_INLINE);
+	    span = bt_load_make_span (vpids, 64, true, false);
+	    if (span == NULL || entry == NULL)
+	      {
+		free_and_init (span);
+		bt_load_free_ledger_entry (entry);
+		free_and_init (vpids);
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    bt_load_append_ledger_entry (provider, entry);
+	  }
+	}
+      bt_load_add_span (&provider->main_inline_spans, span);
+      provider->main_inline_current = span;
+    }
+  *vpid_new = span->vpids[span->used++];
+  provider->consumed_pages++;
+  return bt_load_init_claimed_page (thread_p, load_args, header, node_level, vpid_new, page_new);
+}
+
+bool
+bt_load_parallel_enabled (const LOAD_ARGS * load_args)
+{
+#if defined (SERVER_MODE)
+  return load_args != NULL && load_args->no_redo;
+#else
+  return false;
+#endif
+}
+
+void
+bt_load_set_px_outcome (LOAD_ARGS * load_args, BT_LOAD_PX_OUTCOME outcome)
+{
+  assert (load_args->px_outcome == BT_PX_NOT_ATTEMPTED || outcome == BT_PX_NOT_ATTEMPTED);
+  load_args->px_outcome = outcome;
+}
 /*
  * btree_load_new_page () - load a new b-tree page.
  *
@@ -2236,8 +3152,7 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   temp_recdes.area_size = sizeof (BTREE_NODE_HEADER);
 
   /* Allocate the new leaf page */
-  if (btree_load_new_page (thread_p, load_args->btid->sys_btid, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr)
-      != NO_ERROR)
+  if ((*load_args->new_page_fn) (thread_p, load_args, &new_leafhdr, 1, &new_leafpgid, &new_leafpgptr) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -2336,8 +3251,8 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
     }
   btree_mvcc_info_from_heap_mvcc_header (p_mvcc_rec_header, &mvcc_info);
   error =
-    btree_write_record (thread_p, load_args->btid, NULL, this_key, BTREE_LEAF_NODE, key_type, key_len, true, class_oid,
-			first_oid, &mvcc_info, load_args->out_recdes);
+    bt_load_write_record (thread_p, load_args, NULL, this_key, BTREE_LEAF_NODE, key_type, key_len, class_oid,
+			  first_oid, &mvcc_info, load_args->out_recdes);
   if (error != NO_ERROR)
     {
       /* this must be an overflow key insertion failure, we assume the overflow manager has logged an error. */
@@ -2384,16 +3299,16 @@ btree_first_oid (THREAD_ENTRY * thread_p, DB_VALUE * this_key, OID * class_oid, 
 /*
  * bt_load_put_buf_to_record () - Generating temporary records for Index
  *   return: int
- *   recdes(out): 
+ *   recdes(out):
  *   load_args(in): Contains fields specifying where & how to create the record
  *   value_has_null(in):
  *   rec_oid(in): Object identifier of current record.
  *   mvcc_header(in):
  *   dbvalue_ptr(in): Key value
  *   key_len(in):  get_disk_size_of_value(dbvalue_ptr)
- *   cur_class(in): 
- *   is_btree_ops_log(in)  
- * Note: 
+ *   cur_class(in):
+ *   is_btree_ops_log(in)
+ * Note:
  */
 static int
 bt_load_put_buf_to_record (RECDES * recdes, SORT_ARGS * sort_args, int value_has_null, OID * rec_oid,
@@ -2642,15 +3557,15 @@ bt_load_get_buf_from_record (RECDES * recdes, LOAD_ARGS * load_args, S_PARAM_ST 
  *   thread_p(in):
  *   load_args(out): Contains fields specifying where & how to create the record
  *   pparam(in): a bundle of record-related information
- * 
- * Note: This is the first call to btree_construct_leafs(). so, initialize some fields in the LOAD_ARGS structure 
+ *
+ * Note: This is the first call to btree_construct_leafs(). so, initialize some fields in the LOAD_ARGS structure
  */
 static int
 bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
 {
   /* Allocate the first page for the index */
-  int ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
-				 &load_args->leaf.pgptr);
+  int ret = (*load_args->new_page_fn) (thread_p, load_args, &load_args->leaf.hdr, 1, &load_args->leaf.vpid,
+				       &load_args->leaf.pgptr);
   if (ret != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -2683,10 +3598,10 @@ bt_load_get_first_leaf_page_and_init_args (THREAD_ENTRY * thread_p, LOAD_ARGS * 
  *   thread_p(in):
  *   load_args(in): Contains fields specifying where & how to create the record
  *   pparam(in): a bundle of record-related information
- *   sp_success(out): When this value is set to a value other than SP_SUCCESS, 
+ *   sp_success(out): When this value is set to a value other than SP_SUCCESS,
  *                    error processing is performed without changing the error code.
- * 
- * Note: 
+ *
+ * Note:
  */
 static int
 bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
@@ -2732,6 +3647,8 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
     {
       load_args->leaf.hdr.max_key_len = load_args->cur_key_len;
     }
+  load_args->report_local_max_key_len =
+    MAX (load_args->report_local_max_key_len, (int) load_args->leaf.hdr.max_key_len);
 
   if (load_args->overflowing)
     {
@@ -2773,12 +3690,12 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
 
 
 /*
- * bt_load_invalidate_mvcc_del_id () - 
+ * bt_load_invalidate_mvcc_del_id () -
  *   return: int
  *   thread_p(in):
  *   load_args(in): Contains fields specifying where & how to create the record
- *   pparam(in): a bundle of record-related information 
- * Note: 
+ *   pparam(in): a bundle of record-related information
+ * Note:
  */
 static int
 bt_load_invalidate_mvcc_del_id (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam)
@@ -2852,9 +3769,9 @@ bt_load_invalidate_mvcc_del_id (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, 
  *   return: int
  *   thread_p(in):
  *   load_args(in): Contains fields specifying where & how to create the record
- *   sp_success(out): When this value is set to a value other than SP_SUCCESS, 
+ *   sp_success(out): When this value is set to a value other than SP_SUCCESS,
  *                    error processing is performed without changing the error code.
- * Note: 
+ * Note:
  */
 static int
 bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int *sp_success)
@@ -2882,7 +3799,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       assert (slotid > 0);
 
       /* Allocate the new overflow page */
-      ret = btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &new_ovfpgid, &new_ovfpgptr);
+      ret = (*load_args->new_page_fn) (thread_p, load_args, NULL, -1, &new_ovfpgid, &new_ovfpgptr);
       if (ret != NO_ERROR)
 	{
 	  pgbuf_unfix_and_init_after_check (thread_p, new_ovfpgptr);
@@ -2926,8 +3843,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       assert (load_args->out_recdes == &load_args->leaf_nleaf_recdes);
       /* Allocate the new overflow page */
       ret =
-	btree_load_new_page (thread_p, load_args->btid->sys_btid, NULL, -1, &load_args->ovf.vpid,
-			     &load_args->ovf.pgptr);
+	(*load_args->new_page_fn) (thread_p, load_args, NULL, -1, &load_args->ovf.vpid, &load_args->ovf.pgptr);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -2967,10 +3883,10 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
  *   thread_p(in):
  *   load_args(in): Contains fields specifying where & how to create the record
  *   pparam(in): a bundle of record-related information
- *   sp_success(out): When this value is set to a value other than SP_SUCCESS, 
+ *   sp_success(out): When this value is set to a value other than SP_SUCCESS,
  *                    error processing is performed without changing the error code.
- * 
- * Note: 
+ *
+ * Note:
  */
 static int
 bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam, int *sp_success)
@@ -3037,15 +3953,15 @@ bt_load_add_same_key_to_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, 
 }
 
 /*
- * bt_load_notify_to_vacuum () - 
+ * bt_load_notify_to_vacuum () -
  *   return: int
  *   thread_p(in):
  *   load_args(in): Contains fields specifying where & how to create the record
  *   pparam(in): a bundle of record-related information
  *   notify_vacuum_rv_data(in):
  *   notify_vacuum_rv_data_bufalign(in):
- * 
- * Note: 
+ *
+ * Note:
  */
 static int
 bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARAM_ST * pparam,
@@ -3233,11 +4149,7 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   sparam.orig_class_oid = oid_Null_oid;
 
 #if defined (SERVER_MODE)
-  if (load_args->build_mvccid == MVCCID_NULL)
-    {
-      /* Preserve the legacy lazy acquisition point on the first construct callback. */
-      load_args->build_mvccid = logtb_get_current_mvccid (thread_p);
-    }
+  assert (load_args->build_mvccid != MVCCID_NULL);
 #endif /* SERVER_MODE */
 
   sort_key_recdes = *in_recdes;
@@ -3246,6 +4158,11 @@ btree_construct_leafs (THREAD_ENTRY * thread_p, const RECDES * in_recdes, void *
   for (;;)
     {				/* Infinite loop; will exit with break statement */
       next = *(char **) recdes->data;	/* save forward link */
+      load_args->report_n_oids++;
+      if (OR_GET_BYTE (recdes->data + sizeof (char *)) != 0)
+	{
+	  load_args->report_n_nulls++;
+	}
       if ((ret = bt_load_get_buf_from_record (recdes, load_args, &sparam, copy)) != NO_ERROR)
 	{
 	  goto error;
@@ -3337,6 +4254,632 @@ error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+static int
+bt_load_claim_ovf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VPID * vpid)
+{
+  BT_LOAD_PROVIDER *provider = load_args->provider;
+  BT_LOAD_SPAN *span;
+  int error;
+
+  if (load_args->worker_idx >= 0)
+    {
+      return bt_load_provider_claim_page (provider, load_args->worker_idx, true, vpid);
+    }
+
+  span = provider->ovf_inline_current;
+  if (span == NULL || span->used == span->n)
+    {
+      error = bt_load_claim_pool_span (&provider->ovf_pool, true, &span);
+      if (error != NO_ERROR)
+	{
+	  VPID *vpids = NULL;
+	  error = bt_load_allocate_span (thread_p, &provider->ovf_vfid, true, 64, &vpids);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  {
+	    BT_LOAD_ALLOCATION_LEDGER *entry =
+	      bt_load_make_ledger_entry (&provider->ovf_vfid, vpids, 64, BT_LOAD_ORIGIN_MAIN_INLINE);
+	    span = bt_load_make_span (vpids, 64, true, true);
+	    if (span == NULL || entry == NULL)
+	      {
+		free_and_init (span);
+		bt_load_free_ledger_entry (entry);
+		free_and_init (vpids);
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    bt_load_append_ledger_entry (provider, entry);
+	  }
+	}
+      bt_load_add_span (&provider->ovf_inline_spans, span);
+      provider->ovf_inline_current = span;
+    }
+  *vpid = span->vpids[span->used++];
+  provider->consumed_pages++;
+  provider->consumed_ovf_pages++;
+  return NO_ERROR;
+}
+
+static int
+bt_load_store_overflow_key (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, DB_VALUE * key, int key_len,
+			    BTREE_NODE_TYPE node_type, VPID * first_vpid)
+{
+  TP_DOMAIN *domain = node_type == BTREE_LEAF_NODE ? load_args->btid->key_type : load_args->btid->nonleaf_key_type;
+  DB_VALUE converted, *key_ptr = key;
+  RECDES rec = RECDES_INITIALIZER;
+  OR_BUF buf;
+  VPID *vpids = NULL;
+  int remaining, npages, error = NO_ERROR;
+
+  if (DB_VALUE_DOMAIN_TYPE (key) != domain->type->id)
+    {
+      db_make_null (&converted);
+      if (tp_value_cast (key, &converted, domain, false) != DOMAIN_COMPATIBLE)
+	{
+	  return ER_FAILED;
+	}
+      key_ptr = &converted;
+      key_len = btree_get_disk_size_of_key (key_ptr);
+    }
+  rec.area_size = key_len;
+  rec.data = (char *) db_private_alloc (thread_p, (size_t) key_len);
+  if (rec.data == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  or_init (&buf, rec.data, rec.area_size);
+  error = domain->type->index_writeval (&buf, key_ptr);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  rec.length = CAST_BUFLEN (buf.ptr - buf.buffer);
+  remaining = rec.length - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
+  npages = 1;
+  if (remaining > 0)
+    {
+      npages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
+    }
+  vpids = (VPID *) malloc ((size_t) (npages + 1) * sizeof (VPID));
+  if (vpids == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  for (int i = 0; i < npages; i++)
+    {
+      error = bt_load_claim_ovf_page (thread_p, load_args, &vpids[i]);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+  VPID_SET_NULL (&vpids[npages]);
+  *first_vpid = vpids[0];
+
+  {
+    char *data = rec.data;
+    int length = rec.length;
+    for (int i = 0; i < npages; i++)
+      {
+	PAGE_PTR page = pgbuf_fix (thread_p, &vpids[i], OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	char *target;
+	int capacity, copy_length;
+	if (page == NULL)
+	  {
+	    error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	    goto end;
+	  }
+	if (i == 0)
+	  {
+	    OVERFLOW_FIRST_PART *first = (OVERFLOW_FIRST_PART *) page;
+	    first->next_vpid = vpids[i + 1];
+	    first->length = length;
+	    target = (char *) first->data;
+	    capacity = DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data);
+	  }
+	else
+	  {
+	    OVERFLOW_REST_PART *rest = (OVERFLOW_REST_PART *) page;
+	    rest->next_vpid = vpids[i + 1];
+	    target = (char *) rest->data;
+	    capacity = DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data);
+	  }
+	copy_length = MIN (capacity, length);
+	memcpy (target, data, (size_t) copy_length);
+	error = btree_log_page (thread_p, &load_args->btid->ovfid, page, true);
+	if (error != NO_ERROR)
+	  {
+	    goto end;
+	  }
+	data += copy_length;
+	length -= copy_length;
+      }
+  }
+
+end:
+  if (vpids != NULL)
+    {
+      free_and_init (vpids);
+    }
+  if (rec.data != NULL)
+    {
+      db_private_free_and_init (thread_p, rec.data);
+    }
+  if (key_ptr != key)
+    {
+      pr_clear_value (key_ptr);
+    }
+  return error;
+}
+
+static void
+bt_load_leaf_set_flag (RECDES * rec, short flag)
+{
+  short slotid = OR_GET_SHORT (rec->data + OR_OID_SLOTID);
+  OR_PUT_SHORT (rec->data + OR_OID_SLOTID, slotid | flag);
+}
+
+static void
+bt_load_object_set_mvcc_flags (char *data, short flags)
+{
+  short volid = OR_GET_SHORT (data + OR_OID_VOLID);
+  OR_PUT_SHORT (data + OR_OID_VOLID, volid | flags);
+}
+
+static int
+bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node_rec, DB_VALUE * key,
+		      BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+		      BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
+{
+  OR_BUF buf;
+  VPID key_vpid;
+  int error;
+
+  if (key_type != BTREE_OVERFLOW_KEY || load_args->provider == NULL)
+    {
+      return btree_write_record (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len, true,
+				 class_oid, oid, mvcc_info, rec);
+    }
+
+  or_init (&buf, rec->data, rec->area_size);
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      error = or_put_oid (&buf, oid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk) && !OID_EQ (&load_args->btid->topclass_oid, class_oid))
+	{
+	  error = or_put_oid (&buf, class_oid);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  bt_load_leaf_set_flag (rec, (short) 0x8000);
+	}
+      if (mvcc_info != NULL)
+	{
+	  if ((mvcc_info->flags & (short) 0x4000) != 0)
+	    {
+	      if ((error = or_put_mvccid (&buf, mvcc_info->insert_mvccid)) != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  if ((mvcc_info->flags & (short) 0x8000) != 0)
+	    {
+	      if ((error = or_put_mvccid (&buf, mvcc_info->delete_mvccid)) != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  bt_load_object_set_mvcc_flags (rec->data, mvcc_info->flags);
+	}
+      bt_load_leaf_set_flag (rec, (short) 0x4000);
+    }
+  else
+    {
+      NON_LEAF_REC *non_leaf = (NON_LEAF_REC *) node_rec;
+      if ((error = or_put_int (&buf, non_leaf->pnt.pageid)) != NO_ERROR
+	  || (error = or_put_short (&buf, non_leaf->pnt.volid)) != NO_ERROR
+	  || (error = or_put_short (&buf, non_leaf->key_len)) != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  error = bt_load_store_overflow_key (thread_p, load_args, key, key_len, node_type, &key_vpid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if ((error = or_put_int (&buf, key_vpid.pageid)) != NO_ERROR
+      || (error = or_put_short (&buf, key_vpid.volid)) != NO_ERROR
+      || (error = or_put_align32 (&buf)) != NO_ERROR)
+    {
+      return error;
+    }
+  rec->length = CAST_BUFLEN (buf.ptr - buf.buffer);
+  rec->type = REC_HOME;
+  load_args->report_overflow_key_count++;
+  return NO_ERROR;
+}
+int
+bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, BT_LOAD_PROVIDER * provider,
+			       int worker_idx, LOAD_ARGS ** out)
+{
+  LOAD_ARGS *load_args;
+  int error;
+
+  if (src == NULL || provider == NULL || out == NULL || worker_idx < 0 || worker_idx >= provider->n_workers)
+    {
+      return ER_FAILED;
+    }
+  if (worker_idx == 0 && VFID_ISNULL (&provider->ovf_vfid))
+    {
+      provider->ovf_vfid = src->btid->ovfid;
+      if (VFID_ISNULL (&provider->ovf_vfid))
+	{
+	  return ER_FAILED;
+	}
+      if (provider->est_ovf_pages > 0)
+	{
+	  provider->ovf_pool.n_published = provider->est_ovf_pages;
+	  error = bt_load_allocate_span (thread_p, &provider->ovf_vfid, true, provider->ovf_pool.n_published,
+					 &provider->ovf_pool.vpids);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  {
+	    BT_LOAD_ALLOCATION_LEDGER *entry =
+	      bt_load_make_ledger_entry (&provider->ovf_vfid, provider->ovf_pool.vpids,
+					 provider->ovf_pool.n_published, BT_LOAD_ORIGIN_POOL_INIT);
+	    if (entry == NULL)
+	      {
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
+	    bt_load_append_ledger_entry (provider, entry);
+	  }
+	}
+    }
+
+  load_args = (LOAD_ARGS *) malloc (sizeof (*load_args));
+  if (load_args == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (load_args, src, sizeof (*load_args));
+  load_args->provider = provider;
+  load_args->worker_idx = worker_idx;
+  load_args->new_page_fn = bt_load_new_page_from_provider;
+  load_args->px_outcome = BT_PX_NOT_ATTEMPTED;
+  load_args->push_list = NULL;
+  load_args->pop_list = NULL;
+  load_args->out_recdes = NULL;
+  load_args->nleaf.pgptr = NULL;
+  load_args->leaf.pgptr = NULL;
+  load_args->ovf.pgptr = NULL;
+  VPID_SET_NULL (&load_args->nleaf.vpid);
+  VPID_SET_NULL (&load_args->leaf.vpid);
+  VPID_SET_NULL (&load_args->ovf.vpid);
+  VPID_SET_NULL (&load_args->vpid_first_leaf);
+  VPID_SET_NULL (&load_args->report_first_leaf_vpid);
+  VPID_SET_NULL (&load_args->report_last_leaf_vpid);
+  load_args->n_keys = 0;
+  load_args->report_local_max_key_len = 0;
+  load_args->report_n_keys = 0;
+  load_args->report_n_oids = 0;
+  load_args->report_n_nulls = 0;
+  load_args->report_overflow_key_count = 0;
+  load_args->report_first_error = NO_ERROR;
+  load_args->report_published = false;
+  load_args->vacuum_items = NULL;
+  load_args->vacuum_count = 0;
+  load_args->vacuum_capacity = 0;
+  load_args->vacuum_payload_size = 0;
+  db_make_null (&load_args->current_key);
+
+  load_args->leaf_nleaf_recdes.data = NULL;
+  load_args->ovf_recdes.data = NULL;
+  load_args->leaf_nleaf_recdes.data = (char *) os_malloc (src->leaf_nleaf_recdes.area_size);
+  load_args->ovf_recdes.data = (char *) os_malloc (src->ovf_recdes.area_size);
+  if (load_args->leaf_nleaf_recdes.data == NULL || load_args->ovf_recdes.data == NULL)
+    {
+      bt_load_free_shard_load_args (thread_p, load_args);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+#if defined (SERVER_MODE)
+  assert (load_args->build_mvccid != MVCCID_NULL);
+#endif
+  *out = load_args;
+  return NO_ERROR;
+}
+
+void
+bt_load_free_shard_load_args (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
+{
+  if (load_args == NULL)
+    {
+      return;
+    }
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
+  os_free_and_init (load_args->leaf_nleaf_recdes.data);
+  os_free_and_init (load_args->ovf_recdes.data);
+  pr_clear_value (&load_args->current_key);
+  bt_load_clear_vacuum_notifications (load_args);
+  free_and_init (load_args);
+}
+
+int
+bt_load_worker_put_range (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, RECDES * recdes)
+{
+  return btree_construct_leafs (thread_p, recdes, load_args);
+}
+
+int
+bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
+{
+  int error;
+  if (load_args->leaf.pgptr == NULL)
+    {
+      return ER_FAILED;
+    }
+  error = btree_save_last_leafrec (thread_p, load_args);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  load_args->report_first_leaf_vpid = load_args->vpid_first_leaf;
+  load_args->report_last_leaf_vpid = load_args->leaf.vpid;
+  load_args->report_n_keys = load_args->n_keys;
+  return NO_ERROR;
+}
+
+int
+bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int error)
+{
+  BT_LOAD_PROVIDER *provider = load_args->provider;
+  BT_LOAD_WORKER_SLOT *slot = &provider->slots[load_args->worker_idx];
+
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->leaf.pgptr);
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->ovf.pgptr);
+  pgbuf_unfix_and_init_after_check (thread_p, load_args->nleaf.pgptr);
+  pr_clear_value (&load_args->current_key);
+  load_args->report_first_error = error;
+  pthread_mutex_lock (&provider->mtx);
+  if (error == NO_ERROR)
+    {
+      slot->state = BT_LOAD_SLOT_DONE;
+    }
+  else
+    {
+      slot->state = BT_LOAD_SLOT_ERROR;
+      if (provider->first_error == NO_ERROR)
+	{
+	  provider->first_error = error;
+	}
+      for (int i = 0; i < provider->n_workers; i++)
+	{
+	  pthread_cond_broadcast (&provider->cond_worker[i]);
+	}
+    }
+  load_args->report_published = true;
+  pthread_cond_signal (&provider->cond_main);
+  pthread_mutex_unlock (&provider->mtx);
+  return error;
+}
+
+int
+bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES * recdes, LOAD_ARGS * load_args,
+				DB_VALUE * key_out)
+{
+  S_PARAM_ST sparam;
+  RECDES copy = *recdes;
+  memset (&sparam, 0, sizeof (sparam));
+  db_make_null (&sparam.this_key);
+  if (bt_load_get_buf_from_record (&copy, load_args, &sparam, true) != NO_ERROR)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  *key_out = sparam.this_key;
+  return NO_ERROR;
+}
+
+static int
+bt_load_patch_seam (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, LOAD_ARGS * left, LOAD_ARGS * right)
+{
+  PAGE_PTR page_left = NULL, page_right = NULL;
+  BTREE_NODE_HEADER *header_left, *header_right;
+  RECDES record;
+  LEAF_REC leaf_record;
+  DB_VALUE key_left, key_right;
+  bool clear_left, clear_right;
+  int offset, key_count, compare, error = ER_FAILED;
+
+  btree_init_temp_key_value (&clear_left, &key_left);
+  btree_init_temp_key_value (&clear_right, &key_right);
+  page_left = pgbuf_fix (thread_p, &left->report_last_leaf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			 PGBUF_UNCONDITIONAL_LATCH);
+  if (page_left == NULL)
+    {
+      goto end;
+    }
+  page_right = pgbuf_fix (thread_p, &right->report_first_leaf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+			  PGBUF_UNCONDITIONAL_LATCH);
+  if (page_right == NULL)
+    {
+      goto end;
+    }
+  header_left = btree_get_node_header (thread_p, page_left);
+  header_right = btree_get_node_header (thread_p, page_right);
+  if (header_left == NULL || header_right == NULL)
+    {
+      goto end;
+    }
+  key_count = btree_node_number_of_keys (thread_p, page_left);
+  if (key_count <= 0 || spage_get_record (thread_p, page_left, key_count, &record, PEEK) != S_SUCCESS)
+    {
+      goto end;
+    }
+  error = btree_read_record (thread_p, main_load_args->btid, page_left, &record, &key_left, &leaf_record,
+			     BTREE_LEAF_NODE, &clear_left, &offset, PEEK_KEY_VALUE, NULL);
+  if (error != NO_ERROR || spage_get_record (thread_p, page_right, 1, &record, PEEK) != S_SUCCESS)
+    {
+      goto end;
+    }
+  error = btree_read_record (thread_p, main_load_args->btid, page_right, &record, &key_right, &leaf_record,
+			     BTREE_LEAF_NODE, &clear_right, &offset, PEEK_KEY_VALUE, NULL);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  compare = btree_compare_key (&key_left, &key_right, main_load_args->btid->key_type, 0, 1, NULL);
+  if (compare != DB_LT)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  header_left->next_vpid = right->report_first_leaf_vpid;
+  header_right->prev_vpid = left->report_last_leaf_vpid;
+  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_left, true);
+  page_left = NULL;
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_right, true);
+  page_right = NULL;
+
+end:
+  btree_clear_key_value (&clear_left, &key_left);
+  btree_clear_key_value (&clear_right, &key_right);
+  pgbuf_unfix_and_init_after_check (thread_p, page_left);
+  pgbuf_unfix_and_init_after_check (thread_p, page_right);
+  return error;
+}
+
+static int
+bt_load_checked_add_report_value (INT64 *total, INT64 value)
+{
+  if (value < 0 || *total > LLONG_MAX - value)
+    {
+      return ER_FAILED;
+    }
+  *total += value;
+  return NO_ERROR;
+}
+
+int
+bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, LOAD_ARGS * shard_load_args[],
+			  int n_shards)
+{
+  BT_LOAD_PROVIDER *provider = shard_load_args[0]->provider;
+  int error;
+  int n_keys = 0;
+  int local_max_key_len = 0;
+  INT64 report_n_keys = 0;
+  INT64 report_n_oids = 0;
+  INT64 report_n_nulls = 0;
+  INT64 overflow_key_count = 0;
+
+  for (int i = 0; i < n_shards; i++)
+    {
+      if (!shard_load_args[i]->report_published || shard_load_args[i]->report_first_error != NO_ERROR)
+	{
+	  return shard_load_args[i]->report_first_error != NO_ERROR ? shard_load_args[i]->report_first_error : ER_FAILED;
+	}
+      if (bt_load_checked_add_report_value (&report_n_keys, shard_load_args[i]->report_n_keys) != NO_ERROR
+	  || bt_load_checked_add_report_value (&report_n_oids, shard_load_args[i]->report_n_oids) != NO_ERROR
+	  || bt_load_checked_add_report_value (&report_n_nulls, shard_load_args[i]->report_n_nulls) != NO_ERROR
+	  || bt_load_checked_add_report_value (&overflow_key_count,
+					       shard_load_args[i]->report_overflow_key_count) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      local_max_key_len = MAX (local_max_key_len, shard_load_args[i]->report_local_max_key_len);
+      if (bt_load_append_vacuum_notifications (thread_p, shard_load_args[i]) != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+      bt_load_clear_vacuum_notifications (shard_load_args[i]);
+    }
+  for (int i = 1; i < n_shards; i++)
+    {
+      error = bt_load_patch_seam (thread_p, main_load_args, shard_load_args[i - 1], shard_load_args[i]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  main_load_args->provider = provider;
+  main_load_args->new_page_fn = bt_load_new_page_main_inline;
+  main_load_args->vpid_first_leaf = shard_load_args[0]->report_first_leaf_vpid;
+  if (report_n_keys > INT_MAX)
+    {
+      return ER_FAILED;
+    }
+  n_keys = (int) report_n_keys;
+  main_load_args->n_keys = n_keys;
+  main_load_args->report_local_max_key_len = local_max_key_len;
+  main_load_args->report_n_keys = report_n_keys;
+  main_load_args->report_n_oids = report_n_oids;
+  main_load_args->report_n_nulls = report_n_nulls;
+  main_load_args->report_overflow_key_count = overflow_key_count;
+
+  /*
+   * Fully-null keys never enter the final sort run. SORT_ARGS totals, which already include partial-null records,
+   * remain authoritative for root/global statistics; report_n_nulls is the checked construct-shard subtotal.
+   */
+  error = btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
+			      main_load_args->sort_args->n_oids, n_keys);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (bt_load_checked_add_report_value (&overflow_key_count,
+					main_load_args->report_overflow_key_count - overflow_key_count) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  main_load_args->report_overflow_key_count = overflow_key_count;
+
+  if (overflow_key_count == 0 && !VFID_ISNULL (&main_load_args->btid->ovfid))
+    {
+      VPID root_vpid;
+      PAGE_PTR root_page;
+      BTREE_ROOT_HEADER *root_header;
+      btree_get_root_vpid_from_btid (thread_p, main_load_args->btid->sys_btid, &root_vpid);
+      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (root_page == NULL)
+	{
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+      root_header = btree_get_root_header (thread_p, root_page);
+      if (root_header == NULL)
+	{
+	  pgbuf_unfix_and_init (thread_p, root_page);
+	  return ER_FAILED;
+	}
+      VFID_SET_NULL (&root_header->ovfid);
+      error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, root_page, true);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      file_postpone_destroy (thread_p, &main_load_args->btid->ovfid);
+      VFID_SET_NULL (&main_load_args->btid->ovfid);
+    }
+  error = bt_load_provider_reconcile (thread_p, provider, overflow_key_count == 0);
+  return error;
+}
 #if defined(CUBRID_DEBUG)
 /*
  * btree_dump_sort_output () - Sample output function for index sorting
@@ -3825,6 +5368,17 @@ btree_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * temp_recdes, voi
 	    {
 	      goto nofit;
 	    }
+	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
+	    {
+	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
+	      int pages = 1;
+	      if (remaining > 0)
+		{
+		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
+		}
+	      sort_args->n_ovf_keys++;
+	      sort_args->sum_ovf_pages += pages;
+	    }
 
 	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
 	    {
@@ -4109,6 +5663,17 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
 	  if (result != NO_ERROR)
 	    {
 	      goto nofit;
+	    }
+	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
+	    {
+	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
+	      int pages = 1;
+	      if (remaining > 0)
+		{
+		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
+		}
+	      sort_args->n_ovf_keys++;
+	      sort_args->sum_ovf_pages += pages;
 	    }
 
 	  if (dbvalue_ptr == &dbvalue || dbvalue_ptr->need_clear == true)
@@ -5360,17 +6925,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	}
 
       /* Assign the snapshot to the scan_cache. */
-	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
-	    {
-	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
-	      int pages = 1;
-	      if (remaining > 0)
-		{
-		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
-		}
-	      sort_args->n_ovf_keys++;
-	      sort_args->sum_ovf_pages += pages;
-	    }
       scan_cache.mvcc_snapshot = builder_snapshot;
 
       ret = heap_get_btid_from_index_name (thread_p, &class_oids[cur_class], bt_name, btid_int.sys_btid);
@@ -5664,17 +7218,6 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 	}
     }
 
-	  if (key_len >= BTREE_MAX_KEYLEN_INPAGE)
-	    {
-	      int remaining = key_len - (DB_PAGESIZE - (int) offsetof (OVERFLOW_FIRST_PART, data));
-	      int pages = 1;
-	      if (remaining > 0)
-		{
-		  pages += CEIL_PTVDIV (remaining, DB_PAGESIZE - (int) offsetof (OVERFLOW_REST_PART, data));
-		}
-	      sort_args->n_ovf_keys++;
-	      sort_args->sum_ovf_pages += pages;
-	    }
   /* Check if the worker pool is empty */
   if (ret == NO_ERROR)
     {

@@ -131,6 +131,14 @@ struct vol_list
   VOL_INFO *vol_info;		/* array of volume information */
 };
 
+typedef struct sort_index_shard SORT_INDEX_SHARD;
+struct sort_index_shard
+{
+  int start_page;
+  int start_slot;
+  int end_page;
+  int end_slot;
+};
 typedef struct sort_param SORT_PARAM;
 struct sort_param
 {
@@ -185,6 +193,7 @@ struct sort_param
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
+  SORT_INDEX_SHARD px_index_shard;
   QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY/ANALYTIC workers */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
@@ -308,6 +317,11 @@ static int sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p
 static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 					  SORT_PARAM * sort_param, int parallel_num);
 static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
+static int sort_split_last_run_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					    SORT_PARAM * sort_param, int parallel_num, int *n_shards);
+static void sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
+static BT_LOAD_PX_OUTCOME sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+							 SORT_PARAM * sort_param, int parallel_num);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -3419,6 +3433,168 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
     }
 }
 
+static int
+sort_index_decode_at (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int page, int slot, DB_VALUE * key)
+{
+  RECDES record = RECDES_INITIALIZER;
+  RECDES long_record = RECDES_INITIALIZER;
+  int result_file_idx = sort_param->px_result_file_idx;
+  int error;
+
+  error = sort_read_area (thread_p, &sort_param->temp[result_file_idx], page, 1, sort_param->internal_memory);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (sort_spage_get_record (sort_param->internal_memory, slot, &record, PEEK) != S_SUCCESS)
+    {
+      return ER_SORT_TEMP_PAGE_CORRUPTED;
+    }
+  if (record.type == REC_BIGONE)
+    {
+      if (sort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
+	{
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+      error = bt_load_decode_sort_record_key (thread_p, &long_record, (LOAD_ARGS *) sort_param->put_arg, key);
+      free_and_init (long_record.data);
+    }
+  else
+    {
+      error = bt_load_decode_sort_record_key (thread_p, &record, (LOAD_ARGS *) sort_param->put_arg, key);
+    }
+  return error;
+}
+
+static int
+sort_index_prev_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int page, int slot,
+		       int *prev_page, int *prev_slot)
+{
+  int result_file_idx = sort_param->px_result_file_idx;
+  if (slot > 0)
+    {
+      *prev_page = page;
+      *prev_slot = slot - 1;
+      return NO_ERROR;
+    }
+  if (page <= 0)
+    {
+      return ER_FAILED;
+    }
+  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], page - 1, 1,
+		      sort_param->internal_memory) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  *prev_page = page - 1;
+  *prev_slot = sort_spage_get_numrecs (sort_param->internal_memory) - 1;
+  return *prev_slot >= 0 ? NO_ERROR : ER_FAILED;
+}
+
+static int
+sort_index_next_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int total_pages, int *page, int *slot)
+{
+  int result_file_idx = sort_param->px_result_file_idx;
+  if (*page >= total_pages)
+    {
+      return NO_ERROR;
+    }
+  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], *page, 1,
+		      sort_param->internal_memory) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  (*slot)++;
+  if (*slot >= sort_spage_get_numrecs (sort_param->internal_memory))
+    {
+      (*page)++;
+      *slot = 0;
+    }
+  return NO_ERROR;
+}
+
+static int
+sort_split_last_run_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+				int parallel_num, int *n_shards)
+{
+  int result_file_idx = px_sort_param[0].px_result_file_idx;
+  int total_pages = px_sort_param[0].file_contents[result_file_idx].num_pages[0];
+  SORT_INDEX_SHARD ranges[SORT_MAX_PARALLEL];
+  int count = 1;
+
+  sort_param->px_result_file_idx = result_file_idx;
+  sort_param->file_contents[result_file_idx].num_pages[0] = total_pages;
+  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
+  ranges[0].start_page = 0;
+  ranges[0].start_slot = 0;
+
+  for (int i = 1; i < parallel_num; i++)
+    {
+      int page = (int) (((INT64) total_pages * i) / parallel_num);
+      int slot = 0;
+      if (page < ranges[count - 1].start_page
+	  || (page == ranges[count - 1].start_page && slot <= ranges[count - 1].start_slot))
+	{
+	  continue;
+	}
+      if (page >= total_pages)
+	{
+	  break;
+	}
+      for (;;)
+	{
+	  int prev_page, prev_slot, compare;
+	  DB_VALUE left, right;
+	  db_make_null (&left);
+	  db_make_null (&right);
+	  if (sort_index_prev_coord (thread_p, sort_param, page, slot, &prev_page, &prev_slot) != NO_ERROR
+	      || sort_index_decode_at (thread_p, sort_param, prev_page, prev_slot, &left) != NO_ERROR
+	      || sort_index_decode_at (thread_p, sort_param, page, slot, &right) != NO_ERROR)
+	    {
+	      pr_clear_value (&left);
+	      pr_clear_value (&right);
+	      return ER_FAILED;
+	    }
+	  compare = btree_compare_key (&left, &right, ((SORT_ARGS *) sort_param->get_arg)->key_type, 0, 1, NULL);
+	  pr_clear_value (&left);
+	  pr_clear_value (&right);
+	  if (compare != DB_EQ)
+	    {
+	      break;
+	    }
+	  if (sort_index_next_coord (thread_p, sort_param, total_pages, &page, &slot) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (page >= total_pages)
+	    {
+	      break;
+	    }
+	}
+      if (page >= total_pages)
+	{
+	  break;
+	}
+      ranges[count - 1].end_page = page;
+      ranges[count - 1].end_slot = slot;
+      ranges[count].start_page = page;
+      ranges[count].start_slot = slot;
+      count++;
+    }
+
+  ranges[count - 1].end_page = total_pages;
+  ranges[count - 1].end_slot = 0;
+  for (int i = 0; i < count; i++)
+    {
+      px_sort_param[i].px_index_shard = ranges[i];
+      px_sort_param[i].px_result_file_idx = 0;
+      px_sort_param[i].temp[0] = sort_param->temp[result_file_idx];
+      px_sort_param[i].px_status = PX_PROGRESS;
+    }
+  *n_shards = count;
+  return NO_ERROR;
+}
+
 /*
  * sort_exphase_merge () - Merge phase
  *   return:
@@ -4964,6 +5140,179 @@ cleanup:
   return error;
 }
 
+static void
+sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
+{
+  THREAD_ENTRY *thread_p = &thread_ref;
+  SORT_INDEX_SHARD range = sort_param->px_index_shard;
+  LOAD_ARGS *load_args = (LOAD_ARGS *) sort_param->put_arg;
+  RECDES record = RECDES_INITIALIZER;
+  RECDES long_record = RECDES_INITIALIZER;
+  int error = NO_ERROR;
+
+  thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
+  thread_ref.m_px_orig_thread_entry = sort_param->px_orig_thread_p;
+  thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
+  thread_p->push_resource_tracks ();
+
+  for (int page = range.start_page; page <= range.end_page && error == NO_ERROR; page++)
+    {
+      int first_slot, last_slot;
+      if (page == range.end_page && range.end_slot == 0)
+	{
+	  break;
+	}
+      error = sort_read_area (thread_p, &sort_param->temp[0], page, 1, sort_param->internal_memory);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      first_slot = page == range.start_page ? range.start_slot : 0;
+      last_slot = page == range.end_page ? range.end_slot : sort_spage_get_numrecs (sort_param->internal_memory);
+      for (int slot = first_slot; slot < last_slot; slot++)
+	{
+	  if (sort_spage_get_record (sort_param->internal_memory, slot, &record, PEEK) != S_SUCCESS)
+	    {
+	      error = ER_SORT_TEMP_PAGE_CORRUPTED;
+	      break;
+	    }
+	  if (record.type == REC_BIGONE)
+	    {
+	      if (sort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
+		{
+		  error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+		  break;
+		}
+	      error = bt_load_worker_put_range (thread_p, load_args, &long_record);
+	      free_and_init (long_record.data);
+	    }
+	  else
+	    {
+	      ((SORT_REC *) record.data)->next = NULL;
+	      error = bt_load_worker_put_range (thread_p, load_args, &record);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+    }
+  if (error == NO_ERROR)
+    {
+      error = bt_load_worker_close_shard (thread_p, load_args);
+    }
+  error = bt_load_worker_epilogue (thread_p, load_args, error);
+  thread_p->pop_resource_tracks ();
+
+  pthread_mutex_lock (sort_param->px_mtx);
+  sort_param->px_status = error == NO_ERROR ? PX_DONE : PX_ERR_FAILED;
+  if (error != NO_ERROR)
+    {
+      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+    }
+  thread_ref.m_px_orig_thread_entry = NULL;
+  pthread_cond_signal (sort_param->complete_cond);
+  pthread_mutex_unlock (sort_param->px_mtx);
+}
+
+static BT_LOAD_PX_OUTCOME
+sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			      int parallel_num)
+{
+  SORT_ARGS *sort_args = (SORT_ARGS *) sort_param->get_arg;
+  LOAD_ARGS *main_load_args = (LOAD_ARGS *) sort_param->put_arg;
+  LOAD_ARGS *shard_load_args[SORT_MAX_PARALLEL] = { NULL };
+  BT_LOAD_PROVIDER *provider = NULL;
+  int n_shards = 0;
+  int error = NO_ERROR;
+  int total_pages, est_main_pages, est_ovf_pages = 0;
+  INT64 ovf_upper = 0;
+
+  if (parallel_num < 2 || !bt_load_parallel_enabled (main_load_args))
+    {
+      return BT_PX_NOT_ATTEMPTED;
+    }
+
+  if (sort_split_last_run_index_leaf (thread_p, px_sort_param, sort_param, parallel_num, &n_shards) != NO_ERROR)
+    {
+      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
+      return BT_PX_ERROR;
+    }
+  if (n_shards < 2)
+    {
+      return BT_PX_NOT_ATTEMPTED;
+    }
+
+  log_sysop_start (thread_p);
+  error = btree_create_overflow_key_file (thread_p, sort_args->btid);
+  if (error != NO_ERROR)
+    {
+      log_sysop_abort (thread_p);
+      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
+      return BT_PX_ERROR;
+    }
+  log_sysop_attach_to_outer (thread_p);
+  assert (log_get_system_op_level (thread_p) < 0);
+
+  total_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
+  est_main_pages =
+    (int) MIN ((INT64) INT_MAX, (INT64) total_pages + MAX ((INT64) 64, (INT64) total_pages / 10));
+  if (sort_args->sum_ovf_pages > 0)
+    {
+      ovf_upper = sort_args->sum_ovf_pages;
+      INT64 cap = MAX ((INT64) DISK_SECTOR_NPAGES, ovf_upper / n_shards);
+      est_ovf_pages = (int) MIN (ovf_upper, MIN (cap, (INT64) INT_MAX));
+    }
+  error = bt_load_provider_open (thread_p, &provider, sort_args->btid->sys_btid, n_shards, est_main_pages,
+				 est_ovf_pages, true);
+  if (error != NO_ERROR)
+    {
+      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
+      return BT_PX_ERROR;
+    }
+  assert (log_get_system_op_level (thread_p) < 0);
+
+  for (int i = 0; i < n_shards; i++)
+    {
+      error = bt_load_alloc_shard_load_args (thread_p, main_load_args, provider, i, &shard_load_args[i]);
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      px_sort_param[i].put_arg = shard_load_args[i];
+    }
+
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: px construct btid(%d, (%d, %d)), workers==shards=%d",
+		     sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
+		     sort_args->btid->sys_btid->vfid.fileid, n_shards);
+    }
+
+  SORT_EXECUTE_PARALLEL (n_shards, px_sort_param, sort_put_result_index_leaf);
+  error = bt_load_provider_service_loop (thread_p, provider);
+  assert (log_get_system_op_level (thread_p) < 0);
+  SORT_WAIT_PARALLEL (n_shards, sort_param, px_sort_param);
+  if (error == NO_ERROR)
+    {
+      error = bt_load_px_join_finalize (thread_p, main_load_args, shard_load_args, n_shards);
+    }
+  assert (log_get_system_op_level (thread_p) < 0);
+
+cleanup:
+  for (int i = 0; i < n_shards; i++)
+    {
+      bt_load_free_shard_load_args (thread_p, shard_load_args[i]);
+    }
+  bt_load_provider_close (provider);
+  if (error != NO_ERROR)
+    {
+      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
+      return BT_PX_ERROR;
+    }
+  bt_load_set_px_outcome (main_load_args, BT_PX_TREE_DONE);
+  return BT_PX_TREE_DONE;
+}
 int
 sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 					      SORT_PARAM * sort_param, int parallel_num)
@@ -4972,6 +5321,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
   int i;
   SORT_MERGE_QUEUE_CTX qctx;
   SORT_ARGS *sort_args_p;
+  LOAD_ARGS *load_args_p;
 
   if (parallel_num > SORT_MAX_PARALLEL)
     {
@@ -4997,12 +5347,15 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     }
 
   sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+  load_args_p = (LOAD_ARGS *) sort_param->put_arg;
 
   for (i = 0; i < parallel_num; i++)
     {
       SORT_ARGS *px_sort_args_p = (SORT_ARGS *) px_sort_param[i].get_arg;
       sort_args_p->n_oids += px_sort_args_p->n_oids;
       sort_args_p->n_nulls += px_sort_args_p->n_nulls;
+      sort_args_p->n_ovf_keys += px_sort_args_p->n_ovf_keys;
+      sort_args_p->sum_ovf_pages += px_sort_args_p->sum_ovf_pages;
     }
 
   log_sysop_start (thread_p);
@@ -5027,10 +5380,28 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
   }
 
-  if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
+  {
+    BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
+    if (outcome == BT_PX_NOT_ATTEMPTED)
+      {
+	if (bt_load_parallel_enabled (load_args_p))
+	  {
+	    log_sysop_start (thread_p);
+	  }
+	if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
+	  {
+	    if (bt_load_parallel_enabled (load_args_p))
+	      {
+		log_sysop_abort (thread_p);
+	      }
+	    error = ER_FAILED;
+	  }
+      }
+    else if (outcome == BT_PX_ERROR)
+      {
+	error = ER_FAILED;
+      }
+  }
 
   sort_merge_queue_ctx_destroy (&qctx);
   return error;
@@ -5354,8 +5725,6 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
  *   parallel_num(in):
  *   sort_parallel_type(in):
  */
-      sort_args_p->n_ovf_keys += px_sort_args_p->n_ovf_keys;
-      sort_args_p->sum_ovf_pages += px_sort_args_p->sum_ovf_pages;
 int
 sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param)
 {
@@ -5489,6 +5858,8 @@ sort_start_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SOR
 	  px_sort_args_p->ftab_sets = NULL;
 	  px_sort_args_p->curr_sec = FILE_PARTIAL_SECTOR_INITIALIZER;
 	  px_sort_args_p->curr_pgoffset = 0;
+	  px_sort_args_p->n_ovf_keys = 0;
+	  px_sort_args_p->sum_ovf_pages = 0;
 	  px_sort_args_p->in_recdes =
 	  {
 	  0, 0, 0, NULL};
@@ -5858,8 +6229,6 @@ sort_end_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_
   else
     {
       /* not implemented yet */
-	  px_sort_args_p->n_ovf_keys = 0;
-	  px_sort_args_p->sum_ovf_pages = 0;
       return ER_FAILED;
     }
 
