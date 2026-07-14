@@ -154,7 +154,18 @@ typedef enum
 
 #define MAX_TOKEN_SIZE 16000
 
-#define GUID_STANDARD_BYTES_LENGTH 16
+static int uuidv4_generate_bytes (unsigned char *out_bytes);
+static int uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes);
+
+#define UPPER_HEX_DIGIT "0123456789ABCDEF"
+
+#define UUID_FORMAT_LEN 36
+#define UUID_HEX_LEN 32
+
+/* NOTE: argument 'c' must be a simple expression; it is evaluated up to 6 times. */
+#define IS_HEX_CHAR(c) ((((unsigned char)(c) >= '0' && (unsigned char)(c) <= '9') \
+            || ((unsigned char)(c) >= 'A' && (unsigned char)(c) <= 'F') \
+            || ((unsigned char)(c) >= 'a' && (unsigned char)(c) <= 'f')))
 
 typedef enum
 {
@@ -2760,6 +2771,171 @@ db_string_md5 (DB_VALUE const *val, DB_VALUE * result)
 	{
 	  error_status = ER_QSTR_INVALID_DATA_TYPE;
 	}
+    }
+
+  return error_status;
+}
+
+/*
+ * UUID_FORMAT(val) - format UUID string or bit as 8-4-4-4-12 hyphenated string
+ * Arguments
+ *	val: string (32 hex chars) or bit (128 bits) representing UUID without hyphens
+ *	result: DB_VALUE to receive the formatted UUID string (e.g. 'a1b2c3d4-e5f6-a7b8-c9d0-e1f2a3b4c5d6')
+ */
+int
+db_uuid_format (DB_VALUE const *val, DB_VALUE * result)
+{
+  char *hex_buf = NULL;
+  const char *str = NULL;
+  int str_size = 0;
+  int i, j;
+  static const int dash_pos[] = { 8, 13, 18, 23 };
+  static const int dash_len = 4;
+  DB_TYPE val_type;
+  bool is_bit_input = false;
+  int error_status = NO_ERROR;
+
+  assert (val != (DB_VALUE *) NULL);
+  assert (result != (DB_VALUE *) NULL);
+
+  if (DB_IS_NULL (val))
+    {
+      db_make_null (result);
+      return NO_ERROR;
+    }
+
+  val_type = DB_VALUE_DOMAIN_TYPE (val);
+
+  hex_buf = (char *) db_private_alloc (NULL, UUID_FORMAT_LEN + 1);
+  if (hex_buf == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error_status = er_errid ();
+      goto exit;
+    }
+
+  if (QSTR_IS_ANY_CHAR (val_type))
+    {
+      str = db_get_string (val);
+      str_size = db_get_string_length (val);
+
+      if (str_size == UUID_HEX_LEN)
+	{
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      char c = (char) str[i - j];
+
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  j++;
+		  hex_buf[i++] = '-';
+		}
+
+	      if (IS_HEX_CHAR (c))
+		{
+		  hex_buf[i] = (char) toupper ((unsigned char) c);
+		}
+	      else
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+	}
+      else if (str_size == UUID_FORMAT_LEN)
+	{
+	  /* 36-char string: already has hyphens, validate positions and hex chars */
+	  for (j = 0; j < dash_len; j++)
+	    {
+	      if (str[dash_pos[j]] != '-')
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		  goto exit;
+		}
+	    }
+
+	  for (i = 0, j = 0; i < UUID_FORMAT_LEN; i++)
+	    {
+	      if (j < dash_len && i == dash_pos[j])
+		{
+		  hex_buf[i] = '-';
+		  j++;
+		}
+	      else
+		{
+		  char c = str[i];
+		  if (IS_HEX_CHAR (c))
+		    {
+		      hex_buf[i] = (char) toupper ((unsigned char) c);
+		    }
+		  else
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+		      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+		      goto exit;
+		    }
+		}
+	    }
+	}
+      else
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+    }
+  else if (QSTR_IS_BIT (val_type))
+    {
+      str = db_get_bit (val, &str_size);
+      if (str_size != UUID_HEX_LEN * 4)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+	  error_status = ER_QSTR_INVALID_UUID_FORMAT;
+	  goto exit;
+	}
+      for (i = 0, j = 0; i < UUID_HEX_LEN / 2; i++)
+	{
+	  if (j < dash_len && i == (dash_pos[j] - j) / 2)
+	    {
+	      hex_buf[i * 2 + j] = '-';
+	      j++;
+	    }
+	  hex_buf[i * 2 + j] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hex_buf[i * 2 + 1 + j] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
+	}
+      is_bit_input = true;
+    }
+  else
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INVALID_UUID_FORMAT, 0);
+      error_status = ER_QSTR_INVALID_UUID_FORMAT;
+      goto exit;
+    }
+  hex_buf[UUID_FORMAT_LEN] = '\0';
+
+  if (is_bit_input)
+    {
+      /* Bit input: do not use db_get_string_codeset/collation (invalid for bit).
+       * Use db_make_string with allocated copy so result has a valid string representation. */
+      error_status = db_make_string (result, hex_buf);
+    }
+  else
+    {
+      error_status = db_make_varchar (result, UUID_FORMAT_LEN, hex_buf, UUID_FORMAT_LEN,
+				      db_get_string_codeset (val), db_get_string_collation (val));
+    }
+  if (error_status == NO_ERROR)
+    {
+      result->need_clear = true;
+    }
+
+exit:
+  if (error_status != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, hex_buf);
+      db_make_null (result);
     }
 
   return error_status;
@@ -25946,9 +26122,6 @@ db_hex (const DB_VALUE * param, DB_VALUE * result)
     0xFFFFFFFFFFFFFFFF
   };
 
-  /* hex digits */
-  const char hex_digit[] = "0123456789ABCDEF";
-
   /* other variables */
   DB_TYPE param_type = DB_TYPE_UNKNOWN;
   const char *str = NULL;
@@ -26015,8 +26188,8 @@ coerce_pos:
       /* compute hex representation */
       for (i = 0; i < str_size; i++)
 	{
-	  hexval[i * 2] = hex_digit[(str[i] >> 4) & 0xF];
-	  hexval[i * 2 + 1] = hex_digit[str[i] & 0xF];
+	  hexval[i * 2] = UPPER_HEX_DIGIT[((unsigned char) str[i] >> 4) & 0xF];
+	  hexval[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) str[i] & 0xF];
 	}
 
       /* set return string */
@@ -26063,7 +26236,7 @@ coerce_pos:
       /* compute hex representation */
       for (i = hexval_len - 1; i >= 0; --i)
 	{
-	  hexval[i] = hex_digit[param_bigint & 0xF];
+	  hexval[i] = UPPER_HEX_DIGIT[param_bigint & 0xF];
 	  param_bigint >>= 4;
 	}
 
@@ -26118,20 +26291,18 @@ error:
   return error_code;
 }
 
-#if !defined (CS_MODE)
 /*
- * db_guid() - Generate a type 4 (randomly generated) UUID.
+ * db_uuidv4() - Generate a type 4 (randomly generated) UUID String.
  *   return: error code or NO_ERROR
- *   thread_p(in): thread context
- *   result(out): HEX encoded UUID string
+ *   result(out): HEX encoded UUID string(32-character uppercase hexadecimal)
  * Note:
+ *   Behavior matches SQL function SYS_GUID()
  */
 int
-db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
+db_uuidv4 (DB_VALUE * result)
 {
   int i = 0, error_code = NO_ERROR;
-  const char hex_digit[] = "0123456789ABCDEF";
-  char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
+  unsigned char guid_bytes[GUID_STANDARD_BYTES_LENGTH];
   char *guid_hex = NULL;
 
   if (result == NULL)
@@ -26143,25 +26314,14 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
 
   db_make_null (result);
 
-  /* Generate random bytes */
-  error_code = crypt_generate_random_bytes (guid_bytes, GUID_STANDARD_BYTES_LENGTH);
-
+  /* Generate UUIDv4 bytes using helper */
+  error_code = uuidv4_generate_bytes (guid_bytes);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
 
-  /* Clear UUID version field */
-  guid_bytes[6] &= 0x0F;
-  /* Set UUID version according to UUID version 4 protocol */
-  guid_bytes[6] |= 0x40;
-
-  /* Clear variant field */
-  guid_bytes[8] &= 0x3f;
-  /* Set variant according to UUID version 4 protocol */
-  guid_bytes[8] |= 0x80;
-
-  guid_hex = (char *) db_private_alloc (thread_p, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
+  guid_hex = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH * 2 + 1);
   if (guid_hex == NULL)
     {
       error_code = er_errid ();
@@ -26173,8 +26333,8 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   /* Encode the bytes to HEX */
   for (i = 0; i < GUID_STANDARD_BYTES_LENGTH; i++)
     {
-      guid_hex[i * 2] = hex_digit[(guid_bytes[i] >> 4) & 0xF];
-      guid_hex[i * 2 + 1] = hex_digit[(guid_bytes[i] & 0xF)];
+      guid_hex[i * 2] = UPPER_HEX_DIGIT[((unsigned char) guid_bytes[i] >> 4) & 0xF];
+      guid_hex[i * 2 + 1] = UPPER_HEX_DIGIT[(unsigned char) guid_bytes[i] & 0xF];
     }
 
   db_make_string (result, guid_hex);
@@ -26183,15 +26343,184 @@ db_guid (THREAD_ENTRY * thread_p, DB_VALUE * result)
   return NO_ERROR;
 
 error:
-  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
-    {
-      er_clear ();
-      error_code = NO_ERROR;
-    }
-
   return error_code;
 }
-#endif /* !defined (CS_MODE) */
+
+/*
+ * db_uuid_bin() - Generate a UUID and return as BIT(128) value.
+ *   return: error code or NO_ERROR
+ *   version(in): UUID version
+ *   base_state(in/out): Required if the version belongs to timebased UUID (UUID_V7). 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   epoch_ms(in): Required if the version belongs to timebased UUID (UUID_V7).
+ *     Epoch time in milliseconds compares with base_state.
+ *   result(out): BIT(128) DB_VALUE
+ */
+int
+db_uuid_bin (UUID_VERSION version, UUID_STATE * base_state, uint64_t epoch_ms, DB_VALUE * result)
+{
+  int error_code = NO_ERROR;
+  char *guid_bytes = NULL;
+
+  if (result == NULL)
+    {
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  db_make_null (result);
+
+  guid_bytes = (char *) db_private_alloc (NULL, GUID_STANDARD_BYTES_LENGTH);
+  if (guid_bytes == NULL)
+    {
+      error_code = er_errid ();
+      goto error;
+    }
+
+  switch (version)
+    {
+    case UUID_V4:
+      error_code = uuidv4_generate_bytes ((unsigned char *) guid_bytes);
+      break;
+    case UUID_V7:
+      error_code = uuidv7_generate_bytes (base_state, epoch_ms, (unsigned char *) guid_bytes);
+      break;
+    case UUID_UNSUPPORTED:
+    default:
+      error_code = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+      goto error;
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_bit (result, GUID_STANDARD_BYTES_LENGTH * 8, guid_bytes, GUID_STANDARD_BYTES_LENGTH * 8);
+  result->need_clear = true;
+
+  return NO_ERROR;
+
+error:
+  if (guid_bytes != NULL)
+    {
+      db_private_free (NULL, guid_bytes);
+    }
+  return error_code;
+}
+
+/*
+ * uuidv7_generate_bytes() - Generate UUIDv7 bytes using per-thread monotonic state.
+ *   return: error code or NO_ERROR
+ *   base_state(in/out): CAN NOT be NULL. 
+ *     Use the variable address from the current generator context:
+ *     THREAD_ENTRY on server, PARSER_CONTEXT on CAS.
+ *   new_epoch_ms(in): epoch time in milliseconds
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv7 layout (RFC 9562):
+ *   - Octets 0-5 (bits 0 ~ 47): Unix timestamp in milliseconds (big-endian)
+ *     - GUID_V7_TS_BYTES_LENGTH
+ *   - Octet 6 (bits 48 ~ 51): version (0x7)
+ *   - Octets 6-7 (bits 52 ~ 59): seq (sequence counter)
+ *     - GUID_V7_SEQ_BITS
+ *   - Octet 7 (bits 60 ~ 63): random_a
+ *   - Octet 8 (bits 64 ~ 65): variant (0b10)
+ *   - Octets 8-15 (bits 66 ~ 127): random_b
+ *
+ *   This implementation uses per-thread state for monotonic ordering within a thread.
+ *   The epoch_ms comes from the (query's xasl_state.vd) or (parser's sys_datetime and sys_epochtime) for efficiency and
+ *   consistency within a single query execution.
+ */
+static int
+uuidv7_generate_bytes (UUID_STATE * base_state, UINT64 new_epoch_ms, unsigned char *out_bytes)
+{
+  int i = 0, error_code = NO_ERROR;
+
+  assert (base_state != NULL);
+
+  if (new_epoch_ms > *base_state->last_ms)
+    {
+      /* New millisecond: reset sequence */
+      *base_state->last_ms = new_epoch_ms;
+      *base_state->seq = 0;
+    }
+  else
+    {
+      /* 
+       * Cases
+       *   1. Same millisecond
+       *   2. Same Query Context
+       *   3. Clock went backwards
+       *   : use last_ms to preserve monotonicity
+       * Increment sequence to ensure uniqueness within the same effective timestamp
+       */
+      ++(*base_state->seq);
+      if (*base_state->seq == 0)
+	{
+	  /* Sequence overflow
+	   *   (seq is uint8_t and GUID_V7_SEQ_MAX represents maximum value of an 8-bit)
+	   *   : advance timestamp by 1ms to preserve monotonicity 
+	   */
+	  ++(*base_state->last_ms);
+	}
+    }
+
+  /* Generate random bytes for the lower part (bytes 7-15) */
+  error_code = crypt_generate_random_bytes ((char *) (out_bytes + 7), GUID_STANDARD_BYTES_LENGTH - 7);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Fill timestamp (bytes 0-5, big-endian) */
+  for (i = 0; i < GUID_V7_TS_BYTES_LENGTH; i++)
+    {
+      out_bytes[i] = (unsigned char) ((*base_state->last_ms >> ((GUID_V7_TS_BYTES_LENGTH - i - 1) * 8)) & 0xFF);
+    }
+
+  /* Set version (byte 6 high nibble = 0x7) and embed seq high 4 bits in byte 6 low nibble */
+  out_bytes[6] = (unsigned char) (0x70 | ((*base_state->seq >> 4) & 0x0F));
+
+  /* Set seq low 4bits in byte 7 high nibble and remain low nibble as random */
+  out_bytes[7] = (unsigned char) (((*base_state->seq & 0x0F) << 4) | (out_bytes[7] & 0x0F));
+
+  /* Set variant (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
+
+/*
+ * uuidv4_generate_bytes() - Generate UUIDv4 bytes (random UUID).
+ *   return: error code or NO_ERROR
+ *   out_bytes(out): 16-byte UUID output buffer
+ * Note:
+ *   UUIDv4 is fully random except for version and variant bits.
+ */
+static int
+uuidv4_generate_bytes (unsigned char *out_bytes)
+{
+  int error_code = NO_ERROR;
+
+  /* Generate random bytes */
+  error_code = crypt_generate_random_bytes ((char *) out_bytes, GUID_STANDARD_BYTES_LENGTH);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Set version field (byte 6 high nibble = 0x4) */
+  out_bytes[6] = (unsigned char) ((out_bytes[6] & 0x0F) | 0x40);
+
+  /* Set variant field (byte 8 high 2 bits = 0b10) */
+  out_bytes[8] = (unsigned char) ((out_bytes[8] & 0x3F) | 0x80);
+
+  return NO_ERROR;
+}
 
 /*
  * db_ascii() - return ASCII code of first character in string

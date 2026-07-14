@@ -1894,6 +1894,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->precomp_owner_regu = NULL;
+    }
+  else
+    {
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   xasl->option = (QUERY_OPTIONS) tmp;
 
@@ -4011,6 +4027,38 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	  return NULL;
 	}
       assert (insert_info->obj_oid->need_clear == false);
+    }
+
+  /* remote INSERT SELECT fields */
+  {
+    int is_remote;
+    ptr = or_unpack_int (ptr, &is_remote);
+    insert_info->is_remote_insert = (bool) is_remote;
+  }
+
+  insert_info->remote_url = stx_restore_string (thread_p, ptr);
+  insert_info->remote_user = stx_restore_string (thread_p, ptr);
+  insert_info->remote_pwd = stx_restore_string (thread_p, ptr);
+  insert_info->remote_table_name = stx_restore_string (thread_p, ptr);
+
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_attrs);
+  if (insert_info->remote_num_attrs == 0)
+    {
+      insert_info->remote_attr_names = NULL;
+    }
+  else
+    {
+      insert_info->remote_attr_names =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_attrs);
+      if (insert_info->remote_attr_names == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_attrs; i++)
+	{
+	  insert_info->remote_attr_names[i] = stx_restore_string (thread_p, ptr);
+	}
     }
 
   return ptr;
