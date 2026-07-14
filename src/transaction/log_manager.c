@@ -11163,6 +11163,18 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
+      /* Re-sync to the requested extraction LSA.  When a new extraction LSA is
+       * set (queue reinit / initialize / cleanup), the local process_lsa may
+       * still point past it from the previous session; the block below would
+       * then copy that stale local position back into next_extraction_lsa and
+       * resume ahead of the requested LSA, skipping log records.  Reset it to
+       * NULL so the block below adopts next_extraction_lsa instead. */
+      if (cdc_Gl.producer.is_reset_process_lsa)
+	{
+	  LSA_SET_NULL (&process_lsa);
+	  cdc_Gl.producer.is_reset_process_lsa = false;
+	}
+
       if (LSA_ISNULL (&process_lsa))
 	{
 	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
@@ -11210,16 +11222,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->length = log_info_entry.length;
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
-
-	  if (cdc_Gl.is_queue_reinitialized)
-	    {
-	      free_and_init (tmp->log_info);
-	      free_and_init (tmp);
-
-	      cdc_Gl.is_queue_reinitialized = false;
-
-	      continue;
-	    }
 
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
@@ -14576,8 +14578,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       goto end;
     }
 
-  cdc_Gl.is_queue_reinitialized = true;
-
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
       cdc_log
@@ -14617,6 +14617,7 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
+      cdc_Gl.producer.is_reset_process_lsa = true;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -15083,6 +15084,8 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
+  cdc_Gl.producer.is_reset_process_lsa = true;
+
   return 0;
 }
 
@@ -15119,6 +15122,8 @@ cdc_cleanup ()
     {
       cdc_pause_producer ();
     }
+
+  cdc_Gl.producer.is_reset_process_lsa = true;
 
   cdc_free_extraction_filter ();
 

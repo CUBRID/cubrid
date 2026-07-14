@@ -134,7 +134,7 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
    * must disable here because we may be updating the cache of the system
    * objects and we need to read them in order to update etc.
    */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   er_stack_push ();
 
@@ -155,7 +155,8 @@ authenticate_cache::update (DB_OBJECT_TYPE obj_type, MOP mop, void *ptr)
   if (bits == NULL)
     {
       assert (false);
-      return er_errid ();
+      error = er_errid ();
+      goto end;
     }
 
   /* initialize the cache bits */
@@ -289,7 +290,7 @@ end:
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return (error);
 }

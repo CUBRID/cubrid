@@ -4360,10 +4360,10 @@ synccoll_force (void)
       return status;
     }
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   if (db_truncate_class (class_mop, false) != NO_ERROR)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       status = EXIT_FAILURE;
       return status;
     }
@@ -4373,7 +4373,7 @@ synccoll_force (void)
       status = EXIT_FAILURE;
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return status;
 }
 
@@ -4393,7 +4393,7 @@ delete_all_ha_apply_info (void)
 
   snprintf (query_buf, sizeof (query_buf), "DELETE FROM %s ;", CT_HA_APPLY_INFO_NAME);
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   res = db_execute (query_buf, &result, &query_error);
   if (res >= 0)
@@ -4407,7 +4407,7 @@ delete_all_ha_apply_info (void)
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return res;
 #undef QUERY_BUF_SIZE
@@ -4529,7 +4529,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 
   assert_release (in_value_idx == APPLY_INFO_VALUES);
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
   if (res >= 0)
@@ -4543,7 +4543,7 @@ insert_ha_apply_info (char *database_name, char *master_host_name, INT64 databas
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   for (i = 0; i < in_value_idx; i++)
     {
@@ -4600,7 +4600,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
   /* 2. copied_log_path */
   db_make_varchar (&in_value[in_value_idx++], 4096, log_path, strlen (log_path), LANG_SYS_CODESET, LANG_SYS_COLLATION);
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   res = db_execute_with_values (query_buf, &result, &query_error, in_value_idx, &in_value[0]);
   if (res >= 0)
@@ -4614,7 +4614,7 @@ delete_all_slave_ha_apply_info (char *database_name, char *master_host_name)
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return res;
 #undef APPLY_INFO_VALUES

@@ -830,10 +830,10 @@ obj_set_att (MOP op, SM_CLASS * class_, SM_ATTRIBUTE * att, DB_VALUE * value, SM
 				}
 			      else
 				{
-				  AU_DISABLE (save);
+				  AU_SAVE_AND_DISABLE (save);
 				  /* could use att/descriptor interface here */
 				  error = obj_set (ref_mop, base_name, &base_value);
-				  AU_ENABLE (save);
+				  AU_RESTORE (save);
 
 				  return error;
 				}
