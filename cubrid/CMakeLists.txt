@@ -70,6 +70,7 @@ set(THREAD_HEADERS
   ${THREAD_DIR}/thread_worker_pool.hpp
   ${THREAD_DIR}/thread_worker_pool_impl.hpp
   ${THREAD_DIR}/thread_worker_pool_elastic.hpp
+  ${THREAD_DIR}/thread_worker_pool_progress.hpp
   ${THREAD_DIR}/thread_worker_pool_taskcap.hpp
   )
 

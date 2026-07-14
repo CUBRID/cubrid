@@ -627,6 +627,7 @@ namespace cubthread
 
     private:
       bool has_slot_demand (std::vector<concurrency_slot_subscriber *> &subs);
+      void check_worker_progress (void *identifier);
 
       void steal_from_entries_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots, void *identifier);
       void steal_from_cores_if_excess (std::vector<std::unique_ptr<concurrency_slot>> &slots,
@@ -661,11 +662,12 @@ namespace cubthread
   concurrency_slot_daemon_task::execute (entry &thread_ref)
   {
     // 1. apply concurrency parameter changes at runtime.
-    // 2. traverse all entries and steal the concurrency slot from any entry
+    // 2. check whether queued work has stopped making progress.
+    // 3. traverse all entries and steal the concurrency slot from any entry
     //    whose wait time exceeds the threshold. (identifier = worker pool pointer)
-    // 3. take the slots from cores which has them over threshold time.
-    // 4. rebalance slots across cores.
-    // 5. wake the workers in each core if there are the tasks in wait queue
+    // 4. take the slots from cores which has them over threshold time.
+    // 5. rebalance slots across cores.
+    // 6. wake the workers in each core if there are the tasks in wait queue
 
     // 1.
     check_and_propagate_parameters ();
@@ -676,22 +678,43 @@ namespace cubthread
 
       assert (!subs.empty ());
 
+      bool slot_demand = has_slot_demand (subs);
+
       // 2.
-      steal_from_entries_if_excess (slots, identifier);
+      check_worker_progress (identifier);
 
       // 3.
-      if (has_slot_demand (subs))
+      steal_from_entries_if_excess (slots, identifier);
+
+      // 4.
+      if (slot_demand)
 	{
 	  steal_from_cores_if_excess (slots, subs);
 	}
 
-      // 4.
+      // 5.
       distribute_slots (slots, subs);
       assert (slots.empty ());
 
-      // 5.
+      // 6.
       wakeup_workers (identifier, subs);
     });
+  }
+
+  void
+  concurrency_slot_daemon_task::check_worker_progress (void *identifier)
+  {
+    worker_pool_progress_tracker::clock::time_point now = worker_pool_progress_tracker::clock::now ();
+    auto *base = static_cast<worker_pool *> (identifier);
+
+    if (auto *pool = dynamic_cast<worker_pool_elastic<stats_t::on> *> (base))
+      {
+	pool->check_progress (now);
+      }
+    else if (auto *pool = dynamic_cast<worker_pool_elastic<stats_t::off> *> (base))
+      {
+	pool->check_progress (now);
+      }
   }
 
   bool

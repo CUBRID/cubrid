@@ -31,12 +31,14 @@
 #include "concurrency_slot.hpp"
 #include "thread_daemon.hpp"
 #include "thread_worker_pool_impl.hpp"
+#include "thread_worker_pool_progress.hpp"
 
 // cubrid includes
 #include "error_manager.h"
 
 // system includes
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <atomic>
 #include <algorithm>
@@ -46,9 +48,8 @@ namespace cubthread
   // worker_pool_elastic<Stats>
   //
   // description
-  //    worker pool that maintains target concurrency by spawning
-  //    additional workers when existing workers enter a known wait
-  //    (e.g., blocked on a transaction lock).
+  //    worker pool that maintains a normal concurrency target and adds temporary slots and workers only when queued
+  //    work remains but no task completes.
   //
   template <stats_t Stats>
   class worker_pool_elastic final : public worker_pool_impl<Stats>
@@ -81,6 +82,8 @@ namespace cubthread
       std::size_t get_max_concurrency (void) const;
       std::size_t get_max_worker (void) const;
 
+      void check_progress (worker_pool_progress_tracker::clock::time_point now);
+
       void get_runtime_stats (UINT64 &total_slots, UINT64 &target_slots, UINT64 &busy_slots,
 			      UINT64 &total_workers, UINT64 &target_workers, UINT64 &busy_workers) const;
 
@@ -96,6 +99,9 @@ namespace cubthread
 
       std::atomic<std::size_t> m_max_concurrency;
       std::atomic<std::size_t> m_max_worker;
+
+      worker_pool_progress_tracker::clock::time_point m_next_progress_check;
+      std::vector<worker_pool_progress_tracker> m_progress_trackers;
   };
 
   // worker_pool_elastic<Stats>::core_elastic
@@ -121,6 +127,9 @@ namespace cubthread
       void adjust_runtime_parameter (std::size_t max_concurrency);
       void adjust_workers ();
       void adjust_workers (std::unique_lock<std::mutex> &ulock);
+      void check_progress (worker_pool_progress_tracker::clock::time_point now,
+			    worker_pool_progress_tracker &tracker);
+      std::uint64_t get_completed_task_count () const;
 
       // execute task
       void execute_task (task_type *task_p) override;
@@ -130,7 +139,8 @@ namespace cubthread
       void release_slot (unique_slot slot);
       void release_slot (unique_slot slot, std::unique_lock<std::mutex> &ulock);
 
-      std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg);
+      std::optional<std::pair<wrapped_task, unique_slot>> get_task_and_slot_or_become_available (worker &worker_arg,
+	  bool completed_task);
 
       void get_retire_if_excess (worker_elastic *w);
 
@@ -157,9 +167,13 @@ namespace cubthread
       // per core
       std::size_t m_max_concurrency;
 
-      // global. this is not hard cap. allow to make worker overcommit
+      // global worker count and hard cap
       std::atomic<std::size_t> &m_current_worker;
       std::atomic<std::size_t> &m_max_worker;
+
+      // guarded by the core mutex
+      std::size_t m_progress_worker_count;
+      std::uint64_t m_completed_task_count;
 
       stats_base m_retired_stats;
   };
@@ -195,6 +209,9 @@ namespace cubthread
 
       // guarded by m_task_mutex
       unique_slot m_slot;
+
+      // accessed only by the worker thread
+      bool m_completed_task;
   };
 
 } // namespace cubthread
@@ -213,6 +230,8 @@ namespace cubthread
     , m_current_worker (max_concurrency)
     , m_max_concurrency (max_concurrency)
     , m_max_worker (max_worker)
+    , m_next_progress_check (worker_pool_progress_tracker::clock::now () + std::chrono::seconds (1))
+    , m_progress_trackers (core_count)
   {
   }
 
@@ -256,7 +275,9 @@ namespace cubthread
 	assert (dynamic_cast<core_elastic *> (this->m_cores[it].get ()));
 
 	concurrency = it < concurrency_remainder ? concurrency_quotient + 1 : concurrency_quotient;
-	static_cast<core_elastic *> (this->m_cores[it].get ())->adjust_runtime_parameter (concurrency);
+	core_elastic *core = static_cast<core_elastic *> (this->m_cores[it].get ());
+	core->adjust_runtime_parameter (concurrency);
+	m_progress_trackers[it].reset (worker_pool_progress_tracker::clock::now (), core->get_completed_task_count ());
       }
   }
 
@@ -272,6 +293,22 @@ namespace cubthread
   worker_pool_elastic<Stats>::get_max_worker (void) const
   {
     return m_max_worker.load ();
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::check_progress (worker_pool_progress_tracker::clock::time_point now)
+  {
+    if (now < m_next_progress_check)
+      {
+	return;
+      }
+    m_next_progress_check = now + std::chrono::seconds (1);
+
+    for (std::size_t index = 0; index < this->m_cores.size (); ++index)
+      {
+	static_cast<core_elastic *> (this->m_cores[index].get ())->check_progress (now, m_progress_trackers[index]);
+      }
   }
 
   template <stats_t Stats>
@@ -323,6 +360,8 @@ namespace cubthread
     , m_max_concurrency (0)
     , m_current_worker (current_worker)
     , m_max_worker (max_worker)
+    , m_progress_worker_count (0)
+    , m_completed_task_count (0)
     , m_retired_stats (stats::create ())
   {
   }
@@ -351,6 +390,7 @@ namespace cubthread
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     m_max_concurrency = max_concurrency;
+    m_progress_worker_count = 0;
 
     m_slots.adjust_concurrency (m_max_concurrency, ulock);
     adjust_workers (ulock);
@@ -400,21 +440,66 @@ namespace cubthread
 
   template <stats_t Stats>
   void
+  worker_pool_elastic<Stats>::core_elastic::check_progress (worker_pool_progress_tracker::clock::time_point now,
+      worker_pool_progress_tracker &tracker)
+  {
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
+    if (!this->m_parent_pool->is_running ())
+      {
+	return;
+      }
+
+    worker_pool_progress_tracker::decision progress = tracker.observe (
+	    now, !this->m_task_queue.empty (),
+	    !this->m_available_workers.empty ()
+	    || m_current_worker.load (std::memory_order_relaxed) < m_max_worker.load (std::memory_order_relaxed),
+	    m_completed_task_count);
+
+    if (progress.reset_expansion)
+      {
+	if (progress.remove_extra_slots > 0)
+	  {
+	    m_progress_worker_count = 0;
+	    m_slots.adjust_concurrency (m_max_concurrency, ulock);
+	  }
+      }
+
+    if (progress.expand)
+      {
+	++m_progress_worker_count;
+	m_slots.adjust_concurrency (m_max_concurrency + tracker.get_extra_slot_count (), ulock);
+	adjust_workers (ulock);
+      }
+  }
+
+  template <stats_t Stats>
+  std::uint64_t
+  worker_pool_elastic<Stats>::core_elastic::get_completed_task_count () const
+  {
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
+    return m_completed_task_count;
+  }
+
+  template <stats_t Stats>
+  void
   worker_pool_elastic<Stats>::core_elastic::execute_task (task_type *task_p)
   {
     assert (task_p != nullptr);
 
     worker_elastic *worker_p = nullptr;
 
+    wrapped_task task_ref (task_p);
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
     if (!this->m_parent_pool->is_running ())
       {
 	// reject task
-	task_p->retire ();
+	ulock.unlock ();
+	task_ref.retire ();
 	return;
       }
-
-    wrapped_task task_ref (task_p);
-    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     unique_slot slot = m_slots.try_acquire_slot (ulock);
     if (slot)
@@ -481,9 +566,15 @@ namespace cubthread
 
   template <stats_t Stats>
   std::optional<std::pair<typename worker_pool_elastic<Stats>::wrapped_task, typename worker_pool_elastic<Stats>::unique_slot>>
-      worker_pool_elastic<Stats>::core_elastic::get_task_and_slot_or_become_available (worker &worker_arg)
+      worker_pool_elastic<Stats>::core_elastic::get_task_and_slot_or_become_available (worker &worker_arg,
+	  bool completed_task)
   {
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
+    if (completed_task)
+      {
+	++m_completed_task_count;
+      }
 
     if (!this->m_task_queue.empty ())
       {
@@ -563,7 +654,7 @@ namespace cubthread
     m_slots.get_runtime_stats (total_slots, target_slots, busy_slots);
     assert (this->m_workers.size () >= this->m_available_workers.size ());
     total_workers += this->m_workers.size ();
-    target_workers += m_max_concurrency;
+    target_workers += m_max_concurrency + m_progress_worker_count;
     busy_workers += this->m_workers.size () - this->m_available_workers.size ();
   }
 
@@ -579,6 +670,11 @@ namespace cubthread
   worker_pool_elastic<Stats>::core_elastic::reserve_available_worker ()
   {
     std::size_t expected, desired;
+
+    if (this->m_workers.size () >= m_max_concurrency + m_progress_worker_count)
+      {
+	return false;
+      }
 
     expected = m_current_worker.load ();
     do
@@ -644,6 +740,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_elastic<Stats>::core_elastic::worker_elastic::worker_elastic ()
     : m_slot (nullptr)
+    , m_completed_task (false)
   {
   }
 
@@ -706,17 +803,19 @@ namespace cubthread
     assert (dynamic_cast<core_elastic *> (this->m_parent_core));
 
     std::unique_lock<std::mutex> ulock (this->m_task_mutex, std::defer_lock);
+    bool completed_task = m_completed_task;
+    m_completed_task = false;
 
     if (!this->m_stop)
       {
 	std::optional<std::pair<wrapped_task, unique_slot>> queued =
-		    static_cast<core_elastic *> (this->m_parent_core)->get_task_and_slot_or_become_available (*this);
+		    static_cast<core_elastic *> (this->m_parent_core)->get_task_and_slot_or_become_available (*this,
+			completed_task);
 	if (queued.has_value ())
 	  {
 	    // stats: found in queue
 	    stats::time_and_increment (this->m_stats, stats::id::found_in_queue);
 
-	    // it is safe to set here
 	    this->m_wrapped_task.emplace (std::move (queued->first));
 	    m_slot = std::move (queued->second);
 
@@ -804,8 +903,13 @@ namespace cubthread
 
     // move the slot to the thread entry for task execution
     this->m_context_p->m_slot = std::move (m_slot);
+
+    this->publish_running_context ();
+
     // execute the task
     this->m_wrapped_task->execute (*this->m_context_p);
+
+    m_completed_task = true;
 
     // return the slot to the pool
     if (this->m_context_p->m_slot)
@@ -813,6 +917,8 @@ namespace cubthread
 	this->m_context_p->m_slot->return_to_pool (std::move (this->m_context_p->m_slot));
 	this->m_context_p->m_slot = nullptr;
       }
+
+    this->unpublish_running_context ();
 
     // stats: execute task
     stats::time_and_increment (this->m_stats, stats::id::execute_task);

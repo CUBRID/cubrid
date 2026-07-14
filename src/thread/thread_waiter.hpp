@@ -90,7 +90,7 @@ namespace cubthread
 
       std::mutex m_mutex;                 // mutex used to synchronize waiter states
       std::condition_variable m_condvar;  // condition variable used to wait/wakeup
-      status m_status;                    // current status
+      std::atomic<status> m_status;        // current status
 
       // stats
       cubperf::statset &m_stats;

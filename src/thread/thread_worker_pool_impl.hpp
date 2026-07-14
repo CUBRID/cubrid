@@ -43,7 +43,9 @@
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstdint>
 #include <optional>
+#include <shared_mutex>
 #include <algorithm>
 #include <vector>
 #include <memory>
@@ -429,6 +431,10 @@ namespace cubthread
       virtual void execute_current_task (void);
       // retire m_wrapped_task
       virtual void retire_current_task (void);
+      void publish_running_context (void);
+      void unpublish_running_context (void);
+      bool try_pin_running_context (void);
+      void unpin_running_context (void);
       // get new task from 1. worker pool task queue or 2. wait for incoming tasks
       virtual bool get_new_task (void);
 
@@ -440,7 +446,12 @@ namespace cubthread
       // worker is stopped
       std::mutex m_task_mutex;			    // mutex to protect waiting task condition
 
-      bool m_stop;				    // stop execution (set to true when worker pool is stopped)
+      static constexpr std::uint32_t RUNNING_CONTEXT_FLAG = std::uint32_t { 1 } << 31;
+      static constexpr std::uint32_t RUNNING_CONTEXT_READER_MASK = ~RUNNING_CONTEXT_FLAG;
+      std::atomic<std::uint32_t> m_running_context_state;
+      mutable std::shared_mutex m_context_mutex;
+
+      std::atomic<bool> m_stop;			    // stop execution (set to true when worker pool is stopped)
       bool m_persistent;			    // this worker always has the own thread
       bool m_has_thread;			    // true if worker has a thread running
 
@@ -646,6 +657,15 @@ namespace cubthread
     const std::chrono::milliseconds time_spin_sleep (10);       // sleep between spins for 10 milliseconds
 #endif
 
+    // Stop accepting work before stopping workers. execute_task checks m_stopped while holding each core mutex, so
+    // no task can enter a queue after this pass has acquired and released that mutex.
+    for (const auto &it : m_cores)
+      {
+	assert (dynamic_cast<core_impl *> (it.get ()));
+
+	static_cast<core_impl *> (it.get ())->retire_queued_tasks ();
+      }
+
     auto timeout = std::chrono::system_clock::now () + time_wait_to_thread_stop;
     bool has_running_workers;
 
@@ -677,7 +697,7 @@ namespace cubthread
 	std::this_thread::sleep_for (time_spin_sleep);
       }
 
-    // retire all tasks that have not been executed; at this point, no new tasks are produced
+    // Retire any task requeued by an assignment that was already in progress during the first pass.
     for (const auto &it : m_cores)
       {
 	assert (dynamic_cast<core_impl *> (it.get ()));
@@ -940,15 +960,16 @@ namespace cubthread
 
     worker_impl *worker_p = nullptr;
 
+    wrapped_task task_ref (task_p);
+    std::unique_lock<std::mutex> ulock (m_core_mutex);
+
     if (!m_parent_pool->is_running ())
       {
 	// reject task
-	task_p->retire ();
+	ulock.unlock ();
+	task_ref.retire ();
 	return;
       }
-
-    wrapped_task task_ref (task_p);
-    std::unique_lock<std::mutex> ulock (m_core_mutex);
 
     worker_p = static_cast<worker_impl *> (get_available_worker ());
     if (worker_p)
@@ -1332,6 +1353,7 @@ namespace cubthread
     : worker_pool::core::worker ()
     , m_context_p (nullptr)
     , m_wrapped_task (std::nullopt)
+    , m_running_context_state (0)
     , m_stop (false)
     , m_persistent (false)
     , m_has_thread (false)
@@ -1465,16 +1487,19 @@ namespace cubthread
   bool
   worker_pool_impl<Stats>::core_impl::worker_impl::stop_execution (void)
   {
-    context_type *context_p = m_context_p;
     bool has_thread = false;
 
-    if (context_p != nullptr)
-      {
-	// notify context to stop
-	m_parent_core->get_entry_manager ().stop_execution (*context_p);
-      }
+    // Context creation and retirement are rare. Keep their lock separate from task handoff so periodic context
+    // inspection cannot contend with the normal task path.
+    {
+      std::shared_lock<std::shared_mutex> context_lock (m_context_mutex);
+      if (m_context_p != nullptr)
+	{
+	  // notify context to stop
+	  m_parent_core->get_entry_manager ().stop_execution (*m_context_p);
+	}
+    }
 
-    // make sure thread is not waiting for tasks
     std::unique_lock<std::mutex> ulock (m_task_mutex);
 
     if (m_has_thread)
@@ -1504,9 +1529,8 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::map_context_if_running (bool &stop, Func &&func, Args &&... args)
   {
-    if (!m_wrapped_task.has_value ())
+    if (!try_pin_running_context ())
       {
-	// not running
 	return;
       }
 
@@ -1516,6 +1540,8 @@ namespace cubthread
       {
 	func (*ctxp, stop, args...);
       }
+
+    unpin_running_context ();
   }
 
   template <stats_t Stats>
@@ -1557,9 +1583,6 @@ namespace cubthread
   void
   worker_pool_impl<Stats>::core_impl::worker_impl::init_run (void)
   {
-    // safe-guard - we have a thread
-    assert (m_has_thread);
-
 #if !defined (NDEBUG)
     // safe-guard - threads should [no longer] be available
     assert (dynamic_cast<core_impl *> (m_parent_core));
@@ -1567,11 +1590,21 @@ namespace cubthread
     static_cast<core_impl *> (m_parent_core)->check_worker_not_available (*this);
 #endif
 
+    {
+      std::lock_guard<std::mutex> guard (m_task_mutex);
+
+      // safe-guard - we have a thread
+      assert (m_has_thread);
+    }
+
     // stats: start thread
     stats::time_and_increment (m_stats, stats::id::start_thread);
 
     // a context is required
-    m_context_p = &m_parent_core->get_entry_manager ().create_context ();
+    {
+      std::unique_lock<std::shared_mutex> context_lock (m_context_mutex);
+      m_context_p = &m_parent_core->get_entry_manager ().create_context ();
+    }
 
     // stats: context create
     stats::time_and_increment (m_stats, stats::id::create_context);
@@ -1583,10 +1616,15 @@ namespace cubthread
   {
     assert (!m_wrapped_task.has_value ());
     assert (m_context_p != nullptr);
+    assert (m_running_context_state.load (std::memory_order_acquire) == 0);
 
-    // retire context
-    m_parent_core->get_entry_manager ().retire_context (*m_context_p);
-    m_context_p = nullptr;
+    {
+      std::unique_lock<std::shared_mutex> context_lock (m_context_mutex);
+
+      // retire context
+      m_parent_core->get_entry_manager ().retire_context (*m_context_p);
+      m_context_p = nullptr;
+    }
 
     // stats: context retire
     stats::time_and_increment (m_stats, stats::id::retire_context);
@@ -1598,8 +1636,13 @@ namespace cubthread
   {
     assert (m_wrapped_task.has_value ());
 
+    publish_running_context ();
+
     // execute task
     m_wrapped_task->execute (*m_context_p);
+
+    unpublish_running_context ();
+
     // stats: execute task
     stats::time_and_increment (m_stats, stats::id::execute_task);
 
@@ -1624,6 +1667,54 @@ namespace cubthread
 
     // stats: retire task
     stats::time_and_increment (m_stats, stats::id::retire_task);
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::worker_impl::publish_running_context (void)
+  {
+    assert (m_context_p != nullptr);
+    assert (m_running_context_state.load (std::memory_order_relaxed) == 0);
+    m_running_context_state.store (RUNNING_CONTEXT_FLAG, std::memory_order_release);
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::worker_impl::unpublish_running_context (void)
+  {
+    std::uint32_t previous = m_running_context_state.fetch_and (RUNNING_CONTEXT_READER_MASK,
+			     std::memory_order_acq_rel);
+    assert ((previous & RUNNING_CONTEXT_FLAG) != 0);
+
+    while (m_running_context_state.load (std::memory_order_acquire) != 0)
+      {
+	std::this_thread::yield ();
+      }
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_impl<Stats>::core_impl::worker_impl::try_pin_running_context (void)
+  {
+    std::uint32_t state = m_running_context_state.load (std::memory_order_acquire);
+    while ((state & RUNNING_CONTEXT_FLAG) != 0)
+      {
+	assert ((state & RUNNING_CONTEXT_READER_MASK) != RUNNING_CONTEXT_READER_MASK);
+	if (m_running_context_state.compare_exchange_weak (state, state + 1, std::memory_order_acquire,
+	    std::memory_order_relaxed))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_impl<Stats>::core_impl::worker_impl::unpin_running_context (void)
+  {
+    std::uint32_t previous = m_running_context_state.fetch_sub (1, std::memory_order_release);
+    assert ((previous & RUNNING_CONTEXT_READER_MASK) > 0);
   }
 
   template <stats_t Stats>
@@ -1652,7 +1743,6 @@ namespace cubthread
 	    // stats: found in queue
 	    stats::time_and_increment (m_stats, stats::id::found_in_queue);
 
-	    // it is safe to set here
 	    m_wrapped_task.emplace (std::move (*queued_task));
 	    return true;
 	  }
