@@ -19144,6 +19144,97 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_fill_remote_dml_sink () - Fill the common DBLink remote push-sink fields (connection info +
+ *   qualified remote table name), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ *   parser(in)      : parser context
+ *   entity_name(in) : remote target's entity_name PT_NODE (PT_NAME with optional owner resolved)
+ *   pdblink(in)     : remote connection info; url/user/pwd already validated non-NULL by the caller
+ *   sink(out)       : is_remote/url/user/pwd/table_name filled in
+ *
+ * Note: table_name is left NULL on allocation failure -- the caller detects this the same way it
+ *   already checks pt_has_error(parser), by testing sink->table_name == NULL.
+ *
+ * TODO: The remote table name (here) and remote column names (INSERT's remote_attr_names) are
+ *   emitted to the remote server unquoted (dblink_dml_open builds "INSERT INTO <table> [(<cols>)]
+ *   VALUES (?, ...)" / "DELETE FROM <table> WHERE ..."). Quoting makes identifiers case-sensitive,
+ *   but unquoted identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase)
+ *   and the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`). The remote DBMS type
+ *   is unknown at XASL generation (these sinks also target Oracle/MySQL via the gateway), and
+ *   info.name.original has already dropped the user's quoting, so faithful requoting is not possible
+ *   here. Proper per-DB quoting is deferred, consistent with the correlated push-down path
+ *   (CBRD-26601, mq_dblink_append_corr_pred_sql). Consequence: remote table/column names that
+ *   require quoting (reserved words, mixed-case, special chars) are not supported.
+ */
+static void
+pt_fill_remote_dml_sink (PARSER_CONTEXT * parser, PT_NODE * entity_name, PT_DBLINK_INFO * pdblink,
+			 REMOTE_DML_SINK * sink)
+{
+  sink->is_remote = true;
+  sink->url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  sink->user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  sink->pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+
+  sink->table_name = NULL;
+  if (entity_name->info.name.resolved)
+    {
+      sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.resolved);
+      sink->table_name = pt_append_string (parser, sink->table_name, ".");
+    }
+  sink->table_name = pt_append_string (parser, sink->table_name, entity_name->info.name.original);
+}
+
+/*
+ * pt_finish_remote_dml_xasl () - Fill the XASL-cache creator OID and copy the aptr's class OID/lock/
+ *   tcard list (for locking), shared by the INSERT SELECT and DELETE local-subquery XASL builders.
+ *   return: true on success, false on allocation failure (caller returns NULL)
+ *   xasl(in/out): xasl->creator_oid, class_oid_list/class_locks/tcard_list/n_oid_list/dbval_cnt filled
+ *                 in from xasl->aptr_list
+ */
+static bool
+pt_finish_remote_dml_xasl (XASL_NODE * xasl)
+{
+  const OID *oid;
+
+  /* XASL cache: OID of the user creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* copy aptr class OID list (local SELECT/subquery tables) for locking */
+  if (xasl->aptr_list != NULL)
+    {
+      XASL_NODE *aptr = xasl->aptr_list;
+
+      xasl->dbval_cnt = aptr->dbval_cnt;
+
+      if (aptr->n_oid_list > 0)
+	{
+	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
+	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
+	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
+	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	    {
+	      return false;
+	    }
+
+	  xasl->n_oid_list = aptr->n_oid_list;
+	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
+	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+	}
+    }
+
+  return true;
+}
+
+/*
  * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
  *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
  *   the executor can stream rows via CCI into the remote table.
@@ -19162,7 +19253,6 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *server_node = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
   PT_NODE *entity_name = NULL;
-  const OID *oid = NULL;
 
   assert (parser != NULL && statement != NULL);
 
@@ -19200,32 +19290,8 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert = &xasl->proc.insert;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  insert->sink.is_remote = true;
-  insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
-  insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
-  insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
-
-  /* build qualified remote table name: [owner.]table
-   *
-   * TODO: The remote table name (here) and remote column names (remote_attr_names, below) are
-   *       emitted to the remote server unquoted (dblink_dml_open builds "INSERT INTO <table>
-   *       [(<cols>)] VALUES (?, ...)").  Quoting makes identifiers case-sensitive, but unquoted
-   *       identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase) and
-   *       the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`).  The remote DBMS
-   *       type is unknown at XASL generation (remote INSERT SELECT also targets Oracle/MySQL via the
-   *       gateway), and info.name.original has already dropped the user's quoting, so faithful
-   *       requoting is not possible here.  Proper per-DB quoting is deferred, consistent with the
-   *       correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql).  Consequence:
-   *       remote table/column names that require quoting (reserved words, mixed-case, special chars)
-   *       are not supported in remote INSERT SELECT. */
   entity_name = into_spec->info.spec.entity_name;
-  insert->sink.table_name = NULL;
-  if (entity_name->info.name.resolved)
-    {
-      insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, entity_name->info.name.resolved);
-      insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, ".");
-    }
-  insert->sink.table_name = pt_append_string (parser, insert->sink.table_name, entity_name->info.name.original);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &insert->sink);
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -19306,40 +19372,9 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   HFID_SET_NULL (&insert->class_hfid);
   insert->vals = NULL;
 
-  /* XASL cache: OID of the user creating this XASL */
-  oid = ws_identifier (db_get_user ());
-  if (oid != NULL)
+  if (!pt_finish_remote_dml_xasl (xasl))
     {
-      COPY_OID (&xasl->creator_oid, oid);
-    }
-  else
-    {
-      OID_SET_NULL (&xasl->creator_oid);
-    }
-
-  /* copy aptr class OID list (local SELECT tables) for locking */
-  if (xasl->aptr_list != NULL)
-    {
-      XASL_NODE *aptr = xasl->aptr_list;
-
-      xasl->dbval_cnt = aptr->dbval_cnt;
-
-      if (aptr->n_oid_list > 0)
-	{
-	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
-	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
-	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
-	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
-	    {
-	      return NULL;
-	    }
-
-	  xasl->n_oid_list = aptr->n_oid_list;
-	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
-	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
-	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
-	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
-	}
+      return NULL;
     }
 
   return xasl;
@@ -19367,7 +19402,6 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *cond, *arg1, *arg2;
   const char *op_sql = NULL;
   const char *key_col = NULL;
-  const OID *oid = NULL;
 
   assert (parser != NULL && statement != NULL);
 
@@ -19471,20 +19505,8 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->num_classes = 0;
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
-  del->sink.is_remote = true;
-  del->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
-  del->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
-  del->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
-
-  /* qualified remote table name: [owner.]table (unquoted, same limitation as remote INSERT SELECT) */
   entity_name = from->info.spec.entity_name;
-  del->sink.table_name = NULL;
-  if (entity_name->info.name.resolved)
-    {
-      del->sink.table_name = pt_append_string (parser, del->sink.table_name, entity_name->info.name.resolved);
-      del->sink.table_name = pt_append_string (parser, del->sink.table_name, ".");
-    }
-  del->sink.table_name = pt_append_string (parser, del->sink.table_name, entity_name->info.name.original);
+  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &del->sink);
 
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
@@ -19493,40 +19515,9 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* XASL cache: OID of the user creating this XASL */
-  oid = ws_identifier (db_get_user ());
-  if (oid != NULL)
+  if (!pt_finish_remote_dml_xasl (xasl))
     {
-      COPY_OID (&xasl->creator_oid, oid);
-    }
-  else
-    {
-      OID_SET_NULL (&xasl->creator_oid);
-    }
-
-  /* copy aptr class OID list (local subquery tables) for locking */
-  if (xasl->aptr_list != NULL)
-    {
-      XASL_NODE *aptr = xasl->aptr_list;
-
-      xasl->dbval_cnt = aptr->dbval_cnt;
-
-      if (aptr->n_oid_list > 0)
-	{
-	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
-	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
-	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
-	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
-	    {
-	      return NULL;
-	    }
-
-	  xasl->n_oid_list = aptr->n_oid_list;
-	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
-	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
-	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
-	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
-	}
+      return NULL;
     }
 
   return xasl;
