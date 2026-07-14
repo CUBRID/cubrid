@@ -2784,7 +2784,8 @@ bt_load_assert_ledger_has_unique_vpids (BT_LOAD_PROVIDER * provider)
 	      || entry->origin == BT_LOAD_ORIGIN_MAIN_INLINE);
       for (int i = 0; i < entry->n; i++)
 	{
-	  assert (entry->vpids[i].volid == entry->vfid.volid);
+	  /* A file may allocate pages on extension volumes; only the VPID itself must be valid. */
+	  assert (!VPID_ISNULL (&entry->vpids[i]));
 	}
       memcpy (&vpids[offset], entry->vpids, (size_t) entry->n * sizeof (*vpids));
       offset += entry->n;
