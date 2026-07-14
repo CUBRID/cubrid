@@ -19208,7 +19208,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* build qualified remote table name: [owner.]table
    *
    * TODO: The remote table name (here) and remote column names (remote_attr_names, below) are
-   *       emitted to the remote server unquoted (dblink_insert_open builds "INSERT INTO <table>
+   *       emitted to the remote server unquoted (dblink_dml_open builds "INSERT INTO <table>
    *       [(<cols>)] VALUES (?, ...)").  Quoting makes identifiers case-sensitive, but unquoted
    *       identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase) and
    *       the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`).  The remote DBMS
@@ -19244,7 +19244,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
    *                         → remote_attr_names[i] = attr_list column names
    *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
-   *                         → remote_attr_names = NULL; dblink_insert_open uses INSERT INTO t VALUES (?,?)
+   *                         → remote_attr_names = NULL; dblink_dml_open uses INSERT INTO t VALUES (?,?)
    */
   if (statement->info.insert.attr_list != NULL)
     {
@@ -19296,7 +19296,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   else
     {
-      /* positional insert: dblink_insert_open builds INSERT INTO t VALUES (?,?) */
+      /* positional insert: dblink_dml_open builds INSERT INTO t VALUES (?,?) */
       insert->remote_attr_names = NULL;
       insert->remote_num_attrs = 0;
     }

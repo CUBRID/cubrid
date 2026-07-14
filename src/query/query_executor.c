@@ -12468,7 +12468,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   SCAN_ID *s_id = NULL;
   QPROC_DB_VALUE_LIST vallist;
   int k, val_no;
-  DBLINK_INSERT_STATE dblink_state = { -1, -1 };
+  DBLINK_DML_STATE dblink_state = { -1, -1 };
 
   assert (specp != NULL);
   assert (insert->sink.is_remote);
@@ -12480,9 +12480,9 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   assert (val_no == 0 || insert->vals != NULL);
 
   /* open remote connection and prepare INSERT statement */
-  if (dblink_insert_open (thread_p, insert->sink.url, insert->sink.user, insert->sink.pwd,
-			  insert->sink.table_name, insert->remote_attr_names,
-			  insert->remote_num_attrs, val_no, &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, DBLINK_DML_INSERT, insert->sink.url, insert->sink.user, insert->sink.pwd,
+		       insert->sink.table_name, insert->remote_attr_names, insert->remote_num_attrs, val_no,
+		       NULL, NULL, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
@@ -12530,7 +12530,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 	   * unrelated to it -- a positional INSERT row is expected to affect exactly one row, though a
 	   * remote-side trigger/constraint could in principle alter that. Reconciling INSERT accounting
 	   * against such cases is out of scope here. */
-	  if (dblink_insert_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
+	  if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
 	      goto exit_on_error;
@@ -12552,14 +12552,14 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       goto exit_on_error;
     }
 
-  dblink_insert_close (&dblink_state);
+  dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
 
   return NO_ERROR;
 
 exit_on_error:
-  dblink_insert_rollback (&dblink_state);
-  dblink_insert_close (&dblink_state);
+  dblink_dml_rollback (&dblink_state);
+  dblink_dml_close (&dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
 
@@ -12777,7 +12777,7 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   SCAN_ID *s_id = NULL;
   QPROC_DB_VALUE_LIST vallist;
   DB_VALUE *bindv[1];
-  DBLINK_INSERT_STATE dblink_state = { -1, -1 };
+  DBLINK_DML_STATE dblink_state = { -1, -1 };
   int row_affected;
 
   assert (del->sink.is_remote);
@@ -12811,8 +12811,9 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
   assert (specp != NULL);
 
   /* open remote connection and prepare the DELETE statement */
-  if (dblink_delete_open (thread_p, del->sink.url, del->sink.user, del->sink.pwd, del->sink.table_name,
-			  del->remote_key_col, del->remote_op, &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, del->sink.url, del->sink.user, del->sink.pwd,
+		       del->sink.table_name, NULL, 0, 0, del->remote_key_col, del->remote_op,
+		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
@@ -12855,7 +12856,7 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	  /* affected_rows is the remote's own reported count for this DELETE execute: it can be 0
 	   * (key has no remote match) or more than 1 (remote key is not unique), neither of which
 	   * equals "one local subquery row" -- accumulate it instead of counting local rows. */
-	  if (dblink_insert_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
+	  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
 	    {
 	      qexec_failure_line (__LINE__, xasl_state);
 	      goto exit_on_error;
@@ -12877,14 +12878,14 @@ qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       goto exit_on_error;
     }
 
-  dblink_insert_close (&dblink_state);
+  dblink_dml_close (&dblink_state);
   qexec_close_scan (thread_p, specp);
 
   return NO_ERROR;
 
 exit_on_error:
-  dblink_insert_rollback (&dblink_state);
-  dblink_insert_close (&dblink_state);
+  dblink_dml_rollback (&dblink_state);
+  dblink_dml_close (&dblink_state);
   if (specp != NULL)
     {
       qexec_end_scan (thread_p, specp);
