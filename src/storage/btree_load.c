@@ -1000,7 +1000,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
-  bool no_redo_backup_gate_entered = false;
   if (create_lsa != NULL)
     {
       LSA_SET_NULL (create_lsa);
@@ -1045,12 +1044,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
   load_args->no_redo = eligible_no_redo;
-  if (load_args->no_redo)
-    {
-      log_no_redo_bulk_build_enter ();
-      no_redo_backup_gate_entered = true;
-    }
-  else
+  if (!load_args->no_redo)
     {
       log_sysop_start (thread_p);
       is_sysop_started = true;
@@ -1384,13 +1378,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       goto error;
     }
-#if defined (SERVER_MODE)
-  if (no_redo_backup_gate_entered)
-    {
-      log_no_redo_bulk_build_exit ();
-      no_redo_backup_gate_entered = false;
-    }
-#endif /* SERVER_MODE */
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
 
@@ -1469,12 +1456,6 @@ error:
       log_sysop_abort (thread_p);
     }
 
-#if defined (SERVER_MODE)
-  if (no_redo_backup_gate_entered)
-    {
-      log_no_redo_bulk_build_exit ();
-    }
-#endif /* SERVER_MODE */
   return NULL;
 }
 

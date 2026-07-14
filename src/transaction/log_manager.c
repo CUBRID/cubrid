@@ -4244,59 +4244,6 @@ log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
     }
 }
 
-#if defined (SERVER_MODE)
-static pthread_mutex_t log_No_redo_backup_mutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t log_No_redo_backup_cond = PTHREAD_COND_INITIALIZER;
-static int log_No_redo_bulk_build_count = 0;
-static bool log_Online_backup_active = false;
-
-void
-log_no_redo_bulk_build_enter (void)
-{
-  pthread_mutex_lock (&log_No_redo_backup_mutex);
-  while (log_Online_backup_active)
-    {
-      pthread_cond_wait (&log_No_redo_backup_cond, &log_No_redo_backup_mutex);
-    }
-  log_No_redo_bulk_build_count++;
-  pthread_mutex_unlock (&log_No_redo_backup_mutex);
-}
-
-void
-log_no_redo_bulk_build_exit (void)
-{
-  pthread_mutex_lock (&log_No_redo_backup_mutex);
-  assert (log_No_redo_bulk_build_count > 0);
-  log_No_redo_bulk_build_count--;
-  if (log_No_redo_bulk_build_count == 0)
-    {
-      pthread_cond_broadcast (&log_No_redo_backup_cond);
-    }
-  pthread_mutex_unlock (&log_No_redo_backup_mutex);
-}
-
-void
-log_online_backup_enter (void)
-{
-  pthread_mutex_lock (&log_No_redo_backup_mutex);
-  log_Online_backup_active = true;
-  while (log_No_redo_bulk_build_count > 0)
-    {
-      pthread_cond_wait (&log_No_redo_backup_cond, &log_No_redo_backup_mutex);
-    }
-  pthread_mutex_unlock (&log_No_redo_backup_mutex);
-}
-
-void
-log_online_backup_exit (void)
-{
-  pthread_mutex_lock (&log_No_redo_backup_mutex);
-  assert (log_Online_backup_active);
-  log_Online_backup_active = false;
-  pthread_cond_broadcast (&log_No_redo_backup_cond);
-  pthread_mutex_unlock (&log_No_redo_backup_mutex);
-}
-#endif /* SERVER_MODE */
 /*
  * log_check_system_op_is_started () - Check system op is started.
  *
