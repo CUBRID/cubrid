@@ -729,13 +729,12 @@ namespace cubstorage
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
       std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
   {
-    // avoid draining all queue entries to reduce tail latency
-    constexpr std::size_t MAX_POP_TRIES = L3_FANOUT * L2_FANOUT;
     std::size_t num_residents = L3_FANOUT * L2_FANOUT;
-    bestspace_entry candidate;
+    bestspace_entry buffer[ALLOC_BATCH_SIZE - 1];
+    std::size_t num_buffer;
     std::size_t num_candidates;
+    std::size_t i, j;
     tier minimum;
-    std::size_t trial, i;
 
     minimum = size_to_tier (victims[ALLOC_BATCH_SIZE - 1].second);
     if (minimum >= tier::FS8)
@@ -744,38 +743,33 @@ namespace cubstorage
 	return 0;
       }
 
-    trial = 0;
+    num_buffer = m_parent.pop_candidates (buffer, ALLOC_BATCH_SIZE - 1);
+
     num_candidates = 0;
-    while (trial++ < MAX_POP_TRIES &&
-	   num_candidates < ALLOC_BATCH_SIZE - 1 && m_parent.pop_candidate (candidate))
+    for (i = 0; i < num_buffer; i++)
       {
-	if (size_to_tier (candidate.freespace) <= minimum)
+	if (size_to_tier (buffer[i].freespace) <= minimum)
 	  {
 	    continue;
 	  }
-
-	for (i = 0; i < num_residents; i++)
+	for (j = 0; j < num_residents; j++)
 	  {
-	    if (residents[i].volid == candidate.volid &&
-		residents[i].pageid == candidate.pageid)
+	    if (buffer[i].volid == residents[j].volid &&
+		buffer[i].pageid == residents[j].pageid)
 	      {
 		break;
 	      }
 	  }
-	if (i < num_residents)
+	if (j == num_residents)
 	  {
-	    // there is already candidate page in bestspace or candidates
-	    continue;
+	    candidates[num_candidates] = buffer[i];
+	    num_candidates++;
+
+	    residents[num_residents].volid = buffer[i].volid;
+	    residents[num_residents].pageid = buffer[i].pageid;
+	    num_residents++;
 	  }
-
-	candidates[num_candidates] = candidate;
-	num_candidates++;
-
-	residents[num_residents].volid = candidate.volid;
-	residents[num_residents].pageid = candidate.pageid;
-	num_residents++;
       }
-
     return num_candidates;
   }
 
@@ -878,6 +872,127 @@ namespace cubstorage
     return status::FOUND;
   }
 
+  bestspace::candidate_queue::candidate_queue ()
+    : m_size (0)
+    , m_mutex ()
+  {
+    std::size_t i;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    for (i = 0; i < MAX_CANDIDATES_QUEUE_SIZE; i++)
+      {
+	m_array[i].set_null ();
+      }
+  }
+
+  bool
+  bestspace::candidate_queue::try_push (bestspace_entry candidate)
+  {
+    std::unique_lock<std::mutex> ulock (m_mutex, std::try_to_lock);
+
+    // try to acquire
+    if (!ulock.owns_lock ())
+      {
+	return false;
+      }
+
+    remove_if_exist (candidate);
+
+    // not enough space to be candidate
+    if (m_size == MAX_CANDIDATES_QUEUE_SIZE && candidate.freespace <= m_array[0].freespace)
+      {
+	return true;
+      }
+
+    insert (candidate);
+
+    return true;
+  }
+
+  void
+  bestspace::candidate_queue::push (bestspace_entry candidate)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    remove_if_exist (candidate);
+
+    // not enough space to be candidate
+    if (m_size == MAX_CANDIDATES_QUEUE_SIZE && candidate.freespace <= m_array[0].freespace)
+      {
+	return;
+      }
+
+    insert (candidate);
+  }
+
+  std::size_t
+  bestspace::candidate_queue::pop (bestspace_entry *candidates, std::size_t num_candidates)
+  {
+    std::size_t i;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    for (i = 0; i < num_candidates && m_size > 0; i++)
+      {
+	candidates[i] = m_array[m_size - 1];
+	m_size--;
+      }
+    return i;
+  }
+
+  void
+  bestspace::candidate_queue::remove_if_exist (bestspace_entry &candidate)
+  {
+    int i;
+
+    // remove the duplicate if the candidate already exists
+    for (i = 0; i < static_cast<int> (m_size); i++)
+      {
+	if (candidate.volid == m_array[i].volid && candidate.pageid == m_array[i].pageid)
+	  {
+	    std::memmove (m_array.data () + i, m_array.data () + i + 1, sizeof (bestspace_entry) * (m_size - i - 1));
+	    m_size--;
+	    break;
+	  }
+      }
+  }
+
+  void
+  bestspace::candidate_queue::insert (bestspace_entry &candidate)
+  {
+    int i;
+
+    // remove the duplicate if the candidate already exists
+    for (i = 0; i < static_cast<int> (m_size); i++)
+      {
+	if (candidate.freespace < m_array[i].freespace)
+	  {
+	    break;
+	  }
+      }
+
+    if (m_size == MAX_CANDIDATES_QUEUE_SIZE)
+      {
+	assert (i != 0);
+
+	if (i > 1)
+	  {
+	    std::memmove (m_array.data (), m_array.data () + 1, sizeof (bestspace_entry) * (i - 1));
+	  }
+	m_array[i - 1] = candidate;
+      }
+    else
+      {
+	if (i != static_cast<int> (m_size))
+	  {
+	    std::memmove (m_array.data () + i + 1, m_array.data () + i, sizeof (bestspace_entry) * (m_size - i));
+	  }
+	m_array[i] = candidate;
+	m_size++;
+      }
+  }
+
   bestspace::bestspace (std::size_t shard_count, const VPID *shard_pages, int num_shard_pages, int num_pages,
 			std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space)
     : m_shards ()
@@ -888,10 +1003,10 @@ namespace cubstorage
   {
     assert (shard_count > 0);
     assert (num_shard_pages > 0
-	    && static_cast<std::size_t> (num_shard_pages) <= sizeof (m_header.pages) / sizeof (m_header.pages[0]));
+	    && static_cast<std::size_t> (num_shard_pages) <= cubstorage::bestspace::MAX_SHARD_PAGE_COUNT);
 
     // store the shard page information
-    for (std::size_t i = 0; i < sizeof (m_header.pages) / sizeof (m_header.pages[0]); i++)
+    for (std::size_t i = 0; i < cubstorage::bestspace::MAX_SHARD_PAGE_COUNT; i++)
       {
 	if (i < static_cast<std::size_t> (num_shard_pages))
 	  {
@@ -935,9 +1050,7 @@ namespace cubstorage
 	  }
 	for (j = entries_to_copy; j < ENTRIES_PER_SHARD; j++)
 	  {
-	    shard_entries[j].freespace = 0;
-	    shard_entries[j].volid = NULL_VOLID;
-	    shard_entries[j].pageid = NULL_PAGEID;
+	    shard_entries[j].set_null ();
 	  }
 
 	m_shards[i].initialize_by_entries (shard_entries.data ());
@@ -946,7 +1059,18 @@ namespace cubstorage
   }
 
   void
-  bestspace::add_candidates (bestspace_entry *candidates, std::size_t num_candidates)
+  bestspace::try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates)
+  {
+    std::size_t i;
+
+    for (i = 0; i < num_candidates; i++)
+      {
+	m_candidates.try_push (candidates[i]);
+      }
+  }
+
+  void
+  bestspace::push_candidates (bestspace_entry *candidates, std::size_t num_candidates)
   {
     std::size_t i;
 
@@ -956,10 +1080,10 @@ namespace cubstorage
       }
   }
 
-  bool
-  bestspace::pop_candidate (bestspace_entry &candidate)
+  std::size_t
+  bestspace::pop_candidates (bestspace_entry *candidates, std::size_t num_candidates)
   {
-    return m_candidates.try_pop (candidate);
+    return m_candidates.pop (candidates, num_candidates);
   }
 
   bool
@@ -1247,7 +1371,7 @@ namespace cubstorage
     node->hfid = *hfid;
     node->entry = new bestspace (shard_count, shard_pages, num_shard_pages, num_pages, recs_num, recs_sumlen, unfill_space);
     node->entry->initialize_by_entries (entries, num_entries);
-    node->entry->add_candidates (candidates, num_candidates);
+    node->entry->push_candidates (candidates, num_candidates);
 
     std::lock_guard<std::mutex> lock (m_mutex);
 

@@ -23,7 +23,6 @@
 #ifndef _BESTSPACE_HPP_
 #define _BESTSPACE_HPP_
 
-#include "tbb/concurrent_queue.h"
 #include "thread_entry.hpp"
 #include "page_buffer.h"
 #include "storage_common.h"
@@ -51,6 +50,13 @@ namespace cubstorage
     std::uint16_t freespace;
     short volid;
     int32_t pageid;
+
+    void set_null ()
+    {
+      freespace = 0;
+      volid = NULL_VOLID;
+      pageid = NULL_PAGEID;
+    }
   };
 
   static_assert (sizeof (bestspace_entry) == 8, "bestspace_entry must be 8 bytes");
@@ -62,18 +68,12 @@ namespace cubstorage
   // base class
   //////////////////////////////////////////////////////////////////////////
 
-#if defined (UNIT_TEST_BESTSPACE)
-  struct bestspace_test_probe;
-#endif
-
   class bestspace
   {
-#if defined (UNIT_TEST_BESTSPACE)
-      friend struct bestspace_test_probe;
-#endif
-
     public:
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
+      static constexpr std::size_t MAX_CANDIDATES_QUEUE_SIZE = 128;
+      static constexpr std::size_t MAX_SHARD_PAGE_COUNT = 4;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
@@ -121,23 +121,6 @@ namespace cubstorage
 	return result;
       }
 
-      class bitmap
-      {
-	public:
-	  bitmap () noexcept;
-	  ~bitmap () = default;
-
-	  bool empty ();
-
-	  void set (std::size_t index);
-	  void clear (std::size_t index);
-
-	  std::size_t find (std::array<std::size_t, BITS_PER_BYTE> &pos, std::size_t length = BITS_PER_BYTE);
-
-	private:
-	  std::uint8_t m_bits;
-      };
-
       template <typename T>
       struct alignas (64) atomic_wrapper
       {
@@ -167,6 +150,23 @@ namespace cubstorage
 	{
 	  return value.compare_exchange_strong (expected, desired);
 	}
+      };
+
+      class bitmap
+      {
+	public:
+	  bitmap () noexcept;
+	  ~bitmap () = default;
+
+	  bool empty ();
+
+	  void set (std::size_t index);
+	  void clear (std::size_t index);
+
+	  std::size_t find (std::array<std::size_t, BITS_PER_BYTE> &pos, std::size_t length = BITS_PER_BYTE);
+
+	private:
+	  std::uint8_t m_bits;
       };
 
       class L1
@@ -236,10 +236,6 @@ namespace cubstorage
 
       class alignas (64) shard
       {
-#if defined (UNIT_TEST_BESTSPACE)
-	  friend struct bestspace_test_probe;
-#endif
-
 	public:
 	  shard (bestspace &parent) noexcept;
 	  ~shard () = default;
@@ -318,6 +314,27 @@ namespace cubstorage
 	  status allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
       };
 
+      class candidate_queue
+      {
+	public:
+	  candidate_queue ();
+	  ~candidate_queue () = default;
+
+	  bool try_push (bestspace_entry candidate);
+	  void push (bestspace_entry candidate);
+
+	  std::size_t pop (bestspace_entry *candidates, std::size_t num_candidates);
+
+	private:
+	  std::array<bestspace_entry, MAX_CANDIDATES_QUEUE_SIZE> m_array;
+	  std::size_t m_size;
+
+	  std::mutex m_mutex;
+
+	  void remove_if_exist (bestspace_entry &candidate);
+	  void insert (bestspace_entry &candidate);
+      };
+
     public:
       explicit bestspace (std::size_t shard_count, const VPID *shard_pages, int num_shard_pages, int num_pages,
 			  std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space);
@@ -325,8 +342,9 @@ namespace cubstorage
 
       void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
 
-      void add_candidates (bestspace_entry *candidates, std::size_t num_candidates);
-      bool pop_candidate (bestspace_entry &candidate);
+      void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
+      void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
+      std::size_t pop_candidates (bestspace_entry *candidates, std::size_t num_candidates);
 
       bool updatable ();
 
@@ -346,7 +364,7 @@ namespace cubstorage
 
     private:
       std::deque<shard> m_shards;
-      tbb::concurrent_queue<bestspace_entry> m_candidates;
+      candidate_queue m_candidates;
 
       // parameter
       std::uint16_t m_unfill_space;
@@ -361,7 +379,7 @@ namespace cubstorage
       // base. update bestspace without fixing the heap header page
       struct
       {
-	VPID pages[4];
+	VPID pages[MAX_SHARD_PAGE_COUNT];
 	int page_num;
       } m_header;
 
@@ -433,7 +451,7 @@ namespace cubstorage
 
       alignas (64) std::atomic<uint64_t> m_generation;
 
-      static constexpr std::size_t TLS_MAX_SIZE = 20;
+      static constexpr std::size_t TLS_MAX_SIZE = 40;
       inline static thread_local registry_cache TLS_cache;
 
       bestspace *find_from_cache (HFID *hfid);

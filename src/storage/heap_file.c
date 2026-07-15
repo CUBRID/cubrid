@@ -202,13 +202,13 @@ struct heap_hdr_stats
   {
     std::size_t num_candidates;
     // *INDENT-OFF*
-    cubstorage::bestspace_entry candidates[128];
+    cubstorage::bestspace_entry candidates[cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE];
     // *INDENT-ON*
 
     std::size_t num_shards;
 
     std::size_t num_pages;
-    VPID pages[4];
+    VPID pages[cubstorage::bestspace::MAX_SHARD_PAGE_COUNT];
   } bestspace;
 
   int reserve0;			/* Nothing reserved for future */
@@ -3709,9 +3709,7 @@ heap_bestspace_clear_candidates (cubstorage::bestspace_entry * candidates, std::
     }
   for (i = 0; i < max_candidates; i++)
     {
-      candidates[i].freespace = 0;
-      candidates[i].volid = NULL_VOLID;
-      candidates[i].pageid = NULL_PAGEID;
+      candidates[i].set_null ();
     }
 }
 
@@ -3826,8 +3824,7 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
 
   /* candidates */
   heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
-				   sizeof (heap_hdr->bestspace.candidates) /
-				   sizeof (heap_hdr->bestspace.candidates[0]));
+				   cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
 
   /* shards */
   heap_hdr->bestspace.num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
@@ -3852,7 +3849,7 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
     }
 
   /* bestspace pages */
-  max_pages = sizeof (heap_hdr->bestspace.pages) / sizeof (heap_hdr->bestspace.pages[0]);
+  max_pages = cubstorage::bestspace::MAX_SHARD_PAGE_COUNT;
   heap_hdr->bestspace.num_pages = (max_entries + entries_per_page - 1) / entries_per_page;
   if (heap_hdr->bestspace.num_pages > max_pages)
     {
@@ -3913,9 +3910,7 @@ heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR_STATS * he
       assert (entries_count > 0);
       for (j = 0; j < entries_count; j++)
 	{
-	  entries[j].freespace = 0;
-	  entries[j].volid = NULL_VOLID;
-	  entries[j].pageid = NULL_PAGEID;
+	  entries[j].set_null ();
 	}
 
       /* first entry is the heap header page when the bestspace being created */
@@ -4124,9 +4119,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * 
 	}
       for (j = num_entries_to_copy; j < num_entries_in_page; j++)
 	{
-	  entries[j].freespace = 0;
-	  entries[j].volid = NULL_VOLID;
-	  entries[j].pageid = NULL_PAGEID;
+	  entries[j].set_null ();
 	}
 
       recdes.area_size = num_entries_in_page * sizeof (cubstorage::bestspace_entry);
@@ -4239,8 +4232,7 @@ heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * heade
 	      header->bestspace.num_candidates * sizeof (cubstorage::bestspace_entry));
 
       heap_bestspace_clear_candidates (header->bestspace.candidates, &header->bestspace.num_candidates,
-				       sizeof (header->bestspace.candidates) /
-				       sizeof (header->bestspace.candidates[0]));
+				       cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
 
       addr.vfid = &hfid->vfid;
       addr.pgptr = header_watcher->pgptr;
@@ -4358,7 +4350,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
   /* if the old shards is bigger than current option */
   if (num_entries > num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD)
     {
-      bestspace->add_candidates (&entries[num_shards * 64], num_entries - num_shards * 64);
+      bestspace->push_candidates (&entries[num_shards * 64], num_entries - num_shards * 64);
     }
 
   free_and_init (entries);
@@ -4543,7 +4535,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
       candidate.freespace = freespace;
       candidate.volid = vpid->volid;
       candidate.pageid = vpid->pageid;
-      bestspace->add_candidates (&candidate, 1);
+      bestspace->try_push_candidates (&candidate, 1);
     }
 }
 
@@ -4938,9 +4930,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   hfid_for_watcher = *hfid;
 
   VPID_SET_NULL (&last_vpid);
-  first_entry.freespace = 0;
-  first_entry.volid = NULL_VOLID;
-  first_entry.pageid = NULL_PAGEID;
+  first_entry.set_null ();
   addr.vfid = &hfid->vfid;
 
   /*
@@ -5055,8 +5045,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	  COPY_OID (&(heap_hdr->class_oid), class_oid);
 
 	  heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
-					   sizeof (heap_hdr->bestspace.candidates) /
-					   sizeof (heap_hdr->bestspace.candidates[0]));
+					   cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
 	  first_entry.freespace = freespace;
 	  first_entry.volid = vpid.volid;
 	  first_entry.pageid = vpid.pageid;
@@ -5073,8 +5062,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	  candidate_entry.volid = vpid.volid;
 	  candidate_entry.pageid = vpid.pageid;
 	  heap_bestspace_add_candidate (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
-					sizeof (heap_hdr->bestspace.candidates) /
-					sizeof (heap_hdr->bestspace.candidates[0]), &candidate_entry);
+					cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE, &candidate_entry);
 	}
 
       npages++;
@@ -5646,7 +5634,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   /*
    * Initialize bestspace
    */
-  max_candidates = sizeof (heap_hdr.bestspace.candidates) / sizeof (heap_hdr.bestspace.candidates[0]);
+  max_candidates = cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE;
   max_bestpages = cubstorage::bestspace::ENTRIES_PER_SHARD * prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
   heap_bestspace_clear_candidates (heap_hdr.bestspace.candidates, NULL, max_candidates);
 
