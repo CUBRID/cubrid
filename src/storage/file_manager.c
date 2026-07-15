@@ -7064,6 +7064,12 @@ exit:
  *
  * A stale file identifier is not an error during media recovery.  Only inspect
  * file tables after the fixed header page is proved to be the requested file.
+ * The header page fix itself tolerates deallocation (OLD_PAGE_MAYBE_DEALLOCATED):
+ * a no-redo bulk-built file (e.g. an overflow-key file) can be postponed-destroyed
+ * later in the same log timeline than an earlier record still being classified for
+ * skip-redo, so its header page may already be gone by the time this check runs
+ * during media recovery. Membership defaults to NOT_MEMBER, which is safe (redo is
+ * not skipped).
  */
 int
 file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID * vpid_lookup, int *membership)
@@ -7080,9 +7086,19 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
 
   *membership = FILE_RECOVERY_VPID_NOT_MEMBER;
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  /* The file's header page was already deallocated by a later point in the log timeline than the
+	   * record currently being classified (e.g. a postponed destroy of a no-redo bulk-built overflow
+	   * file). Membership cannot be established from a file table that no longer exists, but that is not
+	   * an error during recovery: *membership is already FILE_RECOVERY_VPID_NOT_MEMBER, which tells the
+	   * caller to apply the redo normally (the safe/conservative answer). */
+	  er_clear ();
+	  return NO_ERROR;
+	}
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
 
