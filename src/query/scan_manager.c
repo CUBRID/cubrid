@@ -3254,7 +3254,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is HEAP SCAN or HEAP SCAN RECORD INFO */
-  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO || scan_type == S_HEAP_SAMPLING_SCAN);
+  assert (scan_type == S_HEAP_SCAN || scan_type == S_HEAP_SCAN_RECORD_INFO);
   scan_id->type = scan_type;
 
   /* initialize SCAN_ID structure */
@@ -4549,7 +4549,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
       UT_CAST_TO_NULL_HEAP_OID (&hsidp->hfid, &hsidp->curr_oid);
       if (!OID_IS_ROOTOID (&hsidp->cls_oid))
@@ -4871,13 +4870,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	}
       break;
 
-    case S_HEAP_SAMPLING_SCAN:
-      /* stats-gathering sampling is not reset-driven; rewind stays partition-slice-safe regardless */
-      assert (s_id->s.hsid.sampling.picked_vpids != NULL || s_id->s.hsid.sampling.picked_count == 0);
-      assert (s_id->s.hsid.sampling.part_offsets != NULL);
-      s_id->s.hsid.sampling.picked_cursor = s_id->s.hsid.sampling.part_offsets[s_id->s.hsid.sampling.partition_cursor];
-      UT_CAST_TO_NULL_HEAP_OID (&s_id->s.hsid.hfid, &s_id->s.hsid.curr_oid);
-      break;
 
 #if SERVER_MODE && !WINDOWS
     case S_PARALLEL_HEAP_SCAN:
@@ -5045,7 +5037,6 @@ scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
     case S_HEAP_PAGE_SCAN:
-    case S_HEAP_SAMPLING_SCAN:
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
     case S_PARALLEL_INDEX_SCAN:
@@ -5202,7 +5193,6 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_HEAP_SAMPLING_SCAN:
       hsidp = &scan_id->s.hsid;
 
       /* do not free attr_cache here. xs_clear_access_spec_list() will free attr_caches. */
@@ -5314,32 +5304,6 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   scan_id->status = S_ENDED;
 }
 
-/* free table-wide sampling pick (picked_vpids + part_offsets) once; idempotent, type-gated */
-void
-scan_free_sampling (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
-{
-  if (scan_id == NULL || scan_id->type != S_HEAP_SAMPLING_SCAN)
-    {
-      return;
-    }
-
-  if (scan_id->s.hsid.sampling.picked_vpids != NULL)
-    {
-      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.picked_vpids);
-    }
-  if (scan_id->s.hsid.sampling.part_offsets != NULL)
-    {
-      db_private_free_and_init (thread_p, scan_id->s.hsid.sampling.part_offsets);
-    }
-  scan_id->s.hsid.sampling.prepared = false;
-  scan_id->s.hsid.sampling.weight = 0;
-  scan_id->s.hsid.sampling.picked_count = 0;
-  scan_id->s.hsid.sampling.picked_cursor = 0;
-  scan_id->s.hsid.sampling.slice_end = 0;
-  scan_id->s.hsid.sampling.n_parts = 0;
-  scan_id->s.hsid.sampling.partition_cursor = 0;
-}
-
 /*
  * scan_close_scan () - The scan identifier is closed and allocated areas and page buffers are freed.
  *   return:
@@ -5361,9 +5325,6 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   switch (scan_id->type)
     {
-    case S_HEAP_SAMPLING_SCAN:
-      /* picked_vpids/part_offsets outlive close; freed via scan_free_sampling */
-      break;
 
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
@@ -5709,7 +5670,6 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
     case S_HEAP_SCAN:
     case S_HEAP_SCAN_RECORD_INFO:
-    case S_HEAP_SAMPLING_SCAN:
       status = scan_next_heap_scan (thread_p, scan_id);
       break;
 
@@ -5805,7 +5765,6 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	    case S_HEAP_SCAN:
 	    case S_HEAP_SCAN_RECORD_INFO:
-	    case S_HEAP_SAMPLING_SCAN:
 	    case S_LIST_SCAN:
 #if SERVER_MODE && !WINDOWS
 	    case S_PARALLEL_HEAP_SCAN:
@@ -5929,12 +5888,6 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		  sp_scan =
 		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
 			       is_peeking);
-		}
-	      else if (scan_id->type == S_HEAP_SAMPLING_SCAN)
-		{
-		  sp_scan =
-		    heap_next_sampling (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
-					&hsidp->scan_cache, is_peeking, &hsidp->sampling);
 		}
 	      else
 		{
@@ -8619,7 +8572,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
   switch (scan_id->type)
     {
     case S_HEAP_SCAN:
-    case S_HEAP_SAMPLING_SCAN:
     case S_PARALLEL_HEAP_SCAN:
       if (scan_id->scan_stats.noscan)
 	{
@@ -8697,7 +8649,6 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_PARALLEL_HEAP_SCAN:
     case S_PARALLEL_LIST_SCAN:
     case S_LIST_SCAN:
-    case S_HEAP_SAMPLING_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
       if (scan_id->scan_stats.agl)
