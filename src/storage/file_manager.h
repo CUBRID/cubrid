@@ -197,6 +197,9 @@ extern int file_create_ehash_dir (THREAD_ENTRY * thread_p, int npages, bool is_t
 
 extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
+extern int file_destroy_during_recovery_cleanup (THREAD_ENTRY * thread_p, const VFID * vfid);
+extern int file_recovery_check_candidate_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE expected_ftype,
+					       bool * is_live, FILE_DESCRIPTORS * des_out);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_truncate (THREAD_ENTRY * thread_p, const VFID * vfid);

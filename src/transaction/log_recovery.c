@@ -138,7 +138,6 @@ struct log_bulk_recovery_marker
 
 static LOG_BULK_RECOVERY_TRAN *log_Bulk_recovery_trans = NULL;
 static LOG_BULK_RECOVERY_MARKER *log_Bulk_recovery_markers = NULL;
-static LOG_RCVINDEX log_Bulk_recovery_redo_rcvindex = RV_NOT_DEFINED;
 
 static void log_recovery_bulk_reset_analysis (void);
 static int log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event);
@@ -6628,7 +6627,6 @@ log_recovery_bulk_reset_analysis (void)
 {
   LOG_BULK_RECOVERY_TRAN *tran;
   LOG_BULK_RECOVERY_MARKER *marker;
-  log_Bulk_recovery_redo_rcvindex = RV_NOT_DEFINED;
 
   while ((tran = log_Bulk_recovery_trans) != NULL)
     {
@@ -6930,15 +6928,9 @@ log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY *thread_p, const LOG_LSA *star
     }
 }
 
-void
-log_recovery_bulk_set_redo_rcvindex (LOG_RCVINDEX rcvindex)
-{
-  log_Bulk_recovery_redo_rcvindex = rcvindex;
-}
-
 int
 log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *record_lsa, const VPID *rcv_vpid,
-				    bool *skip)
+				    LOG_RCVINDEX rcvindex, bool *skip)
 {
   LOG_BULK_RECOVERY_MARKER *marker;
   const VFID *vfid;
@@ -6946,6 +6938,14 @@ log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *recor
   int error;
 
   *skip = false;
+  /* Page deallocation redo never reads prior page content and is what materializes a later
+   * committed DROP of the published object inside the replay window.  Suppressing it leaves
+   * live-looking stale pages on unreserved sectors (poisoning subsequent rebuild page reuse)
+   * and keeps a dropped candidate's header alive, defeating the stale-marker liveness gate. */
+  if (rcvindex == RVPGBUF_DEALLOC)
+    {
+      return NO_ERROR;
+    }
   for (marker = log_Bulk_recovery_markers; marker != NULL; marker = marker->next)
     {
       if (!marker->redo_skip_enabled || !LSA_GT (record_lsa, &marker->candidate.marker_lsa))
@@ -6971,12 +6971,40 @@ log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *recor
 	      er_log_debug (ARG_FILE_LINE,
 			    "bulk recovery suppressed redo trid=%d vfid=%d|%d lsa=%lld|%d rcvindex=%d vpid=%d|%d\n",
 			    marker->candidate.marker.trid, VFID_AS_ARGS (vfid), LSA_AS_ARGS (record_lsa),
-			    log_Bulk_recovery_redo_rcvindex, VPID_AS_ARGS (rcv_vpid));
+			    rcvindex, VPID_AS_ARGS (rcv_vpid));
 	      return NO_ERROR;
 	    }
 	}
     }
   return NO_ERROR;
+}
+
+/*
+ * log_recovery_bulk_candidate_is_superseded () - true when a later marker reuses the same main VFID
+ *
+ * A VFID can only be recycled after its previous file was destroyed, so when several markers
+ * share one main VFID only the latest marker can possibly own the file that is live in the
+ * recovered current state.  Cleaning an earlier (superseded) marker would re-undo committed
+ * history and destroy the later incarnation's pages.
+ */
+static bool
+log_recovery_bulk_candidate_is_superseded (const LOG_BULK_RECOVERY_MARKER *marker)
+{
+  const LOG_BULK_RECOVERY_MARKER *other;
+
+  for (other = log_Bulk_recovery_markers; other != NULL; other = other->next)
+    {
+      if (other == marker)
+	{
+	  continue;
+	}
+      if (VFID_EQ (&other->candidate.marker.main_vfid, &marker->candidate.marker.main_vfid)
+	  && LSA_GT (&other->candidate.marker_lsa, &marker->candidate.marker_lsa))
+	{
+	  return true;
+	}
+    }
+  return false;
 }
 
 static void
@@ -7007,15 +7035,17 @@ log_recovery_bulk_cleanup_candidates (THREAD_ENTRY *thread_p, const LOG_LSA *sta
 	}
       er_log_debug (ARG_FILE_LINE, "bulk recovery marker trid=%d candidate=%d media=%d\n",
 		    marker->candidate.marker.trid, is_candidate, is_media_crash);
-      if (is_candidate)
+      if (is_candidate && !(is_media_crash && log_recovery_bulk_candidate_is_superseded (marker)))
 	{
-	  error = log_recovery_bulk_cleanup_inactive (thread_p, &marker->candidate);
+	  bool cleaned = false;
+
+	  error = log_recovery_bulk_cleanup_inactive (thread_p, &marker->candidate, &cleaned);
 	  if (error != NO_ERROR)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_cleanup_inactive");
 	      return;
 	    }
-	  if (is_media_crash)
+	  if (is_media_crash && cleaned)
 	    {
 	      /* Mandatory operator notification: list the cleaned constraint on the restoredb
 	       * console.  Output failure is an observability failure, not a database-integrity
@@ -7095,7 +7125,6 @@ log_recovery_bulk_walk_action (LOG_RCVINDEX rcvindex)
 {
   switch (rcvindex)
     {
-    case RVCT_NEWPAGE:
     case RVCT_INSERT:
     case RVCT_DELETE:
     case RVCT_UPDATE:
@@ -7103,11 +7132,8 @@ log_recovery_bulk_walk_action (LOG_RCVINDEX rcvindex)
     case RVEH_REPLACE:
     case RVEH_INSERT:
     case RVEH_DELETE:
-    case RVEH_INIT_BUCKET:
     case RVEH_CONNECT_BUCKET:
     case RVEH_INC_COUNTER:
-    case RVEH_INIT_NEW_DIR_PAGE:
-    case RVHF_NEWPAGE:
     case RVHF_STATS:
     case RVHF_CHAIN:
     case RVHF_INSERT:
@@ -7126,7 +7152,6 @@ log_recovery_bulk_walk_action (LOG_RCVINDEX rcvindex)
     case RVOVF_NEWPAGE_LINK:
     case RVOVF_PAGE_UPDATE:
     case RVOVF_CHANGE_LINK:
-    case RVBT_GET_NEWPAGE:
     case RVBT_RECORD_MODIFY_UNDOREDO:
     case RVBT_NDRECORD_DEL:
     case RVBT_INS_PGRECORDS:
@@ -7143,6 +7168,12 @@ log_recovery_bulk_walk_action (LOG_RCVINDEX rcvindex)
     case RVBT_MVCC_INSERT_OBJECT_UNQ:
     case RVFL_ALLOC:
       return LOG_BULK_WALK_UNDO;
+    case RVCT_NEWPAGE:
+    case RVEH_INIT_BUCKET:
+    case RVEH_INIT_NEW_DIR_PAGE:
+    case RVHF_NEWPAGE:
+    case RVBT_GET_NEWPAGE:
+    case RVPGBUF_NEW_PAGE:
     case RVEH_INIT_DIR:
     case RVHF_REUSE_PAGE:
     case RVHF_REUSE_PAGE_REUSE_OID:
@@ -7175,6 +7206,9 @@ log_recovery_bulk_undo_record (THREAD_ENTRY *thread_p, LOG_LSA *record_lsa, LOG_
   VPID vpid;
   LOG_RCVINDEX rcvindex;
   int header_size;
+  int error;
+  LOG_BULK_WALK_ACTION action;
+  LOG_LSA saved_cleanup_undo_nxlsa;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &data_lsa, log_page_p);
   switch (record_type)
@@ -7250,18 +7284,30 @@ undo_record:
       return ER_FAILED;
     }
 
-  if (log_recovery_bulk_walk_action (rcvindex) != LOG_BULK_WALK_UNDO
-      || rcvindex < 0 || rcvindex > RV_LAST_LOGID || RV_fun[rcvindex].undofun == NULL)
+  if (rcvindex < 0 || rcvindex > RV_LAST_LOGID)
     {
       return ER_FAILED;
     }
+  action = log_recovery_bulk_walk_action (rcvindex);
+  if (action == LOG_BULK_WALK_SKIP)
+    {
+      return NO_ERROR;
+    }
+  if (action != LOG_BULK_WALK_UNDO || RV_fun[rcvindex].undofun == NULL)
+    {
+      return ER_FAILED;
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, header_size, &data_lsa, log_page_p);
+  saved_cleanup_undo_nxlsa = recovery_tdes->undo_nxlsa;
   recovery_tdes->undo_nxlsa = *bounded_next;
   er_clear ();
   rcv.is_bulk_recovery_undo = true;
   log_rv_undo_record (thread_p, &data_lsa, log_page_p, rcvindex, &vpid, &rcv, &undo_lsa, recovery_tdes,
 		      undo_unzip);
-  return er_errid () == NO_ERROR ? NO_ERROR : ER_FAILED;
+  error = er_errid () == NO_ERROR ? NO_ERROR : ER_FAILED;
+  recovery_tdes->undo_nxlsa = saved_cleanup_undo_nxlsa;
+  return error;
 }
 
 static int
@@ -7358,23 +7404,84 @@ log_recovery_bulk_walk_publication (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
   log_zip_free (undo_unzip);
   return error;
 }
+static bool
+log_recovery_bulk_candidate_owns_class (const BTREE_BULK_RECOVERY_CANDIDATE *candidate, const OID *class_oid)
+{
+  unsigned int i;
+
+  if (candidate->marker.class_oids == NULL || candidate->marker.class_count == 0 || OID_ISNULL (class_oid))
+    {
+      return false;
+    }
+  for (i = 0; i < candidate->marker.class_count; i++)
+    {
+      if (OID_EQ (&candidate->marker.class_oids[i], class_oid))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
 int
-log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_RECOVERY_CANDIDATE *candidate)
+log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_RECOVERY_CANDIDATE *candidate,
+				    bool *cleaned)
 {
   int saved_tran_index;
   int error = NO_ERROR;
   log_system_tdes recovery_system_tdes;
   LOG_TDES *recovery_tdes = recovery_system_tdes.get_tdes ();
+  bool main_is_live = false;
+  bool ovf_is_live = false;
+  FILE_DESCRIPTORS main_des;
+  FILE_DESCRIPTORS ovf_des;
 
-  if (thread_p == NULL || candidate == NULL || recovery_tdes == NULL
+  if (thread_p == NULL || candidate == NULL || cleaned == NULL || recovery_tdes == NULL
       || VFID_ISNULL (&candidate->marker.main_vfid))
     {
       return ER_FAILED;
     }
+  *cleaned = false;
   if (!candidate->media_recovery)
     {
       return heap_classrepr_restart_cache ();
     }
+
+  /* Stale-marker gate: the marker is only a durable record that a no-redo bulk build committed.
+   * A later committed transaction inside the same replay window may already have dropped or
+   * replaced the published object (destroying its file and rewriting the catalog).  Cleaning up
+   * such a stale candidate re-undoes committed history and touches destroyed/reused pages, so
+   * cleanup runs only when the candidate's file is still live in the recovered current state. */
+  error = file_recovery_check_candidate_file (thread_p, &candidate->marker.main_vfid, FILE_BTREE, &main_is_live,
+					      &main_des);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  /* Identity binding: a VFID recycled inside the replay window by an unrelated live b-tree
+   * (not necessarily another bulk marker) must not be destroyed on this marker's behalf. */
+  if (main_is_live && !log_recovery_bulk_candidate_owns_class (candidate, &main_des.btree.class_oid))
+    {
+      main_is_live = false;
+    }
+  if (!main_is_live)
+    {
+      return NO_ERROR;
+    }
+  if (!VFID_ISNULL (&candidate->marker.ovfid))
+    {
+      error = file_recovery_check_candidate_file (thread_p, &candidate->marker.ovfid, FILE_BTREE_OVERFLOW_KEY,
+						  &ovf_is_live, &ovf_des);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (ovf_is_live && !BTID_IS_EQUAL (&ovf_des.btree_key_overflow.btid, &candidate->marker.btid))
+	{
+	  ovf_is_live = false;
+	}
+    }
+
   recovery_tdes->trid = NULL_TRANID - 1;
   recovery_tdes->state = TRAN_ACTIVE;
 
@@ -7395,7 +7502,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
     {
       error = vacuum_notify_dropped_file_during_recovery (thread_p, &candidate->marker.main_vfid);
     }
-  if (error == NO_ERROR && !VFID_ISNULL (&candidate->marker.ovfid))
+  if (error == NO_ERROR && ovf_is_live)
     {
       error = vacuum_notify_dropped_file_during_recovery (thread_p, &candidate->marker.ovfid);
     }
@@ -7410,13 +7517,13 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
       BTID stats_btid = candidate->marker.btid;
       error = logtb_delete_global_unique_stats (thread_p, &stats_btid);
     }
-  if (error == NO_ERROR && !VFID_ISNULL (&candidate->marker.ovfid))
+  if (error == NO_ERROR && ovf_is_live)
     {
-      error = file_destroy (thread_p, &candidate->marker.ovfid, false);
+      error = file_destroy_during_recovery_cleanup (thread_p, &candidate->marker.ovfid);
     }
   if (error == NO_ERROR)
     {
-      error = file_destroy (thread_p, &candidate->marker.main_vfid, false);
+      error = file_destroy_during_recovery_cleanup (thread_p, &candidate->marker.main_vfid);
     }
   if (error == NO_ERROR)
     {
@@ -7425,10 +7532,17 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
   if (error == NO_ERROR)
     {
       log_sysop_commit (thread_p);
+      *cleaned = true;
     }
   else
     {
-      log_sysop_abort (thread_p);
+      /* Fail-stop (REPORT-v2 §5-iii option a).  Rolling this sysop back is NOT safe: the walk's
+       * CLRs persist undo_nxlsa/compensate_lsa values that point into the original committed
+       * build chain, and log_rollback follows them, re-undoing committed history (the §1.2
+       * re-undo storm; reproduced by the G007 cleanup-error injection experiment even with an
+       * explicit pre-sysop bound record).  The restore is already lost on any cleanup error,
+       * so die immediately without touching committed state. */
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_cleanup_inactive");
     }
 
   /* Mirror ordinary recovery undo teardown (see the MVCCID clears in log_recovery_undo):

@@ -731,6 +731,8 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
+static int file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp,
+				  bool tolerate_page_unknown);
 static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
@@ -4000,6 +4002,13 @@ file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE
   return NO_ERROR;
 }
 
+typedef struct file_destroy_user_page_context FILE_DESTROY_USER_PAGE_CONTEXT;
+struct file_destroy_user_page_context
+{
+  bool is_partial;
+  bool tolerate_page_unknown;
+};
+
 /*
  * file_sector_map_dealloc () - FILE_EXTDATA_ITEM_FUNC to deallocate user pages
  *
@@ -4008,12 +4017,13 @@ file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE
  * data (in)     : FILE_PARTIAL_SECTOR * or VSID *
  * index (in)    : unused
  * stop (in)     : unused
- * args (in)     : is_partial
+ * args (in)     : FILE_DESTROY_USER_PAGE_CONTEXT
  */
 static int
 file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
 {
-  bool is_partial = *(bool *) args;
+  FILE_DESTROY_USER_PAGE_CONTEXT *context = (FILE_DESTROY_USER_PAGE_CONTEXT *) args;
+  bool is_partial = context->is_partial;
   FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
   int offset = 0;
   VPID vpid;
@@ -4039,9 +4049,24 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
 	  continue;
 	}
 
-      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+      if (context->tolerate_page_unknown)
+	{
+	  er_clear ();
+	  page =
+	    pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	}
+      else
+	{
+	  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	}
       if (page == NULL)
 	{
+	  if (context->tolerate_page_unknown && er_errid () == ER_PB_BAD_PAGEID
+	      && er_get_severity () == ER_WARNING_SEVERITY)
+	    {
+	      er_clear ();
+	      continue;
+	    }
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
@@ -4123,17 +4148,30 @@ file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int ind
   return NO_ERROR;
 }
 
+int
+file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
+{
+  return file_destroy_internal (thread_p, vfid, is_temp, false);
+}
+
+int
+file_destroy_during_recovery_cleanup (THREAD_ENTRY * thread_p, const VFID * vfid)
+{
+  return file_destroy_internal (thread_p, vfid, false, true);
+}
+
 /*
- * file_destroy () - Destroy file - unreserve all sectors used by file on disk.
+ * file_destroy_internal () - Destroy file - unreserve all sectors used by file on disk.
  *
  * return	 : Error code
  * thread_p (in) : Thread entry
  * vfid (in)	 : File identifier
  * is_temp (in)  : True for temporary, false otherwise. Caller must know. It relevant information before fixing the file
  *                 header page, whe, if not temporary, we need to remove from file tracker.
+ * tolerate_page_unknown (in) : Ignore already-deallocated permanent user pages during recovery cleanup.
  */
-int
-file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
+static int
+file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp, bool tolerate_page_unknown)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -4144,6 +4182,7 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
   bool save_check_interrupt = false;
   int error_code = NO_ERROR;
   FILE_EXTENSIBLE_DATA *extdata_ftab = NULL;
+  FILE_DESTROY_USER_PAGE_CONTEXT user_page_context;
   bool is_partial;
   int iter_sects;
   int offset;
@@ -4224,10 +4263,11 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	}
 
       FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
-      is_partial = true;
+      user_page_context.is_partial = true;
+      user_page_context.tolerate_page_unknown = tolerate_page_unknown;
       error_code =
 	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
+				  file_sector_map_dealloc, &user_page_context, true, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4235,10 +4275,10 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 	}
 
       FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
-      is_partial = false;
+      user_page_context.is_partial = false;
       error_code =
 	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
+				  file_sector_map_dealloc, &user_page_context, true, NULL, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -7086,16 +7126,21 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
 
   *membership = FILE_RECOVERY_VPID_NOT_MEMBER;
   FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
-  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  er_clear ();
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
   if (page_fhead == NULL)
     {
-      if (er_errid () == ER_PB_BAD_PAGEID)
+      if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
 	{
-	  /* The file's header page was already deallocated by a later point in the log timeline than the
-	   * record currently being classified (e.g. a postponed destroy of a no-redo bulk-built overflow
-	   * file). Membership cannot be established from a file table that no longer exists, but that is not
-	   * an error during recovery: *membership is already FILE_RECOVERY_VPID_NOT_MEMBER, which tells the
-	   * caller to apply the redo normally (the safe/conservative answer). */
+	  /* DEFECT-BK-03: the file's header page was already deallocated by a later point in the log
+	   * timeline than the record currently being classified (e.g. a postponed destroy of a no-redo
+	   * bulk-built overflow file, or a later committed DROP recycling the VFID). A WARNING-severity
+	   * ER_PB_BAD_PAGEID is a stale identifier, not an error during media recovery -- its pages are
+	   * simply not members. *membership is already FILE_RECOVERY_VPID_NOT_MEMBER, so the caller's
+	   * answer is "do not skip redo" -- the safe, conservative outcome. An ERROR-severity
+	   * ER_PB_BAD_PAGEID falls through below and keeps fail-stopping: the header page fetch failed
+	   * for a reason other than deallocation and membership cannot be established at all. */
 	  er_clear ();
 	  return NO_ERROR;
 	}
@@ -7209,6 +7254,62 @@ exit:
     }
   pgbuf_unfix (thread_p, page_fhead);
   return error;
+}
+
+/*
+ * file_recovery_check_candidate_file () - recovery-safe liveness check for a bulk-recovery candidate file
+ *
+ * return          : error code
+ * thread_p (in)   : thread entry
+ * vfid (in)       : candidate file identifier taken from a durable marker
+ * expected_ftype (in) : file type the candidate must still have
+ * is_live (out)   : true only when the header page still is this file's header
+ *
+ * A marker can be stale: the published index may have been dropped or replaced by a later
+ * committed transaction inside the same replay window, destroying the file.  Cleaning up a
+ * stale candidate would re-undo committed history and destroy reused pages, so the caller
+ * must skip cleanup entirely unless the file is proved live in the recovered current state.
+ */
+int
+file_recovery_check_candidate_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE expected_ftype,
+				    bool * is_live, FILE_DESCRIPTORS * des_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead;
+
+  *is_live = false;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  er_clear ();
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ,
+			  PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
+	{
+	  /* deallocated header: the candidate file no longer exists. */
+	  er_clear ();
+	  return NO_ERROR;
+	}
+      /* Any other failure (including ERROR-severity ER_PB_BAD_PAGEID) fail-stops the restore
+       * deliberately: the header page cannot even be classified, and guessing "not live"
+       * could silently leak a live candidate file. */
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  if (pgbuf_get_page_ptype (thread_p, page_fhead) == PAGE_FTAB && VFID_EQ (&fhead->self, vfid)
+      && fhead->type == expected_ftype && !FILE_IS_TEMPORARY (fhead))
+    {
+      *is_live = true;
+      if (des_out != NULL)
+	{
+	  *des_out = fhead->descriptor;
+	}
+    }
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
 }
 
 /*

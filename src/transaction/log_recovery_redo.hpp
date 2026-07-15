@@ -601,10 +601,8 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
   if (!VPID_ISNULL (&rcv_vpid))
     {
       bool skip;
-#if defined (SA_MODE)
-      log_recovery_bulk_set_redo_rcvindex (log_data.rcvindex);
-#endif
-      int error = log_recovery_bulk_should_skip_redo (thread_p, &record_info.m_start_lsa, &rcv_vpid, &skip);
+      int error = log_recovery_bulk_should_skip_redo (thread_p, &record_info.m_start_lsa, &rcv_vpid,
+						      log_data.rcvindex, &skip);
       if (error != NO_ERROR)
 	{
 	  er_log_debug (ARG_FILE_LINE, "bulk recovery redo membership error lsa=%lld|%d vpid=%d|%d error=%d\n",

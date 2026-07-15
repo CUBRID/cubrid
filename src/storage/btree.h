@@ -115,11 +115,10 @@ extern int log_recovery_bulk_classify_candidate (const BTREE_BULK_RECOVERY_CANDI
 						 const BTREE_BULK_RECOVERY_EVENT *events,
 						 unsigned int event_count, bool *is_candidate);
 extern int log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p,
-					       const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
+					       const BTREE_BULK_RECOVERY_CANDIDATE *candidate, bool *cleaned);
 extern int log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDATE *candidate);
 extern int log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *record_lsa,
-					       const VPID *rcv_vpid, bool *skip);
-extern void log_recovery_bulk_set_redo_rcvindex (LOG_RCVINDEX rcvindex);
+					       const VPID *rcv_vpid, LOG_RCVINDEX rcvindex, bool *skip);
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
