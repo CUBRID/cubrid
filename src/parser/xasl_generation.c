@@ -4744,10 +4744,11 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.flag_agg_min_max_optimized = false;
 
   /* TODO : for multi table */
-  /* Only enable the index-based MIN/MAX optimization when a "col IS NOT NULL" term has
-   * been added for the ordering column (pt_add_null_filter_for_min_max_opt). That both
-   * confirms the query is a safe single-column MIN/MAX candidate and lets the scan skip
-   * the leading NULL keys that would otherwise be returned as a wrong result (CBRD-24890). */
+  /* Only enable the index-based MIN/MAX optimization when the ordering column is known
+   * NULL-free at scan time (pt_add_null_filter_for_min_max_opt): either a "col IS NOT NULL"
+   * term was added or the column carries a NOT NULL constraint. That both confirms the query
+   * is a safe single-column MIN/MAX candidate and rules out the leading NULL keys that would
+   * otherwise be returned as a wrong result (CBRD-24890). */
   if (!select_node->info.query.q.select.group_by && !select_node->info.query.order_by
       && !select_node->info.query.orderby_for && from->next == NULL
       && PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED))
@@ -18015,6 +18016,9 @@ pt_check_min_max_column_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
  *     ordering column. Without it, an ascending scan of a composite index
  *     (e.g. WHERE a = 5 on index (a, b) with MIN(b)) would pick a NULL key as
  *     the minimum and return a wrong NULL result.
+ *
+ *     A column under a NOT NULL constraint gets no filter (the rewriter folds such
+ *     always-true terms away, qo_fold_is_and_not_null); only the NULL-free flag is set.
  *   return: void
  *   parser(in): context
  *   select_node(in): of PT_SELECT type
@@ -18080,6 +18084,15 @@ pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_no
 
   if (!info.valid || info.column == NULL)
     {
+      return;
+    }
+
+  if (pt_check_not_null_constraint (parser, from, info.column))
+    {
+      /* the column can never be NULL by constraint, so the index holds no NULL keys and the
+       * min/max scan is safe without a filter. Do not add the always-true term the rewriter
+       * folds away anyway (qo_fold_is_and_not_null); just record the guarantee. */
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED);
       return;
     }
 
