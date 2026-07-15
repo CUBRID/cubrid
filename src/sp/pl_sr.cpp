@@ -370,7 +370,7 @@ namespace cubpl
 
 	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
-					&status, true /* terminate with parent on Linux */);
+					&status);
 	if (pid > 1) // parent
 	  {
 	    m_pid = pid;

@@ -34,9 +34,7 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#if defined(LINUX)
 #include <sys/prctl.h>
-#endif
 #include <signal.h>
 #endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -52,11 +50,10 @@
  *   stdout_file(in): file name for standard output
  *   stderr_file(in): file name for standard error
  *   exit_status(out): exit status of the child process
- *   set_parent_death_signal(in): terminate child when its creating parent thread exits on Linux
  */
 int
 create_child_process (const char *path, const char *const argv[], int wait_flag, const char *stdin_file,
-		      char *stdout_file, char *stderr_file, int *exit_status, bool set_parent_death_signal)
+		      char *stdout_file, char *stderr_file, int *exit_status)
 {
 #if defined(WINDOWS)
   int new_pid;
@@ -71,8 +68,6 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
   HANDLE hStdOut = INVALID_HANDLE_VALUE;
   HANDLE hStdErr = INVALID_HANDLE_VALUE;
   BOOL rc;
-
-  (void) set_parent_death_signal;
 
   if (exit_status != NULL)
     {
@@ -242,11 +237,7 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
 }
 #else
   int pid, rc;
-#if defined(LINUX)
   pid_t parent_pid = getpid ();
-#else
-  (void) set_parent_death_signal;
-#endif
 
   if (exit_status != NULL)
     {
@@ -281,21 +272,16 @@ create_child_process (const char *path, const char *const argv[], int wait_flag,
     {
       FILE *fp;
 
-#if defined(LINUX)
-      if (set_parent_death_signal)
+      if (prctl (PR_SET_PDEATHSIG, SIGKILL) != 0)
 	{
-	  if (prctl (PR_SET_PDEATHSIG, SIGKILL) != 0)
-	    {
-	      _exit (EXIT_FAILURE);
-	    }
-
-	  /* PR_SET_PDEATHSIG does not signal a child whose parent already exited. */
-	  if (getppid () != parent_pid)
-	    {
-	      _exit (EXIT_SUCCESS);
-	    }
+	  _exit (EXIT_FAILURE);
 	}
-#endif
+
+      /* PR_SET_PDEATHSIG does not signal a child whose parent already exited. */
+      if (getppid () != parent_pid)
+	{
+	  _exit (EXIT_SUCCESS);
+	}
 
       if (stdin_file != NULL)
 	{
