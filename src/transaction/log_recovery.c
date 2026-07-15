@@ -7546,6 +7546,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
   bool ovf_is_live = false;
   FILE_DESCRIPTORS main_des;
   FILE_DESCRIPTORS ovf_des;
+  INT64 main_time_creation = 0;
 
   if (thread_p == NULL || candidate == NULL || cleaned == NULL || recovery_tdes == NULL
       || VFID_ISNULL (&candidate->marker.main_vfid))
@@ -7564,7 +7565,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
    * such a stale candidate re-undoes committed history and touches destroyed/reused pages, so
    * cleanup runs only when the candidate's file is still live in the recovered current state. */
   error = file_recovery_check_candidate_file (thread_p, &candidate->marker.main_vfid, FILE_BTREE, &main_is_live,
-					      &main_des);
+					      &main_des, &main_time_creation);
   if (error != NO_ERROR)
     {
       return error;
@@ -7590,6 +7591,18 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
     {
       main_is_live = false;
     }
+  /* r305-P2-2 (marker v3) identity hardening: owns-class alone cannot distinguish the
+   * ultra-narrow recycle where the SAME class reuses the SAME VFID through a non-marker
+   * build inside the replay window.  A v3 marker recorded the creating file's attr_id and
+   * the header's immutable time_creation stamp; both must match the live header or the
+   * candidate is not this build's file.  v1/v2 markers carry neither and deliberately keep
+   * the degraded owns-class-only binding above (graceful skip, never a fatal). */
+  if (main_is_live && candidate->decoded_version >= BTREE_BULK_MARKER_VERSION
+      && (candidate->marker.attr_id != main_des.btree.attr_id
+	  || candidate->marker.create_token != (UINT64) main_time_creation))
+    {
+      main_is_live = false;
+    }
   if (!main_is_live)
     {
       return NO_ERROR;
@@ -7597,7 +7610,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
   if (!VFID_ISNULL (&candidate->marker.ovfid))
     {
       error = file_recovery_check_candidate_file (thread_p, &candidate->marker.ovfid, FILE_BTREE_OVERFLOW_KEY,
-						  &ovf_is_live, &ovf_des);
+						  &ovf_is_live, &ovf_des, NULL);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -7698,7 +7711,7 @@ log_recovery_bulk_format_restoredb (FILE *fp, const BTREE_BULK_RECOVERY_CANDIDAT
       result = fprintf (fp, "%.*s\t%d\n", (int) candidate->marker.constraint_name_length,
 			candidate->marker.constraint_name, candidate->marker.constraint_type);
     }
-  else if (candidate->decoded_version == BTREE_BULK_MARKER_VERSION
+  else if (candidate->decoded_version >= BTREE_BULK_MARKER_V2_VERSION
 	   && candidate->marker.owner_class_name != NULL
 	   && (candidate->object_kind == BULK_MARKER_KIND_INDEX
 	       || candidate->object_kind == BULK_MARKER_KIND_CONSTRAINT))

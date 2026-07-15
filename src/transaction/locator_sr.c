@@ -43,6 +43,7 @@
 #endif /* DMALLOC */
 #include "error_manager.h"
 #include "deduplicate_key.h"
+#include "file_manager.h"
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
@@ -7524,6 +7525,23 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       marker.owner_class_name_length = bulk_index->owner_class_name_length;
       marker.object_kind = bulk_index->object_kind;
       pgbuf_unfix_and_init (thread_p, root_page);
+
+      /* v3 identity capture (r305-P2-2): read the main file's immutable creation identity
+       * (header time_creation + descriptor attr_id) so restore cleanup can prove the live
+       * file is the exact instance this build created and not a recycled VFID.  Read after
+       * the root page is unfixed (no root->fhead latch chain). */
+      {
+	FILE_DESCRIPTORS main_file_des;
+	INT64 main_time_creation = 0;
+
+	error_code = file_get_creation_identity (thread_p, &marker.main_vfid, &main_time_creation, &main_file_des);
+	if (error_code != NO_ERROR)
+	  {
+	    goto error;
+	  }
+	marker.attr_id = main_file_des.btree.attr_id;
+	marker.create_token = (UINT64) main_time_creation;
+      }
 
       error_code = log_get_current_sysop_parent_lsa (thread_p, &marker.parent_lsa);
       if (error_code != NO_ERROR)

@@ -68,7 +68,8 @@
 #include "memory_wrapper.hpp"
 
 #define BTREE_BULK_MARKER_V1_FIXED_SIZE 88U
-#define BTREE_BULK_MARKER_FIXED_SIZE 96U
+#define BTREE_BULK_MARKER_V2_FIXED_SIZE 96U
+#define BTREE_BULK_MARKER_FIXED_SIZE 108U
 
 static void
 btree_bulk_put_u32 (char **ptr, unsigned int value)
@@ -184,6 +185,8 @@ btree_bulk_marker_pack (const BTREE_BULK_MARKER *marker, char *buffer, unsigned 
   memset (ptr + marker->owner_class_name_length, 0, padded_length - marker->owner_class_name_length);
   ptr += padded_length;
   btree_bulk_put_u32 (&ptr, (unsigned int) marker->object_kind);
+  btree_bulk_put_u32 (&ptr, (unsigned int) marker->attr_id);
+  btree_bulk_put_u64 (&ptr, marker->create_token);
 
   assert ((unsigned int) (ptr - buffer) == size);
   if (packed_size != NULL)
@@ -200,7 +203,7 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
 			  unsigned int owner_class_name_capacity, int *decoded_version)
 {
   const char *ptr = buffer;
-  unsigned int version, size, fixed_size, class_count, name_length, owner_name_length, padded_length, i;
+  unsigned int version, size, fixed_size, class_count, name_length, owner_name_length, padded_length, tail_size, i;
 
   if (buffer == NULL || marker == NULL || decoded_version == NULL || buffer_size < 3 * sizeof (unsigned int))
     {
@@ -212,6 +215,10 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
   if (version == BTREE_BULK_MARKER_V1_VERSION)
     {
       fixed_size = BTREE_BULK_MARKER_V1_FIXED_SIZE;
+    }
+  else if (version == BTREE_BULK_MARKER_V2_VERSION)
+    {
+      fixed_size = BTREE_BULK_MARKER_V2_FIXED_SIZE;
     }
   else if (version == BTREE_BULK_MARKER_VERSION)
     {
@@ -287,7 +294,9 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
   marker->owner_class_name = "";
   marker->owner_class_name_length = 0;
   marker->object_kind = BULK_MARKER_KIND_INDEX;
-  if (version == BTREE_BULK_MARKER_VERSION)
+  marker->attr_id = -1;
+  marker->create_token = 0;
+  if (version >= BTREE_BULK_MARKER_V2_VERSION)
     {
       owner_name_length = btree_bulk_get_u32 (&ptr);
       if (owner_name_length == 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_class_name == NULL
@@ -296,7 +305,12 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
 	  return ER_FAILED;
 	}
       padded_length = DB_ALIGN (owner_name_length, INT_ALIGNMENT);
-      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) != size)
+      tail_size = sizeof (unsigned int);	/* object_kind */
+      if (version >= BTREE_BULK_MARKER_VERSION)
+	{
+	  tail_size += sizeof (unsigned int) + sizeof (UINT64);	/* attr_id + create_token */
+	}
+      if ((UINT64) (ptr - buffer) + padded_length + tail_size != size)
 	{
 	  return ER_FAILED;
 	}
@@ -307,6 +321,11 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
       if (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT)
 	{
 	  return ER_FAILED;
+	}
+      if (version >= BTREE_BULK_MARKER_VERSION)
+	{
+	  marker->attr_id = (int) btree_bulk_get_u32 (&ptr);
+	  marker->create_token = btree_bulk_get_u64 (&ptr);
 	}
       marker->owner_class_name = owner_class_name;
       marker->owner_class_name_length = owner_name_length;

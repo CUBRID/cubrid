@@ -7264,6 +7264,7 @@ exit:
  * vfid (in)       : candidate file identifier taken from a durable marker
  * expected_ftype (in) : file type the candidate must still have
  * is_live (out)   : true only when the header page still is this file's header
+ * time_creation_out (out) : when live, the immutable header creation stamp (marker v3 identity)
  *
  * A marker can be stale: the published index may have been dropped or replaced by a later
  * committed transaction inside the same replay window, destroying the file.  Cleaning up a
@@ -7272,7 +7273,7 @@ exit:
  */
 int
 file_recovery_check_candidate_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE expected_ftype,
-				    bool * is_live, FILE_DESCRIPTORS * des_out)
+				    bool * is_live, FILE_DESCRIPTORS * des_out, INT64 * time_creation_out)
 {
   VPID vpid_fhead;
   PAGE_PTR page_fhead = NULL;
@@ -7307,6 +7308,54 @@ file_recovery_check_candidate_file (THREAD_ENTRY * thread_p, const VFID * vfid, 
 	{
 	  *des_out = fhead->descriptor;
 	}
+      if (time_creation_out != NULL)
+	{
+	  *time_creation_out = fhead->time_creation;
+	}
+    }
+  pgbuf_unfix (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
+ * file_get_creation_identity () - read a file's immutable creation identity: the
+ *   FILE_HEADER time_creation stamp and the creation-time descriptor.  Both are written
+ *   once by file_create inside the whole-page redo image of the header page, so they are
+ *   byte-identical after WAL replay and backup/restore.  Used by the bulk-build marker
+ *   (v3, r305-P2-2) to bind a durable marker to the exact file instance its build created.
+ *
+ * return                  : error code
+ * thread_p (in)           : thread entry
+ * vfid (in)               : file identifier
+ * time_creation_out (out) : optional output header creation stamp
+ * des_out (out)           : optional output file descriptor
+ */
+int
+file_get_creation_identity (THREAD_ENTRY * thread_p, const VFID * vfid, INT64 * time_creation_out,
+			    FILE_DESCRIPTORS * des_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead;
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  if (time_creation_out != NULL)
+    {
+      *time_creation_out = fhead->time_creation;
+    }
+  if (des_out != NULL)
+    {
+      *des_out = fhead->descriptor;
     }
   pgbuf_unfix (thread_p, page_fhead);
   return NO_ERROR;

@@ -199,7 +199,7 @@ extern void file_postpone_destroy (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp);
 extern int file_destroy_during_recovery_cleanup (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_recovery_check_candidate_file (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_TYPE expected_ftype,
-					       bool * is_live, FILE_DESCRIPTORS * des_out);
+					       bool * is_live, FILE_DESCRIPTORS * des_out, INT64 * time_creation_out);
 extern int file_temp_retire (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_retire_preserved (THREAD_ENTRY * thread_p, const VFID * vfid);
 extern int file_temp_truncate (THREAD_ENTRY * thread_p, const VFID * vfid);
@@ -261,6 +261,8 @@ extern int file_tracker_reclaim_marked_deleted (THREAD_ENTRY * thread_p);
 #endif /* SA_MODE */
 
 extern int file_descriptor_get (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_DESCRIPTORS * desc_out);
+extern int file_get_creation_identity (THREAD_ENTRY * thread_p, const VFID * vfid, INT64 * time_creation_out,
+				       FILE_DESCRIPTORS * des_out);
 extern int file_descriptor_update (THREAD_ENTRY * thread_p, const VFID * vfid, void *des_new);
 extern int file_descriptor_dump (THREAD_ENTRY * thread_p, const VFID * vfid, FILE * fp);
 

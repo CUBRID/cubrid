@@ -51,7 +51,8 @@ struct or_buf;
 typedef struct or_buf OR_BUF;
 
 #define BTREE_BULK_MARKER_V1_VERSION 1
-#define BTREE_BULK_MARKER_VERSION 2
+#define BTREE_BULK_MARKER_V2_VERSION 2
+#define BTREE_BULK_MARKER_VERSION 3
 #define BTREE_BULK_MARKER_MAX_CLASSES 4096
 #define BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME 4096
 
@@ -75,6 +76,14 @@ struct btree_bulk_marker
   const char *owner_class_name;
   unsigned int owner_class_name_length;
   int object_kind;
+  /* v3 (r305-P2-2): creation identity of the exact file instance this build created.
+   * attr_id mirrors FILE_BTREE_DES.attr_id; create_token mirrors the main file's
+   * FILE_HEADER.time_creation, which file_create writes once inside the whole-page
+   * redo image of the header (immutable, replay- and restore-durable).  v1/v2 markers
+   * decode with attr_id = -1 and create_token = 0 and keep the degraded
+   * owns-class-only cleanup binding. */
+  int attr_id;
+  UINT64 create_token;
 };
 
 extern int btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *packed_size);
