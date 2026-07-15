@@ -993,8 +993,8 @@ namespace cubstorage
       }
   }
 
-  bestspace::bestspace (std::size_t shard_count, const VPID *shard_pages, int num_shard_pages, int num_pages,
-			std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space)
+  bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
+			std::uint16_t unfill_space)
     : m_shards ()
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
@@ -1002,22 +1002,6 @@ namespace cubstorage
     , m_recs_sumlen (recs_sumlen)
   {
     assert (shard_count > 0);
-    assert (num_shard_pages > 0
-	    && static_cast<std::size_t> (num_shard_pages) <= cubstorage::bestspace::MAX_SHARD_PAGE_COUNT);
-
-    // store the shard page information
-    for (std::size_t i = 0; i < cubstorage::bestspace::MAX_SHARD_PAGE_COUNT; i++)
-      {
-	if (i < static_cast<std::size_t> (num_shard_pages))
-	  {
-	    m_header.pages[i] = shard_pages[i];
-	  }
-	else
-	  {
-	    m_header.pages[i] = { NULL_PAGEID, NULL_VOLID };
-	  }
-      }
-    m_header.page_num = num_shard_pages;
 
     // last updated time
     m_last_updated.store (monotonic_seconds ());
@@ -1226,13 +1210,6 @@ namespace cubstorage
       }
   }
 
-  void
-  bestspace::get_shard_pages (VPID *pages, int &num_pages)
-  {
-    std::memcpy (pages, m_header.pages, m_header.page_num * sizeof (VPID));
-    num_pages = m_header.page_num;
-  }
-
   std::size_t
   bestspace::get_num_shards ()
   {
@@ -1362,14 +1339,14 @@ namespace cubstorage
 
   void
   bestspace_registry::create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
-			      bestspace_entry *candidates, std::size_t num_candidates, const VPID *shard_pages, int num_shard_pages, int num_pages,
-			      std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space)
+			      bestspace_entry *candidates, std::size_t num_candidates, int num_pages, std::uint64_t recs_num,
+			      std::uint64_t recs_sumlen, std::uint16_t unfill_space)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
-    node->entry = new bestspace (shard_count, shard_pages, num_shard_pages, num_pages, recs_num, recs_sumlen, unfill_space);
+    node->entry = new bestspace (shard_count, num_pages, recs_num, recs_sumlen, unfill_space);
     node->entry->initialize_by_entries (entries, num_entries);
     node->entry->push_candidates (candidates, num_candidates);
 

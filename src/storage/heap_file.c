@@ -4439,8 +4439,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
 
   cubstorage::bestspaces.create (hfid, num_shards, entries,
 				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
-				 num_candidates, header->bestspace.pages, header->bestspace.num_pages,
-				 header->num_pages, header->num_recs, header->recs_sumlen,
+				 num_candidates, header->num_pages, header->num_recs, header->recs_sumlen,
 				 (std::uint16_t) header->unfill_space);
 
   bestspace = cubstorage::bestspaces.find (hfid);

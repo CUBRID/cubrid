@@ -336,8 +336,8 @@ namespace cubstorage
       };
 
     public:
-      explicit bestspace (std::size_t shard_count, const VPID *shard_pages, int num_shard_pages, int num_pages,
-			  std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space);
+      explicit bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
+			  std::uint16_t unfill_space);
       ~bestspace () = default;
 
       void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
@@ -356,7 +356,6 @@ namespace cubstorage
       void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
       void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
 		      std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
-      void get_shard_pages (VPID *pages, int &num_pages);
 
       std::size_t get_num_shards ();
 
@@ -375,13 +374,6 @@ namespace cubstorage
       std::atomic<std::uint64_t> m_recs_sumlen;
 
       std::atomic<std::uint64_t> m_last_updated;
-
-      // persistent bestspace page identifiers cached when bestspace is built
-      struct
-      {
-	VPID pages[MAX_SHARD_PAGE_COUNT];
-	int page_num;
-      } m_header;
 
       int find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, PGBUF_WATCHER &page_watcher);
@@ -436,8 +428,8 @@ namespace cubstorage
       ~bestspace_registry ();
 
       void create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
-		   bestspace_entry *candidates, std::size_t num_candidates, const VPID *shard_pages, int num_shard_pages, int num_pages,
-		   std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space);
+		   bestspace_entry *candidates, std::size_t num_candidates, int num_pages, std::uint64_t recs_num,
+		   std::uint64_t recs_sumlen, std::uint16_t unfill_space);
       void destroy (const VFID *vfid);
       void destroy (const HFID *hfid);
 
