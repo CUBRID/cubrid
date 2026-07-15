@@ -27,6 +27,7 @@ namespace test_thread
 {
 
   int test_manager (void);
+  int test_worker_pool_progress (void);
 
 }
 #endif // _TEST_MANAGER_HPP_

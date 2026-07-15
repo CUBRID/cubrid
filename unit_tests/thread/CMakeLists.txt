@@ -19,6 +19,7 @@
 set (TEST_THREAD_SOURCES
   test_main.cpp
   test_manager.cpp
+  test_worker_pool_progress.cpp
   )
 set (TEST_THREAD_HEADERS
   test_manager.hpp
@@ -54,4 +55,52 @@ elseif(WIN32)
     )
 else()
   message( SEND_ERROR "Thread unit testing is for unix/windows")
+endif ()
+
+add_executable(test_worker_shutdown_race
+  test_worker_shutdown_race.cpp
+  )
+
+target_compile_definitions(test_worker_shutdown_race PRIVATE
+  ${COMMON_DEFS}
+  )
+
+target_include_directories(test_worker_shutdown_race PRIVATE
+  ${TEST_INCLUDES}
+  )
+
+if(UNIX)
+  target_link_libraries(test_worker_shutdown_race LINK_PRIVATE
+    cubrid
+    )
+elseif(WIN32)
+  target_link_libraries(test_worker_shutdown_race LINK_PRIVATE
+    cubrid-win-lib
+    )
+else()
+  message( SEND_ERROR "Worker shutdown race testing is for unix/windows")
+endif ()
+
+add_executable(test_worker_pool_progress_integration
+  test_worker_pool_progress_integration.cpp
+  )
+
+target_compile_definitions(test_worker_pool_progress_integration PRIVATE
+  ${COMMON_DEFS}
+  )
+
+target_include_directories(test_worker_pool_progress_integration PRIVATE
+  ${TEST_INCLUDES}
+  )
+
+if(UNIX)
+  target_link_libraries(test_worker_pool_progress_integration LINK_PRIVATE
+    cubrid
+    )
+elseif(WIN32)
+  target_link_libraries(test_worker_pool_progress_integration LINK_PRIVATE
+    cubrid-win-lib
+    )
+else()
+  message( SEND_ERROR "Worker progress integration testing is for unix/windows")
 endif ()

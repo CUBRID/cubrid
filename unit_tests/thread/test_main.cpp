@@ -21,6 +21,7 @@
 int
 main (int, char **)
 {
+  (void) test_thread::test_worker_pool_progress ();
   (void) test_thread::test_manager ();
 
   return 0;
