@@ -139,6 +139,10 @@ public class Misc {
     }
 
     public static String getNormalizedText(ParseTree ctx) {
+        return getNormalizedText(ctx, true);
+    }
+
+    public static String getNormalizedText(ParseTree ctx, boolean separate) {
         assert ctx != null;
         int children = ctx.getChildCount();
 
@@ -147,7 +151,7 @@ public class Misc {
         } else {
             StringBuffer sbuf = new StringBuffer();
             for (int i = 0; i < children; i++) {
-                if (i > 0) {
+                if (i > 0 && separate) {
                     sbuf.append(' ');
                 }
                 ParseTree child = ctx.getChild(i);

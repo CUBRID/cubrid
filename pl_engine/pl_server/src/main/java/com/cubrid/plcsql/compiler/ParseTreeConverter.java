@@ -523,7 +523,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpec visitPercent_type(Percent_typeContext ctx) {
 
-        if (ctx.table_name() == null) {
+        if (ctx.qualified_name() == null) {
+
             // case <variable>%TYPE
             ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s000: undeclared id
             if (!(id.decl instanceof DeclIdTypeDeclared)) {
@@ -536,16 +537,30 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return ((DeclIdTypeDeclared) id.decl).typeSpec();
         } else {
-            // case <table>.<column>%TYPE
-            String table = Misc.getNormalizedText(ctx.table_name());
-            if (table.indexOf(".") >= 0) {
-                // table name contains its user schema name
-                table = table.replaceAll(" ", "");
-            }
-            String column = Misc.getNormalizedText(ctx.identifier());
 
-            TypeSpec ret = new TypeSpecPercent(ctx, table, column, typeVisitMode);
-            semanticQuestions.put(ret, new ServerAPI.ColumnType(table, column));
+            // case <X>%TYPE where X is one of (<owner>.)<table>.<column>, (<owner>.)<pkg>.<var>, and (<owner>.)<pkg>.<const>
+            String qualifiedName = Misc.getNormalizedText(ctx.qualified_name(), false);
+            assert (qualifiedName.indexOf(".") >= 0);
+            String[] split = qualifiedName.split("\\.");
+
+            String qualifier, name;
+            switch (split.length) {
+                case 2:
+                    qualifier = split[0];
+                    name = split[1];
+                    break;
+                case 3:
+                    qualifier = split[0] + "." + split[1];
+                    name = split[2];
+                    break;
+                default:
+                    assert false;   // by syntax
+                    qualifier = null;
+                    name = null;
+            }
+
+            TypeSpec ret = new TypeSpecPercent(ctx, qualifier, name, typeVisitMode);
+            semanticQuestions.put(ret, new ServerAPI.ColumnType(qualifier, name));
             return ret;
         }
     }
@@ -553,29 +568,31 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public TypeSpec visitPercent_rowtype(Percent_rowtypeContext ctx) {
 
-        String row = Misc.getNormalizedText(ctx.row_name());
-        if (row.indexOf(".") < 0) {
+        String row;
+
+        if (ctx.qualified_name() == null) {
             // 'row' can be a cursor name
             // If it is, and is also a table name, then it is considered to be a cursor.
             // That is, a cursor definition overrides a table definition.
             ExprId id;
             try {
-                id = visitNonFuncIdentifier(ctx.row_name().name);
+                id = visitNonFuncIdentifier(ctx.identifier());
                 if (id.decl instanceof DeclCursor) {
                     return new TypeSpec(ctx, ((DeclCursor) id.decl).recordTypeSpec.type);
                 } else {
                     throw new SemanticError(
                             Misc.getLineColumnOf(ctx), // s076
-                            "%ROWTYPE cannot be applied to a non-cursor variable " + row);
+                            "%ROWTYPE cannot be applied to a non-cursor variable " + id.name);
                 }
             } catch (UndeclaredId e) {
                 // OK: 'row' is not a local variable
+                row = Misc.getNormalizedText(ctx.identifier());
             }
         } else {
-            row = row.replaceAll(" ", ""); // it can have spaces
+            row = Misc.getNormalizedText(ctx.qualified_name());
         }
 
-        // row can be a table name
+        // TODO: consider cases of (<owner>.)<pkg>.<cursor> too
         List<SqlSemantics> answer =
                 ServerAPI.getSqlSemantics(Arrays.asList("select * from " + row));
         if (answer == null) {
@@ -1098,71 +1115,36 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public Expr visitRecord_field(Record_fieldContext ctx) {
-
-        String fieldName = Misc.getNormalizedText(ctx.field);
-
-        try {
-            ExprId record = visitNonFuncIdentifier(ctx.record);
-            if (!isRecordId(record)) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.record), // s008
-                        "field lookup is only allowed for records");
-            }
-
-            return new ExprField(ctx, record, fieldName);
-
-        } catch (UndeclaredId e) {
-
-            String msg = e.getMessage();
-
-            if (fieldName.equals("CURRENT_VALUE")
-                    || fieldName.equals("NEXT_VALUE")
-                    || fieldName.equals("CURRVAL")
-                    || fieldName.equals("NEXTVAL")) {
-
-                connectionRequired = true;
-
-                String recordText = Misc.getNormalizedText(ctx.record);
-                // do not push a symbol table: no nested structure
-                ExprSerialVal ret =
-                        new ExprSerialVal(
-                                ctx,
-                                recordText,
-                                (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
-                                        ? ExprSerialVal.SerialVal.CURR_VAL
-                                        : ExprSerialVal.SerialVal.NEXT_VAL,
-                                getSqlSerialNo());
-                addToSqlUses(ret);
-                semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
-                return ret;
-            } else {
-                throw e; // s007: undeclared id ...
-            }
-        }
-    }
-
-    @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.func_call_name().name);
+        String name = null;
+
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
-        if (ctx.func_call_name().owner != null) {
-            // This has an owner name
+        Qualified_nameContext qualifiedName = ctx.func_call_name().qualified_name();
+        if (qualifiedName != null) {
 
-            String owner = Misc.getNormalizedText(ctx.func_call_name().owner);
-            if (owner.equals(spOwner) && name.equals(spName) && isSpFunc) {
+            boolean isGlobalCall = true;
 
-                // OK: recursive call of the stored function being defined
-                // Note that owner name is unused afterwards.
-            } else {
+            if (qualifiedName.qualSingle != null) {
 
-                // This has an owner name and the target function is not the SP being defined
+                String qual = Misc.getNormalizedText(qualifiedName.qualSingle);
+                name = Misc.getNormalizedText(qualifiedName.name);
+                if (qual.equals(spOwner) && name.equals(spName) && isSpFunc) {
+
+                    // OK: recursive call of the stored procedure being defined
+                    // Note that owner name is unused afterwards.
+                    isGlobalCall = false;
+                }
+            }
+
+            if (isGlobalCall) {
+
+                // This has an owner name or package name and the target function is not the SP being defined.
                 // Take this as a global function call.
                 connectionRequired = true;
 
-                String uniqName = owner + '.' + name;
+                String uniqName = Misc.getNormalizedText(qualifiedName, false);    // TODO: check if this has dots or not
                 ExprGlobalFuncCall ret =
                         new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -1170,8 +1152,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 return ret; // done
             }
+        } else {
+
+            name = Misc.getNormalizedText(ctx.func_call_name().func_name());
         }
 
+        assert name != null;
         DeclFunc decl = symbolStack.getDeclFunc(name);
         if (decl == null) {
 
@@ -1776,6 +1762,138 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StmtBlock(ctx, block, decls, body);
     }
 
+    private AstNode visitQualifiedVar(Qualified_nameContext ctx) {
+
+        if (ctx.qualSingle == null) {
+
+            // TODO: consider owner.pkg.var case
+            assert false : "not implemented yet";
+            return null;
+        } else {
+
+            String fieldName = Misc.getNormalizedText(ctx.name);
+
+            try {
+                ExprId record = visitNonFuncIdentifier(ctx.qualSingle);
+                if (!isRecordId(record)) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.qualSingle), // s008
+                            "field lookup is only allowed for records");
+                }
+
+                return new ExprField(ctx, record, fieldName);
+
+            } catch (UndeclaredId e) {
+
+                // TODO: consider pkg.var case
+                assert false : "not implemented yet";
+                return null;
+            }
+        }
+    }
+
+    private AstNode visitQualifiedProc(Qualified_nameContext ctx) {
+        // TODO
+        return null;
+    }
+
+    private AstNode visitQualifiedId(Qualified_nameContext ctx) {
+
+        if (ctx.qualSingle == null) {
+
+            // TODO: consider owner.pkg.var and owner.pkg.const cases
+            assert false : "not implemented yet";
+            return null;
+        } else {
+
+            String fieldName = Misc.getNormalizedText(ctx.name);
+
+            try {
+                ExprId record = visitNonFuncIdentifier(ctx.qualSingle);
+                if (!isRecordId(record)) {
+                    throw new SemanticError(
+                            Misc.getLineColumnOf(ctx.qualSingle), // s008
+                            "field lookup is only allowed for records");
+                }
+
+                return new ExprField(ctx, record, fieldName);
+
+            } catch (UndeclaredId e) {
+
+                // TODO consider pkg.var and pkg.const cases too
+
+                String msg = e.getMessage();
+
+                if (fieldName.equals("CURRENT_VALUE")
+                        || fieldName.equals("NEXT_VALUE")
+                        || fieldName.equals("CURRVAL")
+                        || fieldName.equals("NEXTVAL")) {
+
+                    connectionRequired = true;
+
+                    String recordText = Misc.getNormalizedText(ctx.qualSingle);
+                    // do not push a symbol table: no nested structure
+                    ExprSerialVal ret =
+                            new ExprSerialVal(
+                                    ctx,
+                                    recordText,
+                                    (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
+                                            ? ExprSerialVal.SerialVal.CURR_VAL
+                                            : ExprSerialVal.SerialVal.NEXT_VAL,
+                                    getSqlSerialNo());
+                    addToSqlUses(ret);
+                    semanticQuestions.put(ret, new ServerAPI.SerialOrNot(recordText));
+                    return ret;
+                } else {
+                    throw e; // s007: undeclared id ...
+                }
+            }
+        }
+    }
+
+    private AstNode visitQualifiedException(Qualified_nameContext ctx) {
+        // TODO
+        return null;
+    }
+
+    private AstNode visitQualifiedCursor(Qualified_nameContext ctx) {
+        // TODO
+        return null;
+    }
+
+    private AstNode visitQualifiedColumnOrVar(Qualified_nameContext ctx) {
+        // TODO
+        return null;
+    }
+
+    private AstNode visitQualifiedRow(Qualified_nameContext ctx) {
+        // TODO
+        return null;
+    }
+
+    @Override
+    public AstNode visitQualified_name(Qualified_nameContext ctx) {
+        ParserRuleContext parent = ctx.getParent();
+        if (parent instanceof Assign_targetContext) {
+            return visitQualifiedVar(ctx);
+        } else if (parent instanceof Proc_call_nameContext) {
+            return visitQualifiedProc(ctx);
+        } else if (parent instanceof AtomContext) {
+            return visitQualifiedId(ctx);
+        } else if (parent instanceof Exception_nameContext) {
+            return visitQualifiedException(ctx);
+        } else if (parent instanceof Cursor_expContext) {
+            return visitQualifiedCursor(ctx);
+        } else if (parent instanceof Percent_typeContext) {
+            return visitQualifiedColumnOrVar(ctx);
+        } else if (parent instanceof Percent_rowtypeContext) {
+            return visitQualifiedRow(ctx);
+        } else {
+            assert false;   // unreachable with the current syntax
+            return null;
+        }
+    }
+
     @Override
     public StmtAssign visitAssignment_statement(Assignment_statementContext ctx) {
 
@@ -1798,22 +1916,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return id;
         } else {
-            assert ctx.record_field() != null;
+            assert ctx.qualified_name() != null;
 
-            Expr e = visitRecord_field(ctx.record_field()); // s079: undeclared id ...
+            Expr e = (Expr) visitQualifiedVar(ctx.qualified_name()); // s079: undeclared id ...
             if (e instanceof ExprField) {
                 ExprField field = (ExprField) e;
                 if (!field.isAssignableTo()) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.record_field()), // s080
+                            Misc.getLineColumnOf(ctx.qualified_name()), // s080
                             field.name() + " is not updatable");
                 }
 
                 return field;
-            } else if (e instanceof ExprSerialVal) {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(ctx.record_field()), // s081
-                        "serial value is not updatable");
             } else {
                 throw new RuntimeException("unreachable");
             }
@@ -2673,27 +2787,34 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Stmt visitProcedure_call(Procedure_callContext ctx) {
 
-        String name = Misc.getNormalizedText(ctx.proc_call_name().name);
+        String name = null;
+
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
-        if (ctx.proc_call_name().owner != null) {
-            // This has an owner name
+        Qualified_nameContext qualifiedName = ctx.proc_call_name().qualified_name();
+        if (qualifiedName != null) {
 
-            String owner = Misc.getNormalizedText(ctx.proc_call_name().owner);
-            if (owner.equals(spOwner)
-                    && ctx.proc_call_name().DBMS_OUTPUT() == null
-                    && name.equals(spName)
-                    && !isSpFunc) {
+            boolean isGlobalCall = true;
 
-                // OK: recursive call of the stored procedure being defined
-                // Note that owner name is unused afterwards.
-            } else {
+            if (qualifiedName.qualSingle != null) {
 
-                // This has an owner name and the target procedure is not the SP being defined
+                String qual = Misc.getNormalizedText(qualifiedName.qualSingle);
+                name = Misc.getNormalizedText(qualifiedName.name);
+                if (qual.equals(spOwner) && name.equals(spName) && !isSpFunc) {
+
+                    // OK: recursive call of the stored procedure being defined
+                    // Note that owner name is unused afterwards.
+                    isGlobalCall = false;
+                }
+            }
+
+            if (isGlobalCall) {
+
+                // This has an owner name or package name and the target procedure is not the SP being defined.
                 // Take this as a global procedure call.
                 connectionRequired = true;
 
-                String uniqName = owner + '.' + name;
+                String uniqName = Misc.getNormalizedText(qualifiedName, false);    // TODO: check if this has dots or not
                 StmtGlobalProcCall ret =
                         new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -2701,15 +2822,19 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 return ret; // done
             }
+        } else {
+
+            name = Misc.getNormalizedText(ctx.proc_call_name().identifier());
+
+            if (ctx.proc_call_name().DBMS_OUTPUT() != null) {
+                // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
+                // migration from Oracle, in the current implementation.
+                // NOTE: users cannot define a procedure of this name because of '$'
+                name = "DBMS_OUTPUT$" + name;
+            }
         }
 
-        if (ctx.proc_call_name().DBMS_OUTPUT() != null && dbmsOutputProc.contains(name)) {
-            // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
-            // migration from Oracle.
-            // NOTE: users cannot define a procedure of this name because of '$'
-            name = "DBMS_OUTPUT$" + name;
-        }
-
+        assert name != null;
         DeclProc decl = symbolStack.getDeclProc(name);
         if (decl == null) {
 
