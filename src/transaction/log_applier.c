@@ -319,8 +319,8 @@ struct la_apply_task
   /* 리더가 미리 매핑해 둔 repl_list 포인터. 워커가 la_find_apply_list 를 호출하지 않도록 하여
    * la_Info.repl_lists 배열 realloc/슬롯 재사용 레이스를 회피한다. */
   LA_APPLY *apply;
-  /* writeset PoC: 마스터 commit_seq 기준 의존성 라벨. 커밋 직전 LOG_DUMMY_WS_LABEL 에서
-   * 디코드한 dependency_seq. 게이트가 이 라벨의 선행 트랜잭션 완료를 기다린다. NULL=의존 없음. */
+  /* writeset PoC: 마스터 commit_seq 기준 dependency_seq. 커밋 직전 LOG_DUMMY_WS_LABEL 에서
+   * 디코드한다. 게이트가 이 값의 선행 트랜잭션 완료를 기다린다. NULL=의존 없음. */
   LOG_LSA dependency_seq;
 };
 
@@ -6674,7 +6674,7 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
  *   return: void
  *   pgptr(in): 라벨 레코드가 있는 로그 페이지
  *   lsa(in): 라벨 레코드의 LSA
- *   dependency_seq(out): 디코드한 의존성 라벨. 실패 시 NULL LSA
+ *   dependency_seq(out): 디코드한 dependency_seq. 실패 시 NULL LSA
  *
  * Note: la_retrieve_eot_time() 과 동일한 패턴. 레코드 헤더 뒤 data_header 를 읽는다.
  */
@@ -9674,16 +9674,16 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
   char buffer[256];
   time_t eot_time;
 
-  /* writeset PoC: WS_LABEL -> COMMIT 사이에서 의존성 라벨을 실어 나르는 reader-local 버퍼.
+  /* writeset PoC: WS_LABEL -> COMMIT 사이에서 dependency_seq 를 실어 나르는 reader-local 버퍼.
    *
-   * 의존성 라벨(dependency_seq)은 커밋 레코드가 아니라 그 "직전" 더미 레코드에 실려 온다:
+   * dependency_seq 는 커밋 레코드가 아니라 그 "직전" 더미 레코드에 실려 온다:
    *     ... -> LOG_DUMMY_WS_LABEL(dependency_seq) -> LOG_COMMIT(같은 trid) -> ...
    * 마스터가 이 둘을 같은 prior_lsa_mutex 구간에서 붙여 기록하므로 사이에 다른 레코드가
-   * 끼어들지 않는다(인접성 불변식). 따라서 라벨을 읽는 순간 아래 두 변수에 잠시 담아 두면,
+   * 끼어들지 않는다(인접성 불변식). 따라서 값을 읽는 순간 아래 두 변수에 잠시 담아 두면,
    * 바로 다음에 오는 LOG_COMMIT 이 trid 로 매칭해 task.dependency_seq 로 꺼내 쓴다.
    *
-   *   [LOG_DUMMY_WS_LABEL]  la_ws_label_trid/dependency_seq 에 저장   (9970~ 참고)
-   *   [LOG_COMMIT]          trid 일치 시 소비 -> task, 불일치면 의존 없음 (9871~ 참고)
+   *   [LOG_DUMMY_WS_LABEL]  la_retrieve_ws_label 로 읽어 아래 두 홀더에 저장
+   *   [LOG_COMMIT]          trid 일치 시 소비 -> task.dependency_seq, 불일치면 의존 없음(NULL)
    *
    * 리더(로그를 읽는 단일 스레드)만 접근하므로 락이 필요 없다. */
   static int la_ws_label_trid = NULL_TRANID;
@@ -9945,9 +9945,9 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	  /* 리더가 이미 la_add_apply_list 로 매핑해 둔 repl_list 포인터를 태스크에 실어 보낸다.
 	   * 워커는 이 포인터를 직접 사용해 la_Info.repl_lists 배열 경합을 피한다. */
 	  task.apply = la_find_apply_list (lrec->trid);
-	  /* writeset PoC: 바로 앞 WS_LABEL 이 남긴 의존성 라벨을 소비해 태스크에 싣는다.
-	   * trid 가 일치하면 그 라벨이 이 커밋의 것이므로 싣고 홀더를 리셋한다.
-	   * 일치하는 라벨이 없으면(더미 없이 온 커밋 등) 의존 없음(NULL)으로 둔다. */
+	  /* writeset PoC: 바로 앞 WS_LABEL 이 남긴 dependency_seq 를 소비해 태스크에 싣는다.
+	   * trid 가 일치하면 그 값이 이 커밋의 것이므로 싣고 홀더를 리셋한다.
+	   * 일치하는 값이 없으면(더미 없이 온 커밋 등) 의존 없음(NULL)으로 둔다. */
 	  if (la_ws_label_trid == lrec->trid)
 	    {
 	      LSA_COPY (&task.dependency_seq, &la_ws_label_dependency_seq);
