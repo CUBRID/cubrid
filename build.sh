@@ -297,6 +297,8 @@ function build_configure ()
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=RelWithDebInfo" ;;
     debug)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Debug" ;;
+    optdebug)
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=OptDebug" ;;
     coverage)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Coverage" ;;
     profile)
@@ -442,8 +444,14 @@ function build_package ()
     package_basename="$product_name-$version-Linux.$build_target"
   fi
   
-	if [ ! "$build_mode" = "release" ]; then
-	  package_basename="$package_basename-$build_mode"
+	# The optdebug build masquerades as a debug package so CTP and other tooling
+	# handle it exactly like debug. This must match CPACK_PACKAGE_FILE_SUFFIX
+	# (-debug) set in CMakeLists.txt, otherwise the package summary below cannot
+	# locate the file produced by cpack.
+	package_mode="$build_mode"
+	[ "$build_mode" = "optdebug" ] && package_mode="debug"
+	if [ ! "$package_mode" = "release" ]; then
+	  package_basename="$package_basename-$package_mode"
 	fi
 	if [ "$package" = "tarball" ]; then
 	  package_name="$package_basename.tar.gz"
@@ -510,7 +518,7 @@ function show_usage ()
   echo "Usage: $0 [OPTIONS] [TARGET]"
   echo " OPTIONS"
   echo "  -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 64]"
-  echo "  -m      Set build mode(release, debug or coverage); [default: release]"
+  echo "  -m      Set build mode(release, debug, optdebug, coverage or profile); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
   echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
@@ -540,6 +548,7 @@ function show_usage ()
   echo "  $0                         # Build and pack all packages (64/release)"
   echo "  $0 -t 32 build             # 32bit release build only"
   echo "  $0 -t 64 -m debug dist     # Create 64bit debug mode packages"
+  echo "  $0 -t 64 -m optdebug build # 64bit optimized-debug build (asserts on, release-level speed)"
   echo ""
 }
 
@@ -583,7 +592,7 @@ function get_options ()
   esac
 
   case $build_mode in
-    release|debug|coverage|profile);;
+    release|debug|optdebug|coverage|profile);;
     *) show_usage; print_fatal "Mode [$build_mode] is not a valid mode" ;;
   esac
 
@@ -672,7 +681,7 @@ function build_build ()
 
   if [ "$build_args" = "all" -o "$build_args" = "ALL" ]; then
     case $build_mode in
-      release|debug)
+      release|debug|optdebug)
 	build_args="clean build dist"
 	;;
       *)
