@@ -29,6 +29,7 @@
 
 #include "histogram_sampler_sr.hpp"
 
+#include <cstdint>
 #include <new>
 #include <string>
 #include <utility>
@@ -641,6 +642,13 @@ namespace
 		      {
 			continue;	/* heap file header page, no user records */
 		      }
+		    if (m_sample_threshold != UINT64_MAX
+			&& (cubsampling::hll_mix64 (((std::uint64_t) (std::uint16_t) out->volid << 32)
+						    | (std::uint32_t) out->pageid)
+			    >= m_sample_threshold))
+		      {
+			continue;	/* page not chosen by the sampling filter */
+		      }
 		    return true;
 		  }
 	      }
@@ -648,10 +656,22 @@ namespace
 	  }
       }
 
+      /* page-sampling filter: keep a page iff hash (vpid) < fraction * 2^64. The hash is
+       * deterministic per page -- independent of worker partitioning and scan order -- so the kept
+       * page set is stable and reproducible for a given fraction. fraction >= 1.0 disables it. */
+      void set_page_sample (double fraction)
+      {
+	if (fraction < 1.0)
+	  {
+	    m_sample_threshold = (std::uint64_t) (fraction * (double) UINT64_MAX);
+	  }
+      }
+
     private:
       FILE_PARTIAL_SECTOR m_walk_sector = FILE_PARTIAL_SECTOR_INITIALIZER;
       size_t m_walk_pgoff = 0;
       bool m_walk_in_sector = false;
+      std::uint64_t m_sample_threshold = UINT64_MAX;
   };
 
   /* Scan every allocated data page contained in the ftab partition `part` (heap header page
@@ -818,13 +838,29 @@ cleanup:
    * count), or 0 to fall back to the serial scan. On a positive return, *out_wm holds the
    * reservation (release with release_workers ()) and `parts` holds that many ftab partitions. */
   static int
-  reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, std::vector<ftab_set> &parts,
-		     parallel_query::worker_manager **out_wm)
+  reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, int sample_rows_target, bool with_fullscan,
+		     std::vector<ftab_set> &parts, parallel_query::worker_manager **out_wm,
+		     double *out_sample_fraction)
   {
     *out_wm = NULL;
+    *out_sample_fraction = 1.0;
 
     int npages = 0, nobjs = 0, avg_len = 0;
     (void) heap_get_num_objects (thread_p, hfid, &npages, &nobjs, &avg_len);
+
+    /* PostgreSQL-style page sampling: ANALYZE reads about `target rows` pages (one sampled row per
+     * page expected), so mirror that as fraction = target_pages / npages once the table exceeds the
+     * sampling threshold. WITH FULLSCAN always scans every page. */
+    int sampling_threshold = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLING_THRESHOLD_PAGES);
+    int target_pages = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLE_ROWS);
+    if (target_pages <= 0)
+      {
+	target_pages = sample_rows_target;
+      }
+    if (!with_fullscan && sampling_threshold > 0 && npages > sampling_threshold && npages > target_pages)
+      {
+	*out_sample_fraction = (double) target_pages / (double) npages;
+      }
 
     /* This dedicated UPDATE STATISTICS / histogram full scan requests up to 2x the configured
      * 'parallelism' cap (without changing the global parameter). Passing an explicit hint_degree
@@ -1202,8 +1238,9 @@ cleanup:
   {
     public:
       multi_scan_task (const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids, int attr_cnt,
-		       MVCC_SNAPSHOT *snapshot, ftab_set part, multi_worker_result *result,
-		       THREAD_ENTRY *parent, parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
+		       MVCC_SNAPSHOT *snapshot, ftab_set part, double sample_fraction,
+		       multi_worker_result *result, THREAD_ENTRY *parent, parallel_query::worker_manager *wm,
+		       std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
 	, m_hfid (*hfid)
 	, m_attr_ids (attr_ids)
@@ -1215,6 +1252,7 @@ cleanup:
 	, m_wm (wm)
 	, m_abort (abort_flag)
       {
+	m_part.set_page_sample (sample_fraction);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -1278,16 +1316,17 @@ cleanup:
   static int
   parallel_scan_merge_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			     int sample_size, std::vector<col_collector *> &merged, std::int64_t *out_total_rows,
-			     bool *did_parallel)
+			     int sample_size, bool with_fullscan, std::vector<col_collector *> &merged,
+			     std::int64_t *out_total_rows, double *out_sample_fraction, bool *did_parallel)
   {
     int w, c;
     *did_parallel = false;
     *out_total_rows = 0;
+    *out_sample_fraction = 1.0;
 
     std::vector<ftab_set> parts;
     parallel_query::worker_manager *wm = NULL;
-    int degree = reserve_and_split (thread_p, hfid, parts, &wm);
+    int degree = reserve_and_split (thread_p, hfid, sample_size, with_fullscan, parts, &wm, out_sample_fraction);
     if (degree < 2)
       {
 	return NO_ERROR;	/* caller runs the serial single scan */
@@ -1341,8 +1380,8 @@ cleanup:
     for (w = 0; w < degree; w++)
       {
 	multi_scan_task *task =
-		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]), &results[w],
-				     thread_p, wm, &abort_flag);
+		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]),
+				     *out_sample_fraction, &results[w], thread_p, wm, &abort_flag);
 	if (task == NULL)
 	  {
 	    /* non-throwing operator new: OOM. The partitions of the unpushed workers would go
@@ -1572,13 +1611,19 @@ cleanup:
   static int
   parallel_build_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-			int sample_size, double *null_frequency, char **histogram_blob, int *blob_length,
-			INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel)
+			int sample_size, bool with_fullscan, double *null_frequency, char **histogram_blob,
+			int *blob_length, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
+    double sample_fraction = 1.0;
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, merged, &total_rows, did_parallel);
+					   sample_size, with_fullscan, merged, &total_rows, &sample_fraction,
+					   did_parallel);
+    /* sample_fraction < 1.0 means the scan only visited that share of the pages; the
+     * sample -> population expansion (total_rows, NDV via Duj1, bucket scaling) is wired in the
+     * estimation step that follows this plumbing */
+    (void) sample_fraction;
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
@@ -1698,8 +1743,12 @@ cleanup:
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
+    double sample_fraction = 1.0;
+    /* NDV-only collection stays full-scan until the Duj1 sample->population estimator lands:
+     * a sampled HLL alone measures only the sample's distinct count and would understate NDV */
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, merged, &total_rows, did_parallel);
+					   sample_size, true /* force full scan */, merged, &total_rows,
+					   &sample_fraction, did_parallel);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
@@ -1858,8 +1907,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     {
       bool did_parallel = false;
       int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-				       max_buckets, sample_size, null_frequency, histogram_blob, blob_length, out_ndv,
-				       out_total_rows, &did_parallel);
+				       max_buckets, sample_size, with_fullscan, null_frequency, histogram_blob,
+				       blob_length, out_ndv, out_total_rows, &did_parallel);
       if (perr != NO_ERROR)
 	{
 	  return perr;
@@ -2173,6 +2222,9 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, bool with_fullscan,
     INT64 *out_ndv, INT64 *out_total_rows, STATS_NDV_SKETCH_SET **out_sketches)
 {
+  /* the NDV-only path always full-scans until the Duj1 estimator lands (see parallel_collect_ndv_multi) */
+  (void) with_fullscan;
+
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
   RECDES recdes;
