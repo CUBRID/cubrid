@@ -151,6 +151,7 @@ static void log_recovery_bulk_cleanup_candidates (THREAD_ENTRY *thread_p, const 
 						  const LOG_LSA *end_redo_lsa, bool is_media_crash);
 static void log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY *thread_p, const LOG_LSA *start_redo_lsa,
 						 const LOG_LSA *end_redo_lsa, bool is_media_crash);
+static bool log_recovery_bulk_redo_skip_is_exempt (LOG_RCVINDEX rcvindex);
 static int log_recovery_bulk_classify_marker (THREAD_ENTRY *thread_p, LOG_BULK_RECOVERY_MARKER *marker,
 					      const LOG_LSA *start_redo_lsa, const LOG_LSA *end_redo_lsa,
 					      bool is_media_crash, bool *is_candidate);
@@ -7039,6 +7040,71 @@ log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY *thread_p, const LOG_LSA *star
     }
 }
 
+/*
+ * log_recovery_bulk_redo_skip_is_exempt () - rcvindex classes never swept into the bulk no-redo skip
+ *
+ * The skip suppresses USER-PAGE CONTENT redo of a bulk-built file that cleanup will destroy.  The
+ * file's own accounting must stay truthful for that destroy to release everything the file
+ * disk-level owns (CLEANUP-GROWN-LEAK):
+ *
+ * - RVPGBUF_DEALLOC: page deallocation redo never reads prior page content and is what
+ *   materializes a later committed DROP of the published object inside the replay window.
+ *   Suppressing it leaves live-looking stale pages on unreserved sectors (poisoning subsequent
+ *   rebuild page reuse) and keeps a dropped candidate's header alive, defeating the stale-marker
+ *   liveness gate.
+ * - RVPGBUF_COMPENSATE_DEALLOC: the rollback twin of RVPGBUF_DEALLOC.  Replaying deallocations
+ *   while suppressing their compensations would materialize rolled-back deallocations.
+ * - RVFL_*: every file-header/file-table mutation.  The disk-level half of a post-marker growth
+ *   (the volume sector-bitmap RVDK_RESERVE_SECTORS) targets volume pages that are never file
+ *   members and always replays; suppressing only the file-level half leaves the header
+ *   under-counting what is truly disk-allocated, and file_destroy_internal releases only what
+ *   the header knows (file_table_collect_all_vsids) -- permanently leaking the difference.
+ *   File bookkeeping is always WAL-logged, even for a no-redo bulk build, so replaying it fully
+ *   can only reproduce the same header/ftab state an ordinary file would recover to.
+ * - RVPGBUF_NEW_PAGE: initialization of a newly appended file-table page (inside a b-tree file's
+ *   VFID the only pgbuf_log_new_page emitter is file_manager, always on PAGE_FTAB pages).  A
+ *   replayed RVFL_EXTDATA_SET_NEXT links such a page into the table chain that
+ *   file_destroy_internal walks; suppressing its initialization would leave a garbage page in
+ *   that chain.
+ */
+static bool
+log_recovery_bulk_redo_skip_is_exempt (LOG_RCVINDEX rcvindex)
+{
+  switch (rcvindex)
+    {
+    case RVPGBUF_DEALLOC:
+    case RVPGBUF_COMPENSATE_DEALLOC:
+    case RVPGBUF_NEW_PAGE:
+    case RVFL_DESTROY:
+    case RVFL_EXPAND:
+    case RVFL_ALLOC:
+    case RVFL_DEALLOC:
+    case RVFL_FHEAD_ALLOC:
+    case RVFL_FHEAD_DEALLOC:
+    case RVFL_FHEAD_SET_LAST_USER_PAGE_FTAB:
+    case RVFL_FHEAD_MARK_DELETE:
+    case RVFL_FHEAD_STICKY_PAGE:
+    case RVFL_USER_PAGE_MARK_DELETE:
+    case RVFL_USER_PAGE_MARK_DELETE_COMPENSATE:
+    case RVFL_FILEDESC_UPD:
+    case RVFL_PARTSECT_ALLOC:
+    case RVFL_PARTSECT_DEALLOC:
+    case RVFL_EXTDATA_SET_NEXT:
+    case RVFL_EXTDATA_ADD:
+    case RVFL_EXTDATA_REMOVE:
+    case RVFL_EXTDATA_MERGE:
+    case RVFL_EXTDATA_UPDATE_ITEM:
+    case RVFL_TRACKER_HEAP_MARK_DELETED:
+    case RVFL_TRACKER_HEAP_REUSE:
+    case RVFL_TRACKER_UNREGISTER:
+    case RVFL_FHEAD_CONVERT_FTAB_TO_USER:
+    case RVFL_FHEAD_SET_TDE_ALGORITHM:
+      return true;
+    default:
+      return false;
+    }
+}
+
 int
 log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *record_lsa, const VPID *rcv_vpid,
 				    LOG_RCVINDEX rcvindex, bool *skip)
@@ -7049,11 +7115,7 @@ log_recovery_bulk_should_skip_redo (THREAD_ENTRY *thread_p, const LOG_LSA *recor
   int error;
 
   *skip = false;
-  /* Page deallocation redo never reads prior page content and is what materializes a later
-   * committed DROP of the published object inside the replay window.  Suppressing it leaves
-   * live-looking stale pages on unreserved sectors (poisoning subsequent rebuild page reuse)
-   * and keeps a dropped candidate's header alive, defeating the stale-marker liveness gate. */
-  if (rcvindex == RVPGBUF_DEALLOC)
+  if (log_recovery_bulk_redo_skip_is_exempt (rcvindex))
     {
       return NO_ERROR;
     }
