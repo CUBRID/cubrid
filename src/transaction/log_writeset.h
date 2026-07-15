@@ -37,13 +37,19 @@
 /* forward declaration of transaction descriptor (defined in log_impl.h) */
 typedef struct log_tdes LOG_TDES;
 
-/* FNV-1a hash over class_oid (8 bytes) + packed primary key image. */
+/* FNV-1a hash of ONE key = class_oid (8 bytes) + its packed key value. Computed once per key, so a
+ * modified row yields a separate hash for the PK and for each UNIQUE key (all pushed into ws_hashes). */
 #ifndef _LOG_WRITESET_HASH_DEFINED_
 #define _LOG_WRITESET_HASH_DEFINED_
 typedef UINT64 LOG_WRITESET_HASH;
 #endif /* _LOG_WRITESET_HASH_DEFINED_ */
 
 /* per-transaction distinct-key limit and global history capacity.
+ *
+ * [최종(운영) 목표값] MySQL 방식(하나의 큰 history)을 따라 두 상수 모두 1000만(10,000,000)으로 갈 예정이다.
+ *   아래 #define 값은 그 최종값이 아니라 PoC 검증용으로 낮춘 값이다 — "10개 트랜잭션 × 트랜잭션당 10만건"
+ *   시나리오를 기준으로, 그 워크로드에서 병렬이 성립하는 선에 맞춰 정했다(선정 사유는 아래에 그대로 유지).
+ *
  * writeset PoC 검증용 상수 (2026-07-08 원인분석 리포트 참조). 두 값은 독립이며 서로 다른 병목이다.
  * 검증 워크로드: 10테이블 각각 10만행을 단일 트랜잭션으로 INSERT, 이후 동일 구조로 UPDATE(전행).
  *

@@ -7966,6 +7966,20 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
 	    }
 
+	  /* writeset PoC: also collect UNIQUE/REVERSE_UNIQUE index keys (PK is collected in the replication
+	   * block below). A UNIQUE constraint serializes different-PK rows on the master (one tx frees a unique
+	   * value, another reuses it); without its key in the writeset the slave gate would judge them independent
+	   * and invert their order -> UNIQUE violation / divergence. RBR only (datayn); rows failing a partial-index
+	   * filter predicate were already skipped above; collecting before the btree op is safe (abort clears
+	   * ws_hashes in logtb_clear_tdes). */
+	  if (datayn && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true
+	      && (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE))
+	    {
+	      LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	      (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, key_dbvalue);
+	    }
+
 	  if (is_insert)
 	    {
 #if defined(ENABLE_SYSTEMTAP)
@@ -8624,6 +8638,23 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		{
 		  same_key = false;
 		}
+	    }
+	}
+
+      /* writeset PoC: collect UNIQUE/REVERSE_UNIQUE index identity (PK is collected in the pk_btid_index
+       * block below). old_key = current identity (collected even when same_key, since the row is still
+       * touched); new_key additionally when the unique value changed (handoff). MVCC updates reach every
+       * index here (non-PK indexes are not skipped by the att_id filter). See INSERT path for rationale. */
+      if (repl_info != NULL && repl_info->need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
+	  && log_does_allow_replication () == true
+	  && (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE))
+	{
+	  LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, old_key);
+	  if (!same_key)
+	    {
+	      (void) log_writeset_add_dbvalue (thread_p, ws_tdes, class_oid, new_key);
 	    }
 	}
 
