@@ -9769,12 +9769,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	{
 	  /* rewrites can replace a disjunct with a folded constant VALUE node (e.g.
 	   * qo_reduce_equality_terms substituting an equality into a sibling term); it has no
-	   * expr fields to read. A true constant makes the disjunction always true. */
-	  selectivity = (node->node_type == PT_VALUE && !pt_false_search_condition (QO_ENV_PARSER (env), node))
-	    ? 1.0 : DEFAULT_SELECTIVITY;
-	  total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
-	  total_selectivity = MAX (total_selectivity, 0.0);
-	  total_selectivity = MIN (total_selectivity, 1.0);
+	   * expr fields to read. A true constant makes the whole disjunction always true;
+	   * a false one contributes nothing to an OR. */
+	  if (node->node_type == PT_VALUE && !pt_false_search_condition (QO_ENV_PARSER (env), node))
+	    {
+	      total_selectivity = 1.0;
+	    }
 	  continue;
 	}
 
