@@ -86,7 +86,9 @@ sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OI
 
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, sp_class_oid);
   /* get record into record desc */
-  scan = heap_get_visible_version_expand_oos (thread_p, sp_oidp, sp_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN);
+  scan =
+	  heap_get_visible_version (thread_p, sp_oidp, sp_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
+				    HEAP_RECDES_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
