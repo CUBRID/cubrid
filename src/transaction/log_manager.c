@@ -14713,6 +14713,33 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
   process_lsa.pageid = log_pgptr->hdr.logical_pageid;
   process_lsa.offset = log_pgptr->hdr.offset;
 
+  /*
+   * The first page of an active or archive log volume may contain only the continuation data of a log record
+   * that started in the previous volume. In that case, the page has no log record header and hdr.offset is
+   * NULL_OFFSET. Skip such pages before interpreting page data as LOG_RECORD_HEADER.
+   */
+  while (process_lsa.offset == NULL_OFFSET)
+    {
+      LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+
+      cdc_log ("%s : skip continuation-only log page %lld", __func__, (long long int) process_lsa.pageid);
+      process_lsa.pageid++;
+      if (process_lsa.pageid >= nxio_lsa.pageid)
+	{
+	  ctime_r (time, ctime_buf);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
+	  return ER_CDC_LSA_NOT_FOUND;
+	}
+
+      if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      process_lsa.pageid = log_pgptr->hdr.logical_pageid;
+      process_lsa.offset = log_pgptr->hdr.offset;
+    }
+
   while (!LSA_ISNULL (&process_lsa))
     {
       LSA_COPY (&cur_log_lsa, &process_lsa);	// save the current log record lsa
