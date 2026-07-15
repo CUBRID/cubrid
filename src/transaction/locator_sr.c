@@ -8101,7 +8101,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
 			     REPL_INFO_TYPE_RBR_NORMAL);
-	  /* writeset PoC: collect this row's PK hash for row-identity conflict tracking (RBR only) */
+	  /* writeset PoC: collect this row's PK hash for row-identity conflict tracking (RBR only).
+	   * TODO(RK): 이 PK -> RK(복제키: PK 또는 NOT NULL UNIQUE) 전환 예정. PK 없는 테이블도 RK 로
+	   * 식별되면 게이트(index->type == BTREE_PRIMARY_KEY)와 수집 대상을 RK 인덱스로 교체해야 한다.
+	   * 전환 후 해시 대상 = RK + 모든 UNIQUE. */
 	  if (error_code == NO_ERROR && datayn)
 	    {
 	      LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
@@ -8839,7 +8842,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  /* writeset PoC: UPDATE 는 PK 를 바꿀 수 있으므로 OLD/NEW PK 는 서로 다른 두 행 정체성이다.
 	   * 둘 다 수집해야 이후 OLD PK 든 NEW PK 든 건드리는 트랜잭션이 이 업데이트 뒤로 순서가 잡힌다
 	   * (PK 불변이면 동일 해시 -> 전역 map 에 멱등하게 들어감). new_key 가 아직 살아있는 이 지점에서
-	   * 수집한다(루프 이터레이션 끝에서 폐기됨). */
+	   * 수집한다(루프 이터레이션 끝에서 폐기됨).
+	   * TODO(RK): 이 OLD/NEW PK -> OLD/NEW RK(복제키: PK 또는 NOT NULL UNIQUE) 전환 예정.
+	   * 전환 후 해시 대상 = RK + 모든 UNIQUE. (게이트 교체 상세는 INSERT 경로 TODO(RK)) */
 	  {
 	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
@@ -8899,7 +8904,9 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
 	  /* writeset PoC: in-loop 수집 블록이 안 탄 엣지 경로(repl_old_key 를 여기서 새로 fetch).
 	   * 이 시점엔 new_key 가 이미 폐기됐으므로 OLD PK 만 수집한다(in-loop 경로와 배타적이라
-	   * OLD 이중 카운트 없음). */
+	   * OLD 이중 카운트 없음).
+	   * TODO(RK): 이 OLD PK -> OLD RK(복제키: PK 또는 NOT NULL UNIQUE) 전환 예정.
+	   * 전환 후 해시 대상 = RK + 모든 UNIQUE. (게이트 교체 상세는 INSERT 경로 TODO(RK)) */
 	  {
 	    LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 
