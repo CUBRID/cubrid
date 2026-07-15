@@ -1620,6 +1620,7 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
+  bitset_init (&(plan->plan_un.scan.row_sel_excl_terms), info->env);
   bitset_init (&(plan->plan_un.scan.hash_terms), info->env);
   plan->plan_un.scan.index_equi = false;
   plan->plan_un.scan.index_cover = false;
@@ -1644,6 +1645,7 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
+  bitset_delset (&(plan->plan_un.scan.row_sel_excl_terms));
   bitset_delset (&(plan->plan_un.scan.hash_terms));
   bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
@@ -1922,6 +1924,35 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       bitset_difference (&remaining_terms, &(plan->plan_un.scan.kf_terms));
     }
 
+  /* Decide once per plan which LIKE-derived ranges qo_iscan_cost may drop from
+   * output-row selectivity: only those whose residual LIKE became a key-filter
+   * on the same segment (its selectivity then lives in filter_sel). Else keep
+   * the range as the row-count upper bound. */
+  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
+    {
+      term = QO_ENV_TERM (env, t);
+
+      if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  continue;
+	}
+
+      int kt;
+      BITSET_ITERATOR kf_iter;
+
+      for (kt = bitset_iterate (&(plan->plan_un.scan.kf_terms), &kf_iter); kt != -1; kt = bitset_next_member (&kf_iter))
+	{
+	  QO_TERM *kf_term = QO_ENV_TERM (env, kt);
+
+	  if (QO_TERM_IS_FLAGED (kf_term, QO_TERM_LIKE_HAS_DERIVED_RANGE)
+	      && bitset_intersects (&(QO_TERM_SEGS (kf_term)), &(QO_TERM_SEGS (term))))
+	    {
+	      bitset_add (&(plan->plan_un.scan.row_sel_excl_terms), t);
+	      break;
+	    }
+	}
+    }
+
   /* check for index cover scan */
   plan->plan_un.scan.index_cover = false;	/* init */
   if (index_entryp->cover_segments)
@@ -2064,7 +2095,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_INDEX_ENTRY *index_entryp;
   double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access;
   double object_IO, index_IO;
-  double sel_no_derived_range;
+  double sel_excl_derived_range;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
   int i, t, n, pkeys_num, index;
@@ -2113,8 +2144,8 @@ qo_iscan_cost (QO_PLAN * planp)
   sel = 1.0;
   /* like sel, but excludes LIKE-derived range terms: used for output-row
    * estimates only, not index access cost, to avoid double counting the
-   * retained LIKE (CBRD-27036). */
-  sel_no_derived_range = 1.0;
+   * retained LIKE. */
+  sel_excl_derived_range = 1.0;
 
   pkeys_num = MIN (n, cum_statsp->pkeys_size);
   assert (pkeys_num <= BTREE_STATS_PKEYS_NUM);
@@ -2129,36 +2160,12 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
-      /* Exclude the LIKE-derived range from row-count only if the residual LIKE
-       * is captured elsewhere (a key-filter on the same segment). Otherwise
-       * (e.g. func index with no key-filter) keep it as the upper bound so
-       * scan_rows is not inflated to the whole table (CBRD-27036). */
-      {
-	bool exclude_from_rows = false;
-
-	if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
-	  {
-	    int kt;
-	    BITSET_ITERATOR kf_iter;
-
-	    for (kt = bitset_iterate (&(planp->plan_un.scan.kf_terms), &kf_iter); kt != -1;
-		 kt = bitset_next_member (&kf_iter))
-	      {
-		QO_TERM *kf_termp = QO_ENV_TERM (QO_NODE_ENV (nodep), kt);
-
-		if (bitset_intersects (&(QO_TERM_SEGS (kf_termp)), &(QO_TERM_SEGS (termp))))
-		  {
-		    exclude_from_rows = true;
-		    break;
-		  }
-	      }
-	  }
-
-	if (!exclude_from_rows)
-	  {
-	    sel_no_derived_range *= QO_TERM_SELECTIVITY (termp);
-	  }
-      }
+      /* row_sel_excl_terms: LIKE-derived ranges whose residual LIKE is a
+       * key-filter, decided in qo_index_scan_new */
+      if (!BITSET_MEMBER (planp->plan_un.scan.row_sel_excl_terms, t))
+	{
+	  sel_excl_derived_range *= QO_TERM_SELECTIVITY (termp);
+	}
 
       /* each term can have multi index column. e.g.) (a,b) in .. */
       for (int j = 0; j < index_entryp->col_num; j++)
@@ -2172,7 +2179,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check upper bound */
   sel = MIN (sel, 1.0);
-  sel_no_derived_range = MIN (sel_no_derived_range, 1.0);
+  sel_excl_derived_range = MIN (sel_excl_derived_range, 1.0);
 
   sel_limit = 0.0;		/* init */
 
@@ -2212,7 +2219,7 @@ qo_iscan_cost (QO_PLAN * planp)
 
   /* check lower bound */
   sel = MAX (sel, sel_limit);
-  sel_no_derived_range = MAX (sel_no_derived_range, sel_limit);
+  sel_excl_derived_range = MAX (sel_excl_derived_range, sel_limit);
 
   /* selectivity of the index key filter terms */
   filter_sel = 1.0;
@@ -2260,8 +2267,9 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   else
     {
-      object_IO = opages * sel_no_derived_range * filter_sel;
-      heap_access = (double) QO_NODE_NCARD (nodep) * sel_no_derived_range * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
+      object_IO = opages * sel_excl_derived_range * filter_sel;
+      heap_access =
+	(double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel * (double) ISCAN_OID_ACCESS_OVERHEAD;
     }
   object_IO = MAX (1.0, object_IO);
 
@@ -2270,7 +2278,7 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_io_cost = index_IO;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->variable_io_cost = object_IO;
-  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_no_derived_range * filter_sel);
+  planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel_excl_derived_range * filter_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
   fprintf (stdout, "\nIndex Scan Cost: \n");
@@ -7876,7 +7884,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  /* skip LIKE-derived range: subset-correlated with the retained LIKE (CBRD-27036) */
+		  /* skip LIKE-derived range: subset-correlated with the retained LIKE */
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
 		    {
 		      selectivity *= QO_TERM_SELECTIVITY (term);

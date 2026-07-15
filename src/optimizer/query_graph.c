@@ -2046,8 +2046,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
   if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_DERIVED_RANGE))
     {
-      /* keep real selectivity for index-access cost; flag so row-count skips it (CBRD-27036) */
+      /* keep real selectivity for index-access cost; flag so row-count skips it */
       QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
+    }
+  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
+    {
+      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
     }
 
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
@@ -8664,7 +8668,7 @@ qo_node_add_sarg (QO_NODE * node, QO_TERM * sarg)
 
   bitset_add (&(QO_NODE_SARGS (node)), QO_TERM_IDX (sarg));
   /* Skip LIKE-derived range in row-count: subset-correlated with the retained
-   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. (CBRD-27036) */
+   * LIKE. Still kept in QO_NODE_SARGS for index key-range use. */
   if (!QO_TERM_IS_FLAGED (sarg, QO_TERM_LIKE_DERIVED_RANGE))
     {
       QO_NODE_SELECTIVITY (node) *= QO_TERM_SELECTIVITY (sarg);

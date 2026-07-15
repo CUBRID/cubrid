@@ -2355,10 +2355,10 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
   between->next = like->next;
   like->next = between;
 
-  /* Mark the derived range: the retained LIKE is a subset, so row-count
-   * aggregation must skip it to avoid double counting (CBRD-27036). Set before
-   * the copy so parser_copy_tree_list preserves it. */
+  /* Mark the pair (LIKE is a subset of the range) so row-count aggregation does
+   * not multiply both. Set before the copy so it is preserved. */
   PT_EXPR_INFO_SET_FLAG (between, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+  PT_EXPR_INFO_SET_FLAG (like, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE);
 
   /* fold range bounds : this will allow auto-parametrization */
   like_save = parser_copy_tree_list (parser, like);
