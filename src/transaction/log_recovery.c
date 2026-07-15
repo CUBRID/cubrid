@@ -7574,7 +7574,9 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
    * ownership; log_recovery_bulk_candidate_owns_class would silently classify it "not owned" and skip, which
    * retains a committed no-redo bulk file in the restored database - the exact corruption this cleanup exists
    * to remove - with a zero-line operator report. A malformed marker is therefore fatal, never a skip.
-   * (Codec-side pack/unpack rejection of class_count == 0 is owned by the r304 marker codec and deferred.) */
+   * (Codec-side rejection landed with marker v3: pack refuses to emit a class-list-less marker and
+   * unpack rejects it for v3+; this fatal remains the guard for legacy v1/v2 markers and for
+   * in-memory corruption between unpack and cleanup.) */
   if (main_is_live && (candidate->marker.class_oids == NULL || candidate->marker.class_count == 0))
     {
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE,

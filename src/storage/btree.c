@@ -113,7 +113,9 @@ btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *pa
   if (marker == NULL || packed_size == NULL || marker->class_count > BTREE_BULK_MARKER_MAX_CLASSES
       || marker->constraint_name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME
       || marker->owner_class_name_length == 0 || marker->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
-      || (marker->class_count != 0 && marker->class_oids == NULL)
+      /* r305-P3 codec leg: a marker without a class list can never bind ownership at
+       * cleanup; refuse to produce one (the build fails loudly instead). */
+      || marker->class_count == 0 || marker->class_oids == NULL
       || (marker->constraint_name_length != 0 && marker->constraint_name == NULL)
       || marker->owner_class_name == NULL
       || (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT))
@@ -250,6 +252,11 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
   class_count = btree_bulk_get_u32 (&ptr);
   if (class_count > BTREE_BULK_MARKER_MAX_CLASSES || class_count > class_capacity
       || (class_count != 0 && class_oids == NULL)
+      /* r305-P3 codec leg: v3+ markers must carry a class list; rejection here escalates
+       * to a restore fatal at the analysis collect site.  v1/v2 markers keep today's
+       * parse-and-let-cleanup-decide behavior (a dead legacy malformed marker stays a
+       * harmless skip; a live one still hits the cleanup fatal). */
+      || (version >= BTREE_BULK_MARKER_VERSION && class_count == 0)
       || (UINT64) (ptr - buffer) + (UINT64) class_count * 12 + sizeof (unsigned int) > size)
     {
       return ER_FAILED;
