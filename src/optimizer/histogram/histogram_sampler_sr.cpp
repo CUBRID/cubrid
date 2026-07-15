@@ -1013,10 +1013,24 @@ cleanup:
 	  }
 	return v;
       }
-      /* same as estimate_ndv (), also storing into `ndv`. Used by the NDV-only path. */
+      /* population NDV from the merged row sample via the Duj1 estimator; only meaningful after
+       * merge_peers () on a page-sampled scan (the HLL saw the sample only). n_nn = expanded
+       * population non-null rows. */
+      virtual INT64 estimate_ndv_sampled (std::int64_t n_nn) = 0;
+
+      /* same as estimate_ndv (), also storing into `ndv`. Used by the NDV-only path. On a
+       * page-sampled scan the HLL cannot be extrapolated, so the Duj1 sample estimator takes
+       * over (unique columns keep NDV = expanded non-null rows). */
       INT64 compute_ndv (std::int64_t total_rows)
       {
-	ndv = estimate_ndv (total_rows);
+	if (sampled && !unique)
+	  {
+	    ndv = estimate_ndv_sampled (total_rows - null_rows);
+	  }
+	else
+	  {
+	    ndv = estimate_ndv (total_rows);
+	  }
 	return ndv;
       }
   };
@@ -1062,6 +1076,12 @@ cleanup:
 	  }
 	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity);
 	m_has_merged = true;
+      }
+
+      INT64 estimate_ndv_sampled (std::int64_t n_nn) override
+      {
+	std::vector<T> &samples = m_has_merged ? m_merged : rs.samples ();
+	return estimate_ndv_from_samples<T> (samples, n_nn);
       }
 
       char *build (THREAD_ENTRY *thread_p, int max_buckets, std::int64_t total_rows, int *blob_length) override
@@ -1796,20 +1816,36 @@ cleanup:
   static int
   parallel_collect_ndv_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			      const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			      int sample_size, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel,
-			      STATS_NDV_SKETCH_SET **out_sketches)
+			      int sample_size, bool with_fullscan, INT64 *out_ndv, INT64 *out_total_rows,
+			      bool *did_parallel, STATS_NDV_SKETCH_SET **out_sketches)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
     double sample_fraction = 1.0;
-    /* NDV-only collection stays full-scan until the Duj1 sample->population estimator lands:
-     * a sampled HLL alone measures only the sample's distinct count and would understate NDV */
+    /* when the caller wants the HLL sketches (partitioned-class NDV merging), they must cover the
+     * whole population -- a sampled sketch would understate the merged NDV -- so sampling is only
+     * allowed when no sketches are requested */
+    bool force_full = with_fullscan || (out_sketches != NULL);
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, true /* force full scan */, merged, &total_rows,
+					   sample_size, force_full, merged, &total_rows,
 					   &sample_fraction, did_parallel);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
+      }
+
+    if (sample_fraction < 1.0)
+      {
+	/* expand sampled counts to population estimates (see parallel_build_multi) */
+	const double inv_fraction = 1.0 / sample_fraction;
+	total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
+	for (int c = 0; c < attr_cnt; c++)
+	  {
+	    if (merged[c] != NULL)
+	      {
+		merged[c]->apply_sample_expansion (inv_fraction);
+	      }
+	  }
       }
 
     if (out_sketches != NULL)
