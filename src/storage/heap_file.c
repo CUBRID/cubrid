@@ -2772,7 +2772,7 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 STATIC_INLINE bool
 check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
 {
-  /* The value for PRM_ID_SUPPLEMENTAL_LOG is required to be greater than 0 if supplemental log is to be appended 
+  /* The value for PRM_ID_SUPPLEMENTAL_LOG is required to be greater than 0 if supplemental log is to be appended
    * no_supplemental_log is used to block duplicated supplemental logs. So this value should be false if supplemental log is to be appended 
    */
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log && !OID_ISNULL (classoid))
@@ -3639,9 +3639,9 @@ heap_manager_initialize (void)
 {
   int ret;
 
-#define HEAP_MAX_FIRSTSLOTID_LENGTH (sizeof (HEAP_HDR_STATS))
-
-  heap_Maxslotted_reclength = (spage_max_record_size () - HEAP_MAX_FIRSTSLOTID_LENGTH);
+  heap_Maxslotted_reclength =
+    DB_ALIGN_BELOW (spage_max_record_size () - DB_ALIGN (sizeof (HEAP_CHAIN), HEAP_MAX_ALIGN) -
+		    8 * SPAGE_SLOT_SIZE /* margin */ , HEAP_MAX_ALIGN);
   heap_Slotted_overhead = SPAGE_SLOT_SIZE;
 
   /* Initialize the class representation cache */
