@@ -102,7 +102,7 @@ au_change_serial_owner (MOP serial_mop, MOP owner_mop, bool by_class_owner_chang
   db_make_null (&value);
   db_make_null (&str_value);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * class, serial, and trigger distinguish user schema by unique_name (user_specified_name).
@@ -284,7 +284,7 @@ end:
       dbt_abort_object (obj_tmpl);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   db_value_clear (&value);
   db_value_clear (&str_value);
 
@@ -326,7 +326,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
       return error;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * class, serial, and trigger distinguish user schema by unique_name (user_specified_name).
@@ -417,7 +417,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -590,7 +590,7 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 
   assert (sp != NULL && owner != NULL);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* change _db_stored_procedure */
   error = obj_get (sp, SP_ATTR_SP_NAME, &name_value);
@@ -659,7 +659,7 @@ au_change_sp_owner (PARSER_CONTEXT *parser, MOP sp, MOP owner)
 
 end:
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   pr_clear_value (&value);
   pr_clear_value (&name_value);
   pr_clear_value (&owner_value);

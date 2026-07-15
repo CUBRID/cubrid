@@ -421,6 +421,14 @@ struct insert_proc_node
   int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
+  /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
+  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
+  char *remote_url;		/* DBLink connection URL */
+  char *remote_user;		/* DBLink connection user */
+  char *remote_pwd;		/* DBLink connection password */
+  char *remote_table_name;	/* remote target table name */
+  char **remote_attr_names;	/* remote target column names (array) */
+  int remote_num_attrs;		/* length of remote_attr_names */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;

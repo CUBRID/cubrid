@@ -6172,11 +6172,12 @@ update_histogram_for_all_classes (void)
   PT_HISTOGRAM_INFO histogram_info;
   DB_OBJECT *obj;
   int save;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
     {
+      AU_RESTORE (save);
       return ER_FAILED;
     }
 
@@ -6188,7 +6189,7 @@ update_histogram_for_all_classes (void)
       if (obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return er_errid ();
 	}
 
@@ -6198,11 +6199,11 @@ update_histogram_for_all_classes (void)
       error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return error;
 	}
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
