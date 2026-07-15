@@ -227,7 +227,8 @@ namespace parallel_scan
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
 				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
 				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
-				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved);
+				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved,
+				     m_is_cached_scan);
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	  }
@@ -291,6 +292,10 @@ namespace parallel_scan
 		      {
 		      case ACCESS_METHOD_SEQUENTIAL:
 		      {
+			/* Cached scan is restricted to the driving (level-0) scan, opened above with
+			 * m_is_cached_scan. Intermediate scans of the chain always open with cached
+			 * scan off (defaulted last argument), matching the serial-path gate in
+			 * qexec_execute_mainblock_internal (). */
 			err_code = scan_open_heap_scan (&thread_ref, &specp->s_id, false,
 							S_SELECT, fixed_scan, specp->s_id.grouped,
 							specp->single_fetch, specp->s_dbval, xptr->val_list, m_vd,

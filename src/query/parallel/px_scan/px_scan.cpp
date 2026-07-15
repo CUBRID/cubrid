@@ -355,8 +355,9 @@ extern "C"
   }
 
   int
-  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed, int fixed_scan,
-				int grouped_scan, VAL_DESCR *vd, ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
+  scan_open_parallel_heap_scan (THREAD_ENTRY *thread_p, SCAN_ID *scan_id, bool mvcc_select_lock_needed,
+				SCAN_OPERATION_TYPE scan_op_type, int fixed_scan, int grouped_scan, VAL_DESCR *vd,
+				ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
 				QUERY_ID query_id)
   {
     int num_user_pages = -1;
@@ -453,6 +454,12 @@ extern "C"
 	scan_id->s.phsid.result_type = parallel_scan::RESULT_TYPE::XASL_SNAPSHOT;
       }
 
+    /* Cached-scan activation was already decided by qexec_open_scan () for this spec: the
+     * driving-scan gate from qexec_execute_mainblock_internal () ANDed with the eligibility
+     * predicate. The flag also persists across partition reopens (see the reopen caller in
+     * query_executor.c). */
+    bool cached_scan = spec->cached_scan;
+
     scan_id->s.phsid.manager = nullptr;	/* init */
 
     switch (scan_id->s.phsid.result_type)
@@ -471,7 +478,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -503,7 +511,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -535,7 +544,8 @@ extern "C"
 	  }
 
 	scan_id->s.phsid.manager = placement_new ((manager_type *) scan_id->s.phsid.manager, thread_p, query_id, scan_id, xasl,
-				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, worker_manager_p);
+				   num_parallel_threads, *class_hfid, *class_oid, vd, (bool) fixed_scan, (bool) grouped_scan, cached_scan,
+				   worker_manager_p);
 	assert (scan_id->s.phsid.manager != nullptr);
 
 	error = ((manager_type *) scan_id->s.phsid.manager)->open ();
@@ -935,7 +945,7 @@ extern "C"
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
 				       num_parallel_threads, null_hfid, null_oid, vd,
-				       false, false, worker_manager_p, list_id);
+				       false, false, false, worker_manager_p, list_id);
 	assert (local_manager != nullptr);
 
 	error = ((manager_type *) local_manager)->open ();
@@ -968,7 +978,7 @@ extern "C"
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
 				       num_parallel_threads, null_hfid, null_oid, vd,
-				       false, false, worker_manager_p, list_id);
+				       false, false, false, worker_manager_p, list_id);
 	assert (local_manager != nullptr);
 
 	error = ((manager_type *) local_manager)->open ();
@@ -1434,7 +1444,7 @@ extern "C"
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
 				       num_parallel_threads, class_hfid, class_oid, vd,
-				       false, false, worker_manager_p, nullptr, saved_indx_info);
+				       false, false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
 	error = ((manager_type *) local_manager)->open ();
@@ -1466,7 +1476,7 @@ extern "C"
 	local_manager = placement_new ((manager_type *) local_manager,
 				       thread_p, query_id, scan_id, xasl,
 				       num_parallel_threads, class_hfid, class_oid, vd,
-				       false, false, worker_manager_p, nullptr, saved_indx_info);
+				       false, false, false, worker_manager_p, nullptr, saved_indx_info);
 	assert (local_manager != nullptr);
 
 	error = ((manager_type *) local_manager)->open ();
@@ -1796,7 +1806,7 @@ namespace parallel_scan
 	task_p = placement_new ((task<result_type, ST> *) task_p, m_thread_p, m_query_entry, m_result_handler,
 				m_input_handler, &m_interrupt, &m_err_messages, m_vd, trace_handler_p, m_worker_manager, m_xasl->header.id, m_hfid,
 				m_cls_oid, m_is_fixed,
-				m_is_grouped, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
+				m_is_grouped, m_is_cached_scan, m_uses_xasl_clone, m_xasl, &m_pre_execution_info);
 	m_worker_manager->push_task (task_p);
       }
     m_task_started = true;
