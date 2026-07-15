@@ -648,7 +648,8 @@ static DISK_ISVALID heap_hfid_isvalid (HFID * hfid);
 static DISK_ISVALID heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range);
 #endif /* CUBRID_DEBUG */
 static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes);
-static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes);
+static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
+				   LOG_LSA * change_link_lsa);
 static int heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid);
 static int heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid);
 static SCAN_CODE heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes, int chn,
@@ -6578,11 +6579,13 @@ heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECD
  *   hfid(in): Object heap file identifier
  *   ovf_oid(in): Overflow address
  *   recdes(in): Record descriptor
+ *   change_link_lsa(out): LSA used to reconstruct the updated overflow record
  *
  * Note: Update the content of a multipage object.
  */
 static const OID *
-heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes)
+heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
+		 LOG_LSA * change_link_lsa)
 {
   VFID ovf_vfid;
   VPID ovf_vpid;
@@ -6595,7 +6598,7 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid
   ovf_vpid.pageid = ovf_oid->pageid;
   ovf_vpid.volid = ovf_oid->volid;
 
-  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP) != NO_ERROR)
+  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP, change_link_lsa) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -22102,6 +22105,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   bool is_old_home_updated;
   RECDES new_home_recdes;
   VFID ovf_vfid;
+  LOG_LSA change_link_lsa = LSA_INITIALIZER;
 
   LOG_TDES *tdes = NULL;
 
@@ -22182,22 +22186,25 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* overflow -> overflow update */
       is_old_home_updated = false;
 
-      if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
+      if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p,
+			   context->do_supplemental_log ? &change_link_lsa : NULL) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
 	}
 
-      /* supplemental log for REC_BIGONE to REC_BIGONE case 
+      /* supplemental log for REC_BIGONE to REC_BIGONE case
        * 1. MVCC : redo lsa for SUPPLEMENT_UPDATE, undo lsa has been saved above
        * 2. NON-MVCC : undo, redo lsa for SUPPLEMENT_UPDATE */
       if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
+	  assert (!LSA_ISNULL (&change_link_lsa));
+	  /* Page deallocation may append LOG_POSTPONE records, so do not use the transaction tail LSA here. */
+	  LSA_COPY (&context->supp_redo_lsa, &change_link_lsa);
 
 	  if (!is_mvcc_op)
 	    {
-	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&context->supp_undo_lsa, &change_link_lsa);
 	    }
 	}
 
