@@ -594,11 +594,9 @@ namespace parallel_scan
 	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
-	    int agg_cnt = 0;
 	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
-		agg_cnt++;
 		if (!is_buildvalue_opt_supported_function (agg_it->function))
 		  {
 		    buildvalue_opt = false;
@@ -610,10 +608,6 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-	      }
-	    if (agg_cnt != arg->outptr_list->valptr_cnt)
-	      {
-		buildvalue_opt = false;
 	      }
 	  }
 	break;

@@ -334,7 +334,6 @@ namespace parallel_scan
 		      }
 		      break;
 		      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-		      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 		      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 		      case ACCESS_METHOD_JSON_TABLE:
 		      case ACCESS_METHOD_SCHEMA:

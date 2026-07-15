@@ -2631,7 +2631,7 @@ lang_db_put_charset (void)
 
   server_lang = lang_id ();
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   db_make_string (&value, lang_get_lang_name_from_id (server_lang));
   if (db_put_internal (Au_root, "lang", &value) != NO_ERROR)
     {
@@ -2647,7 +2647,7 @@ lang_db_put_charset (void)
       /* Error Setting the nchar codeset */
       assert (false);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return NO_ERROR;
 }
