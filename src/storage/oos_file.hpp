@@ -150,6 +150,7 @@ struct oos_debug_counters
   unsigned long long read_many_requests;
   unsigned long long read_many_grouped_head_pages;
   unsigned long long read_values_per_fixed_page;
+  unsigned long long bitmap_snapshot_skips;
 };
 #endif
 

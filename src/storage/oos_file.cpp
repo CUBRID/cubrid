@@ -16,10 +16,12 @@
  *
  */
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <new>
 #include <vector>
+#include "bit.h"
 #include "byte_span_writer.hpp"
 #include "error_code.h"
 #include "error_manager.h"
@@ -28,6 +30,7 @@
 #include "memory_alloc.h"
 #include "memory_hash.h"
 #include "page_buffer.h"
+#include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "scope_exit.hpp"
 #include "slotted_page.h"
@@ -93,6 +96,10 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out
 
 static const auto_unfix_page_ptr
 oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_length, VPID &vpid);
+
+static int
+oos_collect_data_page_vpids (THREAD_ENTRY *thread_p, const VFID *vfid, const VPID *hdr_vpid,
+			     std::vector<VPID> &vpids);
 
 // ****************************************************************************
 // OOS Bestspace — constants
@@ -657,6 +664,61 @@ oos_stats_find_page_in_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 // ****************************************************************************
 
 static int
+oos_collect_data_page_vpids (THREAD_ENTRY *thread_p, const VFID *vfid, const VPID *hdr_vpid,
+			     std::vector<VPID> &vpids)
+{
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error_code = file_get_all_data_sectors (thread_p, vfid, &collector);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  scope_exit free_collector ([&]()
+  {
+    db_private_free_and_init (thread_p, collector.partsect_ftab);
+  });
+
+  try
+    {
+      vpids.clear ();
+      vpids.reserve ((std::size_t) collector.npages);
+
+      for (int sector_idx = 0; sector_idx < collector.nsects; sector_idx++)
+	{
+	  const FILE_PARTIAL_SECTOR &sector = collector.partsect_ftab[sector_idx];
+	  VPID vpid = { SECTOR_FIRST_PAGEID (sector.vsid.sectid), sector.vsid.volid };
+
+	  for (int page_offset = 0; page_offset < DISK_SECTOR_NPAGES; page_offset++, vpid.pageid++)
+	    {
+	      if (!bit64_is_set (sector.page_bitmap, page_offset))
+		{
+		  continue;
+		}
+	      if (hdr_vpid != NULL && !VPID_ISNULL (hdr_vpid) && VPID_EQ (&vpid, hdr_vpid))
+		{
+		  continue;
+		}
+	      vpids.push_back (vpid);
+	    }
+	}
+
+      std::sort (vpids.begin (), vpids.end (), [] (const VPID &left, const VPID &right)
+      {
+	return VPID_LT (&left, &right);
+      });
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (std::size_t) collector.npages * sizeof (VPID));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  return NO_ERROR;
+}
+
+static int
 oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 			  OOS_HDR_STATS *oos_hdr, VPID *hdr_vpid,
 			  bool scan_all)
@@ -666,15 +728,14 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
   int num_pages = 0;
   int num_recs = 0;
   float recs_sumlen = 0.0;
-  int start_idx = 1; /* Skip page 0 (header page) */
   int max_iterations;
-  int total_pages;
-
-  int err_sync = file_get_num_user_pages (thread_p, vfid, &total_pages);
-  if (err_sync != NO_ERROR || total_pages <= 1)
+  std::vector<VPID> data_vpids;
+  int err_sync = oos_collect_data_page_vpids (thread_p, vfid, hdr_vpid, data_vpids);
+  if (err_sync != NO_ERROR || data_vpids.empty ())
     {
       return 0;
     }
+  const int total_pages = (int) data_vpids.size ();
 
   if (scan_all)
     {
@@ -693,11 +754,20 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
     }
 
-  /* Determine start position */
+  std::size_t start_idx = 0;
   if (!VPID_ISNULL (&oos_hdr->estimates.full_search_vpid))
     {
-      /* TODO: ideally find the index of full_search_vpid; for now start from 1 */
-      start_idx = 1;
+      auto start_it = std::upper_bound (data_vpids.begin (), data_vpids.end (),
+					oos_hdr->estimates.full_search_vpid,
+					[] (const VPID &left, const VPID &right)
+      {
+	return VPID_LT (&left, &right);
+      });
+      start_idx = (std::size_t) (start_it - data_vpids.begin ());
+      if (start_idx == data_vpids.size ())
+	{
+	  start_idx = 0;
+	}
     }
 
   int iterations = 0;
@@ -712,27 +782,35 @@ oos_stats_sync_bestspace (THREAD_ENTRY *thread_p, const VFID *vfid,
 	}
     }
 
-  for (int i = start_idx; i < total_pages && iterations < max_iterations; i++, iterations++)
+  while (iterations < max_iterations && iterations < total_pages)
     {
-      VPID scan_vpid;
-      int err = file_numerable_find_nth (thread_p, vfid, i, false, NULL, NULL, &scan_vpid);
-      if (err != NO_ERROR || VPID_ISNULL (&scan_vpid))
-	{
-	  break;
-	}
+      VPID scan_vpid = data_vpids[ (start_idx + (std::size_t) iterations) % data_vpids.size ()];
+      iterations++;
 
-      /* Skip header page (safety check) */
-      if (!VPID_ISNULL (hdr_vpid) && VPID_EQ (&scan_vpid, hdr_vpid))
-	{
-	  continue;
-	}
-
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
 				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  /* Page is busy — skip */
-	  er_clear ();
+	  int fix_error = er_errid ();
+	  if (fix_error == NO_ERROR || fix_error == ER_PB_BAD_PAGEID)
+	    {
+	      if (fix_error == ER_PB_BAD_PAGEID)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS);
+		  OOS_COUNTER_INC (bitmap_snapshot_skips);
+		}
+	      er_clear ();
+	      continue;
+	    }
+	  /* Preserve real failures (including interrupts) for the caller. */
+	  break;
+	}
+      if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS)
+	{
+	  /* The bitmap is a snapshot; a concurrently reclaimed page can already belong to another file. */
+	  perfmon_inc_stat (thread_p, PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS);
+	  OOS_COUNTER_INC (bitmap_snapshot_skips);
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
 	  continue;
 	}
 
@@ -948,7 +1026,7 @@ oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
   tablespace.expand_max_size = DISK_SECTOR_NPAGES * DB_PAGESIZE * 1024;
 
   err = file_create (thread_p, FILE_OOS, &tablespace, &des,
-		     false /* is_temp */, true /* is_numerable */, &oos_vfid);
+		     false /* is_temp */, false /* is_numerable */, &oos_vfid);
   if (err != NO_ERROR)
     {
       oos_error ("file_create failed");
@@ -1410,6 +1488,16 @@ oos_insert_within_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer
   assert (required_length <= DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT));
 
   auto auto_page_ptr = oos_find_best_page (thread_p, oos_vfid, required_length, vpid);
+  if (auto_page_ptr == nullptr)
+    {
+      err = er_errid ();
+      if (err == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  err = ER_GENERIC_ERROR;
+	}
+      return err;
+    }
 
   OOS_RECDES oos_recdes{};
   {
@@ -1784,7 +1872,6 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
     {
       oos_error ("file_alloc failed");
       assert_release_error (er_errid () != NO_ERROR);
-      assert (false);
       log_sysop_abort (thread_p);
       return nullptr;
     }
@@ -2367,7 +2454,7 @@ xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_S
 
   VFID oos_vfid;
   VFID_SET_NULL (&oos_vfid);
-  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+  if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
     {
       /* false return is overloaded: real read errors set er_errid; the
        * legitimate "no OOS file" path (docreate=false, NULL in heap header)
@@ -2423,28 +2510,40 @@ oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_I
       return er_errid ();
     }
 
+  std::vector<VPID> data_vpids;
+  int collect_error = oos_collect_data_page_vpids (thread_p, &oos_vfid, &hdr_vpid, data_vpids);
+  if (collect_error != NO_ERROR)
+    {
+      return collect_error;
+    }
+
   INT64 total_recs = 0;
   INT64 total_sumlen = 0;
-  for (int i = 0; i < num_user_pages; i++)
+  for (const VPID &scan_vpid : data_vpids)
     {
-      VPID scan_vpid;
-      if (file_numerable_find_nth (thread_p, &oos_vfid, i, false, NULL, NULL, &scan_vpid) != NO_ERROR
-	  || VPID_ISNULL (&scan_vpid))
-	{
-	  er_clear ();
-	  continue;
-	}
-      if (!VPID_ISNULL (&hdr_vpid) && VPID_EQ (&scan_vpid, &hdr_vpid))
-	{
-	  continue;		/* skip header page — no user records */
-	}
-
-      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE,
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &scan_vpid, OLD_PAGE_MAYBE_DEALLOCATED,
 				     PGBUF_LATCH_READ, PGBUF_CONDITIONAL_LATCH);
       if (page_ptr == NULL)
 	{
-	  er_clear ();
-	  continue;		/* page busy — accept a slight undercount */
+	  int fix_error = er_errid ();
+	  if (fix_error == NO_ERROR || fix_error == ER_PB_BAD_PAGEID)
+	    {
+	      if (fix_error == ER_PB_BAD_PAGEID)
+		{
+		  perfmon_inc_stat (thread_p, PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS);
+		  OOS_COUNTER_INC (bitmap_snapshot_skips);
+		}
+	      er_clear ();
+	      continue;		/* page busy or reclaimed — accept a slight undercount */
+	    }
+	  return fix_error;
+	}
+      if (pgbuf_get_page_ptype (thread_p, page_ptr) != PAGE_OOS)
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS);
+	  OOS_COUNTER_INC (bitmap_snapshot_skips);
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  continue;
 	}
 
       /* Walk slots explicitly: spage_collect_statistics skips slot 0 (a heap-page

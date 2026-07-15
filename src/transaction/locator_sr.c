@@ -5305,7 +5305,7 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       return error_code;
     }
 
-  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true, PGBUF_UNCONDITIONAL_LATCH))
     {
       if (er_errid () == NO_ERROR)
 	{

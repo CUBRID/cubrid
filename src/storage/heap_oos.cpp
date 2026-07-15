@@ -489,7 +489,7 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	}
     }
 
-  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
     {
       er_log_debug (ARG_FILE_LINE,
 		    "SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"

@@ -12464,7 +12464,7 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   {
     VFID oos_vfid;
     VFID_SET_NULL (&oos_vfid);
-    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
       {
 	/* genuine failure reading the heap header, not "no OOS file" */
 	ASSERT_ERROR_AND_SET (error_code);

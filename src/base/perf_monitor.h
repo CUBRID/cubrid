@@ -465,6 +465,9 @@ typedef enum
   PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE,
   PSTAT_HF_HEAP_FIND_BEST_PAGE,
 
+  /* OOS sector-bitmap enumeration. */
+  PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS,
+
   /* B-tree ops detailed statistics. */
   PSTAT_BT_FIX_OVF_OIDS,
   PSTAT_BT_UNIQUE_RLOCKS,

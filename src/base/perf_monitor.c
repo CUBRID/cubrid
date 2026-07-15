@@ -390,6 +390,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_PAGE_BEST_SPACE, "heap_find_page_bestspace"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_HF_HEAP_FIND_BEST_PAGE, "heap_find_best_page"),
 
+  /* OOS sector-bitmap enumeration. */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS, "Num_oos_bitmap_snapshot_skips"),
+
   /* B-tree detailed statistics. */
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_FIX_OVF_OIDS, "bt_fix_ovf_oids"),
   PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_BT_UNIQUE_RLOCKS, "bt_unique_rlocks"),

@@ -708,6 +708,7 @@ static int vacuum_collect_heap_objects (THREAD_ENTRY * thread_p, VACUUM_WORKER *
 static void vacuum_cleanup_collected_by_vfid (VACUUM_WORKER * worker, VFID * vfid);
 static int vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_mvccid, bool was_interrupted);
 static int vacuum_heap_prepare_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
+static int vacuum_heap_retry_oos_vfid_lookup (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper);
 static int vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, const VFID * vfid);
@@ -1567,21 +1568,6 @@ vacuum_heap (THREAD_ENTRY * thread_p, VACUUM_WORKER * worker, MVCCID threshold_m
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Vacuum heap page %d|%d, error_code=%d.",
 			       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
 
-#if defined (NDEBUG)
-	  if (!thread_p->shutdown)
-	    {
-	      // TEMP (ovf+oos spec change): mirror the debug-build crash in release too.
-	      // Debug aborts at vacuum_check_shutdown_interruption()'s assert above; release
-	      // normally swallows the error and skips the page, which hides failing TCs.
-	      // abort() (not assert, which is compiled out under NDEBUG) forces a core dump
-	      // so we can see exactly which heap page / error_code fails. REVERT BEFORE MERGE.
-	      fprintf (stderr, "VACUUM ABORT: heap page %d|%d, error_code=%d\n",
-		       page_ptr->oid.volid, page_ptr->oid.pageid, error_code);
-	      fflush (stderr);
-	      abort ();
-	    }
-#endif // not DEBUG
-
 	  return error_code;
 	}
       /* Advance to next page. */
@@ -1936,6 +1922,48 @@ end:
 }
 
 /*
+ * vacuum_heap_retry_oos_vfid_lookup () - Retry an OOS VFID lookup without holding heap data pages.
+ *
+ * return        : Error code.
+ * thread_p (in) : Thread entry.
+ * helper (in)   : Vacuum heap helper. The record is a stable copy in helper->rec_buf.
+ */
+static int
+vacuum_heap_retry_oos_vfid_lookup (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
+{
+  int error_code;
+
+  /* The conditional header latch failed while home (and possibly forward) was fixed. Flush pending
+   * changes, release every heap data page, and acquire the heap header first. */
+  VACUUM_PERF_HEAP_TRACK_PREPARE (thread_p, helper);
+
+  if (helper->forward_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, helper->forward_page);
+    }
+  vacuum_heap_page_log_and_reset (thread_p, helper, false, true);
+  assert (helper->home_page == NULL);
+
+  error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
+						     helper->crt_slotid, helper->record_type, &helper->oos_vfid, false);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  helper->home_page = pgbuf_fix (thread_p, &helper->home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (helper->home_page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      vacuum_check_shutdown_interruption (thread_p, error_code);
+      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "Failed to fix page %d|%d.", VPID_AS_ARGS (&helper->home_vpid));
+      return error_code;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * vacuum_heap_prepare_record () - Prepare all required information to vacuum heap record. Possible requirements:
  *				   - Record type (always).
  *				   - Peeked record data: REC_HOME,
@@ -2084,7 +2112,18 @@ retry_prepare:
 	}
 
       error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
+							 helper->crt_slotid, helper->record_type,
+							 &helper->oos_vfid, true);
+      if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  error_code = vacuum_heap_retry_oos_vfid_lookup (thread_p, helper);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  /* The record may have changed while its pages were unfixed. Read it again. */
+	  goto retry_prepare;
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
@@ -2200,7 +2239,18 @@ retry_prepare:
 	}
 
       error_code = vacuum_oos_find_vfid_for_heap_record (thread_p, &helper->hfid, &helper->record,
-							 helper->crt_slotid, helper->record_type, &helper->oos_vfid);
+							 helper->crt_slotid, helper->record_type,
+							 &helper->oos_vfid, true);
+      if (error_code == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+	{
+	  error_code = vacuum_heap_retry_oos_vfid_lookup (thread_p, helper);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  /* The record may have changed while its pages were unfixed. Read it again. */
+	  goto retry_prepare;
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

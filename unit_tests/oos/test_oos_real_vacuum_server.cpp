@@ -279,7 +279,7 @@ class OosRealVacuum : public ::testing::Test
       ASSERT_FALSE (mvcc_is_mvcc_disabled_class (&class_oid));
 
       ASSERT_EQ (xheap_create (thread_p, &hfid, &class_oid, false), NO_ERROR);
-      ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
+      ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true, PGBUF_UNCONDITIONAL_LATCH));
       ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
       commit_current_tran ();
 

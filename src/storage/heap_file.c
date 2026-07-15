@@ -5895,7 +5895,7 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
   {
     VFID oos_vfid;
     VFID_SET_NULL (&oos_vfid);
-    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
       {
 	ASSERT_ERROR ();
 	return er_errid ();
@@ -5959,7 +5959,7 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
   {
     VFID oos_vfid;
     VFID_SET_NULL (&oos_vfid);
-    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false))
+    if (!heap_oos_find_vfid (thread_p, hfid, &oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
       {
 	ASSERT_ERROR ();
 	return er_errid ();
@@ -12446,13 +12446,15 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
  *                    file (only possible when docreate == false)
  *   docreate (in)  : if true and the OOS file does not exist, it is created and
  *                    TDE is applied to it (mirroring heap_ovf_find_vfid)
+ *   latch_cond (in): conditional or unconditional heap-header latch
  *
- * Note: A false return ALWAYS means a real error (and er_errid () is set); it
- *   never means "no OOS file". Callers using docreate == false must inspect
- *   oos_vfid (VFID_ISNULL) to tell whether an OOS file actually exists.
+ * Note: A false return means the heap header could not be fixed or read. A
+ *   conditional latch miss may leave er_errid () unset. It never means "no OOS
+ *   file"; callers using docreate == false must inspect oos_vfid instead.
  */
 bool
-heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate,
+		    PGBUF_LATCH_CONDITION latch_cond)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -12472,7 +12474,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   vpid.pageid = hfid->hpgid;
 
   mode = (docreate == true ? PGBUF_LATCH_WRITE : PGBUF_LATCH_READ);
-  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, PGBUF_UNCONDITIONAL_LATCH);
+  addr_hdr.pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, mode, latch_cond);
   if (addr_hdr.pgptr == NULL)
     {
       goto exit_on_error;
@@ -12656,7 +12658,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
     {
       return S_ERROR;
     }
-  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true, PGBUF_UNCONDITIONAL_LATCH))
     {
       return S_ERROR;
     }

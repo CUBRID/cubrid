@@ -113,7 +113,7 @@ vacuum_oos_vfid_lookup (THREAD_ENTRY *thread_p, VACUUM_OOS_VFID_MEMO *memo, cons
       return VACUUM_OOS_VFID_ERROR;
     }
 
-  if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false))
+  if (!heap_oos_find_vfid (thread_p, &hfid, out_oos_vfid, false, PGBUF_UNCONDITIONAL_LATCH))
     {
       VFID_SET_NULL (out_oos_vfid);
       if (er_errid () != NO_ERROR)
@@ -334,19 +334,33 @@ vacuum_forward_walk_reclaim_oos (THREAD_ENTRY *thread_p, char *undo_data, int un
  * record_type (in)  : The record's type (for logging only).
  * oos_vfid (in/out) : The caller's OOS file id. Left alone if already found, filled in on success,
  *                     or set to VFID_NULL when the lookup legitimately fails (then skip cleanup).
+ * conditional_latch (in): Use a conditional heap-header latch while the caller holds heap data pages.
  */
 int
 vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, const RECDES *record,
-				      PGSLOTID slotid, INT16 record_type, VFID *oos_vfid)
+				      PGSLOTID slotid, INT16 record_type, VFID *oos_vfid, bool conditional_latch)
 {
+  bool lookup_success;
+
   if (!VFID_ISNULL (oos_vfid) || !heap_recdes_contains_oos (record))
     {
       return NO_ERROR;
     }
-  if (heap_oos_find_vfid (thread_p, hfid, oos_vfid, false))
+
+  lookup_success = heap_oos_find_vfid (thread_p, hfid, oos_vfid, false,
+				       conditional_latch ? PGBUF_CONDITIONAL_LATCH : PGBUF_UNCONDITIONAL_LATCH);
+  if (lookup_success && !VFID_ISNULL (oos_vfid))
     {
       return NO_ERROR;
     }
+
+  if (!lookup_success && conditional_latch && er_errid () == NO_ERROR)
+    {
+      /* The caller holds a heap data page and could not immediately latch the heap header. Ask it
+       * to release the data page(s), retry the header unconditionally, and then re-fix the record. */
+      return ER_LK_PAGE_TIMEOUT;
+    }
+
   /* A record that says "I have OOS" but whose heap has no OOS file is a real problem, not a
    * not-yet-created file: the OOS file is always created (docreate=true) when the OOS data is
    * written, which happens before the flag is committed. So this means a wrongly-set flag, a
