@@ -96,6 +96,10 @@
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
+#define QO_EFFECTIVE_CACHE_PAGES 32768.0	/* pages assumed cachable for the Mackert-Lohman repeated-probe
+						   correction in qo_nljoin_cost (); matches the data_buffer_pages
+						   default (512M / 16K). The real parameter is server-only, so the
+						   client-side optimizer cannot read it. */
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -3382,7 +3386,45 @@ qo_nljoin_cost (QO_PLAN * planp)
   /* inner side IO cost of nested-loop block join */
   if (qo_is_iscan (inner))
     {
-      inner_io_cost = guessed_result_cardinality * inner->variable_io_cost * (1 - ISCAN_IO_HIT_RATIO);
+      /* Repeated index probes mostly revisit pages that earlier probes already pulled into the
+       * buffer pool. Port of PostgreSQL index_pages_fetched () (Mackert-Lohman approximation):
+       * the total heap pages fetched by ALL probes together saturates near the inner table size
+       * while it fits in the cache, instead of charging every probe its full uncached page count.
+       * This replaces the flat (1 - ISCAN_IO_HIT_RATIO) discount, which under-corrected small
+       * outers (a handful of probes over a hot table are all cache hits) and thereby made
+       * hash join + full scan or a bad leading order beat an actually-cheap NL re-probe. */
+      double T, N, b, lim, pages_fetched, naive_io;
+
+      T = MAX (1.0, (double) QO_NODE_TCARD (inner->plan_un.scan.node));
+      /* tuples fetched from the inner across all probes; at least one per probe */
+      N = MAX ((planp->info)->cardinality, guessed_result_cardinality);
+      /* effective cache: matches the data_buffer_pages default (server-only parameter, not
+       * visible to the client-side optimizer) */
+      b = QO_EFFECTIVE_CACHE_PAGES;
+
+      if (T <= b)
+	{
+	  pages_fetched = (2.0 * T * N) / (2.0 * T + N);
+	  if (pages_fetched > T)
+	    {
+	      pages_fetched = T;
+	    }
+	}
+      else
+	{
+	  lim = (2.0 * T * b) / (2.0 * T - b);
+	  if (N <= lim)
+	    {
+	      pages_fetched = (2.0 * T * N) / (2.0 * T + N);
+	    }
+	  else
+	    {
+	      pages_fetched = b + (N - lim) * (T - b) / T;
+	    }
+	}
+
+      naive_io = guessed_result_cardinality * inner->variable_io_cost;
+      inner_io_cost = MIN (naive_io, pages_fetched);
     }
   else
     {
