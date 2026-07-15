@@ -279,15 +279,19 @@ typedef enum
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
-/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
-#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) VACUUM_IS_THREAD_VACUUM_WORKER (th)
+/* vacuum workers, checkpoint thread and scan-resistant scans (statistics collection) should not
+ * contribute to promoting a bcb as active/hot */
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th) || (th)->pgbuf_no_boost_scan)
 #else
 #define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
 #endif
 
 #if defined (SERVER_MODE)
-/* vacuum workers ,checkpoint thread and temp page should not contribute to promoting a bcb as active/hot */
-#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid)
+/* vacuum workers, checkpoint thread, scan-resistant scans and temp pages should not contribute to
+ * promoting a bcb as active/hot */
+#define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) \
+  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || (th)->pgbuf_no_boost_scan \
+   || pgbuf_is_temporary_volume (buf->vpid.volid))
 #else
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif
@@ -16133,6 +16137,26 @@ pgbuf_notify_vacuum_follows (THREAD_ENTRY * thread_p, PAGE_PTR page)
 
   CAST_PGPTR_TO_BFPTR (bcb, page);
   pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_TO_VACUUM_FLAG, 0);
+}
+
+/*
+ * pgbuf_mark_page_for_lru_bottom () - mark a fixed page so that its coming unfix drops the bcb to
+ *   the bottom of its LRU list (immediately victimizable) instead of keeping or boosting it.
+ *   Long scans that will not revisit a page (statistics collection) use this to hand the buffer
+ *   back without polluting the working set. Same mechanism page deallocation uses, minus the
+ *   dirty flag.
+ *
+ * return        : void
+ * thread_p (in) : thread entry
+ * page (in)     : page to demote on unfix
+ */
+void
+pgbuf_mark_page_for_lru_bottom (THREAD_ENTRY * thread_p, PAGE_PTR page)
+{
+  PGBUF_BCB *bcb;
+
+  CAST_PGPTR_TO_BFPTR (bcb, page);
+  pgbuf_bcb_update_flags (thread_p, bcb, PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG, 0);
 }
 
 /*

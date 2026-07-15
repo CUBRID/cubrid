@@ -674,6 +674,30 @@ namespace
       std::uint64_t m_sample_threshold = UINT64_MAX;
   };
 
+  /* scope guard: mark this thread's page unfixes as non-promoting (vacuum-style scan resistance)
+   * for the duration of a collection scan, so the scan cannot push the production working set out
+   * of the hot LRU zones. Restores the flag on every exit path. */
+  struct pgbuf_no_boost_guard
+  {
+    THREAD_ENTRY *m_thread;
+
+    explicit pgbuf_no_boost_guard (THREAD_ENTRY *thread_p)
+      : m_thread (thread_p)
+    {
+      if (m_thread != NULL)
+	{
+	  m_thread->pgbuf_no_boost_scan = true;
+	}
+    }
+    ~pgbuf_no_boost_guard ()
+    {
+      if (m_thread != NULL)
+	{
+	  m_thread->pgbuf_no_boost_scan = false;
+	}
+    }
+  };
+
   /* Scan every allocated data page contained in the ftab partition `part` (heap header page
    * excluded), pull MVCC-visible rows with heap_next_1page under the shared snapshot, and feed
    * the target attribute's non-null values to the partition-local reservoir `rs`. total_rows /
@@ -695,6 +719,7 @@ namespace
     PGBUF_WATCHER old_pw;
 
     PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+    pgbuf_no_boost_guard no_boost_guard (thread_p);
     *total_rows = 0;
     *null_rows = 0;
 
@@ -748,6 +773,7 @@ namespace
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -760,6 +786,7 @@ namespace
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
+	    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -820,6 +847,7 @@ namespace
 cleanup:
     if (old_pw.pgptr != NULL)
       {
+	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	pgbuf_ordered_unfix (thread_p, &old_pw);
       }
     if (attrinfo_inited)
@@ -1095,6 +1123,7 @@ cleanup:
     PGBUF_WATCHER old_pw;
 
     PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+    pgbuf_no_boost_guard no_boost_guard (thread_p);
     *total_rows = 0;
 
     error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
@@ -1147,6 +1176,7 @@ cleanup:
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -1159,6 +1189,7 @@ cleanup:
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
+	    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -1224,6 +1255,7 @@ cleanup:
 cleanup:
     if (old_pw.pgptr != NULL)
       {
+	pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
 	pgbuf_ordered_unfix (thread_p, &old_pw);
       }
     if (attrinfo_inited)
@@ -1881,6 +1913,7 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   bool attrinfo_inited = false;
   std::int64_t total_rows = 0;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+  pgbuf_no_boost_guard no_boost_guard (thread_p);
   std::vector<col_collector *> collectors (attr_cnt, (col_collector *) NULL);
   std::vector<std::pair<OID, HFID>> targets;
 
@@ -2262,6 +2295,7 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   bool scancache_inited = false;
   bool attrinfo_inited = false;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
+  pgbuf_no_boost_guard no_boost_guard (thread_p);
 
   *out_total_rows = 0;
   if (out_sketches != NULL)

@@ -227,6 +227,8 @@ namespace cubthread
       int client_id;		/* client id whom this thread is responding */
       int tran_index;		/* tran index to which this thread belongs */
       int private_lru_index;	/* private lru index when transaction quota is used */
+      bool pgbuf_no_boost_scan;	/* when true, this thread's page unfixes do not promote bcbs toward the hot
+				 * LRU zones (vacuum-style scan resistance; used by long statistics scans) */
       pthread_mutex_t tran_index_lock;
       unsigned int rid;		/* request id which this thread is processing */
       status m_status;			/* thread status */

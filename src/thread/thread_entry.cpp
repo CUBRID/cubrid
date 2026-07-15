@@ -88,6 +88,7 @@ namespace cubthread
     , client_id (-1)
     , tran_index (NULL_TRAN_INDEX)
     , private_lru_index (-1)
+    , pgbuf_no_boost_scan (false)
     , tran_index_lock ()
     , rid (0)
     , m_status (status::TS_DEAD)
