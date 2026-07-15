@@ -7569,6 +7569,21 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY *thread_p, const BTREE_BULK_REC
     {
       return error;
     }
+  /* r305-P3 loud-fail: a live candidate whose marker carries no class list can neither prove nor refute
+   * ownership; log_recovery_bulk_candidate_owns_class would silently classify it "not owned" and skip, which
+   * retains a committed no-redo bulk file in the restored database - the exact corruption this cleanup exists
+   * to remove - with a zero-line operator report. A malformed marker is therefore fatal, never a skip.
+   * (Codec-side pack/unpack rejection of class_count == 0 is owned by the r304 marker codec and deferred.) */
+  if (main_is_live && (candidate->marker.class_oids == NULL || candidate->marker.class_count == 0))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_bulk_cleanup_inactive: bulk recovery marker (trid = %d, main vfid = %d|%d) "
+			 "is a live cleanup candidate but carries no class list (class_count = %u); the marker is "
+			 "malformed and the restore cannot be completed safely. Re-run restoredb from an intact "
+			 "backup.", candidate->marker.trid, VFID_AS_ARGS (&candidate->marker.main_vfid),
+			 candidate->marker.class_count);
+      return ER_FAILED;
+    }
   /* Identity binding: a VFID recycled inside the replay window by an unrelated live b-tree
    * (not necessarily another bulk marker) must not be destroyed on this marker's behalf. */
   if (main_is_live && !log_recovery_bulk_candidate_owns_class (candidate, &main_des.btree.class_oid))
