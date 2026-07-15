@@ -4790,7 +4790,7 @@ la_flush_repl_items (bool immediate)
 
 	      sb.clear ();
 	      db_sprint_value (&flush_err->pkey_value, sb);
-	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, "%s", sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -5420,7 +5420,7 @@ la_update_query_execute (const char *sql, bool au_disable)
   if (au_disable)
     {
       /* in order to update 'db_ha_info', disable authorization temporarily */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   res = db_execute (sql, &result, &query_error);
@@ -5437,7 +5437,7 @@ la_update_query_execute (const char *sql, bool au_disable)
 
   if (au_disable)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   return res;
@@ -5462,7 +5462,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
   if (au_disable)
     {
       /* in order to update 'db_ha_info', disable authorization temporarily */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
     }
 
   res = db_execute_with_values (sql, &result, &query_error, arg_count, vals);
@@ -5479,7 +5479,7 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
 
   if (au_disable)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   return res;

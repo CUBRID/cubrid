@@ -7161,6 +7161,16 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 	  && spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
 	{
 	  dinfo = &derived_table->info.dblink_table;
+
+	  /* UPDATE/DELETE re-translate their WHERE subquery (pt_to_delete_xasl / pt_to_update_xasl build
+	   * the scan query from a copy of the already-translated search condition).  The first pass pushed
+	   * the non-correlated WHERE into rewritten and consumed the local term, so mq_dblink_clear_corr_keys
+	   * below must not drop it here (details / cases in the commit message).  Snapshot before the clear
+	   * (corr count taken before it is zeroed); restored after correlated detection. */
+	  PARSER_VARCHAR *saved_rewritten = dinfo->rewritten;
+	  bool saved_has_where = dinfo->rewritten_has_where;
+	  int saved_corr_key_count = dinfo->corr_key_count;
+
 	  mq_dblink_clear_corr_keys (parser, dinfo);
 
 	  /* comment out this block to disable correlated push-down */
@@ -7208,6 +7218,27 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		  /* else: cross-codeset key, or no column name -> leave keys cleared (already
 		   * done by mq_dblink_clear_corr_keys above) -> no push, evaluate locally. */
 		}
+	    }
+
+	  /* Restore the snapshotted non-correlated base (invariant: saved_corr_key_count == 0, i.e. it has
+	   * no "col = ?" appended yet).  If this pass detects a correlated key, mq_dblink_append_corr_pred_sql
+	   * (later, in mq_rewrite) appends " AND col = ?" to it - so the mixed case ends up correct too.
+	   * A base that already carried the key (saved_corr_key_count > 0) is left to be rebuilt; that path
+	   * is not reached by DML today (see commit message).  After the detection block so an OOM re-clear
+	   * inside it cannot drop the restored value. */
+
+	  /* The residual "left to be rebuilt" path (a finalized non-correlated WHERE that already carried a
+	   * correlated key on the first pass) would silently drop that WHERE.  DML does not reach it today;
+	   * assert it in debug so a future path that does is caught rather than producing a wrong result. */
+	  assert (!(saved_rewritten != NULL && saved_has_where && saved_corr_key_count > 0));
+
+	  if (saved_rewritten != NULL && saved_has_where && saved_corr_key_count == 0)
+	    {
+	      dinfo->rewritten = saved_rewritten;
+	      /* Restore rewritten_has_where as a snapshot/restore pair so the flag never diverges from the
+	       * restored string, independent of what mq_dblink_clear_corr_keys resets (today a no-op since
+	       * clear leaves rewritten_has_where untouched). */
+	      dinfo->rewritten_has_where = saved_has_where;
 	    }
 
 	  derived = mq_rewrite_dblink_as_derived (parser, derived_table);
@@ -13890,22 +13921,19 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
   UINTPTR spec_id;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (parser == NULL)
     {
       parser = parser_create_parser ();
       if (parser == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
-
-
-  parser->au_save = save;
 
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
@@ -13930,7 +13958,7 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
 
   parser_free_parser (parser);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -13953,8 +13981,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
   DB_OBJECT *virt_class;
 
   /* DO NOT RETURN FROM WITHIN THE BODY OF THIS PROCEDURE */
-  AU_DISABLE (save);
-  parser->au_save = save;
+  AU_SAVE_AND_DISABLE (save);
 
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = "";	/* oid's have null string attr name */
@@ -13975,7 +14002,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
 
   expr = parser_walk_tree (parser, expr, mq_set_all_ids, spec, NULL, NULL);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return expr;
 }

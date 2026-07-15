@@ -768,13 +768,15 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
   if (cached_pages <= 0)
     {
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_CACHED_PAGES));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+				     UNLOADDB_MSG_INVALID_CACHED_PAGES));
       return 1;
     }
   if (page_size < (ssize_t) (sizeof (OID) + sizeof (int)))
     {
       fprintf (stderr,
-	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_CACHED_PAGE_SIZE));
+	       "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB,
+				     UNLOADDB_MSG_INVALID_CACHED_PAGE_SIZE));
       return 1;
     }
 
@@ -785,7 +787,8 @@ extract_objects (extract_context & ctxt, const char *output_dirname, int nthread
     output_dirname = ".";
   if (strlen (output_dirname) > PATH_MAX - 8)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_DIR_NAME));
+      fprintf (stderr, "%s",
+	       msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UNLOADDB, UNLOADDB_MSG_INVALID_DIR_NAME));
       return 1;
     }
 

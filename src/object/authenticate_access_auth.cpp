@@ -230,7 +230,7 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
   db_make_null (&grant_value);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   switch (obj_type)
     {
@@ -384,7 +384,7 @@ release:
     }
 
 exit:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   db_value_clear (&grant_value);
 
@@ -510,7 +510,7 @@ au_delete_auth_of_dropping_user (MOP user)
   db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   assert (user != NULL);
 
@@ -558,7 +558,7 @@ release:
 exit:
   pr_clear_value (&val);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -583,7 +583,7 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
   db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   assert (name != NULL);
 
@@ -648,7 +648,7 @@ release:
 exit:
   pr_clear_value (&val);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -671,7 +671,7 @@ au_delete_authorizartion_of_dropping_user (MOP user)
   db_make_null (&val);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   assert (user != NULL);
 
@@ -719,7 +719,7 @@ release:
 exit:
   pr_clear_value (&val);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -761,7 +761,7 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   db_make_null (&auth_type_value);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   switch (obj_type)
     {
@@ -935,7 +935,7 @@ exit:
       db_close_session (session);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   db_value_clear (&grantee_value);
   db_value_clear (&object_of_value);
@@ -990,7 +990,7 @@ au_user_revoke_all_privileges (MOP user_mop)
   db_make_null (&auth_type_value);
 
   /* Disable the checking for internal authorization object access */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   session = db_open_buffer_local (sql_query);
   if (session == NULL)
@@ -1169,7 +1169,7 @@ exit:
       db_close_session (session);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   db_value_clear (&grantee_value);
   db_value_clear (&object_type_value);
@@ -1279,7 +1279,7 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&val);
   db_make_null (&element);
@@ -1509,7 +1509,7 @@ exit:
       error = ER_GENERIC_ERROR;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return (error);
 }
@@ -1539,7 +1539,7 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
 
   assert (old_owner_mop != NULL && new_owner_mop != NULL && unique_name != NULL);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&val);
   db_make_null (&db_auth_object_value);
@@ -1809,7 +1809,7 @@ exit:
       error = ER_GENERIC_ERROR;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return (error);
 }

@@ -1477,17 +1477,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1375 Invalid UUID format. The argument must be a string of 32 hexadecimal characters, 36 UUID formatted characters, or a 128-bit value.
 
-1376 Package "%1$s" already exists.
-1377 Package Body "%1$s" already exists.
-1378 Package "%1$s" does not exist.
-1379 Package Body "%1$s" does not exist.
-1380 Package compile error: %1$s
-1381 The owner or a member of DBA group can %1$s a package.
-1382 Dropping a system generated package is not allowed.
-1383 Package Procedure's unique name exceeds 255 characters.
-1384 Duplicate package name '%1$s' in the name list.
+1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1385 Last Error
+1377 Package "%1$s" already exists.
+1378 Package Body "%1$s" already exists.
+1379 Package "%1$s" does not exist.
+1380 Package Body "%1$s" does not exist.
+1381 Package compile error: %1$s
+1382 The owner or a member of DBA group can %1$s a package.
+1383 Dropping a system generated package is not allowed.
+1384 Package Procedure's unique name exceeds 255 characters.
+1385 Duplicate package name '%1$s' in the name list.
+
+1386 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

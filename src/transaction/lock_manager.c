@@ -85,6 +85,13 @@
   ((OID_ISTEMP(oid)) ? (unsigned int)(-((oid)->pageid) % htsize) :\
                        lock_get_hash_value(oid, htsize))
 
+/* Object-lock hash bucket count = num_trans * k * lock_escalation, clamped to
+ * [initial_object_locks, LK_OBJ_HASH_SIZE_MAX = 2^23 buckets = 64 MB at 8 B/slot].
+ * k = 3/1000 reproduces the legacy num_trans * 300 at the default lock_escalation. */
+#define LK_OBJ_HASH_SIZE_RATIO_NUM 3
+#define LK_OBJ_HASH_SIZE_RATIO_DEN 1000
+#define LK_OBJ_HASH_SIZE_MAX (1 << 23)
+
 /* thread is lock-waiting ? */
 #define LK_IS_LOCKWAIT_THREAD(thrd) \
   ((thrd)->lockwait != NULL \
@@ -130,7 +137,6 @@ struct lk_config
   int initial_object_locks;
   int object_res_block_count;
   int object_entry_block_count;
-  int min_object_locks;
   float object_res_ratio;
   float object_entry_ratio;
   int object_res_block_size;
@@ -1148,7 +1154,6 @@ lock_make_default_config (void)
   config.initial_object_locks = 10000;
   config.object_res_block_count = 2;
   config.object_entry_block_count = 1;
-  config.min_object_locks = MAX_NTRANS * 300;
   config.object_res_ratio = 0.1f;
   config.object_entry_ratio = 0.1f;
 
@@ -1193,7 +1198,6 @@ lock_make_runtime_config (void)
 
   /* Derived sizing. */
   runtime_config.max_twfg_edge_count = runtime_config.num_trans * runtime_config.num_trans;
-  runtime_config.min_object_locks = runtime_config.num_trans * 300;
   runtime_config.object_res_block_size =
     (int) MAX ((runtime_config.initial_object_locks * runtime_config.object_res_ratio) /
 	       runtime_config.object_res_block_count, 1);
@@ -1246,14 +1250,20 @@ lock_make_runtime_config (void)
 static int
 lock_initialize_object_lock_structures (void)
 {
-  const int obj_hash_size = MAX (lk_Gl.config.initial_object_locks, lk_Gl.config.min_object_locks);
+  /* Size the bucket array from lock_escalation (CBRD-26960); 64-bit intermediate avoids
+   * overflow, the clamp keeps the result within int. Sized at boot only: changing
+   * lock_escalation online does not resize this array. */
+  const int lock_escalation = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  const INT64 scaled_buckets =
+    (INT64) lk_Gl.config.num_trans * lock_escalation * LK_OBJ_HASH_SIZE_RATIO_NUM / LK_OBJ_HASH_SIZE_RATIO_DEN;
+  const int obj_hash_size = (int) MAX (lk_Gl.config.initial_object_locks, MIN (scaled_buckets, LK_OBJ_HASH_SIZE_MAX));
 
-  lk_Obj_lock_res_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  lk_Obj_lock_res_desc.max_alloc_cnt = lock_escalation;
   lk_Gl.m_obj_hash_table.init (obj_lock_res_Ts, THREAD_TS_OBJ_LOCK_RES, obj_hash_size,
 			       lk_Gl.config.object_res_block_size, lk_Gl.config.object_res_block_count,
 			       lk_Obj_lock_res_desc);
 
-  obj_lock_entry_desc.max_alloc_cnt = prm_get_integer_value (PRM_ID_LK_ESCALATION_AT);
+  obj_lock_entry_desc.max_alloc_cnt = lock_escalation;
   if (lf_freelist_init (&lk_Gl.obj_free_entry_list, lk_Gl.config.object_entry_block_count,
 			lk_Gl.config.object_entry_block_size, &obj_lock_entry_desc, &obj_lock_ent_Ts) != NO_ERROR)
     {
@@ -5425,7 +5435,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
   fprintf (outfile, "*** Deadlock Victim Information ***\n");
   fprintf (outfile, "Victim count = %d\n", victim_count);
   /* print aborted transactions (deadlock victims) */
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_ABORT_HDR));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_ABORT_HDR));
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
@@ -5435,14 +5445,14 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
-	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+	      fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 	    }
 	  count++;
 	}
     }
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   /* print timeout transactions (deadlock victims) */
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT_HDR));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT_HDR));
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
@@ -5452,7 +5462,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
-	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+	      fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 	    }
 	  count++;
 	}
@@ -5549,14 +5559,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   switch (res_ptr->key.type)
     {
     case LOCK_RESOURCE_ROOT_CLASS:
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_ROOT_CLASS_TYPE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_ROOT_CLASS_TYPE));
       break;
     case LOCK_RESOURCE_CLASS:
       oid_rr = oid_get_rep_read_tran_oid ();
       if (oid_rr != NULL && OID_EQ (&res_ptr->key.oid, oid_rr))
 	{
 	  /* This is the generic object for RR transactions */
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_RR_TYPE));
+	  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_RR_TYPE));
 	}
       else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
@@ -5661,7 +5671,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     default:
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
     }
 
   /* dump total modes of holders and waiters */
@@ -5704,7 +5714,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   if (num_holders > 0)
     {
       /* dump non blocked holders */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON_BLOCKED_HOLDER_HEAD));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON_BLOCKED_HOLDER_HEAD));
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
@@ -5733,7 +5744,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   if (num_blocked_holders > 0)
     {
       /* dump blocked holders */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_HEAD));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_HEAD));
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
@@ -5775,7 +5786,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   /* dump blocked waiters */
   if (res_ptr->waiter != NULL)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_HEAD));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_HEAD));
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
@@ -5797,7 +5808,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   /* dump non two phase locks */
   if (res_ptr->non2pl != NULL)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_HEAD));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_HEAD));
       entry_ptr = res_ptr->non2pl;
       while (entry_ptr != NULL)
 	{
@@ -5808,7 +5820,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  entry_ptr = entry_ptr->next;
 	}
     }
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 
 }
 #endif /* SERVER_MODE */
@@ -8675,7 +8687,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
       outfp = stdout;
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_LOCK_TABLE),
 	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT), prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL));
 
@@ -8683,7 +8695,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* Dump some information about all transactions */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   for (tran_index = 0; tran_index < lk_Gl.config.num_trans; tran_index++)
     {
       if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
@@ -8723,7 +8735,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
 	       log_state_string (state));
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
 	       lock_timeout_string);
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
 
   /* compute number of lock res entries */

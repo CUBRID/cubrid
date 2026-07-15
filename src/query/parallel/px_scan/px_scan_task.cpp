@@ -34,6 +34,7 @@
 #include "memoize.hpp"
 #include "scan_manager.h"
 #include "partition_sr.h"
+#include "object_primitive.h"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -106,6 +107,54 @@ namespace parallel_scan
       {
 	return err_code;
       }
+
+    /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
+    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
+      {
+	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
+	    if (regu == nullptr)
+	      {
+		continue;
+	      }
+	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
+	    if (map_val == nullptr || clone_subq->single_tuple == nullptr || clone_subq->single_tuple->valp == nullptr
+		|| clone_subq->single_tuple->valp->val == nullptr)
+	      {
+		continue;
+	      }
+	    DB_VALUE *slot = clone_subq->single_tuple->valp->val;
+	    /* the back-pointer must still resolve to this subquery after unpack and clone; otherwise the
+	       slot rewrite below would clobber an unrelated operand, so report a malformed node up front. */
+	    if (regu->xasl != clone_subq)
+	      {
+		assert (false);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		return ER_QPROC_INVALID_XASLNODE;
+	      }
+	    /* release clone's stale operand value, unless it already aliases the target slot. */
+	    if (regu->value.dbvalptr != nullptr && regu->value.dbvalptr != slot)
+	      {
+		pr_clear_value (regu->value.dbvalptr);
+	      }
+	    /* copy precomputed value into the single_tuple slot. */
+	    pr_clone_value (map_val, slot);
+	    /* alias the predicate operand to that slot -- no second copy. */
+	    regu->value.dbvalptr = slot;
+	    /* regu operand now aliases single_tuple->valp->val (one DB_VALUE). On clone teardown the
+	       single_tuple clear loop (qexec_clear_xasl_head) always clears that slot, and the
+	       TYPE_CONSTANT regu cleanup may pr_clear_value the same pointer again; pr_clear_value is
+	       idempotent (DB_IS_NULL guard makes the second call a no-op), so there is no double free
+	       regardless of this flag. Normalize the marker to unset for consistency across clone kinds. */
+	    REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution. */
+	    clone_subq->status = XASL_SUCCESS;
+	    /* force non-cache fetch branch so the worker uses the redirected dbvalptr. */
+	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
+	  }
+      }
+
     if constexpr (ST != SCAN_TYPE::LIST)
       {
 	hsidp = &m_scan_id->s.hsid;
@@ -186,7 +235,7 @@ namespace parallel_scan
 	  {
 	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
-		scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
+		scan_info scan_info = m_pre_execution_info->get_scan_info (xptr->header.id);
 		ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 		xptr->curr_spec = xptr->spec_list;
 		if (spec_ptr->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (spec_ptr->access)
@@ -285,7 +334,6 @@ namespace parallel_scan
 		      }
 		      break;
 		      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-		      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 		      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 		      case ACCESS_METHOD_JSON_TABLE:
 		      case ACCESS_METHOD_SCHEMA:
@@ -428,7 +476,7 @@ namespace parallel_scan
 		  }
 	      }
 
-	    m_join_info->record_join_info (xptr->header.id, xptr);
+	    m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
 
 	  }
 
