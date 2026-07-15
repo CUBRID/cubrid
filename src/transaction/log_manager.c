@@ -11707,8 +11707,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -11926,8 +11929,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -15034,6 +15040,10 @@ cdc_initialize ()
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
   cdc_Gl.producer.temp_logbuf[1].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[1].log_page, MAX_ALIGNMENT);
+
+  /* page id 0 is a valid data page; invalidate the temp log buffers so the first access always fetches */
+  cdc_Gl.producer.temp_logbuf[0].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
+  cdc_Gl.producer.temp_logbuf[1].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   /*communication buffer from server to client initialization */
   cdc_Gl.consumer.log_info = NULL;
