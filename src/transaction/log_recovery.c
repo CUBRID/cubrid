@@ -112,6 +112,7 @@ static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDE
 static void log_recovery_finish_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_finish_all_postpone (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
+static void log_recovery_abort_atomic_sysop_guard_bulk_cleanup (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
 static void log_recovery_undo (THREAD_ENTRY * thread_p);
 typedef struct log_bulk_recovery_tran LOG_BULK_RECOVERY_TRAN;
@@ -4423,6 +4424,108 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * log_recovery_abort_atomic_sysop_guard_bulk_cleanup () - fail-stop when the open atomic system operation of a system
+ *                    worker tdes is an interrupted Case-B bulk-index recovery cleanup
+ *                    (log_recovery_bulk_cleanup_inactive). Rolling such a sysop back is unsafe: the cleanup walk's
+ *                    CLRs persist undo_nxlsa/compensate_lsa values that point into the original committed build
+ *                    chain (log_recovery_bulk_undo_record bounded_next), and log_rollback follows them below the
+ *                    atomic sysop start, re-undoing committed history (the G007 re-undo storm, 12,154 repeats
+ *                    measured on the error-path injection). A legitimate atomic sysop can never contain such a
+ *                    record: everything undone inside a system operation lies after the sysop start, so every
+ *                    legitimate continuation LSA is >= atomic_sysop_start_lsa. The restore is unrecoverable once
+ *                    the cleanup was interrupted; the only remedy is re-running restoredb.
+ *
+ * return        : void (does not return when the guard fires; logpb_fatal_error exits)
+ * thread_p (in) : thread entry
+ * tdes (in)     : system worker transaction descriptor with an open atomic system operation
+ */
+static void
+log_recovery_abort_atomic_sysop_guard_bulk_cleanup (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LOG_LSA current_lsa;
+  const LOG_LSA *atomic_start = &tdes->rcv.atomic_sysop_start_lsa;
+
+  assert (logtb_is_system_worker_tranid (tdes->trid));
+  assert (!LSA_ISNULL (atomic_start));
+
+  /* Window 1: crash during the cleanup's bounded publication walk. Analysis followed the last walk CLR
+   * (log_rv_analysis_compensate / LOG_SYSOP_END_LOGICAL_COMPENSATE) and left undo_nxlsa strictly below the
+   * atomic sysop start, inside the original committed build chain. Without this guard the LSA_GE branch of
+   * log_recovery_abort_atomic_sysop would silently skip the rollback (release) or assert (debug) and boot a
+   * half-cleaned restore. */
+  if (!LSA_ISNULL (&tdes->undo_nxlsa) && LSA_LT (&tdes->undo_nxlsa, atomic_start))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			 "log_recovery_abort_atomic_sysop: interrupted bulk-index recovery cleanup detected "
+			 "(system trid = %d, atomic sysop start = %lld|%d, undo_nxlsa = %lld|%d escapes it). "
+			 "The previous restoredb was killed before its cleanup finished; this database is an "
+			 "incomplete restore and cannot be recovered by restarting. Discard these volumes and "
+			 "re-run restoredb.", tdes->trid, LSA_AS_ARGS (atomic_start), LSA_AS_ARGS (&tdes->undo_nxlsa));
+      return;
+    }
+
+  /* Window 2: crash after the walk, inside the destroy/teardown tail of the cleanup sysop. undo_nxlsa is above
+   * the atomic start, so the ordinary rollback would run and, on reaching a walk CLR, follow its committed-chain
+   * continuation (log_rollback LOG_COMPENSATE / LOG_SYSOP_END cases). Pre-scan the sysop's own prev_tranlsa
+   * chain read-only and fail-stop on any continuation LSA that escapes below the atomic sysop start. */
+  current_lsa = tdes->undo_nxlsa;
+  while (!LSA_ISNULL (&current_lsa) && LSA_GT (&current_lsa, atomic_start))
+    {
+      LOG_LSA record_lsa = current_lsa;
+      LOG_LSA data_lsa;
+      LOG_RECORD_HEADER *record;
+      LOG_LSA continuation = NULL_LSA;
+
+      if (logpb_fetch_page (thread_p, &record_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_abort_atomic_sysop_guard_bulk_cleanup");
+	  return;
+	}
+      record = LOG_GET_LOG_RECORD_HEADER (log_page_p, &record_lsa);
+      data_lsa = record_lsa;
+      if (record->type == LOG_COMPENSATE)
+	{
+	  LOG_REC_COMPENSATE *compensate;
+
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &data_lsa, log_page_p);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_COMPENSATE), &data_lsa, log_page_p);
+	  compensate = (LOG_REC_COMPENSATE *) ((char *) log_page_p->area + data_lsa.offset);
+	  continuation = compensate->undo_nxlsa;
+	}
+      else if (record->type == LOG_SYSOP_END)
+	{
+	  LOG_REC_SYSOP_END *sysop_end;
+
+	  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &data_lsa, log_page_p);
+	  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &data_lsa, log_page_p);
+	  sysop_end = (LOG_REC_SYSOP_END *) ((char *) log_page_p->area + data_lsa.offset);
+	  if (sysop_end->type == LOG_SYSOP_END_LOGICAL_COMPENSATE)
+	    {
+	      continuation = sysop_end->compensate_lsa;
+	    }
+	  else if (sysop_end->type != LOG_SYSOP_END_LOGICAL_RUN_POSTPONE)
+	    {
+	      continuation = sysop_end->lastparent_lsa;
+	    }
+	}
+      if (!LSA_ISNULL (&continuation) && LSA_LT (&continuation, atomic_start))
+	{
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE,
+			     "log_recovery_abort_atomic_sysop: interrupted bulk-index recovery cleanup detected "
+			     "(system trid = %d, atomic sysop start = %lld|%d, record %lld|%d continues at %lld|%d "
+			     "outside the sysop). The previous restoredb was killed before its cleanup finished; "
+			     "this database is an incomplete restore and cannot be recovered by restarting. "
+			     "Discard these volumes and re-run restoredb.", tdes->trid, LSA_AS_ARGS (atomic_start),
+			     LSA_AS_ARGS (&record_lsa), LSA_AS_ARGS (&continuation));
+	  return;
+	}
+      current_lsa = record->prev_tranlsa;
+    }
+}
+
+/*
  * log_recovery_abort_atomic_sysop () - abort all changes down to tdes->rcv.atomic_sysop_start_lsa (where atomic system
  *                                      operation starts).
  *
@@ -4448,6 +4551,14 @@ log_recovery_abort_atomic_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
     {
       /* no atomic system operation */
       return;
+    }
+
+  if (logtb_is_system_worker_tranid (tdes->trid))
+    {
+      /* r305-P2-1 restart guard: an interrupted Case-B bulk-index recovery cleanup must fail-stop; rolling it
+       * back escapes through the walk's committed-chain CLR continuations (re-undo storm). Does not return if
+       * the guard fires. */
+      log_recovery_abort_atomic_sysop_guard_bulk_cleanup (thread_p, tdes);
     }
   if (LSA_GE (&tdes->rcv.atomic_sysop_start_lsa, &tdes->undo_nxlsa))
     {
