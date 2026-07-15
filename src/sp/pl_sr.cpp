@@ -31,6 +31,9 @@
 #include <sys/wait.h>
 #endif
 
+#include <algorithm>
+#include <chrono>
+
 #include "thread_manager.hpp"
 #include "thread_task.hpp"
 #if defined (SERVER_MODE)
@@ -170,12 +173,16 @@ namespace cubpl
       bool is_running () const;
 
     private:
+      static constexpr int CONNECT_RETRY_INTERVAL_MS = 10;
+      static constexpr int CONNECT_RETRY_INTERVAL_MAX_MS = 500;
+      static constexpr int SERVER_READY_TIMEOUT_MS = 10000;
+
       int do_initialize ();
 
       // check functions for PL server state
       void do_check_state (bool hang_check);
 
-      int do_check_connection (int fail_cnt);
+      int do_check_connection (int timeout_ms);
       int do_ping_connection ();
 
       /*
@@ -363,11 +370,10 @@ namespace cubpl
 
 	pl_reset_info (m_db_name.c_str ());
 	int pid = create_child_process (m_executable_path.c_str (), m_argv, 0 /* do not wait */, nullptr, nullptr, nullptr,
-					&status);
+					&status, true /* terminate with parent on Linux */);
 	if (pid > 1) // parent
 	  {
 	    m_pid = pid;
-	    sleep (1);
 	    m_state = SERVER_MONITOR_STATE_READY_TO_INITIALIZE;
 	  }
 	else if (pid == 1) // fork error
@@ -445,9 +451,7 @@ namespace cubpl
 
     // wait PL server is ready to accept connection (polling)
 
-    // TODO: parameterize this
-    constexpr int MAX_FAIL_COUNT = 10;
-    error = do_check_connection (MAX_FAIL_COUNT);
+    error = do_check_connection (SERVER_READY_TIMEOUT_MS);
 
     // set unknown state here
 #if defined (SERVER_MODE)
@@ -490,7 +494,7 @@ namespace cubpl
       {
       case SERVER_MONITOR_STATE_STOPPED:
 #if defined(SA_MODE)
-	if (do_check_connection (1) == NO_ERROR)
+	if (do_check_connection (0) == NO_ERROR)
 	  {
 	    // Waiting for PL server in shutdown state
 	    m_state = SERVER_MONITOR_STATE_UNKNOWN;
@@ -559,27 +563,58 @@ namespace cubpl
   }
 
   int
-  server_monitor_task::do_check_connection (int fail_cnt)
+  server_monitor_task::do_check_connection (int timeout_ms)
   {
-    int error = NO_ERROR;
-    int c = 0;
-    do
+    using clock = std::chrono::steady_clock;
+
+    int error = ER_FAILED;
+    int retry_interval_ms = CONNECT_RETRY_INTERVAL_MS;
+    const auto deadline = clock::now () + std::chrono::milliseconds (timeout_ms);
+
+    while (true)
       {
-	error = do_ping_connection ();
-	if (error == NO_ERROR || ++c > fail_cnt)
+	PL_SERVER_INFO pl_info = PL_SERVER_INFO_INITIALIZER;
+	bool info_is_ready = pl_read_info (m_db_name.c_str (), pl_info) && pl_info.pid != PL_PID_DISABLED;
+
+	if (info_is_ready && (m_pid <= 0 || pl_info.pid == m_pid))
 	  {
-	    break;
+	    if (m_sys_conn_pool == nullptr)
+	      {
+		m_sys_conn_pool = new connection_pool (5, m_db_name, pl_info.port, true);
+	      }
+	    else
+	      {
+		m_sys_conn_pool->set_db_port (pl_info.port);
+	      }
+
+	    error = do_ping_connection ();
+	    if (error == NO_ERROR)
+	      {
+		return NO_ERROR;
+	      }
 	  }
 
-	/* The contents of the pl file may have changed, so set it to read again. */
-	assert (m_sys_conn_pool);
-	m_sys_conn_pool->set_db_port (pl_server_port_from_info ());
+	if (m_pid > 0 && is_terminated_process (m_pid))
+	  {
+	    return error;
+	  }
 
-	thread_sleep (1000);	/* 1000 msec */
+	const auto now = clock::now ();
+	if (timeout_ms <= 0 || now >= deadline)
+	  {
+	    return error;
+	  }
+
+	const auto remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+	const int sleep_ms = std::min (retry_interval_ms, static_cast<int> (remaining_ms));
+	if (sleep_ms <= 0)
+	  {
+	    return error;
+	  }
+
+	thread_sleep (sleep_ms);
+	retry_interval_ms = std::min (retry_interval_ms * 2, CONNECT_RETRY_INTERVAL_MAX_MS);
       }
-    while (c < fail_cnt);
-
-    return error;
   }
 
   int
@@ -587,10 +622,7 @@ namespace cubpl
   {
     int error = NO_ERROR;
 
-    if (m_sys_conn_pool == nullptr)
-      {
-	m_sys_conn_pool = new connection_pool (5, m_db_name, pl_server_port_from_info (), true);
-      }
+    assert (m_sys_conn_pool != nullptr);
 
     cubmem::block ping_response;
     connection_view cv = m_sys_conn_pool->claim ();

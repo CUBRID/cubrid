@@ -289,7 +289,7 @@ main (int argc, char *argv[])
     /* pl command main routine */
     if (command.compare ("start") == 0)
       {
-#if !defined (WINDOWS)
+#if !defined (WINDOWS) && !defined (LINUX)
 	pid_t ppid = getppid ();
 #endif
 	(void) pl_start_server (pl_info, db_name, pathname);
@@ -310,20 +310,27 @@ main (int argc, char *argv[])
 	      }
 
 	    hParent = OpenProcess (SYNCHRONIZE, FALSE, parent_ppid);
+	    if (hParent == NULL)
+	      {
+		break;
+	      }
 	    result = WaitForSingleObject (hParent, INFINITE);
 	    CloseHandle (hParent);
-	    if (result == WAIT_OBJECT_0)
+	    if (result == WAIT_OBJECT_0 || result == WAIT_FAILED)
 	      {
 		break;// parent process is terminated
 	      }
+#elif defined (LINUX)
+	    /* create_child_process() configured PR_SET_PDEATHSIG before exec. */
+	    pause ();
 #else
 	    if (getppid () != ppid)
 	      {
 		// parent process is terminated
 		break;
 	      }
-#endif
 	    sleep (1);
+#endif
 	  }
 	while (true);
       }
