@@ -11985,14 +11985,10 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   /* remote DELETE with a local subquery in WHERE: DELETE FROM remote_t@conn WHERE col IN (SELECT ... FROM local_t)
    *
    * Set optimistically when the single DELETE target is remote (remote_del == 1, no local target) and there is a
-   * WHERE clause. pt_convert_dblink_dml_query refines this: the flag is kept only when the WHERE subquery is purely
-   * local (local_cnt > 0 && server_node_cnt == 1 && !has_dblink_query), otherwise it is cleared so the existing
-   * guards apply (same-server all-remote subquery => full pushdown; multi-remote / dblink() => rejected).
-   * The WHERE shape is restricted here (pt_dblink_delete_where_is_inscope) to the phase-1 supported forms:
-   * shape-unsupported predicates (OR / multiple predicates / comparison ANY-ALL / NOT IN / EXISTS) fail the
-   * gate and fall through to the "local mixed remote DML is not allowed" rejection, while correlated / row
-   * subqueries that pass the shape gate are rejected downstream (semantic_check.c / xasl_generation.c, see
-   * pt_dblink_delete_where_is_inscope's comment for the exact rejection points). */
+   * WHERE clause; pt_convert_dblink_dml_query (below) refines this, keeping it only when the WHERE subquery is
+   * purely local and otherwise clearing it so the existing guards apply. WHERE shape restricted by
+   * pt_dblink_delete_where_is_inscope -- see its doc comment for supported/excluded forms and where
+   * correlated/row subqueries are rejected downstream. */
   if (remote_del == 1 && local_del == 0 && pt_dblink_delete_where_is_inscope (node))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ;
