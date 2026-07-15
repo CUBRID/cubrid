@@ -34,6 +34,7 @@
 #include "btree.h"
 
 #include "deduplicate_key.h"
+#include "double_write_buffer.hpp"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
@@ -2285,6 +2286,32 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
 {
   if (no_redo)
     {
+      /*
+       * DEFECT-OV3: this page's allocation-time init image (btree_initialize_new_page /
+       * file_init_page_type via bt_load_allocate_span_start) -- and any later opportunistic
+       * background flush taken while the page sat dirty and unlatched in the buffer pool --
+       * went through the ORDINARY, DWB-staged flush path.  A DWB-staged copy is synced to the
+       * page's final disk location on the DWB's own schedule; if that stale copy lands AFTER
+       * the direct DWB-bypass flush below, it silently restores a pristine-empty page inside
+       * the finished chain (sealed: 3/3 repro DWB-on vs 0/3 DWB-off on the identical clone
+       * basis; .not_git_tracking/bulk_index_build/artifacts/u-g001/phase2-32/SUMMARY.md,
+       * Episode 5).  Drain every pending DWB entry synchronously before our own direct write.
+       * We still hold this page's write latch here, so no NEW staging of this VPID can begin
+       * before the flush below lands (pgbuf only defers a background flush of a write-latched
+       * page) -- the direct write is therefore provably the last write to reach disk for this
+       * VPID.  The drain is global by construction: no per-VPID retire primitive exists
+       * (dwb_read_page only reads a pending entry).  When DWB is disabled or empty this call
+       * returns immediately.
+       */
+      bool dwb_all_sync = false;
+      int dwb_error;
+
+      dwb_error = dwb_flush_force (thread_p, &dwb_all_sync);
+      if (dwb_error != NO_ERROR)
+	{
+	  pgbuf_unfix_and_init (thread_p, page_ptr);
+	  return dwb_error;
+	}
       pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
       if (pgbuf_flush_with_wal_policy (thread_p, page_ptr, PGBUF_WAL_FLUSH_SKIP, PGBUF_DWB_FLUSH_SKIP) == NULL)
 	{
