@@ -2766,8 +2766,10 @@ error:
   vacuum_stop_master (thread_p);
 
 #if defined(SERVER_MODE)
+#ifdef CCI_XA
+  dblink_2pc_daemon_stop ();
+#endif
   pl_server_destroy ();
-
   cdc_daemons_destroy ();
 
   BO_DISABLE_FLUSH_DAEMONS ();
@@ -3692,7 +3694,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 int
 xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
 {
-  fprintf (stdout, print_str);
+  fprintf (stdout, "%s", print_str);
 
   return NO_ERROR;
 }

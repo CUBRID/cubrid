@@ -61,6 +61,7 @@
 #include "release_string.h"
 #include "critical_section.h"
 #include "statistics.h"
+#include "histogram_sampler_sr.hpp"
 #include "chartype.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
@@ -2079,6 +2080,219 @@ sqst_server_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length, std::move (deleter));
+}
+
+/*
+ * sqst_histogram_build_by_reservoir - server handler: build a column histogram by a
+ *   single full heap scan + reservoir sampling, returning the blob + exact null frequency.
+ */
+void
+sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OID class_oid;
+  HFID hfid;
+  int max_buckets = 0, sample_size = 0, attr_cnt = 0;
+  int i;
+  char *ptr;
+  char *send_buf = NULL;
+  int send_len = 0;
+  int status = NO_ERROR;
+  ATTR_ID *attr_ids = NULL;
+  DB_TYPE *attr_types = NULL;
+  double *null_freqs = NULL;
+  char **blobs = NULL;
+  int *blob_lens = NULL;
+  INT64 *ndvs = NULL;
+  int *attr_unique = NULL;
+  INT64 total_rows = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_int (ptr, &max_buckets);
+  ptr = or_unpack_int (ptr, &sample_size);
+  ptr = or_unpack_int (ptr, &attr_cnt);
+
+  if (attr_cnt <= 0
+      || (INT64) OR_OID_SIZE + 3 * OR_INT_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
+    {
+      /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
+       * the received request -- prevents unpacking past the request buffer and absurd allocations */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
+  attr_ids = (ATTR_ID *) db_private_alloc (thread_p, sizeof (ATTR_ID) * attr_cnt);
+  attr_types = (DB_TYPE *) db_private_alloc (thread_p, sizeof (DB_TYPE) * attr_cnt);
+  null_freqs = (double *) db_private_alloc (thread_p, sizeof (double) * attr_cnt);
+  blobs = (char **) db_private_alloc (thread_p, sizeof (char *) * attr_cnt);
+  blob_lens = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
+  ndvs = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * attr_cnt);
+  attr_unique = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
+  if (blobs != NULL)
+    {
+      /* cleanup frees blobs[i]; a partial allocation failure below would otherwise hand
+       * uninitialized garbage pointers to db_private_free */
+      memset (blobs, 0, sizeof (char *) * attr_cnt);
+    }
+  if (attr_ids == NULL || attr_types == NULL || null_freqs == NULL || blobs == NULL || blob_lens == NULL
+      || ndvs == NULL || attr_unique == NULL)
+    {
+      status = ER_OUT_OF_VIRTUAL_MEMORY;
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+  for (i = 0; i < attr_cnt; i++)
+    {
+      int id = 0, t = 0, uq = 0;
+      ptr = or_unpack_int (ptr, &id);
+      ptr = or_unpack_int (ptr, &t);
+      ptr = or_unpack_int (ptr, &uq);
+      attr_ids[i] = (ATTR_ID) id;
+      attr_types[i] = (DB_TYPE) t;
+      attr_unique[i] = uq;
+      blobs[i] = NULL;
+      blob_lens[i] = 0;
+      null_freqs[i] = 0.0;
+    }
+
+  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+    {
+      status = ER_FAILED;
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+
+  /* TODO(CBRD-26936 follow-up): enforce per-class authorization on the server here.
+   * The client SQL/API paths (do_update_histogram/do_drop_histogram, do_update_stats) already
+   * check AU_ALTER + AU_SELECT before issuing this request, so no legitimate client bypasses it.
+   * A client crafting the raw request directly, however, could pass a class OID it lacks rights
+   * on and infer that class's data distribution (MCV values, bucket bounds) or trigger repeated
+   * full scans. CUBRID authorization is client-side only (the server has no au_ layer and even
+   * DBA checks are passed as client-computed flags), so closing this needs a new server-side
+   * _db_auth reader that evaluates owner / direct grant / PUBLIC / DBA for (current user,
+   * class_oid) -- deferred to a dedicated security follow-up PR. */
+
+  status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
+	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+
+  /* reply var-data (8-byte items first for natural alignment):
+   *   total_rows (int64), attr_cnt NDV (int64), attr_cnt null_frequency (double),
+   *   attr_cnt blob_length (int), then the blobs concatenated in column order. */
+  send_len = OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
+  for (i = 0; i < attr_cnt; i++)
+    {
+      if (blob_lens[i] > 0)
+	{
+	  send_len += blob_lens[i];
+	}
+    }
+  send_buf = (char *) malloc ((size_t) send_len);
+  if (send_buf != NULL)
+    {
+      char *sp = send_buf;
+      sp = or_pack_int64 (sp, total_rows);
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_int64 (sp, ndvs[i]);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_double (sp, null_freqs[i]);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_int (sp, blob_lens[i] > 0 ? blob_lens[i] : 0);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  if (blob_lens[i] > 0 && blobs[i] != NULL)
+	    {
+	      memcpy (sp, blobs[i], (size_t) blob_lens[i]);
+	      sp += blob_lens[i];
+	    }
+	}
+    }
+  else
+    {
+      /* reply buffer allocation failed: return an explicit error instead of a zero-length reply,
+       * which the client would otherwise accept as "no data" and silently keep a stale histogram. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) send_len);
+      status = ER_OUT_OF_VIRTUAL_MEMORY;
+      (void) return_error_to_client (thread_p, rid);
+      send_len = 0;
+    }
+
+cleanup:
+  if (blobs != NULL)
+    {
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  if (blobs[i] != NULL)
+	    {
+	      db_private_free_and_init (thread_p, blobs[i]);
+	    }
+	}
+      db_private_free_and_init (thread_p, blobs);
+    }
+  if (attr_ids != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_ids);
+    }
+  if (attr_types != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_types);
+    }
+  if (null_freqs != NULL)
+    {
+      db_private_free_and_init (thread_p, null_freqs);
+    }
+  if (blob_lens != NULL)
+    {
+      db_private_free_and_init (thread_p, blob_lens);
+    }
+  if (ndvs != NULL)
+    {
+      db_private_free_and_init (thread_p, ndvs);
+    }
+  if (attr_unique != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_unique);
+    }
+
+send:
+  /* protocol: net_client_request2 requires the FIRST int of the reply to be the length of
+   * the variable-length data block that follows */
+  ptr = or_pack_int (reply, send_len);
+  ptr = or_pack_int (ptr, status);
+
+  {
+    auto deleter = [send_buf]() noexcept
+    {
+      if (send_buf != NULL)
+	{
+	  free (send_buf);
+	}
+    };
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), send_buf,
+				       send_len, std::move (deleter));
+  }
 }
 
 /*
@@ -4268,12 +4482,38 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
+  if (reqlen < OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
+
+  if (class_attr_ndv.attr_cnt < 0
+      || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
+      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
+    {
+      /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
+       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
+       * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
+       * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
+       * allocations below. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
 
   class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
       (void) return_error_to_client (thread_p, rid);
+      goto send;
     }
 
   for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
@@ -4281,6 +4521,8 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       ptr = or_unpack_int (ptr, &class_attr_ndv.attr_ndv[i].id);
       ptr = or_unpack_int64 (ptr, &class_attr_ndv.attr_ndv[i].ndv);
     }
+  /* the trailing sentinel entry's ndv carries the caller-provided exact row count (0 if none) */
+  class_attr_ndv.total_rows = class_attr_ndv.attr_ndv[class_attr_ndv.attr_cnt].ndv;
   ptr = or_unpack_oid (ptr, &classoid);
   ptr = or_unpack_int (ptr, &with_fullscan);
 
@@ -4292,6 +4534,7 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       (void) return_error_to_client (thread_p, rid);
     }
 
+send:
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -11409,6 +11652,11 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
       if (error_code != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
