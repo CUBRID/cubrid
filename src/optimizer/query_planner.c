@@ -2076,7 +2076,7 @@ qo_iscan_cost (QO_PLAN * planp)
   QO_NODE_INDEX_ENTRY *ni_entryp;
   QO_ATTR_CUM_STATS *cum_statsp;
   QO_INDEX_ENTRY *index_entryp;
-  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows;
+  double sel, sel_limit, height, leaves, opages, filter_sel, leaf_access, heap_access, heap_rows, descent_cpu;
   double object_IO, index_IO;
   QO_TERM *termp;
   BITSET_ITERATOR iter;
@@ -2249,10 +2249,17 @@ qo_iscan_cost (QO_PLAN * planp)
     }
   object_IO = MAX (1.0, object_IO);
 
+  /* PG cost_index (): every index scan pays a root-to-leaf descent -- about ceil(log2(rows)) key
+   * compares plus (height + 1) page-boundary steps of 50 operator units each. Charge it into the
+   * per-scan VARIABLE cpu cost so a nested loop pays it once per probe. After the Mackert-Lohman
+   * correction saturates the repeated-probe heap IO, this per-probe term is what keeps a
+   * multi-million-probe NL from looking free -- the same balance PG keeps. */
+  descent_cpu = (ceil (log2 ((double) QO_NODE_NCARD (nodep) + 1.0)) + (height + 1.0) * 50.0) * (double) QO_CPU_WEIGHT;
+
   /* index scan requires more CPU cost than sequential scan */
   planp->fixed_cpu_cost = 0.0;
   planp->fixed_io_cost = index_IO;
-  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
+  planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT + descent_cpu;
   planp->variable_io_cost = object_IO;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * sel * filter_sel);
 
