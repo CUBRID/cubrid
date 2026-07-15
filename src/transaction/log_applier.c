@@ -9203,13 +9203,15 @@ la_is_supported_poc_item (LA_ITEM * item)
       return item->item_type == RVREPL_DATA_INSERT
 	|| item->item_type == RVREPL_DATA_UPDATE
 	|| item->item_type == RVREPL_DATA_UPDATE_START
-	|| item->item_type == RVREPL_DATA_UPDATE_END;
+	|| item->item_type == RVREPL_DATA_UPDATE_END
+	|| item->item_type == RVREPL_DATA_DELETE;
     }
 
   if (item->log_type == LOG_REPLICATION_STATEMENT)
     {
       return item->item_type == CUBRID_STMT_CREATE_CLASS || item->item_type == CUBRID_STMT_DROP_CLASS
-	|| item->item_type == CUBRID_STMT_INSERT || item->item_type == CUBRID_STMT_UPDATE;
+	|| item->item_type == CUBRID_STMT_INSERT || item->item_type == CUBRID_STMT_UPDATE
+	|| item->item_type == CUBRID_STMT_DELETE;
     }
 
   return false;
