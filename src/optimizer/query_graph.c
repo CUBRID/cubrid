@@ -5325,16 +5325,24 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
 
-      /* set histogram */
-      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+      /* set histogram. hist_stats->histogram[] is filled in class attribute-list order, which is
+       * NOT the attr_stats order searched above (attr_stats loses id order on schema updates such
+       * as column drops), so match the slot by attribute id instead of reusing that index. */
+      QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+      QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+      if (hist_stats != NULL && hist_stats->attr_ids != NULL)
 	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
-	}
-      else
-	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	  int h;
+
+	  for (h = 0; h < hist_stats->n_attrs; h++)
+	    {
+	      if (hist_stats->attr_ids[h] == attr_id)
+		{
+		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
+		  break;
+		}
+	    }
 	}
 
       if (cum_statsp->valid_limits == false)
@@ -5925,8 +5933,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
-      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       env->plan_dump_enabled = false;
     }
@@ -7729,8 +7736,7 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
-				     PT_SPEC_FLAG_SAMPLING_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
