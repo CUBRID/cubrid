@@ -19690,6 +19690,9 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   int avg_overhead_per_page = 0;
   int val = 0;
   int idx = 0;
+  VFID oos_vfid;
+  OOS_STATS_INFO oos_stats;
+  INT64 oos_physical_bytes = 0;
   FILE_DESCRIPTORS fdes;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
@@ -19700,6 +19703,10 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     }
 
   hfid_p = &ctx->hfids[cursor];
+
+  memset (&oos_stats, 0, sizeof (oos_stats));
+  oos_stats.page_size = DB_PAGESIZE;
+  VFID_SET_NULL (&oos_stats.oos_vfid);
 
   error =
     heap_get_capacity (thread_p, hfid_p, &num_recs, &num_relocated_recs, &num_overflowed_recs, &num_pages,
@@ -19715,6 +19722,25 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
     {
       ASSERT_ERROR ();
       goto cleanup;
+    }
+
+  VFID_SET_NULL (&oos_vfid);
+  if (!heap_oos_find_vfid (thread_p, hfid_p, &oos_vfid, false))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto cleanup;
+    }
+
+  if (!VFID_ISNULL (&oos_vfid))
+    {
+      error = oos_get_stats_by_vfid (thread_p, oos_vfid, &oos_stats);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto cleanup;
+	}
+
+      oos_physical_bytes = (INT64) oos_stats.num_user_pages * (INT64) oos_stats.page_size;
     }
 
   error = heap_attrinfo_start (thread_p, &fdes.heap.class_oid, -1, NULL, &attr_info);
@@ -19810,6 +19836,24 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   idx++;
 
   db_make_int (out_values[idx], repr->fixed_length);
+  idx++;
+
+  db_make_int (out_values[idx], oos_stats.has_oos_file);
+  idx++;
+
+  db_make_int (out_values[idx], oos_stats.num_user_pages);
+  idx++;
+
+  db_make_int (out_values[idx], oos_stats.num_recs);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_stats.recs_sumlen);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_physical_bytes);
+  idx++;
+
+  db_make_bigint (out_values[idx], oos_stats.free_bytes);
   idx++;
 
   assert (idx == out_cnt);

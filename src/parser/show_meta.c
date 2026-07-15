@@ -366,7 +366,13 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
     {"Num_variable_width_attrs", "int"},
     {"Num_shared_attrs", "int"},
     {"Num_class_attrs", "int"},
-    {"Total_size_fixed_width_attrs", "int"}
+    {"Total_size_fixed_width_attrs", "int"},
+    {"Has_oos_file", "int"},
+    {"Oos_num_user_pages", "int"},
+    {"Oos_num_recs", "int"},
+    {"Oos_recs_sumlen", "bigint"},
+    {"Oos_physical_bytes", "bigint"},
+    {"Oos_free_bytes", "bigint"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
