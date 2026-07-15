@@ -74,9 +74,10 @@ analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_
 {
   /* New path: a single server request performs a full heap scan, draws a fixed-size
    * reservoir sample, builds the histogram (and exact null frequency) server-side, and
-   * returns the blob. No client SQL query is executed. with_fullscan is ignored: the
-   * scan is always full, sampling is reservoir-based. (see histogram_sampler_sr) */
-  return analyze_classes_by_reservoir (thread_p, tbl_name, attr_name, max_number_of_buckets, classop);
+   * returns the blob. No client SQL query is executed. with_fullscan forces a full heap
+   * scan; without it a large heap may be page-sampled server-side. (see histogram_sampler_sr) */
+  return analyze_classes_by_reservoir (thread_p, tbl_name, attr_name, max_number_of_buckets,
+				       with_fullscan ? 1 : 0, classop);
 }
 
 /* true iff `attr_id` is the sole column of a UNIQUE or PRIMARY KEY constraint on `classop`. Such a
@@ -109,7 +110,7 @@ attr_is_single_col_unique (MOP classop, int attr_id)
  */
 int
 analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
-			      int max_number_of_buckets, MOP classop)
+			      int max_number_of_buckets, int with_fullscan, MOP classop)
 {
   int error = NO_ERROR;
   OID *class_oid;
@@ -138,7 +139,7 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* server builds the histogram by full-scan reservoir sampling; sample_size 0 -> default */
   int attr_unique = attr_is_single_col_unique (classop, attr_id) ? 1 : 0;
   error = histogram_build_by_reservoir_request (class_oid, attr_id, (int) attr_type, attr_unique, max_number_of_buckets,
-	  0, &null_frequency, &histogram_blob, &histogram_total_length);
+	  0, with_fullscan, &null_frequency, &histogram_blob, &histogram_total_length);
   if (error != NO_ERROR)
     {
       if (histogram_blob != NULL)
@@ -224,7 +225,7 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
  */
 int
 analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-				    MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
+				    int with_fullscan, MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
 				    HISTOGRAM_COLLECT *out_collect)
 {
   OID *class_oid = ws_oid (classop);
@@ -265,8 +266,8 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
 
   int error =
 	  histogram_build_multi_by_reservoir_request (class_oid, n, attr_ids.data (), attr_types.data (),
-	      attr_unique.data (), max_number_of_buckets, 0, null_freqs.data (), blobs.data (), blob_lens.data (),
-	      ndvs.data (), &total_rows);
+	      attr_unique.data (), max_number_of_buckets, 0, with_fullscan, null_freqs.data (), blobs.data (),
+	      blob_lens.data (), ndvs.data (), &total_rows);
   if (error != NO_ERROR)
     {
       for (int i = 0; i < n; i++)

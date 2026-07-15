@@ -80,7 +80,7 @@ int analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *a
 		     bool with_fullscan, MOP classop);
 /* server-side full-scan + reservoir sampling histogram collection (replaces the query-based path) */
 int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
-				  int max_number_of_buckets, MOP classop);
+				  int max_number_of_buckets, int with_fullscan, MOP classop);
 /* single-scan variant: build histograms for all histogrammable columns of the class in one heap scan.
  * Also surfaces the per-column NDV + exact row count derived from the same scan (out_ndv_info /
  * out_total_rows, may be NULL) so the caller can feed them to UPDATE STATISTICS and skip its NDV scan.
@@ -89,8 +89,8 @@ int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, 
  * store with store_collected_histograms () and release with histogram_collect_clear (). When
  * out_collect is NULL the blobs are stored immediately (legacy behavior). */
 int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-					MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
-					HISTOGRAM_COLLECT *out_collect);
+					int with_fullscan, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect);
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */

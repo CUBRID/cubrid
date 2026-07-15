@@ -2096,6 +2096,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   char *send_buf = NULL;
   int send_len = 0;
   int status = NO_ERROR;
+  int with_fullscan = 0;
   ATTR_ID *attr_ids = NULL;
   DB_TYPE *attr_types = NULL;
   double *null_freqs = NULL;
@@ -2107,7 +2108,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (reqlen < OR_OID_SIZE + 3 * OR_INT_SIZE)
+  if (reqlen < OR_OID_SIZE + 4 * OR_INT_SIZE)
     {
       /* short packet: the fixed header must be length-checked before it is unpacked */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -2119,6 +2120,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_oid (request, &class_oid);
   ptr = or_unpack_int (ptr, &max_buckets);
   ptr = or_unpack_int (ptr, &sample_size);
+  ptr = or_unpack_int (ptr, &with_fullscan);
   ptr = or_unpack_int (ptr, &attr_cnt);
 
   if (attr_cnt <= 0
@@ -2184,7 +2186,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
    * class_oid) -- deferred to a dedicated security follow-up PR. */
 
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
-	   attr_unique, attr_cnt, max_buckets, sample_size, null_freqs, blobs, blob_lens, ndvs, &total_rows);
+	   attr_unique, attr_cnt, max_buckets, sample_size, with_fullscan != 0, null_freqs, blobs, blob_lens, ndvs,
+	   &total_rows);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

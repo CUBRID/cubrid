@@ -4399,7 +4399,8 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  CLASS_ATTR_NDV ndv_info = CLASS_ATTR_NDV_INITIALIZER;
 	  INT64 hist_total_rows = 0;
 	  HISTOGRAM_COLLECT hist_collect = HISTOGRAM_COLLECT_INITIALIZER;
-	  error = analyze_classes_multi_by_reservoir (NULL, db_get_class_name (obj), bucket_count, obj, &ndv_info,
+	  error = analyze_classes_multi_by_reservoir (NULL, db_get_class_name (obj), bucket_count, with_fullscan ? 1 : 0, obj,
+						      &ndv_info,
 						      &hist_total_rows, &hist_collect);
 	  if (error == NO_ERROR)
 	    {

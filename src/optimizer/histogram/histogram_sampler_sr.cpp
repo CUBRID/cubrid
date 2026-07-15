@@ -1791,8 +1791,8 @@ histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID
 int
 xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-    int sample_size, double *null_frequency, char **histogram_blob, int *blob_length, INT64 *out_ndv,
-    INT64 *out_total_rows)
+    int sample_size, bool with_fullscan, double *null_frequency, char **histogram_blob, int *blob_length,
+    INT64 *out_ndv, INT64 *out_total_rows)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -2170,7 +2170,7 @@ namespace
 
 int
 xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
-    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt,
+    const ATTR_ID *attr_ids, const DB_TYPE *attr_types, int attr_cnt, bool with_fullscan,
     INT64 *out_ndv, INT64 *out_total_rows, STATS_NDV_SKETCH_SET **out_sketches)
 {
   HEAP_SCANCACHE scan_cache;
