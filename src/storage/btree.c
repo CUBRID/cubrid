@@ -55,6 +55,7 @@
 #include "perf_monitor.h"
 #include "regu_var.hpp"
 #include "fault_injection.h"
+#include "memory_hash.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
@@ -328,6 +329,9 @@ typedef enum
 #define LOFFS4  6		/* RECDES Data Offset */
 
 /* B+tree statistical information environment */
+/* uniform key reservoir feeding the Duj1 prefix distinct estimator (CBRD-26903) */
+#define BTREE_STATS_DUJ1_SAMPLE 4096
+
 typedef struct btree_stats_env BTREE_STATS_ENV;
 struct btree_stats_env
 {
@@ -338,6 +342,15 @@ struct btree_stats_env
 
   DB_VALUE prev_key_val;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   int same_prefix_len;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+
+  bool collect_prefix_sample;	/* the current sampled leaf feeds the prefix hash reservoir */
+  INT64 sample_seen;		/* keys offered to the reservoir so far */
+  int sample_size;		/* filled reservoir slots, <= BTREE_STATS_DUJ1_SAMPLE */
+  UINT64 *prefix_sample;	/* [pkeys_val_num][BTREE_STATS_DUJ1_SAMPLE] prefix hashes */
+  VPID *sampled_leaves;		/* leaves already offered, so a revisited leaf (the AR descent
+				 * draws with replacement) cannot duplicate its keys in the
+				 * reservoir and deflate the Duj1 singleton count */
+  int sampled_leaf_cnt;
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -1257,7 +1270,9 @@ static int btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * e
 static int btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot);
 static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
-						   bool * exhausted);
+						   bool * exhausted, int *count);
+static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
+static int btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
 static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
@@ -6869,6 +6884,50 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
       goto exit_on_error;
     }
 
+  if (env->collect_prefix_sample && env->prefix_sample != NULL)
+    {
+      /* uniform reservoir over the sampled keys: every key offers one slot decision shared by
+       * all levels, so the reservoir is one row sample carrying each level's prefix hash */
+      int slot;
+
+      env->sample_seen++;
+      if (env->sample_size < BTREE_STATS_DUJ1_SAMPLE)
+	{
+	  slot = env->sample_size++;
+	}
+      else
+	{
+	  INT64 pos = (INT64) (drand48 () * env->sample_seen);
+	  slot = (pos < BTREE_STATS_DUJ1_SAMPLE) ? (int) pos : -1;
+	}
+      if (slot >= 0)
+	{
+	  UINT64 hash = 0;
+	  unsigned int val_hash;
+
+	  prev_k_index = 0;
+	  prev_k_ptr = NULL;
+	  for (k = 0; k < env->pkeys_val_num; k++)
+	    {
+	      ret = pr_midxkey_get_element_nocopy (midxkey, k, &elem, &prev_k_index, &prev_k_ptr);
+	      if (ret != NO_ERROR)
+		{
+		  assert_release (false);
+		  goto exit_on_error;
+		}
+	      /* the NULL marker must not collide with any value hash, so values are bounded away
+	       * from it (mht_valhash reduces modulo its ht_size argument) */
+	      val_hash = DB_IS_NULL (&elem) ? 0xFFFFFFFFU : mht_valhash (&elem, 0xFFFFFFFEU);
+	      hash = hash * 1099511628211ULL + val_hash;
+	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
+	    }
+	}
+    }
+
   prev_i_index = 0;
   prev_i_ptr = NULL;
   for (i = 0; i < env->pkeys_val_num; i++)
@@ -7137,6 +7196,7 @@ exit_on_error:
  *   env(in/out): stats environment already filled by the AR sampling
  *   level(in): pkeys level to enumerate (prefix of level + 1 leading columns)
  *   exhausted(out): set when the seek budget ran out before the rightmost leaf
+ *   count(out): distinct prefixes enumerated -- exact unless exhausted, then a lower bound
  *
  * Note: (CBRD-26903) enumerates the distinct (level + 1)-column prefixes by repeatedly seeking
  * past the current prefix group: the seek key is the current key truncated to the prefix with
@@ -7155,7 +7215,8 @@ exit_on_error:
  * leading column) does transition and is counted by both.
  */
 static int
-btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, bool * exhausted)
+btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, bool * exhausted,
+					int *count)
 {
   BTID_INT *btid_int;
   PAGE_PTR page = NULL;
@@ -7177,7 +7238,6 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
   int groups = 0;
   int distinct = 0;
   int seeks = 0;
-  bool completed = false;
   int col;
   int ret = NO_ERROR;
 
@@ -7186,6 +7246,7 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
   assert (level >= 0 && level < env->pkeys_val_num - 1);
 
   *exhausted = false;
+  *count = 0;
 
   btid_int = &(env->btree_scan.btid_int);
 
@@ -7219,24 +7280,31 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
       if (slot_id > key_cnt)
 	{
 	  /* move to the right neighbor leaf */
+	  PAGE_PTR next_page;
+
 	  header = btree_get_node_header (thread_p, page);
 	  if (header == NULL)
 	    {
 	      goto exit_on_error;
 	    }
 	  vpid = header->next_vpid;
-	  pgbuf_unfix_and_init (thread_p, page);
 	  if (VPID_ISNULL (&vpid))
 	    {
-	      completed = true;	/* walked past the rightmost leaf */
+	      /* walked past the rightmost leaf: the enumeration is complete */
+	      pgbuf_unfix_and_init (thread_p, page);
 	      break;
 	    }
-	  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (page == NULL)
+	  /* couple the latches: fix the sibling before releasing the current leaf, or a
+	   * concurrent merge could deallocate it in between (UPDATE STATISTICS holds only
+	   * SCH_S_LOCK, so DML runs concurrently) */
+	  next_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  if (next_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (ret);
 	      goto exit_on_error;
 	    }
+	  page = next_page;
 	  slot_id = 1;
 	  continue;
 	}
@@ -7371,16 +7439,7 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
   btree_clear_key_value (&clear_cur_key, &cur_key);
   pr_clear_value (&seek_key);
 
-  if (completed)
-    {
-      /* exact distinct count of the (level + 1)-column prefixes */
-      env->stat_info->pkeys[level] = distinct;
-    }
-  else if (env->stat_info->pkeys[level] < distinct)
-    {
-      /* budget exhausted: what was enumerated is still a valid lower bound */
-      env->stat_info->pkeys[level] = distinct;
-    }
+  *count = distinct;
 
   return NO_ERROR;
 
@@ -7397,21 +7456,85 @@ exit_on_error:
 }
 
 /*
+ * btree_get_stats_compare_prefix_hash () - qsort comparator for the prefix hash reservoir
+ */
+static int
+btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2)
+{
+  UINT64 h1 = *(const UINT64 *) hash1;
+  UINT64 h2 = *(const UINT64 *) hash2;
+
+  return (h1 < h2) ? -1 : (h1 > h2) ? 1 : 0;
+}
+
+/*
+ * btree_get_stats_duj1_estimate () - distinct prefix estimate of one pkeys level from the
+ *     uniform key reservoir
+ *   return: estimated distinct count
+ *   env(in): stats environment with a filled prefix hash reservoir
+ *   level(in): pkeys level to estimate
+ *
+ * Note: (CBRD-26903) unsmoothed first-order jackknife ("Duj1", Haas/Naughton/Seshadri/Stokes,
+ * VLDB 1995): D = n*d / (n - f1 + f1*n/N), with d the distinct and f1 the once-occurring
+ * values in a uniform n-key sample of an N-key population. Unlike scaling the transition
+ * count of the sampled leaves, it is insensitive to the visit order of the samples.
+ */
+static int
+btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
+{
+  UINT64 *sample = env->prefix_sample + ((size_t) level * BTREE_STATS_DUJ1_SAMPLE);
+  int n = env->sample_size;
+  int i, run, d = 0, f1 = 0;
+  double total_keys, estimate;
+
+  assert (n > 0 && n <= BTREE_STATS_DUJ1_SAMPLE);
+
+  qsort (sample, n, sizeof (UINT64), btree_get_stats_compare_prefix_hash);
+  run = 1;
+  for (i = 1; i <= n; i++)
+    {
+      if (i < n && sample[i] == sample[i - 1])
+	{
+	  run++;
+	  continue;
+	}
+      d++;
+      if (run == 1)
+	{
+	  f1++;
+	}
+      run = 1;
+    }
+
+  total_keys = MAX ((double) env->stat_info->keys, (double) n);
+  estimate = ((double) n * d) / ((double) n - f1 + f1 * ((double) n / total_keys));
+  estimate = MAX (estimate, (double) d);
+  estimate = MIN (estimate, total_keys);
+
+  return (int) estimate;
+}
+
+/*
  * btree_get_stats_prefix_skip_scan () - exact distinct prefix counts by per-level skip scans
  *   return: NO_ERROR
  *   env(in/out): stats environment already filled by the AR sampling
  *
  * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep. Prefix distinct
  * counts are non-decreasing with depth, so once a level exhausts its seek budget every deeper
- * level would too and the sampled estimates are kept from there on. The last level (the whole
- * key) is never enumerated: it degenerates to visiting every key.
+ * level would too and enumeration stops there. The last level (the whole key) is never
+ * enumerated: it degenerates to visiting every key.
+ *
+ * The levels the skip scan could not enumerate are re-estimated from the key reservoir with
+ * the Duj1 estimator: the transition count of the sampled leaves is corrupted by their random
+ * visit order (the state carried across non-adjacent leaves fabricates a prefix transition at
+ * almost every jump, inflating few-zone prefixes; one dominant value deflates them instead).
  */
 static int
 btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 {
   BTID_INT *btid_int;
   bool exhausted;
-  int level, i;
+  int level, first_estimated, lower_bound = 0, count, i;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -7427,18 +7550,35 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       return NO_ERROR;
     }
 
+  first_estimated = env->pkeys_val_num - 1;
   for (level = 0; level < env->pkeys_val_num - 1; level++)
     {
       exhausted = false;
-      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, &exhausted);
+      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, &exhausted, &count);
       if (ret != NO_ERROR)
 	{
 	  return ret;
 	}
       if (exhausted)
 	{
+	  first_estimated = level;
+	  lower_bound = count;
 	  break;
 	}
+      env->stat_info->pkeys[level] = count;	/* exact */
+    }
+
+  if (env->prefix_sample != NULL && env->sample_size > 0)
+    {
+      for (level = first_estimated; level < env->pkeys_val_num; level++)
+	{
+	  env->stat_info->pkeys[level] = btree_get_stats_duj1_estimate (env, level);
+	}
+    }
+  if (first_estimated < env->pkeys_val_num && env->stat_info->pkeys[first_estimated] < lower_bound)
+    {
+      /* what the exhausted skip scan enumerated is still a valid lower bound */
+      env->stat_info->pkeys[first_estimated] = lower_bound;
     }
 
   /* prefix distinct counts are non-decreasing by definition; the key count bounds them all */
@@ -7502,6 +7642,25 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       assert (header != NULL);
       assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
+
+      if (env->prefix_sample != NULL && env->sampled_leaves != NULL)
+	{
+	  /* only a first visit feeds the reservoir: the AR descent draws leaves with
+	   * replacement, and re-offering a leaf's keys would plant duplicate occurrences */
+	  env->collect_prefix_sample = true;
+	  for (i = 0; i < env->sampled_leaf_cnt; i++)
+	    {
+	      if (VPID_EQ (&(env->sampled_leaves[i]), &BTS->C_vpid))
+		{
+		  env->collect_prefix_sample = false;
+		  break;
+		}
+	    }
+	  if (env->collect_prefix_sample)
+	    {
+	      env->sampled_leaves[env->sampled_leaf_cnt++] = BTS->C_vpid;
+	    }
+	}
 
       if (key_cnt > 0)
 	{
@@ -7764,6 +7923,13 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       db_make_null (&(env->pkeys_val[i]));
     }
 
+  env->collect_prefix_sample = false;
+  env->sample_seen = 0;
+  env->sample_size = 0;
+  env->prefix_sample = NULL;
+  env->sampled_leaves = NULL;
+  env->sampled_leaf_cnt = 0;
+
   root_vpid.pageid = env->stat_info->btid.root_pageid;	/* read root page */
   root_vpid.volid = env->stat_info->btid.vfid.volid;
 
@@ -7840,14 +8006,34 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
   else
     {
+      if (env->pkeys_val_num > 1 && dom_type == DB_TYPE_MIDXKEY)
+	{
+	  /* (CBRD-26903) reservoir feeding the Duj1 estimate of the non-enumerable levels */
+	  env->prefix_sample =
+	    (UINT64 *) db_private_alloc (thread_p,
+					 (size_t) env->pkeys_val_num * BTREE_STATS_DUJ1_SAMPLE * sizeof (UINT64));
+	  if (env->prefix_sample == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	  env->sampled_leaves = (VPID *) db_private_alloc (thread_p, STATS_SAMPLING_THRESHOLD * sizeof (VPID));
+	  if (env->sampled_leaves == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	}
+
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
       if (ret == NO_ERROR)
 	{
-	  /* (CBRD-26903) leaf sampling estimates the distinct leading prefixes from the
-	   * transitions seen in the sampled leaves; when the leading column is dominated by one
-	   * value (typically NULL) and its other values cluster in a few leaves, the sample holds
-	   * a single leading value and pkeys[0] collapses to 1. The sorted order makes an exact,
-	   * bounded correction possible: skip-scan the distinct leading values directly. */
+	  /* (CBRD-26903) leaf sampling estimates the distinct prefixes from the transitions
+	   * seen in the sampled leaves, which their random visit order corrupts in both
+	   * directions (a dominant leading value collapses the count, a few-zone prefix
+	   * inflates it). The sorted order makes an exact, bounded correction possible:
+	   * skip-scan the distinct prefixes level by level, and re-estimate the levels too
+	   * wide to enumerate from the key reservoir (Duj1). */
 	  ret = btree_get_stats_prefix_skip_scan (thread_p, env);
 	}
     }
@@ -7909,6 +8095,15 @@ end:
   if (root_page_ptr)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  if (env->prefix_sample != NULL)
+    {
+      db_private_free_and_init (thread_p, env->prefix_sample);
+    }
+  if (env->sampled_leaves != NULL)
+    {
+      db_private_free_and_init (thread_p, env->sampled_leaves);
     }
 
   /* clear partial key-values */
