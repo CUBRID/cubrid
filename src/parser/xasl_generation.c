@@ -12413,10 +12413,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
 		}
-	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
-		{
-		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
-		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN;
@@ -17575,12 +17571,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
       pt_set_access_spec_for_aggregation (parser, aggregate, xasl->spec_list);
     }
 
-  /* check sampling scan */
-  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-    {
-      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
-    }
-
   /* save info for derived table size estimation */
   xasl->projected_size = 1;
   xasl->cardinality = 1.0;
@@ -18003,7 +17993,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      && !(select_node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
       && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
