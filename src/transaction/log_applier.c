@@ -1437,25 +1437,31 @@ la_dispatch_order_pop (void)
 }
 
 /*
- * writeset PoC [stage S2]: 리더 측 의존성 게이트.
+ * writeset PoC: 리더 스레드의 의존성 게이트 (병렬 적용 순서 집행).
  *
- * 완료집합(la_Gate_completed_slots): 슬레이브에 이미 적용(커밋)된 마스터 commit_seq(=commit_lsa)
- *   오픈 어드레싱 해시. 빈 슬롯 표식은 NULL LSA (실제 commit_lsa 는 pageid>=0 이므로 안전).
- * pending 큐(la_Gate_pending_*): 의존 미충족으로 아직 워커에 못 보낸 태스크. reader 는 막히지 않고
- *   다음 레코드를 계속 읽으며, 선행 트랜잭션 완료 시 drain 에서 디스패치한다.
- * 모두 리더 스레드 단독 접근이라 잠금이 없다.
- * prune 미적용 — 완료집합 축소는 S3 에서 retire 의 gap-free floor 로 처리한다.
+ * 배경: 마스터는 각 트랜잭션에 dependency_seq(= 이 트랜잭션이 충돌한 '직전 선행'의 commit_lsa,
+ *   충돌 없으면 NULL)를 실어 보낸다. 이는 순서 '정보'일 뿐이라, 슬레이브가 병렬 워커에 그대로
+ *   뿌리면 완료 순서가 뒤집혀(dispatch 순서 != 커밋 순서) 충돌 트랜잭션이 역전 -> divergence.
+ *   이 게이트가 그 순서를 실제로 '집행'한다.
  *
- * [설계 결정] 판정은 "의존 대상이 완료집합에 있나"(la_gate_set_contains) 로 직접 한다.
- * MySQL 은 dense 한 sequence_number 를 전제로 gap-free LWM 을 두고 "last_committed <= LWM"
- * 한 번의 비교로 판정하지만, 그 gap-free LWM 은 본질(의존 완료 확인)의 최적화일 뿐 필수가 아니다.
- * CUBRID 의 의존 라벨은 성긴(sparse) commit_lsa 라 집합 멤버십이 자연스럽고 최소이며, 멤버십만으로
- * "선행 P 미적용 시 P 를 기다리고 독립 트랜잭션은 병렬" 이 정확히 성립한다(구멍 문제 없음).
- * => 이 PoC 는 gap-free LWM 을 두지 않는다(off 가정). 필요해지면 dense commit-seq 도입 후 후속 개선.
+ * 무엇을 강제하나: '전체 커밋 순서'가 아니라 '충돌(의존) 순서'만.
+ *   - 독립 트랜잭션(dependency_seq == NULL)은 안 기다리고 즉시 워커로 보낸다. 그래서 슬레이브
+ *     적용 순서가 마스터 커밋 순서와 달라져 commit_lsa 에 '홀'이 생기지만, 독립=교환가능이라
+ *     최종 상태는 마스터와 수렴한다(안전). 커밋순서 보존(외부 일관성)은 이 구현에서 하지 않는다.
+ *   - 충돌 트랜잭션은 dependency_seq 가 가리키는 '그 선행 하나'가 슬레이브에 적용될 때까지만
+ *     pending 큐(la_Gate_pending_*)에 대기했다가, 완료되면 dispatch(drain)한다.
+ *
+ * 판정에 쓰는 두 상태 (둘 다 리더 스레드 단독 접근 -> 잠금 없음):
+ *   - la_Gate_frontier: "이 commit_lsa 이하는 구멍 없이 전부 적용 완료"인 하한(연속으로만 전진).
+ *   - la_Gate_completed_slots: 프론티어 위쪽에서 out-of-order 로 먼저 끝난 commit_lsa 들.
+ *       오픈 어드레싱 해시, 빈 슬롯 표식은 NULL LSA(실제 commit_lsa 는 pageid>=0 이라 안전).
+ *
+ * 판정 3단계는 la_gate_is_satisfied() 참조. 단일 최댓값(dep<=max)이 아니라 프론티어+멤버십을
+ * 쓰는 이유는, 홀 때문에 최댓값만으론 '특정 선행이 실제 끝났는지'를 오판하기 때문이다.
  */
-/* PoC: 완료집합 고정 용량(2^18). 부팅 시 1회 할당하고 grow/rehash 하지 않는다.
- * prune 미적용이라 load 0.5 기준 약 13만 커밋을 넘으면 mark_completed 가 실패한다.
- * 다음번 고려: S3 의 gap-free retire floor 로 prune, 또는 동적 확장 재도입. */
+/* 완료집합 고정 용량(2^18). 부팅 시 1회 할당하고 grow/rehash 하지 않는다. 프론티어 이하 항목은
+ * prune 으로 회수하지만, 그보다 홀이 길게 쌓이면 load 0.5 기준 약 13만에서 mark_completed 가
+ * 실패한다. 개선안: 동적 확장 재도입. */
 #define LA_GATE_SET_CAPACITY (1 << 18)
 
 typedef struct la_gate_pending LA_GATE_PENDING;
@@ -1471,7 +1477,7 @@ static int la_Gate_completed_count = 0;
 static LA_GATE_PENDING *la_Gate_pending_head = NULL;
 static LA_GATE_PENDING *la_Gate_pending_tail = NULL;
 
-/* S3: gap-free 완료 프론티어 (MySQL LWM 등가). reader 가 로그를 커밋 순서로 읽으므로, 처리한 커밋
+/*gap-free 완료 프론티어 (MySQL LWM 등가). reader 가 로그를 커밋 순서로 읽으므로, 처리한 커밋
  * commit_lsa 를 커밋 순서 FIFO(la_Gate_order)에 넣고, 그 head 가 완료될 때마다 프론티어를 전진시킨다.
  * 프론티어 = "이 LSA 이하 모든 커밋이 슬레이브에 적용 완료"인 최대 commit_lsa. 완료집합은 프론티어
  * 위쪽(비연속 tail)만 유지하고 이하는 prune 한다. is_satisfied 는 dep<=frontier 로 짧게 판정한다.
@@ -1518,7 +1524,7 @@ la_gate_set_contains (const LOG_LSA * lsa)
   return false;
 }
 
-/* S3: 완료집합에서 floor 이하 항목을 제거(재구축). floor 이하는 dep<=frontier 로 판정되므로 안전. */
+/*완료집합에서 floor 이하 항목을 제거(재구축). floor 이하는 dep<=frontier 로 판정되므로 안전. */
 static void
 la_gate_set_prune_below (const LOG_LSA * floor)
 {
@@ -1560,7 +1566,7 @@ la_gate_set_prune_below (const LOG_LSA * floor)
   free_and_init (survivors);
 }
 
-/* S3: reader 가 처리한 커밋을 커밋 순서 FIFO 에 기록(프론티어 전진 재료). */
+/*reader 가 처리한 커밋을 커밋 순서 FIFO 에 기록(프론티어 전진 재료). */
 static int
 la_gate_order_push (const LOG_LSA * commit_lsa)
 {
@@ -1587,7 +1593,7 @@ la_gate_order_push (const LOG_LSA * commit_lsa)
   return NO_ERROR;
 }
 
-/* S3: FIFO head(가장 오래된 커밋)가 완료됐으면 프론티어를 그만큼 전진시킨다(gap-free). */
+/*FIFO head(가장 오래된 커밋)가 완료됐으면 프론티어를 그만큼 전진시킨다(gap-free). */
 static void
 la_gate_advance_frontier (void)
 {
@@ -1624,7 +1630,7 @@ la_gate_mark_completed (const LOG_LSA * commit_seq)
       return NO_ERROR;
     }
 
-  /* S3: 가득 차기 전에 프론티어 이하 항목을 prune 해 공간을 회수한다(그 항목들은 dep<=frontier 로
+  /*가득 차기 전에 프론티어 이하 항목을 prune 해 공간을 회수한다(그 항목들은 dep<=frontier 로
    * 이미 만족 판정되므로 집합에서 지워도 안전). prune 후에도 가득이면(= 진행 중 in-flight 윈도가
    * 용량 초과) 조용한 오동작 대신 명시적으로 실패시킨다. */
   if ((la_Gate_completed_count + 1) * 2 > la_Gate_completed_capacity)
@@ -1662,7 +1668,7 @@ la_gate_mark_completed (const LOG_LSA * commit_seq)
  *   ① dep == NULL          선행 의존 없음(행 충돌 無) → 즉시 ready
  *   ② dep <= frontier(LWM)  그 LSA 이하가 gap-free 로 전부 적용 완료 → O(1) 통과. 완료집합에서
  *                           prune 됐어도 참이므로, 이 경로가 완료집합 prune 을 가능하게 한다.
- *   ③ 완료집합 멤버십        프론티어 위쪽이라 LWM 이 못 덮는 구간. 커밋순서 미보존(§6)으로 선행이
+ *   ③ 완료집합 멤버십        프론티어 위쪽이라 LWM 이 못 덮는 구간. 커밋순서 미보존(preserve_commit_order 상당 미구현)으로 선행이
  *                           out-of-order 먼저 끝난 "홀" 인지 직접 확인 → 독립 트랜잭션 즉시 병렬.
  *
  * ②는 최적화(빠른 경로 + prune 으로 메모리 상한), ③이 근본(홀 커버). 근거는 게이트 헤더 주석 참조.
@@ -1765,8 +1771,8 @@ la_gate_drain_ready (void)
  *   return: 부하가 가장 낮은 워커 인덱스 (완전 유휴 워커가 있으면 그것)
  *
  * 게이트(la_gate_is_satisfied)가 이미 "선행 적용 완료"를 보장하므로, 이 트랜잭션은 어느 워커에
- * 줘도 순서가 안전하다. 그래서 trid%N 고정 배정(= trid 분포에 병렬도가 묶이던 원인, 설계 §3)을
- * 버리고 부하가 가장 낮은 워커를 고른다 — MySQL 의 get_free_worker 와 같은 방식(설계 §5).
+ * 줘도 순서가 안전하다. 그래서 trid%N 고정 배정(= trid 분포에 병렬도가 묶이던 원인)을
+ * 버리고 부하가 가장 낮은 워커를 고른다 — MySQL 의 get_free_worker 와 같은 방식.
  * 한 트랜잭션은 한 task 로 통째 dispatch 되므로 "한 tx = 한 워커" 결속은 그대로 유지된다.
  * queue.count/busy 는 워커 스레드가 갱신하지만 배정은 부하분산 힌트라 무락 읽기로 충분하다
  * (부정확한 선택은 성능에만 영향; 정합성은 게이트가 보장).
@@ -1822,7 +1828,7 @@ la_gate_init (void)
   la_Gate_pending_tail = NULL;
   la_Gate_completed_count = 0;
 
-  /* S3: 프론티어/커밋순서 FIFO 초기화(재시작 시 이전 FIFO 잔여 해제). */
+  /*프론티어/커밋순서 FIFO 초기화(재시작 시 이전 FIFO 잔여 해제). */
   la_Gate_frontier_seeded = false;
   LSA_SET_NULL (&la_Gate_frontier);
   while (la_Gate_order_head != NULL)
@@ -2477,7 +2483,7 @@ la_collect_worker_results (void)
 	}
     }
 
-  /* S3: 이번에 완료된 커밋들로 gap-free 프론티어를 전진시킨다(완료집합 tail 축소). */
+  /*이번에 완료된 커밋들로 gap-free 프론티어를 전진시킨다(완료집합 tail 축소). */
   la_gate_advance_frontier ();
 
   /* writeset PoC: 완료로 의존이 풀린 pending 태스크들을 디스패치한다. */
@@ -9952,7 +9958,7 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
 	      LSA_SET_NULL (&task.dependency_seq);
 	    }
 
-	  /* S3: 프론티어는 첫 커밋 처리 직전 재시작 지점(la_Info.committed_lsa, 하위 전부 적용됨)으로
+	  /*프론티어는 첫 커밋 처리 직전 재시작 지점(la_Info.committed_lsa, 하위 전부 적용됨)으로
 	   * 시드하고, 처리하는 커밋을 커밋 순서 FIFO 에 기록한다(park 여부와 무관하게 항상). */
 	  if (!la_Gate_frontier_seeded)
 	    {
