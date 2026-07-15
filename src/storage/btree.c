@@ -7322,6 +7322,13 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  goto exit_on_error;
 	}
       assert (!found);		/* no stored key carries the MAX sentinel */
+      if (slot_id <= 0)
+	{
+	  /* BTREE_KEY_SMALLER: the seek key compares smaller than every key in the landed leaf
+	   * (possible when a concurrent deletion removes the whole current prefix group); slot 0
+	   * is the page header, so normalize to the first key slot */
+	  slot_id = 1;
+	}
     }
 
   if (page != NULL)
