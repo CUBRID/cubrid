@@ -240,7 +240,14 @@ extern HA_SERVER_STATE boot_change_ha_mode (HA_SERVER_STATE state, bool force, i
 extern int boot_notify_ha_log_applier_state (HA_LOG_APPLIER_STATE state);
 extern int stats_get_statistics_from_server (OID * classoid, unsigned int timestamp, int *length_ptr,
 					     char **stats_buffer);
-extern int stats_update_statistics (MOP classop, int with_fullscan);
+extern int histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_type, int attr_unique,
+						 int max_buckets, int sample_size, double *null_frequency, char **blob,
+						 int *blob_length);
+extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const int *attr_ids,
+						       const int *attr_types, const int *attr_unique, int max_buckets,
+						       int sample_size, double *null_frequency, char **blob,
+						       int *blob_length, INT64 * out_ndv, INT64 * out_total_rows);
+extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
 extern int stats_update_all_statistics (int with_fullscan);
 extern int update_histogram_for_all_classes (void);
 
