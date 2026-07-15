@@ -342,9 +342,17 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 {
   RECDES *rec = context->recdes_p;
 
-  if (!context->expand_oos)
+  if (!HEAP_IS_VALID_RECDES_CONSUMPTION_POLICY (context->recdes_consumption_policy))
     {
-      /* Caller opted out: they handle OOS themselves (e.g. heap_attrinfo_read_dbvalues). */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
+
+  if (context->recdes_consumption_policy == HEAP_RECDES_DONT_CONSUME_RAW_BYTES)
+    {
+      /* Preserve the stored record. The caller either does not consume its raw bytes or resolves OOS values through
+       * the attribute layer (e.g. heap_attrinfo_read_dbvalues). */
       return S_SUCCESS;
     }
 
