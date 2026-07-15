@@ -1256,6 +1256,8 @@ static int btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PA
 static int btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDXKEY * midxkey);
 static int btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot);
 static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
+static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
+						   bool * exhausted);
 static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
@@ -7129,27 +7131,37 @@ exit_on_error:
 #define BTREE_STATS_PREFIX_SEEK_BUDGET 1024
 
 /*
- * btree_get_stats_prefix_skip_scan () - exact distinct count of leading prefixes by skip scan
+ * btree_get_stats_prefix_skip_scan_level () - exact distinct count of the (level + 1)-column
+ *     prefixes by skip scan
  *   return: NO_ERROR
  *   env(in/out): stats environment already filled by the AR sampling
+ *   level(in): pkeys level to enumerate (prefix of level + 1 leading columns)
+ *   exhausted(out): set when the seek budget ran out before the rightmost leaf
  *
- * Note: (CBRD-26903) enumerates the distinct leading-column values of a multi-column index by
- * repeatedly seeking past the current value: the seek key is the current key with its second
- * column raised to the MAX sentinel (min_max_val), so btree_locate_key () lands on the first key
- * of the next leading value -- O(height) page fixes per distinct value, independent of how many
- * rows or leaves a value spans. Completing within the seek budget yields the exact distinct
- * count (the failure mode of leaf sampling); exhausting it means the leading column has many
- * distinct values, exactly the regime where the sampled estimate is sound, so the scan keeps it
- * and only applies what it saw as a lower bound. NULL leading values are not counted, matching
- * the fullscan semantics (the initial pkeys_val is NULL, so the NULL group never increments
- * pkeys[0] there either).
+ * Note: (CBRD-26903) enumerates the distinct (level + 1)-column prefixes by repeatedly seeking
+ * past the current prefix group: the seek key is the current key truncated to the prefix with
+ * column level + 1 raised to a sentinel (min_max_val) that compares past every key sharing the
+ * prefix in tree order -- MAX_COLUMN for an ascending sentinel column, MIN_COLUMN for a
+ * descending one (btree_compare_key () inverts the comparison by the diff column's direction).
+ * Each seek is one btree_locate_key (), O(height) page fixes per distinct prefix, independent
+ * of how many rows or leaves the prefix spans. Completing within the seek budget yields the
+ * exact distinct count (the failure mode of leaf sampling); exhausting it means the prefix has
+ * many distinct values, exactly the regime where the sampled estimate is sound, so the scan
+ * keeps it and only applies what it saw as a lower bound.
+ *
+ * The first enumerated group is not counted when its prefix is entirely NULL, matching the
+ * fullscan semantics exactly: there the initial pkeys_val is NULL, so only a first-in-scan-order
+ * all-NULL prefix fails to register a transition; an all-NULL group reached later (descending
+ * leading column) does transition and is counted by both.
  */
 static int
-btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
+btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, bool * exhausted)
 {
   BTID_INT *btid_int;
   PAGE_PTR page = NULL;
   BTREE_NODE_HEADER *header = NULL;
+  TP_DOMAIN *sentinel_dom;
+  MIN_MAX_COLUMN_TYPE sentinel_type;
   VPID vpid;
   INT16 slot_id;
   int key_cnt;
@@ -7158,32 +7170,37 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
   DB_VALUE cur_key, seek_key, elem;
   bool clear_cur_key = false;
   bool found;
+  bool prefix_all_null;
   int offset;
   int prev_index;
   char *prev_ptr;
+  int groups = 0;
   int distinct = 0;
   int seeks = 0;
   bool completed = false;
-  int i;
+  int col;
   int ret = NO_ERROR;
 
   assert (env != NULL);
   assert (env->stat_info != NULL);
+  assert (level >= 0 && level < env->pkeys_val_num - 1);
+
+  *exhausted = false;
 
   btid_int = &(env->btree_scan.btid_int);
 
-  if (env->pkeys_val_num <= 1 || TP_DOMAIN_TYPE (btid_int->key_type) != DB_TYPE_MIDXKEY)
+  /* the sentinel column decides the seek direction in tree order */
+  sentinel_dom = btid_int->key_type->setdomain;
+  for (col = 0; col < level + 1 && sentinel_dom != NULL; col++)
     {
-      /* single-column index: duplicates share one key record, so every record is a distinct key
-       * and the leaf sampling has no clustered-prefix failure mode */
+      sentinel_dom = sentinel_dom->next;
+    }
+  if (sentinel_dom == NULL)
+    {
+      assert_release (false);
       return NO_ERROR;
     }
-  if (btid_int->key_type->setdomain == NULL || btid_int->key_type->setdomain->is_desc)
-    {
-      /* descending leading column: the MAX-sentinel seek would need the mirrored bound;
-       * left to a follow-up, keep the sampled estimate */
-      return NO_ERROR;
-    }
+  sentinel_type = sentinel_dom->is_desc ? MIN_COLUMN : MAX_COLUMN;
 
   db_make_null (&cur_key);
   db_make_null (&seek_key);
@@ -7241,49 +7258,65 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  goto exit_on_error;
 	}
 
+      /* the first-in-scan-order group is not counted when its whole prefix is NULL */
+      prefix_all_null = true;
       prev_index = 0;
       prev_ptr = NULL;
-      if (pr_midxkey_get_element_nocopy (db_get_midxkey (&cur_key), 0, &elem, &prev_index, &prev_ptr) != NO_ERROR)
+      for (col = 0; col <= level; col++)
 	{
-	  goto exit_on_error;
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (&cur_key), col, &elem, &prev_index, &prev_ptr) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  if (!DB_IS_NULL (&elem))
+	    {
+	      prefix_all_null = false;
+	    }
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+	  if (!prefix_all_null)
+	    {
+	      break;
+	    }
 	}
-      if (!DB_IS_NULL (&elem))
+      if (groups > 0 || !prefix_all_null)
 	{
 	  distinct++;
 	}
-      if (elem.need_clear == true)
-	{
-	  pr_clear_value (&elem);
-	}
+      groups++;
 
       if (++seeks > BTREE_STATS_PREFIX_SEEK_BUDGET)
 	{
-	  break;		/* many distinct leading values: the sampled estimate is fine */
+	  *exhausted = true;	/* many distinct prefixes: the sampled estimate is fine */
+	  break;
 	}
 
-      /* seek past every key sharing this leading value. The seek key is the current key
-       * truncated to its leading column with the second column raised to the MAX sentinel:
-       * it compares greater than every key sharing this leading value and smaller than any
-       * following leading value. The sentinel only applies to UNBOUND columns, so the
-       * trailing columns must be nulled out, not merely overridden (the truncation mirrors
-       * pr_midxkey_unique_prefix ()). */
+      /* seek past every key sharing this prefix. The seek key is the current key truncated
+       * to the prefix with the sentinel raised on column level + 1: it compares past every
+       * key sharing this prefix in tree order and before any following prefix group. The
+       * sentinel only applies to UNBOUND columns, so the trailing columns must be nulled
+       * out, not merely overridden (the truncation mirrors pr_midxkey_unique_prefix ()). */
       {
 	DB_MIDXKEY *cur_midxkey = db_get_midxkey (&cur_key);
 	DB_MIDXKEY trunc_midxkey;
 	int precision = cur_midxkey->domain->precision;
 	int trunc_size;
-	int col;
 
-	trunc_size = or_multi_get_next_element_offset (cur_midxkey->buf, precision, 0);
+	trunc_size = or_multi_get_next_element_offset (cur_midxkey->buf, precision, level);
 	if (trunc_size < 0)
 	  {
-	    /* no offset table: header plus the leading element's bytes */
+	    /* offset table saturated: header plus the prefix elements' bytes */
+	    TP_DOMAIN *col_dom = cur_midxkey->domain->setdomain;
+
 	    trunc_size = or_multi_header_size (precision);
-	    if (or_multi_is_not_null (cur_midxkey->buf, 0))
+	    for (col = 0; col <= level && col_dom != NULL; col++, col_dom = col_dom->next)
 	      {
-		trunc_size +=
-		  pr_midxkey_element_disk_size (cur_midxkey->buf + or_multi_header_size (precision),
-						cur_midxkey->domain->setdomain);
+		if (or_multi_is_not_null (cur_midxkey->buf, col))
+		  {
+		    trunc_size += pr_midxkey_element_disk_size (cur_midxkey->buf + trunc_size, col_dom);
+		  }
 	      }
 	  }
 
@@ -7294,7 +7327,7 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	    goto exit_on_error;
 	  }
 	memcpy (trunc_midxkey.buf, cur_midxkey->buf, trunc_size);
-	for (col = 1; col < precision; col++)
+	for (col = level + 1; col < precision; col++)
 	  {
 	    or_multi_set_null (trunc_midxkey.buf, col);
 	    or_multi_put_next_element_offset (trunc_midxkey.buf, precision, trunc_size, col);
@@ -7304,8 +7337,8 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	trunc_midxkey.size = trunc_size;
 	trunc_midxkey.ncolumns = cur_midxkey->ncolumns;
 	trunc_midxkey.domain = cur_midxkey->domain;
-	trunc_midxkey.min_max_val.position = 1;
-	trunc_midxkey.min_max_val.type = MAX_COLUMN;
+	trunc_midxkey.min_max_val.position = level + 1;
+	trunc_midxkey.min_max_val.type = sentinel_type;
 
 	pr_clear_value (&seek_key);
 	db_make_midxkey (&seek_key, &trunc_midxkey);
@@ -7321,7 +7354,7 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 	  ASSERT_ERROR ();
 	  goto exit_on_error;
 	}
-      assert (!found);		/* no stored key carries the MAX sentinel */
+      assert (!found);		/* no stored key carries the sentinel */
       if (slot_id <= 0)
 	{
 	  /* BTREE_KEY_SMALLER: the seek key compares smaller than every key in the landed leaf
@@ -7340,13 +7373,72 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
 
   if (completed)
     {
-      /* exact distinct count of non-null leading values */
-      env->stat_info->pkeys[0] = distinct;
+      /* exact distinct count of the (level + 1)-column prefixes */
+      env->stat_info->pkeys[level] = distinct;
     }
-  else if (env->stat_info->pkeys[0] < distinct)
+  else if (env->stat_info->pkeys[level] < distinct)
     {
       /* budget exhausted: what was enumerated is still a valid lower bound */
-      env->stat_info->pkeys[0] = distinct;
+      env->stat_info->pkeys[level] = distinct;
+    }
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  btree_clear_key_value (&clear_cur_key, &cur_key);
+  pr_clear_value (&seek_key);
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * btree_get_stats_prefix_skip_scan () - exact distinct prefix counts by per-level skip scans
+ *   return: NO_ERROR
+ *   env(in/out): stats environment already filled by the AR sampling
+ *
+ * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep. Prefix distinct
+ * counts are non-decreasing with depth, so once a level exhausts its seek budget every deeper
+ * level would too and the sampled estimates are kept from there on. The last level (the whole
+ * key) is never enumerated: it degenerates to visiting every key.
+ */
+static int
+btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
+{
+  BTID_INT *btid_int;
+  bool exhausted;
+  int level, i;
+  int ret = NO_ERROR;
+
+  assert (env != NULL);
+  assert (env->stat_info != NULL);
+
+  btid_int = &(env->btree_scan.btid_int);
+
+  if (env->pkeys_val_num <= 1 || TP_DOMAIN_TYPE (btid_int->key_type) != DB_TYPE_MIDXKEY
+      || btid_int->key_type->setdomain == NULL)
+    {
+      /* single-column index: duplicates share one key record, so every record is a distinct key
+       * and the leaf sampling has no clustered-prefix failure mode */
+      return NO_ERROR;
+    }
+
+  for (level = 0; level < env->pkeys_val_num - 1; level++)
+    {
+      exhausted = false;
+      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, &exhausted);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+      if (exhausted)
+	{
+	  break;
+	}
     }
 
   /* prefix distinct counts are non-decreasing by definition; the key count bounds them all */
@@ -7363,17 +7455,6 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
     }
 
   return NO_ERROR;
-
-exit_on_error:
-
-  if (page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, page);
-    }
-  btree_clear_key_value (&clear_cur_key, &cur_key);
-  pr_clear_value (&seek_key);
-
-  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
 /*
