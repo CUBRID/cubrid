@@ -10511,6 +10511,7 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
     case OR_INT_SIZE:
       break;
     default:
+      assert_release (false);
       return ER_GENERIC_ERROR;
     }
 
@@ -10859,7 +10860,14 @@ static int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 					       HEAP_CACHE_ATTRINFO * attr_info)
 {
-  std::vector < RECDES > oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
+  if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
+    {
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
+    }
+
+// *INDENT-OFF*
+  std::vector <RECDES> oos_payloads;	/* grouped-prefetched OOS payloads; not a cardinality signal */
+// *INDENT-ON*
   bool grouped_applied = false;
   int ret;
 

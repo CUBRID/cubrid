@@ -499,12 +499,8 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
   int i;
 
   assert (grouped_applied != NULL);
+  assert (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes));
   *grouped_applied = false;
-
-  if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
-    {
-      return NO_ERROR;
-    }
 
   for (i = 0; i < attr_info->num_values; i++)
     {
