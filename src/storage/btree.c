@@ -15573,10 +15573,13 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 	  goto error;
 	}
 
-      slot_id = (int) (drand48 () * key_cnt);
-      slot_id = MAX (slot_id, 1);
+      /* (CBRD-26903) pick a child slot uniformly over [1, key_cnt]: drand48 () is in [0, 1), so the
+       * truncation yields [0, key_cnt - 1] and the +1 shift makes every child reachable. The former
+       * MAX (slot_id, 1) form never selected the last slot, so the rightmost subtree of every level
+       * was excluded from the sample (and the first child was picked with a doubled weight). */
+      slot_id = (int) (drand48 () * key_cnt) + 1;
 
-      assert (slot_id > 0);
+      assert (slot_id > 0 && slot_id <= key_cnt);
       if (spage_get_record (thread_p, P_page, slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto error;
