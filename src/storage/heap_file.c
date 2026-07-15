@@ -602,13 +602,14 @@ static int heap_create_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_HDR
 				  cubstorage::bestspace_entry * first_entry);
 static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid,
 					const VPID * pages, int num_pages);
-static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages, int num_pages,
-				  const cubstorage::bestspace_entry * entries, int num_entries);
+static int heap_update_bestspace_entries (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages,
+					  int num_pages, const cubstorage::bestspace_entry * entries, int num_entries);
 static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
 				HEAP_HDR_STATS * header, cubstorage::bestspace_entry * entries,
 				cubstorage::bestspace_entry * candidates);
 
 // *INDENT-OFF*
+static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace *bestspace);
 static cubstorage::bestspace *heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 						    PGBUF_WATCHER * header_watcher);
 static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
@@ -4053,12 +4054,12 @@ error_exit:
 }
 
 /*
- * heap_update_bestspace () - Update persistent bestspace entries.
- *   return: NO_ERROR if successful, error code otherwise
+ * heap_update_bestspace_entries () - update persistent bestspace entries.
+ *   return:
  */
 static int
-heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages, int num_pages,
-		       const cubstorage::bestspace_entry * update_entries, int num_update_entries)
+heap_update_bestspace_entries (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages, int num_pages,
+			       const cubstorage::bestspace_entry * update_entries, int num_update_entries)
 {
   char pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
@@ -4152,6 +4153,117 @@ error_exit:
     }
 
   return error_code;
+}
+
+/*
+ * heap_update_bestspace () - synchronize in-memory bestspace entries and estimates with disk.
+ *   return:
+ */
+// *INDENT-OFF*
+static int
+heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace *bestspace)
+// *INDENT-ON*
+{
+  // *INDENT-OFF*
+  cubstorage::bestspace_entry *entries = NULL;
+  // *INDENT-ON*
+  PGBUF_WATCHER header_watcher;
+  HEAP_HDR_STATS *heap_hdr;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
+  VPID vpids[cubstorage::bestspace::MAX_SHARD_PAGE_COUNT];
+  int num_vpids;
+  VPID header_vpid;
+  std::size_t num_entries;
+  std::size_t num_shards;
+  std::uint64_t num_recs, recs_sumlen;
+  int num_pages;
+  int error = NO_ERROR;
+
+  assert (thread_p);
+  assert (hfid);
+  assert (bestspace);
+
+  num_shards = bestspace->get_num_shards ();
+  num_entries = num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD;
+  entries = (cubstorage::bestspace_entry *) malloc (num_entries * sizeof (cubstorage::bestspace_entry));
+  if (!entries)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      num_entries * sizeof (cubstorage::bestspace_entry));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  header_vpid.volid = hfid->vfid.volid;
+  header_vpid.pageid = hfid->hpgid;
+  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+
+  error = pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &header_watcher);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto error_exit;
+    }
+
+  /* serialize the snapshot with other heap header writers. */
+  bestspace->to_entries (entries);
+  bestspace->get_estimates (num_pages, num_recs, recs_sumlen);
+
+  heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
+  if (!heap_hdr)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  if (heap_hdr->bestspace.num_pages == 0 || heap_hdr->bestspace.num_pages > cubstorage::bestspace::MAX_SHARD_PAGE_COUNT)
+    {
+      assert_release (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      error = ER_GENERIC_ERROR;
+      goto error_exit;
+    }
+
+  num_vpids = heap_hdr->bestspace.num_pages;
+  std::memcpy (vpids, heap_hdr->bestspace.pages, num_vpids * sizeof (VPID));
+
+  /* keep the header fixed while updating shard pages to serialize with compact and heap reuse. */
+  error = heap_update_bestspace_entries (thread_p, hfid, vpids, num_vpids, entries, num_entries);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  assert (!header_watcher.page_was_unfixed);
+
+  heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
+  if (!heap_hdr)
+    {
+      error = ER_FAILED;
+      goto error_exit;
+    }
+
+  /* page allocation updates the header before publishing its in-memory delta. do not regress that update. */
+  heap_hdr->num_pages = MAX (heap_hdr->num_pages, num_pages);
+  heap_hdr->num_recs = num_recs;
+  heap_hdr->recs_sumlen = recs_sumlen;
+  heap_hdr->bestspace.num_shards = num_shards;
+
+  addr.vfid = &hfid->vfid;
+  addr.pgptr = header_watcher.pgptr;
+  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+  log_append_redo_data (thread_p, RVHF_STATS, &addr, sizeof (*heap_hdr), heap_hdr);
+  pgbuf_ordered_set_dirty_and_free (thread_p, &header_watcher);
+
+  free_and_init (entries);
+  return NO_ERROR;
+
+error_exit:
+  free_and_init (entries);
+  if (header_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+    }
+  return error;
 }
 
 /*
@@ -4453,11 +4565,7 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
 {
   // *INDENT-OFF*
   cubstorage::bestspace *bestspace;
-  cubstorage::bestspace_entry *entries;
   // *INDENT-ON*
-  std::size_t num_entries;
-  VPID pages[4];
-  int num_pages;
   int error;
 
   bestspace = heap_find_bestspace (thread_p, class_oid, hfid, NULL);
@@ -4471,21 +4579,7 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
   /* update may unfix the fixed page (best page) so sync in-memory bestspace with disk first */
   if (bestspace->updatable ())
     {
-      num_entries = bestspace->get_num_shards () * cubstorage::bestspace::ENTRIES_PER_SHARD;
-      entries = (cubstorage::bestspace_entry *) malloc (num_entries * sizeof (cubstorage::bestspace_entry));
-      if (!entries)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  num_entries * sizeof (cubstorage::bestspace_entry));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      /* fill */
-      bestspace->to_entries (entries);
-      bestspace->get_shard_pages (pages, num_pages);
-      /* update the shard pages */
-      error = heap_update_bestspace (thread_p, hfid, pages, num_pages, entries, num_entries);
-      free_and_init (entries);
+      error = heap_update_bestspace (thread_p, hfid, bestspace);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -5103,8 +5197,8 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
     {
       goto error;
     }
-  if (heap_update_bestspace (thread_p, hfid, heap_hdr->bestspace.pages, heap_hdr->bestspace.num_pages, &first_entry, 1)
-      != NO_ERROR)
+  if (heap_update_bestspace_entries
+      (thread_p, hfid, heap_hdr->bestspace.pages, heap_hdr->bestspace.num_pages, &first_entry, 1) != NO_ERROR)
     {
       goto error;
     }
@@ -5745,8 +5839,8 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     }
 
   /* update shards */
-  heap_update_bestspace (thread_p, hfid, heap_hdr.bestspace.pages, heap_hdr.bestspace.num_pages, entries,
-			 MIN (num_entries, max_bestpages));
+  heap_update_bestspace_entries (thread_p, hfid, heap_hdr.bestspace.pages, heap_hdr.bestspace.num_pages, entries,
+				 MIN (num_entries, max_bestpages));
   /* update candidates */
   if (num_entries > max_bestpages)
     {

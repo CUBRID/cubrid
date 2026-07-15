@@ -376,7 +376,7 @@ namespace cubstorage
 
       std::atomic<std::uint64_t> m_last_updated;
 
-      // base. update bestspace without fixing the heap header page
+      // persistent bestspace page identifiers cached when bestspace is built
       struct
       {
 	VPID pages[MAX_SHARD_PAGE_COUNT];
