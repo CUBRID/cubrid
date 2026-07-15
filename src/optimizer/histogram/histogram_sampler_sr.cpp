@@ -936,9 +936,22 @@ cleanup:
       cubsampling::hyperloglog m_hll;	/* distinct-value sketch fed by every non-null value */
       bool unique;		/* single-column UNIQUE/PK: NDV == non-null rows, so skip the HLL */
 
+      bool sampled;		/* true when the scan visited only a page sample: counts are expanded
+				   estimates and the HLL saw the sample only */
+
       col_collector (ATTR_ID id, DB_TYPE t, value_category c)
-	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false)
+	: attr_id (id), attr_type (t), cat (c), null_rows (0), ndv (-1), unique (false), sampled (false)
       {
+      }
+
+      /* page-sampling -> population expansion: counts collected from the sampled pages scale by
+       * 1/fraction. After this the HLL sketch can no longer hint the population NDV (it only saw
+       * the sampled pages), so build ()/build_blob () fall back to the Duj1 sample estimator
+       * (stats_estimate_ndv_from_sample), fed with the expanded non-null row count. */
+      void apply_sample_expansion (double inv_fraction)
+      {
+	null_rows = (std::int64_t) ((double) null_rows * inv_fraction + 0.5);
+	sampled = true;
       }
       virtual ~col_collector () {}
       virtual void feed (const DB_VALUE *v) = 0;
@@ -1027,7 +1040,7 @@ cleanup:
       {
 	std::vector<T> &s = m_has_merged ? m_merged : rs.samples ();
 	return build_blob<T> (thread_p, s, attr_type, max_buckets, total_rows, total_rows - null_rows, blob_length,
-			      &ndv, estimate_ndv (total_rows));
+			      &ndv, (sampled && !unique) ? -1 : estimate_ndv (total_rows));
       }
   };
 
@@ -1620,13 +1633,26 @@ cleanup:
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
 					   sample_size, with_fullscan, merged, &total_rows, &sample_fraction,
 					   did_parallel);
-    /* sample_fraction < 1.0 means the scan only visited that share of the pages; the
-     * sample -> population expansion (total_rows, NDV via Duj1, bucket scaling) is wired in the
-     * estimation step that follows this plumbing */
-    (void) sample_fraction;
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
+      }
+
+    if (sample_fraction < 1.0)
+      {
+	/* the scan visited only sample_fraction of the pages: expand the observed row counts to
+	 * population estimates. Ratios (null fraction, MCV shares) are unaffected by the uniform
+	 * scale; the per-column NDV switches from the HLL sketch to the Duj1 sample estimator
+	 * (see apply_sample_expansion ()). */
+	const double inv_fraction = 1.0 / sample_fraction;
+	total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
+	for (int c = 0; c < attr_cnt; c++)
+	  {
+	    if (merged[c] != NULL)
+	      {
+		merged[c]->apply_sample_expansion (inv_fraction);
+	      }
+	  }
       }
 
     *out_total_rows = total_rows;
