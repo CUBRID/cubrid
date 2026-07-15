@@ -518,6 +518,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
+  plan->iscan_index_rows = 0.0;
 
   return plan;
 }
@@ -2237,6 +2238,9 @@ qo_iscan_cost (QO_PLAN * planp)
   else
     {
       heap_rows = (double) QO_NODE_NCARD (nodep) * sel * filter_sel;
+      /* PG cost_index tuples_fetched: rows matching the INDEX conditions alone, per probe --
+       * the heap pages must be visited before the non-index filter can reject a row */
+      planp->iscan_index_rows = MAX (1.0, (double) QO_NODE_NCARD (nodep) * sel);
       /* With no physical-order (clustering/correlation) statistic, assume the heap order is
        * uncorrelated with the index -- as PostgreSQL does when correlation is unknown: every
        * fetched row costs one page read, bounded by the table size. The previous formula
@@ -3403,8 +3407,11 @@ qo_nljoin_cost (QO_PLAN * planp)
       double T, N, b, lim, pages_fetched, naive_io;
 
       T = MAX (1.0, (double) QO_NODE_TCARD (inner->plan_un.scan.node));
-      /* tuples fetched from the inner across all probes; at least one per probe */
-      N = MAX ((planp->info)->cardinality, guessed_result_cardinality);
+      /* PG cost_index tuples_fetched: probes x rows matching the index conditions per probe
+       * (BEFORE non-index filters -- those rows' pages are fetched regardless of whether the
+       * filter later rejects them). Using the filtered join cardinality here under-counted the
+       * fetches of strongly-filtered joins and made orders containing them look too cheap. */
+      N = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
       /* effective cache: matches the data_buffer_pages default (server-only parameter, not
        * visible to the client-side optimizer) */
       b = QO_EFFECTIVE_CACHE_PAGES;

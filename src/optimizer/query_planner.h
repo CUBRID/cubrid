@@ -244,6 +244,8 @@ struct qo_plan
 
   /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
   double limit_nljoin_guessed_card;
+  double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
+				   qo_iscan_cost, consumed by qo_nljoin_cost for the Mackert-Lohman N */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
