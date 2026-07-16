@@ -443,7 +443,7 @@ er_resolve_function_name (const void *address, const char *lib_file_name_p, char
   data = (char *) mht_get (fname_table, buf);
   if (data != NULL)
     {
-      snprintf (buffer, buffer_size, data);
+      snprintf (buffer, buffer_size, "%s", data);
       return NO_ERROR;
     }
 
