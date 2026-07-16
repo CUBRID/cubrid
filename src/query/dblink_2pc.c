@@ -116,8 +116,8 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	   * participant, any not-yet-attempted participants, and SELECT-only non-participants.
 	   * The daemon delivers the abort decision to already-prepared participants via fresh
 	   * connections using block_particps_ids, so ending existing handles here is safe. */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
 	  return false;
 	}
 
