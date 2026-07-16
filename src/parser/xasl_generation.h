@@ -92,6 +92,19 @@ struct pt_func_index_cover
   UINTPTR spec_id;		/* spec id of the scanned table */
 };
 
+/* one entry per argument column of a covered projected function-index expression. The column's value list
+ * slot carries the precomputed function result, so when the index-scan rest/pred attribute regu for this
+ * column is built it must request FUNC_INDEX_RESULT_ATTRID (the reserved id read from the index key)
+ * instead of the raw column, which is not stored in the index. */
+typedef struct pt_func_index_result_col PT_FUNC_INDEX_RESULT_COL;
+struct pt_func_index_result_col
+{
+  PT_FUNC_INDEX_RESULT_COL *next;
+  const char *col_name;		/* raw column name of the function argument */
+  UINTPTR spec_id;		/* spec id of the scanned table */
+  TP_DOMAIN *result_domain;	/* domain of the function result (differs from the raw column domain) */
+};
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -106,6 +119,7 @@ struct symbol_info
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
   PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* active covered function-index expressions to route in output */
+  PT_FUNC_INDEX_RESULT_COL *func_idx_result_cols;	/* argument columns whose scan regu reads the func result */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;

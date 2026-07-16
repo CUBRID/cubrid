@@ -7128,7 +7128,17 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	   * routes the projected function expression to that value, so the result is reproduced correctly. */
 	  if (BITSET_MEMBER (env->final_segs, QO_SEG_IDX (seg)))
 	    {
+	      PT_NODE *qtree = QO_ENV_PT_TREE (env);
+
 	      if (!qo_seg_used_only_in_covering_func_index (env, index_entry, seg))
+		{
+		  return false;
+		}
+	      /* A projected function result read from the index key flows through the output value list. The
+	       * GROUP BY machinery builds its group value list / sort keys from the raw argument column rather
+	       * than this materialized result, so covering would produce incorrect groups. Fall back to a
+	       * non-covering scan (which recomputes the function from the heap) when the query groups. */
+	      if (qtree != NULL && qtree->node_type == PT_SELECT && qtree->info.query.q.select.group_by != NULL)
 		{
 		  return false;
 		}

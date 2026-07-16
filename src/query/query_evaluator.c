@@ -2937,12 +2937,25 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 
 		  /* get j-th element value from the midxkey */
 		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
-		  if (pr_midxkey_get_element_nocopy (((j < prefix_size) ? prefix_midxkey : midxkey),
-						     ((j < func_idx_col_id) ? j : j + 1),
-						     valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
-		    {
-		      return V_ERROR;
-		    }
+		  {
+		    /* A regular key column maps to its midxkey position, stepping over the function result slot
+		     * (j >= func_idx_col_id -> j + 1). The function ARGUMENT column has no raw slot in the key
+		     * (only the function result is stored), so its mapped position overshoots the key; in that
+		     * case read the precomputed function result at func_idx_col_id -- the key filter references
+		     * the function expression, whose value is exactly that result. */
+		    int midx_pos = (j < func_idx_col_id) ? j : j + 1;
+
+		    if (filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
+		      {
+			midx_pos = filterp->func_idx_col_id;
+		      }
+
+		    if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey), midx_pos,
+						       valp, &prev_j_index, &prev_j_ptr) != NO_ERROR)
+		      {
+			return V_ERROR;
+		      }
+		  }
 
 		  found_empty_str = false;
 		  if (oracle_style_empty_string && db_value_is_null (valp))

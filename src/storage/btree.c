@@ -16681,7 +16681,11 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
   if (DB_VALUE_TYPE (curr_key) != DB_TYPE_MIDXKEY)
     {
-      if (attr_info->num_values != 1 || btree_num_att != 1 || attr_info->values->attrid != btree_att_ids[0])
+      /* Single-column key: the key itself is the column (or, for a single-column function index projected by
+       * a covering scan, the precomputed function result requested via FUNC_INDEX_RESULT_ATTRID). */
+      if (attr_info->num_values != 1 || btree_num_att != 1
+	  || (attr_info->values->attrid != btree_att_ids[0]
+	      && !IS_FUNC_INDEX_RESULT_ATTR_ID (attr_info->values->attrid)))
 	{
 	  return ER_FAILED;
 	}
@@ -16716,38 +16720,49 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
       bool filled_match_idx = (attr_idx_ptr && attr_idx_ptr[0] >= 0) ? true : false;
 
+      /* For a function index, btree_att_ids[] lists the regular key columns (in midxkey order, i.e. skipping
+       * the function result slot) followed by the function ARGUMENT column(s). The midxkey holds the
+       * precomputed function RESULT at position func_index_col_id. So a regular key column found at
+       * btree_att_ids index j maps to midxkey position (j < func_index_col_id ? j : j + 1) -- the "+ 1"
+       * steps over the function result slot. The function result itself is requested via the reserved
+       * FUNC_INDEX_RESULT_ATTRID and is read directly from midxkey[func_index_col_id]; the raw argument
+       * column is never requested for a covering scan (the client routes it to the function result). */
       for (i = 0; i < attr_info->num_values; i++)
 	{
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
-	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
+	      found = (j >= 0);
 	    }
 	  else
 	    {
-	      found = false;
-	      for (j = 0; j < btree_num_att; j++)
+	      if (func_index_col_id != -1 && IS_FUNC_INDEX_RESULT_ATTR_ID (attr_value->attrid))
 		{
-		  if (attr_value->attrid == btree_att_ids[j])
+		  /* read the precomputed function result stored at the function column position */
+		  j = func_index_col_id;
+		  found = true;
+		}
+	      else
+		{
+		  found = false;
+		  for (j = 0; j < btree_num_att; j++)
 		    {
-		      found = true;
-		      if (func_index_col_id != -1)
+		      if (attr_value->attrid == btree_att_ids[j])
 			{
-			  /* consider that in the midxkey resides the function result, which must be skipped if we are interested
-			   * in attributes */
-			  if (j >= func_index_col_id)
+			  found = true;
+			  if (func_index_col_id != -1 && j >= func_index_col_id)
 			    {
+			      /* step over the function result slot which resides in the midxkey */
 			      j++;
 			    }
+			  break;
 			}
-
-		      break;
 		    }
 		}
 
 	      if (attr_idx_ptr)
 		{
-		  attr_idx_ptr[i] = j;
+		  attr_idx_ptr[i] = found ? j : -1;
 		}
 	    }
 
@@ -16765,27 +16780,10 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
 	  if (j >= curr_mkey->ncolumns)
 	    {
-	      /* Function argument attribute: only the function result is stored in the index key, not the argument itself.
-	       * This can happen when a function index covering scan includes the function argument in rest_attrs. */
-	      if (func_index_col_id != -1)
-		{
-		  /* For a covering scan that projects the function result (e.g. SELECT sqrt(d1) with index
-		   * (..., sqrt(d1))), materialize the precomputed function result from its fixed position in the
-		   * midxkey. The client routes the projected function expression to read this value directly instead
-		   * of recomputing it from the (unavailable) argument column. */
-		  int fpos = func_index_col_id;
-
-		  if (pr_midxkey_get_element_nocopy (((fpos < prefix_size) ? prefix_mkey : curr_mkey), fpos,
-						     &(attr_value->dbvalue), NULL, NULL) != NO_ERROR)
-		    {
-		      error = ER_FAILED;
-		      goto error;
-		    }
-		}
-	      else
-		{
-		  db_make_null (&attr_value->dbvalue);
-		}
+	      /* A raw function-argument column was requested. Only the function result is stored in the index
+	       * key, not the argument itself; this happens when the argument column is referenced only by a
+	       * key filter/range (not projected), so its materialized value is never used. Store NULL. */
+	      db_make_null (&(attr_value->dbvalue));
 	      attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	      attr_value++;
 	      continue;

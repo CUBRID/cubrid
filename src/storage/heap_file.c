@@ -10052,6 +10052,21 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  num_found_attrs++;
 	  continue;
 	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* Reserved id used by a covering function-index scan to carry the precomputed function result read
+	   * from the index key. There is no heap representation for it; its value and domain are filled
+	   * directly from the midxkey by btree_attrinfo_read_dbvalues, so just mark it as found here. */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
+	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
