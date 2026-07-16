@@ -6897,8 +6897,7 @@ qo_seg_used_raw_walk (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
     {
       char *expr_str = parser_print_function_index_expr (parser, tree);
 
-      if (expr_str != NULL && info->func_expr_str != NULL
-	  && !intl_identifier_casecmp (expr_str, info->func_expr_str))
+      if (expr_str != NULL && info->func_expr_str != NULL && !intl_identifier_casecmp (expr_str, info->func_expr_str))
 	{
 	  /* this projected function expression is provided by the index; do not descend into its arguments */
 	  *continue_walk = PT_LIST_WALK;
@@ -6936,8 +6935,7 @@ qo_seg_used_only_in_covering_func_index (QO_ENV * env, QO_INDEX_ENTRY * index_en
   PT_NODE *pt_seg;
   QO_SEG_FI_WALK_ARG info;
 
-  if (index_entry == NULL || index_entry->constraints == NULL
-      || index_entry->constraints->func_index_info == NULL)
+  if (index_entry == NULL || index_entry->constraints == NULL || index_entry->constraints->func_index_info == NULL)
     {
       return false;
     }
