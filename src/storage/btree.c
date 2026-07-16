@@ -31767,7 +31767,15 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	}
       else
 	{
-	  /* Key/oid should be found. */
+	  /* Key/oid should be found. Dump the identifying facts unconditionally before the debug abort -- when this
+	   * replays during recovery the database is unrecoverable and must at least say why. Ordering: in release
+	   * builds assert_release only er_sets an ER_FAILED_ASSERTION notification and falls through, so
+	   * btree_set_unknown_key_error must stay AFTER it for er_errid () to end up as ER_BTREE_UNKNOWN_KEY. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "btree_key_delete_remove_object: object to remove was not found in its key -- "
+			 "this is unrecoverable if replayed during recovery. \n"
+			 BTREE_DELETE_HELPER_MSG ("\t") "\t" BTREE_ID_MSG "\n",
+			 BTREE_DELETE_HELPER_AS_ARGS (delete_helper), BTID_AS_ARGS (btid_int->sys_btid));
 	  assert_release (false);
 	  btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				       "btree_key_delete_remove_object: key was not found.");
@@ -36580,15 +36588,15 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
       return true;
     }
 
-  /* An MVCC inserter holds an X self-lock on its MVCCID instead of a per-row X_LOCK, so accept that here for a
-   * rollback that deletes the row. Keyed on the CURRENT MVCCID, which equals the deleted row's insert MVCCID at
-   * every reachable undo-delete: a main-MVCCID insert holds the self-lock to end-of-transaction; a sub-MVCCID
-   * insert (only from selupd INCR/DECR) commits autonomously and is never undo-deleted by the outer transaction,
-   * so its only undo-delete is the sub's own abort -- which runs before logtb_complete_sub_mvcc releases the lock
-   * and pops sub_ids. Invariant: if a sub-MVCCID row could ever be undo-deleted by the outer transaction, key
-   * this on the deleted record's insert MVCCID instead. */
-  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
-  if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
+  /* An MVCC inserter holds an X self-lock on its MVCCID instead of a per-row X_LOCK; accept that here for a
+   * rollback that deletes the row. Key on the DELETED RECORD's insert MVCCID, not the transaction's current one:
+   * a sub-MVCCID-stamped row (selupd INCR/DECR) does not match the current main id, and reading the current id
+   * can assign a fresh MVCCID as a side effect. A sub-MVCCID row is only ever undo-deleted by the sub's own
+   * abort, while its id is still current and self-locked; any other case correctly returns false and the
+   * caller's assert catches it. */
+  MVCCID rec_insid = BTREE_MVCC_INFO_INSID (BTREE_DELETE_MVCC_INFO (delete_helper));
+  if (MVCCID_IS_NORMAL (rec_insid) && logtb_is_current_mvccid (thread_p, rec_insid)
+      && lock_has_lock_on_transaction_mvccid (thread_p, rec_insid, X_LOCK) > 0)
     {
       return true;
     }
