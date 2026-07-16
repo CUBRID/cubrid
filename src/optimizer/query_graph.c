@@ -7109,44 +7109,22 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 
       if (!found)
 	{
-	  /* Segment is not in the index. If it appears in the query output or is used
-	   * directly in a filter term, the index cannot cover the query.
+	  /* Segment is not one of the index columns. For a plain (non-function) index this means the index
+	   * cannot cover the query -- exactly develop's conservative behavior. For a function index, covering
+	   * is still possible ONLY if this segment is used solely as an argument of a function index expression
+	   * that the index provides (its precomputed result is then read from the index key). Any independent
+	   * use of the raw column -- in the output list, GROUP BY / HAVING / ORDER BY, a predicate term, or a
+	   * CONNECT BY / START WITH clause -- means the covered scan cannot reproduce it, so covering is unsafe.
 	   *
-	   * Note: env->final_segs is built by qo_add_final_segment(), which descends into
-	   * expressions in the output clauses. For a function index expression such as sqrt(d1),
-	   * this adds the raw argument segment (d1) to final_segs. That is intentional here: the
-	   * covered scan cannot reproduce a *projected* function result, because the output value
-	   * list recomputes the expression from its base columns rather than reading the precomputed
-	   * result stored in the index key. Rejecting whenever the argument appears in the output
-	   * therefore keeps covering to the cases the executor can serve correctly: the function
-	   * expression used only as a key range/filter (not projected), or the argument column also
-	   * present as a regular index key column.
-	   *
-	   * Exception: allow covering when the column appears in the output only as the argument of a
-	   * function index expression that this index provides. In that case the covered scan reads the
-	   * precomputed function result from the index key (see btree_attrinfo_read_dbvalues) and the client
-	   * routes the projected function expression to that value, so the result is reproduced correctly. */
-	  if (BITSET_MEMBER (env->final_segs, QO_SEG_IDX (seg)))
+	   * qo_seg_used_only_in_covering_func_index() returns false for a non-function index and for any raw
+	   * use of the column in the output/hierarchical clauses, so it captures all of the above except plain
+	   * predicate terms, which are checked separately below. */
+	  if (!qo_seg_used_only_in_covering_func_index (env, index_entry, seg))
 	    {
-	      PT_NODE *qtree = QO_ENV_PT_TREE (env);
-
-	      if (!qo_seg_used_only_in_covering_func_index (env, index_entry, seg))
-		{
-		  return false;
-		}
-	      /* A projected function result read from the index key flows through the output value list. The
-	       * GROUP BY machinery builds its group value list / sort keys from the raw argument column rather
-	       * than this materialized result, so covering would produce incorrect groups. Fall back to a
-	       * non-covering scan (which recomputes the function from the heap) when the query groups. */
-	      if (qtree != NULL && qtree->node_type == PT_SELECT && qtree->info.query.q.select.group_by != NULL)
-		{
-		  return false;
-		}
-	      /* coverage is allowed only because the projected function result will be materialized from the
-	       * index key; remember this so the client routes the projected expression accordingly */
-	      index_entry->cover_func_result = true;
+	      return false;
 	    }
 
+	  /* Used directly in a predicate term: the raw column value is needed, cannot cover. */
 	  {
 	    int t;
 	    for (t = 0; t < env->nterms; t++)
@@ -7157,6 +7135,26 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 		  }
 	      }
 	  }
+
+	  /* A projected function result read from the index key flows through the output value list. The
+	   * GROUP BY machinery builds its group value list / sort keys from the raw argument column rather
+	   * than this materialized result, so covering would produce incorrect groups. Fall back to a
+	   * non-covering scan (which recomputes the function from the heap) when the query groups. */
+	  {
+	    PT_NODE *qtree = QO_ENV_PT_TREE (env);
+
+	    if (qtree != NULL && qtree->node_type == PT_SELECT && qtree->info.query.q.select.group_by != NULL)
+	      {
+		return false;
+	      }
+	  }
+
+	  /* The projected function result must be materialized from the index key; remember this so the client
+	   * routes the projected function expression to that value instead of recomputing it. */
+	  if (BITSET_MEMBER (env->final_segs, QO_SEG_IDX (seg)))
+	    {
+	      index_entry->cover_func_result = true;
+	    }
 	}
     }
 
