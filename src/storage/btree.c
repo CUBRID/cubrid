@@ -23684,6 +23684,46 @@ btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
 }
 
 /*
+ * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
+ *				    S_LOCK on its MVCCID self-lock, then release.
+ *
+ * return	      : NO_ERROR once the inserter has ended. An error if the lock failed, or if the
+ *			self-lock invariant is breached (grant while the inserter is still active) --
+ *			the wait was a no-op and waiting again cannot recover it, so fail the
+ *			statement rather than spin.
+ * thread_p (in)      : Thread entry.
+ * insert_mvccid (in) : MVCCID of the in-progress inserter to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+static int
+btree_wait_for_inserter_end (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (insert_mvccid))
+    {
+      /* Invariant breach: no-op grant while the inserter is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
+}
+
+/*
  * btree_key_wait_for_insert_mvccid () - Wait for the transaction inserting a conflicting object to
  *					 end, then signal a restart from root.
  *
@@ -23720,15 +23760,14 @@ btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
       pgbuf_unfix_and_init (thread_p, *overflow_page);
     }
   pgbuf_unfix_and_init (thread_p, *leaf_page);
-  error_code = lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK);
-  if (error_code != LK_GRANTED)
+
+  error_code = btree_wait_for_inserter_end (thread_p, insert_mvccid);
+  if (error_code != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  /* Inserter has ended; release the transaction lock. */
-  lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
-  /* The page may have changed during the wait, so re-read the key from root. */
+
+  /* Inserter has ended; the page may have changed during the wait, so re-read the key from root. */
   *restart = true;
   return NO_ERROR;
 }
@@ -26851,7 +26890,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
       /* Referenced row still being inserted. */
       {
 	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
-	int fk_lock_result;
+	int fk_wait_error;
 
 	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
 	  {
@@ -26862,22 +26901,16 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	    return NO_ERROR;
 	  }
 
-	/* Wait for that transaction to end before deciding whether the FK reference holds: release all
-	 * page latches and any locked object, then block on the inserter (S_LOCK then release). */
+	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
+	 * latches and any locked object, then wait out the inserter. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_lock_result = lock_transaction_mvccid (thread_p, fk_insert_mvccid, S_LOCK, LK_UNCOND_LOCK);
-	if (fk_lock_result != LK_GRANTED)
+	fk_wait_error = btree_wait_for_inserter_end (thread_p, fk_insert_mvccid);
+	if (fk_wait_error != NO_ERROR)
 	  {
-	    int error_code = er_errid ();
-	    if (error_code == NO_ERROR)
-	      {
-		error_code = ER_CANNOT_GET_LOCK;
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	      }
-	    return error_code;
+	    return fk_wait_error;
 	  }
-	/* Inserter ended; release the S_LOCK and trigger re-check. */
-	lock_unlock_transaction_mvccid (thread_p, fk_insert_mvccid, S_LOCK);
+
+	/* Inserter ended; trigger re-check. */
 	*stop = true;
 	return NO_ERROR;
       }
