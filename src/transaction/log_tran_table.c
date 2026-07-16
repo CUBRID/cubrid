@@ -4015,6 +4015,77 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   return id;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_acquire_mvccid_self_lock () - Acquire the transaction X self-lock on a specific MVCCID and record it as the
+ *				       transaction's self-locked MVCCID.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info; self_locked_mvccid is set on success
+ *   mvccid(in): the (NORMAL) MVCCID to self-lock
+ *
+ * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
+ *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
+ *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
+ */
+static int
+logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  int error_code = NO_ERROR;
+
+  assert (curr_mvcc_info != NULL);
+  assert (MVCCID_IS_NORMAL (mvccid));
+
+  if (curr_mvcc_info->self_locked_mvccid == mvccid)
+    {
+      /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  if (lock_transaction_mvccid (thread_p, mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  curr_mvcc_info->self_locked_mvccid = mvccid;
+  return NO_ERROR;
+}
+
+/*
+ * logtb_self_lock_assigned_mvccid () - Best-effort self-lock of a just-assigned MVCCID -- the choke point every
+ *					INSID producer passes, making "an observable INSID implies a held X
+ *					self-lock" hold by construction.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info
+ *   mvccid(in): the MVCCID that was just assigned
+ *
+ * Note: client transactions only -- system transactions and vacuum never run lock_unlock_all, so a self-lock
+ *	 taken there would leak. The fresh id is unknown to any other transaction, so the X never waits (safe
+ *	 under page latches). On failure just log: the callers cannot return an error, and the heap-site
+ *	 logtb_ensure_mvccid_self_lock retries and fails the statement before the stamp is observable.
+ */
+static void
+logtb_self_lock_assigned_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* No self-lock during boot/recovery (no concurrent waiters; the lock table may not be up yet). */
+      return;
+    }
+  if (logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, mvccid) != NO_ERROR)
+    {
+      /* Unconditional (_er_log_debug): a silent failure here would make a later waiter-side breach undiagnosable. */
+      _er_log_debug (ARG_FILE_LINE, "could not self-lock assigned MVCCID %llu\n", (unsigned long long) mvccid);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * logtb_get_current_mvccid - return current transaction MVCC id. Assign
  *			      a new ID if not previously set.
@@ -4038,6 +4109,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+#if defined (SERVER_MODE)
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   if (!tdes->mvccinfo.sub_ids.empty ())
@@ -4054,10 +4128,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
  *
  * return: NO_ERROR, or an error code if the X self-lock could not be granted.
  *
- * Note: the self-lock (LOCK_RESOURCE_TRANSACTION) lets unique/FK checkers wait for an in-progress inserter that
- *	 takes no per-row X-lock. INSERT/UPDATE call this once per row; re-acquiring the same MVCCID is idempotent,
- *	 so the lock-table round trip is skipped when the current MVCCID is already self-locked. Safe because
- *	 MVCCIDs are monotonic and never reused: a stale marker can never match a future MVCCID.
+ * Note: the error-propagating layer over the choke-point acquisition (logtb_self_lock_assigned_mvccid): a fast
+ *	 no-op via the self_locked_mvccid hint when the choke point succeeded, otherwise re-tries and returns the
+ *	 error so the caller can fail the statement before the INSID stamp becomes observable.
  */
 int
 logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
@@ -4066,22 +4139,8 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
   MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
-  int error_code = NO_ERROR;
 
-  if (curr_mvcc_info->self_locked_mvccid == my_mvccid)
-    {
-      /* already self-locked in this (sub-)transaction */
-      return NO_ERROR;
-    }
-
-  if (lock_transaction_mvccid (thread_p, my_mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-
-  curr_mvcc_info->self_locked_mvccid = my_mvccid;
-  return NO_ERROR;
+  return logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, my_mvccid);
 #else /* SERVER_MODE */
   return NO_ERROR;
 #endif /* SERVER_MODE */
@@ -4687,9 +4746,18 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
   else
     {
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
+#if defined (SERVER_MODE)
+      /* The main id is assigned here too, and logtb_get_current_mvccid's lazy branch will never re-fire for it. */
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+
+#if defined (SERVER_MODE)
+  /* selupd/INCR stamps rows with the sub-MVCCID -- same choke-point self-lock as the main id. */
+  logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+#endif /* SERVER_MODE */
 }
 
 /*
