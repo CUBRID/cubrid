@@ -78,6 +78,11 @@ struct qfile_tuple_simple_pos
   int offset;			/* Tuple offset inside the page */
 };
 
+/* The optimizer's hash-join spill cost (qo_hjoin_cost) uses this size as HJ_HASH_ENTRY_POS_SIZE,
+ * but cannot sizeof it because this struct is SERVER/SA-only. Guard against silent drift here. */
+static_assert (sizeof (QFILE_TUPLE_SIMPLE_POS) == 12,
+	       "QFILE_TUPLE_SIMPLE_POS size changed; update HJ_HASH_ENTRY_POS_SIZE in query_planner.c (qo_hjoin_cost)");
+
 /* hash scan value */
 typedef union hash_scan_value HASH_SCAN_VALUE;
 union hash_scan_value

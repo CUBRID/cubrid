@@ -181,7 +181,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
       return NULL;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   checked_name = jsp_check_stored_procedure_name (name);
   db_make_string (&value, checked_name);
@@ -214,7 +214,7 @@ jsp_find_stored_procedure (const char *name, DB_AUTH purpose)
     }
 
   free_and_init (checked_name);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return mop;
 }
@@ -239,7 +239,7 @@ jsp_find_stored_procedure_code (const char *name)
       return NULL;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_string (&value, name);
   mop = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
@@ -249,7 +249,7 @@ jsp_find_stored_procedure_code (const char *name)
       er_clear ();
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return mop;
 }
@@ -441,12 +441,12 @@ jsp_get_return_type (const char *name)
   int err;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -455,11 +455,11 @@ jsp_get_return_type (const char *name)
   err = db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return err;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return db_get_int (&return_type);
 }
 
@@ -480,12 +480,12 @@ jsp_get_sp_type (const char *name)
   int err;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -495,11 +495,11 @@ jsp_get_sp_type (const char *name)
   err = db_get (mop_p, SP_ATTR_SP_TYPE, &sp_type_val);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return err;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return jsp_map_sp_type_to_pt_misc ((SP_TYPE_ENUM) db_get_int (&sp_type_val));
 }
 
@@ -509,19 +509,19 @@ jsp_get_owner (MOP mop_p)
   int save;
   DB_VALUE value;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* check type */
   int err = db_get (mop_p, SP_ATTR_OWNER, &value);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return NULL;
     }
 
   MOP owner = db_get_object (&value);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return owner;
 }
 
@@ -532,20 +532,20 @@ jsp_get_name (MOP mop_p)
   DB_VALUE value;
   char *res = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* check type */
   int err = db_get (mop_p, SP_ATTR_SP_NAME, &value);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return NULL;
     }
 
   res = ws_copy_string (db_get_string (&value));
   pr_clear_value (&value);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return res;
 }
 
@@ -566,20 +566,20 @@ jsp_get_unique_name (MOP mop_p, char *buf, int buf_size)
       return NULL;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* check type */
   err = db_get (mop_p, SP_ATTR_UNIQUE_NAME, &value);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return NULL;
     }
 
   strncpy (buf, db_get_string (&value), buf_size);
   pr_clear_value (&value);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return buf;
 }
 
@@ -610,12 +610,12 @@ jsp_get_owner_name (const char *name, char *buf, int buf_size)
       return NULL;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
   if (mop_p == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return NULL;
@@ -625,7 +625,7 @@ jsp_get_owner_name (const char *name, char *buf, int buf_size)
   err = db_get (mop_p, SP_ATTR_OWNER, &value);
   if (err != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return NULL;
     }
 
@@ -642,7 +642,7 @@ jsp_get_owner_name (const char *name, char *buf, int buf_size)
     }
   pr_clear_value (&value);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return buf;
 }
 
@@ -1317,7 +1317,7 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 
   comment_str = (char *) PT_NODE_SP_COMMENT (statement);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* existence of sp */
   sp_mop = jsp_find_stored_procedure (name_str, DB_AUTH_SELECT);
@@ -1431,7 +1431,7 @@ error:
   pr_clear_value (&sp_type_val);
   pr_clear_value (&sp_lang_val);
   pr_clear_value (&target_cls_val);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err;
 }
@@ -1559,7 +1559,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   char unique_name[DB_MAX_IDENTIFIER_LENGTH + 1];
   unique_name[0] = '\0';
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&args_val);
   db_make_null (&owner_val);
@@ -1696,7 +1696,7 @@ drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type)
   err = obj_delete (sp_mop);
 
 error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   pr_clear_value (&args_val);
   pr_clear_value (&owner_val);
@@ -1720,7 +1720,7 @@ drop_stored_procedure_code (const char *name)
   int save;
   int err;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&owner_val);
 
@@ -1763,7 +1763,7 @@ drop_stored_procedure_code (const char *name)
   err = obj_delete (code_mop);
 
 error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   pr_clear_value (&owner_val);
 
@@ -1793,7 +1793,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   DB_OBJECT *object_p;
   DB_OTMPL *obt_p = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_null (&scode_val);
   db_make_null (&value);
@@ -1923,7 +1923,7 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
     }
 
 error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   pr_clear_value (&scode_val);
   pr_clear_value (&value);
@@ -2102,7 +2102,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	    goto exit;
 	  }
 
-	AU_DISABLE (save);
+	AU_SAVE_AND_DISABLE (save);
 	entry.oid = *WS_OID (mop_p);
 
 	for (int i = 0; i < NUM_SP_ATTR; i++)
@@ -2197,7 +2197,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 exit:
   if (mop_p != NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
   return error;
 }

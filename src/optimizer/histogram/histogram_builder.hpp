@@ -41,21 +41,37 @@ namespace hist
     std::int64_t     approx_ndv;
   };
 
+  /* Most-common-value entry: value + its population frequency (fraction of ALL rows). */
+  struct Mcv
+  {
+    HistogramTypes   value;
+    double           freq;
+  };
+
   class HistogramBuilder
   {
     public:
+      /* add a non-MCV equi-depth bucket (cumulative over non-MCV non-null rows) */
       void add (HistogramTypes data_hi, std::int64_t cumulative,
-		std::int64_t approx_ndv = std::numeric_limits<std::int64_t>::quiet_NaN());
-      char *build (THREAD_ENTRY *thread_p, DB_TYPE type, int *histogram_total_length);
+		std::int64_t approx_ndv);
+      /* add an MCV entry; MCVs must be added in ascending value order (binary-searched) */
+      void add_mcv (HistogramTypes value, double freq);
+      /* serialize the v2 blob. total_rows is the population row count incl nulls;
+       * null_frequency is nulls/total_rows. */
+      char *build (THREAD_ENTRY *thread_p, DB_TYPE type, std::int64_t total_rows, double null_frequency,
+		   int *histogram_total_length);
 
     private:
-      HeaderV1 header_;
+      std::vector<Mcv> mcvs_;
       std::vector<Bucket> buckets_;
       std::int32_t cur_str_off_ = 0;
 
       // endian writers
       template<typename T>
       void write (char *&dest, T v);
+      // write an 8B value slot (numeric or string [len,off]); strings feed the str blob.
+      // returns false if the variant does not hold the type expected for `type`.
+      bool write_value_slot (char *&dest, DB_TYPE type, const HistogramTypes &v);
   };
 
 } // namespace histo
