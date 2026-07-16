@@ -12122,6 +12122,15 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
     }
 
+  /* A supplemental DML LSA must always reconstruct the requested row image. */
+  if ((undo_lsa != NULL && (undo_recdes == NULL || undo_recdes->data == NULL))
+      || (redo_lsa != NULL && (redo_recdes == NULL || redo_recdes->data == NULL)))
+    {
+      cdc_log ("cdc_get_recdes : failed to reconstruct record descriptor from supplemental log LSA");
+      error_code = ER_FAILED;
+      goto error;
+    }
+
   if (redo_data != NULL && is_redo_alloced)
     {
       free_and_init (redo_data);
