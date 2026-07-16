@@ -11319,8 +11319,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   int tmpbuf_index;
 
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;	// log_page for process_lsa : when process_lsa is advanced, then next log_page can be fetched into this buffer
   LOG_PAGE *preserved_log_page_p = NULL;	// log_page for redo/undo lsa
 
@@ -11708,8 +11708,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -11927,8 +11930,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -14471,7 +14477,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   LOG_LSA process_lsa;
 
@@ -14798,7 +14804,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   LOG_LSA current_lsa;
 
   LOG_PAGE *log_page_p = NULL;
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_RECTYPE log_type;
@@ -15050,6 +15056,10 @@ cdc_initialize ()
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
   cdc_Gl.producer.temp_logbuf[1].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[1].log_page, MAX_ALIGNMENT);
+
+  /* page id 0 is a valid data page; invalidate the temp log buffers so the first access always fetches */
+  cdc_Gl.producer.temp_logbuf[0].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
+  cdc_Gl.producer.temp_logbuf[1].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   /*communication buffer from server to client initialization */
   cdc_Gl.consumer.log_info = NULL;
