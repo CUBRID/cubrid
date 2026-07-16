@@ -4139,6 +4139,14 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
 {
 #if defined (SERVER_MODE)
   LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* Checked before touching mvccinfo: logtb_get_current_mvccid would dereference a NULL tdes and lazily
+       * assign an MVCCID -- neither may happen for boot/recovery or non-worker contexts. */
+      return NO_ERROR;
+    }
+
   MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
   MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
 
