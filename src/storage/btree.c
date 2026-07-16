@@ -16767,7 +16767,25 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	    {
 	      /* Function argument attribute: only the function result is stored in the index key, not the argument itself.
 	       * This can happen when a function index covering scan includes the function argument in rest_attrs. */
-	      db_make_null (&attr_value->dbvalue);
+	      if (func_index_col_id != -1)
+		{
+		  /* For a covering scan that projects the function result (e.g. SELECT sqrt(d1) with index
+		   * (..., sqrt(d1))), materialize the precomputed function result from its fixed position in the
+		   * midxkey. The client routes the projected function expression to read this value directly instead
+		   * of recomputing it from the (unavailable) argument column. */
+		  int fpos = func_index_col_id;
+
+		  if (pr_midxkey_get_element_nocopy (((fpos < prefix_size) ? prefix_mkey : curr_mkey), fpos,
+						     &(attr_value->dbvalue), NULL, NULL) != NO_ERROR)
+		    {
+		      error = ER_FAILED;
+		      goto error;
+		    }
+		}
+	      else
+		{
+		  db_make_null (&attr_value->dbvalue);
+		}
 	      attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	      attr_value++;
 	      continue;

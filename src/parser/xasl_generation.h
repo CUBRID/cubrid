@@ -82,6 +82,16 @@ typedef enum
   UNBOX_AS_TABLE
 } UNBOX;
 
+/* one entry per covered function-index scan whose projected function expression must be routed to read the
+ * precomputed function result materialized in the covering list file (instead of recomputing it) */
+typedef struct pt_func_index_cover PT_FUNC_INDEX_COVER;
+struct pt_func_index_cover
+{
+  PT_FUNC_INDEX_COVER *next;
+  const char *expr_str;		/* function index expression string provided by the covered index */
+  UINTPTR spec_id;		/* spec id of the scanned table */
+};
+
 typedef struct symbol_info SYMBOL_INFO;
 struct symbol_info
 {
@@ -95,6 +105,7 @@ struct symbol_info
   int listfile_attr_offset;
   PT_NODE *query_node;		/* the query node that is being translated */
   DB_VALUE **reserved_values;	/* db_values array used for reserved attributes */
+  PT_FUNC_INDEX_COVER *func_idx_cover_list;	/* active covered function-index expressions to route in output */
 };
 
 typedef struct aggregate_info AGGREGATE_INFO;
