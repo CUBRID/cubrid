@@ -243,6 +243,7 @@ extern LK_ENTRY *lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class
 extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					  bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args);
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
+extern int lock_reacquire_crash_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCCID mvccid, int tran_index);
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_start_instant_lock_mode (int tran_index);

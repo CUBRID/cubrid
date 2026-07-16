@@ -1324,6 +1324,9 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int tran_index;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
+  unsigned int num_mvccids;	/* Number of MVCCIDs appended after the object-lock array (0 or 1) */
+  int redo_length;		/* Combined length of the object-lock array followed by the MVCCID array */
+  char *redo_data;		/* Combined object-lock + MVCCID buffer written as the redo portion */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1443,14 +1446,50 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
     }
 
+  /* Record the transaction's MVCCID (if it has one) after the object-lock array, so that after a crash the X self-lock
+   * keyed on the inserter MVCCID can be re-acquired for this in-doubt transaction. Rows it MVCC-appended carry that
+   * MVCCID and stay INSERT_IN_PROGRESS to unique/FK/DML checkers until the 2PC decision is applied; the self-lock is
+   * the only thing serializing them. Sub-transactions all complete by prepare time (logtb_complete_sub_mvcc at
+   * statement end), so only the main id is live -- assert that, but keep a count field so more ids could be carried. */
+  assert (tdes->mvccinfo.sub_ids.empty ());
+  num_mvccids = MVCCID_IS_VALID (tdes->mvccinfo.id) ? 1 : 0;
+
+  redo_length = size + (int) (num_mvccids * sizeof (MVCCID));
+  redo_data = NULL;
+  if (redo_length > 0)
+    {
+      redo_data = (char *) malloc (redo_length);
+      if (redo_data == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) redo_length);
+	  if (acq_locks.obj != NULL)
+	    {
+	      free_and_init (acq_locks.obj);
+	    }
+	  return TRAN_UNACTIVE_UNKNOWN;
+	}
+      if (size > 0)
+	{
+	  memcpy (redo_data, acq_locks.obj, size);
+	}
+      if (num_mvccids > 0)
+	{
+	  memcpy (redo_data + size, &tdes->mvccinfo.id, sizeof (MVCCID));
+	}
+    }
+
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_PREPARE, RV_NOT_DEFINED, NULL, tdes->gtrinfo.info_length,
-				   (char *) tdes->gtrinfo.info_data, size, (char *) acq_locks.obj);
+				   (char *) tdes->gtrinfo.info_data, redo_length, redo_data);
   if (node == NULL)
     {
       if (acq_locks.obj != NULL)
 	{
 	  free_and_init (acq_locks.obj);
+	}
+      if (redo_data != NULL)
+	{
+	  free_and_init (redo_data);
 	}
 
       return TRAN_UNACTIVE_UNKNOWN;
@@ -1462,14 +1501,17 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_object_locks = acq_locks.nobj_locks;
-  /* ignore num_page_locks */
-  prepared->num_page_locks = 0;
+  prepared->num_mvccids = num_mvccids;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
   if (acq_locks.obj != NULL)
     {
       free_and_init (acq_locks.obj);
+    }
+  if (redo_data != NULL)
+    {
+      free_and_init (redo_data);
     }
 
   /*
@@ -1564,7 +1606,25 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	    }
 
 	  logpb_copy_from_log (thread_p, (char *) acq_locks.obj, size, log_lsa, log_page_p);
-	  LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
+	  /* The MVCCID array follows the object-lock array contiguously; do not realign in between. */
+	}
+
+      /* Restore the transaction's MVCCID and re-acquire the X self-lock keyed on it, so a row this in-doubt transaction
+       * MVCC-appended is still seen as INSERT_IN_PROGRESS by unique/FK/DML checkers until the 2PC decision is applied
+       * (btree_is_active_other_inserter -> lock_transaction_mvccid). Acquire on behalf of tdes->tran_index like the
+       * object locks above, so the entry lands on that transaction's hold list and its lock_unlock_all releases it. */
+      if (prepared->num_mvccids > 0)
+	{
+	  MVCCID rv_mvccid = MVCCID_NULL;
+
+	  logpb_copy_from_log (thread_p, (char *) &rv_mvccid, sizeof (MVCCID), log_lsa, log_page_p);
+	  tdes->mvccinfo.id = rv_mvccid;
+
+	  if (lock_reacquire_crash_mvccid_self_lock (thread_p, rv_mvccid, tdes->tran_index) != LK_GRANTED)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
 	}
 
       if (acq_locks.nobj_locks > 0)
@@ -1641,7 +1701,25 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	    }
 
 	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
-	  log_pgptr_reader.align ();
+	  /* The MVCCID array follows the object-lock array contiguously; do not realign in between. */
+	}
+
+      /* Restore the transaction's MVCCID and re-acquire the X self-lock keyed on it, so a row this in-doubt transaction
+       * MVCC-appended is still seen as INSERT_IN_PROGRESS by unique/FK/DML checkers until the 2PC decision is applied
+       * (btree_is_active_other_inserter -> lock_transaction_mvccid). Acquire on behalf of tdes->tran_index like the
+       * object locks above, so the entry lands on that transaction's hold list and its lock_unlock_all releases it. */
+      if (prepared->num_mvccids > 0)
+	{
+	  MVCCID rv_mvccid = MVCCID_NULL;
+
+	  log_pgptr_reader.copy_from_log ((char *) &rv_mvccid, sizeof (MVCCID));
+	  tdes->mvccinfo.id = rv_mvccid;
+
+	  if (lock_reacquire_crash_mvccid_self_lock (thread_p, rv_mvccid, tdes->tran_index) != LK_GRANTED)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
 	}
 
       if (acq_locks.nobj_locks > 0)

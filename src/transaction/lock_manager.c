@@ -8781,6 +8781,40 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
 }
 
 /*
+ * lock_reacquire_crash_mvccid_self_lock - Reacquire the X self-lock keyed on an in-doubt transaction's (inserter)
+ *                                         MVCCID on behalf of that transaction, during recovery restart
+ *
+ * return: LK_GRANTED, LK_NOTGRANTED_DUE_TIMEOUT, or LK_NOTGRANTED_DUE_ERROR
+ *
+ *   mvccid(in): the transaction's MVCCID, read back from the 2PC prepare log record
+ *   tran_index(in): transaction index that must hold the self-lock
+ *
+ * Note: Recovery-only companion of lock_reacquire_crash_locks. Unlike lock_transaction_mvccid (which keys on the
+ *       running thread's transaction), this acquires directly on behalf of tran_index so the entry lands on the
+ *       in-doubt transaction's hold list and is released by its eventual lock_unlock_all. Must not route through
+ *       logtb_acquire_mvccid_self_lock, whose boot/recovery guard (correctly) no-ops before restart. A held self-lock
+ *       is what makes a checker wait out this in-doubt inserter (btree_wait_for_inserter_end) until the 2PC decision.
+ */
+int
+lock_reacquire_crash_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCCID mvccid, int tran_index)
+{
+#if !defined (SERVER_MODE)
+  return LK_GRANTED;
+#else /* !SERVER_MODE */
+  LK_ENTRY *dummy_ptr = NULL;
+
+  if (!MVCCID_IS_NORMAL (mvccid))
+    {
+      /* special MVCCIDs (NULL/ALL_VISIBLE) have no inserter to serialize on */
+      return LK_GRANTED;
+    }
+
+  return lock_internal_perform_lock_object (thread_p, tran_index, lock_create_mvccid_search_key (mvccid), X_LOCK,
+					    LK_INFINITE_WAIT, &dummy_ptr, NULL);
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_unlock_all_shared_get_all_exclusive - Release all shared type locks and
  *                              optionally list the exclusive type locks
  *

@@ -607,6 +607,20 @@ mvcctable::reset_start_mvccid ()
   m_current_status_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
 }
 
+void
+mvcctable::rv_reactivate_mvccid (MVCCID mvccid)
+{
+  /* Restart-only, single-threaded (boot time) -- same non-thread-safe contract as reset_start_mvccid. After the final
+   * post-redo reset_start_mvccid anchored the active set above every MVCCID seen during redo, an in-doubt 2PC
+   * transaction's MVCCID would read as committed; re-mark it active so is_active (mvccid) is true again and self-lock
+   * waiters keep blocking until the 2PC decision. Both the current status and the current history entry (the one
+   * is_active reads) must carry it, mirroring reset_start_mvccid. */
+  m_current_trans_status.m_active_mvccs.rv_reactivate_mvccid (mvccid);
+
+  assert (m_trans_status_history_position < HISTORY_MAX_SIZE);
+  m_trans_status_history[m_trans_status_history_position].m_active_mvccs.rv_reactivate_mvccid (mvccid);
+}
+
 MVCCID
 mvcctable::get_global_oldest_visible () const
 {

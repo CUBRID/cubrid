@@ -102,6 +102,7 @@ static int log_recovery_get_redo_parallel_count ();
 #endif
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
+static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
 static void log_recovery_finish_sysop_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
@@ -3256,6 +3257,58 @@ REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo
 // *INDENT-ON*
 #endif
 
+/*
+ * log_recovery_2pc_reactivate_mvccids - re-mark the MVCCIDs of in-doubt 2PC-prepared transactions as active
+ *
+ * return: nothing
+ *
+ * Note: Called once at the end of the redo phase, right after the final reset_start_mvccid. Each in-doubt transaction's
+ *       MVCCID was restored into tdes->mvccinfo.id when its prepare record was read (log_2pc_read_prepare); the reset
+ *       then anchored the active set above every seen MVCCID, so those ids read as committed. Re-mark them active via
+ *       the long-transaction representation so is_active is true and self-lock waiters keep blocking until the 2PC
+ *       decision. mvcctable::rv_reactivate_mvccid keeps the long-tran list sorted, so re-mark in ascending order;
+ *       selection over the (small) set of prepared transactions avoids a temporary container.
+ */
+static void
+log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
+{
+  MVCCID last_added = MVCCID_NULL;
+
+  while (true)
+    {
+      MVCCID next = MVCCID_NULL;
+      int i;
+
+      for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (i);
+	  MVCCID id;
+
+	  if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+	    {
+	      continue;
+	    }
+	  id = tdes->mvccinfo.id;
+	  if (!MVCCID_IS_NORMAL (id))
+	    {
+	      continue;
+	    }
+	  /* pick the smallest id strictly greater than the last one already re-marked */
+	  if (MVCC_ID_PRECEDES (last_added, id) && (next == MVCCID_NULL || MVCC_ID_PRECEDES (id, next)))
+	    {
+	      next = id;
+	    }
+	}
+
+      if (next == MVCCID_NULL)
+	{
+	  break;
+	}
+      log_Gl.mvcc_table.rv_reactivate_mvccid (next);
+      last_added = next;
+    }
+}
+
 static void
 log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {
@@ -3920,6 +3973,13 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_CS_ENTER (thread_p);
 
   log_Gl.mvcc_table.reset_start_mvccid ();
+
+  /* The reset above anchored the active set above every MVCCID seen during redo, so an in-doubt 2PC-prepared
+   * transaction's MVCCID now reads as committed. Re-mark those MVCCIDs active (they were restored into
+   * tdes->mvccinfo.id when the prepare records were read by log_2pc_read_prepare during analysis/redo). Otherwise a
+   * unique/FK/DML checker would treat rows such a prepared-but-undecided transaction appended as visible and skip the
+   * self-lock wait. Must run after the last reset_start_mvccid; no later reset follows. */
+  log_recovery_2pc_reactivate_mvccids (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
