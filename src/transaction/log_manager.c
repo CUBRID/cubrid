@@ -11367,6 +11367,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   preserved_log_page_p = (LOG_PAGE *) PTR_ALIGN (preserved_log_pgbuf, MAX_ALIGNMENT);
+  preserved_log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   /* Get UNDO RECDES from undo lsa */
 
@@ -12323,6 +12324,12 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
   int area_offset;
   int error_code = NO_ERROR;
   int length = 0;
+
+  /* log_page_p may not hold lsa's page after parsing advanced across a log page boundary. */
+  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   LSA_COPY (&current_lsa, &lsa);
   current_log_page = log_page_p;
