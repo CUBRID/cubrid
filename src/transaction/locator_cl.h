@@ -94,8 +94,8 @@ extern bool locator_class_flush_deferral_is_active (void);
 extern bool locator_class_flush_deferral_is_open (void);
 extern bool locator_class_flush_deferral_is_outermost (void);
 extern int locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,
-						   const LOG_LSA * create_lsa, const char *owner_class_name,
-						   int object_kind);
+						  const LOG_LSA * create_lsa, const char *owner_class_name,
+						  int object_kind);
 extern int locator_class_flush_deferral_add (MOP class_mop);
 extern int locator_class_flush_deferral_queue_stats (MOP class_mop);
 extern MOP locator_class_flush_deferral_pop_stats (void);

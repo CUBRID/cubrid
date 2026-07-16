@@ -1111,7 +1111,8 @@ STATIC_INLINE void pgbuf_lru_remove_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bc
 static void pgbuf_lru_move_from_private_to_shared (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 static void pgbuf_move_bcb_to_bottom_lru (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 
-STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread, bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE int pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_page_flush_thread,
+					    bool * is_bcb_locked) __attribute__ ((ALWAYS_INLINE));
 static void pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb);
 STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __attribute__ ((ALWAYS_INLINE));
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);

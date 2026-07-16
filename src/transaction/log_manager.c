@@ -3596,7 +3596,7 @@ log_sysop_end_type_string (LOG_SYSOP_END_TYPE end_type)
  * attaching its top operation to the outer transaction.
  */
 int
-log_get_current_sysop_parent_lsa (THREAD_ENTRY *thread_p, LOG_LSA *parent_lsa)
+log_get_current_sysop_parent_lsa (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa)
 {
   LOG_TDES *tdes;
   int tran_index;
@@ -3629,7 +3629,7 @@ log_is_irreversible_2pc_state (TRAN_STATE state)
 }
 
 int
-log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER *marker)
+log_append_bulk_build_marker (THREAD_ENTRY * thread_p, const BTREE_BULK_MARKER * marker)
 {
   char *payload;
   unsigned int payload_size;
@@ -3656,6 +3656,7 @@ log_append_bulk_build_marker (THREAD_ENTRY *thread_p, const BTREE_BULK_MARKER *m
   free (payload);
   return NO_ERROR;
 }
+
 /*
  * log_sysop_start () - Start a new system operation. This can also be nested in another system operation.
  *

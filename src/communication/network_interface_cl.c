@@ -690,7 +690,7 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 
 
 static bool
-locator_bulk_oid_set_is_sorted (const OID *oids, unsigned int count)
+locator_bulk_oid_set_is_sorted (const OID * oids, unsigned int count)
 {
   unsigned int i;
 
@@ -713,7 +713,7 @@ locator_bulk_oid_set_is_sorted (const OID *oids, unsigned int count)
 }
 
 static bool
-locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor)
+locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor)
 {
   if (descriptor == NULL || descriptor->version != LOCATOR_BULK_FORCE_TAIL_VERSION
       || descriptor->class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
@@ -723,8 +723,7 @@ locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR *des
       || (descriptor->constraint_name_length != 0 && descriptor->constraint_name == NULL)
       || descriptor->owner_class_name_length == 0 || descriptor->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
       || descriptor->owner_class_name == NULL
-      || (descriptor->object_kind != BULK_MARKER_KIND_INDEX
-	  && descriptor->object_kind != BULK_MARKER_KIND_CONSTRAINT))
+      || (descriptor->object_kind != BULK_MARKER_KIND_INDEX && descriptor->object_kind != BULK_MARKER_KIND_CONSTRAINT))
     {
       return false;
     }
@@ -734,7 +733,7 @@ locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR *des
 }
 
 static int
-locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, unsigned int *packed_size)
+locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, unsigned int *packed_size)
 {
   UINT64 size;
 
@@ -757,13 +756,13 @@ locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descr
 }
 
 int
-locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, unsigned int *packed_size)
+locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, unsigned int *packed_size)
 {
   return locator_bulk_force_tail_compute_size (descriptor, packed_size);
 }
 
 int
-locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, char *buffer, unsigned int buffer_size,
+locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, char *buffer, unsigned int buffer_size,
 			      unsigned int *packed_size)
 {
   char *ptr = buffer;
@@ -816,8 +815,8 @@ locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, c
 
 int
 locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
-				LOCATOR_BULK_INDEX_DESCRIPTOR *descriptor, OID *class_oids,
-				unsigned int class_capacity, OID *fk_class_oids, unsigned int fk_class_capacity,
+				LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, OID * class_oids,
+				unsigned int class_capacity, OID * fk_class_oids, unsigned int fk_class_capacity,
 				char *constraint_name, unsigned int constraint_name_capacity)
 {
   char *ptr = (char *) buffer;
@@ -843,8 +842,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
   ptr = or_unpack_log_lsa (ptr, &descriptor->create_lsa);
   ptr = or_unpack_int (ptr, &count);
   if (count < 0 || (unsigned int) count > class_capacity
-      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || (count != 0 && class_oids == NULL))
+      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES || (count != 0 && class_oids == NULL))
     {
       return ER_FAILED;
     }
@@ -933,6 +931,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     }
   return NO_ERROR;
 }
+
 /*
  * locator_force -
  *
@@ -6392,7 +6391,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
 		  + OR_INT_SIZE	/* Thread count */
-		  + OR_INT_SIZE	/* eligible_no_redo */ );
+		  + OR_INT_SIZE /* eligible_no_redo */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)

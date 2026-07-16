@@ -106,7 +106,7 @@ btree_bulk_get_u64 (const char **ptr)
 }
 
 int
-btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *packed_size)
+btree_bulk_marker_packed_size (const BTREE_BULK_MARKER * marker, unsigned int *packed_size)
 {
   UINT64 size;
 
@@ -135,7 +135,7 @@ btree_bulk_marker_packed_size (const BTREE_BULK_MARKER *marker, unsigned int *pa
 }
 
 int
-btree_bulk_marker_pack (const BTREE_BULK_MARKER *marker, char *buffer, unsigned int buffer_size,
+btree_bulk_marker_pack (const BTREE_BULK_MARKER * marker, char *buffer, unsigned int buffer_size,
 			unsigned int *packed_size)
 {
   char *ptr = buffer;
@@ -199,8 +199,8 @@ btree_bulk_marker_pack (const BTREE_BULK_MARKER *marker, char *buffer, unsigned 
 }
 
 int
-btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER *marker,
-			  OID *class_oids, unsigned int class_capacity, char *constraint_name,
+btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER * marker,
+			  OID * class_oids, unsigned int class_capacity, char *constraint_name,
 			  unsigned int constraint_name_capacity, char *owner_class_name,
 			  unsigned int owner_class_name_capacity, int *decoded_version)
 {
@@ -347,7 +347,7 @@ btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BU
 }
 
 int
-btree_rv_bulk_build_durable_nop (THREAD_ENTRY *thread_p, LOG_RCV *logrcv)
+btree_rv_bulk_build_durable_nop (THREAD_ENTRY * thread_p, LOG_RCV * logrcv)
 {
   (void) thread_p;
   (void) logrcv;
@@ -12176,8 +12176,7 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 			 "bulk recovery undo branch=BULK_RESTORE_UNDO_DIFFERENT_INSERT_ID "
 			 "insert_mvccid=%lld delete_mvccid=%lld logged_insert_mvccid=%lld\n",
 			 (long long) BTREE_MVCC_INFO_INSID (mvcc_info),
-			 (long long) BTREE_MVCC_INFO_DELID (mvcc_info),
-			 (long long) match_mvccinfo->insert_mvccid);
+			 (long long) BTREE_MVCC_INFO_DELID (mvcc_info), (long long) match_mvccinfo->insert_mvccid);
 	  return ER_FAILED;
 	}
       *is_match = true;
@@ -18878,8 +18877,7 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
     {
       ASSERT_ERROR ();
       /* The bulk-recovery undo context returns er_set fail-stop families by design. */
-      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED
-	      || recv->is_bulk_recovery_undo);
+      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED || recv->is_bulk_recovery_undo);
       return err;
     }
 
@@ -32014,7 +32012,8 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 			 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
 			 BTREE_DELETE_OID (delete_helper)->volid, BTREE_DELETE_OID (delete_helper)->pageid,
 			 BTREE_DELETE_OID (delete_helper)->slotid, BTREE_DELETE_CLASS_OID (delete_helper)->volid,
-			 BTREE_DELETE_CLASS_OID (delete_helper)->pageid, BTREE_DELETE_CLASS_OID (delete_helper)->slotid);
+			 BTREE_DELETE_CLASS_OID (delete_helper)->pageid,
+			 BTREE_DELETE_CLASS_OID (delete_helper)->slotid);
 	  error_code = NO_ERROR;
 	  goto exit;
 	}
@@ -32247,8 +32246,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
 	}
       else
 	{
-	  object_ptr =
-	    btree_leaf_get_nth_oid_ptr (btid_int, leaf_record, BTREE_LEAF_NODE, offset_after_key, n);
+	  object_ptr = btree_leaf_get_nth_oid_ptr (btid_int, leaf_record, BTREE_LEAF_NODE, offset_after_key, n);
 	  if (object_ptr == NULL)
 	    {
 	      assert_release (false);
@@ -32283,8 +32281,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
       overflow_vpid = leaf_rec_info->ovfl;
       while (!VPID_ISNULL (&overflow_vpid))
 	{
-	  overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ,
-				     PGBUF_UNCONDITIONAL_LATCH);
+	  overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
 	  if (overflow_page == NULL)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
@@ -32404,8 +32401,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
   object_ptr = leaf_record->data + offset_to_s;
   (void) btree_pack_object (object_ptr, btid_int, BTREE_LEAF_NODE, leaf_record, &first_object);
   rv_redo_data_ptr =
-    log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset_to_s, object_fixed_size, object_fixed_size,
-				     object_ptr);
+    log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset_to_s, object_fixed_size, object_fixed_size, object_ptr);
   btree_leaf_change_first_object (thread_p, leaf_record, btid_int, &s_observed.oid, &s_observed.class_oid,
 				  &s_observed.mvcc_info, NULL, &rv_undo_data_ptr, &rv_redo_data_ptr);
 #if !defined (NDEBUG)
@@ -32416,8 +32412,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
   BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
   if ((size_t) rv_redo_data_length > BTREE_RV_BUFFER_SIZE
       || (leaf_record->length > old_length
-	  && spage_get_free_space_without_saving (thread_p, leaf_page, NULL)
-	  < leaf_record->length - old_length))
+	  && spage_get_free_space_without_saving (thread_p, leaf_page, NULL) < leaf_record->length - old_length))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
 	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: unique second-object exchange is not representable "
@@ -32437,8 +32432,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
     }
   log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
 					 delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
-					 rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p),
-					 &delete_helper->reference_lsa);
+					 rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
 
   _er_log_debug (ARG_FILE_LINE,
 		 "bulk recovery undo branch=unq-second-exchanged BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d "

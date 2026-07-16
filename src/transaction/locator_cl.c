@@ -4960,6 +4960,7 @@ locator_class_flush_deferral_is_active (void)
 {
   return locator_Class_flush_deferral.depth > 0 && locator_Class_flush_deferral.active;
 }
+
 bool
 locator_class_flush_deferral_is_open (void)
 {
@@ -4979,7 +4980,7 @@ locator_class_flush_deferral_is_outermost (void)
 
 int
 locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,
-					const LOG_LSA * create_lsa, const char *owner_class_name, int object_kind)
+				       const LOG_LSA * create_lsa, const char *owner_class_name, int object_kind)
 {
   size_t name_length, owner_name_length;
 
@@ -5015,11 +5016,12 @@ locator_class_flush_deferral_activate (const BTID * btid, const char *constraint
   memcpy (locator_Class_flush_deferral.owner_class_name, owner_class_name, owner_name_length + 1);
   return NO_ERROR;
 }
+
 static int locator_flush_class_set_internal (bool final_publication);
-static int locator_class_flush_serialized_size (MOP class_mop, size_t *serialized_size);
-static int locator_class_flush_set_required_size (size_t *required);
-static int locator_class_flush_reserve_mops (MOP **mops, unsigned int count, unsigned int *capacity,
-					    unsigned int additional);
+static int locator_class_flush_serialized_size (MOP class_mop, size_t * serialized_size);
+static int locator_class_flush_set_required_size (size_t * required);
+static int locator_class_flush_reserve_mops (MOP ** mops, unsigned int count, unsigned int *capacity,
+					     unsigned int additional);
 static void locator_class_flush_append_rollback (void);
 
 
@@ -5066,8 +5068,7 @@ locator_class_flush_deferral_add (MOP class_mop)
       return error;
     }
   /* An individual class must fit the explicit one-area wire representation. */
-  if (class_size > SIZE_MAX - sizeof (LC_COPYAREA_MANYOBJS)
-      || sizeof (LC_COPYAREA_MANYOBJS) + class_size >= INT_MAX)
+  if (class_size > SIZE_MAX - sizeof (LC_COPYAREA_MANYOBJS) || sizeof (LC_COPYAREA_MANYOBJS) + class_size >= INT_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
@@ -5185,7 +5186,7 @@ locator_class_flush_deferral_abort (void)
 }
 
 static int
-locator_class_flush_serialized_size (MOP class_mop, size_t *serialized_size)
+locator_class_flush_serialized_size (MOP class_mop, size_t * serialized_size)
 {
   MOBJ object;
   int object_size;
@@ -5220,7 +5221,7 @@ locator_class_flush_serialized_size (MOP class_mop, size_t *serialized_size)
 }
 
 static int
-locator_class_flush_set_required_size (size_t *required)
+locator_class_flush_set_required_size (size_t * required)
 {
   unsigned int i;
   size_t class_size;
@@ -5244,8 +5245,7 @@ locator_class_flush_set_required_size (size_t *required)
 }
 
 static int
-locator_class_flush_reserve_mops (MOP **mops, unsigned int count, unsigned int *capacity_ptr,
-				  unsigned int additional)
+locator_class_flush_reserve_mops (MOP ** mops, unsigned int count, unsigned int *capacity_ptr, unsigned int additional)
 {
   unsigned int needed, capacity;
   MOP *new_mops;
@@ -5273,7 +5273,7 @@ locator_class_flush_reserve_mops (MOP **mops, unsigned int count, unsigned int *
     {
       capacity = MAX (needed, *capacity_ptr * 2);
     }
-  bytes = (size_t) capacity * sizeof (*new_mops);
+  bytes = (size_t) capacity *sizeof (*new_mops);
   new_mops = (MOP *) realloc (*mops, bytes);
   if (new_mops == NULL)
     {
@@ -5410,15 +5410,15 @@ locator_flush_class_set_internal (bool final_publication)
       descriptor_p = &descriptor;
     }
 
-  if (mflush.recdes.data < mflush.copy_area->mem
-      || (size_t) (mflush.recdes.data - mflush.copy_area->mem) > INT_MAX)
+  if (mflush.recdes.data < mflush.copy_area->mem || (size_t) (mflush.recdes.data - mflush.copy_area->mem) > INT_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       error = ER_GENERIC_ERROR;
       goto end;
     }
   content_size = (int) (mflush.recdes.data - mflush.copy_area->mem);
-  error = locator_force_bulk (mflush.copy_area, ws_Error_ignore_count, ws_Error_ignore_list, content_size, descriptor_p);
+  error =
+    locator_force_bulk (mflush.copy_area, ws_Error_ignore_count, ws_Error_ignore_list, content_size, descriptor_p);
   if (error != NO_ERROR)
     {
       unsigned int j;
@@ -5449,6 +5449,7 @@ locator_flush_class_set (void)
 {
   return locator_flush_class_set_internal (true);
 }
+
 /*
  * locator_flush_class () - Flush a dirty class
  *

@@ -6915,10 +6915,9 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
 }
 
 static int
-locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_INDEX_DESCRIPTOR *desc,
-			   OID *classes, unsigned int class_capacity, OID *fk_classes, unsigned int fk_capacity,
-			   char *name, unsigned int name_capacity, char *owner_name,
-			   unsigned int owner_name_capacity)
+locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_INDEX_DESCRIPTOR * desc,
+			   OID * classes, unsigned int class_capacity, OID * fk_classes, unsigned int fk_capacity,
+			   char *name, unsigned int name_capacity, char *owner_name, unsigned int owner_name_capacity)
 {
   char *ptr = (char *) buffer;
   unsigned int padded_length;
@@ -6931,8 +6930,7 @@ locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_I
   ptr = or_unpack_int (ptr, &magic);
   ptr = or_unpack_int (ptr, &version);
   ptr = or_unpack_int (ptr, &packed_size);
-  if (magic != LOCATOR_BULK_FORCE_TAIL_MAGIC || version != LOCATOR_BULK_FORCE_TAIL_VERSION
-      || packed_size != (int) size)
+  if (magic != LOCATOR_BULK_FORCE_TAIL_MAGIC || version != LOCATOR_BULK_FORCE_TAIL_VERSION || packed_size != (int) size)
     {
       return ER_FAILED;
     }
@@ -7024,6 +7022,7 @@ locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_I
     }
   return NO_ERROR;
 }
+
 /*
  * xlocator_force_validate_bulk_tail () - Validate optional FORCE bulk marker.
  *
@@ -7060,6 +7059,7 @@ xlocator_force_validate_bulk_tail (const char *tail, int tail_size, LOCATOR_BULK
   *has_descriptor = true;
   return NO_ERROR;
 }
+
 /*
  * xlocator_force () - Updates objects sent by log applier
  *
@@ -7302,8 +7302,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
       if (tdes == NULL || LSA_ISNULL (&bulk_index->create_lsa) || LSA_ISNULL (&tdes->head_lsa)
-	  || LSA_LT (&bulk_index->create_lsa, &tdes->head_lsa)
-	  || LSA_GT (&bulk_index->create_lsa, &tdes->tail_lsa))
+	  || LSA_LT (&bulk_index->create_lsa, &tdes->head_lsa) || LSA_GT (&bulk_index->create_lsa, &tdes->tail_lsa))
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  error_code = ER_GENERIC_ERROR;
@@ -7488,8 +7487,7 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
       root_vpid.volid = bulk_index->btid.vfid.volid;
       root_vpid.pageid = bulk_index->btid.root_pageid;
-      root_page =
-	pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
       if (root_page == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);

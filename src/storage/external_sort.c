@@ -318,10 +318,10 @@ static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * 
 					  SORT_PARAM * sort_param, int parallel_num);
 static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
 static int sort_split_last_run_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
-					    SORT_PARAM * sort_param, int parallel_num, int *n_shards);
+					   SORT_PARAM * sort_param, int parallel_num, int *n_shards);
 static void sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static BT_LOAD_PX_OUTCOME sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
-							 SORT_PARAM * sort_param, int parallel_num);
+							SORT_PARAM * sort_param, int parallel_num);
 
 /*
  * sort_spage_initialize () - Initialize a slotted page
@@ -3499,8 +3499,7 @@ sort_index_next_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int tot
     {
       return NO_ERROR;
     }
-  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], *page, 1,
-		      sort_param->internal_memory) != NO_ERROR)
+  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], *page, 1, sort_param->internal_memory) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -5255,8 +5254,7 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
   assert (log_get_system_op_level (thread_p) < 0);
 
   total_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
-  est_main_pages =
-    (int) MIN ((INT64) INT_MAX, (INT64) total_pages + MAX ((INT64) 64, (INT64) total_pages / 10));
+  est_main_pages = (int) MIN ((INT64) INT_MAX, (INT64) total_pages + MAX ((INT64) 64, (INT64) total_pages / 10));
   if (sort_args->sum_ovf_pages > 0)
     {
       ovf_upper = sort_args->sum_ovf_pages;
@@ -5313,6 +5311,7 @@ cleanup:
   bt_load_set_px_outcome (main_load_args, BT_PX_TREE_DONE);
   return BT_PX_TREE_DONE;
 }
+
 int
 sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 					      SORT_PARAM * sort_param, int parallel_num)

@@ -176,6 +176,7 @@ struct bt_load_allocation_ledger
   BT_LOAD_ALLOCATION_LEDGER *next;
 };
 
+// *INDENT-OFF*
 typedef struct bt_load_vpid_pool BT_LOAD_VPID_POOL;
 struct bt_load_vpid_pool
 {
@@ -183,6 +184,7 @@ struct bt_load_vpid_pool
   int n_published;
   std::atomic<int> cursor;
 };
+// *INDENT-ON*
 
 typedef struct bt_load_worker_slot BT_LOAD_WORKER_SLOT;
 struct bt_load_worker_slot
@@ -1144,6 +1146,7 @@ bt_load_scoped_durability_barrier (THREAD_ENTRY * thread_p, LOAD_ARGS * load_arg
 
   return NO_ERROR;
 }
+
 /*
  * xbtree_load_index () - create & load b+tree index
  *   return: BTID * (btid on success and NULL on failure)
@@ -2345,8 +2348,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
    */
   if (load_args->provider != NULL)
     {
-      ret = bt_load_provider_reconcile (thread_p, load_args->provider,
-					load_args->report_overflow_key_count == 0);
+      ret = bt_load_provider_reconcile (thread_p, load_args->provider, load_args->report_overflow_key_count == 0);
       if (ret != NO_ERROR)
 	{
 	  goto end;
@@ -2526,8 +2528,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
 }
 
 static int
-bt_load_allocate_span_start (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_ovf, int npages,
-			     VPID ** vpids_out)
+bt_load_allocate_span_start (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_ovf, int npages, VPID ** vpids_out)
 {
   VPID *vpids;
   PAGE_TYPE ptype = PAGE_OVERFLOW;
@@ -2672,8 +2673,7 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
 	    {
 	      slot->consumed_ovf_pages++;
 	    }
-	  if (span->n - span->used <= span->n / 4
-	      && pool->cursor.load (std::memory_order_relaxed) >= pool->n_published)
+	  if (span->n - span->used <= span->n / 4 && pool->cursor.load (std::memory_order_relaxed) >= pool->n_published)
 	    {
 	      pthread_mutex_lock (&provider->mtx);
 	      if (slot->state == BT_LOAD_SLOT_IDLE)
@@ -2803,9 +2803,9 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
       return error;
     }
   {
-    BT_LOAD_ALLOCATION_LEDGER *entry =
-      bt_load_make_ledger_entry (&provider->main_vfid, provider->main_pool.vpids,
-				 provider->main_pool.n_published, BT_LOAD_ORIGIN_POOL_INIT);
+    BT_LOAD_ALLOCATION_LEDGER *entry = bt_load_make_ledger_entry (&provider->main_vfid, provider->main_pool.vpids,
+								  provider->main_pool.n_published,
+								  BT_LOAD_ORIGIN_POOL_INIT);
     if (entry == NULL)
       {
 	bt_load_provider_close (provider);
@@ -2992,11 +2992,12 @@ bt_load_dealloc_span_tail (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider,
     }
   return NO_ERROR;
 }
+
 static INT64
 bt_load_ledger_page_count (BT_LOAD_PROVIDER * provider, bool skip_ovf_file)
 {
   INT64 count = 0;
-  for (BT_LOAD_ALLOCATION_LEDGER *entry = provider->ledger; entry != NULL; entry = entry->next)
+  for (BT_LOAD_ALLOCATION_LEDGER * entry = provider->ledger; entry != NULL; entry = entry->next)
     {
       if (!skip_ovf_file || !VFID_EQ (&entry->vfid, &provider->ovf_vfid))
 	{
@@ -3042,7 +3043,7 @@ bt_load_assert_ledger_has_unique_vpids (BT_LOAD_PROVIDER * provider)
     {
       return;
     }
-  for (BT_LOAD_ALLOCATION_LEDGER *entry = provider->ledger; entry != NULL; entry = entry->next)
+  for (BT_LOAD_ALLOCATION_LEDGER * entry = provider->ledger; entry != NULL; entry = entry->next)
     {
       assert (entry->n > 0);
       assert (entry->origin == BT_LOAD_ORIGIN_POOL_INIT || entry->origin == BT_LOAD_ORIGIN_REFILL
@@ -3079,8 +3080,7 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
   int cursor = provider->main_pool.cursor.load (std::memory_order_relaxed);
   for (int i = cursor; i < provider->main_pool.n_published; i++)
     {
-      error =
-	bt_load_return_page (thread_p, provider, &provider->main_vfid, FILE_BTREE, &provider->main_pool.vpids[i]);
+      error = bt_load_return_page (thread_p, provider, &provider->main_vfid, FILE_BTREE, &provider->main_pool.vpids[i]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3101,7 +3101,7 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
     }
   for (int i = 0; i < provider->n_workers; i++)
     {
-      for (BT_LOAD_SPAN *span = provider->slots[i].main_spans; span != NULL; span = span->next)
+      for (BT_LOAD_SPAN * span = provider->slots[i].main_spans; span != NULL; span = span->next)
 	{
 	  error = bt_load_dealloc_span_tail (thread_p, provider, &provider->main_vfid, FILE_BTREE, span);
 	  if (error != NO_ERROR)
@@ -3111,18 +3111,17 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
 	}
       if (!skip_ovf_file)
 	{
-	  for (BT_LOAD_SPAN *span = provider->slots[i].ovf_spans; span != NULL; span = span->next)
+	  for (BT_LOAD_SPAN * span = provider->slots[i].ovf_spans; span != NULL; span = span->next)
 	    {
 	      error = bt_load_dealloc_span_tail (thread_p, provider, &provider->ovf_vfid,
-						FILE_BTREE_OVERFLOW_KEY, span);
+						 FILE_BTREE_OVERFLOW_KEY, span);
 	      if (error != NO_ERROR)
 		{
 		  return error;
 		}
 	    }
 	}
-      if (provider->slots[i].ready_span != NULL
-	  && !(skip_ovf_file && provider->slots[i].ready_span->is_ovf))
+      if (provider->slots[i].ready_span != NULL && !(skip_ovf_file && provider->slots[i].ready_span->is_ovf))
 	{
 	  BT_LOAD_SPAN *span = provider->slots[i].ready_span;
 	  error = bt_load_dealloc_span_tail (thread_p, provider,
@@ -3134,7 +3133,7 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
 	    }
 	}
     }
-  for (BT_LOAD_SPAN *span = provider->main_inline_spans; span != NULL; span = span->next)
+  for (BT_LOAD_SPAN * span = provider->main_inline_spans; span != NULL; span = span->next)
     {
       error = bt_load_dealloc_span_tail (thread_p, provider, &provider->main_vfid, FILE_BTREE, span);
       if (error != NO_ERROR)
@@ -3142,7 +3141,7 @@ bt_load_provider_reconcile (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provider
 	  return error;
 	}
     }
-  for (BT_LOAD_SPAN *span = provider->ovf_inline_spans; !skip_ovf_file && span != NULL; span = span->next)
+  for (BT_LOAD_SPAN * span = provider->ovf_inline_spans; !skip_ovf_file && span != NULL; span = span->next)
     {
       error = bt_load_dealloc_span_tail (thread_p, provider, &provider->ovf_vfid, FILE_BTREE_OVERFLOW_KEY, span);
       if (error != NO_ERROR)
@@ -3194,6 +3193,7 @@ bt_load_free_spans (BT_LOAD_SPAN * span)
       span = next;
     }
 }
+
 static void
 bt_load_free_ledger (BT_LOAD_ALLOCATION_LEDGER * entry)
 {
@@ -3344,6 +3344,7 @@ bt_load_set_px_outcome (LOAD_ARGS * load_args, BT_LOAD_PX_OUTCOME outcome)
   assert (load_args->px_outcome == BT_PX_NOT_ATTEMPTED || outcome == BT_PX_NOT_ATTEMPTED);
   load_args->px_outcome = outcome;
 }
+
 /*
  * btree_load_new_page () - load a new b-tree page.
  *
@@ -4150,8 +4151,7 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
     {				/* Current page is a leaf page */
       assert (load_args->out_recdes == &load_args->leaf_nleaf_recdes);
       /* Allocate the new overflow page */
-      ret =
-	(*load_args->new_page_fn) (thread_p, load_args, NULL, -1, &load_args->ovf.vpid, &load_args->ovf.pgptr);
+      ret = (*load_args->new_page_fn) (thread_p, load_args, NULL, -1, &load_args->ovf.vpid, &load_args->ovf.pgptr);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -4335,47 +4335,47 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
       char *data;
 
       if (load_args->vacuum_count == load_args->vacuum_capacity)
-        {
-          if (new_capacity < load_args->vacuum_capacity || new_capacity > SIZE_MAX / sizeof (*new_items))
-            {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
-              return ER_OUT_OF_VIRTUAL_MEMORY;
-            }
-        }
+	{
+	  if (new_capacity < load_args->vacuum_capacity || new_capacity > SIZE_MAX / sizeof (*new_items))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, SIZE_MAX);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
       else
-        {
-          new_capacity = load_args->vacuum_capacity;
-        }
+	{
+	  new_capacity = load_args->vacuum_capacity;
+	}
 
       reserved_size = new_capacity * sizeof (*new_items);
       if ((size_t) notify_vacuum_rv_data_length > BT_LOAD_VACUUM_SLOT_LIMIT
-          || load_args->vacuum_payload_size > BT_LOAD_VACUUM_SLOT_LIMIT - (size_t) notify_vacuum_rv_data_length
-          || reserved_size > BT_LOAD_VACUUM_SLOT_LIMIT
-          || load_args->vacuum_payload_size + (size_t) notify_vacuum_rv_data_length
-               > BT_LOAD_VACUUM_SLOT_LIMIT - reserved_size)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, BT_LOAD_VACUUM_SLOT_LIMIT);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+	  || load_args->vacuum_payload_size > BT_LOAD_VACUUM_SLOT_LIMIT - (size_t) notify_vacuum_rv_data_length
+	  || reserved_size > BT_LOAD_VACUUM_SLOT_LIMIT
+	  || load_args->vacuum_payload_size + (size_t) notify_vacuum_rv_data_length
+	  > BT_LOAD_VACUUM_SLOT_LIMIT - reserved_size)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, BT_LOAD_VACUUM_SLOT_LIMIT);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
 
       if (new_capacity != load_args->vacuum_capacity)
-        {
-          new_items = (BT_LOAD_VACUUM_ITEM *) realloc (load_args->vacuum_items, reserved_size);
-          if (new_items == NULL)
-            {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, reserved_size);
-              return ER_OUT_OF_VIRTUAL_MEMORY;
-            }
-          load_args->vacuum_items = new_items;
-          load_args->vacuum_capacity = new_capacity;
-        }
+	{
+	  new_items = (BT_LOAD_VACUUM_ITEM *) realloc (load_args->vacuum_items, reserved_size);
+	  if (new_items == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, reserved_size);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  load_args->vacuum_items = new_items;
+	  load_args->vacuum_capacity = new_capacity;
+	}
 
       data = (char *) malloc ((size_t) notify_vacuum_rv_data_length);
       if (data == NULL)
-        {
-          er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, notify_vacuum_rv_data_length);
-          return ER_OUT_OF_VIRTUAL_MEMORY;
-        }
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, notify_vacuum_rv_data_length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
       memcpy (data, *notify_vacuum_rv_data, (size_t) notify_vacuum_rv_data_length);
       load_args->vacuum_items[load_args->vacuum_count].data = data;
       load_args->vacuum_items[load_args->vacuum_count].length = notify_vacuum_rv_data_length;
@@ -4411,15 +4411,15 @@ bt_load_append_vacuum_notifications (THREAD_ENTRY * thread_p, LOAD_ARGS * load_a
     {
       int error_before = er_errid ();
       if (error_before != NO_ERROR)
-        {
-          return error_before;
-        }
+	{
+	  return error_before;
+	}
       log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
-                             load_args->vacuum_items[i].length, load_args->vacuum_items[i].data);
+			     load_args->vacuum_items[i].length, load_args->vacuum_items[i].data);
       if (er_errid () != NO_ERROR)
-        {
-          return er_errid ();
-        }
+	{
+	  return er_errid ();
+	}
     }
   return NO_ERROR;
 }
@@ -4806,8 +4806,7 @@ bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node
       return error;
     }
   if ((error = or_put_int (&buf, key_vpid.pageid)) != NO_ERROR
-      || (error = or_put_short (&buf, key_vpid.volid)) != NO_ERROR
-      || (error = or_put_align32 (&buf)) != NO_ERROR)
+      || (error = or_put_short (&buf, key_vpid.volid)) != NO_ERROR || (error = or_put_align32 (&buf)) != NO_ERROR)
     {
       return error;
     }
@@ -4816,6 +4815,7 @@ bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node
   load_args->report_overflow_key_count++;
   return NO_ERROR;
 }
+
 int
 bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, BT_LOAD_PROVIDER * provider,
 			       int worker_idx, LOAD_ARGS ** out)
@@ -4844,9 +4844,9 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
 	      return error;
 	    }
 	  {
-	    BT_LOAD_ALLOCATION_LEDGER *entry =
-	      bt_load_make_ledger_entry (&provider->ovf_vfid, provider->ovf_pool.vpids,
-					 provider->ovf_pool.n_published, BT_LOAD_ORIGIN_POOL_INIT);
+	    BT_LOAD_ALLOCATION_LEDGER *entry = bt_load_make_ledger_entry (&provider->ovf_vfid, provider->ovf_pool.vpids,
+									  provider->ovf_pool.n_published,
+									  BT_LOAD_ORIGIN_POOL_INIT);
 	    if (entry == NULL)
 	      {
 		return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -5074,7 +5074,7 @@ end:
 }
 
 static int
-bt_load_checked_add_report_value (INT64 *total, INT64 value)
+bt_load_checked_add_report_value (INT64 * total, INT64 value)
 {
   if (value < 0 || *total > LLONG_MAX - value)
     {
@@ -5101,7 +5101,8 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
     {
       if (!shard_load_args[i]->report_published || shard_load_args[i]->report_first_error != NO_ERROR)
 	{
-	  return shard_load_args[i]->report_first_error != NO_ERROR ? shard_load_args[i]->report_first_error : ER_FAILED;
+	  return shard_load_args[i]->report_first_error !=
+	    NO_ERROR ? shard_load_args[i]->report_first_error : ER_FAILED;
 	}
       if (bt_load_checked_add_report_value (&report_n_keys, shard_load_args[i]->report_n_keys) != NO_ERROR
 	  || bt_load_checked_add_report_value (&report_n_oids, shard_load_args[i]->report_n_oids) != NO_ERROR
@@ -5160,6 +5161,7 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->report_overflow_key_count = overflow_key_count;
   return NO_ERROR;
 }
+
 #if defined(CUBRID_DEBUG)
 /*
  * btree_dump_sort_output () - Sample output function for index sorting

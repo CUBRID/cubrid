@@ -731,8 +731,7 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
 static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
-static int file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp,
-				  bool tolerate_page_unknown);
+static int file_destroy_internal (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp, bool tolerate_page_unknown);
 static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
@@ -4052,8 +4051,7 @@ file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, b
       if (context->tolerate_page_unknown)
 	{
 	  er_clear ();
-	  page =
-	    pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  page = pgbuf_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
 	}
       else
 	{
@@ -7227,7 +7225,8 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
       extdata = (FILE_EXTENSIBLE_DATA *) ((char *) fhead + fhead->offset_to_user_page_ftab);
       if (extdata->size_of_item != sizeof (VPID) || extdata->n_items < 0
 	  || extdata->max_size < extdata->size_of_item
-	  || extdata->max_size > (int) (DB_PAGESIZE - fhead->offset_to_user_page_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
+	  || extdata->max_size >
+	  (int) (DB_PAGESIZE - fhead->offset_to_user_page_ftab - FILE_EXTDATA_HEADER_ALIGNED_SIZE)
 	  || extdata->n_items * extdata->size_of_item > extdata->max_size)
 	{
 	  error = ER_FAILED;

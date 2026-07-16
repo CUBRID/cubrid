@@ -10696,6 +10696,7 @@ sm_bulk_index_provenance_is_eligible (bool actual_new_btid, bool load_from_heap,
 {
   return actual_new_btid && load_from_heap && has_instances && !online_index_build && server_mode;
 }
+
 /*
  * allocate_index() - Allocates an index on disk for an attribute of a class.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -10888,7 +10889,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 #if defined (CS_MODE)
   eligible_no_redo =
     sm_bulk_index_provenance_is_eligible (actual_new_btid, class_->load_index_from_heap, has_instances,
-					 index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS, true);
+					  index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS, true);
 #endif
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
@@ -10938,7 +10939,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
 	{
 	  error =
 	    locator_class_flush_deferral_activate (index, constraint_name, con->type, &create_lsa, owner_class_name,
-						      object_kind);
+						   object_kind);
 	}
     }
 #endif
