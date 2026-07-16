@@ -775,6 +775,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_LOG_POSTPONE_CACHE_SIZE "postpone_cache_size"
 
+#define PRM_NAME_STATS_FULLSCAN_MAX_PAGES "stats_fullscan_max_pages"
+
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
  * ERROR_LIST type is an array of bool type with the size of -(ER_LAST_ERROR)
@@ -2514,6 +2516,11 @@ static int prm_log_postpone_cache_size_default = 512;
 static int prm_log_postpone_cache_size_upper = 4096;
 static int prm_log_postpone_cache_size_lower = 4;
 static unsigned int prm_log_postpone_cache_size_flag = 0;
+
+int PRM_STATS_FULLSCAN_MAX_PAGES = 10000;
+static int prm_stats_fullscan_max_pages_default = 10000;
+static int prm_stats_fullscan_max_pages_lower = 0;
+static unsigned int prm_stats_fullscan_max_pages_flag = 0;
 
 typedef int (*DUP_PRM_FUNC) (void *, SYSPRM_DATATYPE, void *, SYSPRM_DATATYPE);
 
@@ -6628,6 +6635,18 @@ SYSPRM_PARAM prm_Def[] = {
    (void *) &PRM_LOG_POSTPONE_CACHE_SIZE,
    (void *) &prm_log_postpone_cache_size_upper,
    (void *) &prm_log_postpone_cache_size_lower,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_STATS_FULLSCAN_MAX_PAGES,
+   PRM_NAME_STATS_FULLSCAN_MAX_PAGES,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_INTEGER,
+   &prm_stats_fullscan_max_pages_flag,
+   (void *) &prm_stats_fullscan_max_pages_default,
+   (void *) &PRM_STATS_FULLSCAN_MAX_PAGES,
+   (void *) NULL,
+   (void *) &prm_stats_fullscan_max_pages_lower,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

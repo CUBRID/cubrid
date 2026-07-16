@@ -504,8 +504,10 @@ enum param_id
 
   PRM_ID_LOG_POSTPONE_CACHE_SIZE,
 
+  PRM_ID_STATS_FULLSCAN_MAX_PAGES,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_LOG_POSTPONE_CACHE_SIZE
+  PRM_LAST_ID = PRM_ID_STATS_FULLSCAN_MAX_PAGES
 };
 typedef enum param_id PARAM_ID;
 
