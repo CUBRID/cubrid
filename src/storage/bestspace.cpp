@@ -1254,7 +1254,7 @@ namespace cubstorage
 		    error == status::FAILURE);
 	    if (error == status::FOUND)
 	      {
-		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_size);
+		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_size - SPAGE_SLOT_SIZE);
 		return NO_ERROR;
 	      }
 	    if (error == status::FAILURE)

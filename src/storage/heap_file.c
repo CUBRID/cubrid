@@ -5724,11 +5724,14 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   heap_hdr.num_recs = 0;
   heap_hdr.recs_sumlen = 0;
 
+  heap_hdr.bestspace.num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+
   /*
    * Initialize bestspace
    */
   max_candidates = cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE;
   max_bestpages = cubstorage::bestspace::ENTRIES_PER_SHARD * prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+
   heap_bestspace_clear_candidates (heap_hdr.bestspace.candidates, NULL, max_candidates);
 
   num_entries = 0;
@@ -5838,8 +5841,13 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     }
 
   /* update shards */
-  heap_update_bestspace_entries (thread_p, hfid, heap_hdr.bestspace.pages, heap_hdr.bestspace.num_pages, entries,
-				 MIN (num_entries, max_bestpages));
+  ret = heap_update_bestspace_entries (thread_p, hfid, heap_hdr.bestspace.pages, heap_hdr.bestspace.num_pages,
+				       entries, MIN (num_entries, max_bestpages));
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
+
   /* update candidates */
   if (num_entries > max_bestpages)
     {
