@@ -4029,6 +4029,8 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
  * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
  *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
  *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
+ *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
+ *	 both entry points inherit it.
  */
 static int
 logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
@@ -4041,6 +4043,15 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
   if (curr_mvcc_info->self_locked_mvccid == mvccid)
     {
       /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* No self-lock during boot/recovery or for system/vacuum transactions: they never run lock_unlock_all, so
+       * the entry would leak and block later waiters keyed on this MVCCID; and no concurrent waiter exists there
+       * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
       return NO_ERROR;
     }
 
@@ -4063,21 +4074,12 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
  *   curr_mvcc_info(in/out): current MVCC info
  *   mvccid(in): the MVCCID that was just assigned
  *
- * Note: client transactions only -- system transactions and vacuum never run lock_unlock_all, so a self-lock
- *	 taken there would leak. The fresh id is unknown to any other transaction, so the X never waits (safe
- *	 under page latches). On failure just log: the callers cannot return an error, and the heap-site
- *	 logtb_ensure_mvccid_self_lock retries and fails the statement before the stamp is observable.
+ * Note: best-effort variant for the choke points, which cannot return an error: a failure is logged and left
+ *	 for the heap-site logtb_ensure_mvccid_self_lock to surface before the stamp is observable.
  */
 static void
 logtb_self_lock_assigned_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
 {
-  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-
-  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
-    {
-      /* No self-lock during boot/recovery (no concurrent waiters; the lock table may not be up yet). */
-      return;
-    }
   if (logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, mvccid) != NO_ERROR)
     {
       /* Unconditional (_er_log_debug): a silent failure here would make a later waiter-side breach undiagnosable. */
