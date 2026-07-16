@@ -34,6 +34,7 @@
 #include "btree.h"
 
 #include "deduplicate_key.h"
+#include "double_write_buffer.hpp"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
@@ -952,6 +953,197 @@ btree_load_filter_pred_function_info (THREAD_ENTRY * thread_p, SORT_ARGS * sort_
   return NO_ERROR;
 }
 
+
+/* upper bound of distinct volumes one build's files may span before the scoped barrier gives up and the caller
+ * falls back to the global barrier (never a durability loss, only a lost optimization). */
+#define BT_LOAD_SCOPED_BARRIER_MAX_VOLS 64
+
+/*
+ * bt_load_scoped_barrier_flush_file () - flush every still-buffered, still-dirty data page of one bulk-build file
+ *					  and collect the distinct volume ids its sectors live on.
+ *   return: error code (any error: caller falls back to the global barrier)
+ *   thread_p(in): thread entry
+ *   vfid(in): file whose allocated data pages must be made durable
+ *   volids(in/out): distinct volume id accumulator, shared across the build's files
+ *   volids_capacity(in): capacity of volids
+ *   n_volids(in/out): number of collected distinct volume ids
+ *   pages_flushed(in/out): evidence counter, incremented per page submitted to flush
+ *   n_sectors(in/out): evidence counter, incremented by the file's data sector count
+ *
+ * Note: file_get_all_data_sectors returns every partial/full sector of the file with per-page allocation bitmaps,
+ *       under the fhead read latch; file table pages are masked out of the bitmaps -- file bookkeeping is always
+ *       WAL-logged, even for a no-redo bulk build (log_recovery_bulk_redo_skip_is_exempt) -- so every set bit is
+ *       an allocated data page and every no-redo content page of the file has its bit set.
+ */
+static int
+bt_load_scoped_barrier_flush_file (THREAD_ENTRY * thread_p, const VFID * vfid, VOLID * volids, int volids_capacity,
+				   int *n_volids, int *pages_flushed, int *n_sectors)
+{
+  FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
+  int error = NO_ERROR;
+  int i, k;
+
+  assert (vfid != NULL && !VFID_ISNULL (vfid));
+
+  error = file_get_all_data_sectors (thread_p, vfid, &collector);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      if (collector.partsect_ftab != NULL)
+	{
+	  db_private_free_and_init (thread_p, collector.partsect_ftab);
+	}
+      return error;
+    }
+
+  for (i = 0; i < collector.nsects; i++)
+    {
+      FILE_PARTIAL_SECTOR *partsect = &collector.partsect_ftab[i];
+      VPID vpid;
+      int iter;
+
+      /* collect the sector's volume id; every page of a sector lives on the sector's volume. */
+      for (k = 0; k < *n_volids; k++)
+	{
+	  if (volids[k] == partsect->vsid.volid)
+	    {
+	      break;
+	    }
+	}
+      if (k == *n_volids)
+	{
+	  if (*n_volids == volids_capacity)
+	    {
+	      /* build spans absurdly many volumes; fall back to the global barrier. */
+	      db_private_free_and_init (thread_p, collector.partsect_ftab);
+	      return ER_FAILED;
+	    }
+	  volids[(*n_volids)++] = partsect->vsid.volid;
+	}
+
+      if (partsect->page_bitmap == FILE_EMPTY_PAGE_BITMAP)
+	{
+	  continue;
+	}
+
+      vpid.volid = partsect->vsid.volid;
+      for (iter = 0, vpid.pageid = SECTOR_FIRST_PAGEID (partsect->vsid.sectid); iter < FILE_ALLOC_BITMAP_NBITS;
+	   iter++, vpid.pageid++)
+	{
+	  bool flushed = false;
+
+	  if ((partsect->page_bitmap & (((FILE_ALLOC_BITMAP) 1) << iter)) == 0)
+	    {
+	      /* not allocated, or a WAL-logged file table page masked out by file_get_all_data_sectors. */
+	      continue;
+	    }
+	  error = pgbuf_flush_page_if_exists_and_dirty (thread_p, &vpid, &flushed);
+	  if (error != NO_ERROR)
+	    {
+	      db_private_free_and_init (thread_p, collector.partsect_ftab);
+	      return error;
+	    }
+	  if (flushed)
+	    {
+	      (*pages_flushed)++;
+	    }
+	}
+    }
+
+  *n_sectors += collector.nsects;
+  db_private_free_and_init (thread_p, collector.partsect_ftab);
+  return NO_ERROR;
+}
+
+/*
+ * bt_load_scoped_durability_barrier () - flush + sync exactly the files the no-redo build owns, instead of the
+ *					  whole buffer pool and every permanent volume.
+ *   return: error code (any error: the caller MUST fall back to the global barrier)
+ *   thread_p(in): thread entry
+ *   load_args(in): load args of the finished build (main b-tree file and optional overflow key file)
+ *
+ * Note: completeness argument, in short: (1) every no-redo content page is a data page of {btid->vfid,
+ *       btid->ovfid} -- all btree_log_page callers target one of the two files and the serial overflow-key path
+ *       (overflow_insert) logs full content; (2) every allocated data page of a file appears in its partial/full
+ *       sector tables (file_manager reserve-then-allocate invariant); (3) this runs single-threaded after the
+ *       parallel workers were joined and after the root publish, and nothing allocates before the publication
+ *       chain; (4) a probe miss means the page was flushed before it was victimized (pgbuf invariant), so
+ *       flushing the still-buffered dirty subset + one DWB drain + fsync of the owning volumes makes every
+ *       content page durable before the RVBT_BULK_BUILD_DURABLE marker can become durable.
+ */
+static int
+bt_load_scoped_durability_barrier (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
+{
+  VOLID volids[BT_LOAD_SCOPED_BARRIER_MAX_VOLS];
+  int n_volids = 0;
+  int pages_flushed = 0;
+  int n_sectors = 0;
+  int n_files = 1;
+  int error = NO_ERROR;
+  bool all_sync = false;
+  int i;
+
+  /* 1. scoped flush: the main b-tree file, then the overflow key file when one was created and kept.  (When the
+   * pre-created overflow key file went unused, it was already postpone-destroyed and btid->ovfid nulled before
+   * the root publish.) */
+  error = bt_load_scoped_barrier_flush_file (thread_p, &load_args->btid->sys_btid->vfid, volids,
+					     BT_LOAD_SCOPED_BARRIER_MAX_VOLS, &n_volids, &pages_flushed, &n_sectors);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (!VFID_ISNULL (&load_args->btid->ovfid))
+    {
+      n_files++;
+      error = bt_load_scoped_barrier_flush_file (thread_p, &load_args->btid->ovfid, volids,
+						 BT_LOAD_SCOPED_BARRIER_MAX_VOLS, &n_volids, &pages_flushed,
+						 &n_sectors);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  /* 2. scoped sync: drain the DWB once per build (no-op when disabled), then fsync the volumes owning the files'
+   * sectors.  Same structure as fileio_synchronize_all: when the drain reports every touched volume already
+   * synchronized, the explicit fsync pass is redundant and skipped.  ensure_metadata == true (fsync, not
+   * fdatasync) intentionally: a mid-build volume extension changes file sizes. */
+  error = dwb_flush_force (thread_p, &all_sync);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (!all_sync)
+    {
+      for (i = 0; i < n_volids; i++)
+	{
+	  int vdes = fileio_get_volume_descriptor (volids[i]);
+
+	  if (vdes == NULL_VOLDES
+	      || fileio_synchronize (thread_p, vdes, fileio_get_volume_label (volids[i], PEEK), true) == NULL_VOLDES)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+    }
+
+  if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
+    {
+      _er_log_debug (ARG_FILE_LINE,
+		     "DEBUG_BTREE: scoped barrier btid(%d, (%d, %d)): files=%d sectors=%d pages_flushed=%d "
+		     "n_volids=%d dwb_all_sync=%d.", load_args->btid->sys_btid->root_pageid,
+		     load_args->btid->sys_btid->vfid.volid, load_args->btid->sys_btid->vfid.fileid, n_files,
+		     n_sectors, pages_flushed, n_volids, all_sync ? 1 : 0);
+      for (i = 0; i < n_volids; i++)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: scoped barrier btid(%d, (%d, %d)): sync volid=%d.",
+			 load_args->btid->sys_btid->root_pageid, load_args->btid->sys_btid->vfid.volid,
+			 load_args->btid->sys_btid->vfid.fileid, (int) volids[i]);
+	}
+    }
+
+  return NO_ERROR;
+}
 /*
  * xbtree_load_index () - create & load b+tree index
  *   return: BTID * (btid on success and NULL on failure)
@@ -999,6 +1191,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
+  bool built_bulk_tree = false;
   if (create_lsa != NULL)
     {
       LSA_SET_NULL (create_lsa);
@@ -1277,6 +1470,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->px_outcome == BT_PX_TREE_DONE)
     {
+      built_bulk_tree = true;
       if (has_fk && btree_load_check_fk (thread_p, load_args, sort_args) != NO_ERROR)
 	{
 	  goto error;
@@ -1290,6 +1484,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   else if (load_args->leaf.pgptr != NULL)
     {
+      built_bulk_tree = true;
       /* Save the last leaf record */
 
       if (btree_save_last_leafrec (thread_p, load_args) != NO_ERROR)
@@ -1379,20 +1574,44 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * B2 durability barrier.  Bulk pages are only marked dirty during the build (their
        * content is never WAL-logged), so before the publication chain (sticky-root COPYPAGE,
        * sysop attach, RVBT_BULK_BUILD_DURABLE marker, commit) can become durable, every bulk
-       * page must actually be ON DISK.  pgbuf_flush_all (NULL_VOLID) makes one pass over the
-       * buffer pool and flushes every dirty frame regardless of volume -- covering every
-       * volume the build touched (initial volume, mid-build disk_extend additions, generic
-       * volumes) with no per-build bookkeeping.  fileio_synchronize_all then drains the DWB
-       * (partial blocks included) and fsyncs every permanent volume.  Order matters: pool
-       * flush first, DWB drain + fsync second.
+       * page must actually be ON DISK.
+       *
+       * B2-S1: every no-redo content page is a data page of the build's own files
+       * ({btid->vfid, btid->ovfid}), so it suffices to flush the still-dirty buffered pages
+       * of those files (enumerated from their partial/full sector tables), drain the DWB
+       * once, and fsync only the volumes owning the files' sectors.  Any scoped failure
+       * falls back to the global barrier (pgbuf_flush_all + fileio_synchronize_all); so
+       * does the empty-index path (built_bulk_tree == false: the bulk file was destroyed by
+       * sysop abort and the replacement empty index is fully WAL-logged) and the
+       * bulk_build_scoped_barrier=no kill switch.  In both modes the order is: pool flush
+       * first, DWB drain + fsync second, publication chain only after success.
        */
-      if (pgbuf_flush_all (thread_p, NULL_VOLID) != NO_ERROR)
+      bool scoped_done = false;
+
+      if (built_bulk_tree && prm_get_bool_value (PRM_ID_BULK_BUILD_SCOPED_BARRIER))
 	{
-	  goto error;
+	  er_stack_push ();
+	  if (bt_load_scoped_durability_barrier (thread_p, load_args) == NO_ERROR)
+	    {
+	      scoped_done = true;
+	    }
+	  else
+	    {
+	      _er_log_debug (ARG_FILE_LINE,
+			     "scoped barrier failed (error = %d); falling back to the global barrier.", er_errid ());
+	    }
+	  er_stack_pop ();
 	}
-      if (fileio_synchronize_all (thread_p) != NO_ERROR)
+      if (!scoped_done)
 	{
-	  goto error;
+	  if (pgbuf_flush_all (thread_p, NULL_VOLID) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (fileio_synchronize_all (thread_p) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
     }
 

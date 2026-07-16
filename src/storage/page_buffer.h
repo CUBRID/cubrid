@@ -350,6 +350,7 @@ extern int pgbuf_flush_checkpoint (THREAD_ENTRY * thread_p, const LOG_LSA * flus
 extern int pgbuf_flush_all (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed (THREAD_ENTRY * thread_p, VOLID volid);
 extern int pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID volid);
+extern int pgbuf_flush_page_if_exists_and_dirty (THREAD_ENTRY * thread_p, const VPID * vpid, bool * flushed_out);
 
 #if !defined(NDEBUG)
 #define pgbuf_replace_watcher(thread_p, old_watcher, new_watcher) \
