@@ -12337,12 +12337,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		}
 	      else if (node->node_type == PT_DELETE)
 		{
-		  /* remote DELETE with a local subquery in WHERE: the subquery runs locally, but the
-		   * remote DML path skips the normal query semantic check below, so the WHERE subquery is never
-		   * processed as a stand-alone query (its specs would lack range_var / spec id and XASL generation
-		   * would crash). Resolve / translate it here, mirroring the remote INSERT SELECT handling above, so
-		   * it can be compiled as the value-push aptr. Only the single-predicate "<col> <op> (subquery)" shape
-		   * is touched; other remote DELETEs have no subquery (or a value list) and use the qstr pushdown. */
+		  /* mirrors the remote INSERT SELECT handling above (same reason -- see that comment); here
+		   * the WHERE subquery's specs would lack range_var / spec id and XASL generation would
+		   * crash. Only the single-predicate "<col> <op> (subquery)" shape is touched; other remote
+		   * DELETEs have no subquery (or a value list) and use the qstr pushdown. */
 		  PT_NODE *remote = node->info.delete_.spec->info.spec.remote_server_name;
 		  PT_NODE *cond = node->info.delete_.search_cond;
 		  PT_NODE *subq = NULL;
