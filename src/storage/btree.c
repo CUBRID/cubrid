@@ -16732,7 +16732,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	  if (filled_match_idx)
 	    {
 	      j = attr_idx_ptr[i];
-	      found = (j >= 0);
+	      found = (j < btree_num_att || (j == btree_num_att && func_index_col_id != -1));
 	    }
 	  else
 	    {
@@ -16762,7 +16762,7 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 
 	      if (attr_idx_ptr)
 		{
-		  attr_idx_ptr[i] = found ? j : -1;
+		  attr_idx_ptr[i] = j;
 		}
 	    }
 
