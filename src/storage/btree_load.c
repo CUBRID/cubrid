@@ -34,7 +34,6 @@
 #include "btree.h"
 
 #include "deduplicate_key.h"
-#include "double_write_buffer.hpp"
 #include "external_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
@@ -80,7 +79,7 @@ struct load_args
 {				/* This structure is never written to disk; thus logical ordering of fields is ok. */
   BTID_INT *btid;
   const char *bt_name;		/* index name */
-  bool no_redo;			/* Bulk-build pages are written directly without WAL or DWB. */
+  bool no_redo;			/* Bulk-build pages skip content redo logging only; all disk writes take the ordinary flush path (including DWB when enabled).  Durability is enforced by the pre-publication flush+sync barrier. */
 
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
@@ -1374,9 +1373,27 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       BTREE_SET_CREATED_OVERFLOW_KEY_NOTIFICATION (thread_p, NULL, NULL, notification_class_oid, btid, bt_name);
     }
 
-  if (load_args->no_redo && fileio_synchronize_all (thread_p) != NO_ERROR)
+  if (load_args->no_redo)
     {
-      goto error;
+      /*
+       * B2 durability barrier.  Bulk pages are only marked dirty during the build (their
+       * content is never WAL-logged), so before the publication chain (sticky-root COPYPAGE,
+       * sysop attach, RVBT_BULK_BUILD_DURABLE marker, commit) can become durable, every bulk
+       * page must actually be ON DISK.  pgbuf_flush_all (NULL_VOLID) makes one pass over the
+       * buffer pool and flushes every dirty frame regardless of volume -- covering every
+       * volume the build touched (initial volume, mid-build disk_extend additions, generic
+       * volumes) with no per-build bookkeeping.  fileio_synchronize_all then drains the DWB
+       * (partial blocks included) and fsyncs every permanent volume.  Order matters: pool
+       * flush first, DWB drain + fsync second.
+       */
+      if (pgbuf_flush_all (thread_p, NULL_VOLID) != NO_ERROR)
+	{
+	  goto error;
+	}
+      if (fileio_synchronize_all (thread_p) != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
@@ -2259,48 +2276,13 @@ end:
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
  *
- * Note: This function logs the contents of the given page and frees
- * the page after setting on the dirty bit.
+ * Note: This function logs the contents (unless no_redo) and frees
+ * the page after setting the dirty bit.
  */
 static int
 btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo)
 {
-  if (no_redo)
-    {
-      /*
-       * DEFECT-OV3: this page's allocation-time init image (btree_initialize_new_page /
-       * file_init_page_type via bt_load_allocate_span_start) -- and any later opportunistic
-       * background flush taken while the page sat dirty and unlatched in the buffer pool --
-       * went through the ORDINARY, DWB-staged flush path.  A DWB-staged copy is synced to the
-       * page's final disk location on the DWB's own schedule; if that stale copy lands AFTER
-       * the direct DWB-bypass flush below, it silently restores a pristine-empty page inside
-       * the finished chain (sealed: 3/3 repro DWB-on vs 0/3 DWB-off on the identical clone
-       * basis; .not_git_tracking/bulk_index_build/artifacts/u-g001/phase2-32/SUMMARY.md,
-       * Episode 5).  Drain every pending DWB entry synchronously before our own direct write.
-       * We still hold this page's write latch here, so no NEW staging of this VPID can begin
-       * before the flush below lands (pgbuf only defers a background flush of a write-latched
-       * page) -- the direct write is therefore provably the last write to reach disk for this
-       * VPID.  The drain is global by construction: no per-VPID retire primitive exists
-       * (dwb_read_page only reads a pending entry).  When DWB is disabled or empty this call
-       * returns immediately.
-       */
-      bool dwb_all_sync = false;
-      int dwb_error;
-
-      dwb_error = dwb_flush_force (thread_p, &dwb_all_sync);
-      if (dwb_error != NO_ERROR)
-	{
-	  pgbuf_unfix_and_init (thread_p, page_ptr);
-	  return dwb_error;
-	}
-      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
-      if (pgbuf_flush_with_wal_policy (thread_p, page_ptr, PGBUF_WAL_FLUSH_SKIP, PGBUF_DWB_FLUSH_SKIP) == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, page_ptr);
-	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-	}
-    }
-  else
+  if (!no_redo)
     {
       LOG_DATA_ADDR addr;
 
@@ -2308,9 +2290,18 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
       addr.pgptr = page_ptr;
       addr.offset = -1;
       log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
-      pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
     }
-
+  /*
+   * no_redo == true: bulk-build pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
+   * The page reaches disk through the ordinary flush path (background flusher, eviction,
+   * checkpoint, and the pre-publication pgbuf_flush_all barrier in xbtree_load_index),
+   * including DWB staging when enabled.  Content changes are never logged, so
+   * oldest_unflush_lsa stays NULL after the first flush and the WAL-force step no-ops;
+   * equal-LSA restagings are the DWB's designed "flushing to disk without logging" case
+   * (double_write_buffer.cpp slot-hash dedup).  Durability before publication comes from
+   * the explicit barrier in xbtree_load_index, not from this function.
+   */
+  pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
   pgbuf_unfix_and_init (thread_p, page_ptr);
   return NO_ERROR;
 }
