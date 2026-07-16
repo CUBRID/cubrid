@@ -12187,6 +12187,14 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   cdc_log ("cdc_get_ovfdata_from_log : process_lsa:(%lld | %d), recovery index:%d, is_redo:%d",
 	   LSA_AS_ARGS (process_lsa), rcvindex, is_redo);
+
+  /* log_page_p may not hold process_lsa's page; e.g. the LOG_DUMMY_OVF_RECORD branch of cdc_get_overflow_recdes ()
+   * passes prev_tranlsa, which can point to a record on another log page. */
+  if (cdc_check_log_page (thread_p, log_page_p, process_lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, DB_SIZEOF (LOG_RECORD_HEADER), process_lsa, log_page_p);
 
   if (is_redo)
