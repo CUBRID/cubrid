@@ -240,7 +240,7 @@ namespace cubstorage
 	  shard (bestspace &parent) noexcept;
 	  ~shard () = default;
 
-	  void initialize_by_entries (const bestspace_entry entries[ENTRIES_PER_SHARD]);
+	  void reset (const bestspace_entry entries[ENTRIES_PER_SHARD]);
 
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
@@ -320,6 +320,8 @@ namespace cubstorage
 	  candidate_queue ();
 	  ~candidate_queue () = default;
 
+	  void reset ();
+
 	  bool try_push (bestspace_entry candidate);
 	  void push (bestspace_entry candidate);
 
@@ -340,7 +342,7 @@ namespace cubstorage
 			  std::uint16_t unfill_space);
       ~bestspace () = default;
 
-      void initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries);
+      void reset (const bestspace_entry *entries, std::size_t num_entries);
 
       void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);

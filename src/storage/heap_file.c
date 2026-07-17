@@ -2774,7 +2774,7 @@ STATIC_INLINE bool
 check_supplemental_log (THREAD_ENTRY * thread_p, OID * classoid)
 {
   /* The value for PRM_ID_SUPPLEMENTAL_LOG is required to be greater than 0 if supplemental log is to be appended
-   * no_supplemental_log is used to block duplicated supplemental logs. So this value should be false if supplemental log is to be appended 
+   * no_supplemental_log is used to block duplicated supplemental logs. So this value should be false if supplemental log is to be appended
    */
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0 && !thread_p->no_supplemental_log && !OID_ISNULL (classoid))
     {
@@ -5667,6 +5667,7 @@ int
 xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
 {
   // *INDENT-OFF*
+  cubstorage::bestspace *bestspace;
   cubstorage::bestspace_entry *entries = NULL;
   cubstorage::bestspace_entry candidate;
   // *INDENT-ON*
@@ -5724,15 +5725,22 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
   heap_hdr.num_recs = 0;
   heap_hdr.recs_sumlen = 0;
 
-  heap_hdr.bestspace.num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+  if (OID_ISNULL (&heap_hdr.class_oid) || OID_IS_ROOTOID (&heap_hdr.class_oid))
+    {
+      heap_hdr.bestspace.num_shards = 1;
+    }
+  else
+    {
+      heap_hdr.bestspace.num_shards = prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+    }
 
   /*
    * Initialize bestspace
    */
   max_candidates = cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE;
-  max_bestpages = cubstorage::bestspace::ENTRIES_PER_SHARD * prm_get_integer_value (PRM_ID_BESTSPACE_SHARD_COUNT);
+  max_bestpages = cubstorage::bestspace::ENTRIES_PER_SHARD * heap_hdr.bestspace.num_shards;
 
-  heap_bestspace_clear_candidates (heap_hdr.bestspace.candidates, NULL, max_candidates);
+  heap_bestspace_clear_candidates (heap_hdr.bestspace.candidates, &heap_hdr.bestspace.num_candidates, max_candidates);
 
   num_entries = 0;
   entries =
@@ -5848,24 +5856,38 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       goto exit_on_error;
     }
 
-  /* update candidates */
-  if (num_entries > max_bestpages)
+  /* find in-memory bestspace */
+  bestspace = heap_find_bestspace (thread_p, NULL, (HFID *) hfid, NULL);
+  if (bestspace)
     {
-      heap_hdr.bestspace.num_candidates = num_entries - max_bestpages;
-      for (i = 0; i < heap_hdr.bestspace.num_candidates; i++)
+      bestspace->reset (entries, MIN (num_entries, max_bestpages));
+      bestspace->set_estimates (heap_hdr.num_pages, heap_hdr.num_recs, heap_hdr.recs_sumlen);
+      if (num_entries > max_bestpages)
 	{
-	  heap_hdr.bestspace.candidates[i] = entries[i + max_bestpages];
+	  bestspace->push_candidates (&entries[max_bestpages], num_entries - max_bestpages);
+	}
+    }
+  else
+    {
+      /* update heap candidates */
+      if (num_entries > max_bestpages)
+	{
+	  heap_hdr.bestspace.num_candidates = num_entries - max_bestpages;
+	  for (i = 0; i < heap_hdr.bestspace.num_candidates; i++)
+	    {
+	      heap_hdr.bestspace.candidates[i] = entries[i + max_bestpages];
+	    }
 	}
     }
 
-  /* Log the desired changes.. and then change the header We need to log the header changes in order to always benefit
+  /* log the desired changes.. and then change the header We need to log the header changes in order to always benefit
    * from the updated statistics and in order to avoid referencing deleted pages in the statistics. */
   addr.pgptr = hdr_page_watcher.pgptr;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
   log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
 			    &initial_heap_hdr, hdr_recdes.data);
 
-  /* Now update the statistics */
+  /* now update the statistics */
   if (spage_update (thread_p, hdr_page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes) != SP_SUCCESS)
     {
       goto exit_on_error;

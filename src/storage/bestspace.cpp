@@ -263,7 +263,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::shard::initialize_by_entries (const bestspace_entry entries[ENTRIES_PER_SHARD])
+  bestspace::shard::reset (const bestspace_entry entries[ENTRIES_PER_SHARD])
   {
     std::array<tier, BITS_PER_BYTE> tiers;
     std::size_t length;
@@ -886,6 +886,20 @@ namespace cubstorage
       }
   }
 
+  void
+  bestspace::candidate_queue::reset ()
+  {
+    std::size_t i;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    for (i = 0; i < MAX_CANDIDATES_QUEUE_SIZE; i++)
+      {
+	m_array[i].set_null ();
+      }
+    m_size = 0;
+  }
+
   bool
   bestspace::candidate_queue::try_push (bestspace_entry candidate)
   {
@@ -1014,7 +1028,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::initialize_by_entries (const bestspace_entry *entries, std::size_t num_entries)
+  bestspace::reset (const bestspace_entry *entries, std::size_t num_entries)
   {
     std::array<bestspace_entry, ENTRIES_PER_SHARD> shard_entries;
     std::size_t entries_to_copy;
@@ -1023,6 +1037,10 @@ namespace cubstorage
 
     assert (num_entries <= m_shards.size () * ENTRIES_PER_SHARD);
 
+    // candidates
+    m_candidates.reset ();
+
+    // shards
     entry_index = 0;
     for (i = 0; i < m_shards.size (); i++)
       {
@@ -1037,7 +1055,7 @@ namespace cubstorage
 	    shard_entries[j].set_null ();
 	  }
 
-	m_shards[i].initialize_by_entries (shard_entries.data ());
+	m_shards[i].reset (shard_entries.data ());
 	entry_index += entries_to_copy;
       }
   }
@@ -1164,6 +1182,12 @@ namespace cubstorage
     int shard_num_pages;
     std::uint64_t shard_recs_num, shard_recs_sumlen;
 
+    // It’s better for the estimates to be higher than the actual values rather than lower.
+    m_num_pages.store (num_pages);
+    m_recs_num.store (recs_num);
+    m_recs_sumlen.store (recs_sumlen);
+
+    // and sub
     for (i = 0; i < m_shards.size (); i++)
       {
 	shard_num_pages = 0;
@@ -1172,9 +1196,6 @@ namespace cubstorage
 	m_shards[i].get_estimates (shard_num_pages, shard_recs_num, shard_recs_sumlen);
 	m_shards[i].subtract_estimates (shard_num_pages, shard_recs_num, shard_recs_sumlen);
       }
-    m_num_pages.store (num_pages);
-    m_recs_num.store (recs_num);
-    m_recs_sumlen.store (recs_sumlen);
   }
 
   void
@@ -1347,7 +1368,7 @@ namespace cubstorage
     node = new registry_entry;
     node->hfid = *hfid;
     node->entry = new bestspace (shard_count, num_pages, recs_num, recs_sumlen, unfill_space);
-    node->entry->initialize_by_entries (entries, num_entries);
+    node->entry->reset (entries, num_entries);
     node->entry->push_candidates (candidates, num_candidates);
 
     std::lock_guard<std::mutex> lock (m_mutex);
