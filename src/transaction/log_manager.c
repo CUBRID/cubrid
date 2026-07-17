@@ -14616,8 +14616,11 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
 
+      LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &next_consume_lsa);
       cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
       cdc_Gl.consumer.consumed_queue_size = 0;
     }
@@ -14633,6 +14636,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
