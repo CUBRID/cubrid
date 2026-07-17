@@ -11189,6 +11189,9 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 		 LSA_AS_ARGS (&process_lsa));
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+	      free_and_init (log_info_entry.log_info);
+	      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
+	      thread_sleep (50);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      continue;
 	    }
