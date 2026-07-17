@@ -303,7 +303,8 @@ static PAGE_PTR btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int
 				    LOAD_ARGS * load_args, int node_level);
 static int btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls, int n_oids, int n_keys);
 
-static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo);
+static int btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo,
+			   bool flush_after_unfix);
 static int btree_load_new_page (THREAD_ENTRY * thread_p, const BTID * btid, BTREE_NODE_HEADER * header, int node_level,
 				VPID * vpid_new, PAGE_PTR * page_new);
 static int bt_load_new_page_serial (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, BTREE_NODE_HEADER * header,
@@ -1729,7 +1730,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
+			    load_args->provider != NULL);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -1787,7 +1789,8 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Save the current leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo,
+			load_args->provider != NULL);
   load_args->leaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -1882,8 +1885,8 @@ btree_connect_page (THREAD_ENTRY * thread_p, DB_VALUE * key, int max_key_len, VP
       *header = load_args->nleaf.hdr;
 
       /* Flush the current non-leaf page */
-      if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo)
-	  != NO_ERROR)
+      if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
+			  load_args->provider != NULL) != NO_ERROR)
 	{
 	  load_args->nleaf.pgptr = NULL;
 	  return NULL;
@@ -2180,7 +2183,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
   *header = load_args->nleaf.hdr;
 
   /* Flush the last non-leaf page */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
+			load_args->provider != NULL);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2314,7 +2318,8 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       *header = load_args->nleaf.hdr;
 
       /* Flush the last non-leaf page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, load_args->no_redo,
+			    load_args->provider != NULL);
       load_args->nleaf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -2462,7 +2467,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
    * The sticky root predates the no-redo provider allocations.  Publish it through WAL so commit/recovery cannot
    * expose its original empty slotted-page image.
    */
-  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, false);
+  ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->nleaf.pgptr, false, false);
   load_args->nleaf.pgptr = NULL;
   if (ret != NO_ERROR)
     {
@@ -2496,13 +2501,20 @@ end:
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
+ *   no_redo(in): when true (bulk build), skip the full-page content redo
+ *   flush_after_unfix(in): when true (parallel bulk builds only), submit the
+ *                          no-redo page to the ordinary flush path right after
+ *                          the unfix (best effort; never fails the build)
  *
  * Note: This function logs the contents (unless no_redo) and frees
  * the page after setting the dirty bit.
  */
 static int
-btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo)
+btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no_redo, bool flush_after_unfix)
 {
+  bool write_through = false;
+  VPID vpid;
+
   if (!no_redo)
     {
       LOG_DATA_ADDR addr;
@@ -2515,15 +2527,44 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
   /*
    * no_redo == true: bulk-build pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
    * The page reaches disk through the ordinary flush path (background flusher, eviction,
-   * checkpoint, and the pre-publication pgbuf_flush_all barrier in xbtree_load_index),
-   * including DWB staging when enabled.  Content changes are never logged, so
-   * oldest_unflush_lsa stays NULL after the first flush and the WAL-force step no-ops;
-   * equal-LSA restagings are the DWB's designed "flushing to disk without logging" case
-   * (double_write_buffer.cpp slot-hash dedup).  Durability before publication comes from
-   * the explicit barrier in xbtree_load_index, not from this function.
+   * checkpoint, the dump-time write-through below, and the pre-publication durability
+   * barrier in xbtree_load_index), including DWB staging when enabled.  Content changes are
+   * never logged, so oldest_unflush_lsa stays NULL after the first flush and the WAL-force
+   * step no-ops; equal-LSA restagings are the DWB's designed "flushing to disk without
+   * logging" case (double_write_buffer.cpp slot-hash dedup).  Durability before publication
+   * comes from the explicit barrier in xbtree_load_index, not from this function.
    */
+  if (no_redo && flush_after_unfix && prm_get_bool_value (PRM_ID_BULK_BUILD_WORKER_FLUSH))
+    {
+      /* capture the page identity before the unfix below consumes page_ptr. */
+      pgbuf_get_vpid (page_ptr, &vpid);
+      write_through = true;
+    }
   pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
   pgbuf_unfix_and_init (thread_p, page_ptr);
+
+  if (write_through)
+    {
+      /*
+       * B3: submit the finished bulk page to the ordinary flush path now (write only; the
+       * single per-build DWB drain + fsync stays in the pre-publication barrier), restoring
+       * the parallel write overlap the defer-to-barrier scheme lost.  Best effort: on any
+       * failure the page simply stays dirty and the barrier flushes it later, so the error
+       * is logged and swallowed without touching the caller's er state.  No latch is held
+       * on this page here, so the probe-flush cannot self-deadlock; latches the caller may
+       * hold on OTHER build pages are irrelevant to the flush machinery (it takes only the
+       * hash and bcb mutexes, never a page latch).
+       */
+      er_stack_push ();
+      if (pgbuf_flush_page_if_exists_and_dirty (thread_p, &vpid, NULL) != NO_ERROR)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "DEBUG_BTREE: bulk write-through flush failed for vpid(%d, %d) (error = %d); "
+			 "the page stays dirty for the pre-publication barrier.", vpid.volid, vpid.pageid,
+			 er_errid ());
+	}
+      er_stack_pop ();
+    }
   return NO_ERROR;
 }
 
@@ -3499,8 +3540,8 @@ btree_proceed_leaf (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   *header = load_args->leaf.hdr;
 
   /* Flush the current leaf page */
-  if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo)
-      != NO_ERROR)
+  if (btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->leaf.pgptr, load_args->no_redo,
+		      load_args->provider != NULL) != NO_ERROR)
     {
       load_args->leaf.pgptr = NULL;
       pgbuf_unfix_and_init (thread_p, new_leafpgptr);
@@ -3976,7 +4017,8 @@ bt_load_make_new_record_on_leaf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_
       assert (slotid > 0);
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
+			    load_args->provider != NULL);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -4134,7 +4176,8 @@ bt_load_nospace_for_new_oid (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int
       ovf_header->next_vpid = new_ovfpgid;
 
       /* Save the current overflow page */
-      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo);
+      ret = btree_log_page (thread_p, &load_args->btid->sys_btid->vfid, load_args->ovf.pgptr, load_args->no_redo,
+			    load_args->provider != NULL);
       load_args->ovf.pgptr = NULL;
       if (ret != NO_ERROR)
 	{
@@ -4697,7 +4740,7 @@ bt_load_store_overflow_key (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, DB_V
 	  }
 	copy_length = MIN (capacity, length);
 	memcpy (target, data, (size_t) copy_length);
-	error = btree_log_page (thread_p, &load_args->btid->ovfid, page, true);
+	error = btree_log_page (thread_p, &load_args->btid->ovfid, page, true, true);
 	if (error != NO_ERROR)
 	  {
 	    goto end;
@@ -5056,13 +5099,13 @@ bt_load_patch_seam (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, LOAD_AR
     }
   header_left->next_vpid = right->report_first_leaf_vpid;
   header_right->prev_vpid = left->report_last_leaf_vpid;
-  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_left, true);
+  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_left, true, true);
   page_left = NULL;
   if (error != NO_ERROR)
     {
       goto end;
     }
-  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_right, true);
+  error = btree_log_page (thread_p, &main_load_args->btid->sys_btid->vfid, page_right, true, true);
   page_right = NULL;
 
 end:

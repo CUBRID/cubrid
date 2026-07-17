@@ -537,8 +537,10 @@ enum param_id
 
   PRM_ID_BULK_BUILD_SCOPED_BARRIER,
 
+  PRM_ID_BULK_BUILD_WORKER_FLUSH,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_BULK_BUILD_SCOPED_BARRIER
+  PRM_LAST_ID = PRM_ID_BULK_BUILD_WORKER_FLUSH
 };
 typedef enum param_id PARAM_ID;
 
