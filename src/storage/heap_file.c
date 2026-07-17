@@ -4602,18 +4602,12 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   cubstorage::bestspace_entry candidate;
   // *INDENT-ON*
   int freespace;
-  OID class_oid;
   VPID *vpid;
 
   /* prev_freespace is not used but leave this for future feature */
   (void) prev_freespace;
 
-  if (heap_get_class_oid_from_page (thread_p, pgptr, &class_oid) != NO_ERROR)
-    {
-      return;
-    }
-
-  bestspace = heap_find_bestspace (thread_p, &class_oid, hfid, header_watcher);
+  bestspace = heap_find_bestspace (thread_p, NULL, hfid, header_watcher);
   if (!bestspace)
     {
       return;
