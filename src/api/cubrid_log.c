@@ -2059,8 +2059,7 @@ cubrid_log_reset_globals (void)
 
   if (g_log_infos != NULL)
     {
-//      free (g_log_infos);
-      g_log_infos = NULL;
+      free_and_init (g_log_infos);
     }
 
   g_log_infos_size = 0;
