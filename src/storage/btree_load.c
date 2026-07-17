@@ -2794,7 +2794,18 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
     }
   provider = new BT_LOAD_PROVIDER ();
   provider->main_pool.vpids = NULL;
-  provider->main_pool.n_published = MAX (est_main_pages, 64);
+  /*
+   * B4: publish only a small bootstrap pool (one 64-page span per worker) and leave the rest to the service loop's
+   * on-demand 64-page refills.  est_main_pages is derived from the merged run's page count, which overshoots the
+   * real index size several times over for duplicate-heavy keys (the run stores every (key, OID) record, the index
+   * dedups keys); publishing the whole estimate up front allocates AND formats that many pages in one burst before
+   * any worker starts.  At 341M-row scale that burst measured +24.7GB of file allocation in ~20s against a 512MB
+   * page pool: the formatted-empty pages flooded the pool, were flushed to disk as waste I/O (+22GB writes/build vs
+   * develop), starved every worker fix on direct-victim waits, and left ~70% of the pages to be deallocated again
+   * by the reconcile pass (the 44.7GB spacedb bloat).  The claim protocol already pre-requests refills when a span
+   * is 75% consumed, so a small bootstrap keeps workers fed without the burst.
+   */
+  provider->main_pool.n_published = MIN (MAX (est_main_pages, 64), n_workers * 64);
   provider->main_pool.cursor.store (0, std::memory_order_relaxed);
   provider->ovf_pool.vpids = NULL;
   provider->ovf_pool.n_published = 0;
