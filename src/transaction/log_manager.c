@@ -11942,8 +11942,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE)
 	      {
-		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
