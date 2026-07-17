@@ -1370,6 +1370,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
 
   ptr = *data_info;
 
+  dml->changed_column_index = NULL;
+  dml->changed_column_data = NULL;
+  dml->changed_column_data_len = NULL;
+  dml->cond_column_index = NULL;
+  dml->cond_column_data = NULL;
+  dml->cond_column_data_len = NULL;
+
   ptr = or_unpack_int (ptr, &dml->dml_type);
   ptr = or_unpack_int64 (ptr, (INT64 *) & dml->classoid);
   ptr = or_unpack_int (ptr, &dml->num_changed_column);
@@ -1586,6 +1593,13 @@ cubrid_log_make_dml (char **data_info, DML * dml)
   return CUBRID_LOG_SUCCESS;
 
 cubrid_log_error:
+
+  free_and_init (dml->changed_column_index);
+  free_and_init (dml->changed_column_data);
+  free_and_init (dml->changed_column_data_len);
+  free_and_init (dml->cond_column_index);
+  free_and_init (dml->cond_column_data);
+  free_and_init (dml->cond_column_data_len);
 
   return err_code;
 }
