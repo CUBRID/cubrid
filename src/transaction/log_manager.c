@@ -11265,8 +11265,16 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
-	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+	  size_t required_size = (size_t) (-undo_recdes->length);
+	  char *new_data = (char *) realloc (undo_recdes->data, required_size);
+	  if (new_data == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, required_size);
+	      return S_ERROR;
+	    }
+
+	  undo_recdes->data = new_data;
+	  undo_recdes->area_size = required_size;
 
 	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
 	    {
