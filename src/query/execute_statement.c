@@ -3523,6 +3523,7 @@ end:
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   do_free_reserved_classinfo (reserved_cls_info);
+  free_and_init (reserved_oid);
 
   if (error == ER_FAILED)
     {
@@ -4211,6 +4212,7 @@ end:
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
   do_free_reserved_classinfo (reserved_cls_info);
+  free_and_init (reserved_oid);
 
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
@@ -16138,7 +16140,7 @@ end:
       free (host_val);
     }
 
-  if (oid != NULL)
+  if (oid != NULL && oid != reserved_oid)
     {
       free_and_init (oid);
     }
