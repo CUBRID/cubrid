@@ -51,6 +51,35 @@ monotonic_seconds () noexcept
 				     (std::chrono::steady_clock::now ().time_since_epoch ()).count ());
 }
 
+
+static int
+wait_for_shard_allocation (THREAD_ENTRY *thread_p, void *args)
+{
+  std::size_t *retry;
+  bool continue_check;
+
+  retry = static_cast<std::size_t *> (args);
+  assert (retry != nullptr);
+
+  if (*retry < 20)
+    {
+      std::this_thread::yield ();
+    }
+  else
+    {
+      std::this_thread::sleep_for (std::chrono::microseconds (10));
+    }
+  (*retry)++;
+
+  if (logtb_is_interrupted (thread_p, true, &continue_check))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+      return ER_INTERRUPTED;
+    }
+
+  return NO_ERROR;
+}
+
 namespace cubstorage
 {
   //////////////////////////////////////////////////////////////////////////
@@ -1252,7 +1281,6 @@ namespace cubstorage
   bestspace::find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			       std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher)
   {
-    bool continue_check;
     std::size_t retry;
     std::size_t i;
     status error;
@@ -1288,22 +1316,10 @@ namespace cubstorage
 
 	assert (error == status::ALLOCATING);
 
-	// NOT FOUND AND CAN'T ALLOCATE
-	if (retry < 20)
+	errid = pgbuf_ordered_callback (&thread_ref, wait_for_shard_allocation, &retry);
+	if (errid != NO_ERROR)
 	  {
-	    std::this_thread::yield ();
-	  }
-	else
-	  {
-	    std::this_thread::sleep_for (std::chrono::microseconds (10));
-	  }
-	retry++;
-
-	// IF INTERRUPTED
-	if (logtb_is_interrupted (&thread_ref, true, &continue_check))
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-	    return ER_INTERRUPTED;
+	    return errid;
 	  }
       }
 
