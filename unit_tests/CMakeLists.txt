@@ -38,6 +38,7 @@ option (UNIT_TEST_RESOURCE_TRACKER "Unit testing: resource tracker")
 option (UNIT_TEST_MONITOR "Unit testing: monitor")
 option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
+option (UNIT_TEST_CUBRID_LOG "Unit testing: CUBRID log API")
 
 message("  unit_tests/...")
 
@@ -104,3 +105,8 @@ if (UNIT_TESTS OR UNIT_TEST_MEMORY_MONITOR)
   message("    memory_monitor")
   add_subdirectory(memory_monitor)
 endif(UNIT_TESTS OR UNIT_TEST_MEMORY_MONITOR)
+
+if (UNIT_TESTS OR UNIT_TEST_CUBRID_LOG)
+  message("    cubrid_log")
+  add_subdirectory(cubrid_log)
+endif(UNIT_TESTS OR UNIT_TEST_CUBRID_LOG)
