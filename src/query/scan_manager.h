@@ -489,6 +489,7 @@ struct scan_id_struct
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 
   int fixed;			/* if true, pages containing scan items in a group keep fixed */
+  bool cached_scan;		/* cached (copy-to-local-cache) scan activation; persists across partition reopens */
   int grouped;			/* if true, the scan items are accessed group by group, instead of a whole single scan
 				 * from beginning to end. */
   int qualified_block;		/* scan block has qualified items, initially set to true */
@@ -542,7 +543,9 @@ extern int scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				int num_attrs_pred, ATTR_ID * attrids_pred, HEAP_CACHE_ATTRINFO * cache_pred,
 				int num_attrs_rest, ATTR_ID * attrids_rest, HEAP_CACHE_ATTRINFO * cache_rest,
 				SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
-				regu_variable_list_node * regu_list_recordinfo);
+				regu_variable_list_node * regu_list_recordinfo,
+				/* cached_scan: eligibility computed by caller (query_executor.c) */
+				bool cached_scan = false);
 extern int scan_open_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, val_list_node * val_list,
 				     val_descr * vd, OID * cls_oid, HFID * hfid, PRED_EXPR * pr, SCAN_TYPE scan_type,
 				     DB_VALUE ** cache_page_info, regu_variable_list_node * regu_list_page_info);
