@@ -11011,6 +11011,11 @@ cdc_log_extract (THREAD_ENTRY * thread_p, LOG_LSA * process_lsa, CDC_LOGINFO_ENT
     }
 
 end:
+  if (supp_recdes.data != NULL)
+    {
+      free_and_init (supp_recdes.data);
+    }
+
   if (supplement_data != NULL)
     {
       free_and_init (supplement_data);
@@ -11031,6 +11036,11 @@ end:
   return error;
 
 error:
+  if (supp_recdes.data != NULL)
+    {
+      free_and_init (supp_recdes.data);
+    }
+
   if (supplement_data != NULL)
     {
       free_and_init (supplement_data);
