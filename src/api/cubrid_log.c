@@ -1706,6 +1706,8 @@ cubrid_log_error:
   return err_code;
 }
 
+static int cubrid_log_clear_data_item (DATA_ITEM_TYPE data_item_type, CUBRID_DATA_ITEM * data_item);
+
 static int
 cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM ** log_item_list, int *list_size)
 {
@@ -1757,8 +1759,16 @@ cubrid_log_make_log_item_list (int num_infos, int total_length, CUBRID_LOG_ITEM 
 
   for (i = 0; i < num_infos; i++)
     {
-      if ((rc = cubrid_log_make_log_item (&ptr, &g_log_items[i]) != CUBRID_LOG_SUCCESS))
+      if ((rc = cubrid_log_make_log_item (&ptr, &g_log_items[i])) != CUBRID_LOG_SUCCESS)
 	{
+	  int j;
+
+	  for (j = 0; j < i; j++)
+	    {
+	      (void) cubrid_log_clear_data_item ((DATA_ITEM_TYPE) g_log_items[j].data_item_type,
+						 &g_log_items[j].data_item);
+	    }
+
 	  CUBRID_LOG_ERROR_HANDLING (rc, NULL);
 	}
 
