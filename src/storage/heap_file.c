@@ -617,7 +617,7 @@ static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID 
 // *INDENT-ON*
 
 STATIC_INLINE int heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
-				      PGBUF_WATCHER * page_watcher);
+				      bool is_newrec, PGBUF_WATCHER * page_watcher);
 
 static int heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, const bool reuse_oid);
 static const HFID *heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, const bool reuse_oid);
@@ -4559,7 +4559,7 @@ heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGBU
  *   return:
  */
 STATIC_INLINE int
-heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size,
+heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::uint16_t size, bool is_newrec,
 		    PGBUF_WATCHER * page_watcher)
 {
   // *INDENT-OFF*
@@ -4586,7 +4586,7 @@ heap_find_bestpage (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, std::
     }
 
   /* find */
-  return bestspace->find (*thread_p, class_oid, hfid, size, *page_watcher);
+  return bestspace->find (*thread_p, class_oid, hfid, size, is_newrec, *page_watcher);
 }
 
 /*
@@ -20352,7 +20352,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       assert (!HFID_IS_NULL (&context->hfid));
 
       /* find and fix page for insert */
-      if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+      if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, true,
 			      context->home_page_watcher_p) != NO_ERROR)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
@@ -20496,7 +20496,7 @@ heap_find_location_and_insert_rec_newhome (THREAD_ENTRY * thread_p, HEAP_OPERATI
 
   assert (!HFID_IS_NULL (&context->hfid));
 
-  if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length,
+  if (heap_find_bestpage (thread_p, &context->class_oid, &context->hfid, context->recdes_p->length, false,
 			  context->home_page_watcher_p) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);

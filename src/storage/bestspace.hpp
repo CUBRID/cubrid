@@ -350,7 +350,8 @@ namespace cubstorage
 
       bool updatable ();
 
-      int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, PGBUF_WATCHER &page_watcher);
+      int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, bool is_newrec,
+		PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
 
@@ -378,7 +379,7 @@ namespace cubstorage
       std::atomic<std::uint64_t> m_last_updated;
 
       int find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
-			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, PGBUF_WATCHER &page_watcher);
+			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher);
 
       static_assert (sizeof (bitmap) == 1, "bestspace::bitmap must be 1 byte");
       static_assert (std::is_trivially_copyable<bitmap>::value, "bestspace::bitmap must be trivially copyable");

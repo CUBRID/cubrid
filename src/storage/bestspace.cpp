@@ -1104,7 +1104,7 @@ namespace cubstorage
   }
 
   int
-  bestspace::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size,
+  bestspace::find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, bool is_newrec,
 		   PGBUF_WATCHER &page_watcher)
   {
     int consume_size, needed_size;
@@ -1143,7 +1143,7 @@ namespace cubstorage
     bias = 0;
 
     // find
-    return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, page_watcher);
+    return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
   }
 
   bestspace::tier
@@ -1250,7 +1250,7 @@ namespace cubstorage
 
   int
   bestspace::find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
-			       std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, PGBUF_WATCHER &page_watcher)
+			       std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher)
   {
     bool continue_check;
     std::size_t retry;
@@ -1275,7 +1275,7 @@ namespace cubstorage
 		    error == status::FAILURE);
 	    if (error == status::FOUND)
 	      {
-		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, 1, consume_size - SPAGE_SLOT_SIZE);
+		m_shards[ (shard + i) % m_shards.size ()].add_estimates (0, is_newrec ? 1 : 0, consume_size - SPAGE_SLOT_SIZE);
 		return NO_ERROR;
 	      }
 	    if (error == status::FAILURE)
