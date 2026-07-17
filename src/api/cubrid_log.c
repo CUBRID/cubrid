@@ -500,6 +500,8 @@ cubrid_log_set_all_in_cond (int retrieve_all)
 int
 cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
 {
+  uint64_t *new_extraction_table = NULL;
+
   if (g_stage != CUBRID_LOG_STAGE_CONFIGURATION)
     {
       return CUBRID_LOG_INVALID_FUNC_CALL_STAGE;
@@ -510,13 +512,19 @@ cubrid_log_set_extraction_table (uint64_t * classoid_arr, int arr_size)
       return CUBRID_LOG_INVALID_CLASSOID_ARR_SIZE;
     }
 
-  g_extraction_table = (uint64_t *) malloc (sizeof (uint64_t) * arr_size);
-  if (g_extraction_table == NULL)
+  if (arr_size > 0)
     {
-      return CUBRID_LOG_FAILED_MALLOC;
+      new_extraction_table = (uint64_t *) malloc (sizeof (uint64_t) * arr_size);
+      if (new_extraction_table == NULL)
+	{
+	  return CUBRID_LOG_FAILED_MALLOC;
+	}
+
+      memcpy (new_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
     }
 
-  memcpy (g_extraction_table, classoid_arr, arr_size * sizeof (uint64_t));
+  free_and_init (g_extraction_table);
+  g_extraction_table = new_extraction_table;
   g_extraction_table_count = arr_size;
 
   return CUBRID_LOG_SUCCESS;
@@ -552,24 +560,36 @@ cubrid_log_set_extraction_user (char **user_arr, int arr_size)
 	}
     }
 
-  new_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
-  if (new_extraction_user == NULL)
+  if (arr_size > 0)
     {
-      return CUBRID_LOG_FAILED_MALLOC;
-    }
-
-  for (i = 0; i < arr_size; i++)
-    {
-      new_extraction_user[i] = strdup (user_arr[i]);
-      if (new_extraction_user[i] == NULL)
+      new_extraction_user = (char **) malloc (sizeof (char *) * arr_size);
+      if (new_extraction_user == NULL)
 	{
-	  for (j = 0; j < i; j++)
-	    {
-	      free_and_init (new_extraction_user[j]);
-	    }
-	  free_and_init (new_extraction_user);
 	  return CUBRID_LOG_FAILED_MALLOC;
 	}
+
+      for (i = 0; i < arr_size; i++)
+	{
+	  new_extraction_user[i] = strdup (user_arr[i]);
+	  if (new_extraction_user[i] == NULL)
+	    {
+	      for (j = 0; j < i; j++)
+		{
+		  free_and_init (new_extraction_user[j]);
+		}
+	      free_and_init (new_extraction_user);
+	      return CUBRID_LOG_FAILED_MALLOC;
+	    }
+	}
+    }
+
+  if (g_extraction_user != NULL)
+    {
+      for (i = 0; i < g_extraction_user_count; i++)
+	{
+	  free_and_init (g_extraction_user[i]);
+	}
+      free_and_init (g_extraction_user);
     }
 
   g_extraction_user = new_extraction_user;
