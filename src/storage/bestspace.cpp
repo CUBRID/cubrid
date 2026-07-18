@@ -995,6 +995,23 @@ namespace cubstorage
     return i;
   }
 
+  std::size_t
+  bestspace::candidate_queue::to_entries (bestspace_entry *candidates)
+  {
+    std::size_t i;
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    assert (candidates != nullptr);
+    assert (m_size <= MAX_CANDIDATES_QUEUE_SIZE);
+
+    for (i = 0; i < m_size; i++)
+      {
+	candidates[i] = m_array[m_size - i - 1];
+      }
+    return m_size;
+  }
+
   void
   bestspace::candidate_queue::remove_if_exist (bestspace_entry &candidate)
   {
@@ -1278,7 +1295,7 @@ namespace cubstorage
   }
 
   void
-  bestspace::to_entries (bestspace_entry *entries)
+  bestspace::to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates)
   {
     std::size_t i;
 
@@ -1286,6 +1303,8 @@ namespace cubstorage
       {
 	m_shards[i].to_entries (entries + i * ENTRIES_PER_SHARD);
       }
+
+    num_candidates = m_candidates.to_entries (candidates);
   }
 
   int
@@ -1443,6 +1462,38 @@ namespace cubstorage
 	return entry;
       }
     return find_from_global (hfid);
+  }
+
+  int
+  bestspace_registry::for_each (callback function, void *args)
+  {
+    registry_entry *node;
+    int error, stored_error;
+
+    assert (function != nullptr);
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    stored_error = NO_ERROR;
+    for (node = m_head; node != nullptr; node = node->next)
+      {
+	if (stored_error != NO_ERROR)
+	  {
+	    er_stack_push ();
+	  }
+
+	error = function (&node->hfid, node->entry, args);
+	if (stored_error != NO_ERROR)
+	  {
+	    er_stack_pop ();
+	  }
+	else if (error != NO_ERROR)
+	  {
+	    stored_error = error;
+	  }
+      }
+
+    return stored_error;
   }
 
   bestspace *

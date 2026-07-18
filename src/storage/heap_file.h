@@ -395,6 +395,7 @@ extern int heap_classrepr_dump_anyfixed (void);
 extern int heap_manager_initialize (void);
 extern int heap_classrepr_restart_cache (void);
 extern int heap_manager_finalize (void);
+extern int heap_update_all_bestspaces (THREAD_ENTRY * thread_p);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid,
 				int expected_length);
 extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, VFID * ovf_vfid_p);

@@ -329,6 +329,8 @@ namespace cubstorage
 
 	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size);
 
+	  std::size_t to_entries (bestspace_entry *candidates);
+
 	private:
 	  std::array<bestspace_entry, MAX_CANDIDATES_QUEUE_SIZE> m_array;
 	  std::size_t m_size;
@@ -364,7 +366,7 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
-      void to_entries (bestspace_entry *entries);
+      void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
     private:
       std::deque<shard> m_shards;
@@ -440,7 +442,8 @@ namespace cubstorage
 
       bestspace *find (HFID *hfid);
 
-      void show_stats ();
+      using callback = int (*) (const HFID *hfid, bestspace *entry, void *args);
+      int for_each (callback function, void *args);
 
     private:
       registry_entry *m_head;

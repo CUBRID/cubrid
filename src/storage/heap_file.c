@@ -604,12 +604,12 @@ static int heap_update_bestspace_chain (THREAD_ENTRY * thread_p, const OID * cla
 					const VPID * pages, int num_pages);
 static int heap_update_bestspace_entries (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * pages,
 					  int num_pages, const cubstorage::bestspace_entry * entries, int num_entries);
-static int heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher,
-				HEAP_HDR_STATS * header, cubstorage::bestspace_entry * entries,
-				cubstorage::bestspace_entry * candidates);
+static int heap_load_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, const HEAP_HDR_STATS * header,
+				cubstorage::bestspace_entry * entries, cubstorage::bestspace_entry * candidates);
 
 // *INDENT-OFF*
 static int heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::bestspace *bestspace);
+static int heap_update_bestspace_registry_entry (const HFID * hfid, cubstorage::bestspace *bestspace, void *args);
 static cubstorage::bestspace *heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
 						    PGBUF_WATCHER * header_watcher);
 static cubstorage::bestspace *heap_find_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid,
@@ -4166,6 +4166,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
 {
   // *INDENT-OFF*
   cubstorage::bestspace_entry *entries = NULL;
+  cubstorage::bestspace_entry candidates[cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE];
   // *INDENT-ON*
   PGBUF_WATCHER header_watcher;
   HEAP_HDR_STATS *heap_hdr;
@@ -4174,6 +4175,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
   int num_vpids;
   VPID header_vpid;
   std::size_t num_entries;
+  std::size_t num_candidates;
   std::size_t num_shards;
   std::uint64_t num_recs, recs_sumlen;
   int num_pages;
@@ -4205,7 +4207,7 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
     }
 
   /* serialize the snapshot with other heap header writers. */
-  bestspace->to_entries (entries);
+  bestspace->to_entries (entries, candidates, num_candidates);
   bestspace->get_estimates (num_pages, num_recs, recs_sumlen);
 
   heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
@@ -4246,6 +4248,16 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
   heap_hdr->num_pages = MAX (heap_hdr->num_pages, num_pages);
   heap_hdr->num_recs = num_recs;
   heap_hdr->recs_sumlen = recs_sumlen;
+
+  /* candidates */
+  heap_bestspace_clear_candidates (heap_hdr->bestspace.candidates, &heap_hdr->bestspace.num_candidates,
+				   cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
+  if (num_candidates > 0)
+    {
+      std::memcpy (heap_hdr->bestspace.candidates, candidates, num_candidates * sizeof (cubstorage::bestspace_entry));
+      heap_hdr->bestspace.num_candidates = num_candidates;
+    }
+  /* shards */
   heap_hdr->bestspace.num_shards = num_shards;
 
   addr.vfid = &hfid->vfid;
@@ -4266,15 +4278,35 @@ error_exit:
   return error;
 }
 
+static int
+heap_update_bestspace_registry_entry (const HFID * hfid, cubstorage::bestspace * bestspace, void *args)
+{
+  THREAD_ENTRY *thread_p;
+
+  assert (hfid != NULL);
+  assert (bestspace != NULL);
+  assert (args != NULL);
+
+  thread_p = (THREAD_ENTRY *) args;
+  return heap_update_bestspace (thread_p, hfid, bestspace);
+}
+
+int
+heap_update_all_bestspaces (THREAD_ENTRY * thread_p)
+{
+  assert (thread_p != NULL);
+
+  return cubstorage::bestspaces.for_each (heap_update_bestspace_registry_entry, thread_p);
+}
+
 /*
- * heap_take_bestspace () - Take a bestspace from heap file
+ * heap_load_bestspace () - Load a bestspace from heap file
  *   return:
  */
 static int
-heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * header_watcher, HEAP_HDR_STATS * header,
+heap_load_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, const HEAP_HDR_STATS * header,
 		     cubstorage::bestspace_entry * entries, cubstorage::bestspace_entry * candidates)
 {
-  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   PGBUF_WATCHER page_watcher;
   bool page_watcher_fixed = false;
   int num_entries_in_page, num_entries_to_copy;
@@ -4337,20 +4369,11 @@ heap_take_bestspace (THREAD_ENTRY * thread_p, HFID * hfid, PGBUF_WATCHER * heade
     }
   assert (remaining_entries == 0);
 
-  /* drain the candidates from the heap header */
+  /* copy the last persistent candidate checkpoint into the in-memory bestspace. */
   if (header->bestspace.num_candidates > 0)
     {
       memcpy (candidates, header->bestspace.candidates,
 	      header->bestspace.num_candidates * sizeof (cubstorage::bestspace_entry));
-
-      heap_bestspace_clear_candidates (header->bestspace.candidates, &header->bestspace.num_candidates,
-				       cubstorage::bestspace::MAX_CANDIDATES_QUEUE_SIZE);
-
-      addr.vfid = &hfid->vfid;
-      addr.pgptr = header_watcher->pgptr;
-      addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-      log_append_redo_data (thread_p, RVHF_STATS, &addr, sizeof (*header), header);
-      pgbuf_set_dirty (thread_p, header_watcher->pgptr, DONT_FREE);
     }
 
 exit:
@@ -4363,7 +4386,7 @@ exit:
 
 
 /*
- * heap_build_bestspace () - Take and rebuild a bestspace from heap file
+ * heap_build_bestspace () - Load and rebuild a bestspace from heap file
  *   return:
  */
 // *INDENT-OFF*
@@ -4417,7 +4440,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
     }
 
   /* there is no in-memory bestspace */
-  error = heap_take_bestspace (thread_p, hfid, header_watcher, header, entries, candidates);
+  error = heap_load_bestspace (thread_p, hfid, header, entries, candidates);
   if (error != NO_ERROR)
     {
       free_and_init (entries);
@@ -5850,7 +5873,17 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       goto exit_on_error;
     }
 
-  /* find in-memory bestspace */
+  /* keep the rebuilt candidates as the latest persistent checkpoint. */
+  if (num_entries > max_bestpages)
+    {
+      heap_hdr.bestspace.num_candidates = num_entries - max_bestpages;
+      for (i = 0; i < heap_hdr.bestspace.num_candidates; i++)
+	{
+	  heap_hdr.bestspace.candidates[i] = entries[i + max_bestpages];
+	}
+    }
+
+  /* update in-memory bestspace if it is resident */
   bestspace = heap_find_bestspace (thread_p, NULL, (HFID *) hfid, NULL);
   if (bestspace)
     {
@@ -5859,18 +5892,6 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
       if (num_entries > max_bestpages)
 	{
 	  bestspace->push_candidates (&entries[max_bestpages], num_entries - max_bestpages);
-	}
-    }
-  else
-    {
-      /* update heap candidates */
-      if (num_entries > max_bestpages)
-	{
-	  heap_hdr.bestspace.num_candidates = num_entries - max_bestpages;
-	  for (i = 0; i < heap_hdr.bestspace.num_candidates; i++)
-	    {
-	      heap_hdr.bestspace.candidates[i] = entries[i + max_bestpages];
-	    }
 	}
     }
 
