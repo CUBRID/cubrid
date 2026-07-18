@@ -919,7 +919,10 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      goto error_continue;
 	    }
 
-	  found_noncomment = false;
+	  if (csql_edit_contents_get ()[0] == '\0')
+	    {
+	      found_noncomment = false;
+	    }
 
 	  continue;
 	}

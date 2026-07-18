@@ -1048,7 +1048,7 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 
 /*
  * csql_walk_statement () - parse str and change the state
- * return : NULL
+ * return : True if contains a non-whitespace/non-comment token, false otherwise.
  * str (in) : the new statement chunk received from input
  */
 bool
