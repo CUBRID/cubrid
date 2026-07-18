@@ -139,6 +139,13 @@ struct sort_index_shard
   int end_page;
   int end_slot;
 };
+typedef struct sort_px_merge_input SORT_PX_MERGE_INPUT;
+struct sort_px_merge_input
+{
+  VFID temp;			/* source worker run */
+  int npages;			/* run length in pages */
+  SORT_INDEX_SHARD range;	/* this shard's [start, end) slice of the run */
+};
 typedef struct sort_param SORT_PARAM;
 struct sort_param
 {
@@ -193,7 +200,8 @@ struct sort_param
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
-  SORT_INDEX_SHARD px_index_shard;
+  SORT_PX_MERGE_INPUT *px_merge_inputs;	/* B5: this shard's key-range slice of every worker run */
+  int px_merge_n_inputs;
   QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY/ANALYTIC workers */
 #if defined(SERVER_MODE)
   pthread_mutex_t *px_mtx;	/* px_status mutex */
@@ -317,8 +325,11 @@ static int sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p
 static int sort_merge_worker_runs_to_one (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 					  SORT_PARAM * sort_param, int parallel_num);
 static int sort_run_final_single (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param);
-static int sort_split_last_run_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
-					   SORT_PARAM * sort_param, int parallel_num, int *n_shards);
+static int sort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
+					  SORT_PARAM * sort_param, int parallel_num,
+					  SORT_PX_MERGE_INPUT ** shard_inputs, int *n_runs_out, int *n_shards_out,
+					  INT64 * total_pages_out);
+static void sort_px_free_shard_inputs (SORT_PX_MERGE_INPUT ** shard_inputs, int n_shards);
 static void sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param);
 static BT_LOAD_PX_OUTCOME sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param,
 							SORT_PARAM * sort_param, int parallel_num);
@@ -3433,20 +3444,20 @@ sort_split_last_run (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_P
     }
 }
 
+/*
+ * sort_index_page_decode_key () - decode the index key of the record at slot of an already-loaded run page.
+ *   BIGONE records are assembled from the multipage file first.  The key value owns its memory
+ *   (bt_load_decode_sort_record_key reads it with copy semantics), so it stays valid after the page buffer
+ *   is overwritten; the caller must pr_clear_value() it.
+ */
 static int
-sort_index_decode_at (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int page, int slot, DB_VALUE * key)
+sort_index_page_decode_key (THREAD_ENTRY * thread_p, char *pgbuf, int slot, LOAD_ARGS * load_args, DB_VALUE * key)
 {
   RECDES record = RECDES_INITIALIZER;
   RECDES long_record = RECDES_INITIALIZER;
-  int result_file_idx = sort_param->px_result_file_idx;
   int error;
 
-  error = sort_read_area (thread_p, &sort_param->temp[result_file_idx], page, 1, sort_param->internal_memory);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  if (sort_spage_get_record (sort_param->internal_memory, slot, &record, PEEK) != S_SUCCESS)
+  if (sort_spage_get_record (pgbuf, slot, &record, PEEK) != S_SUCCESS)
     {
       return ER_SORT_TEMP_PAGE_CORRUPTED;
     }
@@ -3456,21 +3467,32 @@ sort_index_decode_at (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int page
 	{
 	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
 	}
-      error = bt_load_decode_sort_record_key (thread_p, &long_record, (LOAD_ARGS *) sort_param->put_arg, key);
+      error = bt_load_decode_sort_record_key (thread_p, &long_record, load_args, key);
       free_and_init (long_record.data);
     }
   else
     {
-      error = bt_load_decode_sort_record_key (thread_p, &record, (LOAD_ARGS *) sort_param->put_arg, key);
+      error = bt_load_decode_sort_record_key (thread_p, &record, load_args, key);
     }
   return error;
 }
 
 static int
-sort_index_prev_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int page, int slot,
-		       int *prev_page, int *prev_slot)
+sort_index_run_decode_key_at (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, LOAD_ARGS * load_args,
+			      int page, int slot, DB_VALUE * key)
 {
-  int result_file_idx = sort_param->px_result_file_idx;
+  int error = sort_read_area (thread_p, temp, page, 1, iomem);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  return sort_index_page_decode_key (thread_p, iomem, slot, load_args, key);
+}
+
+static int
+sort_index_run_prev_coord (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, int page, int slot,
+			   int *prev_page, int *prev_slot)
+{
   if (slot > 0)
     {
       *prev_page = page;
@@ -3481,30 +3503,28 @@ sort_index_prev_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int pag
     {
       return ER_FAILED;
     }
-  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], page - 1, 1,
-		      sort_param->internal_memory) != NO_ERROR)
+  if (sort_read_area (thread_p, temp, page - 1, 1, iomem) != NO_ERROR)
     {
       return ER_FAILED;
     }
   *prev_page = page - 1;
-  *prev_slot = sort_spage_get_numrecs (sort_param->internal_memory) - 1;
+  *prev_slot = sort_spage_get_numrecs (iomem) - 1;
   return *prev_slot >= 0 ? NO_ERROR : ER_FAILED;
 }
 
 static int
-sort_index_next_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int total_pages, int *page, int *slot)
+sort_index_run_next_coord (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, int npages, int *page, int *slot)
 {
-  int result_file_idx = sort_param->px_result_file_idx;
-  if (*page >= total_pages)
+  if (*page >= npages)
     {
       return NO_ERROR;
     }
-  if (sort_read_area (thread_p, &sort_param->temp[result_file_idx], *page, 1, sort_param->internal_memory) != NO_ERROR)
+  if (sort_read_area (thread_p, temp, *page, 1, iomem) != NO_ERROR)
     {
       return ER_FAILED;
     }
   (*slot)++;
-  if (*slot >= sort_spage_get_numrecs (sort_param->internal_memory))
+  if (*slot >= sort_spage_get_numrecs (iomem))
     {
       (*page)++;
       *slot = 0;
@@ -3512,86 +3532,422 @@ sort_index_next_coord (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param, int tot
   return NO_ERROR;
 }
 
+/*
+ * sort_px_run_lower_bound () - first (page, slot) of the run whose key is >= splitter; (npages, 0) when every
+ *   record's key is smaller.  Records with equal keys never straddle the returned position in different
+ *   directions, so partitioning every run by the same splitter keys keeps each duplicate-key group whole.
+ */
 static int
-sort_split_last_run_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
-				int parallel_num, int *n_shards)
+sort_px_run_lower_bound (THREAD_ENTRY * thread_p, VFID * temp, int npages, char *iomem, LOAD_ARGS * load_args,
+			 TP_DOMAIN * key_type, DB_VALUE * splitter, int *page_out, int *slot_out)
 {
-  int result_file_idx = px_sort_param[0].px_result_file_idx;
-  int total_pages = px_sort_param[0].file_contents[result_file_idx].num_pages[0];
-  SORT_INDEX_SHARD ranges[SORT_MAX_PARALLEL];
-  int count = 1;
+  DB_VALUE key;
+  int lo, hi, first_ge_page;
+  int cmp;
+  int error;
 
-  sort_param->px_result_file_idx = result_file_idx;
-  sort_param->file_contents[result_file_idx].num_pages[0] = total_pages;
-  sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
-  ranges[0].start_page = 0;
-  ranges[0].start_slot = 0;
+  db_make_null (&key);
+
+  /* first page whose FIRST key is >= splitter */
+  lo = 0;
+  hi = npages - 1;
+  first_ge_page = npages;
+  while (lo <= hi)
+    {
+      int mid = lo + (hi - lo) / 2;
+      error = sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, mid, 0, &key);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      cmp = btree_compare_key (splitter, &key, key_type, 0, 1, NULL);
+      pr_clear_value (&key);
+      if (cmp == DB_GT)
+	{
+	  lo = mid + 1;
+	}
+      else if (cmp == DB_EQ || cmp == DB_LT)
+	{
+	  first_ge_page = mid;
+	  hi = mid - 1;
+	}
+      else
+	{
+	  return ER_FAILED;
+	}
+    }
+
+  if (first_ge_page == 0)
+    {
+      *page_out = 0;
+      *slot_out = 0;
+      return NO_ERROR;
+    }
+
+  /* the boundary lies inside page (first_ge_page - 1) or exactly at (first_ge_page, 0) */
+  {
+    int p = first_ge_page - 1;
+    int nrecs, first_ge_slot;
+
+    error = sort_read_area (thread_p, temp, p, 1, iomem);
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    nrecs = sort_spage_get_numrecs (iomem);
+    if (nrecs <= 0)
+      {
+	assert (false);
+	return ER_SORT_TEMP_PAGE_CORRUPTED;
+      }
+    /* slot 0's key is known < splitter (page binary search) */
+    lo = 1;
+    hi = nrecs - 1;
+    first_ge_slot = nrecs;
+    while (lo <= hi)
+      {
+	int mid = lo + (hi - lo) / 2;
+	error = sort_index_page_decode_key (thread_p, iomem, mid, load_args, &key);
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	cmp = btree_compare_key (splitter, &key, key_type, 0, 1, NULL);
+	pr_clear_value (&key);
+	if (cmp == DB_GT)
+	  {
+	    lo = mid + 1;
+	  }
+	else if (cmp == DB_EQ || cmp == DB_LT)
+	  {
+	    first_ge_slot = mid;
+	    hi = mid - 1;
+	  }
+	else
+	  {
+	    return ER_FAILED;
+	  }
+      }
+    if (first_ge_slot >= nrecs)
+      {
+	*page_out = p + 1;
+	*slot_out = 0;
+      }
+    else
+      {
+	*page_out = p;
+	*slot_out = first_ge_slot;
+      }
+  }
+  return NO_ERROR;
+}
+
+/*
+ * sort_px_select_splitters () - choose up to parallel_num - 1 strictly increasing splitter keys from the pilot
+ *   (largest) run at page-proportional positions, each advanced to the first record of a key group -- the same
+ *   never-split-a-duplicate-group invariant the single-run splitter enforced.  Selected keys own their memory;
+ *   the caller clears them.
+ */
+static int
+sort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * temp, int npages, char *iomem, LOAD_ARGS * load_args,
+			  TP_DOMAIN * key_type, int parallel_num, DB_VALUE * splitters, int *n_splitters)
+{
+  int prev_page = 0, prev_slot = 0;	/* run start: boundaries must strictly advance past it */
+  int m = 0;
+  int error;
 
   for (int i = 1; i < parallel_num; i++)
     {
-      int page = (int) (((INT64) total_pages * i) / parallel_num);
+      int page = (int) (((INT64) npages * i) / parallel_num);
       int slot = 0;
-      if (page < ranges[count - 1].start_page
-	  || (page == ranges[count - 1].start_page && slot <= ranges[count - 1].start_slot))
-	{
-	  continue;
-	}
-      if (page >= total_pages)
+      if (page >= npages)
 	{
 	  break;
 	}
+      if (page < prev_page || (page == prev_page && slot <= prev_slot))
+	{
+	  continue;
+	}
+      /* advance to the start of the next key group */
       for (;;)
 	{
-	  int prev_page, prev_slot, compare;
+	  int pp, ps, compare;
 	  DB_VALUE left, right;
 	  db_make_null (&left);
 	  db_make_null (&right);
-	  if (sort_index_prev_coord (thread_p, sort_param, page, slot, &prev_page, &prev_slot) != NO_ERROR
-	      || sort_index_decode_at (thread_p, sort_param, prev_page, prev_slot, &left) != NO_ERROR
-	      || sort_index_decode_at (thread_p, sort_param, page, slot, &right) != NO_ERROR)
+	  if (sort_index_run_prev_coord (thread_p, temp, iomem, page, slot, &pp, &ps) != NO_ERROR
+	      || sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, pp, ps, &left) != NO_ERROR
+	      || sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, page, slot, &right) != NO_ERROR)
 	    {
 	      pr_clear_value (&left);
 	      pr_clear_value (&right);
 	      return ER_FAILED;
 	    }
-	  compare = btree_compare_key (&left, &right, ((SORT_ARGS *) sort_param->get_arg)->key_type, 0, 1, NULL);
+	  compare = btree_compare_key (&left, &right, key_type, 0, 1, NULL);
 	  pr_clear_value (&left);
 	  pr_clear_value (&right);
 	  if (compare != DB_EQ)
 	    {
 	      break;
 	    }
-	  if (sort_index_next_coord (thread_p, sort_param, total_pages, &page, &slot) != NO_ERROR)
+	  if (sort_index_run_next_coord (thread_p, temp, iomem, npages, &page, &slot) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  if (page >= total_pages)
+	  if (page >= npages)
 	    {
 	      break;
 	    }
 	}
-      if (page >= total_pages)
+      if (page >= npages)
 	{
 	  break;
 	}
-      ranges[count - 1].end_page = page;
-      ranges[count - 1].end_slot = slot;
-      ranges[count].start_page = page;
-      ranges[count].start_slot = slot;
-      count++;
+      if (page < prev_page || (page == prev_page && slot <= prev_slot))
+	{
+	  continue;
+	}
+      error = sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, page, slot, &splitters[m]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      prev_page = page;
+      prev_slot = slot;
+      m++;
+    }
+  *n_splitters = m;
+  return NO_ERROR;
+}
+
+static void
+sort_px_free_shard_inputs (SORT_PX_MERGE_INPUT ** shard_inputs, int n_shards)
+{
+  for (int s = 0; s < n_shards; s++)
+    {
+      if (shard_inputs[s] != NULL)
+	{
+	  free_and_init (shard_inputs[s]);
+	}
+    }
+}
+
+/*
+ * sort_px_slice_runs_index_leaf () - key-partition every worker run into up to parallel_num shards without
+ *   merging them first.  On success with *n_shards_out >= 2, shard_inputs[s] is a malloc'ed array of
+ *   *n_runs_out slices ([start, end) coordinates per run); otherwise nothing is allocated and the caller
+ *   falls back to the legacy single-run path.
+ */
+static int
+sort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_param, SORT_PARAM * sort_param,
+			       int parallel_num, SORT_PX_MERGE_INPUT ** shard_inputs, int *n_runs_out,
+			       int *n_shards_out, INT64 * total_pages_out)
+{
+  VFID run_temp[SORT_MAX_PARALLEL];
+  int run_npages[SORT_MAX_PARALLEL];
+  DB_VALUE splitters[SORT_MAX_PARALLEL];
+  int *bp_page = NULL, *bp_slot = NULL;
+  LOAD_ARGS *load_args = (LOAD_ARGS *) sort_param->put_arg;
+  TP_DOMAIN *key_type = ((SORT_ARGS *) sort_param->get_arg)->key_type;
+  char *iomem = sort_param->internal_memory;
+  int n_runs = 0, pilot = -1, m = 0, n_shards;
+  INT64 total_pages = 0;
+  int error = NO_ERROR;
+
+  *n_runs_out = 0;
+  *n_shards_out = 0;
+  *total_pages_out = 0;
+
+  for (int i = 0; i < parallel_num; i++)
+    {
+      int idx = px_sort_param[i].px_result_file_idx;
+      int npages = px_sort_param[i].file_contents[idx].num_pages[0];
+      if (npages <= 0)
+	{
+	  continue;
+	}
+      run_temp[n_runs] = px_sort_param[i].temp[idx];
+      run_npages[n_runs] = npages;
+      if (pilot < 0 || npages > run_npages[pilot])
+	{
+	  pilot = n_runs;
+	}
+      total_pages += npages;
+      n_runs++;
+    }
+  *n_runs_out = n_runs;
+  *total_pages_out = total_pages;
+  if (n_runs == 0)
+    {
+      return NO_ERROR;
     }
 
-  ranges[count - 1].end_page = total_pages;
-  ranges[count - 1].end_slot = 0;
-  for (int i = 0; i < count; i++)
+  for (int i = 0; i < parallel_num; i++)
     {
-      px_sort_param[i].px_index_shard = ranges[i];
-      px_sort_param[i].px_result_file_idx = 0;
-      px_sort_param[i].temp[0] = sort_param->temp[result_file_idx];
-      px_sort_param[i].px_status = PX_PROGRESS;
+      db_make_null (&splitters[i]);
     }
-  *n_shards = count;
+
+  error = sort_px_select_splitters (thread_p, &run_temp[pilot], run_npages[pilot], iomem, load_args, key_type,
+				    parallel_num, splitters, &m);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  if (m == 0)
+    {
+      *n_shards_out = 1;
+      goto end;
+    }
+
+  bp_page = (int *) malloc ((size_t) n_runs * m * sizeof (int));
+  bp_slot = (int *) malloc ((size_t) n_runs * m * sizeof (int));
+  if (bp_page == NULL || bp_slot == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n_runs * m * sizeof (int));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  for (int r = 0; r < n_runs && error == NO_ERROR; r++)
+    {
+      for (int b = 0; b < m; b++)
+	{
+	  error = sort_px_run_lower_bound (thread_p, &run_temp[r], run_npages[r], iomem, load_args, key_type,
+					   &splitters[b], &bp_page[r * m + b], &bp_slot[r * m + b]);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  assert (b == 0 || bp_page[r * m + b - 1] < bp_page[r * m + b]
+		  || (bp_page[r * m + b - 1] == bp_page[r * m + b] && bp_slot[r * m + b - 1] <= bp_slot[r * m + b]));
+	}
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  n_shards = m + 1;
+  for (int s = 0; s < n_shards; s++)
+    {
+      SORT_PX_MERGE_INPUT *arr = (SORT_PX_MERGE_INPUT *) malloc ((size_t) n_runs * sizeof (SORT_PX_MERGE_INPUT));
+      if (arr == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) n_runs * sizeof (SORT_PX_MERGE_INPUT));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  sort_px_free_shard_inputs (shard_inputs, s);
+	  goto end;
+	}
+      for (int r = 0; r < n_runs; r++)
+	{
+	  arr[r].temp = run_temp[r];
+	  arr[r].npages = run_npages[r];
+	  if (s == 0)
+	    {
+	      arr[r].range.start_page = 0;
+	      arr[r].range.start_slot = 0;
+	    }
+	  else
+	    {
+	      arr[r].range.start_page = bp_page[r * m + s - 1];
+	      arr[r].range.start_slot = bp_slot[r * m + s - 1];
+	    }
+	  if (s == n_shards - 1)
+	    {
+	      arr[r].range.end_page = run_npages[r];
+	      arr[r].range.end_slot = 0;
+	    }
+	  else
+	    {
+	      arr[r].range.end_page = bp_page[r * m + s];
+	      arr[r].range.end_slot = bp_slot[r * m + s];
+	    }
+	}
+      shard_inputs[s] = arr;
+    }
+  *n_shards_out = n_shards;
+
+end:
+  for (int i = 0; i < parallel_num; i++)
+    {
+      pr_clear_value (&splitters[i]);
+    }
+  if (bp_page != NULL)
+    {
+      free_and_init (bp_page);
+    }
+  if (bp_slot != NULL)
+    {
+      free_and_init (bp_slot);
+    }
+  return error;
+}
+
+/*
+ * merge-put cursor primitives for sort_put_result_index_leaf.  A slice is the half-open coordinate interval
+ * [start, end); end_slot == 0 means the slice ends at the last record of end_page - 1.
+ */
+static bool
+sort_px_merge_cursor_done (const SORT_PX_MERGE_INPUT * input, int page, int slot)
+{
+  return page > input->range.end_page || (page == input->range.end_page && slot >= input->range.end_slot);
+}
+
+static int
+sort_px_merge_cursor_fetch (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * longrec)
+{
+  if (sort_spage_get_record (pgbuf, slot, rec, PEEK) != S_SUCCESS)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
+      return ER_SORT_TEMP_PAGE_CORRUPTED;
+    }
+  if (rec->type == REC_BIGONE)
+    {
+      /* longrec's buffer is grown/reused across records by sort_retrieve_longrec; freed once by the caller */
+      if (sort_retrieve_longrec (thread_p, rec, longrec) == NULL)
+	{
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+    }
   return NO_ERROR;
+}
+
+static bool
+sort_px_merge_cursor_less (SORT_CMP_FUNC * compare, void *compare_arg, RECDES * cur_rec, RECDES * long_rec,
+			   int a, int b)
+{
+  char **data1 = (cur_rec[a].type == REC_BIGONE) ? &long_rec[a].data : &cur_rec[a].data;
+  char **data2 = (cur_rec[b].type == REC_BIGONE) ? &long_rec[b].data : &cur_rec[b].data;
+  return (*compare) (data1, data2, compare_arg) < 0;
+}
+
+static void
+sort_px_merge_heap_sift_down (int *heap, int heap_n, int pos, SORT_CMP_FUNC * compare, void *compare_arg,
+			      RECDES * cur_rec, RECDES * long_rec)
+{
+  for (;;)
+    {
+      int smallest = pos;
+      int l = 2 * pos + 1;
+      int r = 2 * pos + 2;
+      int tmp;
+      if (l < heap_n && sort_px_merge_cursor_less (compare, compare_arg, cur_rec, long_rec, heap[l], heap[smallest]))
+	{
+	  smallest = l;
+	}
+      if (r < heap_n && sort_px_merge_cursor_less (compare, compare_arg, cur_rec, long_rec, heap[r], heap[smallest]))
+	{
+	  smallest = r;
+	}
+      if (smallest == pos)
+	{
+	  break;
+	}
+      tmp = heap[pos];
+      heap[pos] = heap[smallest];
+      heap[smallest] = tmp;
+      pos = smallest;
+    }
 }
 
 /*
@@ -5143,10 +5499,20 @@ static void
 sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_param)
 {
   THREAD_ENTRY *thread_p = &thread_ref;
-  SORT_INDEX_SHARD range = sort_param->px_index_shard;
   LOAD_ARGS *load_args = (LOAD_ARGS *) sort_param->put_arg;
-  RECDES record = RECDES_INITIALIZER;
-  RECDES long_record = RECDES_INITIALIZER;
+  SORT_PX_MERGE_INPUT *inputs = sort_param->px_merge_inputs;
+  const int n_inputs = sort_param->px_merge_n_inputs;
+  SORT_CMP_FUNC *compare = sort_param->cmp_fn;
+  void *compare_arg = sort_param->cmp_arg;
+  char *buffers = NULL;
+  int *heap = NULL;
+  int *cur_page = NULL;
+  int *cur_slot = NULL;
+  int *nrecs = NULL;
+  RECDES *cur_rec = NULL;
+  RECDES *long_rec = NULL;
+  int heap_n = 0;
+  int c;
   int error = NO_ERROR;
 
   thread_ref.tran_index = sort_param->px_orig_thread_p->tran_index;
@@ -5154,48 +5520,156 @@ sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_par
   thread_ref.conn_entry = sort_param->px_orig_thread_p->conn_entry;
   thread_p->push_resource_tracks ();
 
-  for (int page = range.start_page; page <= range.end_page && error == NO_ERROR; page++)
+  assert (inputs != NULL && n_inputs > 0);
+
+  buffers = (char *) malloc ((size_t) n_inputs * DB_PAGESIZE);
+  heap = (int *) malloc ((size_t) n_inputs * sizeof (int));
+  cur_page = (int *) malloc ((size_t) n_inputs * sizeof (int));
+  cur_slot = (int *) malloc ((size_t) n_inputs * sizeof (int));
+  nrecs = (int *) malloc ((size_t) n_inputs * sizeof (int));
+  cur_rec = (RECDES *) calloc ((size_t) n_inputs, sizeof (RECDES));
+  long_rec = (RECDES *) calloc ((size_t) n_inputs, sizeof (RECDES));
+  if (buffers == NULL || heap == NULL || cur_page == NULL || cur_slot == NULL || nrecs == NULL || cur_rec == NULL
+      || long_rec == NULL)
     {
-      int first_slot, last_slot;
-      if (page == range.end_page && range.end_slot == 0)
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n_inputs * (DB_PAGESIZE + 4 * sizeof (int) + 2 * sizeof (RECDES)));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* open one cursor per non-empty slice and seed the min-heap */
+  for (c = 0; c < n_inputs && error == NO_ERROR; c++)
+    {
+      char *pgbuf = buffers + (size_t) c * DB_PAGESIZE;
+
+      cur_page[c] = inputs[c].range.start_page;
+      cur_slot[c] = inputs[c].range.start_slot;
+      if (sort_px_merge_cursor_done (&inputs[c], cur_page[c], cur_slot[c]))
 	{
-	  break;
+	  continue;
 	}
-      error = sort_read_area (thread_p, &sort_param->temp[0], page, 1, sort_param->internal_memory);
+      error = sort_read_area (thread_p, &inputs[c].temp, cur_page[c], 1, pgbuf);
       if (error != NO_ERROR)
 	{
 	  break;
 	}
-      first_slot = page == range.start_page ? range.start_slot : 0;
-      last_slot = page == range.end_page ? range.end_slot : sort_spage_get_numrecs (sort_param->internal_memory);
-      for (int slot = first_slot; slot < last_slot; slot++)
+      nrecs[c] = sort_spage_get_numrecs (pgbuf);
+      if (cur_slot[c] >= nrecs[c])
 	{
-	  if (sort_spage_get_record (sort_param->internal_memory, slot, &record, PEEK) != S_SUCCESS)
+	  assert (false);
+	  error = ER_SORT_TEMP_PAGE_CORRUPTED;
+	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  break;
+	}
+      error = sort_px_merge_cursor_fetch (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+      heap[heap_n++] = c;
+    }
+  for (c = heap_n / 2 - 1; c >= 0 && error == NO_ERROR; c--)
+    {
+      sort_px_merge_heap_sift_down (heap, heap_n, c, compare, compare_arg, cur_rec, long_rec);
+    }
+
+  /* merge-put: pop the global minimum, feed it to the shard loader, advance that cursor, restore the heap */
+  while (heap_n > 0 && error == NO_ERROR)
+    {
+      char *pgbuf;
+
+      c = heap[0];
+      pgbuf = buffers + (size_t) c * DB_PAGESIZE;
+      if (cur_rec[c].type == REC_BIGONE)
+	{
+	  error = bt_load_worker_put_range (thread_p, load_args, &long_rec[c]);
+	}
+      else
+	{
+	  ((SORT_REC *) cur_rec[c].data)->next = NULL;
+	  error = bt_load_worker_put_range (thread_p, load_args, &cur_rec[c]);
+	}
+      if (error != NO_ERROR)
+	{
+	  break;
+	}
+
+      cur_slot[c]++;
+      if (cur_slot[c] >= nrecs[c])
+	{
+	  cur_page[c]++;
+	  cur_slot[c] = 0;
+	}
+      if (sort_px_merge_cursor_done (&inputs[c], cur_page[c], cur_slot[c]))
+	{
+	  heap[0] = heap[--heap_n];
+	}
+      else
+	{
+	  if (cur_slot[c] == 0)
 	    {
-	      error = ER_SORT_TEMP_PAGE_CORRUPTED;
-	      break;
-	    }
-	  if (record.type == REC_BIGONE)
-	    {
-	      if (sort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
+	      error = sort_read_area (thread_p, &inputs[c].temp, cur_page[c], 1, pgbuf);
+	      if (error != NO_ERROR)
 		{
-		  error = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
 		  break;
 		}
-	      error = bt_load_worker_put_range (thread_p, load_args, &long_record);
-	      free_and_init (long_record.data);
+	      nrecs[c] = sort_spage_get_numrecs (pgbuf);
+	      if (nrecs[c] <= 0)
+		{
+		  assert (false);
+		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+		  break;
+		}
 	    }
-	  else
-	    {
-	      ((SORT_REC *) record.data)->next = NULL;
-	      error = bt_load_worker_put_range (thread_p, load_args, &record);
-	    }
+	  error = sort_px_merge_cursor_fetch (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
 	  if (error != NO_ERROR)
 	    {
 	      break;
 	    }
 	}
+      if (heap_n > 0)
+	{
+	  sort_px_merge_heap_sift_down (heap, heap_n, 0, compare, compare_arg, cur_rec, long_rec);
+	}
     }
+
+  if (long_rec != NULL)
+    {
+      for (c = 0; c < n_inputs; c++)
+	{
+	  if (long_rec[c].data != NULL)
+	    {
+	      free_and_init (long_rec[c].data);
+	    }
+	}
+      free_and_init (long_rec);
+    }
+  if (cur_rec != NULL)
+    {
+      free_and_init (cur_rec);
+    }
+  if (nrecs != NULL)
+    {
+      free_and_init (nrecs);
+    }
+  if (cur_slot != NULL)
+    {
+      free_and_init (cur_slot);
+    }
+  if (cur_page != NULL)
+    {
+      free_and_init (cur_page);
+    }
+  if (heap != NULL)
+    {
+      free_and_init (heap);
+    }
+  if (buffers != NULL)
+    {
+      free_and_init (buffers);
+    }
+
   if (error == NO_ERROR)
     {
       error = bt_load_worker_close_shard (thread_p, load_args);
@@ -5221,9 +5695,12 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
   SORT_ARGS *sort_args = (SORT_ARGS *) sort_param->get_arg;
   LOAD_ARGS *main_load_args = (LOAD_ARGS *) sort_param->put_arg;
   LOAD_ARGS *shard_load_args[SORT_MAX_PARALLEL] = { NULL };
+  SORT_PX_MERGE_INPUT *shard_inputs[SORT_MAX_PARALLEL] = { NULL };
   BT_LOAD_PROVIDER *provider = NULL;
   int n_shards = 0;
+  int n_runs = 0;
   int error = NO_ERROR;
+  INT64 total_pages_64 = 0;
   int total_pages, est_main_pages, est_ovf_pages = 0;
   INT64 ovf_upper = 0;
 
@@ -5232,13 +5709,23 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
       return BT_PX_NOT_ATTEMPTED;
     }
 
-  if (sort_split_last_run_index_leaf (thread_p, px_sort_param, sort_param, parallel_num, &n_shards) != NO_ERROR)
+  /*
+   * B5: key-partition every worker run into parallel_num shards.  Each shard worker k-way merges its slices
+   * while putting, replacing the fan-in merge to a single temp run.  The put order is unchanged: the sort
+   * comparator is a strict total order over (key, OID), so the per-shard merged stream is exactly the
+   * subsequence a single merged run would have yielded for that key range, and no duplicate-key group is
+   * split across shards (splitters are key-group starts, records partition by key < / >= splitter).
+   */
+  error = sort_px_slice_runs_index_leaf (thread_p, px_sort_param, sort_param, parallel_num, shard_inputs,
+					 &n_runs, &n_shards, &total_pages_64);
+  if (error != NO_ERROR)
     {
       bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
       return BT_PX_ERROR;
     }
   if (n_shards < 2)
     {
+      /* sort_px_slice_runs_index_leaf allocates shard_inputs only when it commits to n_shards >= 2 */
       return BT_PX_NOT_ATTEMPTED;
     }
 
@@ -5247,13 +5734,14 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
   if (error != NO_ERROR)
     {
       log_sysop_abort (thread_p);
+      sort_px_free_shard_inputs (shard_inputs, n_shards);
       bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
       return BT_PX_ERROR;
     }
   log_sysop_attach_to_outer (thread_p);
   assert (log_get_system_op_level (thread_p) < 0);
 
-  total_pages = sort_param->file_contents[sort_param->px_result_file_idx].num_pages[0];
+  total_pages = (int) MIN ((INT64) INT_MAX, total_pages_64);
   est_main_pages = (int) MIN ((INT64) INT_MAX, (INT64) total_pages + MAX ((INT64) 64, (INT64) total_pages / 10));
   if (sort_args->sum_ovf_pages > 0)
     {
@@ -5265,6 +5753,7 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
 				 est_ovf_pages, true);
   if (error != NO_ERROR)
     {
+      sort_px_free_shard_inputs (shard_inputs, n_shards);
       bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
       return BT_PX_ERROR;
     }
@@ -5278,13 +5767,16 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
 	  goto cleanup;
 	}
       px_sort_param[i].put_arg = shard_load_args[i];
+      px_sort_param[i].px_merge_inputs = shard_inputs[i];
+      px_sort_param[i].px_merge_n_inputs = n_runs;
+      px_sort_param[i].px_status = PX_PROGRESS;
     }
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
-      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: px construct btid(%d, (%d, %d)), workers==shards=%d",
+      _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: px construct btid(%d, (%d, %d)), workers==shards=%d runs=%d",
 		     sort_args->btid->sys_btid->root_pageid, sort_args->btid->sys_btid->vfid.volid,
-		     sort_args->btid->sys_btid->vfid.fileid, n_shards);
+		     sort_args->btid->sys_btid->vfid.fileid, n_shards, n_runs);
     }
 
   SORT_EXECUTE_PARALLEL (n_shards, px_sort_param, sort_put_result_index_leaf);
@@ -5301,7 +5793,10 @@ cleanup:
   for (int i = 0; i < n_shards; i++)
     {
       bt_load_free_shard_load_args (thread_p, shard_load_args[i]);
+      px_sort_param[i].px_merge_inputs = NULL;
+      px_sort_param[i].px_merge_n_inputs = 0;
     }
+  sort_px_free_shard_inputs (shard_inputs, n_shards);
   bt_load_provider_close (provider);
   if (error != NO_ERROR)
     {
@@ -5330,21 +5825,6 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
   sort_merge_queue_ctx_init (&qctx, sort_param, px_sort_param, parallel_num);
   sort_merge_queue_enqueue_initial_runs (&qctx, px_sort_param, parallel_num);
 
-  if (qctx.queue_size >= 2)
-    {
-      error = sort_merge_queue_run (thread_p, &qctx);
-      if (error != NO_ERROR)
-	{
-	  sort_merge_queue_ctx_destroy (&qctx);
-	  return ER_FAILED;
-	}
-      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
-    }
-  else if (qctx.queue_size == 1)
-    {
-      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
-    }
-
   sort_args_p = (SORT_ARGS *) sort_param->get_arg;
   load_args_p = (LOAD_ARGS *) sort_param->put_arg;
 
@@ -5372,6 +5852,49 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
   log_sysop_attach_to_outer (thread_p);
 
   {
+    /*
+     * B5: build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
+     * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
+     * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
+     * below: merge everything into a single run and put it serially.
+     */
+    BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
+    if (outcome != BT_PX_NOT_ATTEMPTED)
+      {
+	/* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
+	 * here (the PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
+	for (i = 0; i < parallel_num; i++)
+	  {
+	    int idx = px_sort_param[i].px_result_file_idx;
+	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0
+		&& px_sort_param[i].temp[idx].volid != NULL_VOLID)
+	      {
+		(void) file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
+		VFID_SET_NULL (&px_sort_param[i].temp[idx]);
+	      }
+	  }
+	sort_merge_queue_ctx_destroy (&qctx);
+	return outcome == BT_PX_TREE_DONE ? NO_ERROR : ER_FAILED;
+      }
+  }
+
+  /* legacy single-run path: merge all runs into one, then put it serially from the temp file. */
+  if (qctx.queue_size >= 2)
+    {
+      error = sort_merge_queue_run (thread_p, &qctx);
+      if (error != NO_ERROR)
+	{
+	  sort_merge_queue_ctx_destroy (&qctx);
+	  return ER_FAILED;
+	}
+      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
+    }
+  else if (qctx.queue_size == 1)
+    {
+      sort_merge_queue_stage_final_run (&qctx, &px_sort_param[0]);
+    }
+
+  {
     int result_file_idx = px_sort_param[0].px_result_file_idx;
     sort_param->px_result_file_idx = result_file_idx;
     sort_param->file_contents[result_file_idx].num_pages[0] =
@@ -5379,28 +5902,18 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
   }
 
-  {
-    BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
-    if (outcome == BT_PX_NOT_ATTEMPTED)
-      {
-	if (bt_load_parallel_enabled (load_args_p))
-	  {
-	    log_sysop_start (thread_p);
-	  }
-	if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
-	  {
-	    if (bt_load_parallel_enabled (load_args_p))
-	      {
-		log_sysop_abort (thread_p);
-	      }
-	    error = ER_FAILED;
-	  }
-      }
-    else if (outcome == BT_PX_ERROR)
-      {
-	error = ER_FAILED;
-      }
-  }
+  if (bt_load_parallel_enabled (load_args_p))
+    {
+      log_sysop_start (thread_p);
+    }
+  if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
+    {
+      if (bt_load_parallel_enabled (load_args_p))
+	{
+	  log_sysop_abort (thread_p);
+	}
+      error = ER_FAILED;
+    }
 
   sort_merge_queue_ctx_destroy (&qctx);
   return error;
