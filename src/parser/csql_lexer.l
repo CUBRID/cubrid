@@ -50,6 +50,7 @@ static void init_plcsql_lexing (void);
 static int parser_yyinput (char *buff, int max_size);
 static bool parser_check_hint (char* hint_string);
 static void parser_yy_user_action(void);
+static void csql_yyerror_internal (const char *s, const int line, const int column);
 
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
@@ -1645,15 +1646,15 @@ void
 csql_yyerror_explicit (int line, int column)
 {  
   int saved_yylineno = csql_yyget_lineno ();
-  int saved_yyline_start_pos = yyline_start_pos;
+  int saved_yyleng_last = yyleng_last;
 
   csql_yyset_lineno (line);
-  yyline_start_pos = yybuffer_pos - column + 1;
+  yyleng_last = 0;
 
-  csql_yyerror (NULL);
+  csql_yyerror_internal (NULL, line, column);
 
   csql_yyset_lineno (saved_yylineno);
-  yyline_start_pos = saved_yyline_start_pos;
+  yyleng_last = saved_yyleng_last;
 
   msg_ptr = 0;
 }
@@ -1661,6 +1662,12 @@ csql_yyerror_explicit (int line, int column)
 
 void
 csql_yyerror (const char *s)
+{
+   csql_yyerror_internal(s, -1, -1); 
+}
+
+static void
+csql_yyerror_internal (const char *s, const int line, const int column)
 {
   char *token_val = NULL;
   char *next_ptr = csql_yyget_text () + csql_yyget_leng () + 1;
@@ -1714,6 +1721,11 @@ csql_yyerror (const char *s)
   if (msg_ptr)
     {
       PT_NODE *dummy = parser_new_node (this_parser, PT_EXPR);
+      if(dummy && line > 0 && column > 0)
+        {
+          dummy->line_number = line;
+          dummy->column_number = column;
+        }
       PT_ERRORm (this_parser, dummy, MSGCAT_SET_PARSER_SYNTAX,
 		 g_msg[msg_ptr - 1]);
       parser_free_tree (this_parser, dummy);
@@ -1876,6 +1888,11 @@ csql_yyerror (const char *s)
 	    }
 	  goto end;
 	}
+      if(dummy && line > 0 && column > 0)
+        {
+          dummy->line_number = line;
+          dummy->column_number = column;
+        }
       PT_ERRORf (this_parser, dummy, "%s", msg);
       parser_free_tree (this_parser, dummy);
       if (free_msg && msg != NULL)
