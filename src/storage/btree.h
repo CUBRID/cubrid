@@ -76,15 +76,24 @@ struct btree_bulk_marker
   const char *owner_class_name;
   unsigned int owner_class_name_length;
   int object_kind;
-  /* v3 (r305-P2-2): creation identity of the exact file instance this build created.
-   * attr_id mirrors FILE_BTREE_DES.attr_id; create_token mirrors the main file's
-   * FILE_HEADER.time_creation, which file_create writes once inside the whole-page
-   * redo image of the header (immutable, replay- and restore-durable).  v1/v2 markers
-   * decode with attr_id = -1 and create_token = 0 and keep the degraded
-   * owns-class-only cleanup binding. */
+  /* v3: creation identity of the exact file instance this build created.
+   * attr_id mirrors FILE_BTREE_DES.attr_id; create_token encodes the main file's
+   * server-issued FILE_BTREE_DES.create_lsa.  v1/v2 markers decode with
+   * attr_id = -1 and create_token = 0 and keep the degraded owns-class-only
+   * cleanup binding. */
   int attr_id;
   UINT64 create_token;
 };
+
+/* btree_bulk_lsa_token () - encode a create LSA into the 64-bit token stored in BTREE_BULK_MARKER.create_token and
+ * compared against BTREE_BULK_PENDING_BUILD.create_lsa.  Packs the 48-bit pageid into the high bits and the
+ * 16-bit offset into the low bits so the create-LSA identity can be stored/compared as a single scalar.  The
+ * encode site (locator_sr.c) and the recovery compare sites (log_recovery.c) must stay byte-identical. */
+STATIC_INLINE UINT64
+btree_bulk_lsa_token (const LOG_LSA * lsa)
+{
+  return (((UINT64) lsa->pageid & 0x0000ffffffffffffULL) << 16) | (UINT64) (unsigned short) lsa->offset;
+}
 
 extern int btree_bulk_marker_packed_size (const BTREE_BULK_MARKER * marker, unsigned int *packed_size);
 extern int btree_bulk_marker_pack (const BTREE_BULK_MARKER * marker, char *buffer, unsigned int buffer_size,
@@ -94,6 +103,13 @@ extern int btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_siz
 				     unsigned int constraint_name_capacity, char *owner_class_name,
 				     unsigned int owner_class_name_capacity, int *decoded_version);
 extern int btree_rv_bulk_build_durable_nop (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
+extern int btree_bulk_pending_register (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
+					const OID * class_oids, unsigned int class_count);
+extern int btree_bulk_pending_validate (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
+					const OID * class_oids, unsigned int class_count);
+extern void btree_bulk_pending_consume (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa);
+extern bool btree_bulk_pending_requires_marker (THREAD_ENTRY * thread_p);
+extern void btree_bulk_pending_discard (THREAD_ENTRY * thread_p);
 
 typedef enum btree_bulk_recovery_event
 {

@@ -117,11 +117,15 @@ static void log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p);
 static void log_recovery_undo (THREAD_ENTRY * thread_p);
 typedef struct log_bulk_recovery_tran LOG_BULK_RECOVERY_TRAN;
 typedef struct log_bulk_recovery_marker LOG_BULK_RECOVERY_MARKER;
+typedef struct log_bulk_recovery_index_entry LOG_BULK_RECOVERY_INDEX_ENTRY;
+#define LOG_BULK_RECOVERY_INDEX_BUCKETS 64
 
 struct log_bulk_recovery_tran
 {
   TRANID trid;
+  LOG_LSA incarnation_lsa;
   BTREE_BULK_RECOVERY_EVENT events[4];
+  LOG_LSA completion_lsas[4];
   unsigned int event_count;
   LOG_BULK_RECOVERY_TRAN *next;
 };
@@ -129,6 +133,7 @@ struct log_bulk_recovery_tran
 struct log_bulk_recovery_marker
 {
   BTREE_BULK_RECOVERY_CANDIDATE candidate;
+  LOG_LSA incarnation_lsa;
   OID *class_oids;
   char *constraint_name;
   bool classified;
@@ -136,12 +141,21 @@ struct log_bulk_recovery_marker
   bool redo_skip_enabled;
   LOG_BULK_RECOVERY_MARKER *next;
 };
+struct log_bulk_recovery_index_entry
+{
+  VFID vfid;
+  LOG_BULK_RECOVERY_MARKER *marker;
+  LOG_BULK_RECOVERY_INDEX_ENTRY *next;
+};
 
 static LOG_BULK_RECOVERY_TRAN *log_Bulk_recovery_trans = NULL;
 static LOG_BULK_RECOVERY_MARKER *log_Bulk_recovery_markers = NULL;
+static LOG_BULK_RECOVERY_INDEX_ENTRY *log_Bulk_recovery_index[LOG_BULK_RECOVERY_INDEX_BUCKETS];
+static bool log_Bulk_recovery_any_redo_skip_enabled = false;
 
 static void log_recovery_bulk_reset_analysis (void);
-static int log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event);
+static int log_recovery_bulk_add_event (THREAD_ENTRY * thread_p, TRANID trid, BTREE_BULK_RECOVERY_EVENT event,
+					const LOG_LSA * completion_lsa);
 static int log_recovery_bulk_collect_marker (THREAD_ENTRY * thread_p, TRANID trid, const LOG_LSA * record_lsa,
 					     const LOG_LSA * prev_tran_lsa, LOG_PAGE * log_page_p);
 static int log_recovery_bulk_compare_markers (const LOG_BULK_RECOVERY_MARKER * left,
@@ -2683,7 +2697,7 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
   TRANID tran_id;
   LOG_TDES *tdes;		/* Transaction descriptor */
   void *area = NULL;
-  int size, i;
+  int size, i, error_code;
   const int block_size = 4 * ONE_K;
   int start_record_block, end_record_block;
   char null_buffer[block_size + MAX_ALIGNMENT], *null_block;
@@ -3081,6 +3095,36 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 		}
 	    }
 
+	  switch (log_rtype)
+	    {
+	    case LOG_COMMIT:
+	    case LOG_COMMIT_WITH_POSTPONE:
+	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
+	      error_code =
+		log_recovery_bulk_add_event (thread_p, tran_id, BTREE_BULK_RECOVERY_NORMAL_COMMIT, &log_lsa);
+	      break;
+	    case LOG_2PC_PREPARE:
+	      error_code =
+		log_recovery_bulk_add_event (thread_p, tran_id, BTREE_BULK_RECOVERY_2PC_PREPARE, &log_lsa);
+	      break;
+	    case LOG_2PC_COMMIT_DECISION:
+	      error_code =
+		log_recovery_bulk_add_event (thread_p, tran_id, BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION, &log_lsa);
+	      break;
+	    case LOG_ABORT:
+	    case LOG_2PC_ABORT_DECISION:
+	      error_code =
+		log_recovery_bulk_add_event (thread_p, tran_id, BTREE_BULK_RECOVERY_2PC_ABORT, &log_lsa);
+	      break;
+	    default:
+	      error_code = NO_ERROR;
+	      break;
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_add_event");
+	      return;
+	    }
 	  log_rv_analysis_record (thread_p, log_rtype, tran_id, &log_lsa, log_page_p, &checkpoint_lsa, &prev_lsa,
 				  start_lsa, start_redo_lsa, is_media_crash, stop_at, did_incom_recovery,
 				  &may_use_checkpoint, &may_need_synch_checkpoint_2pc);
@@ -3096,37 +3140,6 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 	    }
 	  switch (log_rtype)
 	    {
-	    case LOG_COMMIT:
-	    case LOG_COMMIT_WITH_POSTPONE:
-	    case LOG_COMMIT_WITH_POSTPONE_OBSOLETE:
-	      if (log_recovery_bulk_add_event (tran_id, BTREE_BULK_RECOVERY_NORMAL_COMMIT) != NO_ERROR)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_add_event");
-		  return;
-		}
-	      break;
-	    case LOG_2PC_PREPARE:
-	      if (log_recovery_bulk_add_event (tran_id, BTREE_BULK_RECOVERY_2PC_PREPARE) != NO_ERROR)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_add_event");
-		  return;
-		}
-	      break;
-	    case LOG_2PC_COMMIT_DECISION:
-	      if (log_recovery_bulk_add_event (tran_id, BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION) != NO_ERROR)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_add_event");
-		  return;
-		}
-	      break;
-	    case LOG_ABORT:
-	    case LOG_2PC_ABORT_DECISION:
-	      if (log_recovery_bulk_add_event (tran_id, BTREE_BULK_RECOVERY_2PC_ABORT) != NO_ERROR)
-		{
-		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_add_event");
-		  return;
-		}
-	      break;
 	    case LOG_REDO_DATA:
 	      if (log_recovery_bulk_collect_marker (thread_p, tran_id, &log_lsa, &log_rec->prev_tranlsa,
 						    log_page_p) != NO_ERROR)
@@ -6739,6 +6752,18 @@ log_recovery_bulk_reset_analysis (void)
 {
   LOG_BULK_RECOVERY_TRAN *tran;
   LOG_BULK_RECOVERY_MARKER *marker;
+  LOG_BULK_RECOVERY_INDEX_ENTRY *index_entry;
+  unsigned int bucket;
+
+  log_Bulk_recovery_any_redo_skip_enabled = false;
+  for (bucket = 0; bucket < LOG_BULK_RECOVERY_INDEX_BUCKETS; bucket++)
+    {
+      while ((index_entry = log_Bulk_recovery_index[bucket]) != NULL)
+	{
+	  log_Bulk_recovery_index[bucket] = index_entry->next;
+	  free (index_entry);
+	}
+    }
 
   while ((tran = log_Bulk_recovery_trans) != NULL)
     {
@@ -6754,29 +6779,42 @@ log_recovery_bulk_reset_analysis (void)
     }
 }
 
+static bool
+log_recovery_bulk_get_incarnation (THREAD_ENTRY * thread_p, TRANID trid, LOG_LSA * incarnation_lsa)
+{
+  int tran_index = logtb_find_tran_index (thread_p, trid);
+  LOG_TDES *tdes = tran_index == NULL_TRAN_INDEX ? NULL : LOG_FIND_TDES (tran_index);
+
+  if (tdes == NULL || LSA_ISNULL (&tdes->head_lsa))
+    {
+      return false;
+    }
+  *incarnation_lsa = tdes->head_lsa;
+  return true;
+}
+
 static int
-log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event)
+log_recovery_bulk_add_event (THREAD_ENTRY * thread_p, TRANID trid, BTREE_BULK_RECOVERY_EVENT event,
+			     const LOG_LSA * completion_lsa)
 {
   LOG_BULK_RECOVERY_TRAN *tran;
+  LOG_LSA incarnation_lsa;
   unsigned int i;
 
+  if (completion_lsa == NULL || !log_recovery_bulk_get_incarnation (thread_p, trid, &incarnation_lsa))
+    {
+      return NO_ERROR;
+    }
   for (tran = log_Bulk_recovery_trans; tran != NULL; tran = tran->next)
     {
-      if (tran->trid == trid)
+      if (tran->trid == trid && LSA_EQ (&tran->incarnation_lsa, &incarnation_lsa))
 	{
 	  break;
 	}
     }
   if (tran == NULL)
     {
-      tran = (LOG_BULK_RECOVERY_TRAN *) calloc (1, sizeof (*tran));
-      if (tran == NULL)
-	{
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      tran->trid = trid;
-      tran->next = log_Bulk_recovery_trans;
-      log_Bulk_recovery_trans = tran;
+      return NO_ERROR;
     }
   for (i = 0; i < tran->event_count; i++)
     {
@@ -6789,7 +6827,9 @@ log_recovery_bulk_add_event (TRANID trid, BTREE_BULK_RECOVERY_EVENT event)
     {
       return ER_FAILED;
     }
-  tran->events[tran->event_count++] = event;
+  tran->events[tran->event_count] = event;
+  tran->completion_lsas[tran->event_count] = *completion_lsa;
+  tran->event_count++;
   return NO_ERROR;
 }
 
@@ -6885,6 +6925,7 @@ log_recovery_bulk_collect_marker (THREAD_ENTRY * thread_p, TRANID trid, const LO
   LOG_BULK_RECOVERY_MARKER *entry = NULL;
   int error = ER_FAILED;
   LOG_BULK_RECOVERY_MARKER *existing;
+  LOG_BULK_RECOVERY_TRAN *tran;
 
   for (existing = log_Bulk_recovery_markers; existing != NULL; existing = existing->next)
     {
@@ -6949,6 +6990,30 @@ log_recovery_bulk_collect_marker (THREAD_ENTRY * thread_p, TRANID trid, const LO
     {
       goto exit;
     }
+  if (!log_recovery_bulk_get_incarnation (thread_p, trid, &entry->incarnation_lsa))
+    {
+      goto exit;
+    }
+  for (tran = log_Bulk_recovery_trans; tran != NULL; tran = tran->next)
+    {
+      if (tran->trid == trid && LSA_EQ (&tran->incarnation_lsa, &entry->incarnation_lsa))
+	{
+	  break;
+	}
+    }
+  if (tran == NULL)
+    {
+      tran = (LOG_BULK_RECOVERY_TRAN *) calloc (1, sizeof (*tran));
+      if (tran == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto exit;
+	}
+      tran->trid = trid;
+      tran->incarnation_lsa = entry->incarnation_lsa;
+      tran->next = log_Bulk_recovery_trans;
+      log_Bulk_recovery_trans = tran;
+    }
   entry->candidate.object_kind = entry->candidate.marker.object_kind;
 
   entry->candidate.marker_lsa = *record_lsa;
@@ -6981,8 +7046,13 @@ log_recovery_bulk_classify_marker (THREAD_ENTRY * thread_p, LOG_BULK_RECOVERY_MA
   LOG_BULK_RECOVERY_TRAN *tran;
   LOG_TDES *tdes;
   int tran_index;
+  BTREE_BULK_RECOVERY_EVENT completion_events[4];
+  unsigned int completion_event_count = 0;
 
-  for (tran = log_Bulk_recovery_trans; tran != NULL && tran->trid != marker->candidate.marker.trid; tran = tran->next)
+  for (tran = log_Bulk_recovery_trans;
+       tran != NULL
+       && (tran->trid != marker->candidate.marker.trid
+	   || !LSA_EQ (&tran->incarnation_lsa, &marker->incarnation_lsa)); tran = tran->next)
     {
     }
 
@@ -7000,7 +7070,12 @@ log_recovery_bulk_classify_marker (THREAD_ENTRY * thread_p, LOG_BULK_RECOVERY_MA
       unsigned int event_index;
       for (event_index = 0; event_index < tran->event_count; event_index++)
 	{
-	  marker->candidate.decision_flushed |= tran->events[event_index] == BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION;
+	  if (LSA_GT (&tran->completion_lsas[event_index], &marker->candidate.marker_lsa))
+	    {
+	      completion_events[completion_event_count++] = tran->events[event_index];
+	      marker->candidate.decision_flushed |=
+		tran->events[event_index] == BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION;
+	    }
 	}
     }
   marker->candidate.commit_irreversible = false;
@@ -7011,8 +7086,33 @@ log_recovery_bulk_classify_marker (THREAD_ENTRY * thread_p, LOG_BULK_RECOVERY_MA
       marker->candidate.commit_irreversible = log_is_irreversible_2pc_state (tdes->state);
     }
 
-  return log_recovery_bulk_classify_candidate (&marker->candidate, tran == NULL ? NULL : tran->events,
-					       tran == NULL ? 0 : tran->event_count, is_candidate);
+  return log_recovery_bulk_classify_candidate (&marker->candidate,
+					       completion_event_count == 0 ? NULL : completion_events,
+					       completion_event_count, is_candidate);
+}
+
+static int
+log_recovery_bulk_index_add (LOG_BULK_RECOVERY_MARKER * marker, const VFID * vfid)
+{
+  LOG_BULK_RECOVERY_INDEX_ENTRY *entry;
+  unsigned int bucket;
+
+  if (VFID_ISNULL (vfid))
+    {
+      return NO_ERROR;
+    }
+  entry = (LOG_BULK_RECOVERY_INDEX_ENTRY *) malloc (sizeof (*entry));
+  if (entry == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  entry->vfid = *vfid;
+  entry->marker = marker;
+  bucket = (unsigned int) vfid->volid % LOG_BULK_RECOVERY_INDEX_BUCKETS;
+  entry->next = log_Bulk_recovery_index[bucket];
+  log_Bulk_recovery_index[bucket] = entry;
+  log_Bulk_recovery_any_redo_skip_enabled = true;
+  return NO_ERROR;
 }
 
 static void
@@ -7021,6 +7121,18 @@ log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY * thread_p, const LOG_LSA * st
 {
   LOG_BULK_RECOVERY_MARKER *marker;
   int error;
+  LOG_BULK_RECOVERY_INDEX_ENTRY *index_entry;
+  unsigned int bucket;
+
+  log_Bulk_recovery_any_redo_skip_enabled = false;
+  for (bucket = 0; bucket < LOG_BULK_RECOVERY_INDEX_BUCKETS; bucket++)
+    {
+      while ((index_entry = log_Bulk_recovery_index[bucket]) != NULL)
+	{
+	  log_Bulk_recovery_index[bucket] = index_entry->next;
+	  free (index_entry);
+	}
+    }
 
   for (marker = log_Bulk_recovery_markers; marker != NULL; marker = marker->next)
     {
@@ -7033,6 +7145,15 @@ log_recovery_bulk_prepare_redo_skip (THREAD_ENTRY * thread_p, const LOG_LSA * st
 	}
       marker->classified = true;
       marker->redo_skip_enabled = is_media_crash && marker->is_candidate_stored;
+      if (marker->redo_skip_enabled
+	  && (log_recovery_bulk_index_add (marker, &marker->candidate.marker.main_vfid) != NO_ERROR
+	      || log_recovery_bulk_index_add (marker, &marker->candidate.marker.ovfid) != NO_ERROR))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  sizeof (LOG_BULK_RECOVERY_INDEX_ENTRY));
+	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_index_add");
+	  return;
+	}
     }
 }
 
@@ -7101,48 +7222,122 @@ log_recovery_bulk_redo_skip_is_exempt (LOG_RCVINDEX rcvindex)
     }
 }
 
+static bool
+log_recovery_bulk_identity_is_ambiguous (const LOG_BULK_RECOVERY_MARKER * marker)
+{
+  const LOG_BULK_RECOVERY_MARKER *other;
+
+  for (other = log_Bulk_recovery_markers; other != NULL; other = other->next)
+    {
+      if (other != marker && VFID_EQ (&other->candidate.marker.main_vfid, &marker->candidate.marker.main_vfid)
+	  && other->candidate.marker.create_token == marker->candidate.marker.create_token)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+static bool
+log_recovery_bulk_candidate_identity_is_ambiguous (const BTREE_BULK_RECOVERY_CANDIDATE * candidate)
+{
+  const LOG_BULK_RECOVERY_MARKER *other;
+
+  for (other = log_Bulk_recovery_markers; other != NULL; other = other->next)
+    {
+      if (&other->candidate != candidate
+	  && VFID_EQ (&other->candidate.marker.main_vfid, &candidate->marker.main_vfid)
+	  && other->candidate.marker.create_token == candidate->marker.create_token)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+static int
+log_recovery_bulk_identity_matches_live_file (THREAD_ENTRY * thread_p, const LOG_BULK_RECOVERY_MARKER * marker,
+					       bool * matches)
+{
+  FILE_DESCRIPTORS descriptor;
+  bool is_live = false;
+  int error;
+
+  *matches = false;
+  if (marker->candidate.decoded_version < BTREE_BULK_MARKER_VERSION
+      || LSA_ISNULL (&marker->candidate.marker.create_lsa)
+      || marker->candidate.marker.create_token != btree_bulk_lsa_token (&marker->candidate.marker.create_lsa)
+      || log_recovery_bulk_identity_is_ambiguous (marker))
+    {
+      return NO_ERROR;
+    }
+  error =
+    file_recovery_check_candidate_file (thread_p, &marker->candidate.marker.main_vfid, FILE_BTREE, &is_live,
+					&descriptor, NULL);
+  if (error != NO_ERROR || !is_live)
+    {
+      return error;
+    }
+  *matches =
+    marker->candidate.marker.create_token == btree_bulk_lsa_token (&descriptor.btree.create_lsa);
+  return NO_ERROR;
+}
+
 int
 log_recovery_bulk_should_skip_redo (THREAD_ENTRY * thread_p, const LOG_LSA * record_lsa, const VPID * rcv_vpid,
 				    LOG_RCVINDEX rcvindex, bool * skip)
 {
+  LOG_BULK_RECOVERY_INDEX_ENTRY *index_entry;
   LOG_BULK_RECOVERY_MARKER *marker;
   const VFID *vfid;
   int membership;
   int error;
+  bool identity_matches;
+  unsigned int bucket;
 
   *skip = false;
+  if (!log_Bulk_recovery_any_redo_skip_enabled)
+    {
+      return NO_ERROR;
+    }
   if (log_recovery_bulk_redo_skip_is_exempt (rcvindex))
     {
       return NO_ERROR;
     }
-  for (marker = log_Bulk_recovery_markers; marker != NULL; marker = marker->next)
+  bucket = (unsigned int) rcv_vpid->volid % LOG_BULK_RECOVERY_INDEX_BUCKETS;
+  for (index_entry = log_Bulk_recovery_index[bucket]; index_entry != NULL; index_entry = index_entry->next)
     {
+      marker = index_entry->marker;
+      vfid = &index_entry->vfid;
       if (!marker->redo_skip_enabled || !LSA_GT (record_lsa, &marker->candidate.marker_lsa))
 	{
 	  continue;
 	}
-      for (vfid = &marker->candidate.marker.main_vfid; vfid != NULL;
-	   vfid = (vfid == &marker->candidate.marker.main_vfid && !VFID_ISNULL (&marker->candidate.marker.ovfid))
-	   ? &marker->candidate.marker.ovfid : NULL)
+      error = log_recovery_bulk_identity_matches_live_file (thread_p, marker, &identity_matches);
+      if (error != NO_ERROR)
 	{
-	  if (vfid->volid != rcv_vpid->volid)
-	    {
-	      continue;
-	    }
-	  error = file_recovery_check_vpid (thread_p, vfid, rcv_vpid, &membership);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  if (membership == FILE_RECOVERY_VPID_MEMBER)
-	    {
-	      *skip = true;
-	      er_log_debug (ARG_FILE_LINE,
-			    "bulk recovery suppressed redo trid=%d vfid=%d|%d lsa=%lld|%d rcvindex=%d vpid=%d|%d\n",
-			    marker->candidate.marker.trid, VFID_AS_ARGS (vfid), LSA_AS_ARGS (record_lsa),
-			    rcvindex, VPID_AS_ARGS (rcv_vpid));
-	      return NO_ERROR;
-	    }
+	  return error;
+	}
+      if (!identity_matches)
+	{
+	  continue;
+	}
+      if (vfid->volid != rcv_vpid->volid)
+	{
+	  continue;
+	}
+      error = file_recovery_check_vpid (thread_p, vfid, rcv_vpid, &membership);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (membership == FILE_RECOVERY_VPID_MEMBER)
+	{
+	  *skip = true;
+	  er_log_debug (ARG_FILE_LINE,
+			"bulk recovery suppressed redo trid=%d vfid=%d|%d lsa=%lld|%d rcvindex=%d vpid=%d|%d\n",
+			marker->candidate.marker.trid, VFID_AS_ARGS (vfid), LSA_AS_ARGS (record_lsa),
+			rcvindex, VPID_AS_ARGS (rcv_vpid));
+	  return NO_ERROR;
 	}
     }
   return NO_ERROR;
@@ -7218,7 +7413,11 @@ log_recovery_bulk_cleanup_candidates (THREAD_ENTRY * thread_p, const LOG_LSA * s
 	    {
 	      /* Mandatory operator notification: list the cleaned constraint on the restoredb
 	       * console.  Output failure is an observability failure, not a database-integrity
-	       * failure; cleanup already committed, so log a warning and continue. */
+	       * failure; cleanup already committed, so log a warning and continue.  cleaned covers
+	       * both a full publication rollback and an orphan-file-only purge (marker superseded
+	       * by a later recreate under the same name); the printed fields are the marker's own
+	       * identity (name/type/kind/owner class) in both cases, so this line never claims a
+	       * publication rollback happened when only the marker's dead file was removed. */
 	      if (log_recovery_bulk_format_restoredb (stdout, &marker->candidate) != NO_ERROR || fflush (stdout) != 0)
 		{
 		  er_log_debug (ARG_FILE_LINE,
@@ -7591,6 +7790,59 @@ log_recovery_bulk_candidate_owns_class (const BTREE_BULK_RECOVERY_CANDIDATE * ca
   return false;
 }
 
+/*
+ * log_recovery_bulk_candidate_constraint_is_current () - is the marker's constraint name still
+ *   bound, in the recovered catalog, to the exact BTID this marker's own build created?
+ *
+ *   return: error code
+ *   thread_p(in):
+ *   candidate(in): live cleanup candidate; the file-identity gate (VFID, create LSA, attr_id,
+ *                  create_token) has already proven candidate->marker.main_vfid is still the
+ *                  exact file this marker's build created
+ *   is_current(out): true when every owner class currently binds constraint_name to
+ *                    candidate->marker.btid; false when the name is unbound or rebound to a
+ *                    different BTID on any owner class
+ *
+ * The file-identity gate proves the marker's own file is still live; it says nothing about which
+ * catalog row currently claims the marker's constraint name. A committed transaction inside the
+ * replay window may have dropped this marker's constraint (removing its catalog rows without
+ * replaying the deferred file destroy) and recreated one under the same name, reusing the
+ * dropped constraint's catalog heap slots for a brand-new BTID. If the publication walk ran
+ * against such a candidate, it would replay CLR undo against the *original* publication records
+ * and rip out the *replacement's* current catalog rows -- a live but superseded name never
+ * authorizes touching the binding that now owns it (fail-safe doctrine: ambiguity never
+ * authorizes destruction of current state). log_recovery_bulk_cleanup_inactive already calls
+ * heap_classrepr_restart_cache in this same function (the non-media-recovery early return above,
+ * and again after a successful cleanup below), so the class representation cache this helper
+ * reads through heap_get_btid_from_index_name is known to be initialized and usable at this
+ * point in end-of-recovery.
+ */
+static int
+log_recovery_bulk_candidate_constraint_is_current (THREAD_ENTRY * thread_p,
+						    const BTREE_BULK_RECOVERY_CANDIDATE * candidate, bool * is_current)
+{
+  unsigned int i;
+  BTID found_btid;
+  int error;
+
+  *is_current = false;
+  for (i = 0; i < candidate->marker.class_count; i++)
+    {
+      error = heap_get_btid_from_index_name (thread_p, &candidate->marker.class_oids[i],
+					     candidate->marker.constraint_name, &found_btid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (!BTID_IS_EQUAL (&found_btid, &candidate->marker.btid))
+	{
+	  return NO_ERROR;
+	}
+    }
+  *is_current = true;
+  return NO_ERROR;
+}
+
 int
 log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RECOVERY_CANDIDATE * candidate,
 				    bool * cleaned)
@@ -7601,9 +7853,9 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
   LOG_TDES *recovery_tdes = recovery_system_tdes.get_tdes ();
   bool main_is_live = false;
   bool ovf_is_live = false;
+  bool constraint_is_current = false;
   FILE_DESCRIPTORS main_des;
   FILE_DESCRIPTORS ovf_des;
-  INT64 main_time_creation = 0;
 
   if (thread_p == NULL || candidate == NULL || cleaned == NULL || recovery_tdes == NULL
       || VFID_ISNULL (&candidate->marker.main_vfid))
@@ -7622,7 +7874,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
    * such a stale candidate re-undoes committed history and touches destroyed/reused pages, so
    * cleanup runs only when the candidate's file is still live in the recovered current state. */
   error = file_recovery_check_candidate_file (thread_p, &candidate->marker.main_vfid, FILE_BTREE, &main_is_live,
-					      &main_des, &main_time_creation);
+					      &main_des, NULL);
   if (error != NO_ERROR)
     {
       return error;
@@ -7650,15 +7902,16 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
     {
       main_is_live = false;
     }
-  /* r305-P2-2 (marker v3) identity hardening: owns-class alone cannot distinguish the
-   * ultra-narrow recycle where the SAME class reuses the SAME VFID through a non-marker
-   * build inside the replay window.  A v3 marker recorded the creating file's attr_id and
-   * the header's immutable time_creation stamp; both must match the live header or the
-   * candidate is not this build's file.  v1/v2 markers carry neither and deliberately keep
-   * the degraded owns-class-only binding above (graceful skip, never a fatal). */
-  if (main_is_live && candidate->decoded_version >= BTREE_BULK_MARKER_VERSION
-      && (candidate->marker.attr_id != main_des.btree.attr_id
-	  || candidate->marker.create_token != (UINT64) main_time_creation))
+  /* File identity is the exact server-issued create LSA persisted in the btree
+   * descriptor.  Legacy, missing, mismatched, or duplicate identities are
+   * ambiguous and therefore never authorize deletion. */
+  if (main_is_live
+      && (candidate->decoded_version < BTREE_BULK_MARKER_VERSION
+	  || LSA_ISNULL (&candidate->marker.create_lsa)
+	  || candidate->marker.attr_id != main_des.btree.attr_id
+	  || candidate->marker.create_token != btree_bulk_lsa_token (&candidate->marker.create_lsa)
+	  || candidate->marker.create_token != btree_bulk_lsa_token (&main_des.btree.create_lsa)
+	  || log_recovery_bulk_candidate_identity_is_ambiguous (candidate)))
     {
       main_is_live = false;
     }
@@ -7679,6 +7932,18 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
 	  ovf_is_live = false;
 	}
     }
+  /* Supersession gate: the identity checks above prove candidate->marker.main_vfid is still the
+   * exact file this marker's build created, but not that constraint_name is still bound to it. A
+   * later, fully-logged DROP+CREATE inside the replay window can drop this marker's constraint
+   * and rebind the same name to a brand-new BTID while reusing the dropped constraint's catalog
+   * heap slots. Walking and undoing publication against such a candidate would tear out the
+   * replacement's current catalog rows instead of the marker's own; skip the walk and destroy
+   * only the orphan file(s) below. */
+  error = log_recovery_bulk_candidate_constraint_is_current (thread_p, candidate, &constraint_is_current);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
 
   recovery_tdes->trid = NULL_TRANID - 1;
   recovery_tdes->state = TRAN_ACTIVE;
@@ -7691,7 +7956,7 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
 #endif
 
   log_sysop_start_atomic (thread_p);
-  error = log_recovery_bulk_walk_publication (thread_p, candidate, recovery_tdes);
+  error = constraint_is_current ? log_recovery_bulk_walk_publication (thread_p, candidate, recovery_tdes) : NO_ERROR;
   /* Vacuum must be notified of both destroyed files BEFORE destruction (mirror the drop paths;
    * see btree_load.c build-abort notify): replayed log still carries vacuum data referencing the
    * candidate's b-tree operations, and without a dropped-file entry vacuum would later fix the

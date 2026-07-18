@@ -99,6 +99,7 @@ struct file_btree_des
 {
   OID class_oid;
   int attr_id;
+  LOG_LSA create_lsa;
 };
 
 /* Overflow key file descriptor */

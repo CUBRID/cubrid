@@ -5837,45 +5837,64 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
       sort_args_p->sum_ovf_pages += px_sort_args_p->sum_ovf_pages;
     }
 
-  log_sysop_start (thread_p);
-  if (btree_create_file
-      (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
+  /*
+   * For logged builds (bt_load_parallel_enabled false) the file must not be created and no sysop may be
+   * opened for it here: put's own sysop wrapping below assumes the file does not yet exist, and opening
+   * the file's sysop before any leaf page exists would break the create-then-put nesting the serial
+   * fallback depends on. Only the no-redo shard construct below needs the file -- and its create-file
+   * sysop attached to the outer transaction -- ahead of time.
+   */
+  if (bt_load_parallel_enabled (load_args_p))
     {
-      ASSERT_ERROR ();
-      log_sysop_abort (thread_p);
-      sort_merge_queue_ctx_destroy (&qctx);
-      return ER_FAILED;
-    }
+      log_sysop_start (thread_p);
+      if (btree_create_file
+	  (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  sort_merge_queue_ctx_destroy (&qctx);
+	  return ER_FAILED;
+	}
 
-  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
-  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-  log_sysop_attach_to_outer (thread_p);
+      /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+      vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
+				   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+      log_sysop_attach_to_outer (thread_p);
 
-  {
-    /*
-     * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
-     * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
-     * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
-     * below: merge everything into a single run and put it serially.
-     */
-    BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
-    if (outcome != BT_PX_NOT_ATTEMPTED)
       {
-	/* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
-	 * here (the PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
-	for (i = 0; i < parallel_num; i++)
+	/*
+	 * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
+	 * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
+	 * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
+	 * below: merge everything into a single run and put it serially.
+	 */
+	BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
+	if (outcome != BT_PX_NOT_ATTEMPTED)
 	  {
-	    int idx = px_sort_param[i].px_result_file_idx;
-	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
+	    /* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
+	     * here (the PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
+	    for (i = 0; i < parallel_num; i++)
 	      {
-		(void) file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
-		VFID_SET_NULL (&px_sort_param[i].temp[idx]);
+		int idx = px_sort_param[i].px_result_file_idx;
+		if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
+		  {
+		    int retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
+		    if (retire_error == NO_ERROR)
+		      {
+			VFID_SET_NULL (&px_sort_param[i].temp[idx]);
+		      }
+		    else
+		      {
+			ASSERT_ERROR ();
+			error = retire_error;
+		      }
+		  }
 	      }
+	    sort_merge_queue_ctx_destroy (&qctx);
+	    return outcome == BT_PX_TREE_DONE ? error : ER_FAILED;
 	  }
-	sort_merge_queue_ctx_destroy (&qctx);
-	return outcome == BT_PX_TREE_DONE ? NO_ERROR : ER_FAILED;
       }
-  }
+    }
 
   /* legacy single-run path: merge all runs into one, then put it serially from the temp file. */
   if (qctx.queue_size >= 2)
@@ -5903,14 +5922,34 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   if (bt_load_parallel_enabled (load_args_p))
     {
+      /* the file was already created above; open a fresh sysop to wrap this put. */
       log_sysop_start (thread_p);
     }
+  else
+    {
+      /* Legacy/logged build: the file was not created above, so create it now and leave the wrapping sysop
+       * open through the put below; xbtree_load_index attaches it to the outer transaction once the tree is
+       * fully built, exactly like the single-process (serial) fallback does. */
+      log_sysop_start (thread_p);
+      if (btree_create_file
+	  (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  log_sysop_abort (thread_p);
+	  sort_merge_queue_ctx_destroy (&qctx);
+	  return ER_FAILED;
+	}
+
+      /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+      vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
+				   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
+    }
+
   if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
     {
-      if (bt_load_parallel_enabled (load_args_p))
-	{
-	  log_sysop_abort (thread_p);
-	}
+      /* A sysop is open here on every reachable path (the no-redo reopen above, or the legacy create-file
+       * path), so the abort is unconditional. */
+      log_sysop_abort (thread_p);
       error = ER_FAILED;
     }
 

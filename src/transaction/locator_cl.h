@@ -90,7 +90,6 @@ extern MOBJ locator_fetch_nested (MOP mop, DB_FETCH_MODE purpose, int prune_leve
 extern int locator_flush_class (MOP class_mop);
 extern void locator_class_flush_deferral_enter (void);
 extern void locator_class_flush_deferral_leave (void);
-extern bool locator_class_flush_deferral_is_active (void);
 extern bool locator_class_flush_deferral_is_open (void);
 extern bool locator_class_flush_deferral_is_outermost (void);
 extern int locator_class_flush_deferral_activate (const BTID * btid, const char *constraint_name, int constraint_type,

@@ -104,6 +104,289 @@ btree_bulk_get_u64 (const char **ptr)
   UINT64 high = btree_bulk_get_u32 (ptr);
   return (high << 32) | btree_bulk_get_u32 (ptr);
 }
+typedef struct btree_bulk_pending_build BTREE_BULK_PENDING_BUILD;
+struct btree_bulk_pending_build
+{
+  int tran_index;
+  TRANID trid;
+  BTID btid;
+  LOG_LSA create_lsa;
+  OID *class_oids;
+  unsigned int class_count;
+  BTREE_BULK_PENDING_BUILD *next;
+};
+
+static BTREE_BULK_PENDING_BUILD *btree_Bulk_pending_builds = NULL;
+static pthread_mutex_t btree_Bulk_pending_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static int
+btree_bulk_compare_oid (const void *left, const void *right)
+{
+  const OID *left_oid = (const OID *) left;
+  const OID *right_oid = (const OID *) right;
+
+  if (OID_EQ (left_oid, right_oid))
+    {
+      return 0;
+    }
+  return OID_GT (left_oid, right_oid) ? 1 : -1;
+}
+
+static bool
+btree_bulk_pending_identity_matches (const BTREE_BULK_PENDING_BUILD * pending, int tran_index, TRANID trid,
+				     const BTID * btid, const LOG_LSA * create_lsa, const OID * class_oids,
+				     unsigned int class_count)
+{
+  unsigned int i;
+
+  if (pending->tran_index != tran_index || pending->trid != trid || !BTID_IS_EQUAL (&pending->btid, btid)
+      || !LSA_EQ (&pending->create_lsa, create_lsa) || pending->class_count != class_count)
+    {
+      return false;
+    }
+  for (i = 0; i < class_count; i++)
+    {
+      if (!OID_EQ (&pending->class_oids[i], &class_oids[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * btree_bulk_pending_register () - Register a pending bulk-build create-LSA/class-oid identity for the current
+ *                                   transaction so a later abort can force marker-based cleanup even though no
+ *                                   marker has been logged yet.
+ *
+ * return               : NO_ERROR, ER_FAILED, or ER_OUT_OF_VIRTUAL_MEMORY.
+ * thread_p (in)        : Thread entry.
+ * btid (in)            : B-tree identifier being built.
+ * create_lsa (in)      : Server-issued create LSA of the main b-tree file instance.
+ * class_oids (in)      : Owning class OID list bound to this build.
+ * class_count (in)     : Number of entries in class_oids.
+ *
+ * Note: registering under the same tran_index evicts any stale leftover entry that belongs to a different
+ * trid (a prior transaction on this tran_index that never reached consume/discard); an entry for the same
+ * trid/btid pair is left untouched so callers can re-register. Registered entries intentionally survive
+ * savepoint rollback / partial abort (ROLLBACK TO SAVEPOINT) -- they are only removed by consume() on success
+ * or discard() on full transaction abort, since a partial rollback does not guarantee the underlying build was
+ * undone.
+ */
+int
+btree_bulk_pending_register (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
+			     const OID * class_oids, unsigned int class_count)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  BTREE_BULK_PENDING_BUILD *pending;
+  BTREE_BULK_PENDING_BUILD **link;
+  OID *classes;
+  unsigned int i;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (tdes == NULL || btid == NULL || BTID_IS_NULL (btid) || create_lsa == NULL || LSA_ISNULL (create_lsa)
+      || class_oids == NULL || class_count == 0 || class_count > BTREE_BULK_MARKER_MAX_CLASSES)
+    {
+      return ER_FAILED;
+    }
+  classes = (OID *) malloc ((size_t) class_count * sizeof (*classes));
+  pending = (BTREE_BULK_PENDING_BUILD *) malloc (sizeof (*pending));
+  if (classes == NULL || pending == NULL)
+    {
+      free (classes);
+      free (pending);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (classes, class_oids, (size_t) class_count * sizeof (*classes));
+  qsort (classes, class_count, sizeof (*classes), btree_bulk_compare_oid);
+  for (i = 1; i < class_count; i++)
+    {
+      if (OID_EQ (&classes[i - 1], &classes[i]))
+	{
+	  free (classes);
+	  free (pending);
+	  return ER_FAILED;
+	}
+    }
+
+  pending->tran_index = tran_index;
+  pending->trid = tdes->trid;
+  pending->btid = *btid;
+  pending->create_lsa = *create_lsa;
+  pending->class_oids = classes;
+  pending->class_count = class_count;
+
+  pthread_mutex_lock (&btree_Bulk_pending_mutex);
+  link = &btree_Bulk_pending_builds;
+  while (*link != NULL)
+    {
+      BTREE_BULK_PENDING_BUILD *current = *link;
+
+      if (current->tran_index == tran_index
+	  && (current->trid != tdes->trid || BTID_IS_EQUAL (&current->btid, btid)))
+	{
+	  *link = current->next;
+	  free (current->class_oids);
+	  free (current);
+	  continue;
+	}
+      link = &current->next;
+    }
+  pending->next = btree_Bulk_pending_builds;
+  btree_Bulk_pending_builds = pending;
+  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
+  return NO_ERROR;
+}
+
+/*
+ * btree_bulk_pending_validate () - Confirm a pending registration matches the given identity before it is
+ *                                   consumed (rejects stale/mismatched replay of a stored bulk index
+ *                                   descriptor).
+ *
+ * return               : NO_ERROR if a matching pending entry exists, ER_FAILED otherwise.
+ * thread_p (in)        : Thread entry.
+ * btid (in)            : B-tree identifier to match.
+ * create_lsa (in)      : Create LSA to match.
+ * class_oids (in)      : Owning class OID list to match (order-independent).
+ * class_count (in)     : Number of entries in class_oids.
+ */
+int
+btree_bulk_pending_validate (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
+			     const OID * class_oids, unsigned int class_count)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  BTREE_BULK_PENDING_BUILD *pending;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool matches = false;
+
+  if (tdes == NULL || btid == NULL || create_lsa == NULL || class_oids == NULL || class_count == 0)
+    {
+      return ER_FAILED;
+    }
+  pthread_mutex_lock (&btree_Bulk_pending_mutex);
+  for (pending = btree_Bulk_pending_builds; pending != NULL; pending = pending->next)
+    {
+      if (btree_bulk_pending_identity_matches (pending, tran_index, tdes->trid, btid, create_lsa, class_oids,
+					       class_count))
+	{
+	  matches = true;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
+  return matches ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * btree_bulk_pending_requires_marker () - Report whether the current transaction has any pending bulk-build
+ *                                          registration, meaning a BTREE_BULK_MARKER must be logged before the
+ *                                          transaction can commit/prepare.
+ *
+ * return               : true if at least one pending entry exists for this transaction, false otherwise.
+ * thread_p (in)        : Thread entry.
+ */
+bool
+btree_bulk_pending_requires_marker (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  BTREE_BULK_PENDING_BUILD *pending;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool requires_marker = false;
+
+  if (tdes == NULL)
+    {
+      return false;
+    }
+  pthread_mutex_lock (&btree_Bulk_pending_mutex);
+  for (pending = btree_Bulk_pending_builds; pending != NULL; pending = pending->next)
+    {
+      if (pending->tran_index == tran_index && pending->trid == tdes->trid)
+	{
+	  requires_marker = true;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
+  return requires_marker;
+}
+
+/*
+ * btree_bulk_pending_discard () - Drop every pending registration owned by the current transaction.
+ *
+ * return               : void.
+ * thread_p (in)        : Thread entry.
+ *
+ * Note: called on full transaction abort only. A partial rollback (ROLLBACK TO SAVEPOINT) must NOT call this --
+ * pending entries are fail-safe and intentionally survive savepoint/partial rollback so that a subsequent
+ * commit of the same transaction still forces marker-based cleanup for any build that was rolled back
+ * internally.
+ */
+void
+btree_bulk_pending_discard (THREAD_ENTRY * thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  BTREE_BULK_PENDING_BUILD **link;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+  pthread_mutex_lock (&btree_Bulk_pending_mutex);
+  link = &btree_Bulk_pending_builds;
+  while (*link != NULL)
+    {
+      BTREE_BULK_PENDING_BUILD *pending = *link;
+
+      if (pending->tran_index == tran_index && pending->trid == tdes->trid)
+	{
+	  *link = pending->next;
+	  free (pending->class_oids);
+	  free (pending);
+	  continue;
+	}
+      link = &pending->next;
+    }
+  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
+}
+
+/*
+ * btree_bulk_pending_consume () - Remove the single pending registration matching the given identity once its
+ *                                  bulk-build marker has been durably logged (or the build committed without
+ *                                  needing one).
+ *
+ * return               : void.
+ * thread_p (in)        : Thread entry.
+ * btid (in)            : B-tree identifier of the entry to remove.
+ * create_lsa (in)      : Create LSA of the entry to remove.
+ */
+void
+btree_bulk_pending_consume (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa)
+{
+  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  BTREE_BULK_PENDING_BUILD **link;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  if (tdes == NULL)
+    {
+      return;
+    }
+  pthread_mutex_lock (&btree_Bulk_pending_mutex);
+  for (link = &btree_Bulk_pending_builds; *link != NULL; link = &(*link)->next)
+    {
+      BTREE_BULK_PENDING_BUILD *pending = *link;
+
+      if (pending->tran_index == tran_index && pending->trid == tdes->trid && BTID_IS_EQUAL (&pending->btid, btid)
+	  && LSA_EQ (&pending->create_lsa, create_lsa))
+	{
+	  *link = pending->next;
+	  free (pending->class_oids);
+	  free (pending);
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
+}
 
 int
 btree_bulk_marker_packed_size (const BTREE_BULK_MARKER * marker, unsigned int *packed_size)
@@ -32432,6 +32715,7 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
   log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
 					 delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
 					 rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
+  pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
 
   _er_log_debug (ARG_FILE_LINE,
 		 "bulk recovery undo branch=unq-second-exchanged BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d "
@@ -34537,6 +34821,7 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   FILE_DESCRIPTORS des;
   VPID vpid_root;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  LOG_TDES *tdes;
 
   int error_code = NO_ERROR;
 
@@ -34545,6 +34830,19 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   des.btree.attr_id = attrid;
 
   error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid->vfid);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+  tdes = LOG_FIND_CURRENT_TDES (thread_p);
+  if (tdes == NULL || LSA_ISNULL (&tdes->tail_lsa))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  des.btree.create_lsa = tdes->tail_lsa;
+  error_code = file_descriptor_update (thread_p, &btid->vfid, &des);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();

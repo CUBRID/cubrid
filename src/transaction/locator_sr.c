@@ -7291,6 +7291,17 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   PAGE_PTR root_page = NULL;
   BTREE_ROOT_HEADER *root_header = NULL;
   BTREE_BULK_MARKER marker;
+  if (bulk_index != NULL && num_ignore_error > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  if (bulk_index == NULL && btree_bulk_pending_requires_marker (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "bulk index build FORCE rejected: request shape inconsistent with pending bulk build");
+      return ER_GENERIC_ERROR;
+    }
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
@@ -7301,10 +7312,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   if (bulk_index != NULL)
     {
       tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes == NULL || LSA_ISNULL (&bulk_index->create_lsa) || LSA_ISNULL (&tdes->head_lsa)
-	  || LSA_LT (&bulk_index->create_lsa, &tdes->head_lsa) || LSA_GT (&bulk_index->create_lsa, &tdes->tail_lsa))
+      if (tdes == NULL
+	  || btree_bulk_pending_validate (thread_p, &bulk_index->btid, &bulk_index->create_lsa,
+					  bulk_index->class_oids, bulk_index->class_count) != NO_ERROR)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+		  "bulk index build FORCE rejected: request shape inconsistent with pending bulk build");
 	  error_code = ER_GENERIC_ERROR;
 	  goto error;
 	}
@@ -7524,21 +7537,22 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
       marker.object_kind = bulk_index->object_kind;
       pgbuf_unfix_and_init (thread_p, root_page);
 
-      /* v3 identity capture (r305-P2-2): read the main file's immutable creation identity
-       * (header time_creation + descriptor attr_id) so restore cleanup can prove the live
-       * file is the exact instance this build created and not a recycled VFID.  Read after
-       * the root page is unfixed (no root->fhead latch chain). */
       {
 	FILE_DESCRIPTORS main_file_des;
-	INT64 main_time_creation = 0;
 
-	error_code = file_get_creation_identity (thread_p, &marker.main_vfid, &main_time_creation, &main_file_des);
+	error_code = file_descriptor_get (thread_p, &marker.main_vfid, &main_file_des);
 	if (error_code != NO_ERROR)
 	  {
 	    goto error;
 	  }
+	if (!LSA_EQ (&main_file_des.btree.create_lsa, &bulk_index->create_lsa))
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    error_code = ER_GENERIC_ERROR;
+	    goto error;
+	  }
 	marker.attr_id = main_file_des.btree.attr_id;
-	marker.create_token = (UINT64) main_time_creation;
+	marker.create_token = btree_bulk_lsa_token (&main_file_des.btree.create_lsa);
       }
 
       error_code = log_get_current_sysop_parent_lsa (thread_p, &marker.parent_lsa);
@@ -7546,16 +7560,14 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	{
 	  goto error;
 	}
-    }
-  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
-  if (bulk_index != NULL)
-    {
       error_code = log_append_bulk_build_marker (thread_p, &marker);
       if (error_code != NO_ERROR)
 	{
-	  return error_code;
+	  goto error;
 	}
+      btree_bulk_pending_consume (thread_p, &bulk_index->btid, &bulk_index->create_lsa);
     }
+  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
   return error_code;
 

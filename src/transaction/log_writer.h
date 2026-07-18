@@ -199,6 +199,7 @@ extern bool logwr_force_shutdown (void);
 extern int logwr_copy_log_file (const char *db_name, const char *log_path, int mode, INT64 start_page_id);
 extern LOG_PHY_PAGEID logwr_to_physical_pageid (LOG_PAGEID logical_pageid);
 extern const char *logwr_log_ha_filestat_to_string (enum LOG_HA_FILESTAT val);
+extern bool logwr_all_consumers_support_bulk_marker (void);
 #ifdef UNSTABLE_TDE_FOR_REPLICATION_LOG
 extern TDE_ALGORITHM logwr_get_tde_algorithm (const LOG_PAGE * log_pgptr);
 extern void logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgptr, const TDE_ALGORITHM tde_algo);
@@ -207,6 +208,7 @@ extern void logwr_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_PAGE * log_pgp
 #if defined(SERVER_MODE)
 int xlogwr_get_log_pages (THREAD_ENTRY * thread_p, LOG_PAGEID first_pageid, LOGWR_MODE mode);
 extern LOG_PAGEID logwr_get_min_copied_fpageid (void);
+extern int logwr_append_bulk_build_marker_if_compatible (THREAD_ENTRY * thread_p, int length, const void *data);
 
 #endif /* SERVER_MODE */
 

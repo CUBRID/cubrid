@@ -56,6 +56,8 @@
 #include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
+#include "network.h"
+#include "release_string.h"
 #else /* !defined(SERVER_MODE) */
 #include "network_interface_cl.h"
 #endif /* !defined(SERVER_MODE) */
@@ -2109,6 +2111,86 @@ static void logwr_set_eof_lsa (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry);
 static bool logwr_is_delayed (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry);
 static void logwr_update_last_sent_eof_lsa (LOGWR_ENTRY * entry);
 
+static bool
+logwr_all_consumers_support_bulk_marker_locked (void)
+{
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
+  LOGWR_ENTRY *entry;
+
+  for (entry = writer_info->writer_list; entry != NULL; entry = entry->next)
+    {
+      CSS_CONN_ENTRY *conn;
+
+      if (entry->thread_p == NULL)
+	{
+	  return false;
+	}
+
+      conn = entry->thread_p->conn_entry;
+      if (conn == NULL || (conn->client_capabilities & NET_CAP_BULK_NO_REDO) == 0 || conn->version_string == NULL
+	  || !rel_is_log_compatible (rel_release_string (), conn->version_string))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+bool
+logwr_all_consumers_support_bulk_marker (void)
+{
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
+  bool compatible;
+
+  if (HA_DISABLED ())
+    {
+      return true;
+    }
+
+  pthread_mutex_lock (&writer_info->wr_list_mutex);
+  compatible = logwr_all_consumers_support_bulk_marker_locked ();
+  pthread_mutex_unlock (&writer_info->wr_list_mutex);
+
+  return compatible;
+}
+
+int
+logwr_append_bulk_build_marker_if_compatible (THREAD_ENTRY * thread_p, int length, const void *data)
+{
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+  LOGWR_INFO *writer_info = log_Gl.writer_info;
+  bool compatible;
+
+  if (HA_DISABLED ())
+    {
+      log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, length, data);
+      return NO_ERROR;
+    }
+
+  /*
+   * Marker publication never runs during crash recovery.  In the live path, log_append_redo_data acquires only the
+   * prior-LSA mutex, not LOG_CS, so it is safe to keep writer registration serialized through the compatibility
+   * check and append.
+   */
+  pthread_mutex_lock (&writer_info->wr_list_mutex);
+  compatible = logwr_all_consumers_support_bulk_marker_locked ();
+  if (compatible)
+    {
+      log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, length, data);
+    }
+  pthread_mutex_unlock (&writer_info->wr_list_mutex);
+
+  if (!compatible)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "bulk build publication aborted: incompatible log consumer");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * logwr_register_writer_entry -
  *
@@ -2868,6 +2950,13 @@ logwr_get_min_copied_fpageid (void)
 
 #endif /* SERVER_MODE */
 
+#if !defined(SERVER_MODE)
+bool
+logwr_all_consumers_support_bulk_marker (void)
+{
+  return true;
+}
+#endif /* !SERVER_MODE */
 
 #if defined(CS_MODE)
 void

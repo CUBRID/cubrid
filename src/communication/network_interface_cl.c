@@ -822,7 +822,8 @@ int
 locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
 				LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, OID * class_oids,
 				unsigned int class_capacity, OID * fk_class_oids, unsigned int fk_class_capacity,
-				char *constraint_name, unsigned int constraint_name_capacity)
+				char *constraint_name, unsigned int constraint_name_capacity,
+				char *owner_class_name, unsigned int owner_class_name_capacity)
 {
   char *ptr = (char *) buffer;
   int magic, version, packed_length, count, name_length, owner_name_length, i;
@@ -915,7 +916,8 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
   ptr += padded_length;
 
   ptr = or_unpack_int (ptr, &owner_name_length);
-  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH)
+  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_class_name == NULL
+      || (unsigned int) owner_name_length >= owner_class_name_capacity)
     {
       return ER_FAILED;
     }
@@ -925,7 +927,9 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
     {
       return ER_FAILED;
     }
-  descriptor->owner_class_name = ptr;
+  memcpy (owner_class_name, ptr, owner_name_length);
+  owner_class_name[owner_name_length] = '\0';
+  descriptor->owner_class_name = owner_class_name;
   descriptor->owner_class_name_length = (unsigned int) owner_name_length;
   ptr += padded_length;
   ptr = or_unpack_int (ptr, &descriptor->object_kind);
@@ -6602,11 +6606,16 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   char *stream = NULL;
   int stream_size = 0;
   LOCK curr_cls_lock = SCH_M_LOCK;
+  bool bulk_wire_extension = net_server_supports_bulk_no_redo ();
   LOG_LSA create_lsa;
   LSA_SET_NULL (&create_lsa);
   if (out_create_lsa != NULL)
     {
       LSA_SET_NULL (out_create_lsa);
+    }
+  if (!bulk_wire_extension)
+    {
+      eligible_no_redo = false;
     }
 
   // online index should have created the empty b-tree already
@@ -6640,7 +6649,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
 		  + OR_INT_SIZE	/* Thread count */
-		  + OR_INT_SIZE /* eligible_no_redo */ );
+		  + (bulk_wire_extension ? OR_INT_SIZE : 0) /* eligible_no_redo */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6716,11 +6725,16 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
-  ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
+  if (bulk_wire_extension)
+    {
+      ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
+    }
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
-			OR_ALIGNED_BUF_SIZE (a_reply), stream, stream_size, NULL, 0);
+			OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE
+			  + (bulk_wire_extension ? OR_LOG_LSA_ALIGNED_SIZE : 0),
+			stream, stream_size, NULL, 0);
 
   if (req_error == NO_ERROR)
     {
@@ -6749,7 +6763,10 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	      btid = NULL;
 	    }
 	}
-      ptr = or_unpack_log_lsa (ptr, &create_lsa);
+      if (bulk_wire_extension)
+	{
+	  ptr = or_unpack_log_lsa (ptr, &create_lsa);
+	}
       if (error == NO_ERROR && index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && out_create_lsa != NULL)
 	{
 	  LSA_COPY (out_create_lsa, &create_lsa);

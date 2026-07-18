@@ -136,6 +136,8 @@ struct load_args
   int report_first_error;
   bool report_published;
 };
+#define BT_LOAD_POOL_SPAN_NPAGES 64
+#define BT_LOAD_OVF_REFILL_NPAGES 256
 
 typedef enum bt_load_slot_state
 {
@@ -1240,11 +1242,15 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->vacuum_capacity = 0;
 #if defined (SERVER_MODE)
   load_args->no_redo = eligible_no_redo;
-  if (!load_args->no_redo)
-    {
-      log_sysop_start (thread_p);
-      is_sysop_started = true;
-    }
+  /* Do NOT open a build sysop here. For SERVER_MODE, the topop rmutex must not be held across
+   * btree_index_sort()'s parallel in-phase sort: px workers share this transaction's tdes and briefly
+   * lock_topop() it themselves (e.g. disk_reserve_sectors() -> log_sysop_start() while creating their
+   * per-worker temp files); if the main thread already holds the rmutex from here, every worker blocks
+   * on it while the main thread blocks on SORT_WAIT_PARALLEL waiting for those same workers -- deadlock.
+   * The real build sysop for logged paths is opened deeper -- either by sort_listfile()'s
+   * single-process branch or by sort_merge_run_for_parallel_index_leaf_build()'s legacy branch -- always
+   * after the parallel wait has already returned, and is picked up below via
+   * log_check_system_op_is_started() once btree_index_sort() completes. */
 #else
   load_args->no_redo = false;
 #endif
@@ -1447,11 +1453,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       /* Legacy builds and the no-redo serial fallback leave a build sysop for this layer to attach. */
       is_sysop_started = log_check_system_op_is_started (thread_p);
     }
-  if (create_lsa != NULL && tdes != NULL)
-    {
-      /* This is the lower bound for media-recovery cleanup; later vacuum WAL must not move it. */
-      LSA_COPY (create_lsa, &tdes->tail_lsa);
-    }
 #endif /* SERVER_MODE */
 
   if (bt_load_append_vacuum_notifications (thread_p, load_args) != NO_ERROR)
@@ -1616,6 +1617,27 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	    {
 	      goto error;
 	    }
+	}
+    }
+  if (load_args->no_redo && built_bulk_tree)
+    {
+      FILE_DESCRIPTORS main_des;
+
+      if (file_descriptor_get (thread_p, &btid->vfid, &main_des) != NO_ERROR
+	  || LSA_ISNULL (&main_des.btree.create_lsa) || !OID_EQ (&main_des.btree.class_oid, &class_oids[0])
+	  || main_des.btree.attr_id != attr_ids[0]
+	  || btree_bulk_pending_register (thread_p, btid, &main_des.btree.create_lsa, class_oids,
+					  (unsigned int) n_classes) != NO_ERROR)
+	{
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	    }
+	  goto error;
+	}
+      if (create_lsa != NULL)
+	{
+	  *create_lsa = main_des.btree.create_lsa;
 	}
     }
 
@@ -2676,7 +2698,7 @@ bt_load_claim_pool_span (BT_LOAD_VPID_POOL * pool, bool is_ovf, BT_LOAD_SPAN ** 
   int current = pool->cursor.load (std::memory_order_relaxed);
   while (current < pool->n_published)
     {
-      int take = MIN (64, pool->n_published - current);
+      int take = MIN (BT_LOAD_POOL_SPAN_NPAGES, pool->n_published - current);
       if (pool->cursor.compare_exchange_weak (current, current + take, std::memory_order_acq_rel,
 					      std::memory_order_relaxed))
 	{
@@ -2719,7 +2741,7 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
 	      if (slot->state == BT_LOAD_SLOT_IDLE)
 		{
 		  slot->state = is_ovf ? BT_LOAD_SLOT_NEED_OVF : BT_LOAD_SLOT_NEED_BTREE;
-		  slot->req_npages = 64;
+		  slot->req_npages = is_ovf ? BT_LOAD_OVF_REFILL_NPAGES : BT_LOAD_POOL_SPAN_NPAGES;
 		  pthread_cond_signal (&provider->cond_main);
 		}
 	      pthread_mutex_unlock (&provider->mtx);
@@ -2751,7 +2773,7 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
       if (slot->state == BT_LOAD_SLOT_IDLE)
 	{
 	  slot->state = is_ovf ? BT_LOAD_SLOT_NEED_OVF : BT_LOAD_SLOT_NEED_BTREE;
-	  slot->req_npages = 64;
+	  slot->req_npages = is_ovf ? BT_LOAD_OVF_REFILL_NPAGES : BT_LOAD_POOL_SPAN_NPAGES;
 	  pthread_cond_signal (&provider->cond_main);
 	}
       while (slot->state != BT_LOAD_SLOT_READY && provider->first_error == NO_ERROR)
@@ -2803,7 +2825,8 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
    * the reconcile pass.  The claim protocol already pre-requests refills when a span is 75% consumed, so a small
    * bootstrap keeps workers fed without the burst.
    */
-  provider->main_pool.n_published = MIN (MAX (est_main_pages, 64), n_workers * 64);
+  provider->main_pool.n_published =
+    MIN (MAX (est_main_pages, BT_LOAD_POOL_SPAN_NPAGES), n_workers * BT_LOAD_POOL_SPAN_NPAGES);
   provider->main_pool.cursor.store (0, std::memory_order_relaxed);
   provider->ovf_pool.vpids = NULL;
   provider->ovf_pool.n_published = 0;
@@ -4633,15 +4656,16 @@ bt_load_claim_ovf_page (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, VPID * v
       if (error != NO_ERROR)
 	{
 	  VPID *vpids = NULL;
-	  error = bt_load_allocate_span (thread_p, &provider->ovf_vfid, true, 64, &vpids);
+	  error = bt_load_allocate_span (thread_p, &provider->ovf_vfid, true, BT_LOAD_POOL_SPAN_NPAGES, &vpids);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
 	  {
 	    BT_LOAD_ALLOCATION_LEDGER *entry =
-	      bt_load_make_ledger_entry (&provider->ovf_vfid, vpids, 64, BT_LOAD_ORIGIN_MAIN_INLINE);
-	    span = bt_load_make_span (vpids, 64, true, true);
+	      bt_load_make_ledger_entry (&provider->ovf_vfid, vpids, BT_LOAD_POOL_SPAN_NPAGES,
+					 BT_LOAD_ORIGIN_MAIN_INLINE);
+	    span = bt_load_make_span (vpids, BT_LOAD_POOL_SPAN_NPAGES, true, true);
 	    if (span == NULL || entry == NULL)
 	      {
 		free_and_init (span);
@@ -4888,7 +4912,13 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
 	}
       if (provider->est_ovf_pages > 0)
 	{
-	  provider->ovf_pool.n_published = provider->est_ovf_pages;
+	  /*
+	   * Overflow keys consume their page supply faster than main B-tree pages.  Bound the bootstrap at 256 pages
+	   * per worker and refill in 256-page chunks, avoiding synchronous allocation of the full estimate.
+	   */
+	  provider->ovf_pool.n_published =
+	    MIN (MAX (provider->est_ovf_pages, BT_LOAD_OVF_REFILL_NPAGES),
+		 provider->n_workers * BT_LOAD_OVF_REFILL_NPAGES);
 	  error = bt_load_allocate_span (thread_p, &provider->ovf_vfid, true, provider->ovf_pool.n_published,
 					 &provider->ovf_pool.vpids);
 	  if (error != NO_ERROR)

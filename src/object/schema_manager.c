@@ -63,6 +63,7 @@
 #include "locator_cl.h"
 #include "statistics.h"
 #include "network_interface_cl.h"
+#include "network.h"
 #include "parser.h"
 #include "trigger_manager.h"
 #include "oid.h"
@@ -10892,8 +10893,9 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     }
 #if defined (CS_MODE)
   eligible_no_redo =
-    sm_bulk_index_provenance_is_eligible (actual_new_btid, class_->load_index_from_heap, has_instances,
-					  index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS, true);
+    net_server_supports_bulk_no_redo ()
+    && sm_bulk_index_provenance_is_eligible (actual_new_btid, class_->load_index_from_heap, has_instances,
+					     index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS, true);
 #endif
 
   /* If there are no instances, then call btree_add_index() to create an empty index, otherwise call
@@ -10928,6 +10930,10 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
     }
 
 #if defined (CS_MODE)
+  if (error == NO_ERROR && eligible_no_redo && LSA_ISNULL (&create_lsa))
+    {
+      eligible_no_redo = false;
+    }
   if (error == NO_ERROR && eligible_no_redo)
     {
       const char *owner_class_name = sm_get_ch_name (classop);

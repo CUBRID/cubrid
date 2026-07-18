@@ -3985,6 +3985,97 @@ locator_mflush_set_dirty (MOP mop, MOBJ ignore_object, void *ignore_argument)
   ws_dirty (mop);
 }
 
+static int
+locator_mflush_post_force (LOCATOR_MFLUSH_CACHE * mflush, int error_code)
+{
+  LOCATOR_MFLUSH_TEMP_OID *mop_toid;
+  LOCATOR_MFLUSH_TEMP_OID *next_mop_toid;
+  LC_COPYAREA_ONEOBJ *obj;
+  int i;
+
+  /*
+   * Notify the workspace module of OIDs for new objects. The MOPs must
+   * reflect the new OID and not the temporary OID.
+   */
+  mop_toid = mflush->mop_toids;
+  while (mop_toid != NULL)
+    {
+      if (mop_toid->mop != NULL)
+	{
+	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
+	  if (error_code != NO_ERROR && OID_ISNULL (&obj->oid))
+	    {
+	      COPY_OID (&obj->oid, ws_oid (mop_toid->mop));
+	    }
+	  else if (!OID_ISNULL (&obj->oid) && !(OID_ISTEMP (&obj->oid)))
+	    {
+	      ws_update_oid_and_class (mop_toid->mop, &obj->oid, &obj->class_oid);
+	    }
+	}
+      next_mop_toid = mop_toid->next;
+      /*
+       * Set mop to NULL before freeing the structure, so that it does not
+       * become a GC root for this mop.
+       */
+      mop_toid->mop = NULL;
+      free_and_init (mop_toid);
+      mop_toid = next_mop_toid;
+    }
+  mflush->mop_toids = NULL;
+
+  /* Notify the workspace about the changes that were made to objects belonging to partitioned classes. In the case
+   * of a partition change, what the server returns here is a new object (not an updated one) and the object that
+   * we sent was deleted. */
+  mop_toid = mflush->mop_uoids;
+  while (mop_toid != NULL)
+    {
+      if (mop_toid->mop != NULL)
+	{
+	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
+	  assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
+
+	  /* Check if object OID has changed. */
+	  if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)
+	      && error_code == NO_ERROR)
+	    {
+	      error_code = ws_update_oid_and_class (mop_toid->mop, &obj->oid, &obj->class_oid);
+	    }
+
+	  /* Do not return in case of error. Allow the allocated memory to be freed first. */
+	}
+
+      next_mop_toid = mop_toid->next;
+
+      /*
+       * Set mop to NULL before freeing the structure, so that it does not
+       * become a GC root for this mop.
+       */
+      mop_toid->mop = NULL;
+      free_and_init (mop_toid);
+      mop_toid = next_mop_toid;
+    }
+  mflush->mop_uoids = NULL;
+
+  for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs; i++)
+    {
+      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
+      if (OID_IS_ROOTOID (&obj->class_oid)
+	  && (obj->operation == LC_FLUSH_UPDATE || obj->operation == LC_FLUSH_UPDATE_PRUNE))
+	{
+	  SM_CLASS *smclass = NULL;
+	  int save;
+	  MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
+
+	  AU_SAVE_AND_DISABLE (save);
+	  /* fetch to update catalog representation directory */
+	  error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ, AU_SELECT);
+	  AU_RESTORE (save);
+	}
+    }
+
+  return error_code;
+}
+
 /*
  * locator_mflush_force () - Force the mflush area
  *
@@ -4077,86 +4168,7 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	  return error_code;
 	}
 
-      /*
-       * Notify the workspace module of OIDs for new objects. The MOPs must
-       * refelect the new OID.. and not the temporarily OID
-       */
-
-      mop_toid = mflush->mop_toids;
-      while (mop_toid != NULL)
-	{
-	  if (mop_toid->mop != NULL)
-	    {
-	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
-	      if (error_code != NO_ERROR && OID_ISNULL (&obj->oid))
-		{
-		  COPY_OID (&obj->oid, ws_oid (mop_toid->mop));
-		}
-	      else if (!OID_ISNULL (&obj->oid) && !(OID_ISTEMP (&obj->oid)))
-		{
-		  ws_update_oid_and_class (mop_toid->mop, &obj->oid, &obj->class_oid);
-		}
-	    }
-	  next_mop_toid = mop_toid->next;
-	  /*
-	   * Set mop to NULL before freeing the structure, so that it does not
-	   * become a GC root for this mop..
-	   */
-	  mop_toid->mop = NULL;
-	  free_and_init (mop_toid);
-	  mop_toid = next_mop_toid;
-	}
-      mflush->mop_toids = NULL;
-
-      /* Notify the workspace about the changes that were made to objects belonging to partitioned classes. In the case
-       * of a partition change, what the server returns here is a new object (not an updated one) and the object that
-       * we sent was deleted */
-      mop_toid = mflush->mop_uoids;
-      while (mop_toid != NULL)
-	{
-	  if (mop_toid->mop != NULL)
-	    {
-	      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, mop_toid->obj);
-	      assert (obj->operation == LC_FLUSH_UPDATE_PRUNE);
-
-	      /* Check if object OID has changed */
-	      if (!OID_ISNULL (&obj->oid) && !OID_EQ (WS_OID (mop_toid->mop->class_mop), &obj->class_oid)
-		  && error_code == NO_ERROR)
-		{
-		  error_code = ws_update_oid_and_class (mop_toid->mop, &obj->oid, &obj->class_oid);
-		}
-
-	      /* Do not return in case of error. Allow the allocated memory to be freed first */
-	    }
-
-	  next_mop_toid = mop_toid->next;
-
-	  /*
-	   * Set mop to NULL before freeing the structure, so that it does not
-	   * become a GC root for this mop..
-	   */
-	  mop_toid->mop = NULL;
-	  free_and_init (mop_toid);
-	  mop_toid = next_mop_toid;
-	}
-      mflush->mop_uoids = NULL;
-
-      for (i = 0; error_code == NO_ERROR && i < mflush->mobjs->num_objs; i++)
-	{
-	  obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
-	  if (OID_IS_ROOTOID (&obj->class_oid)
-	      && (obj->operation == LC_FLUSH_UPDATE || obj->operation == LC_FLUSH_UPDATE_PRUNE))
-	    {
-	      SM_CLASS *smclass = NULL;
-	      int save;
-	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
-
-	      AU_SAVE_AND_DISABLE (save);
-	      /* fetch to update catalog representation directory */
-	      error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ, AU_SELECT);
-	      AU_RESTORE (save);
-	    }
-	}
+      error_code = locator_mflush_post_force (mflush, error_code);
 
       if (error_code != NO_ERROR)
 	{
@@ -4956,12 +4968,6 @@ locator_class_flush_deferral_leave (void)
 }
 
 bool
-locator_class_flush_deferral_is_active (void)
-{
-  return locator_Class_flush_deferral.depth > 0 && locator_Class_flush_deferral.active;
-}
-
-bool
 locator_class_flush_deferral_is_open (void)
 {
 #if defined (CS_MODE)
@@ -5418,7 +5424,12 @@ locator_flush_class_set_internal (bool final_publication)
     }
   content_size = (int) (mflush.recdes.data - mflush.copy_area->mem);
   error =
-    locator_force_bulk (mflush.copy_area, ws_Error_ignore_count, ws_Error_ignore_list, content_size, descriptor_p);
+    locator_force_bulk (mflush.copy_area, descriptor_p == NULL ? ws_Error_ignore_count : 0,
+			descriptor_p == NULL ? ws_Error_ignore_list : NULL, content_size, descriptor_p);
+  if (error != ER_LK_UNILATERALLY_ABORTED && (error == NO_ERROR || BOOT_IS_CLIENT_RESTARTED ()))
+    {
+      error = locator_mflush_post_force (&mflush, error);
+    }
   if (error != NO_ERROR)
     {
       unsigned int j;

@@ -3625,7 +3625,8 @@ log_get_current_sysop_parent_lsa (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa)
 bool
 log_is_irreversible_2pc_state (TRAN_STATE state)
 {
-  return state == TRAN_UNACTIVE_2PC_COMMIT_DECISION;
+  return state == TRAN_UNACTIVE_2PC_COMMIT_DECISION
+    || state == TRAN_UNACTIVE_COMMITTED_INFORMING_PARTICIPANTS;
 }
 
 int
@@ -3633,7 +3634,7 @@ log_append_bulk_build_marker (THREAD_ENTRY * thread_p, const BTREE_BULK_MARKER *
 {
   char *payload;
   unsigned int payload_size;
-  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+  int error_code;
 
   if (btree_bulk_marker_packed_size (marker, &payload_size) != NO_ERROR || payload_size > INT_MAX)
     {
@@ -3652,9 +3653,15 @@ log_append_bulk_build_marker (THREAD_ENTRY * thread_p, const BTREE_BULK_MARKER *
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
+  error_code = logwr_append_bulk_build_marker_if_compatible (thread_p, (int) payload_size, payload);
+#else
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
   log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, (int) payload_size, payload);
+  error_code = NO_ERROR;
+#endif
   free (payload);
-  return NO_ERROR;
+  return error_code;
 }
 
 /*
@@ -5226,6 +5233,13 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
+  if (btree_bulk_pending_requires_marker (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
+	      "bulk index build requires its durability marker before commit/2PC; transaction aborted");
+      return log_abort_local (thread_p, tdes, is_local_tran);
+    }
+
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* tx_lob_locator_clear and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -5396,6 +5410,7 @@ log_abort_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool is_local_tran)
     }
 
   tx_lob_locator_clear (thread_p, tdes, false, NULL);
+  btree_bulk_pending_discard (thread_p);
 
   return tdes->state;
 }
@@ -5487,7 +5502,14 @@ log_commit (THREAD_ENTRY * thread_p, int tran_index, bool retain_lock)
        * This is a local transaction or is a participant of a distributed transaction
        */
       state = log_commit_local (thread_p, tdes, retain_lock, true);
-      state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+      if (state == TRAN_UNACTIVE_ABORTED)
+	{
+	  state = log_complete (thread_p, tdes, LOG_ABORT, LOG_NEED_NEWTRID, LOG_NEED_TO_WRITE_EOT_LOG);
+	}
+      else
+	{
+	  state = log_complete (thread_p, tdes, LOG_COMMIT, LOG_NEED_NEWTRID, LOG_ALREADY_WROTE_EOT_LOG);
+	}
     }
 
   if (log_No_logging)

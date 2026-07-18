@@ -111,7 +111,8 @@ extern int locator_bulk_force_tail_unpack (const char *buffer, unsigned int buff
 					   LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, OID * class_oids,
 					   unsigned int class_capacity, OID * fk_class_oids,
 					   unsigned int fk_class_capacity, char *constraint_name,
-					   unsigned int constraint_name_capacity);
+					   unsigned int constraint_name_capacity, char *owner_class_name,
+					   unsigned int owner_class_name_capacity);
 extern int locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock,

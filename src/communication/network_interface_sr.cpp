@@ -135,6 +135,7 @@ static bool need_to_abort_tran (THREAD_ENTRY *thread_p, int *errid);
 static int server_capabilities (void);
 static int check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compare,
 				      REL_COMPATIBILITY *compatibility, const char *client_host);
+static bool client_supports_bulk_marker (const CSS_CONN_ENTRY *conn);
 static void sbtree_find_unique_internal (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen);
 static int er_log_slow_query (THREAD_ENTRY *thread_p, EXECUTION_INFO *info, int time,
 			      UINT64 *diff_stats, char *queryinfo_string);
@@ -443,6 +444,7 @@ server_capabilities (void)
   int capabilities = 0;
 
   capabilities |= NET_CAP_INTERRUPT_ENABLED;
+  capabilities |= NET_CAP_BULK_NO_REDO;
   if (db_Disable_modifications > 0)
     {
       capabilities |= NET_CAP_UPDATE_DISABLED;
@@ -522,6 +524,12 @@ check_client_capabilities (THREAD_ENTRY *thread_p, int client_cap, int rel_compa
     }
 
   return client_cap;
+}
+
+static bool
+client_supports_bulk_marker (const CSS_CONN_ENTRY *conn)
+{
+  return conn != NULL && (conn->client_capabilities & NET_CAP_BULK_NO_REDO) != 0;
 }
 
 /*
@@ -651,6 +659,11 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   else
     {
       thread_p->conn_entry->client_type = (BOOT_CLIENT_TYPE) client_type;
+    }
+
+  if (status == CSS_NO_ERRORS)
+    {
+      thread_p->conn_entry->client_capabilities = client_capabilities;
     }
 
   reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
@@ -4678,6 +4691,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   int ib_thread_count = 0;
   int eligible_no_redo = 0;
   LOG_LSA create_lsa = LSA_INITIALIZER;
+  bool bulk_wire_extension = client_supports_bulk_marker (thread_p->conn_entry);
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4765,19 +4779,34 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
-  if (reqlen < OR_INT_SIZE || ptr != request + reqlen - OR_INT_SIZE)
+  if (ptr == request + reqlen)
+    {
+      eligible_no_redo = 0;
+      bulk_wire_extension = false;
+    }
+  else if (bulk_wire_extension && reqlen >= OR_INT_SIZE && ptr == request + reqlen - OR_INT_SIZE)
+    {
+      ptr = or_unpack_int (ptr, &eligible_no_redo);
+    }
+  else
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       goto end;
     }
-  ptr = or_unpack_int (ptr, &eligible_no_redo);
   if ((eligible_no_redo != 0 && eligible_no_redo != 1)
       || (eligible_no_redo == 1 && index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       goto end;
+    }
+
+  if (eligible_no_redo != 0 && !logwr_all_consumers_support_bulk_marker ())
+    {
+      eligible_no_redo = 0;
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1,
+	      "bulk build fell back to the logged path: incompatible log consumer");
     }
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
@@ -4834,8 +4863,11 @@ end:
     }
 
   ptr = or_pack_btid (ptr, &btid);
-  ptr = or_pack_log_lsa (ptr, &create_lsa);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  if (bulk_wire_extension)
+    {
+      ptr = or_pack_log_lsa (ptr, &create_lsa);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply));
 
   if (class_oids != NULL)
     {
