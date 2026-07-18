@@ -304,7 +304,9 @@ namespace cubstorage
 				      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
 	  std::size_t allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
 						std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
+						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t consume_size);
+
+	  bool allocate_check_actual_space (bestspace_entry &candidate, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
 
 	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
 				  std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher);
@@ -325,7 +327,7 @@ namespace cubstorage
 	  bool try_push (bestspace_entry candidate);
 	  void push (bestspace_entry candidate);
 
-	  std::size_t pop (bestspace_entry *candidates, std::size_t num_candidates);
+	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size);
 
 	private:
 	  std::array<bestspace_entry, MAX_CANDIDATES_QUEUE_SIZE> m_array;
@@ -346,7 +348,7 @@ namespace cubstorage
 
       void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
-      std::size_t pop_candidates (bestspace_entry *candidates, std::size_t num_candidates);
+      std::size_t pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size);
 
       bool updatable ();
 

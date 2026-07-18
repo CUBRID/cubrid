@@ -756,31 +756,19 @@ namespace cubstorage
   std::size_t
   bestspace::shard::allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates)
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t consume_size)
   {
     std::size_t num_residents = L3_FANOUT * L2_FANOUT;
-    bestspace_entry buffer[ALLOC_BATCH_SIZE - 1];
+    bestspace_entry buffer[ALLOC_BATCH_SIZE];
     std::size_t num_buffer;
     std::size_t num_candidates;
     std::size_t i, j;
-    tier minimum;
 
-    minimum = size_to_tier (victims[ALLOC_BATCH_SIZE - 1].second);
-    if (minimum >= tier::FS8)
-      {
-	// it's better to allocate the new pages if the biggest size of victims is bigger than FS7
-	return 0;
-      }
-
-    num_buffer = m_parent.pop_candidates (buffer, ALLOC_BATCH_SIZE - 1);
+    num_buffer = m_parent.pop_candidates (buffer, victims[ALLOC_BATCH_SIZE - 1].second, consume_size);
 
     num_candidates = 0;
     for (i = 0; i < num_buffer; i++)
       {
-	if (size_to_tier (buffer[i].freespace) <= minimum)
-	  {
-	    continue;
-	  }
 	for (j = 0; j < num_residents; j++)
 	  {
 	    if (buffer[i].volid == residents[j].volid &&
@@ -800,6 +788,15 @@ namespace cubstorage
 	  }
       }
     return num_candidates;
+  }
+
+  bool
+  bestspace::shard::allocate_check_actual_space (bestspace_entry &candidate, std::uint16_t consume_size,
+      PGBUF_WATCHER &page_watcher)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+
+    // pgbuf ordered fix and check ...
   }
 
   int
@@ -879,15 +876,27 @@ namespace cubstorage
     allocate_pick_victims (residents, victims);
 
     // pick four replacement candidates with more freespace than the victim pages above.
-    num_candidates = allocate_pick_candidates (residents, victims, candidates);
-    assert (num_candidates <= ALLOC_BATCH_SIZE - 1);
+    num_candidates = allocate_pick_candidates (residents, victims, candidates, consume_size);
+    assert (num_candidates <= ALLOC_BATCH_SIZE);
 
-    // allocate the pages at least one
-    error = allocate_new_pages (hfid, num_candidates, candidates, page_watcher);
-    if (error != NO_ERROR)
+    // check the biggest free space of candidates is enough
+    if (num_candidates == ALLOC_BATCH_SIZE)
       {
-	allocate_unmark ();
-	return status::FAILURE;
+	// first candidate is biggest
+	if (allocate_check_actual_space (candidates[0], consume_size, page_watcher))
+	  {
+	  }
+      }
+
+    // allocate the pages at least one if the freespace of candidates is smaller than consume size
+    if (num_candidates < ALLOC_BATCH_SIZE)
+      {
+	error = allocate_new_pages (hfid, num_candidates, candidates, page_watcher);
+	if (error != NO_ERROR)
+	  {
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
       }
     // candidates are four available pages at this point
 
@@ -970,13 +979,15 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace::candidate_queue::pop (bestspace_entry *candidates, std::size_t num_candidates)
+  bestspace::candidate_queue::pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size)
   {
+    std::size_t num;
     std::size_t i;
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    for (i = 0; i < num_candidates && m_size > 0; i++)
+    num = (m_array[m_size - 1].freespace >= consume_size) ? ALLOC_BATCH_SIZE : ALLOC_BATCH_SIZE - 1;
+    for (i = 0; i < num && m_size > 0 && m_array[m_size - 1].freespace > minimum; i++)
       {
 	candidates[i] = m_array[m_size - 1];
 	m_size--;
@@ -1112,9 +1123,9 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace::pop_candidates (bestspace_entry *candidates, std::size_t num_candidates)
+  bestspace::pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size)
   {
-    return m_candidates.pop (candidates, num_candidates);
+    return m_candidates.pop (candidates, minimum, consume_size);
   }
 
   bool
