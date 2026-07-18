@@ -1866,6 +1866,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
+	      db_make_null (&parser->sys_epochtime);
 	      break;
 	    }
 	}
@@ -2070,12 +2071,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* mark spec to scan for record info */
 	      node->info.query.q.select.from->info.spec.flag =
 		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
-	    }
-	  else if (node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
-	    {
-	      /* mark spec to scan for sampling scan */
-	      node->info.query.q.select.from->info.spec.flag =
-		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_SAMPLING_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {

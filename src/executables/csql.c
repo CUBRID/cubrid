@@ -1256,7 +1256,8 @@ csql_do_session_cmd (char *line_read, CSQL_ARGUMENT * csql_arg)
 	  if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
 	    {
 	      int dummy;
-	      AU_DISABLE (dummy);
+	      /* sysadm mode: keep authorization off for the whole session (intentionally never restored). */
+	      AU_SAVE_AND_DISABLE (dummy);
 	    }
 	  csql_Database_connected = true;
 
@@ -2968,7 +2969,7 @@ csql_exit_session (int error, bool exit_flag)
       tf = csql_Error_fp;
 
       /* interactive, default action is abort but there was update */
-      fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
+      fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_TEXT));
       fflush (tf);
       for (; fgets (line_buf, LINE_BUFFER_SIZE, csql_Input_fp) != NULL;)
 	{
@@ -2985,7 +2986,7 @@ csql_exit_session (int error, bool exit_flag)
 	      break;
 	    }
 
-	  fprintf (tf, csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
+	  fprintf (tf, "%s", csql_get_message (CSQL_TRANS_TERMINATE_PROMPT_RETRY_TEXT));
 	  fflush (tf);
 	}
 
@@ -3168,7 +3169,6 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   char *env;
   int client_type;
   int avail_size;
-  int save;
   char *p = NULL;
   unsigned char ip_addr[16] = { 0 };
 
@@ -3339,7 +3339,9 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
-      AU_DISABLE (save);
+      int dummy;
+      /* sysadm mode: keep authorization off for the whole session (intentionally never restored). */
+      AU_SAVE_AND_DISABLE (dummy);
     }
 
   /* allow environmental setting of the "-s" command line flag to enable automated testing */
@@ -3943,7 +3945,8 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
   if (csql_arg->sysadm && au_is_dba_group_member (Au_user))
     {
       int dummy;
-      AU_DISABLE (dummy);
+      /* sysadm mode: keep authorization off for the whole session (intentionally never restored). */
+      AU_SAVE_AND_DISABLE (dummy);
     }
   csql_Database_connected = true;
 
