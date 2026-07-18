@@ -361,7 +361,7 @@ namespace cubstorage
 
     assert (error == status::NOT_FOUND || error == status::CONTENDED);
 
-    return allocate (hfid, consume_size, page_watcher);
+    return allocate (class_oid, hfid, needed_size, consume_size, page_watcher);
   }
 
   void
@@ -756,7 +756,7 @@ namespace cubstorage
   std::size_t
   bestspace::shard::allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t consume_size)
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t needed_size)
   {
     std::size_t num_residents = L3_FANOUT * L2_FANOUT;
     bestspace_entry buffer[ALLOC_BATCH_SIZE];
@@ -764,7 +764,7 @@ namespace cubstorage
     std::size_t num_candidates;
     std::size_t i, j;
 
-    num_buffer = m_parent.pop_candidates (buffer, victims[ALLOC_BATCH_SIZE - 1].second, consume_size);
+    num_buffer = m_parent.pop_candidates (buffer, victims[ALLOC_BATCH_SIZE - 1].second, needed_size);
 
     num_candidates = 0;
     for (i = 0; i < num_buffer; i++)
@@ -790,13 +790,67 @@ namespace cubstorage
     return num_candidates;
   }
 
-  bool
-  bestspace::shard::allocate_check_actual_space (bestspace_entry &candidate, std::uint16_t consume_size,
-      PGBUF_WATCHER &page_watcher)
+  bestspace::status
+  bestspace::shard::allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate,
+      std::uint16_t needed_size, PGBUF_WATCHER &page_watcher, bool &valid)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    OID page_class_oid;
+    VPID vpid;
+    int error;
 
-    // pgbuf ordered fix and check ...
+    assert (class_oid != nullptr);
+    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
+
+    valid = true;
+    vpid.volid = candidate.volid;
+    vpid.pageid = candidate.pageid;
+
+    error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &page_watcher);
+    if (error != NO_ERROR)
+      {
+	if (error == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
+	  {
+	    valid = false;
+	    er_clear ();
+	    return status::NOT_FOUND;
+	  }
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  }
+	return status::FAILURE;
+      }
+
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP)
+      {
+	valid = false;
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
+	return status::NOT_FOUND;
+      }
+
+    error = heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid);
+    if (error != NO_ERROR)
+      {
+	valid = false;
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
+	return status::FAILURE;
+      }
+
+    if (!OID_EQ (&page_class_oid, class_oid))
+      {
+	valid = false;
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
+	return status::NOT_FOUND;
+      }
+
+    candidate.freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
+    if (candidate.freespace < needed_size)
+      {
+	pgbuf_ordered_unfix (thread_p, &page_watcher);
+	return status::NOT_FOUND;
+      }
+    return status::FOUND;
   }
 
   int
@@ -856,12 +910,15 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher)
+  bestspace::shard::allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+			      PGBUF_WATCHER &page_watcher)
   {
     std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     std::size_t num_candidates;
+    bool candidate_valid;
+    status check_status;
     int error;
 
     // set allcating bit
@@ -876,15 +933,35 @@ namespace cubstorage
     allocate_pick_victims (residents, victims);
 
     // pick four replacement candidates with more freespace than the victim pages above.
-    num_candidates = allocate_pick_candidates (residents, victims, candidates, consume_size);
+    num_candidates = allocate_pick_candidates (residents, victims, candidates, needed_size);
     assert (num_candidates <= ALLOC_BATCH_SIZE);
 
     // check the biggest free space of candidates is enough
     if (num_candidates == ALLOC_BATCH_SIZE)
       {
 	// first candidate is biggest
-	if (allocate_check_actual_space (candidates[0], consume_size, page_watcher))
+	check_status = allocate_check_actual_space (class_oid, candidates[0], needed_size, page_watcher, candidate_valid);
+	if (check_status == status::FAILURE)
 	  {
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+	if (check_status == status::FOUND)
+	  {
+	    // the page returned to the caller is always stored at the last position.
+	    std::swap (candidates[0], candidates[ALLOC_BATCH_SIZE - 1]);
+	  }
+	else
+	  {
+	    assert (check_status == status::NOT_FOUND);
+	    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
+
+	    if (candidate_valid)
+	      {
+		m_parent.push_candidates (&candidates[0], 1);
+	      }
+	    std::memmove (candidates.data (), candidates.data () + 1, sizeof (bestspace_entry) * (ALLOC_BATCH_SIZE - 1));
+	    num_candidates--;
 	  }
       }
 
@@ -979,14 +1056,19 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace::candidate_queue::pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size)
+  bestspace::candidate_queue::pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size)
   {
     std::size_t num;
     std::size_t i;
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
-    num = (m_array[m_size - 1].freespace >= consume_size) ? ALLOC_BATCH_SIZE : ALLOC_BATCH_SIZE - 1;
+    if (m_size == 0)
+      {
+	return 0;
+      }
+
+    num = (m_array[m_size - 1].freespace >= needed_size) ? ALLOC_BATCH_SIZE : ALLOC_BATCH_SIZE - 1;
     for (i = 0; i < num && m_size > 0 && m_array[m_size - 1].freespace > minimum; i++)
       {
 	candidates[i] = m_array[m_size - 1];
@@ -1140,9 +1222,9 @@ namespace cubstorage
   }
 
   std::size_t
-  bestspace::pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size)
+  bestspace::pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size)
   {
-    return m_candidates.pop (candidates, minimum, consume_size);
+    return m_candidates.pop (candidates, minimum, needed_size);
   }
 
   bool

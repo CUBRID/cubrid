@@ -304,16 +304,18 @@ namespace cubstorage
 				      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
 	  std::size_t allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
 						std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t consume_size);
+						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t needed_size);
 
-	  bool allocate_check_actual_space (bestspace_entry &candidate, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
+	  status allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate, std::uint16_t needed_size,
+					      PGBUF_WATCHER &page_watcher, bool &valid);
 
 	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
 				  std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher);
 	  void allocate_replace_pages (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
 				       std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
 
-	  status allocate (HFID *hfid, std::uint16_t consume_size, PGBUF_WATCHER &page_watcher);
+	  status allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+			   PGBUF_WATCHER &page_watcher);
       };
 
       class candidate_queue
@@ -327,7 +329,7 @@ namespace cubstorage
 	  bool try_push (bestspace_entry candidate);
 	  void push (bestspace_entry candidate);
 
-	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size);
+	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
 
 	  std::size_t to_entries (bestspace_entry *candidates);
 
@@ -350,7 +352,7 @@ namespace cubstorage
 
       void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
-      std::size_t pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t consume_size);
+      std::size_t pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
 
       bool updatable ();
 
