@@ -30810,7 +30810,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
   assert (purpose == BTREE_OP_DELETE_UNDO_INSERT || purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY);
-  /* The stage-32 population gate runs in btree_fix_root_for_delete, where the class OID is resolved even for
+  /* The bulk-recovery population gate runs in btree_fix_root_for_delete, where the class OID is resolved even for
    * non-unique records that do not pack it. */
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
 				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL, purpose);
@@ -30856,7 +30856,7 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
     }
   assert (purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	  || purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
-  /* The stage-32 population gate runs in btree_fix_root_for_delete (see btree_undo_insert_object). */
+  /* The bulk-recovery population gate runs in btree_fix_root_for_delete (see btree_undo_insert_object). */
   return btree_delete_internal (thread_p, btid, &inserted_object->oid, &inserted_object->class_oid, &mvcc_info, NULL,
 				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa,
 				second_object, purpose);
@@ -31221,7 +31221,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
 	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
 	{
-	  /* Population gate (stage-32): the bulk walker may tolerate vacuum effects only for the proven
+	  /* Population gate: the bulk walker may tolerate vacuum effects only for the proven
 	   * system-catalog non-reuse heap population.  Class identity is resolved here because non-unique
 	   * undo records do not pack a class OID. */
 	  OID *gate_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
@@ -32176,8 +32176,7 @@ exit:
  *					already first, succeed without mutation; if S is a non-first leaf object,
  *					perform a compensated object-preserving exchange (current first F moves into
  *					S's fixed-size slot, S becomes first); everything else fails closed into the
- *					boss-approved limitation families. See planner stage-32/34 and critic
- *					stage-33/35 receipts.
+ *					documented fail-stop limitation families.
  *
  * return		    : Error code.
  * thread_p (in)	    : Thread entry.
@@ -32353,12 +32352,12 @@ btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, D
     }
   if (s_in_overflow)
     {
-      /* Fail-before-mutation: the compensated overflow exchange is not implemented in this candidate; keep the
-       * state untouched and stop closed rather than guess.  Mapped to the population family per stage-34
-       * (unrepresentable shape => POPULATION_UNPROVEN before mutation). */
+      /* Fail-before-mutation: the compensated overflow exchange is not implemented; keep the
+       * state untouched and stop closed rather than guess (unrepresentable shape =>
+       * POPULATION_UNPROVEN before mutation). */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
 	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: second object resides in an overflow record; "
-	      "exchange not representable in this candidate");
+	      "exchange not representable");
       _er_log_debug (ARG_FILE_LINE,
 		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN(overflow-second) "
 		     "BTID=%d|%d second_OID=%d|%d|%d\n",
@@ -32551,8 +32550,8 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
 	  if (search_key->result == BTREE_KEY_FOUND)
 	    {
 	      /* Key exists but the logged inserted object is already gone (replayed vacuum).  Run the
-	       * stage-34 tuple-aware second-object repair: no-op when S is first, compensated exchange
-	       * when S is a non-first leaf object, boss-approved fail-stop families otherwise. */
+	       * tuple-aware second-object repair: no-op when S is first, compensated exchange
+	       * when S is a non-first leaf object, fail-stop otherwise. */
 	      error_code =
 		btree_bulk_unique_absent_repair (thread_p, btid_int, key, delete_helper, *leaf_page, &leaf_record,
 						 &leaf_rec_info, offset_after_key, search_key);

@@ -7131,7 +7131,7 @@ file_recovery_check_vpid (THREAD_ENTRY * thread_p, const VFID * vfid, const VPID
     {
       if (er_errid () == ER_PB_BAD_PAGEID && er_get_severity () == ER_WARNING_SEVERITY)
 	{
-	  /* DEFECT-BK-03: the file's header page was already deallocated by a later point in the log
+	  /* The file's header page was already deallocated by a later point in the log
 	   * timeline than the record currently being classified (e.g. a postponed destroy of a no-redo
 	   * bulk-built overflow file, or a later committed DROP recycling the VFID). A WARNING-severity
 	   * ER_PB_BAD_PAGEID is a stale identifier, not an error during media recovery -- its pages are

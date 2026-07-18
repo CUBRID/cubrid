@@ -1575,12 +1575,12 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   if (load_args->no_redo)
     {
       /*
-       * B2 durability barrier.  Bulk pages are only marked dirty during the build (their
+       * Durability barrier.  Bulk pages are only marked dirty during the build (their
        * content is never WAL-logged), so before the publication chain (sticky-root COPYPAGE,
        * sysop attach, RVBT_BULK_BUILD_DURABLE marker, commit) can become durable, every bulk
        * page must actually be ON DISK.
        *
-       * B2-S1: every no-redo content page is a data page of the build's own files
+       * Scoped mode: every no-redo content page is a data page of the build's own files
        * ({btid->vfid, btid->ovfid}), so it suffices to flush the still-dirty buffered pages
        * of those files (enumerated from their partial/full sector tables), drain the DWB
        * once, and fsync only the volumes owning the files' sectors.  Any scoped failure
@@ -2363,7 +2363,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
       && !VFID_ISNULL (&load_args->btid->ovfid))
     {
       /*
-       * V3-7 pre-creates the overflow key file for parallel builds with >= 2 shards even when no shard ends up
+       * Parallel builds pre-create the overflow key file (>= 2 shards) even when no shard ends up
        * storing an overflow key.  Clear the reference and schedule the file for destruction here, before the
        * root header below is built, so the WAL-published root copy is the only mutation to the sticky root page
        * and never carries a dangling VFID through media recovery.
@@ -2546,7 +2546,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
   if (write_through)
     {
       /*
-       * B3: submit the finished bulk page to the ordinary flush path now (write only; the
+       * Write-through: submit the finished bulk page to the ordinary flush path now (write only; the
        * single per-build DWB drain + fsync stays in the pre-publication barrier), restoring
        * the parallel write overlap the defer-to-barrier scheme lost.  Best effort: on any
        * failure the page simply stays dirty and the barrier flushes it later, so the error
@@ -2560,8 +2560,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
 	{
 	  _er_log_debug (ARG_FILE_LINE,
 			 "DEBUG_BTREE: bulk write-through flush failed for vpid(%d, %d) (error = %d); "
-			 "the page stays dirty for the pre-publication barrier.", vpid.volid, vpid.pageid,
-			 er_errid ());
+			 "the page stays dirty for the pre-publication barrier.", vpid.volid, vpid.pageid, er_errid ());
 	}
       er_stack_pop ();
     }
@@ -2795,15 +2794,14 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider = new BT_LOAD_PROVIDER ();
   provider->main_pool.vpids = NULL;
   /*
-   * B4: publish only a small bootstrap pool (one 64-page span per worker) and leave the rest to the service loop's
-   * on-demand 64-page refills.  est_main_pages is derived from the merged run's page count, which overshoots the
-   * real index size several times over for duplicate-heavy keys (the run stores every (key, OID) record, the index
-   * dedups keys); publishing the whole estimate up front allocates AND formats that many pages in one burst before
-   * any worker starts.  At 341M-row scale that burst measured +24.7GB of file allocation in ~20s against a 512MB
-   * page pool: the formatted-empty pages flooded the pool, were flushed to disk as waste I/O (+22GB writes/build vs
-   * develop), starved every worker fix on direct-victim waits, and left ~70% of the pages to be deallocated again
-   * by the reconcile pass (the 44.7GB spacedb bloat).  The claim protocol already pre-requests refills when a span
-   * is 75% consumed, so a small bootstrap keeps workers fed without the burst.
+   * Publish only a small bootstrap pool (one 64-page span per worker) and leave the rest to the service loop's
+   * on-demand 64-page refills.  est_main_pages is derived from the sorted runs' page count, which overshoots the
+   * real index size several times over for duplicate-heavy keys (the runs store every (key, OID) record, the
+   * index dedups keys); publishing the whole estimate up front would allocate and format that many pages in one
+   * burst before any worker starts, flooding the page pool with formatted-empty pages, flushing them to disk as
+   * waste I/O, starving worker fixes on victim waits, and leaving most of the pages to be deallocated again by
+   * the reconcile pass.  The claim protocol already pre-requests refills when a span is 75% consumed, so a small
+   * bootstrap keeps workers fed without the burst.
    */
   provider->main_pool.n_published = MIN (MAX (est_main_pages, 64), n_workers * 64);
   provider->main_pool.cursor.store (0, std::memory_order_relaxed);

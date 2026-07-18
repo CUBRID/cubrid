@@ -4430,8 +4430,8 @@ log_recovery_abort_all_atomic_sysops (THREAD_ENTRY * thread_p)
  *                    (log_recovery_bulk_cleanup_inactive). Rolling such a sysop back is unsafe: the cleanup walk's
  *                    CLRs persist undo_nxlsa/compensate_lsa values that point into the original committed build
  *                    chain (log_recovery_bulk_undo_record bounded_next), and log_rollback follows them below the
- *                    atomic sysop start, re-undoing committed history (the G007 re-undo storm, 12,154 repeats
- *                    measured on the error-path injection). A legitimate atomic sysop can never contain such a
+ *                    atomic sysop start, re-undoing committed history without bound. A legitimate atomic sysop
+ *                    can never contain such a
  *                    record: everything undone inside a system operation lies after the sysop start, so every
  *                    legitimate continuation LSA is >= atomic_sysop_start_lsa. The restore is unrecoverable once
  *                    the cleanup was interrupted; the only remedy is re-running restoredb.
@@ -7734,12 +7734,11 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
     }
   else
     {
-      /* Fail-stop (REPORT-v2 §5-iii option a).  Rolling this sysop back is NOT safe: the walk's
+      /* Fail-stop.  Rolling this sysop back is NOT safe: the walk's
        * CLRs persist undo_nxlsa/compensate_lsa values that point into the original committed
-       * build chain, and log_rollback follows them, re-undoing committed history (the §1.2
-       * re-undo storm; reproduced by the G007 cleanup-error injection experiment even with an
-       * explicit pre-sysop bound record).  The restore is already lost on any cleanup error,
-       * so die immediately without touching committed state. */
+       * build chain, and log_rollback follows them, re-undoing committed history without
+       * bound (even with an explicit pre-sysop bound record).  The restore is already lost
+       * on any cleanup error, so die immediately without touching committed state. */
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_cleanup_inactive");
     }
 

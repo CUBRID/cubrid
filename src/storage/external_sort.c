@@ -200,7 +200,7 @@ struct sort_param
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
-  SORT_PX_MERGE_INPUT *px_merge_inputs;	/* B5: this shard's key-range slice of every worker run */
+  SORT_PX_MERGE_INPUT *px_merge_inputs;	/* index-leaf shard put: this shard's key-range slice of every worker run */
   int px_merge_n_inputs;
   QFILE_LIST_SECTOR_SCAN_INFO *px_sector_scan;	/* shared sector scan for ORDER_BY/ORDER_WITH_LIMIT/GROUP_BY/ANALYTIC workers */
 #if defined(SERVER_MODE)
@@ -5579,7 +5579,7 @@ sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_par
       char *pgbuf;
 
       c = heap[0];
-      pgbuf = buffers + (size_t) c * DB_PAGESIZE;
+      pgbuf = buffers + (size_t) c *DB_PAGESIZE;
       if (cur_rec[c].type == REC_BIGONE)
 	{
 	  error = bt_load_worker_put_range (thread_p, load_args, &long_rec[c]);
@@ -5710,7 +5710,7 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
     }
 
   /*
-   * B5: key-partition every worker run into parallel_num shards.  Each shard worker k-way merges its slices
+   * Key-partition every worker run into parallel_num shards.  Each shard worker k-way merges its slices
    * while putting, replacing the fan-in merge to a single temp run.  The put order is unchanged: the sort
    * comparator is a strict total order over (key, OID), so the per-shard merged stream is exactly the
    * subsequence a single merged run would have yielded for that key range, and no duplicate-key group is
@@ -5853,7 +5853,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 
   {
     /*
-     * B5: build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
+     * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
      * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
      * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
      * below: merge everything into a single run and put it serially.
@@ -5866,8 +5866,7 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
 	for (i = 0; i < parallel_num; i++)
 	  {
 	    int idx = px_sort_param[i].px_result_file_idx;
-	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0
-		&& px_sort_param[i].temp[idx].volid != NULL_VOLID)
+	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
 	      {
 		(void) file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
 		VFID_SET_NULL (&px_sort_param[i].temp[idx]);
