@@ -443,7 +443,6 @@ server_capabilities (void)
   int capabilities = 0;
 
   capabilities |= NET_CAP_INTERRUPT_ENABLED;
-  capabilities |= NET_CAP_BULK_MARKER_CONSUMER;
   if (db_Disable_modifications > 0)
     {
       capabilities |= NET_CAP_UPDATE_DISABLED;
@@ -656,7 +655,6 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   if (status == CSS_NO_ERRORS)
     {
-      thread_p->conn_entry->client_capabilities = client_capabilities;
     }
 
   reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
@@ -4787,13 +4785,6 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
       css_send_abort_to_client (thread_p->conn_entry, rid);
       goto end;
-    }
-
-  if (eligible_no_redo != 0 && !logwr_all_consumers_support_bulk_marker ())
-    {
-      eligible_no_redo = 0;
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1,
-	      "bulk build fell back to the logged path: incompatible log consumer");
     }
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)

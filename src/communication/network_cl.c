@@ -231,7 +231,6 @@ client_capabilities (void)
   int capabilities = 0;
 
   capabilities |= NET_CAP_INTERRUPT_ENABLED;
-  capabilities |= NET_CAP_BULK_MARKER_CONSUMER;
   if (db_Disable_modifications > 0)
     {
       capabilities |= NET_CAP_UPDATE_DISABLED;

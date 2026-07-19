@@ -3653,13 +3653,9 @@ log_append_bulk_build_marker (THREAD_ENTRY * thread_p, const BTREE_BULK_MARKER *
       return ER_FAILED;
     }
 
-#if defined (SERVER_MODE)
-  error_code = logwr_append_bulk_build_marker_if_compatible (thread_p, (int) payload_size, payload);
-#else
   LOG_DATA_ADDR addr = { NULL, NULL, 0 };
   log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, (int) payload_size, payload);
   error_code = NO_ERROR;
-#endif
   free (payload);
   return error_code;
 }
