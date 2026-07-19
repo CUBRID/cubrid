@@ -304,7 +304,10 @@ namespace cubstorage
 				      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims);
 	  std::size_t allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
 						std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t needed_size);
+						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates,
+						std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> &resident_candidates,
+						std::size_t &num_resident_candidates, std::uint16_t needed_size);
+	  void allocate_update_resident (bestspace_entry entry, std::size_t index);
 
 	  status allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate, std::uint16_t needed_size,
 					      PGBUF_WATCHER &page_watcher, bool &valid);

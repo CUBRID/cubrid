@@ -756,7 +756,9 @@ namespace cubstorage
   std::size_t
   bestspace::shard::allocate_pick_candidates (std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
-      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::uint16_t needed_size)
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates,
+      std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> &resident_candidates,
+      std::size_t &num_resident_candidates, std::uint16_t needed_size)
   {
     std::size_t num_residents = L3_FANOUT * L2_FANOUT;
     bestspace_entry buffer[ALLOC_BATCH_SIZE];
@@ -767,6 +769,7 @@ namespace cubstorage
     num_buffer = m_parent.pop_candidates (buffer, victims[ALLOC_BATCH_SIZE - 1].second, needed_size);
 
     num_candidates = 0;
+    num_resident_candidates = 0;
     for (i = 0; i < num_buffer; i++)
       {
 	for (j = 0; j < num_residents; j++)
@@ -777,7 +780,13 @@ namespace cubstorage
 		break;
 	      }
 	  }
-	if (j == num_residents)
+	if (j < L3_FANOUT * L2_FANOUT)
+	  {
+	    resident_candidates[num_resident_candidates] =
+		    std::make_pair (buffer[i], static_cast<std::uint16_t> (j));
+	    num_resident_candidates++;
+	  }
+	else if (j == num_residents)
 	  {
 	    candidates[num_candidates] = buffer[i];
 	    num_candidates++;
@@ -788,6 +797,34 @@ namespace cubstorage
 	  }
       }
     return num_candidates;
+  }
+
+  void
+  bestspace::shard::allocate_update_resident (bestspace_entry entry, std::size_t index)
+  {
+    L1 expected, desired;
+    VPID vpid;
+
+    assert (index < L3_FANOUT * L2_FANOUT);
+
+    while (true)
+      {
+	expected = m_L1[index].load ();
+	vpid = expected.get_vpid ();
+	if (vpid.volid != entry.volid || vpid.pageid != entry.pageid ||
+	    expected.get_freespace () >= entry.freespace)
+	  {
+	    return;
+	  }
+
+	desired = expected;
+	desired.set_freespace (entry.freespace);
+	if (m_L1[index].compare_exchange_strong (expected, desired))
+	  {
+	    L2_update (index / L2_FANOUT, index % L2_FANOUT);
+	    return;
+	  }
+      }
   }
 
   bestspace::status
@@ -916,7 +953,9 @@ namespace cubstorage
     std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
-    std::size_t num_candidates;
+    std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> resident_candidates;
+    std::size_t num_candidates, num_resident_candidates;
+    std::size_t i, j;
     bool candidate_valid;
     status check_status;
     int error;
@@ -933,8 +972,43 @@ namespace cubstorage
     allocate_pick_victims (residents, victims);
 
     // pick four replacement candidates with more freespace than the victim pages above.
-    num_candidates = allocate_pick_candidates (residents, victims, candidates, needed_size);
+    num_candidates = allocate_pick_candidates (residents, victims, candidates, resident_candidates,
+		     num_resident_candidates, needed_size);
     assert (num_candidates <= ALLOC_BATCH_SIZE);
+    assert (num_candidates + num_resident_candidates <= ALLOC_BATCH_SIZE);
+
+    // refresh and reuse candidates that are already resident in this shard.
+    for (i = 0; i < num_resident_candidates; i++)
+      {
+	allocate_update_resident (resident_candidates[i].first, resident_candidates[i].second);
+	check_status = L1_find (class_oid, needed_size, consume_size,
+				resident_candidates[i].second / L2_FANOUT,
+				resident_candidates[i].second % L2_FANOUT, page_watcher);
+	if (check_status == status::FOUND)
+	  {
+	    m_parent.push_candidates (candidates.data (), num_candidates);
+	    for (j = i + 1; j < num_resident_candidates; j++)
+	      {
+		m_parent.push_candidates (&resident_candidates[j].first, 1);
+	      }
+	    allocate_unmark ();
+	    return status::FOUND;
+	  }
+	if (check_status == status::FAILURE)
+	  {
+	    m_parent.push_candidates (candidates.data (), num_candidates);
+	    for (j = i; j < num_resident_candidates; j++)
+	      {
+		m_parent.push_candidates (&resident_candidates[j].first, 1);
+	      }
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+	if (check_status == status::CONTENDED)
+	  {
+	    m_parent.push_candidates (&resident_candidates[i].first, 1);
+	  }
+      }
 
     // check the biggest free space of candidates is enough
     if (num_candidates == ALLOC_BATCH_SIZE)
