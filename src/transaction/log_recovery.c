@@ -7558,120 +7558,166 @@ log_recovery_bulk_walk_action (LOG_RCVINDEX rcvindex)
     }
 }
 
+typedef struct log_bulk_undo_target LOG_BULK_UNDO_TARGET;
+struct log_bulk_undo_target
+{
+  LOG_RCVINDEX rcvindex;
+  VPID vpid;
+  int offset;
+  int length;
+  MVCCID mvcc_id;
+  int header_size;
+};
+
+/*
+ * log_recovery_bulk_parse_undo_target () - decode the physical undo target (rcvindex, vpid, offset/length,
+ *   mvccid) out of one publication-window log record, without applying the undo
+ *
+ *   return: error code
+ *   thread_p(in):
+ *   record_lsa(in): lsa of the record's LOG_RECORD_HEADER
+ *   log_page_p(in/out): page buffer positioned so record_lsa is valid; may be advanced to a following log page
+ *                       when the record header spans a page boundary
+ *   record_type(in): record_lsa's LOG_RECORD_HEADER.type
+ *   data_lsa_out(out): lsa of the record's rcvindex-specific header struct (RV_fun undo data follows it)
+ *   target(out): decoded target; only valid on NO_ERROR
+ *
+ * Shared by log_recovery_bulk_undo_record (applies the undo) and log_recovery_bulk_prevalidate_publication
+ * (read-only slot-presence check); keeps the two callers' view of a record's target identical.
+ */
 static int
-log_recovery_bulk_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * record_lsa, LOG_PAGE * log_page_p,
-			       LOG_RECTYPE record_type, const LOG_LSA * bounded_next, LOG_TDES * recovery_tdes,
-			       LOG_ZIP * undo_unzip)
+log_recovery_bulk_parse_undo_target (THREAD_ENTRY * thread_p, const LOG_LSA * record_lsa, LOG_PAGE * log_page_p,
+				     LOG_RECTYPE record_type, LOG_LSA * data_lsa_out, LOG_BULK_UNDO_TARGET * target)
 {
   LOG_LSA data_lsa = *record_lsa;
-  LOG_LSA undo_lsa = *record_lsa;
   LOG_REC_UNDOREDO *undoredo;
   LOG_REC_UNDO *undo;
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo;
   LOG_REC_MVCC_UNDO *mvcc_undo;
   LOG_REC_SYSOP_END *sysop_end;
-  LOG_RCV rcv = LOG_RCV ();
-  VPID vpid;
-  LOG_RCVINDEX rcvindex;
-  int header_size;
-  int error;
-  LOG_BULK_WALK_ACTION action;
-  LOG_LSA saved_cleanup_undo_nxlsa;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), &data_lsa, log_page_p);
   switch (record_type)
     {
     case LOG_MVCC_UNDOREDO_DATA:
     case LOG_MVCC_DIFF_UNDOREDO_DATA:
-      header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, header_size, &data_lsa, log_page_p);
+      target->header_size = sizeof (LOG_REC_MVCC_UNDOREDO);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, target->header_size, &data_lsa, log_page_p);
       mvcc_undoredo = (LOG_REC_MVCC_UNDOREDO *) ((char *) log_page_p->area + data_lsa.offset);
       undoredo = &mvcc_undoredo->undoredo;
-      rcv.mvcc_id = mvcc_undoredo->mvccid;
+      target->mvcc_id = mvcc_undoredo->mvccid;
       goto undoredo_record;
     case LOG_UNDOREDO_DATA:
     case LOG_DIFF_UNDOREDO_DATA:
-      header_size = sizeof (LOG_REC_UNDOREDO);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, header_size, &data_lsa, log_page_p);
+      target->header_size = sizeof (LOG_REC_UNDOREDO);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, target->header_size, &data_lsa, log_page_p);
       undoredo = (LOG_REC_UNDOREDO *) ((char *) log_page_p->area + data_lsa.offset);
-      rcv.mvcc_id = MVCCID_NULL;
+      target->mvcc_id = MVCCID_NULL;
     undoredo_record:
-      rcvindex = undoredo->data.rcvindex;
-      rcv.length = undoredo->ulength;
-      rcv.offset = undoredo->data.offset;
-      vpid.volid = undoredo->data.volid;
-      vpid.pageid = undoredo->data.pageid;
+      target->rcvindex = undoredo->data.rcvindex;
+      target->length = undoredo->ulength;
+      target->offset = undoredo->data.offset;
+      target->vpid.volid = undoredo->data.volid;
+      target->vpid.pageid = undoredo->data.pageid;
       break;
     case LOG_MVCC_UNDO_DATA:
-      header_size = sizeof (LOG_REC_MVCC_UNDO);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, header_size, &data_lsa, log_page_p);
+      target->header_size = sizeof (LOG_REC_MVCC_UNDO);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, target->header_size, &data_lsa, log_page_p);
       mvcc_undo = (LOG_REC_MVCC_UNDO *) ((char *) log_page_p->area + data_lsa.offset);
       undo = &mvcc_undo->undo;
-      rcv.mvcc_id = mvcc_undo->mvccid;
+      target->mvcc_id = mvcc_undo->mvccid;
       goto undo_record;
     case LOG_UNDO_DATA:
-      header_size = sizeof (LOG_REC_UNDO);
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, header_size, &data_lsa, log_page_p);
+      target->header_size = sizeof (LOG_REC_UNDO);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, target->header_size, &data_lsa, log_page_p);
       undo = (LOG_REC_UNDO *) ((char *) log_page_p->area + data_lsa.offset);
-      rcv.mvcc_id = MVCCID_NULL;
+      target->mvcc_id = MVCCID_NULL;
     undo_record:
-      rcvindex = undo->data.rcvindex;
-      rcv.length = undo->length;
-      rcv.offset = undo->data.offset;
-      vpid.volid = undo->data.volid;
-      vpid.pageid = undo->data.pageid;
+      target->rcvindex = undo->data.rcvindex;
+      target->length = undo->length;
+      target->offset = undo->data.offset;
+      target->vpid.volid = undo->data.volid;
+      target->vpid.pageid = undo->data.pageid;
       break;
     case LOG_SYSOP_END:
-      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_END), &data_lsa, log_page_p);
+      target->header_size = sizeof (LOG_REC_SYSOP_END);
+      LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, target->header_size, &data_lsa, log_page_p);
       sysop_end = (LOG_REC_SYSOP_END *) ((char *) log_page_p->area + data_lsa.offset);
       if (sysop_end->type == LOG_SYSOP_END_LOGICAL_UNDO)
 	{
-	  rcvindex = sysop_end->undo.data.rcvindex;
-	  rcv.length = sysop_end->undo.length;
-	  rcv.offset = sysop_end->undo.data.offset;
-	  vpid.volid = sysop_end->undo.data.volid;
-	  vpid.pageid = sysop_end->undo.data.pageid;
-	  rcv.mvcc_id = MVCCID_NULL;
+	  target->rcvindex = sysop_end->undo.data.rcvindex;
+	  target->length = sysop_end->undo.length;
+	  target->offset = sysop_end->undo.data.offset;
+	  target->vpid.volid = sysop_end->undo.data.volid;
+	  target->vpid.pageid = sysop_end->undo.data.pageid;
+	  target->mvcc_id = MVCCID_NULL;
 	}
       else if (sysop_end->type == LOG_SYSOP_END_LOGICAL_MVCC_UNDO)
 	{
-	  rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
-	  rcv.length = sysop_end->mvcc_undo.undo.length;
-	  rcv.offset = sysop_end->mvcc_undo.undo.data.offset;
-	  vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
-	  vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
-	  rcv.mvcc_id = sysop_end->mvcc_undo.mvccid;
+	  target->rcvindex = sysop_end->mvcc_undo.undo.data.rcvindex;
+	  target->length = sysop_end->mvcc_undo.undo.length;
+	  target->offset = sysop_end->mvcc_undo.undo.data.offset;
+	  target->vpid.volid = sysop_end->mvcc_undo.undo.data.volid;
+	  target->vpid.pageid = sysop_end->mvcc_undo.undo.data.pageid;
+	  target->mvcc_id = sysop_end->mvcc_undo.mvccid;
 	}
       else
 	{
 	  return ER_FAILED;
 	}
-      header_size = sizeof (LOG_REC_SYSOP_END);
       break;
     default:
       return ER_FAILED;
     }
 
-  if (rcvindex < 0 || rcvindex > RV_LAST_LOGID)
+  if (target->rcvindex < 0 || target->rcvindex > RV_LAST_LOGID)
     {
       return ER_FAILED;
     }
-  action = log_recovery_bulk_walk_action (rcvindex);
-  if (action == LOG_BULK_WALK_SKIP)
-    {
-      return NO_ERROR;
-    }
-  if (action != LOG_BULK_WALK_UNDO || RV_fun[rcvindex].undofun == NULL)
+  *data_lsa_out = data_lsa;
+  return NO_ERROR;
+}
+
+static int
+log_recovery_bulk_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * record_lsa, LOG_PAGE * log_page_p,
+			       LOG_RECTYPE record_type, const LOG_LSA * bounded_next, LOG_TDES * recovery_tdes,
+			       LOG_ZIP * undo_unzip)
+{
+  LOG_LSA data_lsa;
+  LOG_LSA undo_lsa = *record_lsa;
+  LOG_RCV rcv = LOG_RCV ();
+  LOG_BULK_UNDO_TARGET target;
+  LOG_BULK_WALK_ACTION action;
+  LOG_LSA saved_cleanup_undo_nxlsa;
+  int error;
+
+  if (log_recovery_bulk_parse_undo_target (thread_p, record_lsa, log_page_p, record_type, &data_lsa, &target) !=
+      NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  LOG_READ_ADD_ALIGN (thread_p, header_size, &data_lsa, log_page_p);
+  action = log_recovery_bulk_walk_action (target.rcvindex);
+  if (action == LOG_BULK_WALK_SKIP)
+    {
+      return NO_ERROR;
+    }
+  if (action != LOG_BULK_WALK_UNDO || RV_fun[target.rcvindex].undofun == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  rcv.mvcc_id = target.mvcc_id;
+  rcv.length = target.length;
+  rcv.offset = target.offset;
+
+  LOG_READ_ADD_ALIGN (thread_p, target.header_size, &data_lsa, log_page_p);
   saved_cleanup_undo_nxlsa = recovery_tdes->undo_nxlsa;
   recovery_tdes->undo_nxlsa = *bounded_next;
   er_clear ();
   rcv.is_bulk_recovery_undo = true;
-  log_rv_undo_record (thread_p, &data_lsa, log_page_p, rcvindex, &vpid, &rcv, &undo_lsa, recovery_tdes, undo_unzip);
+  log_rv_undo_record (thread_p, &data_lsa, log_page_p, target.rcvindex, &target.vpid, &rcv, &undo_lsa, recovery_tdes,
+		      undo_unzip);
   error = er_errid () == NO_ERROR ? NO_ERROR : ER_FAILED;
   recovery_tdes->undo_nxlsa = saved_cleanup_undo_nxlsa;
   return error;
@@ -7769,6 +7815,194 @@ log_recovery_bulk_walk_publication (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
 
   log_zip_free (undo_unzip);
   return error;
+}
+/*
+ * log_recovery_bulk_rcvindex_is_page_slot_addressed () - does rcvindex's undo function locate its target as a
+ *   PGSLOTID within the record's own (volid, pageid), so a slot's continued presence can be pre-checked
+ *   physically without applying the undo?
+ *
+ * RVBT and RVEH undo is key/value-addressed: the undo function relocates its target by content (b-tree key,
+ * hash key), not by the logged offset, so an absent slot at that offset proves nothing.  RVOVF undo and
+ * RVCT_NEW_OVFPAGE_LOGICAL_UNDO are whole-page/vpid operations (log_rv_copy_char, overflow_rv_link,
+ * catalog_rv_ovf_page_logical_insert_undo), and RVHF_STATS/RVHF_CHAIN's offset selects a page-header field, not
+ * a slot.  Every rcvindex returned true here has a real PGSLOTID at rcv->offset that its undo function passes
+ * straight to spage_delete/spage_update/spage_delete_for_recovery (see catalog_rv_insert_undo,
+ * catalog_rv_delete_undo, catalog_rv_update in system_catalog.c and the heap_rv_undo_* family in heap_file.c).
+ */
+static bool
+log_recovery_bulk_rcvindex_is_page_slot_addressed (LOG_RCVINDEX rcvindex)
+{
+  switch (rcvindex)
+    {
+    case RVCT_INSERT:
+    case RVCT_DELETE:
+    case RVCT_UPDATE:
+    case RVHF_INSERT:
+    case RVHF_INSERT_NEWHOME:
+    case RVHF_DELETE:
+    case RVHF_UPDATE:
+    case RVHF_UPDATE_NOTIFY_VACUUM:
+    case RVHF_MVCC_INSERT:
+    case RVHF_MVCC_DELETE_REC_HOME:
+    case RVHF_MVCC_DELETE_OVERFLOW:
+    case RVHF_MVCC_DELETE_REC_NEWHOME:
+    case RVHF_MVCC_DELETE_MODIFY_HOME:
+    case RVHF_MVCC_NO_MODIFY_HOME:
+    case RVHF_MVCC_UPDATE_OVERFLOW:
+    case RVHF_MVCC_REDISTRIBUTE:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
+ * log_recovery_bulk_precheck_slot_exists () - read-only check of whether a physical undo target still has a
+ *   live slot, without applying the undo
+ *
+ *   return: error code; a genuine fetch failure only, never the plain absence of the page
+ *   thread_p(in):
+ *   vpid(in): page the logged undo record addresses
+ *   offset(in): logged offset; the high bit some heap MVCC undo variants OR in as a vacuum-status flag is
+ *               masked off (mirrors HEAP_RV_FLAG_VACUUM_STATUS_CHANGE in heap_file.c) before use as a slot id;
+ *               masking it off is a no-op for the catalog records checked here, which never set it
+ *   exists(out): true when the page and slot are both still present; false when either is gone
+ */
+static int
+log_recovery_bulk_precheck_slot_exists (THREAD_ENTRY * thread_p, const VPID * vpid, int offset, bool * exists)
+{
+  PAGE_PTR page;
+  PGSLOTID slotid;
+
+  *exists = true;
+  page = pgbuf_fix (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page == NULL)
+    {
+      if (er_errid () == ER_PB_BAD_PAGEID)
+	{
+	  *exists = false;
+	  return NO_ERROR;
+	}
+      return ER_FAILED;
+    }
+  slotid = (PGSLOTID) (offset & 0x7fff);
+  *exists = spage_is_slot_exist (page, slotid);
+  pgbuf_unfix (thread_p, page);
+  return NO_ERROR;
+}
+
+/*
+ * log_recovery_bulk_prevalidate_publication () - read-only scan of a publication window that determines whether
+ *   log_recovery_bulk_walk_publication can still physically undo every record in it
+ *
+ *   thread_p(in):
+ *   candidate(in): live cleanup candidate whose publication window would otherwise be walked
+ *   churned(out): true only when a slot-addressed undo target's page or slot is conclusively gone, meaning a
+ *                 later DDL on the same class (or replayed vacuum) already reused it; false both when the
+ *                 window is clean and whenever the scan itself is inconclusive (bad bound, unreadable log page,
+ *                 unparseable record) -- an inconclusive scan changes nothing and simply defers to the real
+ *                 walk, which re-reads the same records and applies its own existing FATAL guard
+ *
+ * Mirrors log_recovery_bulk_walk_publication's iteration and record classification exactly, but never applies
+ * an undo and never marks any page dirty: PGBUF_LATCH_READ only, and only spage_is_slot_exist queries.
+ */
+static void
+log_recovery_bulk_prevalidate_publication (THREAD_ENTRY * thread_p, const BTREE_BULK_RECOVERY_CANDIDATE * candidate,
+					   bool * churned)
+{
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  LOG_PAGE *log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  LOG_LSA current_lsa = candidate->marker_prev_lsa;
+  const LOG_LSA *parent_lsa = &candidate->marker.parent_lsa;
+
+  *churned = false;
+
+  if (LSA_ISNULL (&current_lsa) || LSA_ISNULL (parent_lsa) || LSA_LT (&current_lsa, parent_lsa))
+    {
+      return;
+    }
+
+  while (LSA_GT (&current_lsa, parent_lsa))
+    {
+      LOG_LSA record_lsa = current_lsa;
+      LOG_RECORD_HEADER *record;
+      LOG_LSA saved_next_lsa;
+
+      if (logpb_fetch_page (thread_p, &record_lsa, LOG_CS_FORCE_USE, log_page_p) != NO_ERROR)
+	{
+	  return;
+	}
+      record = LOG_GET_LOG_RECORD_HEADER (log_page_p, &record_lsa);
+      if (record->trid != candidate->marker.trid || LSA_ISNULL (&record->prev_tranlsa)
+	  || !LSA_LT (&record->prev_tranlsa, &current_lsa) || LSA_LT (&record->prev_tranlsa, parent_lsa))
+	{
+	  return;
+	}
+      saved_next_lsa = record->prev_tranlsa;
+
+      if (record->type != LOG_RUN_POSTPONE && record->type != LOG_REDO_DATA && record->type != LOG_MVCC_REDO_DATA
+	  && record->type != LOG_POSTPONE && record->type != LOG_COMPENSATE)
+	{
+	  LOG_LSA target_data_lsa;
+	  LOG_BULK_UNDO_TARGET target;
+
+	  if (log_recovery_bulk_parse_undo_target (thread_p, &record_lsa, log_page_p, record->type,
+						    &target_data_lsa, &target) == NO_ERROR
+	      && log_recovery_bulk_walk_action (target.rcvindex) == LOG_BULK_WALK_UNDO
+	      && log_recovery_bulk_rcvindex_is_page_slot_addressed (target.rcvindex))
+	    {
+	      bool target_exists;
+
+	      if (log_recovery_bulk_precheck_slot_exists (thread_p, &target.vpid, target.offset, &target_exists) !=
+		  NO_ERROR)
+		{
+		  return;
+		}
+	      if (!target_exists)
+		{
+		  *churned = true;
+		  return;
+		}
+	    }
+	}
+
+      current_lsa = saved_next_lsa;
+    }
+}
+
+/*
+ * log_recovery_bulk_format_churned_notice () - print the operator notice for a no-redo bulk index whose
+ *   publication window cannot be physically replayed from this backup
+ *
+ *   return: error code
+ *   fp(in): output stream (restoredb's stdout)
+ *   candidate(in): live cleanup candidate whose window log_recovery_bulk_prevalidate_publication found churned
+ */
+static int
+log_recovery_bulk_format_churned_notice (FILE * fp, const BTREE_BULK_RECOVERY_CANDIDATE * candidate)
+{
+  char index_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  char class_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+  const char *format;
+  int result;
+
+  if (fp == NULL || candidate == NULL || candidate->marker.constraint_name == NULL
+      || candidate->marker.owner_class_name == NULL)
+    {
+      return ER_FAILED;
+    }
+  snprintf (index_name, sizeof (index_name), "%.*s", (int) candidate->marker.constraint_name_length,
+	    candidate->marker.constraint_name);
+  snprintf (class_name, sizeof (class_name), "%.*s", (int) candidate->marker.owner_class_name_length,
+	    candidate->marker.owner_class_name);
+  format = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_BULK_INDEX_NOT_REPLAYABLE);
+  if (format == NULL)
+    {
+      format = "index %1$s on %2$s was built without redo logging and cannot be replayed from this backup; "
+	"drop and re-create it before use: DROP INDEX %1$s ON %2$s; using it without rebuilding causes errors.\n";
+    }
+  result = fprintf (fp, format, index_name, class_name);
+  return result < 0 ? ER_FAILED : NO_ERROR;
 }
 
 static bool
@@ -7943,6 +8177,33 @@ log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p, const BTREE_BULK_RE
   if (error != NO_ERROR)
     {
       return error;
+    }
+  /* A clean publication window (no intervening writes since the marker) always undoes
+   * exactly as before. A churned window -- any slot-addressed undo target already reused by a
+   * later DDL on the same class or a replayed vacuum -- can no longer be walked without either
+   * hitting ER_SP_UNKNOWN_SLOTID (destroyed slot) or leaving later class-representation records'
+   * index reference behind (a half-undone catalog). Restore must always complete, so a churned
+   * window is left untouched -- catalog, file, and index all stay exactly as replayed -- and the
+   * operator is told to drop and rebuild the index instead of failing the whole restore. */
+  if (constraint_is_current)
+    {
+      bool churned = false;
+
+      log_recovery_bulk_prevalidate_publication (thread_p, candidate, &churned);
+      if (churned)
+	{
+	  _er_log_debug (ARG_FILE_LINE,
+			 "bulk recovery undo branch=churned-window-skip trid=%d main_vfid=%d|%d btid=%d|%d|%d\n",
+			 candidate->marker.trid, VFID_AS_ARGS (&candidate->marker.main_vfid),
+			 BTID_AS_ARGS (&candidate->marker.btid));
+	  if (log_recovery_bulk_format_churned_notice (stdout, candidate) != NO_ERROR || fflush (stdout) != 0)
+	    {
+	      er_log_debug (ARG_FILE_LINE,
+			    "bulk recovery churned-window notice output failed for trid=%d\n",
+			    candidate->marker.trid);
+	    }
+	  return NO_ERROR;
+	}
     }
 
   recovery_tdes->trid = NULL_TRANID - 1;

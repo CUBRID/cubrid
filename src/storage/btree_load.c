@@ -1443,14 +1443,21 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
       goto error;
     }
 #if defined (SERVER_MODE) && !defined (NDEBUG)
-  assert (!load_args->no_redo || tdes == NULL
-	  || (load_args->px_outcome == BT_PX_NOT_ATTEMPTED ? tdes->topops.last >= 0 : tdes->topops.last < 0));
+  /* no-redo builds are restricted to genuinely parallel construction, so no_redo can never be true together
+   * with px_outcome == BT_PX_NOT_ATTEMPTED -- both demotion points (sort_listfile()'s single-process branch
+   * and sort_px_construct_index_leaf()'s n_shards < 2 fallback) clear no_redo before returning
+   * BT_PX_NOT_ATTEMPTED. Whenever no_redo is (still) true here, the build sysop was already committed or
+   * aborted deep inside the parallel path, so no open sysop should remain at this level. */
+  assert (!load_args->no_redo || load_args->px_outcome != BT_PX_NOT_ATTEMPTED);
+  assert (!load_args->no_redo || tdes == NULL || tdes->topops.last < 0);
 #endif
 
 #if defined (SERVER_MODE)
   if (!load_args->no_redo || load_args->px_outcome == BT_PX_NOT_ATTEMPTED)
     {
-      /* Legacy builds and the no-redo serial fallback leave a build sysop for this layer to attach. */
+      /* Legacy (fully logged) builds leave a build sysop for this layer to attach. Genuinely parallel
+       * no-redo builds already committed their own sysop deep inside btree_index_sort() and leave none open
+       * here. */
       is_sysop_started = log_check_system_op_is_started (thread_p);
     }
 #endif /* SERVER_MODE */
@@ -1538,6 +1545,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   else
     {
+      /* no-redo builds are restricted to genuinely parallel construction. An empty build (no leaves at all)
+       * can only reach here via the serial/legacy path -- sort_listfile()'s single-process branch or
+       * sort_px_construct_index_leaf()'s n_shards < 2 fallback -- both of which demote load_args->no_redo to
+       * false before any content page (or lack thereof) is decided here. */
+      assert (!load_args->no_redo);
       if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
 	{
 	  _er_log_debug (ARG_FILE_LINE, "DEBUG_BTREE: load didn't build any leaves btid (%d, (%d, %d)).",
@@ -3409,6 +3421,21 @@ bt_load_parallel_enabled (const LOAD_ARGS * load_args)
 #else
   return false;
 #endif
+}
+
+/*
+ * bt_load_demote_to_logged () - drop a bulk-eligible build onto the fully logged path.  Called by the sort
+ *   layer at the moment a build finalizes as serial (single-process shape or n_shards < 2), strictly before
+ *   any content page is written: the rest of the build then logs normally, registers no pending entry, and
+ *   returns a NULL create LSA to the client.
+ */
+void
+bt_load_demote_to_logged (LOAD_ARGS * load_args)
+{
+  if (load_args != NULL)
+    {
+      load_args->no_redo = false;
+    }
 }
 
 void

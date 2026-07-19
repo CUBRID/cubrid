@@ -357,6 +357,7 @@ extern int bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_l
 extern int bt_load_decode_sort_record_key (THREAD_ENTRY * thread_p, const RECDES * recdes,
 					   LOAD_ARGS * load_args, DB_VALUE * key_out);
 extern bool bt_load_parallel_enabled (const LOAD_ARGS * load_args);
+extern void bt_load_demote_to_logged (LOAD_ARGS * load_args);
 /* Recovery routines */
 extern void btree_rv_nodehdr_dump (FILE * fp, int length, void *data);
 extern void btree_rv_mvcc_save_increments (const BTID * btid, long long key_delta, long long oid_delta,

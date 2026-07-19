@@ -1523,6 +1523,13 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
       if (sort_param->px_type == SORT_INDEX_LEAF)
 	{
 	  SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
+
+	  /* no-redo builds are restricted to genuinely parallel construction. This is the single-process
+	   * shape (parallelism threshold not met, or no workers could be reserved) -- demote to a fully
+	   * logged build now, strictly before btree_create_file()/any content page write below, so the
+	   * legacy build that follows logs normally end to end: no marker, no pending registration, and
+	   * xbtree_load_index returns a NULL create_lsa to the client. */
+	  bt_load_demote_to_logged ((LOAD_ARGS *) sort_param->put_arg);
 	  memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
 	  memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));
 	  if (bt_load_heap_scancache_start_for_attrinfo (thread_p, sort_args_p, NULL, NULL, true) != NO_ERROR)
@@ -5725,11 +5732,33 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
     }
   if (n_shards < 2)
     {
-      /* sort_px_slice_runs_index_leaf allocates shard_inputs only when it commits to n_shards >= 2 */
+      /*
+       * no-redo builds are restricted to genuinely parallel construction.
+       * sort_px_slice_runs_index_leaf allocates shard_inputs only when it commits to n_shards >= 2, so
+       * nothing needs freeing here.  Demote to a fully logged build now -- strictly before any file is
+       * created -- so the legacy single-run path in sort_merge_run_for_parallel_index_leaf_build() creates
+       * the file itself, wrapped in the same sysop as the put: no window where a file is created and
+       * attached to the outer transaction ahead of knowing whether the build that follows will actually
+       * populate it.
+       */
+      bt_load_demote_to_logged (main_load_args);
       return BT_PX_NOT_ATTEMPTED;
     }
 
+  /* Committed to the parallel shard path: create the main and overflow-key files together, in one sysop,
+   * attached to the outer transaction only once both succeed. */
   log_sysop_start (thread_p);
+  error = btree_create_file (thread_p, &sort_args->class_ids[0], sort_args->attr_ids[0], sort_args->btid->sys_btid);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      sort_px_free_shard_inputs (shard_inputs, n_shards);
+      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
+      return BT_PX_ERROR;
+    }
+  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+  vacuum_log_add_dropped_file (thread_p, &sort_args->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
   error = btree_create_overflow_key_file (thread_p, sort_args->btid);
   if (error != NO_ERROR)
     {
@@ -5838,63 +5867,48 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     }
 
   /*
-   * For logged builds (bt_load_parallel_enabled false) the file must not be created and no sysop may be
-   * opened for it here: put's own sysop wrapping below assumes the file does not yet exist, and opening
-   * the file's sysop before any leaf page exists would break the create-then-put nesting the serial
-   * fallback depends on. Only the no-redo shard construct below needs the file -- and its create-file
-   * sysop attached to the outer transaction -- ahead of time.
+   * no-redo builds are restricted to genuinely parallel construction.  sort_px_construct_index_leaf
+   * owns both the shard-count decision and the main/overflow-key file creation: it creates and attaches both
+   * files, in one sysop, only once it has committed to n_shards >= 2, and demotes load_args_p->no_redo to
+   * false (with no file created yet) whenever it falls back to BT_PX_NOT_ATTEMPTED.  This removes the
+   * previous eager file-creation window (main file created and attached to the outer transaction ahead of
+   * knowing whether the shard build would actually engage): on the n_shards < 2 fallthrough, no file exists
+   * yet when we reach the legacy path below, so there is nothing left orphaned if the eventual put fails --
+   * the legacy path creates the file itself, wrapped in the very sysop the put's failure would abort.
    */
-  if (bt_load_parallel_enabled (load_args_p))
-    {
-      log_sysop_start (thread_p);
-      if (btree_create_file
-	  (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  log_sysop_abort (thread_p);
-	  sort_merge_queue_ctx_destroy (&qctx);
-	  return ER_FAILED;
-	}
-
-      /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
-      vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
-				   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-      log_sysop_attach_to_outer (thread_p);
-
+  {
+    /*
+     * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
+     * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
+     * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
+     * below: merge everything into a single run and put it serially.
+     */
+    BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
+    if (outcome != BT_PX_NOT_ATTEMPTED)
       {
-	/*
-	 * Build the tree straight from the workers' sorted runs.  Each shard worker k-way merges its own key
-	 * range of every run while putting, so the fan-in merge tree -- whose tail is one thread rewriting the whole
-	 * data set once per level -- is skipped entirely.  BT_PX_NOT_ATTEMPTED falls through to the legacy path
-	 * below: merge everything into a single run and put it serially.
-	 */
-	BT_LOAD_PX_OUTCOME outcome = sort_px_construct_index_leaf (thread_p, px_sort_param, sort_param, parallel_num);
-	if (outcome != BT_PX_NOT_ATTEMPTED)
+	/* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
+	 * here (the PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
+	for (i = 0; i < parallel_num; i++)
 	  {
-	    /* the initial runs were consumed in place; nothing staged them into sort_param->temp, so retire them
-	     * here (the PX_THREAD_IN_PARALLEL resource cleanup never retires temp files). */
-	    for (i = 0; i < parallel_num; i++)
+	    int idx = px_sort_param[i].px_result_file_idx;
+	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
 	      {
-		int idx = px_sort_param[i].px_result_file_idx;
-		if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
+		int retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
+		if (retire_error == NO_ERROR)
 		  {
-		    int retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
-		    if (retire_error == NO_ERROR)
-		      {
-			VFID_SET_NULL (&px_sort_param[i].temp[idx]);
-		      }
-		    else
-		      {
-			ASSERT_ERROR ();
-			error = retire_error;
-		      }
+		    VFID_SET_NULL (&px_sort_param[i].temp[idx]);
+		  }
+		else
+		  {
+		    ASSERT_ERROR ();
+		    error = retire_error;
 		  }
 	      }
-	    sort_merge_queue_ctx_destroy (&qctx);
-	    return outcome == BT_PX_TREE_DONE ? error : ER_FAILED;
 	  }
+	sort_merge_queue_ctx_destroy (&qctx);
+	return outcome == BT_PX_TREE_DONE ? error : ER_FAILED;
       }
-    }
+  }
 
   /* legacy single-run path: merge all runs into one, then put it serially from the temp file. */
   if (qctx.queue_size >= 2)
@@ -5920,35 +5934,30 @@ sort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, SORT_PARA
     sort_param->temp[result_file_idx] = px_sort_param[0].temp[result_file_idx];
   }
 
-  if (bt_load_parallel_enabled (load_args_p))
+  /* no-redo builds are restricted to genuinely parallel construction, so by construction we never
+   * reach here with load_args_p->no_redo still true -- sort_px_construct_index_leaf above either committed to
+   * the parallel shard path (returning before this point) or demoted load_args_p->no_redo to false before
+   * returning BT_PX_NOT_ATTEMPTED. The file was therefore never created above; create it now and leave the
+   * wrapping sysop open through the put below, exactly like the single-process (serial) fallback in
+   * sort_listfile() does -- xbtree_load_index attaches it to the outer transaction once the tree is fully
+   * built. */
+  assert (!bt_load_parallel_enabled (load_args_p));
+  log_sysop_start (thread_p);
+  if (btree_create_file
+      (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
     {
-      /* the file was already created above; open a fresh sysop to wrap this put. */
-      log_sysop_start (thread_p);
+      ASSERT_ERROR ();
+      log_sysop_abort (thread_p);
+      sort_merge_queue_ctx_destroy (&qctx);
+      return ER_FAILED;
     }
-  else
-    {
-      /* Legacy/logged build: the file was not created above, so create it now and leave the wrapping sysop
-       * open through the put below; xbtree_load_index attaches it to the outer transaction once the tree is
-       * fully built, exactly like the single-process (serial) fallback does. */
-      log_sysop_start (thread_p);
-      if (btree_create_file
-	  (thread_p, &sort_args_p->class_ids[0], sort_args_p->attr_ids[0], sort_args_p->btid->sys_btid) != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  log_sysop_abort (thread_p);
-	  sort_merge_queue_ctx_destroy (&qctx);
-	  return ER_FAILED;
-	}
 
-      /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
-      vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL,
-				   VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
-    }
+  /* if loading is aborted or if transaction is aborted, vacuum must be notified before file is destoyed. */
+  vacuum_log_add_dropped_file (thread_p, &sort_args_p->btid->sys_btid->vfid, NULL, VACUUM_LOG_ADD_DROPPED_FILE_UNDO);
 
   if (sort_put_result_from_tmpfile (thread_p, sort_param, 0) != NO_ERROR)
     {
-      /* A sysop is open here on every reachable path (the no-redo reopen above, or the legacy create-file
-       * path), so the abort is unconditional. */
+      /* A sysop is open here unconditionally (the create-file above), so the abort is unconditional. */
       log_sysop_abort (thread_p);
       error = ER_FAILED;
     }
