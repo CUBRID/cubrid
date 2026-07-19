@@ -308,8 +308,15 @@ namespace cubstorage
 						std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> &resident_candidates,
 						std::size_t &num_resident_candidates, std::uint16_t needed_size);
 
-	  status allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate, std::uint16_t needed_size,
-					      PGBUF_WATCHER &page_watcher, bool &valid);
+	  status allocate_get_candidates_or_update_residents (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+	      std::uint16_t consume_size, std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+	      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+	      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t &num_candidates, PGBUF_WATCHER &page_watcher);
+
+	  status allocate_verify_actual_space (OID *class_oid, std::uint16_t needed_size, bestspace_entry &candidate,
+					       bool &valid, PGBUF_WATCHER &page_watcher);
+	  status allocate_verify_or_allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+					      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t &num_candidates, PGBUF_WATCHER &page_watcher);
 
 	  int allocate_new_pages (HFID *hfid, std::size_t num_candidates,
 				  std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, PGBUF_WATCHER &page_watcher);

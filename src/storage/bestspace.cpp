@@ -802,8 +802,58 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate,
-      std::uint16_t needed_size, PGBUF_WATCHER &page_watcher, bool &valid)
+  bestspace::shard::allocate_get_candidates_or_update_residents (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+      std::uint16_t consume_size, std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
+      std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t &num_candidates, PGBUF_WATCHER &page_watcher)
+  {
+    std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> resident_candidates;
+    std::size_t num_resident_candidates;
+    std::size_t i, j;
+    status error;
+
+    // pick four replacement candidates with more freespace than the victim pages above.
+    num_candidates = allocate_pick_candidates (residents, victims, candidates, resident_candidates, num_resident_candidates,
+		     needed_size);
+    assert (num_candidates <= ALLOC_BATCH_SIZE);
+    assert (num_candidates + num_resident_candidates <= ALLOC_BATCH_SIZE);
+
+    // force-check candidates already resident in this shard and reuse them when possible.
+    for (i = 0; i < num_resident_candidates; i++)
+      {
+	error = L1_find (class_oid, needed_size, consume_size,
+			 resident_candidates[i].second / L2_FANOUT,
+			 resident_candidates[i].second % L2_FANOUT, page_watcher, true);
+	if (error == status::FOUND)
+	  {
+	    m_parent.push_candidates (candidates.data (), num_candidates);
+	    for (j = i + 1; j < num_resident_candidates; j++)
+	      {
+		m_parent.push_candidates (&resident_candidates[j].first, 1);
+	      }
+	    return status::FOUND;
+	  }
+	if (error == status::FAILURE)
+	  {
+	    m_parent.push_candidates (candidates.data (), num_candidates);
+	    for (j = i; j < num_resident_candidates; j++)
+	      {
+		m_parent.push_candidates (&resident_candidates[j].first, 1);
+	      }
+	    return status::FAILURE;
+	  }
+	if (error == status::CONTENDED)
+	  {
+	    m_parent.push_candidates (&resident_candidates[i].first, 1);
+	  }
+      }
+
+    return status::NOT_FOUND;
+  }
+
+  bestspace::status
+  bestspace::shard::allocate_verify_actual_space (OID *class_oid, std::uint16_t needed_size, bestspace_entry &candidate,
+      bool &valid, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     OID page_class_oid;
@@ -860,6 +910,54 @@ namespace cubstorage
       {
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
 	return status::NOT_FOUND;
+      }
+    return status::FOUND;
+  }
+
+  bestspace::status
+  bestspace::shard::allocate_verify_or_allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+      std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t &num_candidates, PGBUF_WATCHER &page_watcher)
+  {
+    bool candidate_valid;
+    status result;
+    int error;
+
+    // check the biggest free space of candidates is enough
+    if (num_candidates == ALLOC_BATCH_SIZE)
+      {
+	// first candidate is biggest
+	result = allocate_verify_actual_space (class_oid, needed_size, candidates[0], candidate_valid, page_watcher);
+	if (result == status::FAILURE)
+	  {
+	    return status::FAILURE;
+	  }
+	if (result == status::FOUND)
+	  {
+	    // the page returned to the caller is always stored at the last position.
+	    std::swap (candidates[0], candidates[ALLOC_BATCH_SIZE - 1]);
+	  }
+	else
+	  {
+	    assert (result == status::NOT_FOUND);
+	    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
+
+	    if (candidate_valid)
+	      {
+		m_parent.push_candidates (&candidates[0], 1);
+	      }
+	    std::memmove (candidates.data (), candidates.data () + 1, sizeof (bestspace_entry) * (ALLOC_BATCH_SIZE - 1));
+	    num_candidates--;
+	  }
+      }
+
+    // allocate the pages at least one if the freespace of candidates is smaller than consume size
+    if (num_candidates < ALLOC_BATCH_SIZE)
+      {
+	error = allocate_new_pages (hfid, num_candidates, candidates, page_watcher);
+	if (error != NO_ERROR)
+	  {
+	    return status::FAILURE;
+	  }
       }
     return status::FOUND;
   }
@@ -927,12 +1025,8 @@ namespace cubstorage
     std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
     std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
-    std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> resident_candidates;
-    std::size_t num_candidates, num_resident_candidates;
-    std::size_t i, j;
-    bool candidate_valid;
-    status check_status;
-    int error;
+    std::size_t num_candidates;
+    status result;
 
     // set allcating bit
     if (allocate_mark () != status::SUCCESS)
@@ -945,84 +1039,22 @@ namespace cubstorage
     // pick four pages with the smallest free space as replacement victims.
     allocate_pick_victims (residents, victims);
 
-    // pick four replacement candidates with more freespace than the victim pages above.
-    num_candidates = allocate_pick_candidates (residents, victims, candidates, resident_candidates,
-		     num_resident_candidates, needed_size);
-    assert (num_candidates <= ALLOC_BATCH_SIZE);
-    assert (num_candidates + num_resident_candidates <= ALLOC_BATCH_SIZE);
-
-    // force-check candidates already resident in this shard and reuse them when possible.
-    for (i = 0; i < num_resident_candidates; i++)
+    // use candidate as a target page or update a residents
+    result = allocate_get_candidates_or_update_residents (class_oid, hfid, needed_size, consume_size, residents, victims,
+	     candidates, num_candidates, page_watcher);
+    if (result == status::FOUND || result == status::FAILURE)
       {
-	check_status = L1_find (class_oid, needed_size, consume_size,
-				resident_candidates[i].second / L2_FANOUT,
-				resident_candidates[i].second % L2_FANOUT, page_watcher, true);
-	if (check_status == status::FOUND)
-	  {
-	    m_parent.push_candidates (candidates.data (), num_candidates);
-	    for (j = i + 1; j < num_resident_candidates; j++)
-	      {
-		m_parent.push_candidates (&resident_candidates[j].first, 1);
-	      }
-	    allocate_unmark ();
-	    return status::FOUND;
-	  }
-	if (check_status == status::FAILURE)
-	  {
-	    m_parent.push_candidates (candidates.data (), num_candidates);
-	    for (j = i; j < num_resident_candidates; j++)
-	      {
-		m_parent.push_candidates (&resident_candidates[j].first, 1);
-	      }
-	    allocate_unmark ();
-	    return status::FAILURE;
-	  }
-	if (check_status == status::CONTENDED)
-	  {
-	    m_parent.push_candidates (&resident_candidates[i].first, 1);
-	  }
+	allocate_unmark ();
+	return result;
       }
 
-    // check the biggest free space of candidates is enough
-    if (num_candidates == ALLOC_BATCH_SIZE)
+    // verify the page has enough freespace and allocate new pages if not
+    result = allocate_verify_or_allocate (class_oid, hfid, needed_size, candidates, num_candidates, page_watcher);
+    if (result == status::FAILURE)
       {
-	// first candidate is biggest
-	check_status = allocate_check_actual_space (class_oid, candidates[0], needed_size, page_watcher, candidate_valid);
-	if (check_status == status::FAILURE)
-	  {
-	    allocate_unmark ();
-	    return status::FAILURE;
-	  }
-	if (check_status == status::FOUND)
-	  {
-	    // the page returned to the caller is always stored at the last position.
-	    std::swap (candidates[0], candidates[ALLOC_BATCH_SIZE - 1]);
-	  }
-	else
-	  {
-	    assert (check_status == status::NOT_FOUND);
-	    assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
-
-	    if (candidate_valid)
-	      {
-		m_parent.push_candidates (&candidates[0], 1);
-	      }
-	    std::memmove (candidates.data (), candidates.data () + 1, sizeof (bestspace_entry) * (ALLOC_BATCH_SIZE - 1));
-	    num_candidates--;
-	  }
+	allocate_unmark ();
+	return result;
       }
-
-    // allocate the pages at least one if the freespace of candidates is smaller than consume size
-    if (num_candidates < ALLOC_BATCH_SIZE)
-      {
-	error = allocate_new_pages (hfid, num_candidates, candidates, page_watcher);
-	if (error != NO_ERROR)
-	  {
-	    allocate_unmark ();
-	    return status::FAILURE;
-	  }
-      }
-    // candidates are four available pages at this point
 
     // reserve the page
     candidates[ALLOC_BATCH_SIZE - 1].freespace -= consume_size;
