@@ -293,7 +293,7 @@ namespace cubstorage
 	  void L2_update (std::size_t l2_index, std::size_t l1_index);
 
 	  status L1_find (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size, std::size_t l2_index,
-			  std::size_t l1_index, PGBUF_WATCHER &page_watcher);
+			  std::size_t l1_index, PGBUF_WATCHER &page_watcher, bool force_check);
 	  status L1_fix (std::size_t l2_index, std::size_t l1_index, L1 l1, VPID vpid, PGBUF_WATCHER &page_watcher);
 	  void L1_remove (std::size_t l2_index, std::size_t l1_index, L1 l1);
 
@@ -307,7 +307,6 @@ namespace cubstorage
 						std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates,
 						std::array<std::pair<bestspace_entry, std::uint16_t>, ALLOC_BATCH_SIZE> &resident_candidates,
 						std::size_t &num_resident_candidates, std::uint16_t needed_size);
-	  void allocate_update_resident (bestspace_entry entry, std::size_t index);
 
 	  status allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate, std::uint16_t needed_size,
 					      PGBUF_WATCHER &page_watcher, bool &valid);

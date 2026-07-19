@@ -509,7 +509,8 @@ namespace cubstorage
 	length = l2.find (minimum, pos);
 	for (i = 0; i < length; i++)
 	  {
-	    error = L1_find (class_oid, needed_size, consume_size, l2_index, pos[ (i + bias) % length], page_watcher);
+	    error = L1_find (class_oid, needed_size, consume_size, l2_index, pos[ (i + bias) % length], page_watcher,
+			     false);
 	    if (error == status::FOUND || error == status::FAILURE)
 	      {
 		return error;
@@ -565,7 +566,8 @@ namespace cubstorage
 
   bestspace::status
   bestspace::shard::L1_find (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
-			     std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher)
+			     std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher,
+			     bool force_check)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     std::size_t freespace;
@@ -580,7 +582,7 @@ namespace cubstorage
 
     // first, check the recorded free space
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
-    if (expected.get_freespace () < needed_size)
+    if (!force_check && expected.get_freespace () < needed_size)
       {
 	// there is no enough space
 	return status::NOT_FOUND;
@@ -799,34 +801,6 @@ namespace cubstorage
     return num_candidates;
   }
 
-  void
-  bestspace::shard::allocate_update_resident (bestspace_entry entry, std::size_t index)
-  {
-    L1 expected, desired;
-    VPID vpid;
-
-    assert (index < L3_FANOUT * L2_FANOUT);
-
-    while (true)
-      {
-	expected = m_L1[index].load ();
-	vpid = expected.get_vpid ();
-	if (vpid.volid != entry.volid || vpid.pageid != entry.pageid ||
-	    expected.get_freespace () >= entry.freespace)
-	  {
-	    return;
-	  }
-
-	desired = expected;
-	desired.set_freespace (entry.freespace);
-	if (m_L1[index].compare_exchange_strong (expected, desired))
-	  {
-	    L2_update (index / L2_FANOUT, index % L2_FANOUT);
-	    return;
-	  }
-      }
-  }
-
   bestspace::status
   bestspace::shard::allocate_check_actual_space (OID *class_oid, bestspace_entry &candidate,
       std::uint16_t needed_size, PGBUF_WATCHER &page_watcher, bool &valid)
@@ -977,13 +951,12 @@ namespace cubstorage
     assert (num_candidates <= ALLOC_BATCH_SIZE);
     assert (num_candidates + num_resident_candidates <= ALLOC_BATCH_SIZE);
 
-    // refresh and reuse candidates that are already resident in this shard.
+    // force-check candidates already resident in this shard and reuse them when possible.
     for (i = 0; i < num_resident_candidates; i++)
       {
-	allocate_update_resident (resident_candidates[i].first, resident_candidates[i].second);
 	check_status = L1_find (class_oid, needed_size, consume_size,
 				resident_candidates[i].second / L2_FANOUT,
-				resident_candidates[i].second % L2_FANOUT, page_watcher);
+				resident_candidates[i].second % L2_FANOUT, page_watcher, true);
 	if (check_status == status::FOUND)
 	  {
 	    m_parent.push_candidates (candidates.data (), num_candidates);
