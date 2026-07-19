@@ -1599,13 +1599,13 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * once, and fsync only the volumes owning the files' sectors.  Any scoped failure
        * falls back to the global barrier (pgbuf_flush_all + fileio_synchronize_all); so
        * does the empty-index path (built_bulk_tree == false: the bulk file was destroyed by
-       * sysop abort and the replacement empty index is fully WAL-logged) and the
-       * bulk_build_scoped_barrier=no kill switch.  In both modes the order is: pool flush
-       * first, DWB drain + fsync second, publication chain only after success.
+       * sysop abort and the replacement empty index is fully WAL-logged).  In both modes the
+       * order is: pool flush first, DWB drain + fsync second, publication chain only after
+       * success.
        */
       bool scoped_done = false;
 
-      if (built_bulk_tree && prm_get_bool_value (PRM_ID_BULK_BUILD_SCOPED_BARRIER))
+      if (built_bulk_tree)
 	{
 	  er_stack_push ();
 	  if (bt_load_scoped_durability_barrier (thread_p, load_args) == NO_ERROR)
@@ -2568,7 +2568,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
    * logging" case (double_write_buffer.cpp slot-hash dedup).  Durability before publication
    * comes from the explicit barrier in xbtree_load_index, not from this function.
    */
-  if (no_redo && flush_after_unfix && prm_get_bool_value (PRM_ID_BULK_BUILD_WORKER_FLUSH))
+  if (no_redo && flush_after_unfix)
     {
       /* capture the page identity before the unfix below consumes page_ptr. */
       pgbuf_get_vpid (page_ptr, &vpid);

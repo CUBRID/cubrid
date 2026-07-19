@@ -6606,16 +6606,11 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
   char *stream = NULL;
   int stream_size = 0;
   LOCK curr_cls_lock = SCH_M_LOCK;
-  bool bulk_wire_extension = net_server_supports_bulk_no_redo ();
   LOG_LSA create_lsa;
   LSA_SET_NULL (&create_lsa);
   if (out_create_lsa != NULL)
     {
       LSA_SET_NULL (out_create_lsa);
-    }
-  if (!bulk_wire_extension)
-    {
-      eligible_no_redo = false;
     }
 
   // online index should have created the empty b-tree already
@@ -6649,7 +6644,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
 		  + OR_INT_SIZE	/* Thread count */
-		  + (bulk_wire_extension ? OR_INT_SIZE : 0) /* eligible_no_redo */ );
+		  + OR_INT_SIZE /* eligible_no_redo */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6725,15 +6720,11 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
-  if (bulk_wire_extension)
-    {
-      ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
-    }
+  ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
-			OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE
-			  + (bulk_wire_extension ? OR_LOG_LSA_ALIGNED_SIZE : 0),
+			OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE,
 			stream, stream_size, NULL, 0);
 
   if (req_error == NO_ERROR)
@@ -6763,10 +6754,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	      btid = NULL;
 	    }
 	}
-      if (bulk_wire_extension)
-	{
-	  ptr = or_unpack_log_lsa (ptr, &create_lsa);
-	}
+      ptr = or_unpack_log_lsa (ptr, &create_lsa);
       if (error == NO_ERROR && index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && out_create_lsa != NULL)
 	{
 	  LSA_COPY (out_create_lsa, &create_lsa);

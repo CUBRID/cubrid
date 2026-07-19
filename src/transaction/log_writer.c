@@ -2127,7 +2127,7 @@ logwr_all_consumers_support_bulk_marker_locked (void)
 	}
 
       conn = entry->thread_p->conn_entry;
-      if (conn == NULL || (conn->client_capabilities & NET_CAP_BULK_NO_REDO) == 0 || conn->version_string == NULL
+      if (conn == NULL || (conn->client_capabilities & NET_CAP_BULK_MARKER_CONSUMER) == 0 || conn->version_string == NULL
 	  || !rel_is_log_compatible (rel_release_string (), conn->version_string))
 	{
 	  return false;

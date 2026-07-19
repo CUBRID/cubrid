@@ -312,7 +312,11 @@ enum net_server_request
 #define NET_CAP_HA_REPL_DELAY           0x00000008
 #define NET_CAP_HA_REPLICA              0x00000004
 #define NET_CAP_HA_IGNORE_REPL_DELAY	0x00000002
-#define NET_CAP_BULK_NO_REDO           0x00000001
+/* Not negotiated over the BTREE_LOADINDEX wire anymore (client/server version skew is rejected at
+   connection time); kept solely as the log-consumer capability signal read by
+   logwr_all_consumers_support_bulk_marker_locked() (src/transaction/log_writer.c) for the ADR-0004
+   mixed-version HA auto-fallback. */
+#define NET_CAP_BULK_MARKER_CONSUMER           0x00000001
 
 typedef enum
 {				/* Responses to a query */
@@ -329,7 +333,6 @@ extern int net_server_start (const char *name);
 
 /* Misc */
 extern const char *get_capability_string (int cap, int cap_type);
-extern bool net_server_supports_bulk_no_redo (void);
 extern const char *get_net_request_name (int request);
 
 typedef enum

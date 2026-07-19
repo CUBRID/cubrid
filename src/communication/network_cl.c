@@ -231,7 +231,7 @@ client_capabilities (void)
   int capabilities = 0;
 
   capabilities |= NET_CAP_INTERRUPT_ENABLED;
-  capabilities |= NET_CAP_BULK_NO_REDO;
+  capabilities |= NET_CAP_BULK_MARKER_CONSUMER;
   if (db_Disable_modifications > 0)
     {
       capabilities |= NET_CAP_UPDATE_DISABLED;
@@ -243,12 +243,6 @@ client_capabilities (void)
     }
 
   return capabilities;
-}
-
-bool
-net_server_supports_bulk_no_redo (void)
-{
-  return (net_Server_capabilities & NET_CAP_BULK_NO_REDO) != 0;
 }
 
 /*
