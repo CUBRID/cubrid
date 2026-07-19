@@ -280,7 +280,7 @@ static bool is_in_sp_func_type = false;
     }
 
 /* Correct a node's reported line/column to the source location of a parsed token (e.g. @1).
- * parser_new_node() stamps line_number/column_number from the scanner's CURRENT position (csql_yyget_lineno()/node_column_position).
+ * parser_new_node() stamps line_number/column_number from the YYLTYPE info (first_line/first_column) at the scanner's current position.
  *  A reduce action runs only after bison has fetched the look-ahead token,
  * so that position has already moved past the token (and across any blank lines).
  */
@@ -23733,6 +23733,7 @@ parser_main (PARSER_CONTEXT * parser)
   long desc_index = 0;
   long i, top;
   int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save, yylineno_save; 
+  YYLTYPE yylloc_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23746,7 +23747,8 @@ parser_main (PARSER_CONTEXT * parser)
   this_parser = parser;
 
   dbcs_start_input ();
-  
+
+  yylloc_save = csql_yylloc;  
   yybuffer_pos_save = yybuffer_pos;
   yyline_start_pos_save = yyline_start_pos; 
   yylineno_prev_save = yylineno_prev;
@@ -23774,6 +23776,7 @@ parser_main (PARSER_CONTEXT * parser)
   yyline_start_pos = yyline_start_pos_save;
   yylineno_prev = yylineno_prev_save;
   csql_yyset_lineno(yylineno_save);
+  csql_yylloc = yylloc_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
@@ -24421,7 +24424,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
 	  /* no parse-tree location available here; keep the scanner's current position 
            * (the previous behavior when the arguments were ignored). */
-	  csql_yyerror_explicit (csql_yyget_lineno (), (c < 1) ? node_column_position () : args->next->next->column_number);
+	  csql_yyerror_explicit (csql_yyget_lineno (), (c < 1) ? csql_yylloc.first_column : args->next->next->column_number);
 	  return NULL;
 	}
 

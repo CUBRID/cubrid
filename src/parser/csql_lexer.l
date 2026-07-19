@@ -1645,7 +1645,7 @@ END_SUPPRESS_WARNING_BISON_FLEX
 void
 csql_yyerror_explicit (int line, int column)
 {  
-  int saved_yylineno = csql_yyget_lineno ();
+  int saved_yylineno = yylineno;
   int saved_yyleng_last = yyleng_last;
 
   csql_yyset_lineno (line);
