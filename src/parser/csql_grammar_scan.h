@@ -80,7 +80,6 @@ extern "C"
   extern int yybuffer_pos;
   extern int yyline_start_pos;
   extern int yylineno_prev;
-  extern int yyleng_last;
 
 #ifdef __cplusplus
 }

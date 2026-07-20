@@ -83,7 +83,7 @@ static int saved_yy_start = 0;
  * is currently being scanned; column = yybuffer_pos - yyline_start_pos + 1 */
 int yyline_start_pos = 0;
 static int yyline_start_pos_bk = 0;
-int yyleng_last = 0;
+static int yyleng_last = 0;
 int yylineno_prev = 0;
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
@@ -1644,17 +1644,8 @@ END_SUPPRESS_WARNING_BISON_FLEX
 
 void
 csql_yyerror_explicit (int line, int column)
-{  
-  int saved_yylineno = yylineno;
-  int saved_yyleng_last = yyleng_last;
-
-  csql_yyset_lineno (line);
-  yyleng_last = 0;
-
+{
   csql_yyerror_internal (NULL, line, column);
-
-  csql_yyset_lineno (saved_yylineno);
-  yyleng_last = saved_yyleng_last;
 
   msg_ptr = 0;
 }
