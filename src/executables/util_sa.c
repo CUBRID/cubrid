@@ -5786,6 +5786,14 @@ upgradedb_process_internal_scripts (const char *script_list_path, UPGRADEDB_SCRI
 	}
     }
 
+  if (ferror (fp))
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_SCRIPT_READ_FAILED),
+			     script_list_path);
+      error = ER_FAILED;
+    }
+
 exit:
   fclose (fp);
   return error;
