@@ -802,7 +802,7 @@ namespace cubstorage
   }
 
   bestspace::status
-  bestspace::shard::allocate_get_candidates_or_update_residents (OID *class_oid, HFID *hfid, std::uint16_t needed_size,
+  bestspace::shard::allocate_get_candidates_or_update_residents (OID *class_oid, std::uint16_t needed_size,
       std::uint16_t consume_size, std::array<VPID, L3_FANOUT * L2_FANOUT + ALLOC_BATCH_SIZE> &residents,
       std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
       std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t &num_candidates, PGBUF_WATCHER &page_watcher)
@@ -1040,7 +1040,7 @@ namespace cubstorage
     allocate_pick_victims (residents, victims);
 
     // use candidate as a target page or update a residents
-    result = allocate_get_candidates_or_update_residents (class_oid, hfid, needed_size, consume_size, residents, victims,
+    result = allocate_get_candidates_or_update_residents (class_oid, needed_size, consume_size, residents, victims,
 	     candidates, num_candidates, page_watcher);
     if (result == status::FOUND || result == status::FAILURE)
       {
