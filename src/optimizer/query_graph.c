@@ -7138,12 +7138,15 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 
 	  /* A projected function result read from the index key flows through the output value list. The
 	   * GROUP BY machinery builds its group value list / sort keys from the raw argument column rather
-	   * than this materialized result, so covering would produce incorrect groups. Fall back to a
-	   * non-covering scan (which recomputes the function from the heap) when the query groups. */
+	   * than this materialized result, so covering would produce incorrect groups. Likewise, aggregate
+	   * functions (buildvalue) evaluate their arguments from the raw argument column, which a covered scan
+	   * cannot provide. Fall back to a non-covering scan (which recomputes the function from the heap)
+	   * when the query groups or aggregates. */
 	  {
 	    PT_NODE *qtree = QO_ENV_PT_TREE (env);
 
-	    if (qtree != NULL && qtree->node_type == PT_SELECT && qtree->info.query.q.select.group_by != NULL)
+	    if (qtree != NULL && qtree->node_type == PT_SELECT
+		&& (qtree->info.query.q.select.group_by != NULL || pt_has_aggregate (QO_ENV_PARSER (env), qtree)))
 	      {
 		return false;
 	      }

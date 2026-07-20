@@ -11618,6 +11618,24 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
+  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrid))
+    {
+      /* Reserved function-result attribute of a covering function-index scan: it has no heap representation
+       * (last_attrepr is NULL), so just store the given value directly. */
+      ret = pr_clear_value (&value->dbvalue);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      ret = pr_clone_value (attr_val, &value->dbvalue);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      value->state = HEAP_WRITTEN_ATTRVALUE;
+      return ret;
+    }
+
   pr_type = pr_type_from_id (value->last_attrepr->type);
   if (pr_type == NULL)
     {

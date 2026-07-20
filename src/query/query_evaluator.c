@@ -2899,7 +2899,17 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 	  /* for all attributes specified in the filter */
 	  for (i = 0; i < scan_attrsp->num_attrs; i++)
 	    {
-	      if (filled_match_idx)
+	      bool is_func_result = (filterp->func_idx_col_id != -1
+				     && IS_FUNC_INDEX_RESULT_ATTR_ID (scan_attrsp->attr_ids[i]));
+
+	      if (is_func_result)
+		{
+		  /* The reserved function-result attribute is not listed in btree_attr_ids; its value is the
+		   * precomputed function result stored at func_idx_col_id in the midxkey. Handle it before the
+		   * matched-index cache, which only covers regular key columns. */
+		  j = filterp->func_idx_col_id;
+		}
+	      else if (filled_match_idx)
 		{
 		  j = filterp->matched_attid_idx_4_keyflt[i];
 		}
@@ -2919,7 +2929,7 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		    }
 		}
 
-	      if (j < filterp->btree_num_attrs)
+	      if (is_func_result || j < filterp->btree_num_attrs)
 		{
 		  /* now, found the attr */
 
@@ -2936,14 +2946,15 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		    }
 
 		  /* get j-th element value from the midxkey */
-		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.         
+		  // TODO: Let's find a way to reuse the value of "j" instead of finding it anew every time.
 		  {
 		    /* A regular key column maps to its midxkey position, stepping over the function result slot
-		     * (j >= func_idx_col_id -> j + 1). The function ARGUMENT column has no raw slot in the key
-		     * (only the function result is stored), so its mapped position overshoots the key; in that
-		     * case read the precomputed function result at func_idx_col_id -- the key filter references
-		     * the function expression, whose value is exactly that result. */
-		    int midx_pos = (j < func_idx_col_id) ? j : j + 1;
+		     * (j >= func_idx_col_id -> j + 1). The reserved function-result attribute reads the
+		     * precomputed function result directly at func_idx_col_id. The function ARGUMENT column has
+		     * no raw slot in the key (only the function result is stored), so its mapped position
+		     * overshoots the key; in that case read the precomputed function result at func_idx_col_id
+		     * -- the key filter references the function expression, whose value is exactly that result. */
+		    int midx_pos = is_func_result ? filterp->func_idx_col_id : ((j < func_idx_col_id) ? j : j + 1);
 
 		    if (filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
 		      {

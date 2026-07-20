@@ -7620,10 +7620,46 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
     case QO_PLANTYPE_SCAN:
       if (plan->plan_un.scan.index_cover == true && plan->plan_un.scan.index != NULL)
 	{
+	  /* Register a covered scan on a function index, projected or not: the output-list window uses the
+	   * entry only when the function result is projected, while the key-filter window
+	   * (pt_to_class_spec_list) needs it whenever the function expression appears in a key filter.
+	   *
+	   * Do NOT register when every function-argument column is itself a regular key column: the raw
+	   * argument is then available from the key, so evaluating the original expression is already exact,
+	   * and registering would make the argument column's own attribute regu read the function result
+	   * (pt_to_regu_attr_descr), corrupting a raw projection of that column. */
 	  index_entry = plan->plan_un.scan.index->head;
-	  if (index_entry != NULL && index_entry->cover_func_result && index_entry->constraints != NULL
-	      && index_entry->constraints->func_index_info != NULL)
+	  if (index_entry != NULL && index_entry->constraints != NULL
+	      && index_entry->constraints->func_index_info != NULL && index_entry->constraints->attributes != NULL)
 	    {
+	      SM_ATTRIBUTE **atts = index_entry->constraints->attributes;
+	      int arg_start = index_entry->constraints->func_index_info->attr_index_start;
+	      bool arg_missing_from_key = false;
+	      int k, m;
+
+	      for (k = arg_start; atts[k] != NULL; k++)
+		{
+		  bool found_as_key_col = false;
+
+		  for (m = 0; m < arg_start && atts[m] != NULL; m++)
+		    {
+		      if (atts[m]->id == atts[k]->id)
+			{
+			  found_as_key_col = true;
+			  break;
+			}
+		    }
+		  if (!found_as_key_col)
+		    {
+		      arg_missing_from_key = true;
+		      break;
+		    }
+		}
+
+	      if (!arg_missing_from_key)
+		{
+		  break;	/* argument available as a regular key column; no routing needed */
+		}
 	      node = plan->plan_un.scan.node;
 	      spec = (node != NULL) ? QO_NODE_ENTITY_SPEC (node) : NULL;
 	      if (spec != NULL && spec->node_type == PT_SPEC)
@@ -12951,10 +12987,25 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	      symbols->cache_attrinfo = cache_key;
 
-	      where_key = pt_to_pred_expr (parser, where_key_part);
+	      {
+		/* Route function-index expressions in the KEY FILTER of a covered function-index scan to the
+		 * reserved function-result attribute, so the filter compares the precomputed result read from
+		 * the index key directly. Evaluating the original expression over that result would apply the
+		 * function twice, which is wrong for non-idempotent functions (e.g. sqrt). The key RANGE
+		 * (pt_to_index_info) is built outside this window: range regus must keep the original
+		 * expression form (see validate_regu_key_function_index). */
+		PT_FUNC_INDEX_COVER *saved_func_idx_cover = symbols->func_idx_cover_list;
 
-	      regu_attributes_key =
-		pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+		symbols->func_idx_cover_list = NULL;
+		pt_collect_func_index_cover (parser, plan);
+
+		where_key = pt_to_pred_expr (parser, where_key_part);
+
+		regu_attributes_key =
+		  pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
+
+		symbols->func_idx_cover_list = saved_func_idx_cover;
+	      }
 
 	      symbols->cache_attrinfo = cache_pred;
 
