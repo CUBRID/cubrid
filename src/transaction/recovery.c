@@ -43,24 +43,6 @@
 #include "memory_wrapper.hpp"
 
 /*
- * log_rv_redo_bulk_build_barrier_noop () - redo function for RVBT_BULK_BUILD_DURABLE.
- *
- * return: NO_ERROR
- * thread_p(in): thread entry
- * rcv(in): recovery structure (unused; the record carries no payload)
- *
- * Note: this is a zero-payload replay barrier appended by a no-redo bulk index build (loaddb) right after its
- *       durability barrier succeeds.  Ordinary crash recovery (restart) passes over it silently through this
- *       no-op: the pages it protects are already on disk by the time it is written.  Only media recovery
- *       (restoredb replaying a backup) refuses to go past it -- see log_recovery_redo() in log_recovery.c.
- */
-static int
-log_rv_redo_bulk_build_barrier_noop (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
-{
-  return NO_ERROR;
-}
-
-/*
  *
  *    		 THE ARRAY OF SERVER RECOVERY FUNCTIONS
  *
@@ -862,7 +844,7 @@ struct rvfun RV_fun[] = {
   {RVBT_BULK_BUILD_DURABLE,
    "RVBT_BULK_BUILD_DURABLE",
    NULL,
-   log_rv_redo_bulk_build_barrier_noop,
+   log_rv_outside_noop_redo,
    NULL,
    NULL},
 };
