@@ -58,6 +58,7 @@
 #include "thread_worker_pool_impl.hpp"
 #include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
+#include "tde.h"
 #include "util_func.h"
 
 #include <atomic>
@@ -3031,6 +3032,18 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
 
   decrease_outstanding_job (m_cursor.force_data_update ());
+
+  /* any vacuum block may reference a TDE-encrypted log page. Keep its metadata persistent, but do not dispatch jobs
+   * until the cipher is available. The backlog is preserved and can be processed after restarting with the key. */
+  if (!tde_is_loaded ())
+    {
+      m_cursor.unload ();
+#if !defined (NDEBUG)
+      vacuum_verify_vacuum_data_page_fix_count (&thread_ref);
+#endif /* !NDEBUG */
+      PERF_UTIME_TRACKER_TIME (&thread_ref, &perf_tracker, PSTAT_VAC_MASTER);
+      return;
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
