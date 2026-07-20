@@ -6103,42 +6103,31 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects = 0, error_code = NO_ERROR;
+      int n_sects = 0, tmp_sects = 0, error_code = NO_ERROR;
       if (sort_args_p->n_classes > 1)
 	{
 	  /* not partition, partition has own indexes, this means like this :
 	   * create t1; create t2 under t1; */
 	  return 1;
 	}
-      /* get number of pages to sort */
+      /* get number of data sectors to scan */
       for (int i = 0; i < sort_args_p->n_classes; i++)
 	{
-	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp_pg);
-	  if (error_code != NO_ERROR)
-	    {
-	      return 1;
-	    }
 	  error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &tmp_sects);
 	  if (error_code != NO_ERROR)
 	    {
 	      return 1;
 	    }
-	  n_user_pages += tmp_pg;
 	  n_sects += tmp_sects;
 	}
 
-      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_user_pages,
-							      -1 /* no hint at parallel index build */ );
+      /* No page threshold and no parallelism parameter for the index build: the degree is half the
+       * system cores, lowered to the number of data sectors (one run per worker minimum). */
+      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD, n_sects);
 
       if (parallel_num < 2)
 	{
 	  /* single process */
-	  return 1;
-	}
-
-      if (n_sects < parallel_num)
-	{
-	  /* no sector in some threads */
 	  return 1;
 	}
 

@@ -108,6 +108,17 @@ namespace parallel_query
 	  }
 	}	/* case parallel_type::SUBQUERY */
 
+      case parallel_type::INDEX_BUILD:
+	/* The parallel index build uses no page threshold and ignores the parallelism parameter.
+	 * Its degree is half the number of system cores (hyperthreads included), lowered to the
+	 * number of work units given in num_pages (data sectors of the scanned heap; each worker
+	 * needs at least one to produce a run). The hint is not used. */
+	assert (hint_degree == -1);
+	auto_degree = (UINT32) (system_core_count / 2);
+	auto_degree = MIN (auto_degree, (UINT32) PRM_MAX_PARALLELISM);
+	auto_degree = (UINT32) MIN ((UINT64) auto_degree, num_pages);
+	return (auto_degree < start_degree) ? 0 : auto_degree;
+
       default:
 	/* impossible case */
 	assert_release_error (false);
