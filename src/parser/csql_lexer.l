@@ -83,11 +83,9 @@ static int saved_yy_start = 0;
  * is currently being scanned; column = yybuffer_pos - yyline_start_pos + 1 */
 int yyline_start_pos = 0;
 static int yyline_start_pos_bk = 0;
-static int yyleng_last = 0;
 int yylineno_prev = 0;
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
-            yyleng_last = ((n) > 0) ? (n) : yyleng_last; \
             yyline_start_pos = yyline_start_pos_bk; \
             this_parser->column = parser_column_position(); \
             yyless((n));                            \
@@ -2195,7 +2193,6 @@ parser_yy_user_action (void)
     }
     
   yyline_start_pos_bk = yyline_start_pos;
-  yyleng_last = yyleng;
 
   if (YY_START == INITIAL)	/* token start (not a continuation) */
     {
