@@ -80,6 +80,8 @@ extern "C"
   extern int yybuffer_pos;
   extern int yyline_start_pos;
   extern int yylineno_prev;
+  extern int yytoken_start_line;
+  extern int yytoken_start_column;
 
 #ifdef __cplusplus
 }

@@ -35,7 +35,6 @@
 #include "chartype.h"
 #include "language_support.h"
 #include "intl_support.h"
-#include "csql_grammar.h"
 #include "csql_grammar_scan.h"
 #include "memory_alloc.h"
 #include "misc_string.h"
@@ -253,8 +252,8 @@ pt_parser_line_col (PT_NODE * node)
   if (node == NULL)
     return;
 
-  node->line_number = csql_yylloc.first_line;
-  node->column_number = csql_yylloc.first_column;
+  node->line_number = yytoken_start_line;
+  node->column_number = yytoken_start_column;
 }
 
 /*

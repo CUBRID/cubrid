@@ -23747,13 +23747,13 @@ parser_main (PARSER_CONTEXT * parser)
   this_parser = parser;
 
   dbcs_start_input ();
-
-  yylloc_save = csql_yylloc;  
+   
   yybuffer_pos_save = yybuffer_pos;
   yyline_start_pos_save = yyline_start_pos; 
   yylineno_prev_save = yylineno_prev;
   yylineno_save = csql_yyget_lineno();
   yybuffer_pos=0;
+  yylloc_save = csql_yylloc; 
     
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
