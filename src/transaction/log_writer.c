@@ -56,8 +56,6 @@
 #include "log_manager.h"
 #include "server_support.h"
 #include "network_interface_sr.h"
-#include "network.h"
-#include "release_string.h"
 #else /* !defined(SERVER_MODE) */
 #include "network_interface_cl.h"
 #endif /* !defined(SERVER_MODE) */
@@ -2869,6 +2867,7 @@ logwr_get_min_copied_fpageid (void)
 }
 
 #endif /* SERVER_MODE */
+
 
 #if defined(CS_MODE)
 void

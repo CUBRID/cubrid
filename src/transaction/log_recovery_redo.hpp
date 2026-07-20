@@ -19,7 +19,6 @@
 #ifndef _LOC_RECOVERY_REDO_HPP_
 #define _LOC_RECOVERY_REDO_HPP_
 
-#include "btree.h"
 #include "log_compress.h"
 #include "log_lsa.hpp"
 #include "log_reader.hpp"
@@ -598,23 +597,6 @@ void log_rv_redo_record_sync (THREAD_ENTRY *thread_p, log_rv_redo_context &redo_
 #endif
 
   const LOG_DATA &log_data = log_rv_get_log_rec_data<T> (record_info.m_logrec);
-  if (!VPID_ISNULL (&rcv_vpid))
-    {
-      bool skip;
-      int error = log_recovery_bulk_should_skip_redo (thread_p, &record_info.m_start_lsa, &rcv_vpid,
-						      log_data.rcvindex, &skip);
-      if (error != NO_ERROR)
-	{
-	  er_log_debug (ARG_FILE_LINE, "bulk recovery redo membership error lsa=%lld|%d vpid=%d|%d error=%d\n",
-			LSA_AS_ARGS (&record_info.m_start_lsa), VPID_AS_ARGS (&rcv_vpid), error);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_bulk_should_skip_redo");
-	  return;
-	}
-      if (skip)
-	{
-	  return;
-	}
-    }
 
   LOG_RCV rcv;
   if (!log_rv_fix_page_and_check_redo_is_needed (thread_p, rcv_vpid, rcv, log_data.rcvindex, record_info.m_start_lsa,

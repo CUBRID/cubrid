@@ -802,7 +802,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_HARDWARE_AFFINITY "hardware_affinity"
 
-
 // #endregion 
 
 /*

@@ -25,7 +25,6 @@
 #include "log_2pc.h"
 
 #include "config.h"
-#include "btree.h"
 #if defined(SERVER_MODE)
 #include "connection_error.h"
 #endif /* SERVER_MODE */
@@ -628,13 +627,6 @@ log_2pc_commit_second_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool * de
 {
   TRAN_STATE state;
 
-  if (*decision && btree_bulk_pending_requires_marker (thread_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "bulk index build requires its durability marker before commit/2PC; transaction aborted");
-      *decision = false;
-    }
-
   if (*decision == true)
     {
       /*
@@ -782,13 +774,6 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
 
   if (execute_2pc_type == LOG_2PC_EXECUTE_FULL || execute_2pc_type == LOG_2PC_EXECUTE_PREPARE)
     {
-      if (btree_bulk_pending_requires_marker (thread_p))
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-		  "bulk index build requires its durability marker before commit/2PC; transaction aborted");
-	  *decision = false;
-	  return log_2pc_commit_second_phase (thread_p, tdes, decision);
-	}
       if (log_2pc_commit_first_phase (thread_p, tdes, execute_2pc_type, decision, &state) != NO_ERROR)
 	{
 	  return state;
@@ -1317,12 +1302,6 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 		    " Its state is %s\n", tdes->trid, tdes->tran_index, log_state_string (tdes->state));
 #endif /* CUBRID_DEBUG */
       return tdes->state;
-    }
-  if (btree_bulk_pending_requires_marker (thread_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "bulk index build requires its durability marker before commit/2PC; transaction aborted");
-      return log_abort (thread_p, tran_index);
     }
 
   if (tdes->topops.last >= 0)

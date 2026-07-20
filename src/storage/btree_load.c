@@ -1178,7 +1178,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 		   int n_classes, int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 		   int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 		   char *pred_stream, int pred_stream_size, char *func_pred_stream, int func_pred_stream_size,
-		   int func_col_id, int func_attr_index_start, bool eligible_no_redo, LOG_LSA * create_lsa)
+		   int func_col_id, int func_attr_index_start, bool eligible_no_redo)
 {
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
@@ -1198,10 +1198,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   OID *notification_class_oid;
   bool is_sysop_started = false;
   bool built_bulk_tree = false;
-  if (create_lsa != NULL)
-    {
-      LSA_SET_NULL (create_lsa);
-    }
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -1589,9 +1585,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       /*
        * Durability barrier.  Bulk pages are only marked dirty during the build (their
-       * content is never WAL-logged), so before the publication chain (sticky-root COPYPAGE,
-       * sysop attach, RVBT_BULK_BUILD_DURABLE marker, commit) can become durable, every bulk
-       * page must actually be ON DISK.
+       * content is never WAL-logged), so before the replay barrier record (RVBT_BULK_BUILD_DURABLE)
+       * and the eventual commit can become durable, every bulk page must actually be ON DISK.
        *
        * Scoped mode: every no-redo content page is a data page of the build's own files
        * ({btid->vfid, btid->ovfid}), so it suffices to flush the still-dirty buffered pages
@@ -1600,7 +1595,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * falls back to the global barrier (pgbuf_flush_all + fileio_synchronize_all); so
        * does the empty-index path (built_bulk_tree == false: the bulk file was destroyed by
        * sysop abort and the replacement empty index is fully WAL-logged).  In both modes the
-       * order is: pool flush first, DWB drain + fsync second, publication chain only after
+       * order is: pool flush first, DWB drain + fsync second, barrier record append only after
        * success.
        */
       bool scoped_done = false;
@@ -1633,24 +1628,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   if (load_args->no_redo && built_bulk_tree)
     {
-      FILE_DESCRIPTORS main_des;
+      LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
-      if (file_descriptor_get (thread_p, &btid->vfid, &main_des) != NO_ERROR
-	  || LSA_ISNULL (&main_des.btree.create_lsa) || !OID_EQ (&main_des.btree.class_oid, &class_oids[0])
-	  || main_des.btree.attr_id != attr_ids[0]
-	  || btree_bulk_pending_register (thread_p, btid, &main_des.btree.create_lsa, class_oids,
-					  (unsigned int) n_classes) != NO_ERROR)
-	{
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
-	    }
-	  goto error;
-	}
-      if (create_lsa != NULL)
-	{
-	  *create_lsa = main_des.btree.create_lsa;
-	}
+      log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, 0, NULL);
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
@@ -3426,8 +3406,8 @@ bt_load_parallel_enabled (const LOAD_ARGS * load_args)
 /*
  * bt_load_demote_to_logged () - drop a bulk-eligible build onto the fully logged path.  Called by the sort
  *   layer at the moment a build finalizes as serial (single-process shape or n_shards < 2), strictly before
- *   any content page is written: the rest of the build then logs normally, registers no pending entry, and
- *   returns a NULL create LSA to the client.
+ *   any content page is written: the rest of the build then logs normally and no replay barrier record
+ *   is appended for it.
  */
 void
 bt_load_demote_to_logged (LOAD_ARGS * load_args)

@@ -27,7 +27,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include <limits.h>
 
 #include <algorithm>
 
@@ -55,7 +54,6 @@
 #include "error_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
-#include "locator.h"
 #include "log_comm.h"
 #include "log_writer.h"
 #include "arithmetic.h"
@@ -693,254 +691,6 @@ locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area)
 #endif /* !CS_MODE */
 }
 
-
-static bool
-locator_bulk_oid_set_is_sorted (const OID * oids, unsigned int count)
-{
-  unsigned int i;
-
-  if (count != 0 && oids == NULL)
-    {
-      return false;
-    }
-
-  for (i = 1; i < count; i++)
-    {
-      if (oids[i - 1].volid > oids[i].volid
-	  || (oids[i - 1].volid == oids[i].volid && oids[i - 1].pageid > oids[i].pageid)
-	  || (oids[i - 1].volid == oids[i].volid && oids[i - 1].pageid == oids[i].pageid
-	      && oids[i - 1].slotid >= oids[i].slotid))
-	{
-	  return false;
-	}
-    }
-  return true;
-}
-
-static bool
-locator_bulk_force_descriptor_is_valid (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor)
-{
-  if (descriptor == NULL || descriptor->version != LOCATOR_BULK_FORCE_TAIL_VERSION
-      || descriptor->class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || descriptor->class_count + descriptor->fk_class_count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || descriptor->constraint_name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
-      || (descriptor->constraint_name_length != 0 && descriptor->constraint_name == NULL)
-      || descriptor->owner_class_name_length == 0 || descriptor->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
-      || descriptor->owner_class_name == NULL
-      || (descriptor->object_kind != BULK_MARKER_KIND_INDEX && descriptor->object_kind != BULK_MARKER_KIND_CONSTRAINT))
-    {
-      return false;
-    }
-
-  return locator_bulk_oid_set_is_sorted (descriptor->class_oids, descriptor->class_count)
-    && locator_bulk_oid_set_is_sorted (descriptor->fk_class_oids, descriptor->fk_class_count);
-}
-
-static int
-locator_bulk_force_tail_compute_size (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, unsigned int *packed_size)
-{
-  UINT64 size;
-
-  if (packed_size == NULL || !locator_bulk_force_descriptor_is_valid (descriptor))
-    {
-      return ER_FAILED;
-    }
-
-  size = LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE
-    + (UINT64) (descriptor->class_count + descriptor->fk_class_count) * OR_OID_SIZE
-    + DB_ALIGN (descriptor->constraint_name_length, INT_ALIGNMENT)
-    + DB_ALIGN (descriptor->owner_class_name_length, INT_ALIGNMENT);
-  if (size > UINT_MAX)
-    {
-      return ER_FAILED;
-    }
-
-  *packed_size = (unsigned int) size;
-  return NO_ERROR;
-}
-
-int
-locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, unsigned int *packed_size)
-{
-  return locator_bulk_force_tail_compute_size (descriptor, packed_size);
-}
-
-int
-locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, char *buffer, unsigned int buffer_size,
-			      unsigned int *packed_size)
-{
-  char *ptr = buffer;
-  unsigned int size, i, padded_length;
-
-  if (buffer == NULL || locator_bulk_force_tail_compute_size (descriptor, &size) != NO_ERROR || buffer_size < size)
-    {
-      return ER_FAILED;
-    }
-
-  ptr = or_pack_int (ptr, LOCATOR_BULK_FORCE_TAIL_MAGIC);
-  ptr = or_pack_int (ptr, descriptor->version);
-  ptr = or_pack_int (ptr, (int) size);
-  ptr = or_pack_btid (ptr, &descriptor->btid);
-  ptr = or_pack_log_lsa (ptr, &descriptor->create_lsa);
-  ptr = or_pack_int (ptr, (int) descriptor->class_count);
-  for (i = 0; i < descriptor->class_count; i++)
-    {
-      ptr = or_pack_oid (ptr, &descriptor->class_oids[i]);
-    }
-  ptr = or_pack_int (ptr, (int) descriptor->fk_class_count);
-  for (i = 0; i < descriptor->fk_class_count; i++)
-    {
-      ptr = or_pack_oid (ptr, &descriptor->fk_class_oids[i]);
-    }
-  ptr = or_pack_int (ptr, descriptor->constraint_type);
-  ptr = or_pack_int (ptr, (int) descriptor->constraint_name_length);
-  padded_length = DB_ALIGN (descriptor->constraint_name_length, INT_ALIGNMENT);
-  if (descriptor->constraint_name_length != 0)
-    {
-      memcpy (ptr, descriptor->constraint_name, descriptor->constraint_name_length);
-    }
-  memset (ptr + descriptor->constraint_name_length, '\0', padded_length - descriptor->constraint_name_length);
-  ptr += padded_length;
-
-  ptr = or_pack_int (ptr, (int) descriptor->owner_class_name_length);
-  padded_length = DB_ALIGN (descriptor->owner_class_name_length, INT_ALIGNMENT);
-  memcpy (ptr, descriptor->owner_class_name, descriptor->owner_class_name_length);
-  memset (ptr + descriptor->owner_class_name_length, '\0', padded_length - descriptor->owner_class_name_length);
-  ptr += padded_length;
-  ptr = or_pack_int (ptr, descriptor->object_kind);
-
-  assert ((unsigned int) (ptr - buffer) == size);
-  if (packed_size != NULL)
-    {
-      *packed_size = size;
-    }
-  return NO_ERROR;
-}
-
-int
-locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
-				LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, OID * class_oids,
-				unsigned int class_capacity, OID * fk_class_oids, unsigned int fk_class_capacity,
-				char *constraint_name, unsigned int constraint_name_capacity,
-				char *owner_class_name, unsigned int owner_class_name_capacity)
-{
-  char *ptr = (char *) buffer;
-  int magic, version, packed_length, count, name_length, owner_name_length, i;
-  unsigned int remaining, padded_length;
-
-  if (buffer == NULL || descriptor == NULL || buffer_size < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE)
-    {
-      return ER_FAILED;
-    }
-
-  ptr = or_unpack_int (ptr, &magic);
-  ptr = or_unpack_int (ptr, &version);
-  ptr = or_unpack_int (ptr, &packed_length);
-  if (magic != LOCATOR_BULK_FORCE_TAIL_MAGIC || version != LOCATOR_BULK_FORCE_TAIL_VERSION
-      || packed_length < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE || (unsigned int) packed_length != buffer_size)
-    {
-      return ER_FAILED;
-    }
-  descriptor->version = version;
-
-  ptr = or_unpack_btid (ptr, &descriptor->btid);
-  ptr = or_unpack_log_lsa (ptr, &descriptor->create_lsa);
-  ptr = or_unpack_int (ptr, &count);
-  if (count < 0 || (unsigned int) count > class_capacity
-      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES || (count != 0 && class_oids == NULL))
-    {
-      return ER_FAILED;
-    }
-  remaining = buffer_size - (unsigned int) (ptr - buffer);
-  if ((unsigned int) count > remaining / OR_OID_SIZE)
-    {
-      return ER_FAILED;
-    }
-  descriptor->class_count = (unsigned int) count;
-  descriptor->class_oids = class_oids;
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_oid (ptr, &class_oids[i]);
-    }
-
-  if ((unsigned int) (ptr - buffer) + OR_INT_SIZE > buffer_size)
-    {
-      return ER_FAILED;
-    }
-  ptr = or_unpack_int (ptr, &count);
-  if (count < 0 || (unsigned int) count > fk_class_capacity
-      || descriptor->class_count + (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || (count != 0 && fk_class_oids == NULL))
-    {
-      return ER_FAILED;
-    }
-  remaining = buffer_size - (unsigned int) (ptr - buffer);
-  if ((unsigned int) count > remaining / OR_OID_SIZE
-      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 4 > buffer_size)
-    {
-      return ER_FAILED;
-    }
-  descriptor->fk_class_count = (unsigned int) count;
-  descriptor->fk_class_oids = fk_class_oids;
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_oid (ptr, &fk_class_oids[i]);
-    }
-
-  ptr = or_unpack_int (ptr, &descriptor->constraint_type);
-  ptr = or_unpack_int (ptr, &name_length);
-  if (name_length < 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME
-      || (name_length != 0
-	  && ((unsigned int) name_length >= constraint_name_capacity || constraint_name == NULL))
-      || (name_length == 0 && constraint_name != NULL && constraint_name_capacity == 0))
-    {
-      return ER_FAILED;
-    }
-  padded_length = DB_ALIGN ((unsigned int) name_length, INT_ALIGNMENT);
-  remaining = buffer_size - (unsigned int) (ptr - buffer);
-  if ((UINT64) padded_length + OR_INT_SIZE * 2 > remaining)
-    {
-      return ER_FAILED;
-    }
-  if (name_length != 0)
-    {
-      memcpy (constraint_name, ptr, name_length);
-    }
-  if (constraint_name != NULL)
-    {
-      constraint_name[name_length] = '\0';
-    }
-  descriptor->constraint_name = constraint_name;
-  descriptor->constraint_name_length = (unsigned int) name_length;
-  ptr += padded_length;
-
-  ptr = or_unpack_int (ptr, &owner_name_length);
-  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_class_name == NULL
-      || (unsigned int) owner_name_length >= owner_class_name_capacity)
-    {
-      return ER_FAILED;
-    }
-  padded_length = DB_ALIGN ((unsigned int) owner_name_length, INT_ALIGNMENT);
-  remaining = buffer_size - (unsigned int) (ptr - buffer);
-  if ((UINT64) padded_length + OR_INT_SIZE != remaining)
-    {
-      return ER_FAILED;
-    }
-  memcpy (owner_class_name, ptr, owner_name_length);
-  owner_class_name[owner_name_length] = '\0';
-  descriptor->owner_class_name = owner_class_name;
-  descriptor->owner_class_name_length = (unsigned int) owner_name_length;
-  ptr += padded_length;
-  ptr = or_unpack_int (ptr, &descriptor->object_kind);
-
-  if ((unsigned int) (ptr - buffer) != buffer_size || !locator_bulk_force_descriptor_is_valid (descriptor))
-    {
-      return ER_FAILED;
-    }
-  return NO_ERROR;
-}
-
 /*
  * locator_force -
  *
@@ -951,8 +701,7 @@ locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
  * NOTE:
  */
 int
-locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size,
-		    const LOCATOR_BULK_INDEX_DESCRIPTOR * bulk_index)
+locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size)
 {
 #if defined(CS_MODE)
   int error_code = ER_FAILED;
@@ -963,8 +712,6 @@ locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ign
   char *reply;
   char *desc_ptr = NULL;
   int desc_size;
-  unsigned int bulk_tail_size = 0;
-  char *bulk_tail;
   char *content_ptr;
   int num_objs = 0;
   int req_error;
@@ -973,16 +720,7 @@ locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ign
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (copy_area);
 
-  if (bulk_index != NULL && locator_bulk_force_tail_packed_size (bulk_index, &bulk_tail_size) != NO_ERROR)
-    {
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-  if (bulk_tail_size > (unsigned int) (INT_MAX - OR_INT_SIZE * (5 + num_ignore_error_list)))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATA_TRUNCATED, 0);
-      return ER_NET_DATA_TRUNCATED;
-    }
-  request_size = OR_INT_SIZE * (5 + num_ignore_error_list) + (int) bulk_tail_size;
+  request_size = OR_INT_SIZE * (5 + num_ignore_error_list);
   request = (char *) malloc (request_size);
 
   if (request == NULL)
@@ -1010,13 +748,6 @@ locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ign
   for (i = 0; i < num_ignore_error_list; i++)
     {
       request_ptr = or_pack_int (request_ptr, ignore_error_list[i]);
-    }
-  bulk_tail = request_ptr;
-  if (bulk_tail_size > 0
-      && locator_bulk_force_tail_pack (bulk_index, bulk_tail, bulk_tail_size, &bulk_tail_size) != NO_ERROR)
-    {
-      free_and_init (request);
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
 
   req_error =
@@ -1056,7 +787,7 @@ locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ign
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  error_code = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list, bulk_index);
+  error_code = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list);
 
   exit_server (*thread_p);
 
@@ -1077,12 +808,6 @@ locator_force_bulk (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ign
 
   return error_code;
 #endif /* !CS_MODE */
-}
-
-int
-locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size)
-{
-  return locator_force_bulk (copy_area, num_ignore_error_list, ignore_error_list, content_size, NULL);
 }
 
 /*
@@ -6592,26 +6317,19 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk, int not_null_flag,
 		  OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name, char *pred_stream,
 		  int pred_stream_size, char *expr_stream, int expr_stream_size, int func_col_id,
-		  int func_attr_index_start, SM_INDEX_STATUS index_status, bool eligible_no_redo,
-		  LOG_LSA * out_create_lsa)
+		  int func_attr_index_start, SM_INDEX_STATUS index_status)
 {
 #if defined(CS_MODE)
   int error = NO_ERROR, req_error, request_size, domain_size;
   char *ptr;
   char *request;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply;
   int i, total_attrs, bt_strlen, fk_strlen;
   int index_info_size = 0;
   char *stream = NULL;
   int stream_size = 0;
   LOCK curr_cls_lock = SCH_M_LOCK;
-  LOG_LSA create_lsa;
-  LSA_SET_NULL (&create_lsa);
-  if (out_create_lsa != NULL)
-    {
-      LSA_SET_NULL (out_create_lsa);
-    }
 
   // online index should have created the empty b-tree already
   assert (index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS || !BTID_IS_NULL (btid));
@@ -6643,8 +6361,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
-		  + OR_INT_SIZE	/* Thread count */
-		  + OR_INT_SIZE /* eligible_no_redo */ );
+		  + OR_INT_SIZE /* Thread count */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6720,12 +6437,10 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
-  ptr = or_pack_int (ptr, eligible_no_redo ? 1 : 0);
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,
-			OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE,
-			stream, stream_size, NULL, 0);
+			OR_ALIGNED_BUF_SIZE (a_reply), stream, stream_size, NULL, 0);
 
   if (req_error == NO_ERROR)
     {
@@ -6753,11 +6468,6 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	    {
 	      btid = NULL;
 	    }
-	}
-      ptr = or_unpack_log_lsa (ptr, &create_lsa);
-      if (error == NO_ERROR && index_status != SM_ONLINE_INDEX_BUILDING_IN_PROGRESS && out_create_lsa != NULL)
-	{
-	  LSA_COPY (out_create_lsa, &create_lsa);
 	}
     }
   else
@@ -6800,7 +6510,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 	xbtree_load_index (thread_p, btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 			   attrs_prefix_length, hfids, unique_pk, not_null_flag, fk_refcls_oid, fk_refcls_pk_btid,
 			   fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-			   func_attr_index_start, eligible_no_redo, out_create_lsa);
+			   func_attr_index_start, false);
     }
 
   if (btid == NULL)

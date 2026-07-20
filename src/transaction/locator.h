@@ -29,54 +29,9 @@
 
 #include "object_representation_constants.h"
 #include "oid.h"
-#if defined(__cplusplus)
-#include "log_lsa.hpp"
-#else
-typedef struct log_lsa LOG_LSA;
-struct log_lsa
-{
-  int64_t pageid:48;
-  int64_t offset:16;
-};
-#endif
 #include "storage_common.h"
 #include "lock_table.h"		// lock_conv
 #include "thread_compat.hpp"
-#define LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES 4096
-#define LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME 4096
-#define LOCATOR_BULK_FORCE_TAIL_MAGIC 0x42494654
-#define LOCATOR_BULK_FORCE_TAIL_VERSION 2
-#define LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE (OR_INT_SIZE * 9 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE)
-typedef enum locator_bulk_marker_kind
-{
-  BULK_MARKER_KIND_INDEX = 0,
-  BULK_MARKER_KIND_CONSTRAINT = 1
-} LOCATOR_BULK_MARKER_KIND;
-
-typedef struct locator_bulk_index_descriptor LOCATOR_BULK_INDEX_DESCRIPTOR;
-struct locator_bulk_index_descriptor
-{
-  int version;
-  BTID btid;
-  LOG_LSA create_lsa;
-  const OID *class_oids;
-  unsigned int class_count;
-  const OID *fk_class_oids;
-  unsigned int fk_class_count;
-  const char *constraint_name;
-  unsigned int constraint_name_length;
-  int constraint_type;
-  const char *owner_class_name;
-  unsigned int owner_class_name_length;
-  int object_kind;
-};
-
-/*
- * Descriptor members are immutable borrowed views.  The producer retains
- * ownership through packing.  Unpack points them at caller-owned arrays and
- * string storage, which must outlive every use of the unpacked descriptor.
- * Both OID arrays are exact, strictly sorted sets (duplicates are invalid).
- */
 
 #define LC_AREA_ONEOBJ_PACKED_SIZE (OR_INT_SIZE * 4 + \
                                     OR_HFID_SIZE + \

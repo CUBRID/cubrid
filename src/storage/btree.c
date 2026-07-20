@@ -34,7 +34,6 @@
 #include "db_value_printer.hpp"
 #include "deduplicate_key.h"
 #include "file_manager.h"
-#include "heap_file.h"
 #include "slotted_page.h"
 #include "log_append.hpp"
 #include "log_manager.h"
@@ -66,576 +65,6 @@
 #include <string.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#define BTREE_BULK_MARKER_V1_FIXED_SIZE 88U
-#define BTREE_BULK_MARKER_V2_FIXED_SIZE 96U
-#define BTREE_BULK_MARKER_FIXED_SIZE 108U
-
-static void
-btree_bulk_put_u32 (char **ptr, unsigned int value)
-{
-  unsigned char *p = (unsigned char *) *ptr;
-  p[0] = (unsigned char) (value >> 24);
-  p[1] = (unsigned char) (value >> 16);
-  p[2] = (unsigned char) (value >> 8);
-  p[3] = (unsigned char) value;
-  *ptr += 4;
-}
-
-static void
-btree_bulk_put_u64 (char **ptr, UINT64 value)
-{
-  btree_bulk_put_u32 (ptr, (unsigned int) (value >> 32));
-  btree_bulk_put_u32 (ptr, (unsigned int) value);
-}
-
-static unsigned int
-btree_bulk_get_u32 (const char **ptr)
-{
-  const unsigned char *p = (const unsigned char *) *ptr;
-  unsigned int value = ((unsigned int) p[0] << 24) | ((unsigned int) p[1] << 16) | ((unsigned int) p[2] << 8) | p[3];
-  *ptr += 4;
-  return value;
-}
-
-static UINT64
-btree_bulk_get_u64 (const char **ptr)
-{
-  UINT64 high = btree_bulk_get_u32 (ptr);
-  return (high << 32) | btree_bulk_get_u32 (ptr);
-}
-typedef struct btree_bulk_pending_build BTREE_BULK_PENDING_BUILD;
-struct btree_bulk_pending_build
-{
-  int tran_index;
-  TRANID trid;
-  BTID btid;
-  LOG_LSA create_lsa;
-  OID *class_oids;
-  unsigned int class_count;
-  BTREE_BULK_PENDING_BUILD *next;
-};
-
-static BTREE_BULK_PENDING_BUILD *btree_Bulk_pending_builds = NULL;
-static pthread_mutex_t btree_Bulk_pending_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-static int
-btree_bulk_compare_oid (const void *left, const void *right)
-{
-  const OID *left_oid = (const OID *) left;
-  const OID *right_oid = (const OID *) right;
-
-  if (OID_EQ (left_oid, right_oid))
-    {
-      return 0;
-    }
-  return OID_GT (left_oid, right_oid) ? 1 : -1;
-}
-
-static bool
-btree_bulk_pending_identity_matches (const BTREE_BULK_PENDING_BUILD * pending, int tran_index, TRANID trid,
-				     const BTID * btid, const LOG_LSA * create_lsa, const OID * class_oids,
-				     unsigned int class_count)
-{
-  unsigned int i;
-
-  if (pending->tran_index != tran_index || pending->trid != trid || !BTID_IS_EQUAL (&pending->btid, btid)
-      || !LSA_EQ (&pending->create_lsa, create_lsa) || pending->class_count != class_count)
-    {
-      return false;
-    }
-  for (i = 0; i < class_count; i++)
-    {
-      if (!OID_EQ (&pending->class_oids[i], &class_oids[i]))
-	{
-	  return false;
-	}
-    }
-  return true;
-}
-
-/*
- * btree_bulk_pending_register () - Register a pending bulk-build create-LSA/class-oid identity for the current
- *                                   transaction so a later abort can force marker-based cleanup even though no
- *                                   marker has been logged yet.
- *
- * return               : NO_ERROR, ER_FAILED, or ER_OUT_OF_VIRTUAL_MEMORY.
- * thread_p (in)        : Thread entry.
- * btid (in)            : B-tree identifier being built.
- * create_lsa (in)      : Server-issued create LSA of the main b-tree file instance.
- * class_oids (in)      : Owning class OID list bound to this build.
- * class_count (in)     : Number of entries in class_oids.
- *
- * Note: registering under the same tran_index evicts any stale leftover entry that belongs to a different
- * trid (a prior transaction on this tran_index that never reached consume/discard); an entry for the same
- * trid/btid pair is left untouched so callers can re-register. Registered entries intentionally survive
- * savepoint rollback / partial abort (ROLLBACK TO SAVEPOINT) -- they are only removed by consume() on success
- * or discard() on full transaction abort, since a partial rollback does not guarantee the underlying build was
- * undone.
- */
-int
-btree_bulk_pending_register (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
-			     const OID * class_oids, unsigned int class_count)
-{
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  BTREE_BULK_PENDING_BUILD *pending;
-  BTREE_BULK_PENDING_BUILD **link;
-  OID *classes;
-  unsigned int i;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (tdes == NULL || btid == NULL || BTID_IS_NULL (btid) || create_lsa == NULL || LSA_ISNULL (create_lsa)
-      || class_oids == NULL || class_count == 0 || class_count > BTREE_BULK_MARKER_MAX_CLASSES)
-    {
-      return ER_FAILED;
-    }
-  classes = (OID *) malloc ((size_t) class_count * sizeof (*classes));
-  pending = (BTREE_BULK_PENDING_BUILD *) malloc (sizeof (*pending));
-  if (classes == NULL || pending == NULL)
-    {
-      free (classes);
-      free (pending);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memcpy (classes, class_oids, (size_t) class_count * sizeof (*classes));
-  qsort (classes, class_count, sizeof (*classes), btree_bulk_compare_oid);
-  for (i = 1; i < class_count; i++)
-    {
-      if (OID_EQ (&classes[i - 1], &classes[i]))
-	{
-	  free (classes);
-	  free (pending);
-	  return ER_FAILED;
-	}
-    }
-
-  pending->tran_index = tran_index;
-  pending->trid = tdes->trid;
-  pending->btid = *btid;
-  pending->create_lsa = *create_lsa;
-  pending->class_oids = classes;
-  pending->class_count = class_count;
-
-  pthread_mutex_lock (&btree_Bulk_pending_mutex);
-  link = &btree_Bulk_pending_builds;
-  while (*link != NULL)
-    {
-      BTREE_BULK_PENDING_BUILD *current = *link;
-
-      if (current->tran_index == tran_index
-	  && (current->trid != tdes->trid || BTID_IS_EQUAL (&current->btid, btid)))
-	{
-	  *link = current->next;
-	  free (current->class_oids);
-	  free (current);
-	  continue;
-	}
-      link = &current->next;
-    }
-  pending->next = btree_Bulk_pending_builds;
-  btree_Bulk_pending_builds = pending;
-  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
-  return NO_ERROR;
-}
-
-/*
- * btree_bulk_pending_validate () - Confirm a pending registration matches the given identity before it is
- *                                   consumed (rejects stale/mismatched replay of a stored bulk index
- *                                   descriptor).
- *
- * return               : NO_ERROR if a matching pending entry exists, ER_FAILED otherwise.
- * thread_p (in)        : Thread entry.
- * btid (in)            : B-tree identifier to match.
- * create_lsa (in)      : Create LSA to match.
- * class_oids (in)      : Owning class OID list to match (order-independent).
- * class_count (in)     : Number of entries in class_oids.
- */
-int
-btree_bulk_pending_validate (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
-			     const OID * class_oids, unsigned int class_count)
-{
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  BTREE_BULK_PENDING_BUILD *pending;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  bool matches = false;
-
-  if (tdes == NULL || btid == NULL || create_lsa == NULL || class_oids == NULL || class_count == 0)
-    {
-      return ER_FAILED;
-    }
-  pthread_mutex_lock (&btree_Bulk_pending_mutex);
-  for (pending = btree_Bulk_pending_builds; pending != NULL; pending = pending->next)
-    {
-      if (btree_bulk_pending_identity_matches (pending, tran_index, tdes->trid, btid, create_lsa, class_oids,
-					       class_count))
-	{
-	  matches = true;
-	  break;
-	}
-    }
-  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
-  return matches ? NO_ERROR : ER_FAILED;
-}
-
-/*
- * btree_bulk_pending_requires_marker () - Report whether the current transaction has any pending bulk-build
- *                                          registration, meaning a BTREE_BULK_MARKER must be logged before the
- *                                          transaction can commit/prepare.
- *
- * return               : true if at least one pending entry exists for this transaction, false otherwise.
- * thread_p (in)        : Thread entry.
- */
-bool
-btree_bulk_pending_requires_marker (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  BTREE_BULK_PENDING_BUILD *pending;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  bool requires_marker = false;
-
-  if (tdes == NULL)
-    {
-      return false;
-    }
-  pthread_mutex_lock (&btree_Bulk_pending_mutex);
-  for (pending = btree_Bulk_pending_builds; pending != NULL; pending = pending->next)
-    {
-      if (pending->tran_index == tran_index && pending->trid == tdes->trid)
-	{
-	  requires_marker = true;
-	  break;
-	}
-    }
-  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
-  return requires_marker;
-}
-
-/*
- * btree_bulk_pending_discard () - Drop every pending registration owned by the current transaction.
- *
- * return               : void.
- * thread_p (in)        : Thread entry.
- *
- * Note: called on full transaction abort only. A partial rollback (ROLLBACK TO SAVEPOINT) must NOT call this --
- * pending entries are fail-safe and intentionally survive savepoint/partial rollback so that a subsequent
- * commit of the same transaction still forces marker-based cleanup for any build that was rolled back
- * internally.
- */
-void
-btree_bulk_pending_discard (THREAD_ENTRY * thread_p)
-{
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  BTREE_BULK_PENDING_BUILD **link;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (tdes == NULL)
-    {
-      return;
-    }
-  pthread_mutex_lock (&btree_Bulk_pending_mutex);
-  link = &btree_Bulk_pending_builds;
-  while (*link != NULL)
-    {
-      BTREE_BULK_PENDING_BUILD *pending = *link;
-
-      if (pending->tran_index == tran_index && pending->trid == tdes->trid)
-	{
-	  *link = pending->next;
-	  free (pending->class_oids);
-	  free (pending);
-	  continue;
-	}
-      link = &pending->next;
-    }
-  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
-}
-
-/*
- * btree_bulk_pending_consume () - Remove the single pending registration matching the given identity once its
- *                                  bulk-build marker has been durably logged (or the build committed without
- *                                  needing one).
- *
- * return               : void.
- * thread_p (in)        : Thread entry.
- * btid (in)            : B-tree identifier of the entry to remove.
- * create_lsa (in)      : Create LSA of the entry to remove.
- */
-void
-btree_bulk_pending_consume (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa)
-{
-  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  BTREE_BULK_PENDING_BUILD **link;
-  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-
-  if (tdes == NULL)
-    {
-      return;
-    }
-  pthread_mutex_lock (&btree_Bulk_pending_mutex);
-  for (link = &btree_Bulk_pending_builds; *link != NULL; link = &(*link)->next)
-    {
-      BTREE_BULK_PENDING_BUILD *pending = *link;
-
-      if (pending->tran_index == tran_index && pending->trid == tdes->trid && BTID_IS_EQUAL (&pending->btid, btid)
-	  && LSA_EQ (&pending->create_lsa, create_lsa))
-	{
-	  *link = pending->next;
-	  free (pending->class_oids);
-	  free (pending);
-	  break;
-	}
-    }
-  pthread_mutex_unlock (&btree_Bulk_pending_mutex);
-}
-
-int
-btree_bulk_marker_packed_size (const BTREE_BULK_MARKER * marker, unsigned int *packed_size)
-{
-  UINT64 size;
-
-  if (marker == NULL || packed_size == NULL || marker->class_count > BTREE_BULK_MARKER_MAX_CLASSES
-      || marker->constraint_name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME
-      || marker->owner_class_name_length == 0 || marker->owner_class_name_length > SM_MAX_IDENTIFIER_LENGTH
-      /* r305-P3 codec leg: a marker without a class list can never bind ownership at
-       * cleanup; refuse to produce one (the build fails loudly instead). */
-      || marker->class_count == 0 || marker->class_oids == NULL
-      || (marker->constraint_name_length != 0 && marker->constraint_name == NULL)
-      || marker->owner_class_name == NULL
-      || (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT))
-    {
-      return ER_FAILED;
-    }
-
-  size = BTREE_BULK_MARKER_FIXED_SIZE + (UINT64) marker->class_count * 12
-    + DB_ALIGN ((UINT64) marker->constraint_name_length, INT_ALIGNMENT)
-    + DB_ALIGN ((UINT64) marker->owner_class_name_length, INT_ALIGNMENT);
-  if (size > UINT_MAX)
-    {
-      return ER_FAILED;
-    }
-  *packed_size = (unsigned int) size;
-  return NO_ERROR;
-}
-
-int
-btree_bulk_marker_pack (const BTREE_BULK_MARKER * marker, char *buffer, unsigned int buffer_size,
-			unsigned int *packed_size)
-{
-  char *ptr = buffer;
-  unsigned int size, padded_length, i;
-
-  if (buffer == NULL || btree_bulk_marker_packed_size (marker, &size) != NO_ERROR || buffer_size < size)
-    {
-      return ER_FAILED;
-    }
-
-  btree_bulk_put_u32 (&ptr, BTREE_BULK_MARKER_VERSION);
-  btree_bulk_put_u32 (&ptr, marker->flags);
-  btree_bulk_put_u32 (&ptr, size);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->trid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->btid.vfid.volid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->btid.vfid.fileid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->btid.root_pageid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->main_vfid.volid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->main_vfid.fileid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->ovfid.volid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->ovfid.fileid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->root_vpid.volid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->root_vpid.pageid);
-  btree_bulk_put_u64 (&ptr, (UINT64) marker->create_lsa.pageid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->create_lsa.offset);
-  btree_bulk_put_u64 (&ptr, (UINT64) marker->parent_lsa.pageid);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->parent_lsa.offset);
-  btree_bulk_put_u32 (&ptr, marker->class_count);
-  for (i = 0; i < marker->class_count; i++)
-    {
-      btree_bulk_put_u32 (&ptr, (unsigned int) marker->class_oids[i].volid);
-      btree_bulk_put_u32 (&ptr, (unsigned int) marker->class_oids[i].pageid);
-      btree_bulk_put_u32 (&ptr, (unsigned int) marker->class_oids[i].slotid);
-    }
-
-  btree_bulk_put_u32 (&ptr, marker->constraint_name_length);
-  padded_length = DB_ALIGN (marker->constraint_name_length, INT_ALIGNMENT);
-  if (marker->constraint_name_length != 0)
-    {
-      memcpy (ptr, marker->constraint_name, marker->constraint_name_length);
-    }
-  memset (ptr + marker->constraint_name_length, 0, padded_length - marker->constraint_name_length);
-  ptr += padded_length;
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->constraint_type);
-
-  btree_bulk_put_u32 (&ptr, marker->owner_class_name_length);
-  padded_length = DB_ALIGN (marker->owner_class_name_length, INT_ALIGNMENT);
-  memcpy (ptr, marker->owner_class_name, marker->owner_class_name_length);
-  memset (ptr + marker->owner_class_name_length, 0, padded_length - marker->owner_class_name_length);
-  ptr += padded_length;
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->object_kind);
-  btree_bulk_put_u32 (&ptr, (unsigned int) marker->attr_id);
-  btree_bulk_put_u64 (&ptr, marker->create_token);
-
-  assert ((unsigned int) (ptr - buffer) == size);
-  if (packed_size != NULL)
-    {
-      *packed_size = size;
-    }
-  return NO_ERROR;
-}
-
-int
-btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER * marker,
-			  OID * class_oids, unsigned int class_capacity, char *constraint_name,
-			  unsigned int constraint_name_capacity, char *owner_class_name,
-			  unsigned int owner_class_name_capacity, int *decoded_version)
-{
-  const char *ptr = buffer;
-  unsigned int version, size, fixed_size, class_count, name_length, owner_name_length, padded_length, tail_size, i;
-
-  if (buffer == NULL || marker == NULL || decoded_version == NULL || buffer_size < 3 * sizeof (unsigned int))
-    {
-      return ER_FAILED;
-    }
-  version = btree_bulk_get_u32 (&ptr);
-  marker->flags = btree_bulk_get_u32 (&ptr);
-  size = btree_bulk_get_u32 (&ptr);
-  if (version == BTREE_BULK_MARKER_V1_VERSION)
-    {
-      fixed_size = BTREE_BULK_MARKER_V1_FIXED_SIZE;
-    }
-  else if (version == BTREE_BULK_MARKER_V2_VERSION)
-    {
-      fixed_size = BTREE_BULK_MARKER_V2_FIXED_SIZE;
-    }
-  else if (version == BTREE_BULK_MARKER_VERSION)
-    {
-      fixed_size = BTREE_BULK_MARKER_FIXED_SIZE;
-    }
-  else
-    {
-      return ER_FAILED;
-    }
-  if (size != buffer_size || size < fixed_size)
-    {
-      return ER_FAILED;
-    }
-
-  marker->trid = (int) btree_bulk_get_u32 (&ptr);
-  marker->btid.vfid.volid = (VOLID) btree_bulk_get_u32 (&ptr);
-  marker->btid.vfid.fileid = (FILEID) btree_bulk_get_u32 (&ptr);
-  marker->btid.root_pageid = (PAGEID) btree_bulk_get_u32 (&ptr);
-  marker->main_vfid.volid = (VOLID) btree_bulk_get_u32 (&ptr);
-  marker->main_vfid.fileid = (FILEID) btree_bulk_get_u32 (&ptr);
-  marker->ovfid.volid = (VOLID) btree_bulk_get_u32 (&ptr);
-  marker->ovfid.fileid = (FILEID) btree_bulk_get_u32 (&ptr);
-  marker->root_vpid.volid = (VOLID) btree_bulk_get_u32 (&ptr);
-  marker->root_vpid.pageid = (PAGEID) btree_bulk_get_u32 (&ptr);
-  marker->create_lsa.pageid = (LOG_PAGEID) btree_bulk_get_u64 (&ptr);
-  marker->create_lsa.offset = (PGLENGTH) btree_bulk_get_u32 (&ptr);
-  marker->parent_lsa.pageid = (LOG_PAGEID) btree_bulk_get_u64 (&ptr);
-  marker->parent_lsa.offset = (PGLENGTH) btree_bulk_get_u32 (&ptr);
-  class_count = btree_bulk_get_u32 (&ptr);
-  if (class_count > BTREE_BULK_MARKER_MAX_CLASSES || class_count > class_capacity
-      || (class_count != 0 && class_oids == NULL)
-      /* r305-P3 codec leg: v3+ markers must carry a class list; rejection here escalates
-       * to a restore fatal at the analysis collect site.  v1/v2 markers keep today's
-       * parse-and-let-cleanup-decide behavior (a dead legacy malformed marker stays a
-       * harmless skip; a live one still hits the cleanup fatal). */
-      || (version >= BTREE_BULK_MARKER_VERSION && class_count == 0)
-      || (UINT64) (ptr - buffer) + (UINT64) class_count * 12 + sizeof (unsigned int) > size)
-    {
-      return ER_FAILED;
-    }
-  for (i = 0; i < class_count; i++)
-    {
-      class_oids[i].volid = (VOLID) btree_bulk_get_u32 (&ptr);
-      class_oids[i].pageid = (PAGEID) btree_bulk_get_u32 (&ptr);
-      class_oids[i].slotid = (PGSLOTID) btree_bulk_get_u32 (&ptr);
-    }
-
-  name_length = btree_bulk_get_u32 (&ptr);
-  if (name_length > BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME || constraint_name == NULL
-      || name_length >= constraint_name_capacity)
-    {
-      return ER_FAILED;
-    }
-  if (version == BTREE_BULK_MARKER_V1_VERSION)
-    {
-      padded_length = name_length;
-      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) != size)
-	{
-	  return ER_FAILED;
-	}
-    }
-  else
-    {
-      padded_length = DB_ALIGN (name_length, INT_ALIGNMENT);
-      if ((UINT64) (ptr - buffer) + padded_length + sizeof (unsigned int) * 3 > size)
-	{
-	  return ER_FAILED;
-	}
-    }
-  if (name_length != 0)
-    {
-      memcpy (constraint_name, ptr, name_length);
-    }
-  constraint_name[name_length] = '\0';
-  ptr += padded_length;
-  marker->constraint_type = (int) btree_bulk_get_u32 (&ptr);
-
-  marker->owner_class_name = "";
-  marker->owner_class_name_length = 0;
-  marker->object_kind = BULK_MARKER_KIND_INDEX;
-  marker->attr_id = -1;
-  marker->create_token = 0;
-  if (version >= BTREE_BULK_MARKER_V2_VERSION)
-    {
-      owner_name_length = btree_bulk_get_u32 (&ptr);
-      if (owner_name_length == 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_class_name == NULL
-	  || owner_name_length >= owner_class_name_capacity)
-	{
-	  return ER_FAILED;
-	}
-      padded_length = DB_ALIGN (owner_name_length, INT_ALIGNMENT);
-      tail_size = sizeof (unsigned int);	/* object_kind */
-      if (version >= BTREE_BULK_MARKER_VERSION)
-	{
-	  tail_size += sizeof (unsigned int) + sizeof (UINT64);	/* attr_id + create_token */
-	}
-      if ((UINT64) (ptr - buffer) + padded_length + tail_size != size)
-	{
-	  return ER_FAILED;
-	}
-      memcpy (owner_class_name, ptr, owner_name_length);
-      owner_class_name[owner_name_length] = '\0';
-      ptr += padded_length;
-      marker->object_kind = (int) btree_bulk_get_u32 (&ptr);
-      if (marker->object_kind != BULK_MARKER_KIND_INDEX && marker->object_kind != BULK_MARKER_KIND_CONSTRAINT)
-	{
-	  return ER_FAILED;
-	}
-      if (version >= BTREE_BULK_MARKER_VERSION)
-	{
-	  marker->attr_id = (int) btree_bulk_get_u32 (&ptr);
-	  marker->create_token = btree_bulk_get_u64 (&ptr);
-	}
-      marker->owner_class_name = owner_class_name;
-      marker->owner_class_name_length = owner_name_length;
-    }
-
-  marker->class_oids = class_oids;
-  marker->class_count = class_count;
-  marker->constraint_name = constraint_name;
-  marker->constraint_name_length = name_length;
-  *decoded_version = (int) version;
-  return (unsigned int) (ptr - buffer) == size ? NO_ERROR : ER_FAILED;
-}
-
-int
-btree_rv_bulk_build_durable_nop (THREAD_ENTRY * thread_p, LOG_RCV * logrcv)
-{
-  (void) thread_p;
-  (void) logrcv;
-  return NO_ERROR;
-}
 
 #define BTREE_HEALTH_CHECK
 
@@ -1425,8 +854,6 @@ btree_perf_track_time (THREAD_ENTRY * thread_p, Helper * helper)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_DELETE);
       break;
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_UNDO_INSERT);
       break;
@@ -1472,8 +899,6 @@ btree_perf_track_traverse_time (THREAD_ENTRY * thread_p, Helper * helper)
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_DELETE_TRAVERSE);
       break;
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &helper->time_track, PSTAT_BT_UNDO_INSERT_TRAVERSE);
       break;
@@ -2201,12 +1626,11 @@ static void btree_record_add_delid (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 static int btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
 				   OID * class_oid, BTREE_MVCC_INFO * match_mvccinfo, LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid,
-				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa,
-				     BTREE_OP_PURPOSE purpose);
+				     OID * class_oid, MVCCID insert_mvccid, LOG_LSA * undo_nxlsa);
 static int btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 						     BTREE_OBJECT_INFO * inserted_object,
 						     BTREE_OBJECT_INFO * second_object, MVCCID insert_mvccid,
-						     LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose);
+						     LOG_LSA * undo_nxlsa);
 static int btree_key_remove_delete_mvccid_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int,
 						  BTREE_DELETE_HELPER * delete_helper,
 						  BTREE_SEARCH_KEY_HELPER * search_key, PAGE_PTR leaf_page,
@@ -2229,10 +1653,6 @@ static int btree_overflow_record_replace_object (THREAD_ENTRY * thread_p, BTID_I
 static void btree_record_replace_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * record,
 					 BTREE_NODE_TYPE node_type, int *offset_to_replaced,
 					 BTREE_OBJECT_INFO * replacement, char **rv_undo_data, char **rv_redo_data);
-static int btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-					    BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page,
-					    RECDES * leaf_record, LEAF_REC * leaf_rec_info, int offset_after_key,
-					    BTREE_SEARCH_KEY_HELPER * search_key);
 
 static int btree_rv_record_modify_internal (THREAD_ENTRY * thread_p, LOG_RCV * rcv, bool is_undo);
 static int btree_delete_postponed (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
@@ -12447,27 +11867,6 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
 
       return NO_ERROR;
 
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
-      if (match_mvccinfo != NULL && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (match_mvccinfo)
-	  && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (mvcc_info)
-	  && BTREE_MVCC_INFO_INSID (mvcc_info) != match_mvccinfo->insert_mvccid)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-		  "BULK_RESTORE_UNDO_DIFFERENT_INSERT_ID: contradiction in proven non-reuse population");
-	  _er_log_debug (ARG_FILE_LINE,
-			 "bulk recovery undo branch=BULK_RESTORE_UNDO_DIFFERENT_INSERT_ID "
-			 "insert_mvccid=%lld delete_mvccid=%lld logged_insert_mvccid=%lld\n",
-			 (long long) BTREE_MVCC_INFO_INSID (mvcc_info),
-			 (long long) BTREE_MVCC_INFO_DELID (mvcc_info), (long long) match_mvccinfo->insert_mvccid);
-	  return ER_FAILED;
-	}
-      *is_match = true;
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=%s insert_mvccid=%lld delete_mvccid=%lld\n",
-		     BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (mvcc_info) ? "exact" : "all-visible",
-		     (long long) BTREE_MVCC_INFO_INSID (mvcc_info), (long long) BTREE_MVCC_INFO_DELID (mvcc_info));
-      return NO_ERROR;
     case BTREE_OP_DELETE_UNDO_INSERT:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
       /* We just inserted this object and want to remove it. Insert MVCCID must match and should not be deleted. */
@@ -19153,14 +18552,11 @@ btree_rv_keyval_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   /* Undo insert: just delete object and all its information. */
   err =
-    btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, insert_mvccid, &recv->reference_lsa,
-			      recv->is_bulk_recovery_undo ? BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
-			      : BTREE_OP_DELETE_UNDO_INSERT);
+    btree_undo_insert_object (thread_p, btid.sys_btid, &key_buf, &oid, &cls_oid, insert_mvccid, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
       ASSERT_ERROR ();
-      /* The bulk-recovery undo context returns er_set fail-stop families by design. */
-      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED || recv->is_bulk_recovery_undo);
+      assert (err == ER_BTREE_UNKNOWN_KEY || err == NO_ERROR || err == ER_INTERRUPTED);
       return err;
     }
 
@@ -19208,15 +18604,11 @@ btree_rv_keyval_undo_insert_unique (THREAD_ENTRY * thread_p, LOG_RCV * recv)
   /* Undo insert. */
   err =
     btree_undo_insert_object_unique_multiupd (thread_p, btid.sys_btid, &key_buf, &undo_insert_object, &second_object,
-					      insert_mvccid, &recv->reference_lsa,
-					      recv->is_bulk_recovery_undo
-					      ? BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY
-					      : BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
+					      insert_mvccid, &recv->reference_lsa);
   if (err != NO_ERROR)
     {
-      /* The bulk-recovery undo context returns er_set fail-stop families by design. */
-      assert_release (recv->is_bulk_recovery_undo);
-      return err;
+      assert_release (false);
+      return ER_FAILED;
     }
 
   return NO_ERROR;
@@ -31003,63 +30395,6 @@ btree_undo_mvcc_delete (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_
 				BTREE_OP_DELETE_UNDO_INSERT_DELID);
 }
 
-static int
-btree_bulk_undo_verify_population (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * class_oid,
-				   MVCCID insert_mvccid)
-{
-  HFID hfid;
-  FILE_TYPE file_type = FILE_UNKNOWN_TYPE;
-  char *class_name = NULL;
-  bool is_catalog_class = false;
-  int c;
-  int error_code;
-
-  /* tf_is_catalog_class compares against class OIDs cached at server boot; during standalone media recovery the
-   * cache is not populated yet, so fall back to the compile-time catalog class names read from the class record. */
-  is_catalog_class = tf_is_catalog_class (class_oid);
-  if (!is_catalog_class)
-    {
-      if (heap_get_class_name (thread_p, class_oid, &class_name) == NO_ERROR && class_name != NULL)
-	{
-	  for (c = 0; ct_Classes[c] != NULL; c++)
-	    {
-	      if (strcmp (ct_Classes[c]->cc_name, class_name) == 0)
-		{
-		  is_catalog_class = true;
-		  break;
-		}
-	    }
-	  free_and_init (class_name);
-	}
-      else
-	{
-	  er_clear ();
-	}
-    }
-
-  HFID_SET_NULL (&hfid);
-  error_code = heap_get_class_info (thread_p, class_oid, &hfid, &file_type, NULL);
-  if (error_code != NO_ERROR || !is_catalog_class || HFID_IS_NULL (&hfid) || file_type != FILE_HEAP)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: bulk undo object is not in a system catalog FILE_HEAP");
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN BTID=%d|%d OID=%d|%d|%d "
-		     "class=%d|%d|%d insert_mvccid=%lld delete_mvccid=unknown file_type=%d is_catalog=%d\n",
-		     btid->vfid.volid, btid->root_pageid, oid->volid, oid->pageid, oid->slotid,
-		     class_oid->volid, class_oid->pageid, class_oid->slotid, (long long) insert_mvccid,
-		     (int) file_type, (int) is_catalog_class);
-      return error_code == NO_ERROR ? ER_FAILED : error_code;
-    }
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "bulk recovery undo branch=population-proven BTID=%d|%d OID=%d|%d|%d class=%d|%d|%d "
-		 "insert_mvccid=%lld delete_mvccid=unknown\n",
-		 btid->vfid.volid, btid->root_pageid, oid->volid, oid->pageid, oid->slotid,
-		 class_oid->volid, class_oid->pageid, class_oid->slotid, (long long) insert_mvccid);
-  return NO_ERROR;
-}
-
 /*
  * btree_undo_insert_object () - Delete object from index as part of an undo of insert object operation.
  *
@@ -31074,7 +30409,7 @@ btree_bulk_undo_verify_population (THREAD_ENTRY * thread_p, BTID * btid, OID * o
  */
 static int
 btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key, OID * oid, OID * class_oid,
-			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
+			  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -31092,11 +30427,9 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
     {
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
-  assert (purpose == BTREE_OP_DELETE_UNDO_INSERT || purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY);
-  /* The bulk-recovery population gate runs in btree_fix_root_for_delete, where the class OID is resolved even for
-   * non-unique records that do not pack it. */
   return btree_delete_internal (thread_p, btid, oid, class_oid, &mvcc_info, NULL, buffered_key, NULL,
-				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL, purpose);
+				SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa, NULL,
+				BTREE_OP_DELETE_UNDO_INSERT);
 }
 
 /*
@@ -31116,7 +30449,7 @@ btree_undo_insert_object (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffere
 static int
 btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, OR_BUF * buffered_key,
 					  BTREE_OBJECT_INFO * inserted_object, BTREE_OBJECT_INFO * second_object,
-					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa, BTREE_OP_PURPOSE purpose)
+					  MVCCID insert_mvccid, LOG_LSA * undo_nxlsa)
 {
   BTREE_MVCC_INFO mvcc_info = BTREE_MVCC_INFO_INITIALIZER;
   BTREE_MVCC_INFO match_mvccinfo = BTREE_MVCC_INFO_INITIALIZER;
@@ -31137,12 +30470,9 @@ btree_undo_insert_object_unique_multiupd (THREAD_ENTRY * thread_p, BTID * btid, 
     {
       BTREE_MVCC_INFO_SET_INSID (&match_mvccinfo, insert_mvccid);
     }
-  assert (purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
-  /* The bulk-recovery population gate runs in btree_fix_root_for_delete (see btree_undo_insert_object). */
   return btree_delete_internal (thread_p, btid, &inserted_object->oid, &inserted_object->class_oid, &mvcc_info, NULL,
 				buffered_key, NULL, SINGLE_ROW_MODIFY, NULL, &match_mvccinfo, undo_nxlsa,
-				second_object, purpose);
+				second_object, BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 }
 
 /*
@@ -31228,7 +30558,6 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
     {
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
       LSA_COPY (&delete_helper.reference_lsa, ref_lsa);
@@ -31238,7 +30567,6 @@ btree_delete_internal (THREAD_ENTRY * thread_p, BTID * btid, OID * oid, OID * cl
       key_func = btree_key_delete_remove_object;
       break;
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
       key_func = btree_key_remove_object_and_keep_visible_first;
       /* Set ref_lsa. */
       assert (ref_lsa != NULL);
@@ -31470,9 +30798,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
       return NO_ERROR;
     }
   if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT
-      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-      || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY
       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_DELID
       || delete_helper->purpose == BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED
       || delete_helper->purpose == BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT)
@@ -31489,8 +30815,7 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	      assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED || !LOG_ISRESTARTED ()
 		      || mvcc_is_mvcc_disabled_class (BTREE_DELETE_CLASS_OID (delete_helper)));
 	    }
-	  if ((delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	       || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
+	  if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
 	      && OID_ISNULL (&delete_helper->second_object_info.class_oid))
 	    {
 	      COPY_OID (&delete_helper->second_object_info.class_oid, &btid_int->topclass_oid);
@@ -31500,27 +30825,6 @@ btree_fix_root_for_delete (THREAD_ENTRY * thread_p, BTID * btid, BTID_INT * btid
 	{
 	  /* BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED is used only for unique indexes. */
 	  assert (delete_helper->purpose != BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED);
-	}
-      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
-	{
-	  /* Population gate: the bulk walker may tolerate vacuum effects only for the proven
-	   * system-catalog non-reuse heap population.  Class identity is resolved here because non-unique
-	   * undo records do not pack a class OID. */
-	  OID *gate_class_oid = BTREE_DELETE_CLASS_OID (delete_helper);
-
-	  if (OID_ISNULL (gate_class_oid))
-	    {
-	      gate_class_oid = &btid_int->topclass_oid;
-	    }
-	  error_code =
-	    btree_bulk_undo_verify_population (thread_p, btid, BTREE_DELETE_OID (delete_helper), gate_class_oid,
-					       delete_helper->match_mvccinfo.insert_mvccid);
-	  if (error_code != NO_ERROR)
-	    {
-	      pgbuf_unfix_and_init (thread_p, *root_page);
-	      return error_code;
-	    }
 	}
       /* Undo operations don't need to go further. */
       return NO_ERROR;
@@ -32288,18 +31592,6 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 			    BTREE_DELETE_HELPER_MSG ("\t"), BTREE_DELETE_HELPER_AS_ARGS (delete_helper));
 	  goto exit;
 	}
-      else if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY)
-	{
-	  _er_log_debug (ARG_FILE_LINE,
-			 "bulk recovery undo branch=absent BTID=%d|%d OID=%d|%d|%d class=%d|%d|%d\n",
-			 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-			 BTREE_DELETE_OID (delete_helper)->volid, BTREE_DELETE_OID (delete_helper)->pageid,
-			 BTREE_DELETE_OID (delete_helper)->slotid, BTREE_DELETE_CLASS_OID (delete_helper)->volid,
-			 BTREE_DELETE_CLASS_OID (delete_helper)->pageid,
-			 BTREE_DELETE_CLASS_OID (delete_helper)->slotid);
-	  error_code = NO_ERROR;
-	  goto exit;
-	}
       else
 	{
 	  /* Key/oid should be found. */
@@ -32453,282 +31745,6 @@ exit:
 }
 
 /*
- * btree_bulk_unique_absent_repair () - Bulk-recovery-only repair for the unique multi-update undo when the
- *					logged inserted object is absent (already removed by replayed vacuum).
- *					Locate the logged second object S with a complete tuple-aware scan; if S is
- *					already first, succeed without mutation; if S is a non-first leaf object,
- *					perform a compensated object-preserving exchange (current first F moves into
- *					S's fixed-size slot, S becomes first); everything else fails closed into the
- *					documented fail-stop limitation families.
- *
- * return		    : Error code.
- * thread_p (in)	    : Thread entry.
- * btid_int (in)	    : B-tree info.
- * key (in)		    : Key value.
- * delete_helper (in)	    : Delete helper (bulk unique purpose; second_object_info is the logged S).
- * leaf_page (in)	    : Leaf page (write latched).
- * leaf_record (in)	    : COPY of the key's leaf record.
- * leaf_rec_info (in)	    : Leaf record info (overflow chain head).
- * offset_after_key (in)    : Offset in leaf record where packed key ends.
- * search_key (in)	    : Search key result (key was found).
- */
-static int
-btree_bulk_unique_absent_repair (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
-				 BTREE_DELETE_HELPER * delete_helper, PAGE_PTR leaf_page, RECDES * leaf_record,
-				 LEAF_REC * leaf_rec_info, int offset_after_key, BTREE_SEARCH_KEY_HELPER * search_key)
-{
-  BTREE_OBJECT_INFO *logged_second = &delete_helper->second_object_info;
-  BTREE_OBJECT_INFO first_object = BTREE_OBJECT_INFO_INITIALIZER;
-  BTREE_OBJECT_INFO observed = BTREE_OBJECT_INFO_INITIALIZER;
-  BTREE_OBJECT_INFO s_observed = BTREE_OBJECT_INFO_INITIALIZER;
-  VPID overflow_vpid;
-  PAGE_PTR overflow_page = NULL;
-  RECDES overflow_record;
-  char overflow_data_buffer[IO_MAX_PAGE_SIZE + BTREE_MAX_ALIGN];
-  char rv_redo_data_buffer[BTREE_RV_BUFFER_SIZE + BTREE_MAX_ALIGN];
-  char *rv_redo_data = PTR_ALIGN (rv_redo_data_buffer, BTREE_MAX_ALIGN);
-  char *rv_redo_data_ptr = rv_redo_data;
-  char *rv_undo_data_ptr = NULL;
-  char *object_ptr;
-  int rv_redo_data_length = 0;
-  int object_fixed_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
-  int compatible_count = 0;
-  int offset_to_s = NOT_FOUND;
-  bool s_in_overflow = false;
-  bool identity_conflict = false;
-  int old_length;
-  int n_objects;
-  int n;
-  int error_code = NO_ERROR;
-
-  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
-  assert (search_key->result == BTREE_KEY_FOUND);
-
-  /* Complete tuple-aware scan of the key population: leaf objects first. */
-  n_objects = btree_record_get_num_oids (thread_p, btid_int, leaf_record, offset_after_key, BTREE_LEAF_NODE);
-  if (n_objects <= 0)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  error_code =
-    btree_leaf_get_first_object (btid_int, leaf_record, &first_object.oid, &first_object.class_oid,
-				 &first_object.mvcc_info);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  for (n = 0; n < n_objects; n++)
-    {
-      if (n == 0)
-	{
-	  observed = first_object;
-	  object_ptr = leaf_record->data;
-	}
-      else
-	{
-	  object_ptr = btree_leaf_get_nth_oid_ptr (btid_int, leaf_record, BTREE_LEAF_NODE, offset_after_key, n);
-	  if (object_ptr == NULL)
-	    {
-	      assert_release (false);
-	      return ER_FAILED;
-	    }
-	  (void) btree_unpack_object (object_ptr, btid_int, BTREE_LEAF_NODE, leaf_record, offset_after_key,
-				      &observed.oid, &observed.class_oid, &observed.mvcc_info);
-	}
-      if (!OID_EQ (&observed.oid, &logged_second->oid))
-	{
-	  continue;
-	}
-      if (!OID_EQ (&observed.class_oid, &logged_second->class_oid)
-	  || (BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&observed.mvcc_info)
-	      && BTREE_MVCC_INFO_IS_INSID_NOT_ALL_VISIBLE (&logged_second->mvcc_info)
-	      && BTREE_MVCC_INFO_INSID (&observed.mvcc_info) != BTREE_MVCC_INFO_INSID (&logged_second->mvcc_info))
-	  || BTREE_MVCC_INFO_HAS_DELID (&observed.mvcc_info) != BTREE_MVCC_INFO_HAS_DELID (&logged_second->mvcc_info)
-	  || (BTREE_MVCC_INFO_HAS_DELID (&observed.mvcc_info)
-	      && BTREE_MVCC_INFO_DELID (&observed.mvcc_info) != BTREE_MVCC_INFO_DELID (&logged_second->mvcc_info)))
-	{
-	  identity_conflict = true;
-	  continue;
-	}
-      compatible_count++;
-      offset_to_s = CAST_BUFLEN (object_ptr - leaf_record->data);
-      s_observed = observed;
-    }
-
-  /* Overflow objects: scan read-only for classification only. */
-  if (btree_leaf_is_flaged (leaf_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
-    {
-      overflow_vpid = leaf_rec_info->ovfl;
-      while (!VPID_ISNULL (&overflow_vpid))
-	{
-	  overflow_page = pgbuf_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-	  if (overflow_page == NULL)
-	    {
-	      ASSERT_ERROR_AND_SET (error_code);
-	      return error_code;
-	    }
-	  overflow_record.data = PTR_ALIGN (overflow_data_buffer, BTREE_MAX_ALIGN);
-	  overflow_record.area_size = IO_MAX_PAGE_SIZE;
-	  if (spage_get_record (thread_p, overflow_page, 1, &overflow_record, COPY) != S_SUCCESS)
-	    {
-	      assert_release (false);
-	      pgbuf_unfix_and_init (thread_p, overflow_page);
-	      return ER_FAILED;
-	    }
-	  n_objects = btree_record_get_num_oids (thread_p, btid_int, &overflow_record, 0, BTREE_OVERFLOW_NODE);
-	  for (n = 0; n < n_objects; n++)
-	    {
-	      object_ptr = overflow_record.data + n * object_fixed_size;
-	      (void) btree_unpack_object (object_ptr, btid_int, BTREE_OVERFLOW_NODE, &overflow_record, 0,
-					  &observed.oid, &observed.class_oid, &observed.mvcc_info);
-	      if (!OID_EQ (&observed.oid, &logged_second->oid))
-		{
-		  continue;
-		}
-	      if (OID_EQ (&observed.class_oid, &logged_second->class_oid))
-		{
-		  compatible_count++;
-		  s_in_overflow = true;
-		}
-	      else
-		{
-		  identity_conflict = true;
-		}
-	    }
-	  error_code = btree_get_next_overflow_vpid (thread_p, overflow_page, &overflow_vpid);
-	  pgbuf_unfix_and_init (thread_p, overflow_page);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	}
-    }
-
-  /* Classification. */
-  if (compatible_count == 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      identity_conflict
-	      ? "BULK_RESTORE_UNQ_SECOND_REUSED: logged second object identity is incompatible"
-	      : "BULK_RESTORE_UNQ_SECOND_ABSENT: logged second object is absent from the key");
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=%s BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d\n",
-		     identity_conflict ? "BULK_RESTORE_UNQ_SECOND_REUSED" : "BULK_RESTORE_UNQ_SECOND_ABSENT",
-		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-		     OID_AS_ARGS (&logged_second->oid), OID_AS_ARGS (&logged_second->class_oid));
-      return ER_FAILED;
-    }
-  if (compatible_count > 1 || identity_conflict)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "BULK_RESTORE_UNQ_SECOND_REUSED: ambiguous or conflicting second-object generations");
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=BULK_RESTORE_UNQ_SECOND_REUSED BTID=%d|%d second_OID=%d|%d|%d "
-		     "class=%d|%d|%d compatible=%d conflict=%d\n",
-		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-		     OID_AS_ARGS (&logged_second->oid), OID_AS_ARGS (&logged_second->class_oid), compatible_count,
-		     (int) identity_conflict);
-      return ER_FAILED;
-    }
-  if (s_in_overflow)
-    {
-      /* Fail-before-mutation: the compensated overflow exchange is not implemented; keep the
-       * state untouched and stop closed rather than guess (unrepresentable shape =>
-       * POPULATION_UNPROVEN before mutation). */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: second object resides in an overflow record; "
-	      "exchange not representable");
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN(overflow-second) "
-		     "BTID=%d|%d second_OID=%d|%d|%d\n",
-		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-		     OID_AS_ARGS (&logged_second->oid));
-      return ER_FAILED;
-    }
-  if (offset_to_s == 0)
-    {
-      /* S is already first: repeat-restore/no-op branch.  No mutation, no logging. */
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=unq-second-already-first BTID=%d|%d second_OID=%d|%d|%d "
-		     "class=%d|%d|%d insert_mvccid=%lld delete_mvccid=%lld\n",
-		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-		     OID_AS_ARGS (&s_observed.oid), OID_AS_ARGS (&s_observed.class_oid),
-		     (long long) BTREE_MVCC_INFO_INSID (&s_observed.mvcc_info),
-		     (long long) BTREE_MVCC_INFO_DELID (&s_observed.mvcc_info));
-      return NO_ERROR;
-    }
-
-  /* Compensated object-preserving exchange: current first F moves into S's fixed-size slot, observed S becomes
-   * first.  Mirrors the established unique swap shape in btree_remove_delete_mvccid_unique_internal; the record is
-   * a COPY, so every check below happens before any page mutation. */
-  delete_helper->leaf_addr.pgptr = leaf_page;
-  delete_helper->leaf_addr.offset = search_key->slotid;
-  delete_helper->leaf_addr.vfid = &btid_int->sys_btid->vfid;
-#if !defined (NDEBUG)
-  BTREE_RV_REDO_SET_DEBUG_INFO (&delete_helper->leaf_addr, rv_redo_data_ptr, btid_int,
-				BTREE_RV_DEBUG_ID_UNDO_INS_UNQ_MUPD);
-#endif /* !NDEBUG */
-  LOG_RV_RECORD_SET_MODIFY_MODE (&delete_helper->leaf_addr, LOG_RV_RECORD_UPDATE_PARTIAL);
-
-  old_length = leaf_record->length;
-  BTREE_MVCC_INFO_SET_FIXED_SIZE (&first_object.mvcc_info);
-  if (!btree_leaf_is_flaged (leaf_record, BTREE_LEAF_RECORD_OVERFLOW_OIDS))
-    {
-      BTREE_MVCC_INFO_CLEAR_FIXED_SIZE (&s_observed.mvcc_info);
-    }
-
-  object_ptr = leaf_record->data + offset_to_s;
-  (void) btree_pack_object (object_ptr, btid_int, BTREE_LEAF_NODE, leaf_record, &first_object);
-  rv_redo_data_ptr =
-    log_rv_pack_redo_record_changes (rv_redo_data_ptr, offset_to_s, object_fixed_size, object_fixed_size, object_ptr);
-  btree_leaf_change_first_object (thread_p, leaf_record, btid_int, &s_observed.oid, &s_observed.class_oid,
-				  &s_observed.mvcc_info, NULL, &rv_undo_data_ptr, &rv_redo_data_ptr);
-#if !defined (NDEBUG)
-  (void) btree_check_valid_record (thread_p, btid_int, leaf_record, BTREE_LEAF_NODE, NULL);
-#endif /* !NDEBUG */
-
-  /* Preflight before the first page mutation. */
-  BTREE_RV_GET_DATA_LENGTH (rv_redo_data_ptr, rv_redo_data, rv_redo_data_length);
-  if ((size_t) rv_redo_data_length > BTREE_RV_BUFFER_SIZE
-      || (leaf_record->length > old_length
-	  && spage_get_free_space_without_saving (thread_p, leaf_page, NULL) < leaf_record->length - old_length))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "BULK_RESTORE_UNDO_POPULATION_UNPROVEN: unique second-object exchange is not representable "
-	      "(recovery buffer or leaf space)");
-      _er_log_debug (ARG_FILE_LINE,
-		     "bulk recovery undo branch=BULK_RESTORE_UNDO_POPULATION_UNPROVEN(exchange-preflight) "
-		     "BTID=%d|%d redo_len=%d grow=%d\n",
-		     btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid, rv_redo_data_length,
-		     leaf_record->length - old_length);
-      return ER_FAILED;
-    }
-
-  if (spage_update (thread_p, leaf_page, search_key->slotid, leaf_record) != SP_SUCCESS)
-    {
-      assert_release (false);
-      return ER_FAILED;
-    }
-  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE, pgbuf_get_vpid_ptr (leaf_page),
-					 delete_helper->leaf_addr.offset, leaf_page, rv_redo_data_length,
-					 rv_redo_data, LOG_FIND_CURRENT_TDES (thread_p), &delete_helper->reference_lsa);
-  pgbuf_set_dirty (thread_p, leaf_page, DONT_FREE);
-
-  _er_log_debug (ARG_FILE_LINE,
-		 "bulk recovery undo branch=unq-second-exchanged BTID=%d|%d second_OID=%d|%d|%d class=%d|%d|%d "
-		 "former_first_OID=%d|%d|%d offset_to_s=%d insert_mvccid=%lld delete_mvccid=%lld\n",
-		 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->root_pageid,
-		 OID_AS_ARGS (&s_observed.oid), OID_AS_ARGS (&s_observed.class_oid),
-		 OID_AS_ARGS (&first_object.oid), offset_to_s,
-		 (long long) BTREE_MVCC_INFO_INSID (&s_observed.mvcc_info),
-		 (long long) BTREE_MVCC_INFO_DELID (&s_observed.mvcc_info));
-  return NO_ERROR;
-}
-
-/*
  * btree_key_remove_object_and_keep_visible_first () - Remove one object and all its info from b-tree key. Then find
  *						       other visible version and move it first in leaf record.
  *                                                     Special case of unique index.
@@ -32786,8 +31802,7 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
   assert (leaf_page != NULL && *leaf_page != NULL && pgbuf_get_latch_mode (*leaf_page) >= PGBUF_LATCH_WRITE);
   assert (search_key != NULL);
   assert (delete_helper != NULL);
-  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD
-	  || delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY);
+  assert (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD);
 
   if (search_key->result == BTREE_KEY_FOUND)
     {
@@ -32829,23 +31844,6 @@ btree_key_remove_object_and_keep_visible_first (THREAD_ENTRY * thread_p, BTID_IN
       /* Key/object was not found. */
       assert (found_page == NULL && prev_found_page == NULL);
 
-      if (delete_helper->purpose == BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY)
-	{
-	  if (search_key->result == BTREE_KEY_FOUND)
-	    {
-	      /* Key exists but the logged inserted object is already gone (replayed vacuum).  Run the
-	       * tuple-aware second-object repair: no-op when S is first, compensated exchange
-	       * when S is a non-first leaf object, fail-stop otherwise. */
-	      error_code =
-		btree_bulk_unique_absent_repair (thread_p, btid_int, key, delete_helper, *leaf_page, &leaf_record,
-						 &leaf_rec_info, offset_after_key, search_key);
-	      goto exit;
-	    }
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-		  "BULK_RESTORE_UNQ_SECOND_ABSENT: key is absent; inserted and logged second object are gone");
-	  error_code = ER_FAILED;
-	  goto exit;
-	}
       /* Key/oid should be found. */
       assert_release (false);
       btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
@@ -34821,7 +33819,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   FILE_DESCRIPTORS des;
   VPID vpid_root;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  LOG_TDES *tdes;
 
   int error_code = NO_ERROR;
 
@@ -34830,19 +33827,6 @@ btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, B
   des.btree.attr_id = attrid;
 
   error_code = file_create_with_npages (thread_p, FILE_BTREE, 1, &des, &btid->vfid);
-  if (error_code != NO_ERROR)
-    {
-      ASSERT_ERROR ();
-      return error_code;
-    }
-  tdes = LOG_FIND_CURRENT_TDES (thread_p);
-  if (tdes == NULL || LSA_ISNULL (&tdes->tail_lsa))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
-    }
-  des.btree.create_lsa = tdes->tail_lsa;
-  error_code = file_descriptor_update (thread_p, &btid->vfid, &des);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -34926,9 +33910,7 @@ btree_delete_sysop_end (THREAD_ENTRY * thread_p, BTREE_DELETE_HELPER * helper)
       break;
 
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
     case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
       log_sysop_end_logical_compensate (thread_p, &helper->reference_lsa);
@@ -35034,12 +34016,8 @@ btree_purpose_to_string (BTREE_OP_PURPOSE purpose)
       return "BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED";
     case BTREE_OP_DELETE_UNDO_INSERT:
       return "BTREE_OP_DELETE_UNDO_INSERT";
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
-      return "BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY";
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
       return "BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD";
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
-      return "BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY";
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
       return "BTREE_OP_DELETE_UNDO_INSERT_DELID";
     case BTREE_OP_DELETE_VACUUM_INSID:
@@ -36829,9 +35807,7 @@ btree_is_delete_data_purpose (BTREE_OP_PURPOSE purpose)
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_DELID:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
     case BTREE_OP_DELETE_VACUUM_INSID:
@@ -36852,9 +35828,7 @@ btree_is_delete_object_purpose (BTREE_OP_PURPOSE purpose)
     case BTREE_OP_DELETE_OBJECT_PHYSICAL:
     case BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED:
     case BTREE_OP_DELETE_UNDO_INSERT:
-    case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
     case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
-    case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
     case BTREE_OP_DELETE_VACUUM_OBJECT:
     case BTREE_OP_ONLINE_INDEX_IB_DELETE:
     case BTREE_OP_ONLINE_INDEX_TRAN_DELETE:
@@ -36909,9 +35883,7 @@ btree_rv_log_delete_object (THREAD_ENTRY * thread_p, const BTREE_DELETE_HELPER &
 				   redo_length, redo_data, &delete_helper.reference_lsa);
 	  break;
 	case BTREE_OP_DELETE_UNDO_INSERT:
-	case BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY:
 	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD:
-	case BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY:
 	case BTREE_OP_ONLINE_INDEX_UNDO_TRAN_INSERT:
 	  log_append_compensate_with_undo_nxlsa (thread_p, RVBT_RECORD_MODIFY_COMPENSATE,
 						 pgbuf_get_vpid_ptr (addr.pgptr), addr.offset, addr.pgptr,

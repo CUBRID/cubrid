@@ -57,7 +57,6 @@
 #include "pl_struct_compile.hpp"
 #include "pl_signature.hpp"
 #include "memory_monitor_common.hpp"
-#include "locator.h"
 #if defined (CS_MODE)
 #include "network_cl.h"
 #endif
@@ -103,16 +102,6 @@ extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, 
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
 extern int locator_force (LC_COPYAREA * copy_area, int num_ignore_error_list, int *ignore_error_list, int content_size);
-extern int locator_bulk_force_tail_packed_size (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor,
-						unsigned int *packed_size);
-extern int locator_bulk_force_tail_pack (const LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, char *buffer,
-					 unsigned int buffer_size, unsigned int *packed_size);
-extern int locator_bulk_force_tail_unpack (const char *buffer, unsigned int buffer_size,
-					   LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor, OID * class_oids,
-					   unsigned int class_capacity, OID * fk_class_oids,
-					   unsigned int fk_class_capacity, char *constraint_name,
-					   unsigned int constraint_name_capacity, char *owner_class_name,
-					   unsigned int owner_class_name_capacity);
 extern int locator_repl_force (LC_COPYAREA * copy_area, LC_COPYAREA ** reply_copy_area);
 extern int locator_fetch_lockset (LC_LOCKSET * lockset, LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all_reference_lockset (OID * oid, int chn, OID * class_oid, int class_chn, LOCK lock,
@@ -268,8 +257,7 @@ extern int btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_t
 			     int n_attrs, int *attr_ids, int *attrs_prefix_length, HFID * hfids, int unique_pk,
 			     int not_null_flag, OID * fk_refcls_oid, BTID * fk_refcls_pk_btid, const char *fk_name,
 			     char *pred_stream, int pred_stream_size, char *expr_stream, int expr_stream_size,
-			     int func_col_id, int func_attr_index_start, SM_INDEX_STATUS index_status,
-			     bool eligible_no_redo, LOG_LSA * create_lsa);
+			     int func_col_id, int func_attr_index_start, SM_INDEX_STATUS index_status);
 extern int btree_delete_index (BTID * btid);
 extern int locator_log_force_nologging (void);
 extern int locator_remove_class_from_index (OID * oid, BTID * btid, HFID * hfid);

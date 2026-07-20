@@ -42,108 +42,12 @@
 #include "recovery.h"
 #include "statistics.h"
 #include "storage_common.h"
-#include "locator.h"
 
 // forward definition
 class btree_unique_stats;
 struct key_val_range;
 struct or_buf;
 typedef struct or_buf OR_BUF;
-
-#define BTREE_BULK_MARKER_V1_VERSION 1
-#define BTREE_BULK_MARKER_V2_VERSION 2
-#define BTREE_BULK_MARKER_VERSION 3
-#define BTREE_BULK_MARKER_MAX_CLASSES 4096
-#define BTREE_BULK_MARKER_MAX_CONSTRAINT_NAME 4096
-
-
-typedef struct btree_bulk_marker BTREE_BULK_MARKER;
-struct btree_bulk_marker
-{
-  unsigned int flags;
-  int trid;
-  BTID btid;
-  VFID main_vfid;
-  VFID ovfid;
-  VPID root_vpid;
-  LOG_LSA create_lsa;
-  LOG_LSA parent_lsa;
-  const OID *class_oids;
-  unsigned int class_count;
-  const char *constraint_name;
-  unsigned int constraint_name_length;
-  int constraint_type;
-  const char *owner_class_name;
-  unsigned int owner_class_name_length;
-  int object_kind;
-  /* v3: creation identity of the exact file instance this build created.
-   * attr_id mirrors FILE_BTREE_DES.attr_id; create_token encodes the main file's
-   * server-issued FILE_BTREE_DES.create_lsa.  v1/v2 markers decode with
-   * attr_id = -1 and create_token = 0 and keep the degraded owns-class-only
-   * cleanup binding. */
-  int attr_id;
-  UINT64 create_token;
-};
-
-/* btree_bulk_lsa_token () - encode a create LSA into the 64-bit token stored in BTREE_BULK_MARKER.create_token and
- * compared against BTREE_BULK_PENDING_BUILD.create_lsa.  Packs the 48-bit pageid into the high bits and the
- * 16-bit offset into the low bits so the create-LSA identity can be stored/compared as a single scalar.  The
- * encode site (locator_sr.c) and the recovery compare sites (log_recovery.c) must stay byte-identical. */
-STATIC_INLINE UINT64
-btree_bulk_lsa_token (const LOG_LSA * lsa)
-{
-  return (((UINT64) lsa->pageid & 0x0000ffffffffffffULL) << 16) | (UINT64) (unsigned short) lsa->offset;
-}
-
-extern int btree_bulk_marker_packed_size (const BTREE_BULK_MARKER * marker, unsigned int *packed_size);
-extern int btree_bulk_marker_pack (const BTREE_BULK_MARKER * marker, char *buffer, unsigned int buffer_size,
-				   unsigned int *packed_size);
-extern int btree_bulk_marker_unpack (const char *buffer, unsigned int buffer_size, BTREE_BULK_MARKER * marker,
-				     OID * class_oids, unsigned int class_capacity, char *constraint_name,
-				     unsigned int constraint_name_capacity, char *owner_class_name,
-				     unsigned int owner_class_name_capacity, int *decoded_version);
-extern int btree_rv_bulk_build_durable_nop (THREAD_ENTRY * thread_p, LOG_RCV * logrcv);
-extern int btree_bulk_pending_register (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
-					const OID * class_oids, unsigned int class_count);
-extern int btree_bulk_pending_validate (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa,
-					const OID * class_oids, unsigned int class_count);
-extern void btree_bulk_pending_consume (THREAD_ENTRY * thread_p, const BTID * btid, const LOG_LSA * create_lsa);
-extern bool btree_bulk_pending_requires_marker (THREAD_ENTRY * thread_p);
-extern void btree_bulk_pending_discard (THREAD_ENTRY * thread_p);
-
-typedef enum btree_bulk_recovery_event
-{
-  BTREE_BULK_RECOVERY_NORMAL_COMMIT,
-  BTREE_BULK_RECOVERY_2PC_PREPARE,
-  BTREE_BULK_RECOVERY_2PC_COMMIT_DECISION,
-  BTREE_BULK_RECOVERY_2PC_ABORT
-} BTREE_BULK_RECOVERY_EVENT;
-
-typedef struct btree_bulk_recovery_candidate BTREE_BULK_RECOVERY_CANDIDATE;
-struct btree_bulk_recovery_candidate
-{
-  BTREE_BULK_MARKER marker;
-  int decoded_version;
-  char owner_name[SM_MAX_IDENTIFIER_LENGTH + 1];
-  int object_kind;
-  LOG_LSA marker_lsa;
-  LOG_LSA marker_prev_lsa;
-  bool media_recovery;
-  bool marker_in_redo;
-  bool create_in_redo;
-  bool publication_chain_valid;
-  bool decision_flushed;
-  bool commit_irreversible;
-};
-
-extern int log_recovery_bulk_classify_candidate (const BTREE_BULK_RECOVERY_CANDIDATE * candidate,
-						 const BTREE_BULK_RECOVERY_EVENT * events,
-						 unsigned int event_count, bool * is_candidate);
-extern int log_recovery_bulk_cleanup_inactive (THREAD_ENTRY * thread_p,
-					       const BTREE_BULK_RECOVERY_CANDIDATE * candidate, bool * cleaned);
-extern int log_recovery_bulk_format_restoredb (FILE * fp, const BTREE_BULK_RECOVERY_CANDIDATE * candidate);
-extern int log_recovery_bulk_should_skip_redo (THREAD_ENTRY * thread_p, const LOG_LSA * record_lsa,
-					       const VPID * rcv_vpid, LOG_RCVINDEX rcvindex, bool * skip);
 
 #define SINGLE_ROW_INSERT    1
 #define SINGLE_ROW_DELETE    2
@@ -645,11 +549,9 @@ enum btree_op_purpose
   BTREE_OP_DELETE_OBJECT_PHYSICAL,	/* Physically delete an object from b-tree when MVCC is enabled. */
   BTREE_OP_DELETE_OBJECT_PHYSICAL_POSTPONED,	/* Physical delete was postponed. */
   BTREE_OP_DELETE_UNDO_INSERT,	/* Undo insert */
-  BTREE_OP_DELETE_UNDO_INSERT_BULK_RECOVERY,	/* Undo committed bulk publication insert. */
   BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD,	/* Undo insert into unique index, when multi-update exception to unique
 						 * constraint violation is applied. Previous visible object must be
 						 * returned to first position in record. */
-  BTREE_OP_DELETE_UNDO_INSERT_UNQ_MULTIUPD_BULK_RECOVERY,	/* Bulk recovery counterpart. */
   BTREE_OP_DELETE_UNDO_INSERT_DELID,	/* Remove only delete MVCCID for an object in b-tree. It is called when object
 					 * deletion is roll-backed. */
   BTREE_OP_DELETE_VACUUM_OBJECT,	/* All object info is removed from b-tree. It is called by vacuum when the

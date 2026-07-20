@@ -115,7 +115,6 @@ static char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
 /* Contains the name of the current server name. */
 static char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
-static int net_Server_capabilities = 0;
 
 static void return_error_to_server (char *host, unsigned int eid);
 static int client_capabilities (void);
@@ -186,7 +185,6 @@ set_server_error (int error)
     {
       net_Server_name[0] = '\0';
       net_Server_host[0] = '\0';
-      net_Server_capabilities = 0;
       boot_server_die_or_changed ();
     }
 
@@ -3491,7 +3489,6 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
   int eid, request_size, server_capabilities, server_bit_platform;
   int strlen1, strlen2;
   REL_COMPATIBILITY compat;
-  net_Server_capabilities = 0;
 
   if (net_Server_host[0] == '\0' || net_Server_name[0] == '\0')
     {
@@ -3586,8 +3583,6 @@ net_client_ping_server_with_handshake (int client_type, bool check_capabilities,
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, server_release, client_release);
       return error;
     }
-
-  net_Server_capabilities = server_capabilities;
 
   return error;
 }
@@ -3707,7 +3702,6 @@ net_cleanup_client_queues (void)
 int
 net_client_final (bool server_error)
 {
-  net_Server_capabilities = 0;
   __gv_cvar.css_terminate (server_error);
   return NO_ERROR;
 }

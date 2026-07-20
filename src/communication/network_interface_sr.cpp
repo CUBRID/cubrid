@@ -653,10 +653,6 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
       thread_p->conn_entry->client_type = (BOOT_CLIENT_TYPE) client_type;
     }
 
-  if (status == CSS_NO_ERRORS)
-    {
-    }
-
   reply_size = (or_packed_string_length (server_release, &strlen1) + (OR_INT_SIZE * 3)
 		+ or_packed_string_length (boot_Host_name, &strlen2));
   ptr = or_pack_string_with_length (reply, (char *) server_release, strlen1);
@@ -1410,14 +1406,6 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   LC_COPYAREA_MANYOBJS *mobjs;
   int i, num_ignore_error_list;
   int ignore_error_list[-ER_LAST_ERROR];
-  int bulk_tail_size;
-  char *bulk_area = NULL;
-  LOCATOR_BULK_INDEX_DESCRIPTOR *bulk_desc = NULL;
-  OID *bulk_class_oids = NULL;
-  OID *bulk_fk_class_oids = NULL;
-  char *bulk_constraint_name = NULL;
-  char *bulk_owner_class_name = NULL;
-  bool has_bulk_desc = false;
 
   ptr = or_unpack_int (request, &num_objs);
   ptr = or_unpack_int (ptr, &multi_update_flags);
@@ -1428,38 +1416,6 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
   for (i = 0; i < num_ignore_error_list; i++)
     {
       ptr = or_unpack_int (ptr, &ignore_error_list[i]);
-    }
-  bulk_tail_size = reqlen - (int) (ptr - request);
-  if (bulk_tail_size > 0)
-    {
-      size_t bulk_area_size = sizeof (*bulk_desc)
-	+ sizeof (*bulk_class_oids) * LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-	+ sizeof (*bulk_fk_class_oids) * LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-	+ LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1 + SM_MAX_IDENTIFIER_LENGTH + 1;
-      bulk_area = (char *) db_private_alloc (thread_p, bulk_area_size);
-      if (bulk_area == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bulk_area_size);
-	  css_send_abort_to_client (thread_p->conn_entry, rid);
-	  goto end;
-	}
-      bulk_desc = (LOCATOR_BULK_INDEX_DESCRIPTOR *) bulk_area;
-      bulk_class_oids = (OID *) (bulk_area + sizeof (*bulk_desc));
-      bulk_fk_class_oids = bulk_class_oids + LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES;
-      bulk_constraint_name = (char *) (bulk_fk_class_oids + LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES);
-      bulk_owner_class_name = bulk_constraint_name + LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1;
-    }
-  if (bulk_tail_size < 0
-      || xlocator_force_validate_bulk_tail (ptr, bulk_tail_size, bulk_desc, bulk_class_oids,
-					    LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES, bulk_fk_class_oids,
-					    LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES, bulk_constraint_name,
-					    LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME + 1,
-					    bulk_owner_class_name, SM_MAX_IDENTIFIER_LENGTH + 1,
-					    &has_bulk_desc) != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      goto end;
     }
 
   csserror = 0;
@@ -1504,8 +1460,7 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
 		}
 	    }
 
-	  success = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list,
-				    has_bulk_desc ? bulk_desc : NULL);
+	  success = xlocator_force (thread_p, copy_area, num_ignore_error_list, ignore_error_list);
 
 	  /*
 	   * Send the descriptor part since some information about the objects
@@ -1545,10 +1500,6 @@ slocator_force (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int req
     {
       locator_free_copy_area (copy_area);
     }
-  if (bulk_area != NULL)
-    {
-      db_private_free_and_init (thread_p, bulk_area);
-    }
   return ;
 
 end:
@@ -1560,10 +1511,6 @@ end:
   if (copy_area != NULL)
     {
       locator_free_copy_area (copy_area);
-    }
-  if (bulk_area != NULL)
-    {
-      db_private_free_and_init (thread_p, bulk_area);
     }
 }
 
@@ -4669,7 +4616,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   int *attr_prefix_lengths = NULL;
   TP_DOMAIN *key_type;
   char *ptr;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE + OR_LOG_LSA_ALIGNED_SIZE) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 2 + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *pred_stream = NULL;
   int pred_stream_size = 0, expr_stream_size = 0;
@@ -4679,9 +4626,8 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  bool eligible_no_redo = false;
   int ib_thread_count = 0;
-  int eligible_no_redo = 0;
-  LOG_LSA create_lsa = LSA_INITIALIZER;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4769,23 +4715,8 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
-  if (reqlen >= OR_INT_SIZE && ptr == request + reqlen - OR_INT_SIZE)
-    {
-      ptr = or_unpack_int (ptr, &eligible_no_redo);
-    }
-  else
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      goto end;
-    }
-  if ((eligible_no_redo != 0 && eligible_no_redo != 1)
-      || (eligible_no_redo == 1 && index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
-      css_send_abort_to_client (thread_p->conn_entry, rid);
-      goto end;
-    }
+  eligible_no_redo = BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index))
+    && index_status != OR_ONLINE_INDEX_BUILDING_IN_PROGRESS;
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
@@ -4801,7 +4732,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	      xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				 attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
 				 fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-				 func_attr_index_start, eligible_no_redo != 0, &create_lsa);
+				 func_attr_index_start, eligible_no_redo);
     }
 
   if (return_btid == NULL)
@@ -4841,8 +4772,7 @@ end:
     }
 
   ptr = or_pack_btid (ptr, &btid);
-  ptr = or_pack_log_lsa (ptr, &create_lsa);
-  css_send_data_to_client (thread_p->conn_entry, rid, reply, (int) (ptr - reply));
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
   if (class_oids != NULL)
     {

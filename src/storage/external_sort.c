@@ -1527,8 +1527,8 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
 	  /* no-redo builds are restricted to genuinely parallel construction. This is the single-process
 	   * shape (parallelism threshold not met, or no workers could be reserved) -- demote to a fully
 	   * logged build now, strictly before btree_create_file()/any content page write below, so the
-	   * legacy build that follows logs normally end to end: no marker, no pending registration, and
-	   * xbtree_load_index returns a NULL create_lsa to the client. */
+	   * legacy build that follows logs normally end to end and no replay barrier record is appended
+	   * for it. */
 	  bt_load_demote_to_logged ((LOAD_ARGS *) sort_param->put_arg);
 	  memset (&sort_args_p->hfscan_cache, 0, sizeof (HEAP_SCANCACHE));
 	  memset (&sort_args_p->attr_info, 0, sizeof (HEAP_CACHE_ATTRINFO));

@@ -46,7 +46,6 @@
 
 // forward declarations
 struct bo_restart_arg;
-struct btree_bulk_marker;
 
 #define LOG_TOPOP_STACK_INIT_SIZE 1024
 
@@ -67,9 +66,6 @@ extern LOG_LSA *log_get_crash_point_lsa (void);
 extern LOG_LSA *log_get_append_lsa (void);
 extern LOG_LSA *log_get_eof_lsa (void);
 extern bool log_is_logged_since_restart (const LOG_LSA * lsa_ptr);
-extern int log_get_current_sysop_parent_lsa (THREAD_ENTRY * thread_p, LOG_LSA * parent_lsa);
-extern bool log_is_irreversible_2pc_state (TRAN_STATE state);
-extern int log_append_bulk_build_marker (THREAD_ENTRY * thread_p, const struct btree_bulk_marker *marker);
 extern int log_get_db_start_parameters (INT64 * db_creation, LOG_LSA * chkpt_lsa);
 extern int log_get_num_pages_for_creation (int db_npages);
 extern int log_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,

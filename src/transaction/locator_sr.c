@@ -43,7 +43,6 @@
 #endif /* DMALLOC */
 #include "error_manager.h"
 #include "deduplicate_key.h"
-#include "file_manager.h"
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
@@ -6914,152 +6913,6 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
   return (int) (ptr - start_ptr);
 }
 
-static int
-locator_force_tail_unpack (const char *buffer, unsigned int size, LOCATOR_BULK_INDEX_DESCRIPTOR * desc,
-			   OID * classes, unsigned int class_capacity, OID * fk_classes, unsigned int fk_capacity,
-			   char *name, unsigned int name_capacity, char *owner_name, unsigned int owner_name_capacity)
-{
-  char *ptr = (char *) buffer;
-  unsigned int padded_length;
-  int magic, version, packed_size, count, name_length, owner_name_length, i;
-
-  if (buffer == NULL || desc == NULL || size < LOCATOR_BULK_FORCE_TAIL_FIXED_SIZE)
-    {
-      return ER_FAILED;
-    }
-  ptr = or_unpack_int (ptr, &magic);
-  ptr = or_unpack_int (ptr, &version);
-  ptr = or_unpack_int (ptr, &packed_size);
-  if (magic != LOCATOR_BULK_FORCE_TAIL_MAGIC || version != LOCATOR_BULK_FORCE_TAIL_VERSION || packed_size != (int) size)
-    {
-      return ER_FAILED;
-    }
-  desc->version = version;
-  ptr = or_unpack_btid (ptr, &desc->btid);
-  ptr = or_unpack_log_lsa (ptr, &desc->create_lsa);
-  ptr = or_unpack_int (ptr, &count);
-  if (count < 0 || (unsigned int) count > class_capacity
-      || (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES || (count != 0 && classes == NULL)
-      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE > size)
-    {
-      return ER_FAILED;
-    }
-  desc->class_count = (unsigned int) count;
-  desc->class_oids = classes;
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_oid (ptr, &classes[i]);
-    }
-  for (i = 1; i < (int) desc->class_count; i++)
-    {
-      if (OID_GT (&classes[i - 1], &classes[i]) || OID_EQ (&classes[i - 1], &classes[i]))
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &count);
-  if (count < 0 || (unsigned int) count > fk_capacity || (count != 0 && fk_classes == NULL)
-      || desc->class_count + (unsigned int) count > LOCATOR_BULK_FORCE_TAIL_MAX_CLASSES
-      || (UINT64) (ptr - buffer) + (UINT64) count * OR_OID_SIZE + OR_INT_SIZE * 5 > size)
-    {
-      return ER_FAILED;
-    }
-  desc->fk_class_count = (unsigned int) count;
-  desc->fk_class_oids = fk_classes;
-  for (i = 0; i < count; i++)
-    {
-      ptr = or_unpack_oid (ptr, &fk_classes[i]);
-    }
-  for (i = 1; i < (int) desc->fk_class_count; i++)
-    {
-      if (OID_GT (&fk_classes[i - 1], &fk_classes[i]) || OID_EQ (&fk_classes[i - 1], &fk_classes[i]))
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  ptr = or_unpack_int (ptr, &desc->constraint_type);
-  ptr = or_unpack_int (ptr, &name_length);
-  if (name_length < 0 || name_length > LOCATOR_BULK_FORCE_TAIL_MAX_CONSTRAINT_NAME || name == NULL
-      || (unsigned int) name_length >= name_capacity)
-    {
-      return ER_FAILED;
-    }
-  padded_length = DB_ALIGN ((unsigned int) name_length, INT_ALIGNMENT);
-  if ((UINT64) (ptr - buffer) + padded_length + OR_INT_SIZE * 2 > size)
-    {
-      return ER_FAILED;
-    }
-  memcpy (name, ptr, name_length);
-  name[name_length] = '\0';
-  ptr += padded_length;
-  desc->constraint_name = name;
-  desc->constraint_name_length = (unsigned int) name_length;
-
-  ptr = or_unpack_int (ptr, &owner_name_length);
-  if (owner_name_length <= 0 || owner_name_length > SM_MAX_IDENTIFIER_LENGTH || owner_name == NULL
-      || (unsigned int) owner_name_length >= owner_name_capacity)
-    {
-      return ER_FAILED;
-    }
-  padded_length = DB_ALIGN ((unsigned int) owner_name_length, INT_ALIGNMENT);
-  if ((UINT64) (ptr - buffer) + padded_length + OR_INT_SIZE != size)
-    {
-      return ER_FAILED;
-    }
-  memcpy (owner_name, ptr, owner_name_length);
-  owner_name[owner_name_length] = '\0';
-  ptr += padded_length;
-  desc->owner_class_name = owner_name;
-  desc->owner_class_name_length = (unsigned int) owner_name_length;
-
-  ptr = or_unpack_int (ptr, &desc->object_kind);
-  if ((desc->object_kind != BULK_MARKER_KIND_INDEX && desc->object_kind != BULK_MARKER_KIND_CONSTRAINT)
-      || (unsigned int) (ptr - buffer) != size)
-    {
-      return ER_FAILED;
-    }
-  return NO_ERROR;
-}
-
-/*
- * xlocator_force_validate_bulk_tail () - Validate optional FORCE bulk marker.
- *
- * An empty tail is the legacy request.  A non-empty tail is exactly one
- * versioned marker payload; no trailing bytes are accepted.
- */
-int
-xlocator_force_validate_bulk_tail (const char *tail, int tail_size, LOCATOR_BULK_INDEX_DESCRIPTOR * descriptor,
-				   OID * class_oids, unsigned int class_capacity, OID * fk_class_oids,
-				   unsigned int fk_class_capacity, char *constraint_name,
-				   unsigned int constraint_name_capacity, char *owner_class_name,
-				   unsigned int owner_class_name_capacity, bool * has_descriptor)
-{
-  if (has_descriptor == NULL)
-    {
-      return ER_FAILED;
-    }
-  *has_descriptor = false;
-  if (tail_size == 0)
-    {
-      return NO_ERROR;
-    }
-  if (tail == NULL || tail_size < 0)
-    {
-      return ER_FAILED;
-    }
-
-  if (locator_force_tail_unpack (tail, (unsigned int) tail_size, descriptor, class_oids, class_capacity,
-				 fk_class_oids, fk_class_capacity, constraint_name, constraint_name_capacity,
-				 owner_class_name, owner_class_name_capacity) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  *has_descriptor = true;
-  return NO_ERROR;
-}
-
 /*
  * xlocator_force () - Updates objects sent by log applier
  *
@@ -7273,8 +7126,7 @@ exit_on_error:
  *              object placed in the force_area.
  */
 int
-xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignore_error, int *ignore_error_list,
-		const LOCATOR_BULK_INDEX_DESCRIPTOR * bulk_index)
+xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignore_error, int *ignore_error_list)
 {
   LC_COPYAREA_MANYOBJS *mobjs;	/* Describe multiple objects in area */
   LC_COPYAREA_ONEOBJ *obj;	/* Describe on object in area */
@@ -7287,40 +7139,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int error_code = NO_ERROR;
   int pruning_type = 0;
   int has_index;
-  LOG_TDES *tdes = NULL;
-  PAGE_PTR root_page = NULL;
-  BTREE_ROOT_HEADER *root_header = NULL;
-  BTREE_BULK_MARKER marker;
-  if (bulk_index != NULL && num_ignore_error > 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-  if (bulk_index == NULL && btree_bulk_pending_requires_marker (thread_p))
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-	      "bulk index build FORCE rejected: request shape inconsistent with pending bulk build");
-      return ER_GENERIC_ERROR;
-    }
 
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
     {
       return error_code;
-    }
-  if (bulk_index != NULL)
-    {
-      tdes = LOG_FIND_CURRENT_TDES (thread_p);
-      if (tdes == NULL
-	  || btree_bulk_pending_validate (thread_p, &bulk_index->btid, &bulk_index->create_lsa,
-					  bulk_index->class_oids, bulk_index->class_count) != NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1,
-		  "bulk index build FORCE rejected: request shape inconsistent with pending bulk build");
-	  error_code = ER_GENERIC_ERROR;
-	  goto error;
-	}
     }
 
   mobjs = LC_MANYOBJS_PTR_IN_COPYAREA (force_area);
@@ -7494,79 +7318,6 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	}
     }
 
-  if (bulk_index != NULL)
-    {
-      VPID root_vpid;
-
-      root_vpid.volid = bulk_index->btid.vfid.volid;
-      root_vpid.pageid = bulk_index->btid.root_pageid;
-      root_page = pgbuf_fix (thread_p, &root_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
-      if (root_page == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  goto error;
-	}
-
-      root_header = btree_get_root_header (thread_p, root_page);
-      if (root_header == NULL)
-	{
-	  pgbuf_unfix_and_init (thread_p, root_page);
-	  error_code = er_errid ();
-	  if (error_code == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	      error_code = ER_GENERIC_ERROR;
-	    }
-	  goto error;
-	}
-
-      marker.flags = 0;
-      marker.trid = tdes->trid;
-      marker.btid = bulk_index->btid;
-      marker.main_vfid = bulk_index->btid.vfid;
-      marker.ovfid = root_header->ovfid;
-      marker.root_vpid = root_vpid;
-      marker.create_lsa = bulk_index->create_lsa;
-      marker.class_oids = bulk_index->class_oids;
-      marker.class_count = bulk_index->class_count;
-      marker.constraint_name = bulk_index->constraint_name;
-      marker.constraint_name_length = bulk_index->constraint_name_length;
-      marker.constraint_type = bulk_index->constraint_type;
-      marker.owner_class_name = bulk_index->owner_class_name;
-      marker.owner_class_name_length = bulk_index->owner_class_name_length;
-      marker.object_kind = bulk_index->object_kind;
-      pgbuf_unfix_and_init (thread_p, root_page);
-
-      {
-	FILE_DESCRIPTORS main_file_des;
-
-	error_code = file_descriptor_get (thread_p, &marker.main_vfid, &main_file_des);
-	if (error_code != NO_ERROR)
-	  {
-	    goto error;
-	  }
-	if (!LSA_EQ (&main_file_des.btree.create_lsa, &bulk_index->create_lsa))
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	    error_code = ER_GENERIC_ERROR;
-	    goto error;
-	  }
-	marker.attr_id = main_file_des.btree.attr_id;
-	marker.create_token = btree_bulk_lsa_token (&main_file_des.btree.create_lsa);
-      }
-
-      error_code = log_get_current_sysop_parent_lsa (thread_p, &marker.parent_lsa);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-      error_code = log_append_bulk_build_marker (thread_p, &marker);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-      btree_bulk_pending_consume (thread_p, &bulk_index->btid, &bulk_index->create_lsa);
-    }
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &lsa);
 
   return error_code;
