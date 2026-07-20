@@ -5435,7 +5435,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
   fprintf (outfile, "*** Deadlock Victim Information ***\n");
   fprintf (outfile, "Victim count = %d\n", victim_count);
   /* print aborted transactions (deadlock victims) */
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_ABORT_HDR));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_ABORT_HDR));
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
@@ -5445,14 +5445,14 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
-	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+	      fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 	    }
 	  count++;
 	}
     }
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   /* print timeout transactions (deadlock victims) */
-  fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT_HDR));
+  fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DEADLOCK_TIMEOUT_HDR));
   count = 0;
   for (k = 0; k < victim_count; k++)
     {
@@ -5462,7 +5462,7 @@ lock_dump_deadlock_victims (THREAD_ENTRY * thread_p, FILE * outfile)
 		   lk_Gl.victims[k].tran_index);
 	  if ((count % 10) == 9)
 	    {
-	      fprintf (outfile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+	      fprintf (outfile, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 	    }
 	  count++;
 	}
@@ -5559,14 +5559,14 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   switch (res_ptr->key.type)
     {
     case LOCK_RESOURCE_ROOT_CLASS:
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_ROOT_CLASS_TYPE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_ROOT_CLASS_TYPE));
       break;
     case LOCK_RESOURCE_CLASS:
       oid_rr = oid_get_rep_read_tran_oid ();
       if (oid_rr != NULL && OID_EQ (&res_ptr->key.oid, oid_rr))
 	{
 	  /* This is the generic object for RR transactions */
-	  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_RR_TYPE));
+	  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_RR_TYPE));
 	}
       else if (!OID_ISTEMP (&res_ptr->key.oid))
 	{
@@ -5671,7 +5671,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     default:
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
     }
 
   /* dump total modes of holders and waiters */
@@ -5714,7 +5714,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   if (num_holders > 0)
     {
       /* dump non blocked holders */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON_BLOCKED_HOLDER_HEAD));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON_BLOCKED_HOLDER_HEAD));
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
@@ -5743,7 +5744,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   if (num_blocked_holders > 0)
     {
       /* dump blocked holders */
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_HEAD));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_HOLDER_HEAD));
       entry_ptr = res_ptr->holder;
       while (entry_ptr != NULL)
 	{
@@ -5785,7 +5786,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   /* dump blocked waiters */
   if (res_ptr->waiter != NULL)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_HEAD));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_BLOCKED_WAITER_HEAD));
       entry_ptr = res_ptr->waiter;
       while (entry_ptr != NULL)
 	{
@@ -5807,7 +5808,8 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
   /* dump non two phase locks */
   if (res_ptr->non2pl != NULL)
     {
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_HEAD));
+      fprintf (outfp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_NON2PL_RELEASED_HEAD));
       entry_ptr = res_ptr->non2pl;
       while (entry_ptr != NULL)
 	{
@@ -5818,7 +5820,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	  entry_ptr = entry_ptr->next;
 	}
     }
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
 
 }
 #endif /* SERVER_MODE */
@@ -8685,7 +8687,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
       outfp = stdout;
     }
 
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_LOCK_TABLE),
 	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT), prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL));
 
@@ -8693,7 +8695,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* Dump some information about all transactions */
-  fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+  fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
   for (tran_index = 0; tran_index < lk_Gl.config.num_trans; tran_index++)
     {
       if (logtb_find_client_name_host_pid (tran_index, &client_prog_name, &client_user_name, &client_host_name,
@@ -8733,7 +8735,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
 	       log_state_string (state));
       fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_TRAN_TIMEOUT_PERIOD),
 	       lock_timeout_string);
-      fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
+      fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
     }
 
   /* compute number of lock res entries */
