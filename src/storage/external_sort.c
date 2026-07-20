@@ -6121,8 +6121,8 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	  n_sects += tmp_sects;
 	}
 
-      /* No page threshold and no parallelism parameter for the index build: the degree is half the
-       * system cores, lowered to the number of data sectors (one run per worker minimum). */
+      /* No page threshold and no parallelism parameter for the index build: the degree is the number of
+       * system cores, capped by the maximum parallelism and the number of data sectors. */
       parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD, n_sects);
 
       if (parallel_num < 2)
