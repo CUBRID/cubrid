@@ -4720,7 +4720,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   /* The client flag is only a request; the server decides. Restricting the no-redo build to
    * loaddb client types keeps it out of ordinary traffic no matter what a client sends. */
   eligible_no_redo = no_logging_index != 0
-    && BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index));
+		     && BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index));
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {

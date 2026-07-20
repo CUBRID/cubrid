@@ -4607,7 +4607,7 @@ bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node
 		      BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
   OR_BUF buf;
-  VPID key_vpid;
+  VPID key_vpid = VPID_INITIALIZER;
   int error;
 
   if (key_type != BTREE_OVERFLOW_KEY || load_args->provider == NULL)
