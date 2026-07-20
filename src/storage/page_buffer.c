@@ -3701,59 +3701,6 @@ pgbuf_flush_all_unfixed_and_set_lsa_as_null (THREAD_ENTRY * thread_p, VOLID voli
 }
 
 /*
- * pgbuf_flush_page_if_exists_and_dirty () - flush one page if it is still buffered and still dirty; if it is not
- *                                           buffered or not dirty, do nothing.
- *   return: NO_ERROR, or ER_code
- *   vpid(in): Complete Page identifier
- *   flushed_out(out): optional; set to true when a dirty buffered page was found and submitted to flush
- *
- * Note: probe-only primitive for the bulk-build scoped durability barrier (btree_load.c).  A probe miss is safe:
- *       a dirty bcb is never victimized before being flushed, so an absent page is either already on disk (or
- *       staged in the DWB -- the caller drains it) or was never dirtied.  The per-bcb flush call is the same one
- *       pgbuf_flush_all_helper makes, so the per-page semantics match the global barrier exactly.
- */
-int
-pgbuf_flush_page_if_exists_and_dirty (THREAD_ENTRY * thread_p, const VPID * vpid, bool * flushed_out)
-{
-  PGBUF_BUFFER_HASH *hash_anchor;
-  PGBUF_BCB *bufptr;
-
-  assert (vpid != NULL && !VPID_ISNULL (vpid));
-
-  if (flushed_out != NULL)
-    {
-      *flushed_out = false;
-    }
-
-  hash_anchor = &(pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (vpid)]);
-  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, vpid);
-  if (bufptr == NULL)
-    {
-      /* the caller is holding only hash_anchor->hash_mutex (pgbuf_search_hash_chain miss contract). */
-      pthread_mutex_unlock (&hash_anchor->hash_mutex);
-
-      if (er_errid () == ER_CSS_PTHREAD_MUTEX_TRYLOCK)
-	{
-	  /* fatal trylock failure inside pgbuf_search_hash_chain; same handling as pgbuf_copy_to_area. */
-	  return ER_FAILED;
-	}
-      /* not buffered: dirty pages are flushed before victimization, so the on-disk (or DWB-staged) image is
-       * current. */
-      return NO_ERROR;
-    }
-
-  /* the caller is holding bufptr->mutex. */
-  if (flushed_out != NULL)
-    {
-      *flushed_out = pgbuf_bcb_is_dirty (bufptr);
-    }
-
-  /* flushes only when dirty; safe against concurrent latch holders and flushers; waits for completion
-   * (synchronous == true); always releases bufptr->mutex. */
-  return pgbuf_bcb_safe_flush_force_unlock (thread_p, bufptr, true);
-}
-
-/*
  * pgbuf_compare_victim_list () - Compare the vpid of victim candidate list
  *   return: p1 - p2
  *   p1(in): victim candidate list 1
