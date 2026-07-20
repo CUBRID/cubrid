@@ -6292,6 +6292,24 @@ btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id
 #endif /* !CS_MODE */
 }
 
+/* Whether the client requests the no-logging (no-redo) index build for subsequent
+ * btree_load_index () calls. Set by loaddb when --no-logging-index is given; the request
+ * flag is only an intent and the server makes the final decision by client type. */
+static bool btree_Load_no_logging_index = false;
+
+/*
+ * btree_set_no_logging_index -
+ *
+ * return: nothing
+ *
+ *   no_logging_index(in): enable or disable the no-logging index build request
+ */
+void
+btree_set_no_logging_index (bool no_logging_index)
+{
+  btree_Load_no_logging_index = no_logging_index;
+}
+
 /*
  * btree_load_index -
  *
@@ -6361,7 +6379,8 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 		  + or_packed_string_length (fk_name, &fk_strlen)	/* fk_name */
 		  + index_info_size	/* filter predicate or function index stream size */
 		  + OR_INT_SIZE	/* Index status */
-		  + OR_INT_SIZE /* Thread count */ );
+		  + OR_INT_SIZE	/* Thread count */
+		  + OR_INT_SIZE /* no_logging_index */ );
 
   request = (char *) malloc (request_size);
   if (request == NULL)
@@ -6437,6 +6456,7 @@ btree_load_index (BTID * btid, const char *bt_name, TP_DOMAIN * key_type, OID * 
 
   ptr = or_pack_int (ptr, index_status);	/* Index status. */
   ptr = or_pack_int (ptr, ib_get_thread_count ());	// Thread count needed for parallel building
+  ptr = or_pack_int (ptr, btree_Load_no_logging_index ? 1 : 0);	/* no-logging index build requested */
 
   req_error =
     net_client_request (NET_SERVER_BTREE_LOADINDEX, request, request_size, reply,

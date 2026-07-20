@@ -839,6 +839,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       print_log_msg (1, "\nStart index loading.\n");
       logddl_set_loaddb_file_type (LOADDB_FILE_TYPE_INDEX);
       logddl_set_load_filename (args.index_file.c_str ());
+      /* The flag is only a request; the server ignores it unless the client is a loaddb type.
+       * In SA mode the option is ignored and the ordinary logging build is used. */
+      btree_set_no_logging_index (utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S));
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -850,6 +853,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
 	  logddl_write_end ();
 	  goto error_return;
 	}
+      btree_set_no_logging_index (false);
 
       /* update catalog statistics */
       AU_SAVE_AND_DISABLE (au_save);
