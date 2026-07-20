@@ -4628,7 +4628,7 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
   error = au_check_class_authorization (obj, AU_SELECT);
@@ -4636,7 +4636,7 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_ERRORmf2 (parser, cls, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
 		   "SELECT", db_get_class_name (obj));
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -4688,7 +4688,7 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (error != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
