@@ -390,6 +390,13 @@ namespace cubthread
       {
 	return;
       }
+    bool called_from_worker = worker_pool_arg->is_current_thread_worker ();
+    assert_release_error (!called_from_worker);
+    if (called_from_worker)
+      {
+	// DO NOT untrack or delete a pool that is still executing the caller.
+	return;
+      }
     // remove from m_worker_pools and free worker_pool_arg->get_worker_count thread entries
     worker_pool *base_arg = worker_pool_arg;
     destroy_and_untrack_resource (m_worker_pools, base_arg, worker_pool_arg->get_pool_size ());
