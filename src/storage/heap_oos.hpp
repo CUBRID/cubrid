@@ -77,10 +77,20 @@ extern int heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recde
     HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &oos_payloads, bool *grouped_applied);
 extern void heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads);
 
-/* Insert already-serialized attribute values into the class OOS file. Attribute serialization stays
- * in heap_file.c; OOS lookup, insert-publication reset, and oos_insert_many live in heap_oos.cpp. */
+/* Begin one logical heap-record OOS insert preparation by clearing its OID/LSA publication state.
+ * Resolves the current LOG_TDES before clearing either side, so failure leaves both containers untouched. */
+extern SCAN_CODE heap_oos_begin_insert_publication (THREAD_ENTRY *thread_p);
+
+/* Insert already-serialized attribute values into the class OOS file. Attribute serialization and
+ * the logical-start publication reset stay in heap_file.c; OOS lookup and oos_insert_many live here. */
 extern SCAN_CODE heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
     cubbase::span<oos_insert_request> requests);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+/* One-shot failure seam immediately before the OOS VFID lookup owned by the heap insert wrapper. */
+extern void heap_oos_test_fail_before_vfid_lookup_once ();
+extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
+#endif
 
 /* Eager OOS cleanup for the non-MVCC (!is_mvcc_op) heap delete/update paths. Deletes the OOS
  * records referenced by old_recdes and not referenced by new_recdes (NULL = delete all). */

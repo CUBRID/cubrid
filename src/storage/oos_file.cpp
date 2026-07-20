@@ -92,7 +92,7 @@ static void
 oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid);
 
 static void
-oos_clear_insert_publication_state (THREAD_ENTRY *thread_p);
+oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept;
 
 static auto_unfix_page_ptr
 oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid, VPID &vpid_out);
@@ -161,6 +161,8 @@ struct oos_debug_atomic_counters
 };
 
 static oos_debug_atomic_counters oos_Debug_counters = { };
+static std::atomic<int> oos_Test_fail_insert_many_after_publications { -1 };
+static std::atomic<bool> oos_Test_throw_bad_alloc_on_next_oid_publication { false };
 
 #define OOS_COUNTER_ADD(field, value) \
   do \
@@ -1032,7 +1034,23 @@ oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
     }
   assert (slotid == 0);
 
-  /* Log the header record insertion */
+  /* Log the header record insertion. This is OOS file metadata, not a logical OOS value publication;
+   * keep its RVOOS_INSERT LSA out of the value-publication queue. */
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  const bool restore_oos_lsa_suppression = tdes != NULL && !tdes->oos_suppress_insert_lsa_queueing;
+  if (restore_oos_lsa_suppression)
+    {
+      tdes->oos_suppress_insert_lsa_queueing = true;
+    }
+  scope_exit restore_oos_lsa_queueing ([&] () noexcept
+  {
+    if (restore_oos_lsa_suppression)
+      {
+	tdes->oos_suppress_insert_lsa_queueing = false;
+      }
+  });
+
   LOG_DATA_ADDR log_addr;
   log_addr.vfid = &oos_vfid;
   log_addr.pgptr = hdr_page;
@@ -1103,11 +1121,17 @@ oos_prepend_header (oos_buffer src, const OOS_RECORD_HEADER &oos_header, OOS_REC
 static void
 oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
 {
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (oos_Test_throw_bad_alloc_on_next_oid_publication.exchange (false, std::memory_order_relaxed))
+    {
+      throw std::bad_alloc ();
+    }
+#endif
   thread_p->oos_oids.push_back (oid);
 }
 
 static void
-oos_clear_insert_publication_state (THREAD_ENTRY *thread_p)
+oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept
 {
   thread_p->oos_oids.clear ();
 
@@ -1135,28 +1159,44 @@ oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &o
     }
 
   const int src_len = static_cast<int> (src.size ());
+  scope_exit cleanup_publication_on_error ([&] () noexcept
+  {
+    oos_cleanup_insert_publication_state_on_error (thread_p);
+  });
 
   // TODO: Once the OOS_RECORD_HEADER spec is finalized (first segment header and rest segment header),
   // review whether it is possible to generate the segment headers inside the oos_insert_within_page() and
   // oos_insert_across_pages() functions.
 
-  if (src_len <= oos_get_max_chunk_size_within_page ())
+  try
     {
-      const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
-      err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
-    }
-  else
-    {
-      err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
-    }
+      if (src_len <= oos_get_max_chunk_size_within_page ())
+	{
+	  const OOS_RECORD_HEADER header{src_len, 0, OID_INITIALIZER};
+	  err = oos_insert_within_page (thread_p, oos_vfid, src, header, oid);
+	}
+      else
+	{
+	  err = oos_insert_across_pages (thread_p, oos_vfid, src, oid);
+	}
 
-  if (err == NO_ERROR)
-    {
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+
       oos_publish_oos_oid (thread_p, oid);
     }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      MAX (sizeof (OID), sizeof (LOG_LSA)));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
 
+  cleanup_publication_on_error.release ();
   oos_debug ("inserted to oid={vol=%d,page=%d,slot=%d}", OID_AS_ARGS (&oid));
-  return err;
+  return NO_ERROR;
 }
 
 static int
@@ -1230,55 +1270,88 @@ oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos
 	}
     }
 
-  const int max_chunk_size = oos_get_max_chunk_size_within_page ();
-  const int page_capacity = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
-  const auto required_space = [] (const oos_insert_request &request)
+  scope_exit cleanup_publication_on_error ([&] () noexcept
   {
-    return DB_ALIGN (static_cast<int> (request.src.size ()) + OOS_RECORD_HEADER_SIZE, OOS_ALIGNMENT);
-  };
+    oos_cleanup_insert_publication_state_on_error (thread_p);
+  });
 
-  std::size_t pos = 0;
-  while (pos < requests.size ())
+  try
     {
-      int err;
+      const int max_chunk_size = oos_get_max_chunk_size_within_page ();
+      const int page_capacity = DB_ALIGN_BELOW (spage_max_record_size (), OOS_ALIGNMENT);
+      const auto required_space = [] (const oos_insert_request &request)
+      {
+        return DB_ALIGN (static_cast<int> (request.src.size ()) + OOS_RECORD_HEADER_SIZE, OOS_ALIGNMENT);
+      };
 
-      if (requests[pos].src.size () > (std::size_t) max_chunk_size)
-	{
-	  OID oid;
-	  err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid);
-	  if (err == NO_ERROR)
+      std::size_t pos = 0;
+      std::size_t publication_count = 0;
+      while (pos < requests.size ())
+        {
+          int err;
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+          int fail_after = oos_Test_fail_insert_many_after_publications.load (std::memory_order_relaxed);
+          if (fail_after >= 0 && publication_count >= (std::size_t) fail_after
+	      && oos_Test_fail_insert_many_after_publications.compare_exchange_strong (
+		fail_after, -1, std::memory_order_relaxed))
 	    {
-	      *requests[pos].oid_out = oid;
-	      oos_publish_oos_oid (thread_p, oid);
-	      pos++;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
 	    }
-	}
-      else
-	{
-	  /* Greedy batch: extend while the next single-chunk request still fits the same page. */
-	  int needed_space = required_space (requests[pos]);
-	  std::size_t batch_end = pos + 1;
+#endif
 
-	  assert (needed_space <= page_capacity);
-	  while (batch_end < requests.size () && requests[batch_end].src.size () <= (std::size_t) max_chunk_size
-		 && needed_space + (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]) <= page_capacity)
+          if (requests[pos].src.size () > (std::size_t) max_chunk_size)
 	    {
-	      needed_space += (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]);
-	      batch_end++;
+	      OID oid;
+	      err = oos_insert_across_pages (thread_p, oos_vfid, requests[pos].src, oid);
+	      if (err == NO_ERROR)
+		{
+		  *requests[pos].oid_out = oid;
+		  oos_publish_oos_oid (thread_p, oid);
+		  pos++;
+		  publication_count++;
+		}
+	    }
+          else
+	    {
+	      /* Greedy batch: extend while the next single-chunk request still fits the same page. */
+	      int needed_space = required_space (requests[pos]);
+	      std::size_t batch_end = pos + 1;
+
+	      assert (needed_space <= page_capacity);
+	      while (batch_end < requests.size ()
+		     && requests[batch_end].src.size () <= (std::size_t) max_chunk_size
+		     && needed_space + (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]) <= page_capacity)
+		{
+		  needed_space += (int) SPAGE_SLOT_SIZE + required_space (requests[batch_end]);
+		  batch_end++;
+		}
+
+	      const std::size_t batch_size = batch_end - pos;
+	      err = oos_insert_single_page_batch (thread_p, oos_vfid, requests.subspan (pos, batch_size),
+						  needed_space);
+	      if (err == NO_ERROR)
+		{
+		  pos = batch_end;
+		  publication_count += batch_size;
+		}
 	    }
 
-	  err = oos_insert_single_page_batch (thread_p, oos_vfid, requests.subspan (pos, batch_end - pos),
-					      needed_space);
-	  pos = batch_end;
-	}
-
-      if (err != NO_ERROR)
-	{
-	  oos_clear_insert_publication_state (thread_p);
-	  return err;
-	}
+          if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
+        }
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      MAX (sizeof (OID), sizeof (LOG_LSA)));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
+  cleanup_publication_on_error.release ();
   return NO_ERROR;
 }
 
@@ -2565,6 +2638,25 @@ bridge_oos_debug_counters_get ()
 #undef OOS_DEBUG_COUNTER_LOAD
 
   return counters;
+}
+
+void
+oos_test_fail_insert_many_after_publications (int publication_count)
+{
+  oos_Test_fail_insert_many_after_publications.store (publication_count, std::memory_order_relaxed);
+}
+
+void
+oos_test_throw_bad_alloc_on_next_oid_publication ()
+{
+  oos_Test_throw_bad_alloc_on_next_oid_publication.store (true, std::memory_order_relaxed);
+}
+
+void
+oos_test_disarm_insert_publication_failures ()
+{
+  oos_Test_fail_insert_many_after_publications.store (-1, std::memory_order_relaxed);
+  oos_Test_throw_bad_alloc_on_next_oid_publication.store (false, std::memory_order_relaxed);
 }
 #undef OOS_DEBUG_COUNTER_FIELDS
 #endif

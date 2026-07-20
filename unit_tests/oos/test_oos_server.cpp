@@ -24,6 +24,13 @@
  */
 
 #include "object_representation.h"
+#include "connection_defs.h"
+#include "heap_oos.hpp"
+#include "locator_sr.h"
+#include "log_comm.h"
+#include "scope_exit.hpp"
+#include "server_support.h"
+#include "xserver_interface.h"
 #include "test_oos_server_common.hpp"
 
 #include <vector>
@@ -32,6 +39,591 @@
 int bridge_oos_get_max_chunk_size_within_page ();
 void bridge_oos_debug_counters_reset ();
 oos_debug_counters bridge_oos_debug_counters_get ();
+void bridge_heap_attrinfo_fail_after_oos_publication_reset_once ();
+void bridge_heap_attrinfo_disarm_publication_reset_failure ();
+SCAN_CODE bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY *thread_p, const OID *class_oid);
+int bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *recdes);
+
+static std::string make_filled_payload (int size, char ch);
+static void clear_oos_insert_publication_state_for_test ();
+static void build_insert_requests (std::vector<std::string> &payloads, std::vector<OID> &oids,
+			   std::vector<oos_insert_request> &requests);
+
+static LOG_TDES *
+get_current_tdes ()
+{
+  return LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+}
+
+static OID
+make_test_oid (VOLID volid, PAGEID pageid, PGSLOTID slotid)
+{
+  OID oid = OID_INITIALIZER;
+  oid.volid = volid;
+  oid.pageid = pageid;
+  oid.slotid = slotid;
+  return oid;
+}
+
+static void
+seed_oos_insert_publication_state (const OID &oid, const LOG_LSA &lsa)
+{
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+
+  thread_p->oos_oids.clear ();
+  tdes->oos_insert_lsa_queue.clear ();
+  thread_p->oos_oids.push_back (oid);
+  tdes->oos_insert_lsa_queue.push (lsa);
+}
+
+static void
+assert_oos_insert_publication_state (const OID &oid, const LOG_LSA &lsa)
+{
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  ASSERT_EQ (thread_p->oos_oids.size (), 1U);
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oid));
+  ASSERT_EQ (tdes->oos_insert_lsa_queue.size (), 1U);
+  EXPECT_TRUE (LSA_EQ (&tdes->oos_insert_lsa_queue.front (), &lsa));
+}
+
+static void
+assert_oos_insert_publication_state_empty ()
+{
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  EXPECT_TRUE (thread_p->oos_oids.empty ());
+  EXPECT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
+}
+
+static OID
+find_db_user_class_oid ()
+{
+  OID class_oid = OID_INITIALIZER;
+  EXPECT_EQ (xlocator_find_class_oid (thread_p, "_db_user", &class_oid, NULL_LOCK), LC_CLASSNAME_EXIST);
+  EXPECT_FALSE (OID_ISNULL (&class_oid));
+  return class_oid;
+}
+
+static int
+build_replicated_heap_recdes (const OID &class_oid, const std::vector<OID> &placeholder_oids, RECDES &recdes)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  const int n_variables = attr_info.last_classrepr->n_variable;
+  heap_attrinfo_end (thread_p, &attr_info);
+  if (n_variables < (int) placeholder_oids.size ())
+    {
+      return ER_FAILED;
+    }
+
+  const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  const int vot_entries = n_variables + 1;
+  const int vot_bytes = vot_entries * OR_SHORT_SIZE;
+  const int total_size = header_size + vot_bytes + (int) placeholder_oids.size () * OR_OOS_INLINE_SIZE;
+  error = recdes_allocate_data_area (&recdes, total_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  recdes.type = REC_HOME;
+  recdes.length = total_size;
+  std::memset (recdes.data, 0, total_size);
+  OR_PUT_INT (recdes.data + OR_REP_OFFSET,
+	      (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_2BYTE);
+
+  char *vot = recdes.data + header_size;
+  for (int i = 0; i <= n_variables; i++)
+    {
+      const int value_count = i < (int) placeholder_oids.size () ? i : (int) placeholder_oids.size ();
+      int offset = vot_bytes + value_count * OR_OOS_INLINE_SIZE;
+      if (i < (int) placeholder_oids.size ())
+	{
+	  offset |= OR_VAR_BIT_OOS;
+	}
+      if (i == n_variables)
+	{
+	  offset |= OR_VAR_BIT_LAST_ELEMENT;
+	}
+      OR_PUT_SHORT (vot + i * OR_SHORT_SIZE, offset);
+    }
+
+  char *inline_data = vot + vot_bytes;
+  for (std::size_t i = 0; i < placeholder_oids.size (); i++)
+    {
+      OR_PUT_OID (inline_data + i * OR_OOS_INLINE_SIZE, &placeholder_oids[i]);
+      INT64 length = 1000 + (INT64) i;
+      OR_PUT_BIGINT (inline_data + i * OR_OOS_INLINE_SIZE + OR_OID_SIZE, &length);
+    }
+  return NO_ERROR;
+}
+
+static int
+get_class_variable_count (const OID &class_oid)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return -1;
+    }
+  const int n_variables = attr_info.last_classrepr->n_variable;
+  heap_attrinfo_end (thread_p, &attr_info);
+  return n_variables;
+}
+
+static OID
+read_replicated_heap_oos_oid (RECDES &recdes, int n_variables, int index)
+{
+  const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
+  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  OID oid = OID_INITIALIZER;
+  OR_GET_OID (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE, &oid);
+  return oid;
+}
+
+static int
+build_oos_replication_recdes (const std::string &payload, RECDES &recdes)
+{
+  const int total_size = OOS_RECORD_HEADER_SIZE + (int) payload.size ();
+  int error = recdes_allocate_data_area (&recdes, total_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  recdes.type = REC_HOME;
+  recdes.length = total_size;
+  const OOS_RECORD_HEADER header { (int) payload.size (), 0, OID_INITIALIZER };
+  std::memcpy (recdes.data, &header, OOS_RECORD_HEADER_SIZE);
+  std::memcpy (recdes.data + OOS_RECORD_HEADER_SIZE, payload.data (), payload.size ());
+  return NO_ERROR;
+}
+
+class replication_tracking_guard
+{
+  public:
+    replication_tracking_guard ()
+      : m_old_ha_mode (prm_get_integer_value (PRM_ID_HA_MODE))
+      , m_old_ha_state (css_ha_server_state ())
+      , m_error (NO_ERROR)
+    {
+      prm_set_integer_value (PRM_ID_HA_MODE, HA_MODE_FAIL_BACK);
+      m_error = css_change_ha_server_state (thread_p, HA_SERVER_STATE_ACTIVE, true, 0, true);
+      er_clear ();
+    }
+
+    ~replication_tracking_guard ()
+    {
+      (void) css_change_ha_server_state (thread_p, m_old_ha_state, true, 0, true);
+      prm_set_integer_value (PRM_ID_HA_SERVER_STATE, m_old_ha_state);
+      prm_set_integer_value (PRM_ID_HA_MODE, m_old_ha_mode);
+      er_clear ();
+    }
+
+    int error () const
+    {
+      return m_error;
+    }
+
+  private:
+    int m_old_ha_mode;
+    HA_SERVER_STATE m_old_ha_state;
+    int m_error;
+};
+
+// ============================================================================
+// TC: OOS insert publication-state lifetime (CBRD-27006)
+// ============================================================================
+TEST (OosServerTest, OosPublicationBeginClearsOidAndLsaTogether)
+{
+  const OID stale_oid = make_test_oid (1, 987654, 23);
+  const LOG_LSA stale_lsa { 876543, 123 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  ASSERT_EQ (heap_oos_begin_insert_publication (thread_p), S_SUCCESS);
+  assert_oos_insert_publication_state_empty ();
+}
+
+TEST (OosServerTest, OosPublicationBeginMissingTdesLeavesBothSidesUntouched)
+{
+  const OID stale_oid = make_test_oid (1, 987655, 24);
+  const LOG_LSA stale_lsa { 876544, 124 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  const int saved_tran_index = thread_p->tran_index;
+  scope_exit restore_tran_index ([&] () noexcept
+  {
+    thread_p->tran_index = saved_tran_index;
+  });
+
+  thread_p->tran_index = NULL_TRAN_INDEX;
+  er_clear ();
+  const SCAN_CODE result = heap_oos_begin_insert_publication (thread_p);
+  const int error = er_errid ();
+  thread_p->tran_index = saved_tran_index;
+  restore_tran_index.release ();
+
+  EXPECT_EQ (result, S_ERROR);
+  EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
+  assert_oos_insert_publication_state (stale_oid, stale_lsa);
+  er_clear ();
+}
+
+TEST (OosServerTest, OosLogicalPreparationFailureSeesCleanPublicationState)
+{
+  const OID stale_oid = make_test_oid (1, 987656, 25);
+  const LOG_LSA stale_lsa { 876545, 125 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  bridge_heap_attrinfo_fail_after_oos_publication_reset_once ();
+  scope_exit disarm ([&] () noexcept
+  {
+    bridge_heap_attrinfo_disarm_publication_reset_failure ();
+  });
+
+  OID invalid_class_oid = make_test_oid (1, 999999, 1);
+  EXPECT_EQ (bridge_heap_attrinfo_insert_to_oos (thread_p, &invalid_class_oid), S_ERROR);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
+
+TEST (OosServerTest, OosClassLookupFailureSeesCleanPublicationState)
+{
+  const OID stale_oid = make_test_oid (1, 987657, 26);
+  const LOG_LSA stale_lsa { 876546, 126 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  OID invalid_class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&invalid_class_oid));
+  invalid_class_oid.slotid = SHRT_MAX;
+  EXPECT_EQ (bridge_heap_attrinfo_insert_to_oos (thread_p, &invalid_class_oid), S_ERROR);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
+
+TEST (OosServerTest, OosVfidLookupFailureSeesCleanPublicationState)
+{
+  const OID stale_oid = make_test_oid (1, 987658, 27);
+  const LOG_LSA stale_lsa { 876547, 127 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  heap_oos_test_fail_before_vfid_lookup_once ();
+  scope_exit disarm ([&] () noexcept
+  {
+    heap_oos_test_disarm_fail_before_vfid_lookup ();
+  });
+
+  EXPECT_EQ (bridge_heap_attrinfo_insert_to_oos (thread_p, &class_oid), S_ERROR);
+  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
+
+TEST (OosServerTest, OosInsertManyPartialPublicationFailureClearsBothSides)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  LOG_LSA topop_lsa;
+  ASSERT_EQ (xtran_server_start_topop (thread_p, &topop_lsa), NO_ERROR);
+  scope_exit abort_topop ([&] () noexcept
+  {
+    (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+  });
+
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (1000, 'p'),
+    make_filled_payload (max_chunk_size + 100, 'q')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+  clear_oos_insert_publication_state_for_test ();
+
+  oos_test_fail_insert_many_after_publications (1);
+  scope_exit disarm ([&] () noexcept
+  {
+    oos_test_disarm_insert_publication_failures ();
+  });
+
+  EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
+	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), ER_GENERIC_ERROR);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
+
+TEST (OosServerTest, OosInsertManyPublicationAllocationFailureIsConvertedAndCleared)
+{
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  LOG_LSA topop_lsa;
+  ASSERT_EQ (xtran_server_start_topop (thread_p, &topop_lsa), NO_ERROR);
+  scope_exit abort_topop ([&] () noexcept
+  {
+    (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+  });
+
+  std::vector<std::string> payloads = { make_filled_payload (1000, 'a') };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+  clear_oos_insert_publication_state_for_test ();
+
+  oos_test_throw_bad_alloc_on_next_oid_publication ();
+  scope_exit disarm ([&] () noexcept
+  {
+    oos_test_disarm_insert_publication_failures ();
+  });
+
+  EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
+	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())),
+	     ER_OUT_OF_VIRTUAL_MEMORY);
+  EXPECT_EQ (er_errid (), ER_OUT_OF_VIRTUAL_MEMORY);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
+
+TEST (OosServerTest, OosInsertManyValidationFailureDoesNotClaimPublicationStart)
+{
+  const OID stale_oid = make_test_oid (1, 987659, 28);
+  const LOG_LSA stale_lsa { 876548, 128 };
+  seed_oos_insert_publication_state (stale_oid, stale_lsa);
+
+  OID output_oid = OID_INITIALIZER;
+  VFID invalid_vfid = VFID_INITIALIZER;
+  oos_insert_request invalid_request = { oos_buffer (nullptr, 0), &output_oid };
+  EXPECT_EQ (oos_insert_many (thread_p, invalid_vfid,
+	      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
+  assert_oos_insert_publication_state (stale_oid, stale_lsa);
+  er_clear ();
+}
+
+TEST (OosServerTest, OosSuccessfulPublicationWithoutReplicationTrackingKeepsOidOnly)
+{
+  ASSERT_FALSE (log_does_allow_replication ());
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (900, 'x'),
+    make_filled_payload (1000, 'y')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+  clear_oos_insert_publication_state_for_test ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  ASSERT_EQ (thread_p->oos_oids.size (), 2U);
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[1], &oids[1]));
+  EXPECT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
+}
+
+TEST (OosServerTest, OosTrackedSingleChunkBatchKeepsPairedPublication)
+{
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (900, 'i'),
+    make_filled_payload (1000, 'j')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+  clear_oos_insert_publication_state_for_test ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  ASSERT_EQ (thread_p->oos_oids.size (), 2U);
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[1], &oids[1]));
+  EXPECT_EQ (tdes->oos_insert_lsa_queue.size (), 2U);
+  EXPECT_FALSE (LSA_ISNULL (&tdes->oos_insert_lsa_queue.front ()));
+}
+
+TEST (OosServerTest, OosTrackedMixedBatchPreservesDummyAndHeadPairing)
+{
+  replication_tracking_guard tracking;
+  ASSERT_EQ (tracking.error (), NO_ERROR);
+  ASSERT_TRUE (log_does_allow_replication ());
+
+  VFID oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, oos_vfid), NO_ERROR);
+  const int max_chunk_size = bridge_oos_get_max_chunk_size_within_page ();
+  std::vector<std::string> payloads =
+  {
+    make_filled_payload (900, 'k'),
+    make_filled_payload (max_chunk_size + 100, 'l'),
+    make_filled_payload (1000, 'm')
+  };
+  std::vector<OID> oids;
+  std::vector<oos_insert_request> requests;
+  build_insert_requests (payloads, oids, requests);
+  clear_oos_insert_publication_state_for_test ();
+
+  ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
+	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  ASSERT_EQ (thread_p->oos_oids.size (), 4U);
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[0], &oids[0]));
+  EXPECT_TRUE (OID_ISNULL (&thread_p->oos_oids[1]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[2], &oids[1]));
+  EXPECT_TRUE (OID_EQ (&thread_p->oos_oids[3], &oids[2]));
+  EXPECT_EQ (tdes->oos_insert_lsa_queue.size (), 4U);
+  EXPECT_FALSE (LSA_ISNULL (&tdes->oos_insert_lsa_queue.front ()));
+}
+
+TEST (OosServerTest, ReplicaOosItemsAccumulateAndFixupConsumesInOrder)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+
+  LOG_LSA topop_lsa;
+  ASSERT_EQ (xtran_server_start_topop (thread_p, &topop_lsa), NO_ERROR);
+  scope_exit abort_topop ([&] () noexcept
+  {
+    (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+  });
+
+  RECDES oos_recdes1 = RECDES_INITIALIZER;
+  RECDES oos_recdes2 = RECDES_INITIALIZER;
+  ASSERT_EQ (build_oos_replication_recdes (make_filled_payload (1000, 'r'), oos_recdes1), NO_ERROR);
+  ASSERT_EQ (build_oos_replication_recdes (make_filled_payload (1100, 's'), oos_recdes2), NO_ERROR);
+  scope_exit free_oos_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&oos_recdes1);
+    recdes_free_data_area (&oos_recdes2);
+  });
+
+  clear_oos_insert_publication_state_for_test ();
+  OID mutable_class_oid = class_oid;
+  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes1), NO_ERROR);
+  ASSERT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &oos_recdes2), NO_ERROR);
+  ASSERT_EQ (thread_p->oos_oids.size (), 2U);
+  const OID slave_oid1 = thread_p->oos_oids[0];
+  const OID slave_oid2 = thread_p->oos_oids[1];
+
+  const OID placeholder1 = make_test_oid (2, 765431, 31);
+  const OID placeholder2 = make_test_oid (2, 765432, 32);
+  RECDES heap_recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { placeholder1, placeholder2 }, heap_recdes), NO_ERROR);
+  scope_exit free_heap_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&heap_recdes);
+  });
+
+  ASSERT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &heap_recdes), NO_ERROR);
+  const int n_variables = get_class_variable_count (class_oid);
+  ASSERT_GE (n_variables, 2);
+  const OID fixed_oid1 = read_replicated_heap_oos_oid (heap_recdes, n_variables, 0);
+  const OID fixed_oid2 = read_replicated_heap_oos_oid (heap_recdes, n_variables, 1);
+  EXPECT_TRUE (OID_EQ (&fixed_oid1, &slave_oid1));
+  EXPECT_TRUE (OID_EQ (&fixed_oid2, &slave_oid2));
+}
+
+TEST (OosServerTest, ReplicaFixupRejectsInsufficientOids)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  const OID accumulated_oid = make_test_oid (1, 765433, 33);
+  thread_p->oos_oids = { accumulated_oid };
+
+  const OID placeholder1 = make_test_oid (2, 765434, 34);
+  const OID placeholder2 = make_test_oid (2, 765435, 35);
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { placeholder1, placeholder2 }, recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&recdes);
+  });
+
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
+  er_clear ();
+}
+
+TEST (OosServerTest, ReplicaFixupRejectsExtraOids)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+  const OID accumulated_oid1 = make_test_oid (1, 765436, 36);
+  const OID accumulated_oid2 = make_test_oid (1, 765437, 37);
+  thread_p->oos_oids = { accumulated_oid1, accumulated_oid2 };
+
+  const OID placeholder = make_test_oid (2, 765438, 38);
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_replicated_heap_recdes (class_oid, { placeholder }, recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&recdes);
+  });
+
+  EXPECT_EQ (bridge_locator_fixup_oos_oids_in_recdes (thread_p, &class_oid, &recdes), ER_HA_GENERIC_ERROR);
+  EXPECT_EQ (er_errid (), ER_HA_GENERIC_ERROR);
+  er_clear ();
+}
+
+TEST (OosServerTest, ReplicaScalarPublicationAllocationFailureInvalidatesAccumulator)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+
+  LOG_LSA topop_lsa;
+  ASSERT_EQ (xtran_server_start_topop (thread_p, &topop_lsa), NO_ERROR);
+  scope_exit abort_topop ([&] () noexcept
+  {
+    (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &topop_lsa);
+  });
+
+  RECDES recdes = RECDES_INITIALIZER;
+  ASSERT_EQ (build_oos_replication_recdes (make_filled_payload (1000, 't'), recdes), NO_ERROR);
+  scope_exit free_recdes ([&] () noexcept
+  {
+    recdes_free_data_area (&recdes);
+  });
+
+  thread_p->oos_oids = { make_test_oid (1, 765439, 39) };
+  LOG_TDES *tdes = get_current_tdes ();
+  ASSERT_NE (tdes, nullptr);
+  tdes->oos_insert_lsa_queue.clear ();
+  oos_test_throw_bad_alloc_on_next_oid_publication ();
+  scope_exit disarm ([&] () noexcept
+  {
+    oos_test_disarm_insert_publication_failures ();
+  });
+
+  OID mutable_class_oid = class_oid;
+  EXPECT_EQ (locator_oos_insert_force (thread_p, &mutable_class_oid, &recdes), ER_OUT_OF_VIRTUAL_MEMORY);
+  EXPECT_EQ (er_errid (), ER_OUT_OF_VIRTUAL_MEMORY);
+  assert_oos_insert_publication_state_empty ();
+  er_clear ();
+}
 
 static std::string
 make_filled_payload (int size, char ch)

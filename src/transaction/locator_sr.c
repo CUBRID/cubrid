@@ -5290,8 +5290,6 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
   HFID oos_hfid = HFID_INITIALIZER;
   VFID oos_vfid = VFID_INITIALIZER;
   OID oos_oid = OID_INITIALIZER;
-  LOG_TDES *tdes = NULL;
-  int tran_index = 0;
 
   error_code = heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL);
   if (error_code != NO_ERROR)
@@ -5315,19 +5313,6 @@ locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * rec
       error_code = er_errid ();
       return error_code;
     }
-
-  /* Find transaction descriptor for current logging transaction */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return S_ERROR;
-    }
-
-  /* init oos tracking info */
-  tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.clear ();
 
   /* Skip the on-log OOS header (oos_insert prepends its own). Reject corrupt
    * records that would underflow the subtraction below. */
@@ -7101,7 +7086,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
-	  if (obj->operation == LC_FLUSH_INSERT && heap_recdes_contains_oos (&recdes))
+	  if (obj->operation != LC_FLUSH_INSERT_OOS
+	      && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
+	      && heap_recdes_contains_oos (&recdes))
 	    {
 	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
 	      if (error_code != NO_ERROR)
@@ -7174,6 +7161,13 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       if (error_code != NO_ERROR)
 	{
+	  if (obj->operation == LC_FLUSH_INSERT_OOS)
+	    {
+	      /* One failed OOS item invalidates the pending OOS-plus-heap-row apply group. */
+	      thread_p->oos_oids.clear ();
+	      goto exit_on_error;
+	    }
+
 	  assert (er_errid () != NO_ERROR);
 	  locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
@@ -7210,6 +7204,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
 exit_on_error:
   assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
+  /* Never carry a partial replication-apply OID group beyond an aborted force area. */
+  thread_p->oos_oids.clear ();
 
   if (DB_IS_NULL (&key_value) == false)
     {
@@ -14232,17 +14229,27 @@ locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid
       or_put_oid (&buf, &oos_oid);
 
       oos_oid_count++;
+    }
 
-      if (oos_oid_count >= (int) thread_p->oos_oids.size ())
-	{
-	  goto end;
-	}
+  if (oos_oid_count != (int) thread_p->oos_oids.size ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "too many OOS OIDs while applying replicated heap record");
+      error = ER_HA_GENERIC_ERROR;
     }
 
 end:
   heap_attrinfo_end (thread_p, &attr_info);
   return error;
 }
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+{
+  return locator_fixup_oos_oids_in_recdes (thread_p, class_oid, recdes);
+}
+#endif
 
 /*
  * xlob_create_dir () - create lob dir

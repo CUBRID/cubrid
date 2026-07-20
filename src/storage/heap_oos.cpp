@@ -37,6 +37,9 @@
 #include "porting.h"
 #include "storage_common.h"
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+#include <atomic>
+#endif
 #include <cassert>
 #include <cstring>
 #include <new>
@@ -62,6 +65,10 @@ struct HEAP_OOS_EXPAND_STATE
   std::vector<int> vot_entries;
   std::vector<std::vector<char>> oos_payloads;
 };
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+static std::atomic<bool> heap_Oos_test_fail_before_vfid_lookup { false };
+#endif
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
@@ -588,12 +595,34 @@ heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads)
 }
 
 /*
+ * heap_oos_begin_insert_publication () - Start one logical heap-record OOS insert preparation.
+ *
+ * Resolve the transaction descriptor before clearing either publication container. This makes the
+ * reset all-or-nothing: a missing descriptor preserves both containers and returns a fatal error.
+ */
+SCAN_CODE
+heap_oos_begin_insert_publication (THREAD_ENTRY *thread_p)
+{
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  thread_p->oos_oids.clear ();
+  tdes->oos_insert_lsa_queue.clear ();
+  return S_SUCCESS;
+}
+
+/*
  * heap_oos_insert_serialized_values () - Insert already-serialized attribute payloads into
  *   the class OOS file.
  *
  * heap_file.c keeps DB_VALUE-to-RECDES serialization, including the BLOB/CLOB ELO-locator copy
- * step. This helper owns the OOS side of the write: class OOS file lookup, insert-publication state
- * reset, and the batched OOS API call.
+ * step. The logical heap caller owns the publication-state reset before serialization. This helper
+ * owns class OOS file lookup and the batched OOS API call.
  */
 SCAN_CODE
 heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
@@ -601,28 +630,22 @@ heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
 {
   HFID oos_hfid;
   VFID oos_vfid;
-  LOG_TDES *tdes;
-  int tran_index;
 
   if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
     {
       return S_ERROR;
     }
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (heap_Oos_test_fail_before_vfid_lookup.exchange (false, std::memory_order_relaxed))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
+#endif
   if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
     {
       return S_ERROR;
     }
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
-      return S_ERROR;
-    }
-
-  tdes->oos_insert_lsa_queue.clear ();
-  thread_p->oos_oids.clear ();
 
   if (!requests.empty () && oos_insert_many (thread_p, oos_vfid, requests) != NO_ERROR)
     {
@@ -631,6 +654,20 @@ heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
 
   return S_SUCCESS;
 }
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+void
+heap_oos_test_fail_before_vfid_lookup_once ()
+{
+  heap_Oos_test_fail_before_vfid_lookup.store (true, std::memory_order_relaxed);
+}
+
+void
+heap_oos_test_disarm_fail_before_vfid_lookup ()
+{
+  heap_Oos_test_fail_before_vfid_lookup.store (false, std::memory_order_relaxed);
+}
+#endif
 
 /*
  * heap_oos_delete_unreferenced () - Eagerly delete the OOS records referenced by old_recdes and

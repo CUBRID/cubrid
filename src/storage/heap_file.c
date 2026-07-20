@@ -82,6 +82,9 @@
 #include "tde.h"
 
 #include <algorithm>
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+#include <atomic>
+#endif
 #include <new>
 #include <set>
 #include <utility>
@@ -12709,12 +12712,17 @@ for (RECDES & payload:*payloads)
   payloads->clear ();
 }
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
+#endif
+
 /*
  * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
  *
  * Serialization stays in heap_file.c because it shares DB_VALUE-to-RECDES conversion, including
- * the BLOB/CLOB ELO-locator copy step, with the inline record writer. heap_oos.cpp owns OOS file
- * lookup, publication-state reset, and the batched OOS insert call.
+ * the BLOB/CLOB ELO-locator copy step, with the inline record writer. This logical heap boundary
+ * begins OOS insert publication before any fallible preparation; heap_oos.cpp owns the paired-reset
+ * internals, OOS file lookup, and the batched OOS insert call.
  */
 // *INDENT-OFF*
 static SCAN_CODE
@@ -12727,12 +12735,25 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   std::vector < oos_insert_request > requests;
   SCAN_CODE scan_code = S_ERROR;
 
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      return S_ERROR;
+    }
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (heap_Test_fail_after_oos_publication_reset.exchange (false, std::memory_order_relaxed))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
+#endif
+
   try
   {
     payloads.reserve (attr_info->num_values);
     requests.reserve (attr_info->num_values);
   }
-  catch (std::bad_alloc &)
+  catch (const std::bad_alloc &)
   {
     er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	    (size_t) attr_info->num_values * (sizeof (RECDES) + sizeof (oos_insert_request)));
@@ -28191,5 +28212,28 @@ bridge_heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_
 				       bool * oos_owned_buffer)
 {
   return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
+}
+
+void
+bridge_heap_attrinfo_fail_after_oos_publication_reset_once ()
+{
+  heap_Test_fail_after_oos_publication_reset.store (true, std::memory_order_relaxed);
+}
+
+void
+bridge_heap_attrinfo_disarm_publication_reset_failure ()
+{
+  heap_Test_fail_after_oos_publication_reset.store (false, std::memory_order_relaxed);
+}
+
+SCAN_CODE
+bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_CACHE_ATTRINFO attr_info = { };
+  std::vector<heap_oos_column_plan> oos_plan;
+
+  COPY_OID (&attr_info.class_oid, class_oid);
+  attr_info.num_values = 0;
+  return heap_attrinfo_insert_to_oos (thread_p, &attr_info, LOB_FLAG_INCLUDE_LOB, &oos_plan);
 }
 #endif /* CUBRID_UNIT_TEST_ENABLED */

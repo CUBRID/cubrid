@@ -151,6 +151,11 @@ struct oos_debug_counters
   unsigned long long read_many_grouped_head_pages;
   unsigned long long read_values_per_fixed_page;
 };
+
+/* One-shot publication failure seams used by focused SERVER_MODE tests. */
+extern void oos_test_fail_insert_many_after_publications (int publication_count);
+extern void oos_test_throw_bad_alloc_on_next_oid_publication ();
+extern void oos_test_disarm_insert_publication_failures ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */
