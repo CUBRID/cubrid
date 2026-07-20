@@ -366,13 +366,7 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
     {"Num_variable_width_attrs", "int"},
     {"Num_shared_attrs", "int"},
     {"Num_class_attrs", "int"},
-    {"Total_size_fixed_width_attrs", "int"},
-    {"Has_oos_file", "int"},
-    {"Oos_num_user_pages", "int"},
-    {"Oos_num_recs", "int"},
-    {"Oos_recs_sumlen", "bigint"},
-    {"Oos_physical_bytes", "bigint"},
-    {"Oos_free_bytes", "bigint"}
+    {"Total_size_fixed_width_attrs", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -413,13 +407,7 @@ metadata_of_heap_oos (SHOW_ONLY_ALL flag)
     {"Oos_num_recs", "int"},
     {"Oos_recs_sumlen", "bigint"},
     {"Oos_physical_bytes", "bigint"},
-    {"Oos_free_bytes", "bigint"},
-    {"Oos_num_pages_free_0_25", "int"},
-    {"Oos_num_pages_free_25_50", "int"},
-    {"Oos_num_pages_free_50_75", "int"},
-    {"Oos_num_pages_free_75_100", "int"},
-    {"Oos_num_empty_pages", "int"},
-    {"Oos_num_pages_skipped", "int"}
+    {"Oos_unused_bytes", "bigint"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

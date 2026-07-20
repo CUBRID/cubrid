@@ -20,6 +20,8 @@
  * test_oos_sql_show.cpp - SHOW HEAP OOS diagnostic SQL tests (CBRD-26972)
  */
 
+#include <algorithm>
+
 #include "test_oos_sql_common.hpp"
 
 namespace
@@ -39,47 +41,11 @@ namespace
     COL_OOS_NUM_RECS,
     COL_OOS_RECS_SUMLEN,
     COL_OOS_PHYSICAL_BYTES,
-    COL_OOS_FREE_BYTES,
-    COL_OOS_NUM_PAGES_FREE_0_25,
-    COL_OOS_NUM_PAGES_FREE_25_50,
-    COL_OOS_NUM_PAGES_FREE_50_75,
-    COL_OOS_NUM_PAGES_FREE_75_100,
-    COL_OOS_NUM_EMPTY_PAGES,
-    COL_OOS_NUM_PAGES_SKIPPED
-  };
-
-  enum show_heap_capacity_column
-  {
-    CAP_COL_TABLE_NAME = 0,
-    CAP_COL_CLASS_OID,
-    CAP_COL_VOLUME_ID,
-    CAP_COL_FILE_ID,
-    CAP_COL_HEADER_PAGE_ID,
-    CAP_COL_NUM_RECS,
-    CAP_COL_NUM_RELOCATED_RECS,
-    CAP_COL_NUM_OVERFLOWED_RECS,
-    CAP_COL_NUM_PAGES,
-    CAP_COL_AVG_REC_LEN,
-    CAP_COL_AVG_FREE_SPACE_PER_PAGE,
-    CAP_COL_AVG_FREE_SPACE_PER_PAGE_EXCEPT_LAST_PAGE,
-    CAP_COL_AVG_OVERHEAD_PER_PAGE,
-    CAP_COL_REPR_ID,
-    CAP_COL_NUM_TOTAL_ATTRS,
-    CAP_COL_NUM_FIXED_WIDTH_ATTRS,
-    CAP_COL_NUM_VARIABLE_WIDTH_ATTRS,
-    CAP_COL_NUM_SHARED_ATTRS,
-    CAP_COL_NUM_CLASS_ATTRS,
-    CAP_COL_TOTAL_SIZE_FIXED_WIDTH_ATTRS,
-    CAP_COL_HAS_OOS_FILE,
-    CAP_COL_OOS_NUM_USER_PAGES,
-    CAP_COL_OOS_NUM_RECS,
-    CAP_COL_OOS_RECS_SUMLEN,
-    CAP_COL_OOS_PHYSICAL_BYTES,
-    CAP_COL_OOS_FREE_BYTES
+    COL_OOS_UNUSED_BYTES
   };
 
   static int
-  show_heap_query (const char *sql, DB_QUERY_RESULT **result)
+  show_heap_oos_query (const char *sql, DB_QUERY_RESULT **result)
   {
     int rc = exec_sql_with_result (sql, result);
     if (rc < 0)
@@ -219,7 +185,7 @@ TEST_F (OosSqlShow, HeapWithoutOosReportsZeroStats)
   db_commit_transaction ();
 
   DB_QUERY_RESULT *result = nullptr;
-  rc = show_heap_query ("SHOW HEAP OOS OF t_oos_show_no", &result);
+  rc = show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_no", &result);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_NE (result, nullptr);
 
@@ -255,57 +221,7 @@ TEST_F (OosSqlShow, HeapWithoutOosReportsZeroStats)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (bigint_val, 0);
 
-  rc = get_bigint_column (result, COL_OOS_FREE_BYTES, &bigint_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bigint_val, 0);
-
-  for (int column = COL_OOS_NUM_PAGES_FREE_0_25; column <= COL_OOS_NUM_PAGES_SKIPPED; column++)
-    {
-      rc = get_int_column (result, column, &int_val);
-      ASSERT_EQ (rc, NO_ERROR);
-      EXPECT_EQ (int_val, 0);
-    }
-
-  db_query_end (result);
-}
-
-TEST_F (OosSqlShow, HeapCapacityWithoutOosReportsZeroSummary)
-{
-  int rc = exec_sql ("CREATE TABLE t_oos_show_no (id INT PRIMARY KEY, data_col INT)");
-  ASSERT_GE (rc, 0);
-  rc = exec_sql ("INSERT INTO t_oos_show_no VALUES (1, 10)");
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-
-  DB_QUERY_RESULT *result = nullptr;
-  rc = show_heap_query ("SHOW HEAP CAPACITY OF t_oos_show_no", &result);
-  ASSERT_EQ (rc, NO_ERROR);
-  ASSERT_NE (result, nullptr);
-
-  int int_val = -1;
-  DB_BIGINT bigint_val = -1;
-
-  rc = get_int_column (result, CAP_COL_HAS_OOS_FILE, &int_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (int_val, 0);
-
-  rc = get_int_column (result, CAP_COL_OOS_NUM_USER_PAGES, &int_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (int_val, 0);
-
-  rc = get_int_column (result, CAP_COL_OOS_NUM_RECS, &int_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (int_val, 0);
-
-  rc = get_bigint_column (result, CAP_COL_OOS_RECS_SUMLEN, &bigint_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bigint_val, 0);
-
-  rc = get_bigint_column (result, CAP_COL_OOS_PHYSICAL_BYTES, &bigint_val);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (bigint_val, 0);
-
-  rc = get_bigint_column (result, CAP_COL_OOS_FREE_BYTES, &bigint_val);
+  rc = get_bigint_column (result, COL_OOS_UNUSED_BYTES, &bigint_val);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (bigint_val, 0);
 
@@ -321,7 +237,7 @@ TEST_F (OosSqlShow, HeapWithOosReportsPositiveStats)
   db_commit_transaction ();
 
   DB_QUERY_RESULT *result = nullptr;
-  rc = show_heap_query ("SHOW HEAP OOS OF t_oos_show_yes", &result);
+  rc = show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &result);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_NE (result, nullptr);
 
@@ -331,7 +247,7 @@ TEST_F (OosSqlShow, HeapWithOosReportsPositiveStats)
   int num_recs = 0;
   DB_BIGINT recs_sumlen = 0;
   DB_BIGINT physical_bytes = 0;
-  DB_BIGINT free_bytes = 0;
+  DB_BIGINT unused_bytes = 0;
   bool is_null = true;
 
   rc = get_int_column (result, COL_HAS_OOS_FILE, &has_oos);
@@ -366,121 +282,11 @@ TEST_F (OosSqlShow, HeapWithOosReportsPositiveStats)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (physical_bytes, (DB_BIGINT) num_pages * (DB_BIGINT) page_size);
 
-  rc = get_bigint_column (result, COL_OOS_FREE_BYTES, &free_bytes);
+  rc = get_bigint_column (result, COL_OOS_UNUSED_BYTES, &unused_bytes);
   ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (free_bytes, 0);
-  EXPECT_LT (free_bytes, physical_bytes - recs_sumlen);
-
-  int pages_free_0_25 = 0;
-  int pages_free_25_50 = 0;
-  int pages_free_50_75 = 0;
-  int pages_free_75_100 = 0;
-  int empty_pages = 0;
-  int skipped_pages = 0;
-
-  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_0_25, &pages_free_0_25);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_25_50, &pages_free_25_50);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_50_75, &pages_free_50_75);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (result, COL_OOS_NUM_PAGES_FREE_75_100, &pages_free_75_100);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (result, COL_OOS_NUM_EMPTY_PAGES, &empty_pages);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (result, COL_OOS_NUM_PAGES_SKIPPED, &skipped_pages);
-  ASSERT_EQ (rc, NO_ERROR);
-
-  EXPECT_EQ (pages_free_0_25, 0);
-  EXPECT_EQ (pages_free_25_50, 1);
-  EXPECT_EQ (pages_free_50_75, 0);
-  EXPECT_EQ (pages_free_75_100, 0);
-  EXPECT_EQ (empty_pages, 0);
-  EXPECT_EQ (skipped_pages, 0);
-  EXPECT_EQ (pages_free_0_25 + pages_free_25_50 + pages_free_50_75 + pages_free_75_100 + empty_pages,
-	     num_pages - 1);
+  EXPECT_EQ (unused_bytes, std::max ((DB_BIGINT) 0, physical_bytes - recs_sumlen));
 
   db_query_end (result);
-}
-
-TEST_F (OosSqlShow, HeapCapacityWithOosReportsSummary)
-{
-  int rc = exec_sql ("CREATE TABLE t_oos_show_yes (id INT PRIMARY KEY, data_col BIT VARYING)");
-  ASSERT_GE (rc, 0);
-  rc = exec_sql ("INSERT INTO t_oos_show_yes VALUES (1, REPEAT(X'EE', 8192))");
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-
-  DB_QUERY_RESULT *capacity_result = nullptr;
-  rc = show_heap_query ("SHOW HEAP CAPACITY OF t_oos_show_yes", &capacity_result);
-  ASSERT_EQ (rc, NO_ERROR);
-  ASSERT_NE (capacity_result, nullptr);
-
-  int cap_has_oos = 0;
-  int cap_num_pages = 0;
-  int cap_num_recs = 0;
-  DB_BIGINT cap_recs_sumlen = 0;
-  DB_BIGINT cap_physical_bytes = 0;
-  DB_BIGINT cap_free_bytes = 0;
-
-  rc = get_int_column (capacity_result, CAP_COL_HAS_OOS_FILE, &cap_has_oos);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (cap_has_oos, 1);
-
-  rc = get_int_column (capacity_result, CAP_COL_OOS_NUM_USER_PAGES, &cap_num_pages);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (cap_num_pages, 0);
-
-  rc = get_int_column (capacity_result, CAP_COL_OOS_NUM_RECS, &cap_num_recs);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (cap_num_recs, 0);
-
-  rc = get_bigint_column (capacity_result, CAP_COL_OOS_RECS_SUMLEN, &cap_recs_sumlen);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (cap_recs_sumlen, 0);
-
-  rc = get_bigint_column (capacity_result, CAP_COL_OOS_PHYSICAL_BYTES, &cap_physical_bytes);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (cap_physical_bytes, (DB_BIGINT) cap_num_pages * (DB_BIGINT) DB_PAGESIZE);
-
-  rc = get_bigint_column (capacity_result, CAP_COL_OOS_FREE_BYTES, &cap_free_bytes);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_GT (cap_free_bytes, 0);
-
-  DB_QUERY_RESULT *oos_result = nullptr;
-  rc = show_heap_query ("SHOW HEAP OOS OF t_oos_show_yes", &oos_result);
-  ASSERT_EQ (rc, NO_ERROR);
-  ASSERT_NE (oos_result, nullptr);
-
-  int oos_has_oos = 0;
-  int oos_num_pages = 0;
-  int oos_num_recs = 0;
-  DB_BIGINT oos_recs_sumlen = 0;
-  DB_BIGINT oos_physical_bytes = 0;
-  DB_BIGINT oos_free_bytes = 0;
-
-  rc = get_int_column (oos_result, COL_HAS_OOS_FILE, &oos_has_oos);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (oos_result, COL_OOS_NUM_USER_PAGES, &oos_num_pages);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_int_column (oos_result, COL_OOS_NUM_RECS, &oos_num_recs);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_bigint_column (oos_result, COL_OOS_RECS_SUMLEN, &oos_recs_sumlen);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_bigint_column (oos_result, COL_OOS_PHYSICAL_BYTES, &oos_physical_bytes);
-  ASSERT_EQ (rc, NO_ERROR);
-  rc = get_bigint_column (oos_result, COL_OOS_FREE_BYTES, &oos_free_bytes);
-  ASSERT_EQ (rc, NO_ERROR);
-
-  EXPECT_EQ (cap_has_oos, oos_has_oos);
-  EXPECT_EQ (cap_num_pages, oos_num_pages);
-  EXPECT_EQ (cap_num_recs, oos_num_recs);
-  EXPECT_EQ (cap_recs_sumlen, oos_recs_sumlen);
-  EXPECT_EQ (cap_physical_bytes, oos_physical_bytes);
-  EXPECT_EQ (cap_free_bytes, oos_free_bytes);
-
-  db_query_end (oos_result);
-  db_query_end (capacity_result);
 }
 
 TEST_F (OosSqlShow, ShowAllHeapOosRunsForNonPartitionedClass)
@@ -492,7 +298,7 @@ TEST_F (OosSqlShow, ShowAllHeapOosRunsForNonPartitionedClass)
   db_commit_transaction ();
 
   DB_QUERY_RESULT *result = nullptr;
-  rc = show_heap_query ("SHOW ALL HEAP OOS OF t_oos_show_yes", &result);
+  rc = show_heap_oos_query ("SHOW ALL HEAP OOS OF t_oos_show_yes", &result);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_NE (result, nullptr);
 
@@ -518,7 +324,7 @@ TEST_F (OosSqlShow, ShowAllHeapOosReportsPartitionRows)
   db_commit_transaction ();
 
   DB_QUERY_RESULT *result = nullptr;
-  rc = show_heap_query ("SHOW ALL HEAP OOS OF t_oos_show_part", &result);
+  rc = show_heap_oos_query ("SHOW ALL HEAP OOS OF t_oos_show_part", &result);
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_NE (result, nullptr);
 

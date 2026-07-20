@@ -540,6 +540,7 @@ heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, i
   char *classname = NULL;
   char class_oid_str[64] = { 0 };
   INT64 oos_physical_bytes = 0;
+  INT64 oos_unused_bytes = 0;
   int idx = 0;
 
   ctx = (HEAP_SHOW_SCAN_CTX *) ptr;
@@ -599,8 +600,13 @@ heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, i
 	  ASSERT_ERROR ();
 	  goto cleanup;
 	}
+    }
 
-      oos_physical_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+  oos_physical_bytes = (INT64) stats.num_user_pages * (INT64) stats.page_size;
+  oos_unused_bytes = oos_physical_bytes - stats.recs_sumlen;
+  if (oos_unused_bytes < 0)
+    {
+      oos_unused_bytes = 0;
     }
 
   error = db_make_string_copy (out_values[idx], classname);
@@ -665,25 +671,7 @@ heap_oos_next_scan (THREAD_ENTRY *thread_p, int cursor, DB_VALUE **out_values, i
   db_make_bigint (out_values[idx], oos_physical_bytes);
   idx++;
 
-  db_make_bigint (out_values[idx], stats.free_bytes);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_pages_free_0_25);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_pages_free_25_50);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_pages_free_50_75);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_pages_free_75_100);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_empty_pages);
-  idx++;
-
-  db_make_int (out_values[idx], stats.num_pages_skipped);
+  db_make_bigint (out_values[idx], oos_unused_bytes);
   idx++;
 
   assert (idx == out_cnt);
