@@ -7396,6 +7396,25 @@ exit_on_error:
  */
 
 /*
+ * qexec_is_cached_scan_eligible () - cached (copy-to-local-cache) heap scan eligibility predicate
+ *   return: true if the scan may read records from a scan-private local page cache
+ *   specp(in): Access specification node
+ *   scan_op_type(in): SELECT, DELETE, UPDATE
+ *   mvcc_select_lock_needed(in): true if lock at scanning needed in mvcc
+ *   fixed(in): if true, pages containing scan items in a group keep fixed
+ *   grouped(in): if true, the scan items are accessed group by group
+ *
+ * Note: restricted to lock-free S_SELECT sequential heap scans; grouped scans are out of scope.
+ */
+static bool
+qexec_is_cached_scan_eligible (ACCESS_SPEC_TYPE * specp, SCAN_OPERATION_TYPE scan_op_type,
+			       bool mvcc_select_lock_needed, int fixed, int grouped)
+{
+  return specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_SEQUENTIAL && scan_op_type == S_SELECT && !COMPOSITE_LOCK (scan_op_type)	/* tautological with S_SELECT; documents boundary */
+    && !mvcc_select_lock_needed && !fixed && !grouped;	/* grouped scans are out of scope */
+}
+
+/*
  * qexec_open_scan () -
  *   return: NO_ERROR, or ER_code
  *   curr_spec(in)      : Access Specification Node
@@ -7453,6 +7472,13 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
+  /* Finalize cached-scan activation once per open, before dispatching on access method. The
+   * driving-scan gate is assigned next to fixed_scan in qexec_execute_mainblock_internal ();
+   * specs opened outside that loop (merge, UPDATE/DELETE/INSERT select scans, ...) keep the
+   * false set at unpack time. Runtime-only; never serialized (see xasl.h / stream_to_xasl.c). */
+  curr_spec->cached_scan = curr_spec->cached_scan
+    && qexec_is_cached_scan_eligible (curr_spec, scan_op_type, mvcc_select_lock_needed, fixed, grouped);
+
   switch (curr_spec->type)
     {
     case TARGET_CLASS:
@@ -7463,9 +7489,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	    {
 #if SERVER_MODE && !WINDOWS
 	      error_code =
-		scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, fixed, grouped, vd, curr_spec,
-					      &ACCESS_SPEC_CLS_OID (curr_spec), &ACCESS_SPEC_HFID (curr_spec), xasl,
-					      query_id);
+		scan_open_parallel_heap_scan (thread_p, s_id, mvcc_select_lock_needed, scan_op_type, fixed, grouped,
+					      vd, curr_spec, &ACCESS_SPEC_CLS_OID (curr_spec),
+					      &ACCESS_SPEC_HFID (curr_spec), xasl, query_id);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -7497,7 +7523,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 					 curr_spec->s.cls_node.num_attrs_rest, curr_spec->s.cls_node.attrids_rest,
 					 curr_spec->s.cls_node.cache_rest, S_HEAP_SCAN,
 					 curr_spec->s.cls_node.cache_reserved,
-					 curr_spec->s.cls_node.cls_regu_list_reserved);
+					 curr_spec->s.cls_node.cls_regu_list_reserved, curr_spec->cached_scan);
 		  if (error_code != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -7523,7 +7549,7 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 						curr_spec->s.cls_node.num_attrs_rest,
 						curr_spec->s.cls_node.attrids_rest, curr_spec->s.cls_node.cache_rest,
 						scan_type, curr_spec->s.cls_node.cache_reserved,
-						curr_spec->s.cls_node.cls_regu_list_reserved);
+						curr_spec->s.cls_node.cls_regu_list_reserved, curr_spec->cached_scan);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -9013,8 +9039,8 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 #if SERVER_MODE && !WINDOWS
 	      error =
 		scan_open_parallel_heap_scan (thread_p, &spec->s_id, spec->s_id.mvcc_select_lock_needed,
-					      spec->s_id.fixed, spec->s_id.grouped, spec->s_id.vd, spec, &class_oid,
-					      &class_hfid, xasl, query_id);
+					      spec->s_id.scan_op_type, spec->s_id.fixed, spec->s_id.grouped,
+					      spec->s_id.vd, spec, &class_oid, &class_hfid, xasl, query_id);
 	      if (error != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -9046,7 +9072,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 					 spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 					 spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 					 spec->s.cls_node.cache_rest, S_HEAP_SCAN, spec->s.cls_node.cache_reserved,
-					 spec->s.cls_node.cls_regu_list_reserved);
+					 spec->s.cls_node.cls_regu_list_reserved, spec->s_id.cached_scan);
 		  if (error != NO_ERROR)
 		    {
 		      ASSERT_ERROR ();
@@ -9089,7 +9115,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 				     spec->s.cls_node.attrids_pred, spec->s.cls_node.cache_pred,
 				     spec->s.cls_node.num_attrs_rest, spec->s.cls_node.attrids_rest,
 				     spec->s.cls_node.cache_rest, scan_type, spec->s.cls_node.cache_reserved,
-				     spec->s.cls_node.cls_regu_list_reserved);
+				     spec->s.cls_node.cls_regu_list_reserved, spec->s_id.cached_scan);
 	      if (error != NO_ERROR)
 		{
 		  return S_ERROR;
@@ -16250,6 +16276,14 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  for (specp = spec_ptr[spec_level]; specp; specp = specp->next)
 		    {
 		      specp->fixed_scan = (xptr == fixed_scan_xasl);
+
+		      /* Cached (copy-to-local-cache) scan is allowed only on the driving scan --
+		       * the level-0 spec_list of the scan chain. An inner scan re-visits its pages
+		       * once per outer row, so the single-page local cache would be re-copied
+		       * constantly for no latch-avoidance benefit. This is only the gate: final
+		       * activation is ANDed with eligibility in qexec_open_scan (), where
+		       * mvcc_select_lock_needed becomes known. */
+		      specp->cached_scan = (level == 0 && spec_level == 0);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))

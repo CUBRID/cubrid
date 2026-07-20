@@ -138,6 +138,15 @@ struct heap_scancache_node_list
   HEAP_SCANCACHE_NODE_LIST *next;
 };
 
+/* Read mode for a heap scan cache: normal per-record COPY, or copy-to-local-cache (CBRD-27041)
+ * where the whole page is memcpy'd once into a scan-private local cache and records are read
+ * directly from that cache. */
+typedef enum
+{
+  HEAP_SCAN_READ_COPY = 0,
+  HEAP_SCAN_READ_LOCAL_CACHE = 1
+} HEAP_SCAN_READ_MODE;
+
 // *INDENT-OFF*
 typedef struct heap_scancache HEAP_SCANCACHE;
 struct heap_scancache
@@ -158,6 +167,9 @@ struct heap_scancache
     MVCC_SNAPSHOT *mvcc_snapshot;	/* mvcc snapshot */
     HEAP_SCANCACHE_NODE_LIST *partition_list;	/* list holding the heap file information for partition nodes involved
 						 * in the scan */
+    PGBUF_COPY_BUFFER_HANDLE local_cache_handle;	/* local page cache for a cached scan; NULL unless cached scan */
+    VPID local_cache_vpid;		/* VPID currently held in local_cache_handle */
+    HEAP_SCAN_READ_MODE read_mode;	/* HEAP_SCAN_READ_COPY or HEAP_SCAN_READ_LOCAL_CACHE */
 
     void start_area ();
     void end_area ();
@@ -401,7 +413,8 @@ extern VFID *heap_ovf_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFI
 extern void heap_flush (THREAD_ENTRY * thread_p, const OID * oid);
 extern int xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid);
 extern int heap_scancache_start (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
-				 const OID * class_oid, int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot);
+				 const OID * class_oid, int cache_last_fix_page, MVCC_SNAPSHOT * mvcc_snapshot,
+				 bool copy_to_local_cache = false);
 extern int heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid,
 					const OID * class_oid, int op_type, MVCC_SNAPSHOT * mvcc_snapshot);
 extern int heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache);
@@ -674,7 +687,7 @@ extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * 
 					   HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn);
 extern SCAN_CODE heap_scan_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
 						RECDES * recdes, RECDES * forward_recdes, HEAP_SCANCACHE * scan_cache,
-						int ispeeking, int old_chn);
+						int ispeeking, int old_chn, bool is_cached_scan = false);
 extern SCAN_CODE heap_get_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_clean_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 extern void heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, const OID * oid,
