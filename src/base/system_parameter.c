@@ -967,6 +967,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
 #define PRM_REQUEST_WORKER_ELASTIC_HEADROOM 32
+#define PRM_REQUEST_CONCURRENCY_PER_CORE 6
 
 /* initial error and integer lists */
 static const int int_list_initial[1] = { 0 };
@@ -5236,9 +5237,8 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
 #if defined (SERVER_MODE)
-   /* adjusted based on CBRD-26636 */
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
-   {false, {.i = (int) cubthread::system_core_count () * 3}},
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
+   {false, {.i = (int) cubthread::system_core_count () * PRM_REQUEST_CONCURRENCY_PER_CORE}},
    {false, {.i = CSS_MAX_CLIENT_COUNT}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
@@ -9951,8 +9951,7 @@ prm_tune_parameters (void)
   SYSPRM_PARAM *max_connection_workers_prm;
   SYSPRM_PARAM *min_connection_workers_prm;
   int system_cpu_count;
-  int client_limit, client_count;
-  int request_concurrency_factor;
+  int client_limit;
   int max_value;
 #endif
   char newval[LINE_MAX];
@@ -10011,16 +10010,10 @@ prm_tune_parameters (void)
 
       if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
-	  /* if not changed by user */
+	  /* client count describes ingress pressure, not useful execution concurrency. Keep the normal target stable;
+	   * the elastic worker pool adds temporary capacity only when queued work stops making progress. */
 	  client_limit = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
-	  request_concurrency_factor = 0;
-	  for (client_count = client_limit - 1; client_count > 0; client_count >>= 1)
-	    {
-	      request_concurrency_factor++;
-	    }
-	  request_concurrency_factor = std::max (request_concurrency_factor, 3);
-
-	  max_value = std::min (std::min (system_cpu_count * request_concurrency_factor, system_cpu_count * 16),
+	  max_value = std::min (system_cpu_count * PRM_REQUEST_CONCURRENCY_PER_CORE,
 				std::min (client_limit, CSS_MAX_CLIENT_COUNT / 2));
 	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
 	  (void) prm_set (max_request_concurrency_prm, newval, false);
