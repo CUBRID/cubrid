@@ -23733,6 +23733,7 @@ parser_main (PARSER_CONTEXT * parser)
   long desc_index = 0;
   long i, top;
   int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save, yylineno_save; 
+  int yytoken_start_line_save, yytoken_start_column_save;
   YYLTYPE yylloc_save;
 
   PARSER_CONTEXT *this_parser_saved;
@@ -23754,7 +23755,9 @@ parser_main (PARSER_CONTEXT * parser)
   yylineno_save = csql_yyget_lineno();
   yybuffer_pos=0;
   yylloc_save = csql_yylloc; 
-    
+  yytoken_start_line_save = yytoken_start_line;
+  yytoken_start_column_save = yytoken_start_column;
+
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -23777,6 +23780,8 @@ parser_main (PARSER_CONTEXT * parser)
   yylineno_prev = yylineno_prev_save;
   csql_yyset_lineno(yylineno_save);
   csql_yylloc = yylloc_save;
+  yytoken_start_line = yytoken_start_line_save;
+  yytoken_start_column = yytoken_start_column_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
