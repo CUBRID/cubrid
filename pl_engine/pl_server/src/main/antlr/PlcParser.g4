@@ -286,6 +286,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
+    | OPEN identifier FOR dyn_sql restricted_using_clause?
     ;
 
 transaction_control_statement

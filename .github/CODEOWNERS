@@ -55,3 +55,9 @@
 /src/loaddb @beyondykk9
 
 /pl_engine @beyondykk9
+
+# submodule bump PRs
+/cubrid-jdbc @CUBRID/dev1
+/cubrid-cci @CUBRID/dev1
+/cubridmanager @CUBRID/dev1
+/.gitmodules @CUBRID/dev1

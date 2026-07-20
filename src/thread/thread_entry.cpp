@@ -152,6 +152,8 @@ namespace cubthread
 #if defined (SERVER_MODE)
     , m_slot (nullptr)
 #endif
+    , uuidv7_last_ms (0)
+    , uuidv7_seq (0)
       // private:
     , m_id ()
     , m_error ()
