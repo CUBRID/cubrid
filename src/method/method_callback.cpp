@@ -860,7 +860,7 @@ exit:
   }
 
   static int
-  get_column_info (global_semantics_question &question, global_semantics_response_column &res)
+  get_id_type_info (global_semantics_question &question, global_semantics_response_id_type &res)
   {
     int err = NO_ERROR;
 
@@ -869,6 +869,7 @@ exit:
       {
 	err = res.err_id = ER_FAILED;
 	res.err_msg = "Invalid parameter";
+	return err;
       }
 
     std::string owner_name;
@@ -891,10 +892,14 @@ exit:
 
     size_t prev = 0, cur = 0;
     int dot_cnt = std::count (name.begin (), name.end(), '.');
-    if (dot_cnt == 2) // with owner name
+    if (dot_cnt == 2)
       {
 	split_str (name, prev, cur, owner_name);
 	owner_name += ".";
+      }
+    else
+      {
+	assert (dot_cnt == 1);
       }
 
     split_str (name, prev, cur, class_name);
@@ -916,36 +921,11 @@ exit:
 	DB_DOMAIN *domain = db_attribute_domain (attr);
 	int precision = db_domain_precision (domain);
 	short scale = db_domain_scale (domain);
-	char charset = db_domain_codeset (domain);
 	int db_type = TP_DOMAIN_TYPE (domain);
-	int set_type = DB_TYPE_NULL;
 
-	if (TP_IS_SET_TYPE (db_type))
-	  {
-	    set_type = get_set_domain (domain, precision, scale, charset);
-	  }
+	type_info info (db_type, scale, precision);
 
-	char auto_increment = db_attribute_is_auto_increment (attr);
-	char unique_key = db_attribute_is_unique (attr);
-	char primary_key = db_attribute_is_primary_key (attr);
-	char reverse_index = db_attribute_is_reverse_indexed (attr);
-	char reverse_unique = db_attribute_is_reverse_unique (attr);
-	char foreign_key = db_attribute_is_foreign_key (attr);
-	char shared = db_attribute_is_shared (attr);
-
-	const char *c_attr_name = db_attribute_name (attr);
-
-	std::string attr_name_string (c_attr_name? c_attr_name : "");
-	std::string class_name_string (realname? realname : "");
-
-	std::string default_value_string = get_column_default_as_string (attr);
-
-	column_info info (db_type, set_type, scale, precision, charset,
-			  attr_name_string, default_value_string,
-			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
-			  attr_name_string, class_name_string, false);
-
-	res.c_info = std::move (info);
+	res.t_info = std::move (info);
       }
 
     return err;
@@ -982,11 +962,11 @@ exit:
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
-	  case 4: // COLUMN
+	  case 4: // ID_TYPE
 	  {
-	    auto res_ptr = std::make_unique <global_semantics_response_column> ();
+	    auto res_ptr = std::make_unique <global_semantics_response_id_type> ();
 	    res_ptr->idx = i++;
-	    error = get_column_info (question, *res_ptr);
+	    error = get_id_type_info (question, *res_ptr);
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }

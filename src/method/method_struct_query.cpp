@@ -37,6 +37,55 @@
 
 namespace cubmethod
 {
+  type_info::type_info ()
+  {
+    // default constructor
+    db_type = DB_TYPE_NULL;
+    scale = 0;
+    prec = 0;
+  }
+
+  type_info::type_info (int db_type, short scale, int prec)
+  {
+    this->db_type = db_type;
+    this->scale = scale;
+    this->prec = prec;
+  }
+
+  void
+  type_info::pack (cubpacking::packer &serializator) const
+  {
+    serializator.pack_int (db_type);
+    serializator.pack_short (scale);
+    serializator.pack_int (prec);
+  }
+
+  void
+  type_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    deserializator.unpack_int (db_type);
+    deserializator.unpack_short (scale);
+    deserializator.unpack_int (prec);
+  }
+
+  size_t
+  type_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = serializator.get_packed_int_size (start_offset); // db_type
+    size += serializator.get_packed_short_size (size); // scale
+    size += serializator.get_packed_int_size (size); // prec
+
+    return size;
+  }
+
+  void
+  type_info::dump ()
+  {
+    fprintf (stdout, "db_type: %d\n", db_type);
+    fprintf (stdout, "scale: %d\n", scale);
+    fprintf (stdout, "prec: %d\n", prec);
+  }
+
   column_info::column_info ()
   {
     // default constructor

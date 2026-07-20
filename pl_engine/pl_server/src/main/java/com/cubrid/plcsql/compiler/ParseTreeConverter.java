@@ -293,34 +293,38 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof ExprSerialVal;
                 ((ExprSerialVal) node).verified = true;
-            } else if (q instanceof ServerAPI.ColumnType) {
-                ServerAPI.ColumnType ct = (ServerAPI.ColumnType) q;
+            } else if (q instanceof ServerAPI.IdType) {
+                ServerAPI.IdType it = (ServerAPI.IdType) q;
 
-                if (!DBTypeAdapter.isSupported(ct.colType.type)) {
-                    String sqlType = DBTypeAdapter.getSqlTypeName(ct.colType.type);
+                assert node instanceof TypeSpecPercent;
+                TypeSpecPercent tsp = (TypeSpecPercent) node;
+
+                if (!DBTypeAdapter.isSupported(it.typeInfo.dbType)) {
+                    String sqlType = DBTypeAdapter.getSqlTypeName(it.typeInfo.dbType);
                     throw new SemanticError( // s410
                             Misc.getLineColumnOf(node.ctx),
                             "the table column "
-                                    + ct.table
+                                    + tsp.table
                                     + "."
-                                    + ct.column
+                                    + tsp.column
                                     + " has an unsupported type "
                                     + sqlType);
                 }
 
-                assert node instanceof TypeSpecPercent;
-                TypeSpecPercent tsp = (TypeSpecPercent) node;
                 if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
-                        || (ct.colType.type == DBType.DB_NUMERIC
+                        || (it.typeInfo.dbType == DBType.DB_NUMERIC
                                 && (tsp.typeVisitMode == TYPE_VISIT_PARAM_OUT
                                         || tsp.typeVisitMode == TYPE_VISIT_RETURN))) {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
-                                    iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
+                                    iStore,
+                                    it.typeInfo.dbType,
+                                    it.typeInfo.prec,
+                                    it.typeInfo.scale);
                 } else {
                     // Visiting a parameter type or return type.
                     // Ignore specified precision and scale.
-                    tsp.type = DBTypeAdapter.getValueType(iStore, ct.colType.type);
+                    tsp.type = DBTypeAdapter.getValueType(iStore, it.typeInfo.dbType);
                 }
             } else {
                 assert false : "unreachable";
@@ -538,9 +542,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return ((DeclIdTypeDeclared) id.decl).typeSpec();
         } else {
 
-            // case <X>%TYPE where X is one of (<owner>.)<table>.<column>, (<owner>.)<pkg>.<var>, and (<owner>.)<pkg>.<const>
+            // case <X>%TYPE where X is one of
+            //  . (<owner>.)<table>.<column>
+            //  . (<owner>.)<pkg>.<var>
+            //  . (<owner>.)<pkg>.<const>
             String qualifiedName = Misc.getNormalizedText(ctx.qualified_name(), false);
-            assert (qualifiedName.indexOf(".") >= 0);
+            assert (qualifiedName.indexOf(".") >= 0); // by syntax
             String[] split = qualifiedName.split("\\.");
 
             String qualifier, name;
@@ -554,13 +561,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     name = split[2];
                     break;
                 default:
-                    assert false;   // by syntax
+                    assert false; // by syntax
                     qualifier = null;
                     name = null;
             }
 
             TypeSpec ret = new TypeSpecPercent(ctx, qualifier, name, typeVisitMode);
-            semanticQuestions.put(ret, new ServerAPI.ColumnType(qualifier, name));
+            semanticQuestions.put(ret, new ServerAPI.IdType(qualifier, name));
             return ret;
         }
     }
@@ -571,11 +578,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String row;
 
         if (ctx.qualified_name() == null) {
-            // 'row' can be a cursor name
-            // If it is, and is also a table name, then it is considered to be a cursor.
-            // That is, a cursor definition overrides a table definition.
             ExprId id;
             try {
+                // first, check the case in which the identifier is a cursor.
                 id = visitNonFuncIdentifier(ctx.identifier());
                 if (id.decl instanceof DeclCursor) {
                     return new TypeSpec(ctx, ((DeclCursor) id.decl).recordTypeSpec.type);
@@ -585,14 +590,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             "%ROWTYPE cannot be applied to a non-cursor variable " + id.name);
                 }
             } catch (UndeclaredId e) {
-                // OK: 'row' is not a local variable
+                // OK: 'row' is not a cursor, and can be a table
                 row = Misc.getNormalizedText(ctx.identifier());
             }
         } else {
-            row = Misc.getNormalizedText(ctx.qualified_name());
+            // row can be one of owner.table, and (owner.)pkg.cursor
+            row = Misc.getNormalizedText(ctx.qualified_name(), false);
         }
 
-        // TODO: consider cases of (<owner>.)<pkg>.<cursor> too
         List<SqlSemantics> answer =
                 ServerAPI.getSqlSemantics(Arrays.asList("select * from " + row));
         if (answer == null) {
@@ -1122,7 +1127,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         Qualified_nameContext qualifiedName = ctx.func_call_name().qualified_name();
-        if (qualifiedName != null) {
+        if (qualifiedName == null) {
+
+            name = Misc.getNormalizedText(ctx.func_call_name().func_name());
+        } else {
 
             boolean isGlobalCall = true;
 
@@ -1140,11 +1148,14 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (isGlobalCall) {
 
-                // This has an owner name or package name and the target function is not the SP being defined.
+                // This has an owner name or package name and the target function is not the SP
+                // being defined.
                 // Take this as a global function call.
                 connectionRequired = true;
 
-                String uniqName = Misc.getNormalizedText(qualifiedName, false);    // TODO: check if this has dots or not
+                String uniqName =
+                        Misc.getNormalizedText(
+                                qualifiedName, false); // TODO: check if this has dots or not
                 ExprGlobalFuncCall ret =
                         new ExprGlobalFuncCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -1152,9 +1163,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 return ret; // done
             }
-        } else {
-
-            name = Misc.getNormalizedText(ctx.func_call_name().func_name());
         }
 
         assert name != null;
@@ -1348,18 +1356,33 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new ExprCase(ctx, selector, whenParts, elsePart);
     }
 
+    private ExprId visitCursor_exp(Cursor_expContext ctx, boolean excludeRefCursor, String errMsg) {
+
+        if (ctx.qualified_name() == null) {
+
+            assert ctx.identifier() != null; // by syntax
+
+            ExprId cursor = visitNonFuncIdentifier(ctx.identifier());
+            if (!isCursor(cursor, excludeRefCursor)) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), String.format(errMsg, cursor.name));
+            }
+
+            return cursor;
+        } else {
+            // TODO
+            return null;
+        }
+    }
+
     @Override
     public AstNode visitCursor_attr_exp(Cursor_attr_expContext ctx) {
 
         ExprId cursor =
-                visitNonFuncIdentifier(ctx.cursor_exp().identifier()); // s011: undeclared id ...
-        if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s012
-                    "cursor attributes may not be read from "
-                            + cursor.name
-                            + " which is neither a cursor nor a cursor reference");
-        }
+                visitCursor_exp(
+                        ctx.cursor_exp(),
+                        false, // s011, s012
+                        "cursor attributes may not be read from %s which is neither a cursor nor a cursor reference");
 
         ExprCursorAttr.Attr attr =
                 ctx.PERCENT_ISOPEN() != null
@@ -1762,7 +1785,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new StmtBlock(ctx, block, decls, body);
     }
 
-    private AstNode visitQualifiedVar(Qualified_nameContext ctx) {
+    private Expr visitQualifiedVar(Qualified_nameContext ctx) {
 
         if (ctx.qualSingle == null) {
 
@@ -1774,6 +1797,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             String fieldName = Misc.getNormalizedText(ctx.name);
 
             try {
+                // try record.field case first
                 ExprId record = visitNonFuncIdentifier(ctx.qualSingle);
                 if (!isRecordId(record)) {
                     throw new SemanticError(
@@ -1790,6 +1814,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 return null;
             }
         }
+
+        // TODO: try (owner.)pkg.var cases with API IdType
     }
 
     private AstNode visitQualifiedProc(Qualified_nameContext ctx) {
@@ -1837,7 +1863,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                             new ExprSerialVal(
                                     ctx,
                                     recordText,
-                                    (fieldName.equals("CURRENT_VALUE") || fieldName.equals("CURRVAL"))
+                                    (fieldName.equals("CURRENT_VALUE")
+                                                    || fieldName.equals("CURRVAL"))
                                             ? ExprSerialVal.SerialVal.CURR_VAL
                                             : ExprSerialVal.SerialVal.NEXT_VAL,
                                     getSqlSerialNo());
@@ -1851,7 +1878,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
     }
 
-    private AstNode visitQualifiedException(Qualified_nameContext ctx) {
+    private ExName visitQualifiedException(Qualified_nameContext ctx) {
         // TODO
         return null;
     }
@@ -1873,25 +1900,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public AstNode visitQualified_name(Qualified_nameContext ctx) {
+
+        // parent of this qualified_name parse tree node can only be an atom because
+        // the following syntactically possible cases handle their qualified_name node in their own
+        // way
+        // without using dynamic dispatch of the visitor pattern.
+        //  . assign_target: see visitAssign_target()
+        //  . proc_call_name: see visitProcedure_call()
+        //  . exception_name: see visitException_name()
+        //  . cursor_exp: see visitCursor_exp()
+        //  . percent_type: see visitPercent_type()
+        //  . percent_rowtype: see visitPercent_rowtype()
         ParserRuleContext parent = ctx.getParent();
-        if (parent instanceof Assign_targetContext) {
-            return visitQualifiedVar(ctx);
-        } else if (parent instanceof Proc_call_nameContext) {
-            return visitQualifiedProc(ctx);
-        } else if (parent instanceof AtomContext) {
-            return visitQualifiedId(ctx);
-        } else if (parent instanceof Exception_nameContext) {
-            return visitQualifiedException(ctx);
-        } else if (parent instanceof Cursor_expContext) {
-            return visitQualifiedCursor(ctx);
-        } else if (parent instanceof Percent_typeContext) {
-            return visitQualifiedColumnOrVar(ctx);
-        } else if (parent instanceof Percent_rowtypeContext) {
-            return visitQualifiedRow(ctx);
-        } else {
-            assert false;   // unreachable with the current syntax
-            return null;
-        }
+        assert parent instanceof AtomContext;
+
+        return visitQualifiedId(ctx);
     }
 
     @Override
@@ -1906,7 +1929,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     @Override
     public Expr visitAssign_target(Assign_targetContext ctx) {
 
-        if (ctx.identifier() != null) {
+        if (ctx.qualified_name() == null) {
+
+            assert ctx.identifier() != null; // by syntax
+
             ExprId id = visitNonFuncIdentifier(ctx.identifier()); // s018: undeclared id ...
             if (!id.isAssignableTo()) {
                 throw new SemanticError(
@@ -1916,8 +1942,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             return id;
         } else {
-            assert ctx.qualified_name() != null;
 
+            return visitQualifiedVar(ctx.qualified_name());
+
+            /* TODO: move code below to visitQualifiedVar()
             Expr e = (Expr) visitQualifiedVar(ctx.qualified_name()); // s079: undeclared id ...
             if (e instanceof ExprField) {
                 ExprField field = (ExprField) e;
@@ -1931,6 +1959,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             } else {
                 throw new RuntimeException("unreachable");
             }
+             */
         }
     }
 
@@ -2321,22 +2350,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         symbolStack.pushSymbolTable("for_cursor_loop", null);
 
-        IdentifierContext idCtx = ctx.for_cursor().cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx); // s024: undeclared id ...
-        if (!(cursor.decl instanceof DeclCursor)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(idCtx), // s025
-                    Misc.getNormalizedText(idCtx) + " is not a cursor");
-        }
+        ExprId cursor =
+                visitCursor_exp(
+                        ctx.for_cursor().cursor_exp(),
+                        true, // s025
+                        "%s is not a cursor");
         DeclCursor declCursor = (DeclCursor) cursor.decl;
 
         NodeList<Expr> args = visitExpressions(ctx.for_cursor().expressions());
 
         if (declCursor.paramList.nodes.size() != args.nodes.size()) {
             throw new SemanticError(
-                    Misc.getLineColumnOf(idCtx), // s026
+                    Misc.getLineColumnOf(ctx.for_cursor().cursor_exp()), // s026
                     "the number of arguments to cursor "
-                            + Misc.getNormalizedText(idCtx)
+                            + Misc.getNormalizedText(ctx.for_cursor().cursor_exp(), false)
                             + " does not match the number of its declared formal parameters");
         }
 
@@ -2462,6 +2489,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     @Override
     public StmtRaise visitRaise_statement(Raise_statementContext ctx) {
+
         ExName exName = visitException_name(ctx.exception_name());
         if (exName == null) {
             if (!within(ctx, Exception_handlerContext.class)) {
@@ -2482,18 +2510,25 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             return null;
         }
 
-        String name = Misc.getNormalizedText(ctx.identifier());
+        if (ctx.qualified_name() == null) {
 
-        DeclException decl = symbolStack.getDeclException(name);
-        if (decl == null) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s029
-                    "undeclared exception " + name);
+            assert ctx.identifier() != null;
+
+            String name = Misc.getNormalizedText(ctx.identifier());
+            DeclException decl = symbolStack.getDeclException(name);
+            if (decl == null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s029
+                        "undeclared exception " + name);
+            }
+
+            Scope scope = symbolStack.getCurrentScope();
+
+            return new ExName(ctx, name, scope, decl);
+        } else {
+
+            return visitQualifiedException(ctx.qualified_name());
         }
-
-        Scope scope = symbolStack.getCurrentScope();
-
-        return new ExName(ctx, name, scope, decl);
     }
 
     @Override
@@ -2623,15 +2658,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         connectionRequired = true;
 
-        IdentifierContext idCtx = ctx.cursor_exp().identifier();
-
-        ExprId cursor = visitNonFuncIdentifier(idCtx); // s032: undeclared id ...
-        if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(idCtx), // s033
-                    cursor.name
-                            + " may not be closed because it is neither a cursor nor a cursor reference");
-        }
+        ExprId cursor =
+                visitCursor_exp(
+                        ctx.cursor_exp(),
+                        false, // s032, s033
+                        "%s may not be closed because it is neither a cursor nor a cursor reference");
 
         return new StmtCursorClose(ctx, cursor);
     }
@@ -2641,14 +2672,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         connectionRequired = true;
 
-        IdentifierContext idCtx = ctx.cursor_exp().identifier();
-
-        ExprId cursor = visitNonFuncIdentifier(idCtx); // s034: undeclared id ...
-        if (!(cursor.decl instanceof DeclCursor)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(idCtx), // s035
-                    cursor.name + " may not be opened because it is not a cursor");
-        }
+        ExprId cursor =
+                visitCursor_exp(
+                        ctx.cursor_exp(),
+                        false, // s034, s035
+                        "%s may not be opened because it is not a cursor");
         DeclCursor decl = (DeclCursor) cursor.decl;
 
         NodeList<Expr> args = visitExpressions(ctx.expressions());
@@ -2657,7 +2685,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             throw new SemanticError(
                     Misc.getLineColumnOf(ctx.expressions()), // s036
                     "the number of arguments to cursor "
-                            + Misc.getNormalizedText(idCtx)
+                            + Misc.getNormalizedText(ctx.cursor_exp())
                             + " does not match the number of its declared formal parameters");
         }
 
@@ -2684,14 +2712,11 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         connectionRequired = true;
 
-        IdentifierContext idCtx = ctx.cursor_exp().identifier();
-        ExprId cursor = visitNonFuncIdentifier(idCtx); // s037: undeclared id ...
-        if (!isCursorOrRefcursor(cursor)) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(idCtx), // s038
-                    cursor.name
-                            + " may not be fetched becaused it is neither a cursor nor a cursor reference");
-        }
+        ExprId cursor =
+                visitCursor_exp(
+                        ctx.cursor_exp(),
+                        false, // s037, s038
+                        "%s may not be fetched becaused it is neither a cursor nor a cursor reference");
 
         // s060: undeclared id ...
         // s039: variables to store fetch results must be updatable
@@ -2792,7 +2817,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
         Qualified_nameContext qualifiedName = ctx.proc_call_name().qualified_name();
-        if (qualifiedName != null) {
+        if (qualifiedName == null) {
+
+            name = Misc.getNormalizedText(ctx.proc_call_name().identifier());
+
+            if (ctx.proc_call_name().DBMS_OUTPUT() != null) {
+                // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
+                // migration from Oracle, in the current implementation.
+                // NOTE: users cannot define a procedure of this name because of '$'
+                name = "DBMS_OUTPUT$" + name;
+            }
+
+        } else {
 
             boolean isGlobalCall = true;
 
@@ -2810,27 +2846,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             if (isGlobalCall) {
 
-                // This has an owner name or package name and the target procedure is not the SP being defined.
+                // This has an owner name or package name and the target procedure is not the SP
+                // being defined.
                 // Take this as a global procedure call.
                 connectionRequired = true;
 
-                String uniqName = Misc.getNormalizedText(qualifiedName, false);    // TODO: check if this has dots or not
+                String uniqName =
+                        Misc.getNormalizedText(
+                                qualifiedName, false); // TODO: check if this has dots or not
                 StmtGlobalProcCall ret =
                         new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
                 semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(uniqName));
 
                 return ret; // done
-            }
-        } else {
-
-            name = Misc.getNormalizedText(ctx.proc_call_name().identifier());
-
-            if (ctx.proc_call_name().DBMS_OUTPUT() != null) {
-                // DBMS_OUTPUT is not an actual package but just a syntactic "ornament" to ease
-                // migration from Oracle, in the current implementation.
-                // NOTE: users cannot define a procedure of this name because of '$'
-                name = "DBMS_OUTPUT$" + name;
             }
         }
 
@@ -3030,12 +3059,20 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return (id != null && id.decl.type().idx == Type.IDX_RECORD);
     }
 
-    private static boolean isCursorOrRefcursor(ExprId id) {
+    private static boolean isCursor(ExprId id, boolean excludeRefCursor) {
 
         DeclId decl = id.decl;
-        return (decl instanceof DeclCursor
-                || ((decl instanceof DeclVar || decl instanceof DeclParam)
-                        && ((DeclIdTypeDeclared) decl).typeSpec().type == Type.SYS_REFCURSOR));
+
+        if (decl instanceof DeclCursor) {
+            return true;
+        }
+
+        if (excludeRefCursor) {
+            return false;
+        }
+
+        return ((decl instanceof DeclVar || decl instanceof DeclParam)
+                && ((DeclIdTypeDeclared) decl).typeSpec().type == Type.SYS_REFCURSOR);
     }
 
     // NOTE: never changing after the initilization during the ParseTreeConverter class
