@@ -3694,7 +3694,7 @@ xboot_checkdb_table (THREAD_ENTRY * thread_p, int check_flag, OID * oid, BTID * 
 int
 xcallback_console_print (THREAD_ENTRY * thread_p, char *print_str)
 {
-  fprintf (stdout, print_str);
+  fprintf (stdout, "%s", print_str);
 
   return NO_ERROR;
 }

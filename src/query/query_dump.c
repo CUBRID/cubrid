@@ -482,8 +482,6 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
-    case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-      return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:
@@ -565,6 +563,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
+  fprintf (foutput, ",cached scan=%d", spec_list_p->cached_scan);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
@@ -2425,13 +2424,6 @@ qdump_print_xasl (xasl_node * xasl_p)
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_TOP_MOST_XASL);
 	  fprintf (foutput, "%sXASL_TOP_MOST_XASL", (nflag ? "|" : ""));
-	  nflag++;
-	}
-
-      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
-	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
-	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
 	  nflag++;
 	}
 
