@@ -482,8 +482,6 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
-    case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-      return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:
@@ -565,6 +563,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
+  fprintf (foutput, ",cached scan=%d", spec_list_p->cached_scan);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
@@ -2428,13 +2427,6 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
-	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
-	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
-	  nflag++;
-	}
-
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%d%s", xasl_p->flag, (nflag ? "|" : ""));
@@ -3371,6 +3363,18 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
       json_object_set_new (proc, "GROUPBY", groupby);
+      if (gstats->parallel_num > 0)
+	{
+	  parallel = json_object ();
+	  json_object_set_new (parallel, "parallel workers", json_integer (gstats->parallel_num));
+	  json_object_set_new (parallel, "min time", json_integer (gstats->px_min_groupby_time));
+	  json_object_set_new (parallel, "max time", json_integer (gstats->px_max_groupby_time));
+	  json_object_set_new (parallel, "min pages", json_integer (gstats->px_min_groupby_pages));
+	  json_object_set_new (parallel, "max pages", json_integer (gstats->px_max_groupby_pages));
+	  json_object_set_new (parallel, "min ioreads", json_integer (gstats->px_min_groupby_ioreads));
+	  json_object_set_new (parallel, "max ioreads", json_integer (gstats->px_max_groupby_ioreads));
+	  json_object_set_new (proc, "PARALLEL GROUPBY", parallel);
+	}
     }
 
   ostats = &xasl_p->orderby_stats;
@@ -3442,6 +3446,18 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	  json_object_set_new (analytic, "page", json_integer (curr->analytic_pages));
 	  json_object_set_new (analytic, "ioread", json_integer (curr->analytic_ioreads));
 	  json_object_set_new (analytic, "rows", json_integer (curr->rows));
+	  if (curr->parallel_num > 0)
+	    {
+	      parallel = json_object ();
+	      json_object_set_new (parallel, "parallel workers", json_integer (curr->parallel_num));
+	      json_object_set_new (parallel, "min time", json_integer (curr->px_min_analytic_time));
+	      json_object_set_new (parallel, "max time", json_integer (curr->px_max_analytic_time));
+	      json_object_set_new (parallel, "min pages", json_integer (curr->px_min_analytic_pages));
+	      json_object_set_new (parallel, "max pages", json_integer (curr->px_max_analytic_pages));
+	      json_object_set_new (parallel, "min ioreads", json_integer (curr->px_min_analytic_ioreads));
+	      json_object_set_new (parallel, "max ioreads", json_integer (curr->px_max_analytic_ioreads));
+	      json_object_set_new (analytic, "PARALLEL ANALYTIC", parallel);
+	    }
 	  json_array_append_new (analytic_array, analytic);
 	}
 
@@ -3902,6 +3918,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	      fprintf (fp, " (stopkey)");
 	    }
 	  fprintf (fp, "\n");
+	  if (curr->parallel_num > 0)
+	    {
+	      fprintf (fp, "%*c", indent + 8, ' ');
+	      fprintf (fp, "(parallel workers: %d", curr->parallel_num);
+	      fprintf (fp, ", time: %lu..%lu", curr->px_min_analytic_time, curr->px_max_analytic_time);
+	      fprintf (fp, ", page: %lu..%lu", curr->px_min_analytic_pages, curr->px_max_analytic_pages);
+	      fprintf (fp, ", ioread: %lu..%lu)\n", curr->px_min_analytic_ioreads, curr->px_max_analytic_ioreads);
+	    }
 	}
     }
 
@@ -3935,6 +3959,15 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
 
       fprintf (fp, ", rows: %d)\n", gstats->rows);
+
+      if (gstats->parallel_num > 0)
+	{
+	  fprintf (fp, "%*c", indent + 8, ' ');
+	  fprintf (fp, "(parallel workers: %d", gstats->parallel_num);
+	  fprintf (fp, ", time: %lu..%lu", gstats->px_min_groupby_time, gstats->px_max_groupby_time);
+	  fprintf (fp, ", page: %lu..%lu", gstats->px_min_groupby_pages, gstats->px_max_groupby_pages);
+	  fprintf (fp, ", ioread: %lu..%lu)\n", gstats->px_min_groupby_ioreads, gstats->px_max_groupby_ioreads);
+	}
     }
 
   ostats = &xasl_p->orderby_stats;
