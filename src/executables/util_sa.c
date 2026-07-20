@@ -5320,6 +5320,11 @@ upgradedb_upgradedir_path (char *out, size_t outsize, const char *fmt, ...)
   envvar_upgradedir_file (out, outsize, filename);
 }
 
+/*
+ * upgradedb_read_file () - read a whole file into a malloc'ed NUL-terminated
+ *     buffer; on success the caller owns *out_buf
+ *   return: error code
+ */
 static int
 upgradedb_read_file (const char *path, char **out_buf, size_t * out_len)
 {
@@ -5367,6 +5372,11 @@ exit:
   return error;
 }
 
+/*
+ * upgradedb_load_decoded_script () - load the version -> version + 1 script,
+ *     hex-decode it in place and verify its SHA256 against the expected hash
+ *   return: error code
+ */
 static int
 upgradedb_load_decoded_script (int version, char **out_buf, size_t * out_len)
 {
@@ -5436,6 +5446,11 @@ upgradedb_process_script (const char *buf, size_t len, UPGRADEDB_SCRIPT_OP op)
   return upgradedb_execute_sql_buffer (buf);
 }
 
+/*
+ * upgradedb_process_versioned_scripts () - print or execute the versioned script
+ *     chain from the database's current version up to SYSTEM_METADATA_VERSION
+ *   return: error code
+ */
 static int
 upgradedb_process_versioned_scripts (UPGRADEDB_SCRIPT_OP op)
 {
@@ -5557,6 +5572,11 @@ upgradedb_parse_options (UTIL_ARG_MAP * arg_map, UPGRADEDB_OPTIONS * opts)
   return NO_ERROR;
 }
 
+/*
+ * upgradedb_run_scripts () - dispatch to the internal script list (debug builds,
+ *     --apply-script-list) or to the versioned script chain
+ *   return: error code
+ */
 static int
 upgradedb_run_scripts (const UPGRADEDB_OPTIONS * opts, UPGRADEDB_SCRIPT_OP op)
 {
@@ -5706,7 +5726,12 @@ upgradedb (UTIL_FUNCTION_ARG * arg)
 }
 
 #if !defined(NDEBUG)
-/* internal scripts have no precomputed hash; integrity check is intentionally skipped */
+/*
+ * upgradedb_load_internal_script () - read upgrade/internal/<name>; internal
+ *     scripts have no precomputed hash, so the integrity check is intentionally
+ *     skipped
+ *   return: error code
+ */
 static int
 upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_len)
 {
@@ -5717,6 +5742,11 @@ upgradedb_load_internal_script (const char *name, char **out_buf, size_t * out_l
   return upgradedb_read_file (path, out_buf, out_len);
 }
 
+/*
+ * upgradedb_process_internal_scripts () - print or execute the internal scripts
+ *     named in the script-list file, one per line, in file order
+ *   return: error code
+ */
 static int
 upgradedb_process_internal_scripts (const char *script_list_path, UPGRADEDB_SCRIPT_OP op)
 {

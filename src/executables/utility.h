@@ -1815,6 +1815,7 @@ typedef struct _ha_config
 #define UPGRADE_VERBOSE_S                       'v'
 #define UPGRADE_VERBOSE_L                       "verbose"
 #if !defined(NDEBUG)
+/* long-only option: _S is not a short flag but the getopt val/arg_map key; > 255 so no short form is generated */
 #define UPGRADE_APPLY_SCRIPT_LIST_S             14201
 #define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
 #endif
