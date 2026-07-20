@@ -73,7 +73,12 @@ namespace cubthread
       virtual void warmup (void) = 0;
 
       // termination
+      // stop_execution must be called outside a task running in this pool. worker cannot synchronously wait for its
+      // own detached thread entry to return.
       virtual void stop_execution (void) = 0;
+      bool is_current_thread_worker (void) const;
+      void register_current_worker_thread (void);
+      void unregister_current_worker_thread (void);
 
       // information
       virtual bool is_running (void) const = 0;
@@ -118,6 +123,8 @@ namespace cubthread
       bool m_pool_threads;
       // transition time period between active and inactive
       wait_seconds m_idle_timeout;
+
+      static thread_local worker_pool *m_current_worker_pool;
   };
 
   class worker_pool::core
