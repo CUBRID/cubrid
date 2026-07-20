@@ -346,11 +346,11 @@ namespace cubstorage
 
     STATS_INC (request, 1);
 
-    // convert and advance
+    // FS0 is not indexed by L2/L3. search the same tier and let L1_find perform the exact size check.
     minimum = size_to_tier (needed_size);
-    if (minimum < tier::FS8)
+    if (minimum == tier::FS0)
       {
-	minimum++;
+	minimum = tier::FS1;
       }
 
     error = L3_find (class_oid, minimum, needed_size, consume_size, bias, page_watcher);
