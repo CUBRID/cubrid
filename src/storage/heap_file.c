@@ -8988,6 +8988,76 @@ exit_on_error:
 }
 
 /*
+ * heap_get_num_data_pages () - Get exact number of heap pages that can store user records
+ *   return: NO_ERROR if successful, error code otherwise
+ *   thread_p(in): Thread entry
+ *   hfid(in): Heap file identifier
+ *   num_pages(out): Number of heap data pages
+ *
+ * Note: file_get_num_user_pages () counts every page allocated by the heap file consumer. This includes persistent
+ * bestspace pages, which are internal heap metadata and cannot store user records. Keep the heap header page in the
+ * result because it can store user records, but exclude all persistent bestspace pages.
+ */
+int
+heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pages)
+{
+  PGBUF_WATCHER header_watcher;
+  HEAP_HDR_STATS *heap_hdr;
+  VPID header_vpid;
+  std::size_t num_bestspace_pages;
+  int num_file_pages;
+  int error_code;
+
+  assert (thread_p != NULL);
+  assert (hfid != NULL);
+  assert (num_pages != NULL);
+
+  *num_pages = 0;
+
+  error_code = file_get_num_user_pages (thread_p, &hfid->vfid, &num_file_pages);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  header_vpid.volid = hfid->vfid.volid;
+  header_vpid.pageid = hfid->hpgid;
+  PGBUF_INIT_WATCHER (&header_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+
+  error_code = pgbuf_ordered_fix (thread_p, &header_vpid, OLD_PAGE, PGBUF_LATCH_READ, &header_watcher);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
+  if (heap_hdr == NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &header_watcher);
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+      return er_errid ();
+    }
+
+  num_bestspace_pages = heap_hdr->bestspace.num_pages;
+  pgbuf_ordered_unfix (thread_p, &header_watcher);
+
+  if (num_file_pages < 0 || num_bestspace_pages > cubstorage::bestspace::MAX_SHARD_PAGE_COUNT
+      || num_bestspace_pages > (std::size_t) num_file_pages)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  *num_pages = num_file_pages - (int) num_bestspace_pages;
+  return NO_ERROR;
+}
+
+/*
  * heap_get_num_objects () - Count the number of objects
  *   return: number of records or -1 in case of an error
  *   hfid(in): Object heap file identifier
