@@ -841,7 +841,9 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       logddl_set_load_filename (args.index_file.c_str ());
       /* The flag is only a request; the server ignores it unless the client is a loaddb type.
        * In SA mode the option is ignored and the ordinary logging build is used. */
-      btree_set_no_logging_index (utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S));
+      /* TEMPORARY (do not merge): force the option on every loaddb so CI exercises the no-redo
+       * build path without --no-logging-index; this commit is reverted after the CI run. */
+      btree_set_no_logging_index (true);
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
