@@ -1103,6 +1103,193 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
   return;
 }
 
+/*
+ * mcv_join_parts () - match up the two sorted MCV lists for an equijoin.
+ *   matchprodfreq (out): Σ freq1 * freq2 over MCV values present on BOTH sides
+ *   matchfreq1/2 (out) : Σ freq of the matched MCVs on each side
+ *   nmatches (out)     : number of matched MCV values
+ * Both lists are sorted ascending with unique values, so a two-pointer merge finds
+ * every match in O(n1 + n2) (instead of comparing every pair with
+ * a nested loop).
+ */
+template <typename T>
+static void
+mcv_join_parts (const hist::HistogramReader &r1, const hist::HistogramReader &r2,
+		double &matchprodfreq, double &matchfreq1, double &matchfreq2, int &nmatches)
+{
+  const std::uint32_t n1 = static_cast<std::uint32_t> (r1.mcv_count ());
+  const std::uint32_t n2 = static_cast<std::uint32_t> (r2.mcv_count ());
+  std::uint32_t i = 0, j = 0;
+
+  matchprodfreq = 0.0;
+  matchfreq1 = 0.0;
+  matchfreq2 = 0.0;
+  nmatches = 0;
+
+  while (i < n1 && j < n2)
+    {
+      const T v1 = r1.mcv_hi<T> (i);
+      const T v2 = r2.mcv_hi<T> (j);
+      if (v1 == v2)
+	{
+	  const double f1 = r1.mcv_freq (i);
+	  const double f2 = r2.mcv_freq (j);
+	  matchprodfreq += f1 * f2;
+	  matchfreq1 += f1;
+	  matchfreq2 += f2;
+	  nmatches++;
+	  i++;
+	  j++;
+	}
+      else if (v1 < v2)
+	{
+	  i++;
+	}
+      else
+	{
+	  j++;
+	}
+    }
+}
+
+/*
+ * histogram_get_join_selectivity () - equijoin (attr = attr) selectivity from both sides'
+ *   histograms: instead of assuming uniform, fully-overlapping value sets (1/max NDV), the
+ *   estimate is built from the two columns' actual value distributions.
+ *
+ *   Matched MCV pairs contribute their exact frequency product. Unmatched MCVs and the
+ *   non-MCV remainder are assumed to match random members of the other side's non-MCV
+ *   population, spread over its distinct values. The estimate is computed from each
+ *   relation's point of view and the smaller one is used. With no MCVs on either side the
+ *   formula degenerates to the NDV-based estimate:
+ *   (1 - nullfrac1) * (1 - nullfrac2) / max(nd1, nd2).
+ */
+void
+histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity, bool *success)
+{
+  assert (selectivity != NULL);
+
+  *success = false;
+
+  hist::HistogramReader reader1, reader2;
+  if (!histogram_init_reader_from_lhs (lhs, reader1) || !histogram_init_reader_from_lhs (rhs, reader2))
+    {
+      return;
+    }
+
+  const hist::histogram_key_kind kind = histogram_key_kind_for_type (reader1.value_type ());
+  if (kind == hist::histogram_key_kind::invalid
+      || kind != histogram_key_kind_for_type (reader2.value_type ()))
+    {
+      /* the two blobs encode their 8B value slots differently (e.g. an INTEGER column joined
+       * to a DOUBLE column); comparing MCVs across kinds would decode one side with the wrong
+       * template. Use default estimates. */
+      return;
+    }
+
+  const double total_rows1 = static_cast<double> (reader1.total_rows ());
+  const double total_rows2 = static_cast<double> (reader2.total_rows ());
+  if (total_rows1 <= 0.0 || total_rows2 <= 0.0)
+    {
+      return;
+    }
+
+  double matchprodfreq = 0.0;
+  double matchfreq1 = 0.0;
+  double matchfreq2 = 0.0;
+  int nmatches = 0;
+
+  switch (kind)
+    {
+    case hist::histogram_key_kind::i64:
+      mcv_join_parts<std::int64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      break;
+    case hist::histogram_key_kind::dbl:
+      mcv_join_parts<double> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      break;
+    case hist::histogram_key_kind::str:
+      mcv_join_parts<std::string_view> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      break;
+    case hist::histogram_key_kind::u64:
+      mcv_join_parts<std::uint64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      break;
+    case hist::histogram_key_kind::invalid:
+    default:
+      assert (false);
+      return;
+    }
+
+  const double nullfrac1 = reader1.null_frequency ();
+  const double nullfrac2 = reader2.null_frequency ();
+  const int nmcv1 = static_cast<int> (reader1.mcv_count ());
+  const int nmcv2 = static_cast<int> (reader2.mcv_count ());
+  /* per-side distinct count from the same blob the MCV masses came from, so the
+   * (nd - nmcv) and (nd - nmatches) denominators below can never go negative */
+  const double nd1 = static_cast<double> (reader1.nonmcv_distinct ()) + nmcv1;
+  const double nd2 = static_cast<double> (reader2.nonmcv_distinct ()) + nmcv2;
+
+  matchprodfreq = clamp01 (matchprodfreq);
+  matchfreq1 = clamp01 (matchfreq1);
+  matchfreq2 = clamp01 (matchfreq2);
+
+  /* all frequencies are fractions of ALL rows on their own side */
+  const double unmatchfreq1 = clamp01 (reader1.mcv_total_frequency () - matchfreq1);
+  const double unmatchfreq2 = clamp01 (reader2.mcv_total_frequency () - matchfreq2);
+  const double otherfreq1 = clamp01 (1.0 - nullfrac1 - matchfreq1 - unmatchfreq1);
+  const double otherfreq2 = clamp01 (1.0 - nullfrac2 - matchfreq2 - unmatchfreq2);
+
+  /* seen from relation 1: matched MCVs contribute matchprodfreq; side 1's unmatched MCVs
+   * match random members of side 2's non-MCV population; side 1's non-MCV values match
+   * random members of side 2's unmatched-MCV plus non-MCV population */
+  double totalsel1 = matchprodfreq;
+  if (nd2 > nmcv2)
+    {
+      totalsel1 += unmatchfreq1 * otherfreq2 / (nd2 - nmcv2);
+    }
+  if (nd2 > nmatches)
+    {
+      totalsel1 += otherfreq1 * (otherfreq2 + unmatchfreq2) / (nd2 - nmatches);
+    }
+
+  double totalsel2 = matchprodfreq;
+  if (nd1 > nmcv1)
+    {
+      totalsel2 += unmatchfreq2 * otherfreq1 / (nd1 - nmcv1);
+    }
+  if (nd1 > nmatches)
+    {
+      totalsel2 += otherfreq2 * (otherfreq1 + unmatchfreq1) / (nd1 - nmatches);
+    }
+
+  /* the smaller estimate is the view from the larger-NDV side */
+  double sel = (totalsel1 < totalsel2) ? totalsel1 : totalsel2;
+
+  /* the caller (qo_expr_selectivity) multiplies the returned selectivity by
+   * (1 - null_frequency) of BOTH name arguments; the null masses are already excluded
+   * above, so divide both back out (see histogram_get_equal_selectivity) */
+  const double nonnull_frac1 = 1.0 - nullfrac1;
+  const double nonnull_frac2 = 1.0 - nullfrac2;
+  if (nonnull_frac1 > 1e-9)
+    {
+      sel /= nonnull_frac1;
+    }
+  if (nonnull_frac2 > 1e-9)
+    {
+      sel /= nonnull_frac2;
+    }
+
+  sel = clamp01 (sel);
+  if (sel <= 0.0)
+    {
+      /* avoid a zero-cardinality estimate: at least one pair out of the cross product */
+      sel = 1.0 / (total_rows1 * total_rows2);
+    }
+
+  *selectivity = sel;
+  *success = true;
+  return;
+}
+
 static double
 pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
 {
