@@ -810,7 +810,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_STATISTICS_SAMPLING_THRESHOLD_PAGES "statistics_sampling_threshold_pages"
 
-#define PRM_NAME_STATISTICS_SAMPLE_ROWS "statistics_sample_rows"
+#define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
@@ -5457,8 +5457,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_STATISTICS_SAMPLE_ROWS,
-   PRM_NAME_STATISTICS_SAMPLE_ROWS,
+  {PRM_ID_STATISTICS_SAMPLE_PAGES,
+   PRM_NAME_STATISTICS_SAMPLE_PAGES,
    (PRM_FOR_SERVER | PRM_USER_CHANGE),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,

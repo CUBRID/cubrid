@@ -3519,6 +3519,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       if (db_prepared_tree_register (statement->info.execute.name->info.name.original, new_session))
 	{
 	  DB_SESSION **sp;
+	  bool detached = false;
 
 	  /* the registry owns the subsession now; detach it from the parent session so
 	   * closing the parent does not free it */
@@ -3528,7 +3529,25 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 		{
 		  *sp = new_session->next;
 		  new_session->next = NULL;
+		  detached = true;
 		  break;
+		}
+	    }
+	  if (!detached)
+	    {
+	      /* not on the parent's chain (unexpected): the chain must keep sole ownership,
+	       * so take the entry back out of the registry WITHOUT closing the session --
+	       * otherwise the parent's close and the registry would both free it */
+	      PREPARED_TREE_ENTRY *e;
+
+	      assert (false);
+	      pthread_mutex_lock (&db_Prepared_tree_lock);
+	      e = db_prepared_tree_unlink_nolock (statement->info.execute.name->info.name.original);
+	      pthread_mutex_unlock (&db_Prepared_tree_lock);
+	      if (e != NULL)
+		{
+		  free_and_init (e->name);
+		  free_and_init (e);
 		}
 	    }
 	}

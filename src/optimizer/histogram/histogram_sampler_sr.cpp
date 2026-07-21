@@ -622,18 +622,19 @@ namespace
 	       < threshold);
   }
 
-  /* PostgreSQL-style sampling fraction: visit about target_pages of the heap once it exceeds the
-   * sampling threshold; WITH FULLSCAN always visits everything. One formula for the parallel and
-   * serial collection paths. */
+  /* PostgreSQL-style sampling fraction: visit about statistics_sample_pages PAGES of the heap
+   * once it exceeds the sampling threshold; WITH FULLSCAN always visits everything. One formula
+   * for the parallel and serial collection paths. When the parameter is 0 the reservoir's row
+   * target doubles as the page target (>= one sampled row per page on average). */
   static double
-  histogram_compute_sample_fraction (int npages, int sample_rows_target, bool with_fullscan)
+  histogram_compute_sample_fraction (int npages, int fallback_target_pages, bool with_fullscan)
   {
     int sampling_threshold = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLING_THRESHOLD_PAGES);
-    int target_pages = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLE_ROWS);
+    int target_pages = prm_get_integer_value (PRM_ID_STATISTICS_SAMPLE_PAGES);
 
     if (target_pages <= 0)
       {
-	target_pages = sample_rows_target;
+	target_pages = fallback_target_pages;
       }
     if (!with_fullscan && sampling_threshold > 0 && npages > sampling_threshold && npages > target_pages)
       {
