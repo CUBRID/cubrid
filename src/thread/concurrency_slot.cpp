@@ -317,6 +317,20 @@ namespace cubthread
     return slot;
   }
 
+  std::unique_ptr<concurrency_slot>
+  concurrency_slot_pool::acquire_temporary_slot (std::unique_lock<std::mutex> &ulock)
+  {
+    assert (ulock.owns_lock ());
+
+    std::unique_ptr<concurrency_slot> slot (new concurrency_slot (this));
+    ++m_slot_count;
+
+    slot->set_holder_pool (this);
+    assert (slot->get_owner_pool () && slot->get_holder_pool ());
+
+    return slot;
+  }
+
   bool
   concurrency_slot_pool::acquire_slot (cubthread::entry *thread_p)
   {

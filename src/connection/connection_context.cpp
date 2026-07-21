@@ -82,6 +82,7 @@ namespace cubconn::connection
     .m_receiver = receiver (capacity, &m_stats),
     .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
+    .m_command_flags = 0,
     .m_command = false
   },
   m_send
@@ -104,6 +105,7 @@ namespace cubconn::connection
     .m_receiver = receiver (),
     .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
+    .m_command_flags = 0,
     .m_command = false
   },
   m_send
@@ -135,6 +137,7 @@ namespace cubconn::connection
     m_recv.m_receiver.reset ();
     m_recv.m_header = DEFAULT_HEADER_DATA;
     m_recv.m_request_id = -1;
+    m_recv.m_command_flags = 0;
     m_recv.m_command = false;
 
     m_send.m_transmitter.clear ();

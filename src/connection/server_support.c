@@ -2380,7 +2380,7 @@ css_get_current_conn_entry (void)
  * TODO: this is also used externally due to legacy design; should be internalized completely
  */
 void
-css_push_server_task (CSS_CONN_ENTRY &conn_ref)
+css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_options options)
 {
   // push the task
   //
@@ -2392,7 +2392,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-                                            static_cast<size_t> (conn_ref.idx));
+					    static_cast<size_t> (conn_ref.idx), options);
 }
 
 void
