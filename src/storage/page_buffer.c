@@ -3498,6 +3498,150 @@ pgbuf_invalidate_all (THREAD_ENTRY * thread_p, VOLID volid)
 }
 
 /*
+ * pgbuf_compare_vsids_for_discard () - bsearch comparator for VSID arrays; must match disk_compare_vsids ordering
+ *                                      (volume id first, then sector id)
+ *
+ * return       : 1 if first is bigger, -1 if first is smaller, 0 if equal
+ * first (in)   : first VSID
+ * second (in)  : second VSID
+ */
+static int
+pgbuf_compare_vsids_for_discard (const void *first, const void *second)
+{
+  VSID *first_vsid = (VSID *) first;
+  VSID *second_vsid = (VSID *) second;
+
+  if (first_vsid->volid > second_vsid->volid)
+    {
+      return 1;
+    }
+  else if (first_vsid->volid < second_vsid->volid)
+    {
+      return -1;
+    }
+  return (int) (first_vsid->sectid - second_vsid->sectid);
+}
+
+/*
+ * pgbuf_discard_pages_of_sectors () - discard all buffered pages belonging to the given sectors: clear dirty status
+ *                                     and invalidate the buffers, without flushing and without any logging.
+ *                                     used by bulk permanent file destroy: the file is dropped and
+ *                                     invisible, so buffered contents are dead; dirty pages must not reach disk
+ *                                     because the sectors are about to be unreserved and may be reused.
+ *
+ * return        : NO_ERROR
+ * thread_p (in) : thread entry
+ * vsids (in)    : sectors of the file being destroyed, sorted by disk_compare_vsids ordering
+ * nsects (in)   : number of sectors
+ *
+ * note: must be called BEFORE the sectors are unreserved. the caller must guarantee that no page of these sectors
+ *       can be fixed concurrently (the destroyed file is unregistered from tracker and exclusively locked).
+ */
+int
+pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects)
+{
+  PGBUF_BCB *bufptr;
+  VSID vsid_key;
+  VPID vpid;
+  int bufid;
+
+  if (vsids == NULL || nsects <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
+    {
+      bufptr = PGBUF_FIND_BCB_PTR (bufid);
+
+      /* dirty read for quick filtering; a match is rechecked while holding the bcb mutex. */
+      vpid = bufptr->vpid;
+      if (VPID_ISNULL (&vpid))
+	{
+	  continue;
+	}
+      vsid_key.volid = vpid.volid;
+      vsid_key.sectid = vpid.pageid / DISK_SECTOR_NPAGES;
+      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), pgbuf_compare_vsids_for_discard) == NULL)
+	{
+	  continue;
+	}
+
+      PGBUF_BCB_LOCK (bufptr);
+
+      /* recheck under mutex */
+      if (VPID_ISNULL (&bufptr->vpid))
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
+	}
+      vsid_key.volid = bufptr->vpid.volid;
+      vsid_key.sectid = bufptr->vpid.pageid / DISK_SECTOR_NPAGES;
+      if (bsearch (&vsid_key, vsids, nsects, sizeof (VSID), pgbuf_compare_vsids_for_discard) == NULL)
+	{
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
+	}
+
+      if (get_fcnt (&bufptr->atomic_latch) > 0)
+	{
+	  /* no one should be able to fix a page of a file being destroyed */
+	  assert (false);
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
+	}
+
+      /* discard content. the page must never reach disk. */
+      if (pgbuf_bcb_is_dirty (bufptr))
+	{
+	  pgbuf_bcb_clear_dirty (thread_p, bufptr);
+	}
+
+      if (pgbuf_bcb_is_flushing (bufptr))
+	{
+	  /* wait for the in-flight write to finish. it writes to a sector still reserved for the destroyed file,
+	   * which is harmless; but we may not return while a write is in flight, because the sectors are unreserved
+	   * right after this function and may be reused by another file. */
+	  VPID flush_vpid = bufptr->vpid;
+
+	  if (pgbuf_bcb_safe_flush_force_lock (thread_p, bufptr, true) != NO_ERROR)
+	    {
+	      assert (false);
+	      return ER_FAILED;
+	    }
+	  if (VPID_ISNULL (&bufptr->vpid) || !VPID_EQ (&flush_vpid, &bufptr->vpid)
+	      || get_fcnt (&bufptr->atomic_latch) > 0)
+	    {
+	      PGBUF_BCB_UNLOCK (bufptr);
+	      continue;
+	    }
+	}
+
+      if (pgbuf_bcb_avoid_victim (bufptr))
+	{
+	  /* skip invalidation; the bcb is clean now, so leaving it in the buffer is harmless. */
+	  PGBUF_BCB_UNLOCK (bufptr);
+	  continue;
+	}
+
+      /* clear residual hint flags that would block moving the bcb to the invalid list (see the flags assert in
+       * pgbuf_put_bcb_into_invalid_list): to-vacuum, move-to-lru-bottom and async-flush-request hints are all
+       * meaningless for a page of a destroyed file. */
+      pgbuf_bcb_update_flags (thread_p, bufptr, 0,
+			      PGBUF_BCB_TO_VACUUM_FLAG | PGBUF_BCB_MOVE_TO_LRU_BOTTOM_FLAG | PGBUF_BCB_ASYNC_FLUSH_REQ);
+
+#if defined(CUBRID_DEBUG)
+      pgbuf_scramble (&bufptr->iopage_buffer->iopage);
+#endif /* CUBRID_DEBUG */
+
+      (void) pgbuf_invalidate_bcb (thread_p, bufptr);
+      /* bufptr->mutex has been released in above function. */
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * pgbuf_flush () - Flush a page out to disk
  *   return: pgptr on success, NULL on failure
  *   pgptr(in): Page pointer
