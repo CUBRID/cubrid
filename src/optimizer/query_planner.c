@@ -1264,6 +1264,31 @@ qo_top_plan_new (QO_PLAN * plan)
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
 	      }
+
+	      if (plan->need_final_sort)
+		{
+		  /*
+		   * orderby_skip was accepted because the outermost index scan returns rows in ORDER BY order.
+		   * However, the hash/merge join above it (for which qo_join_new sets need_final_sort)
+		   * breaks that order, since a hash join may not preserve the order of its probe input
+		   * when partitioned or run in parallel and a merge join re-sorts both inputs by the join column
+		   * in S_ASC order regardless of direction. Therefore, append a SORT_ORDERBY plan on top
+		   * to guarantee the final order, which allows the subplans to keep the order by skip
+		   * such as the key-limited index scan under a SORT-LIMIT plan.
+		   */
+		  bool save_use_iscan_descending = plan->use_iscan_descending;
+
+		  plan = qo_sort_new (plan, QO_UNORDERED, SORT_ORDERBY);
+		  if (plan != NULL)
+		    {
+		      /*
+		       * Since qo_sort_new does not propagate it,
+		       * keep the descending scan direction visible at the top
+		       * so that qo_optimize applies qo_set_use_desc to the subplan index scans.
+		       */
+		      plan->use_iscan_descending = save_use_iscan_descending;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -2868,6 +2893,14 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
 
+  /* An nl/idx join (or cartesian product) emits rows in its outer's order,
+   * so it inherits only the outer's final-sort requirement:
+   * the inner is probed per outer row and does not change the output order,
+   * and order-by-skip likewise follows only the outer.
+   * (A right outer join is normalized to a left one, so the outer is still the order-driving side.)
+   * The hash/merge branches below override this to true for their own output. */
+  plan->need_final_sort = outer->need_final_sort;
+
   switch (join_method)
     {
 
@@ -3086,6 +3119,7 @@ qo_join_free (QO_PLAN * plan)
   bitset_delset (&(plan->plan_un.join.join_terms));
   bitset_delset (&(plan->plan_un.join.during_join_terms));
   bitset_delset (&(plan->plan_un.join.after_join_terms));
+  bitset_delset (&(plan->plan_un.join.hash_terms));
 }
 
 /*
@@ -3767,6 +3801,7 @@ qo_follow_new (QO_INFO * info, QO_PLAN * head_plan, QO_TERM * path_term, BITSET 
   plan->plan_un.follow.path = path_term;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->need_final_sort = head_plan->need_final_sort;
 
   bitset_assign (&(plan->sarged_terms), sarged_terms);
   bitset_remove (&(plan->sarged_terms), QO_TERM_IDX (path_term));
