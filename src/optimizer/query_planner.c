@@ -9968,16 +9968,22 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	   * all-rows fraction with the CURRENT node's columns. Using the chain head (pt_expr)
 	   * here applied the head's null fraction to every sibling, so a high-null column
 	   * behind a null-free head kept its conditional selectivity (inflated by 1/(1-nf)). */
-	  if (node->info.expr.arg1 && node->info.expr.arg1->node_type == PT_NAME
-	      && node->info.expr.arg1->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - node->info.expr.arg1->info.name.null_frequency);
-	    }
-	  if (node->info.expr.arg2 && node->info.expr.arg2->node_type == PT_NAME
-	      && node->info.expr.arg2->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - node->info.expr.arg2->info.name.null_frequency);
-	    }
+	  {
+	    /* a qualified reference kept as a PT_DOT_ chain resolves to its terminal name node --
+	     * the same unwrap the histogram readers apply, so the correction cannot be skipped
+	     * for an argument whose estimate was histogram-based */
+	    PT_NODE *corr_arg1 = pt_get_end_path_node (node->info.expr.arg1);
+	    PT_NODE *corr_arg2 = pt_get_end_path_node (node->info.expr.arg2);
+
+	    if (corr_arg1 != NULL && corr_arg1->node_type == PT_NAME && corr_arg1->info.name.null_frequency >= 0.0)
+	      {
+		selectivity = selectivity * (1 - corr_arg1->info.name.null_frequency);
+	      }
+	    if (corr_arg2 != NULL && corr_arg2->node_type == PT_NAME && corr_arg2->info.name.null_frequency >= 0.0)
+	      {
+		selectivity = selectivity * (1 - corr_arg2->info.name.null_frequency);
+	      }
+	  }
 	}
 
       total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
