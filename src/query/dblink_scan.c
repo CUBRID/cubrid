@@ -1667,20 +1667,28 @@ dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VA
 
 /*
  * dblink_dml_rollback () - Rollback remote transaction immediately on error.
- *   state(in) : connection handle to rollback
+ *   thread_p(in)   : thread entry
+ *   state(in/out)  : conn_handle is set to -1 after teardown
  *
- * Note: Called from qexec_execute_remote_dml_sink()'s error path to prevent partial writes.
- *   Rollback is best-effort on the remote connection; if it fails, the conn remains in the
- *   dblink pool and qmgr_check_dblink_trans() will attempt remote ROLLBACK again at local
- *   transaction end (idempotent for already-rolled-back remote transactions).
+ * Note: Called from qexec_execute_remote_dml_sink()'s error path, after dblink_dml_close() has
+ *   already released the stmt handle (stmt close must precede connection teardown, same order as
+ *   the scan-side cleanup in dblink_close_scan()). This connection is registered in the
+ *   per-transaction dblink pool (qmgr_dblink_add_conn_handle) so it would otherwise also be reached
+ *   later, at local transaction end or 2PC prepare, by code that assumes it is still live --
+ *   disconnect and unregister it here (mirrors the cleanup dblink_2pc_send_prepare does once a
+ *   connection's fate is decided outside the normal end-of-transaction flow), so nothing tries to
+ *   commit/rollback or XA-prepare this connection again.
  */
 void
-dblink_dml_rollback (DBLINK_DML_STATE * state)
+dblink_dml_rollback (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state)
 {
   if (state->conn_handle >= 0)
     {
       T_CCI_ERROR err_buf;
       (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
+      (void) cci_disconnect (state->conn_handle, &err_buf);
+      (void) qmgr_dblink_remove_conn_entry (thread_p, state->conn_handle);
+      state->conn_handle = -1;
     }
 }
 
@@ -1701,6 +1709,10 @@ dblink_dml_rollback (DBLINK_DML_STATE * state)
  *   ties remote commit/rollback to the local transaction:
  *     - On error: local txn abort -> remote ROLLBACK -> no partial data on remote
  *     - On success: local txn commit -> remote COMMIT -> all-or-nothing semantics
+ *
+ *   Error path (row-level sink failure, not local txn abort): the caller closes this stmt handle
+ *   first, then calls dblink_dml_rollback(), which tears the connection down immediately instead
+ *   of waiting for qmgr_check_dblink_trans().
  */
 void
 dblink_dml_close (DBLINK_DML_STATE * state)

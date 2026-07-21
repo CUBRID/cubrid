@@ -130,7 +130,7 @@ extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const
 			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
-extern void dblink_dml_rollback (DBLINK_DML_STATE * state);
+extern void dblink_dml_rollback (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);
 extern void dblink_dml_close (DBLINK_DML_STATE * state);
 
 #endif

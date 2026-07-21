@@ -12697,8 +12697,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   return NO_ERROR;
 
 exit_on_error:
-  dblink_dml_rollback (&dblink_state);
   dblink_dml_close (&dblink_state);
+  dblink_dml_rollback (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
 
