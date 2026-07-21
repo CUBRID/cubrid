@@ -193,14 +193,14 @@ assignment_statement
     : assign_target ':=' expression
     ;
 
-qualified_name
+qualified_id
     : qualSingle=identifier '.' name=identifier                             // qualifier can be a record, owner, pkg, or table
     | qualLeft=identifier '.' qualRight=identifier '.' name=identifier      // qualifier can be a onwer.pkg or owner.table
     ;
 
 assign_target
     : identifier
-    | qualified_name    // record.field, or (owner.)pkg.var
+    | qualified_id    // record.field, or (owner.)pkg.var
     ;
 
 continue_statement
@@ -275,7 +275,7 @@ procedure_call
 proc_call_name
     : identifier
     | DBMS_OUTPUT '.' identifier
-    | qualified_name    // owner.proc, or (owner.)pkg.proc
+    | qualified_id    // owner.proc, or (owner.)pkg.proc
     ;
 
 body
@@ -407,7 +407,7 @@ unary_expression
 
 atom
     : literal                                   # literal_exp
-    | qualified_name                            # qualified_id     // record.field, serial-value, (owner.)pkg.var, or (owner.)pkg.const
+    | qualified_id                              # qualified_name   // record.field, serial-value, (owner.)pkg.var, or (owner.)pkg.const
     | syntaxed_call                             # syntaxed_call_exp
     | function_call                             # call_exp
     | identifier                                # id_exp
@@ -426,7 +426,7 @@ function_call
 
 func_call_name
     : func_name
-    | qualified_name    // owner.func, or (owner.)pkg.func
+    | qualified_id    // owner.func, or (owner.)pkg.func
     ;
 
 func_name
@@ -618,7 +618,7 @@ label_name
 
 exception_name
     : identifier
-    | qualified_name    // (owner.)pkg.exception
+    | qualified_id    // (owner.)pkg.exception
     ;
 
 index_name
@@ -627,7 +627,7 @@ index_name
 
 cursor_exp
     : identifier
-    | qualified_name    // (owner.)pkg.cursor
+    | qualified_id    // (owner.)pkg.cursor
     ;
 
 record_name
@@ -657,12 +657,12 @@ native_datatype
 
 percent_type
     : identifier PERCENT_TYPE       // var, const
-    | qualified_name PERCENT_TYPE   // (owner.)table.column, (owner.)pkg.var, or (owner.)pkg.const
+    | qualified_id PERCENT_TYPE   // (owner.)table.column, (owner.)pkg.var, or (owner.)pkg.const
     ;
 
 percent_rowtype
     : identifier PERCENT_ROWTYPE        // table, or cursor
-    | qualified_name PERCENT_ROWTYPE    // owner.table, or (owner.)pkg.cursor
+    | qualified_id PERCENT_ROWTYPE    // owner.table, or (owner.)pkg.cursor
     ;
 
 numeric_type
