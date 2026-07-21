@@ -19768,7 +19768,9 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* operator -> remote WHERE SQL text (fixed safe set; IN / = ANY push per-row equality) */
+  /* operator -> remote WHERE SQL text (fixed safe set; each op pushes one remote predicate per
+   * list-file value -- IN/=ANY/scalar-= as equality, <>(_SOME) as inequality, the rest as their
+   * own comparison; ANY semantics fall out of the per-row OR-union the runtime already does) */
   switch (cond->info.expr.op)
     {
     case PT_IS_IN:
@@ -19777,16 +19779,24 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       op_sql = "=";
       break;
     case PT_LT:
+    case PT_LT_SOME:
       op_sql = "<";
       break;
     case PT_GT:
+    case PT_GT_SOME:
       op_sql = ">";
       break;
     case PT_LE:
+    case PT_LE_SOME:
       op_sql = "<=";
       break;
     case PT_GE:
+    case PT_GE_SOME:
       op_sql = ">=";
+      break;
+    case PT_NE:
+    case PT_NE_SOME:
+      op_sql = "<>";
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
