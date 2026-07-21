@@ -88,8 +88,8 @@ int yylineno_prev = 0;
 /* Stores the start line and column number of the currently read token.
  * Since first_line and first_column of the yyloc (csql_yylloc) may be forced to 0 upon parsing failure,
  * separate variables are added and managed. */
-int yytoken_start_line;
-int yytoken_start_column;
+int yytoken_start_line = 1;
+int yytoken_start_column = 0;
 
 #define CSQL_YY_LESS(n)   do {                      \
             yybuffer_pos -= (csql_yyleng - (n));    \
@@ -2197,6 +2197,8 @@ parser_yy_user_action (void)
       yylineno_prev = 0;
       this_parser->line = yylineno;
       this_parser->column = 0;
+      yytoken_start_line = yylineno;
+      yytoken_start_column = 0;
     }
     
   yyline_start_pos_bk = yyline_start_pos;

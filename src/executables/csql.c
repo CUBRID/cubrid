@@ -2128,7 +2128,7 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
 {
   char *stmts = NULL;		/* statements string */
   int num_stmts = 0;		/* # of stmts executed */
-  int stmt_start_line_no = line_no;	/* starting line no of each stmt */
+  int stmt_start_line_no = line_no < 0 ? 0 : line_no;	/* starting line no of each stmt */
   DB_SESSION *session = NULL;	/* query compilation session id */
   DB_QUERY_TYPE *attr_spec = NULL;	/* result attribute spec. */
   int total;			/* number of statements to execute */
