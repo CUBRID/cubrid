@@ -730,7 +730,6 @@ static int file_user_page_table_extdata_dump (THREAD_ENTRY * thread_p, const FIL
 					      bool * stop, void *args);
 static int file_user_page_table_item_dump (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop,
 					   void *args);
-static int file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_sector_map_dealloc_temp (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args);
 static int file_set_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, TDE_ALGORITHM tde_algo);
 static TDE_ALGORITHM file_get_tde_algorithm_internal (const FILE_HEADER * fhead);
@@ -4001,65 +4000,6 @@ file_table_collect_all_vsids (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE
 }
 
 /*
- * file_sector_map_dealloc () - FILE_EXTDATA_ITEM_FUNC to deallocate user pages
- *
- * return        : error code
- * thread_p (in) : thread entry
- * data (in)     : FILE_PARTIAL_SECTOR * or VSID *
- * index (in)    : unused
- * stop (in)     : unused
- * args (in)     : is_partial
- */
-static int
-file_sector_map_dealloc (THREAD_ENTRY * thread_p, const void *data, int index, bool * stop, void *args)
-{
-  bool is_partial = *(bool *) args;
-  FILE_PARTIAL_SECTOR partsect = FILE_PARTIAL_SECTOR_INITIALIZER;
-  int offset = 0;
-  VPID vpid;
-  PAGE_PTR page = NULL;
-  int error_code = NO_ERROR;
-
-  if (is_partial)
-    {
-      partsect = *(FILE_PARTIAL_SECTOR *) data;
-    }
-  else
-    {
-      partsect.vsid = *(VSID *) data;
-    }
-
-  vpid.volid = partsect.vsid.volid;
-  for (offset = 0, vpid.pageid = SECTOR_FIRST_PAGEID (partsect.vsid.sectid); offset < DISK_SECTOR_NPAGES;
-       offset++, vpid.pageid++)
-    {
-      if (is_partial && !file_partsect_is_bit_set (&partsect, offset))
-	{
-	  /* not allocated */
-	  continue;
-	}
-
-      page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-      if (page == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  return error_code;
-	}
-
-      if (pgbuf_get_page_ptype (thread_p, page) == PAGE_FTAB)
-	{
-	  /* table page, do not deallocate yet */
-	  pgbuf_unfix_and_init (thread_p, page);
-	  continue;
-	}
-      pgbuf_dealloc_page (thread_p, page);
-      page = NULL;
-    }
-
-  return NO_ERROR;
-}
-
-/*
  * file_sector_map_dealloc_temp () - FILE_EXTDATA_ITEM_FUNC to dealloc user pages of temp table
  *
  * return        : error code
@@ -4210,65 +4150,19 @@ file_destroy (THREAD_ENTRY * thread_p, const VFID * vfid, bool is_temp)
 
   if (!FILE_IS_TEMPORARY (fhead))
     {
-      /* we need to deallocate pages */
-      ftab_collector.npages = 0;
-      ftab_collector.nsects = 0;
-      ftab_collector.partsect_ftab =
-	(FILE_PARTIAL_SECTOR *) db_private_alloc (thread_p, fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-      if (ftab_collector.partsect_ftab == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  fhead->n_page_ftab * sizeof (FILE_PARTIAL_SECTOR));
-	  error_code = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
+      /* bulk destroy: do not fix and deallocate pages one by one - that reads the whole file from disk
+       * when it is not buffered and appends one dealloc log record per page. the file's logical removal is already
+       * fully logged by the tracker unregister (above) and the sector unreserve (below); page-level state needs no
+       * logging. buffered pages are discarded (cleared of dirty status and invalidated) so that no stale content can
+       * reach disk after the sectors are reused. */
+      pgbuf_unfix_and_init (thread_p, page_fhead);
 
-      FILE_HEADER_GET_PART_FTAB (fhead, extdata_ftab);
-      is_partial = true;
-      error_code =
-	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
+      error_code = pgbuf_discard_pages_of_sectors (thread_p, vsid_collector.vsids, vsid_collector.n_vsids);
       if (error_code != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
+	  assert_release (false);
 	  goto exit;
 	}
-
-      FILE_HEADER_GET_FULL_FTAB (fhead, extdata_ftab);
-      is_partial = false;
-      error_code =
-	file_extdata_apply_funcs (thread_p, extdata_ftab, file_extdata_collect_ftab_pages, &ftab_collector,
-				  file_sector_map_dealloc, &is_partial, true, NULL, NULL);
-      if (error_code != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto exit;
-	}
-
-      /* deallocate table pages - other than header page */
-      for (iter_sects = 0; iter_sects < ftab_collector.nsects; iter_sects++)
-	{
-	  vpid_ftab.volid = ftab_collector.partsect_ftab[iter_sects].vsid.volid;
-	  for (offset = 0,
-	       vpid_ftab.pageid = SECTOR_FIRST_PAGEID (ftab_collector.partsect_ftab[iter_sects].vsid.sectid);
-	       offset < DISK_SECTOR_NPAGES; offset++, vpid_ftab.pageid++)
-	    {
-	      if (file_partsect_is_bit_set (&ftab_collector.partsect_ftab[iter_sects], offset))
-		{
-		  page_ftab = pgbuf_fix (thread_p, &vpid_ftab, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
-		  if (page_ftab == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error_code);
-		      goto exit;
-		    }
-		  pgbuf_dealloc_page (thread_p, page_ftab);
-		  page_ftab = NULL;
-		}
-	    }
-	}
-      /* deallocate header page */
-      pgbuf_dealloc_page (thread_p, page_fhead);
-      page_fhead = NULL;
     }
   else
     {
