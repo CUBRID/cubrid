@@ -1015,6 +1015,8 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
+  db_free_prepared_tree_registry ();
+
   (void) db_end_session ();
 
   error = boot_shutdown_client (true);
@@ -1034,6 +1036,7 @@ db_shutdown (void)
 void
 db_shutdown_without_request_to_server (void)
 {
+  db_free_prepared_tree_registry ();
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 

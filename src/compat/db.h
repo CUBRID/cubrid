@@ -275,6 +275,7 @@ extern int db_compile_and_execute_queries_internal (const char *CSQL_query, void
 						    int include_oid, int execute, bool is_new_statement);
 extern int db_set_system_generated_statement (DB_SESSION * session);
 extern void db_close_session_local (DB_SESSION * session);
+extern void db_free_prepared_tree_registry (void);
 extern int db_savepoint_transaction_internal (const char *savepoint_name);
 extern int db_drop_set_attribute_domain (MOP class_, const char *name, int class_attribute, const char *domain);
 extern BTID *db_constraint_index (DB_CONSTRAINT * constraint, BTID * index);

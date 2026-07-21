@@ -92,6 +92,12 @@ static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_lis
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
+static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
+							   PT_NODE * statement, DB_QUERY_RESULT ** result,
+							   bool force_replan);
+static DB_SESSION *db_prepared_tree_lookup (const char *name);
+static bool db_prepared_tree_register (const char *name, DB_SESSION * subsession);
+static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
@@ -107,6 +113,117 @@ static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NOD
 static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
 int g_open_buffer_control_flags = 0;
+
+/* Client-side registry of the compiled subsessions of SQL-level prepared statements
+ * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
+ * lets the bind-sensitivity check regenerate only the plan and the XASL when the USING
+ * values land in a different histogram bucket; parsing, semantic checks and rewrites
+ * are not repeated. Entries are per client process, keyed by the prepared statement
+ * name, and are released on DROP PREPARE, on re-PREPARE of the same name and at
+ * db_shutdown (). */
+typedef struct prepared_tree_entry PREPARED_TREE_ENTRY;
+struct prepared_tree_entry
+{
+  char *name;
+  DB_SESSION *session;
+  PREPARED_TREE_ENTRY *next;
+};
+
+static PREPARED_TREE_ENTRY *db_Prepared_tree_registry = NULL;
+
+/*
+ * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
+ * return    : the kept session or NULL
+ * name (in) : prepared statement name
+ */
+static DB_SESSION *
+db_prepared_tree_lookup (const char *name)
+{
+  PREPARED_TREE_ENTRY *e;
+
+  for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
+    {
+      if (strcmp (e->name, name) == 0)
+	{
+	  return e->session;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
+ * name (in) : prepared statement name
+ */
+static void
+db_prepared_tree_remove (const char *name)
+{
+  PREPARED_TREE_ENTRY **prev = &db_Prepared_tree_registry;
+  PREPARED_TREE_ENTRY *e;
+
+  for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
+    {
+      if (strcmp (e->name, name) == 0)
+	{
+	  *prev = e->next;
+	  db_close_session_local (e->session);
+	  free_and_init (e->name);
+	  free_and_init (e);
+	  return;
+	}
+      prev = &e->next;
+    }
+}
+
+/*
+ * db_prepared_tree_register() - keep the compiled subsession of a prepared statement,
+ *   replacing any previous tree kept under the same name. On failure the caller keeps
+ *   ownership of the subsession.
+ * return          : true when the registry took ownership of the subsession
+ * name (in)       : prepared statement name
+ * subsession (in) : compiled subsession holding the post-transform tree
+ */
+static bool
+db_prepared_tree_register (const char *name, DB_SESSION * subsession)
+{
+  PREPARED_TREE_ENTRY *e;
+
+  db_prepared_tree_remove (name);
+
+  e = (PREPARED_TREE_ENTRY *) malloc (sizeof (PREPARED_TREE_ENTRY));
+  if (e == NULL)
+    {
+      return false;
+    }
+  e->name = strdup (name);
+  if (e->name == NULL)
+    {
+      free_and_init (e);
+      return false;
+    }
+  e->session = subsession;
+  e->next = db_Prepared_tree_registry;
+  db_Prepared_tree_registry = e;
+  return true;
+}
+
+/*
+ * db_free_prepared_tree_registry() - release every kept prepared-statement subsession;
+ *   called when the client disconnects.
+ */
+void
+db_free_prepared_tree_registry (void)
+{
+  while (db_Prepared_tree_registry != NULL)
+    {
+      PREPARED_TREE_ENTRY *e = db_Prepared_tree_registry;
+
+      db_Prepared_tree_registry = e->next;
+      db_close_session_local (e->session);
+      free_and_init (e->name);
+      free_and_init (e);
+    }
+}
 
 /*
  * get_dimemsion_of() - returns the number of elements of a null-terminated
@@ -1896,6 +2013,38 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  do_recompile = true;
 	}
 
+      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+	  && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
+	  && statement->info.execute.name != NULL)
+	{
+	  /* re-execute on the kept post-transform tree of this prepared statement: the
+	   * bind-sensitivity check inside db_execute_and_keep_statement_local () replans
+	   * there (plan selection + XASL generation only) when the USING values land in a
+	   * different histogram bucket than the values the cached plan was chosen under */
+	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original);
+
+	  if (kept != NULL)
+	    {
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
+	      if (err >= 0)
+		{
+		  return err;
+		}
+	      /* the kept tree could not be re-executed (e.g. a schema change); discard it
+	       * and fall back to a fresh compilation of the stored statement text */
+	      db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+	      er_clear ();
+	      pt_reset_error (parser);
+	      do_recompile = true;
+	    }
+	  else
+	    {
+	      /* no tree kept yet: compile once from the stored text so the tree gets kept
+	       * and the plan is chosen under the current bind values */
+	      do_recompile = true;
+	    }
+	}
+
       if (do_recompile)
 	{
 	  return do_recompile_and_execute_prepared_statement (session, statement, result);
@@ -2585,6 +2734,9 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   assert (statement->node_type == PT_PREPARE_STATEMENT);
   db_init_prepare_info (&prepare_info);
 
+  /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
+  db_prepared_tree_remove (name);
+
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
     {
@@ -3135,6 +3287,74 @@ exit:
 }
 
 /*
+ * do_reexecute_prepared_statement_from_kept_tree () - execute a prepared statement on
+ *   its kept compiled subsession: only the USING values are re-bound; parsing, semantic
+ *   checks and rewrites are not repeated. The bind-sensitivity check downstream replans
+ *   from the kept post-transform tree when the values require it.
+ * return : error code or the executed row count
+ * session (in)      : client session context of the EXECUTE statement
+ * kept (in)         : registered subsession holding the compiled statement
+ * statement (in)    : the EXECUTE ... USING ... statement
+ * result (out)      : execution result
+ * force_replan (in) : an existing signal (invalidated XASL, LIKE/limit optimization
+ *                     check) already requires replanning under the current values
+ */
+static int
+do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept, PT_NODE * statement,
+						DB_QUERY_RESULT ** result, bool force_replan)
+{
+  int err = NO_ERROR;
+
+  assert (statement->node_type == PT_EXECUTE_PREPARE);
+  assert (kept != NULL && kept->statements != NULL && kept->statements[0] != NULL);
+
+  err = do_set_user_host_variables (kept, statement->info.execute.using_list);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  kept->parser->flag.set_host_var = 0;
+  err = do_cast_host_variables_to_expected_domain (kept);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (force_replan)
+    {
+      PT_NODE *stmt0 = kept->statements[0];
+      UINT64 fp = 0;
+
+      /* replan on the kept tree with the current values and record their fingerprint so
+       * the bind-sensitivity check downstream does not replan a second time */
+      if (stmt0->xasl_id != NULL)
+	{
+	  pt_free_statement_xasl_id (stmt0);
+	}
+      stmt0->flag.recompile = 1;
+      er_clear ();
+      pt_reset_error (kept->parser);
+      kept->parser->query_id = NULL_QUERY_ID;
+
+      err = do_prepare_statement (kept->parser, stmt0);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      if (PT_IS_QUERY (stmt0) && histogram_bind_fingerprint (kept->parser, stmt0, &fp))
+	{
+	  stmt0->info.query.bind_fp = fp;
+	}
+    }
+
+  kept->parser->flag.is_holdable = session->parser->flag.is_holdable;
+  kept->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
+
+  return db_execute_and_keep_statement_local (kept, 1, result);
+}
+
+/*
  * do_recompile_and_execute_prepared_statement () - compile and execute a
  *						    prepared statement
  * return : error code or NO_ERROR
@@ -3204,7 +3424,32 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
   new_session->parser->flag.is_holdable = session->parser->flag.is_holdable;
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
-  return db_execute_and_keep_statement_local (new_session, 1, result);
+  err = db_execute_and_keep_statement_local (new_session, 1, result);
+
+  if (err >= 0 && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+      && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.name != NULL)
+    {
+      /* keep the compiled (post-transform) tree for the next EXECUTE of this name: the
+       * bind-sensitivity check can then replan from it without re-parsing the statement */
+      if (db_prepared_tree_register (statement->info.execute.name->info.name.original, new_session))
+	{
+	  DB_SESSION **sp;
+
+	  /* the registry owns the subsession now; detach it from the parent session so
+	   * closing the parent does not free it */
+	  for (sp = &session->next; *sp != NULL; sp = &((*sp)->next))
+	    {
+	      if (*sp == new_session)
+		{
+		  *sp = new_session->next;
+		  new_session->next = NULL;
+		  break;
+		}
+	    }
+	}
+    }
+
+  return err;
 }
 
 /*
@@ -3217,6 +3462,8 @@ static int
 do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
 {
   const char *const name = statement->info.prepare.name->info.name.original;
+
+  db_prepared_tree_remove (name);
   return csession_delete_prepared_statement (name);
 }
 
