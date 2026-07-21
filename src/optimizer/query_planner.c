@@ -10138,10 +10138,17 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_ATTR:
 	  /* attr = attr */
 
-	  histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
-	  if (success)
+	  if (pt_expr->info.expr.op == PT_EQ)
 	    {
-	      break;
+	      /* the histogram estimate models plain equality, where NULL never matches. A
+	       * null-safe join (<=>) also pairs the two sides' NULL rows, which this estimate
+	       * (and the caller's non-null correction) would drop -- those keep the legacy
+	       * index-cardinality estimate below. */
+	      histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
+	      if (success)
+		{
+		  break;
+		}
 	    }
 
 	  /* check for indexes on either of the attributes */

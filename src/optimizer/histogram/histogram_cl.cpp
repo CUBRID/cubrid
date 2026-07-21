@@ -444,6 +444,12 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
 static bool
 histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
 {
+  if (lhs != NULL && lhs->node_type == PT_DOT_)
+    {
+      /* qualified reference kept as a path chain (t.a): the terminal name node is the resolved
+       * attribute and carries the histogram */
+      lhs = pt_get_end_path_node (lhs);
+    }
   if (lhs == NULL || lhs->node_type != PT_NAME)
     {
       return false;
