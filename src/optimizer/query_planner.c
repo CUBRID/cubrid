@@ -9975,13 +9975,31 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    PT_NODE *corr_arg1 = pt_get_end_path_node (node->info.expr.arg1);
 	    PT_NODE *corr_arg2 = pt_get_end_path_node (node->info.expr.arg2);
 
-	    if (corr_arg1 != NULL && corr_arg1->node_type == PT_NAME && corr_arg1->info.name.null_frequency >= 0.0)
+	    bool nf1_known = (corr_arg1 != NULL && corr_arg1->node_type == PT_NAME
+			      && corr_arg1->info.name.null_frequency >= 0.0);
+	    bool nf2_known = (corr_arg2 != NULL && corr_arg2->node_type == PT_NAME
+			      && corr_arg2->info.name.null_frequency >= 0.0);
+
+	    if (node->info.expr.op == PT_NULLSAFE_EQ && nf1_known && nf2_known)
 	      {
-		selectivity = selectivity * (1 - corr_arg1->info.name.null_frequency);
+		/* a null-safe equality (<=>) also matches the two sides' NULL rows: scale the
+		 * non-null equality estimate to the non-null pair fraction, then add the
+		 * NULL-NULL pair mass that plain equality never produces */
+		double nf1 = corr_arg1->info.name.null_frequency;
+		double nf2 = corr_arg2->info.name.null_frequency;
+
+		selectivity = selectivity * (1 - nf1) * (1 - nf2) + nf1 * nf2;
 	      }
-	    if (corr_arg2 != NULL && corr_arg2->node_type == PT_NAME && corr_arg2->info.name.null_frequency >= 0.0)
+	    else
 	      {
-		selectivity = selectivity * (1 - corr_arg2->info.name.null_frequency);
+		if (nf1_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg1->info.name.null_frequency);
+		  }
+		if (nf2_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg2->info.name.null_frequency);
+		  }
 	      }
 	  }
 	}
@@ -10144,17 +10162,12 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_ATTR:
 	  /* attr = attr */
 
-	  if (pt_expr->info.expr.op == PT_EQ)
+	  /* non-null equality estimate, valid for = and <=> alike: the caller scales it to the
+	   * non-null pair fraction and, for a null-safe join, adds the NULL-NULL pair mass. */
+	  histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
+	  if (success)
 	    {
-	      /* the histogram estimate models plain equality, where NULL never matches. A
-	       * null-safe join (<=>) also pairs the two sides' NULL rows, which this estimate
-	       * (and the caller's non-null correction) would drop -- those keep the legacy
-	       * index-cardinality estimate below. */
-	      histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
-	      if (success)
-		{
-		  break;
-		}
+	      break;
 	    }
 
 	  /* check for indexes on either of the attributes */
