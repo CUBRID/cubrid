@@ -186,7 +186,7 @@ const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
  *
  *   SCH-S |    N/A    N/A  SCH-S  SCH-S     IS     WS      S     IX     BU    SIX    N/A     WX      X  SCH-M
  *
- *      IS |    N/A    N/A     IS     IS     IS     WS      S     IX      X    SIX    N/A     WX      X  SCH-M
+ *      IS |    N/A    N/A     IS     IS     IS      S      S     IX      X    SIX    N/A     WX      X  SCH-M
  *
  *      WS |    N/A    N/A     WS     WS      S     WS      S    SIX      X    SIX      U     WX      X  SCH-M
  *
@@ -200,7 +200,7 @@ const LOCK_COMPATIBILITY lock_Comp[LOCK_COUNT][LOCK_COUNT] = {
  *
  *       U |    N/A    N/A      U    N/A    N/A      U      U    N/A    N/A    N/A      U      X      X    N/A
  *
- *      WX |    N/A    N/A     WX     WX      X     WX      X      X      X      X      X     WX      X  SCH-M
+ *      WX |    N/A    N/A     WX     WX     WX     WX     WX      X      X      X      X     WX      X  SCH-M
  *
  *       X |    N/A    N/A      X      X      X      X      X      X      X      X      X      X      X  SCH-M
  *
@@ -233,7 +233,7 @@ const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
 
   /* IS */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ IS_LOCK, /* SCH-S */ IS_LOCK,
-    /* IS */ IS_LOCK, /* WS */ WS_LOCK, /* S */ S_LOCK, /* IX */ IX_LOCK, /* BU */ X_LOCK,
+    /* IS */ IS_LOCK, /* WS */ S_LOCK, /* S */ S_LOCK, /* IX */ IX_LOCK, /* BU */ X_LOCK,
     /* SIX */ SIX_LOCK, /* U */ NA_LOCK, /* WX */ WX_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},
 
   /* WS */
@@ -268,7 +268,7 @@ const LOCK lock_Conv[LOCK_COUNT][LOCK_COUNT] = {
 
   /* WX */
   { /* N/A */ NA_LOCK, /* NON2PL */ NA_LOCK, /* NULL */ WX_LOCK, /* SCH-S */ WX_LOCK,
-    /* IS */ X_LOCK, /* WS */ WX_LOCK, /* S */ X_LOCK, /* IX */ X_LOCK, /* BU */ X_LOCK,
+    /* IS */ WX_LOCK, /* WS */ WX_LOCK, /* S */ WX_LOCK, /* IX */ X_LOCK, /* BU */ X_LOCK,
     /* SIX */ X_LOCK, /* U */ X_LOCK, /* WX */ WX_LOCK, /* X */ X_LOCK, /* SCH-M */ SCH_M_LOCK},
 
   /* X */
