@@ -335,10 +335,14 @@ else()
     TIMEOUT              600
     LOG_BUILD            TRUE
     DOWNLOAD_NO_PROGRESS 1
-    CONFIGURE_COMMAND     ""                  # no configure
-    BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    BUILD_COMMAND         make CFLAGS=-fPIC   # to allow static linking in shared library
-    INSTALL_COMMAND       ""                  # suppress install
+    CONFIGURE_COMMAND     ""                        # no configure
+    BUILD_IN_SOURCE       true                      # lz4 Makefile is designed to run locally
+    # Build only the library (lib/); CUBRID does not use the lz4 CLI. Since LZ4 1.10.0
+    # the CLI (programs/timefn.c) calls clock_gettime(), which needs -lrt on old glibc
+    # (< 2.17, e.g. CentOS 6) and would otherwise fail to link. CFLAGS=-fPIC allows
+    # static linking into a shared library.
+    BUILD_COMMAND         make -C lib CFLAGS=-fPIC
+    INSTALL_COMMAND       ""                        # suppress install
     "${LZ4_BYPRODUCTS}"
   )
 endif()
