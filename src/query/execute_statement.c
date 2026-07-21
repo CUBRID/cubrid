@@ -4779,9 +4779,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  histogram_info.bucket_count = -1;
 		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
 		  histogram_info.random_seed = statement->info.update_stats.random_seed;
-		  error =
-		    update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
-						     DO_HISTOGRAM_CREATE);
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_CREATE);
 		  if (error == NO_ERROR)
 		    {
 		      stats_updated = true;
