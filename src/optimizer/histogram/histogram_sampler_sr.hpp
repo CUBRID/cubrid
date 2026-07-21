@@ -43,8 +43,8 @@
  */
 extern int xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid,
     const HFID *hfid, const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-    int max_buckets, int sample_size, bool with_fullscan, double *null_frequency, char **histogram_blob,
-    int *blob_length, INT64 *out_ndv, INT64 *out_total_rows);
+    int max_buckets, int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency,
+    char **histogram_blob, int *blob_length, INT64 *out_ndv, INT64 *out_total_rows);
 
 /* true when the NDV collectors can measure a column of this type (the histogrammable type set
  * plus OBJECT/OID, which get an exact NDV from the packed OID but never a histogram). Lets

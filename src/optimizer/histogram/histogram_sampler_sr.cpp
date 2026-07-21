@@ -615,10 +615,10 @@ namespace
   /* deterministic page-sampling predicate: keep a page iff hash (vpid) < threshold. Shared by the
    * parallel walker and the serial scans so every path keeps the same reproducible page set. */
   static inline bool
-  histogram_sample_accepts_page (std::uint64_t threshold, short volid, int pageid)
+  histogram_sample_accepts_page (std::uint64_t threshold, std::uint64_t seed, short volid, int pageid)
   {
     return threshold == UINT64_MAX
-	   || (cubsampling::hll_mix64 (((std::uint64_t) (std::uint16_t) volid << 32) | (std::uint32_t) pageid)
+	   || (cubsampling::hll_mix64 ((((std::uint64_t) (std::uint16_t) volid << 32) | (std::uint32_t) pageid) ^ seed)
 	       < threshold);
   }
 
@@ -708,7 +708,7 @@ namespace
 			continue;	/* heap file header page, no user records */
 		      }
 		    m_pages_seen++;
-		    if (!histogram_sample_accepts_page (m_sample_threshold, out->volid, out->pageid))
+		    if (!histogram_sample_accepts_page (m_sample_threshold, m_sample_seed, out->volid, out->pageid))
 		      {
 			continue;	/* page not chosen by the sampling filter */
 		      }
@@ -723,11 +723,12 @@ namespace
       /* page-sampling filter: keep a page iff hash (vpid) < fraction * 2^64. The hash is
        * deterministic per page -- independent of worker partitioning and scan order -- so the kept
        * page set is stable and reproducible for a given fraction. fraction >= 1.0 disables it. */
-      void set_page_sample (double fraction)
+      void set_page_sample (double fraction, std::uint64_t seed)
       {
 	if (fraction < 1.0)
 	  {
 	    m_sample_threshold = (std::uint64_t) (fraction * (double) UINT64_MAX);
+	    m_sample_seed = seed;
 	  }
       }
 
@@ -748,6 +749,7 @@ namespace
       size_t m_walk_pgoff = 0;
       bool m_walk_in_sector = false;
       std::uint64_t m_sample_threshold = UINT64_MAX;
+      std::uint64_t m_sample_seed = 0;
       std::int64_t m_pages_seen = 0;
       std::int64_t m_pages_kept = 0;
   };
@@ -1115,9 +1117,11 @@ cleanup:
       cubsampling::reservoir_sampler<T> rs;
       std::vector<T> m_merged;
       bool m_has_merged;
+      std::uint64_t m_sample_seed;
 
-      col_collector_t (ATTR_ID id, DB_TYPE t, value_category c, std::size_t cap)
-	: col_collector (id, t, c), rs (cap), m_has_merged (false)
+      col_collector_t (ATTR_ID id, DB_TYPE t, value_category c, std::size_t cap, std::uint64_t sample_seed)
+	: col_collector (id, t, c), rs (cap, cubsampling::RESERVOIR_DEFAULT_SEED ^ sample_seed),
+	  m_has_merged (false), m_sample_seed (sample_seed)
       {
       }
 
@@ -1147,7 +1151,8 @@ cleanup:
 	    seens.push_back (pt->rs.seen ());
 	    m_hll.merge (pt->m_hll);	/* register-wise max == one sketch over all partitions */
 	  }
-	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity);
+	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity,
+							    cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
 	m_has_merged = true;
       }
 
@@ -1166,7 +1171,7 @@ cleanup:
   };
 
   static col_collector *
-  make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap)
+  make_col_collector (ATTR_ID id, DB_TYPE t, std::size_t cap, std::uint64_t sample_seed)
   {
     /* the engine's operator new is non-throwing, but the constructors allocate through STL
      * (the 16 KiB HLL register vector, the reservoir's reserve) whose failures arrive as
@@ -1177,13 +1182,13 @@ cleanup:
 	switch (category_of (t))
 	  {
 	  case value_category::integer:
-	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap);
+	    return new col_collector_t<std::int64_t> (id, t, value_category::integer, cap, sample_seed);
 	  case value_category::real:
-	    return new col_collector_t<double> (id, t, value_category::real, cap);
+	    return new col_collector_t<double> (id, t, value_category::real, cap, sample_seed);
 	  case value_category::string:
-	    return new col_collector_t<std::string> (id, t, value_category::string, cap);
+	    return new col_collector_t<std::string> (id, t, value_category::string, cap, sample_seed);
 	  case value_category::datetime:
-	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap);
+	    return new col_collector_t<std::uint64_t> (id, t, value_category::datetime, cap, sample_seed);
 	  default:
 	    return NULL;
 	  }
@@ -1385,7 +1390,7 @@ cleanup:
   {
     public:
       multi_scan_task (const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids, int attr_cnt,
-		       MVCC_SNAPSHOT *snapshot, ftab_set part, double sample_fraction,
+		       MVCC_SNAPSHOT *snapshot, ftab_set part, double sample_fraction, std::uint64_t sample_seed,
 		       multi_worker_result *result, THREAD_ENTRY *parent, parallel_query::worker_manager *wm,
 		       std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
@@ -1399,7 +1404,7 @@ cleanup:
 	, m_wm (wm)
 	, m_abort (abort_flag)
       {
-	m_part.set_page_sample (sample_fraction);
+	m_part.set_page_sample (sample_fraction, sample_seed);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -1465,8 +1470,9 @@ cleanup:
   static int
   parallel_scan_merge_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
 			     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
-			     int sample_size, bool with_fullscan, std::vector<col_collector *> &merged,
-			     std::int64_t *out_total_rows, double *out_sample_fraction, bool *did_parallel)
+			     int sample_size, bool with_fullscan, std::uint64_t sample_seed,
+			     std::vector<col_collector *> &merged, std::int64_t *out_total_rows,
+			     double *out_sample_fraction, bool *did_parallel)
   {
     int w, c;
     std::int64_t pages_seen = 0, pages_kept = 0;
@@ -1497,7 +1503,8 @@ cleanup:
 	results[w].collectors.resize (attr_cnt, (col_collector *) NULL);
 	for (c = 0; c < attr_cnt; c++)
 	  {
-	    results[w].collectors[c] = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    results[w].collectors[c] =
+		    make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size, sample_seed);
 	    if (results[w].collectors[c] != NULL && *out_sample_fraction < 1.0)
 	      {
 		results[w].collectors[c]->begin_sampled_scan ();
@@ -1536,7 +1543,7 @@ cleanup:
       {
 	multi_scan_task *task =
 		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]),
-				     *out_sample_fraction, &results[w], thread_p, wm, &abort_flag);
+				     *out_sample_fraction, sample_seed, &results[w], thread_p, wm, &abort_flag);
 	if (task == NULL)
 	  {
 	    /* non-throwing operator new: OOM. The partitions of the unpushed workers would go
@@ -1595,7 +1602,7 @@ cleanup:
 	merged.assign (attr_cnt, (col_collector *) NULL);
 	for (c = 0; c < attr_cnt; c++)
 	  {
-	    col_collector *fin = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size);
+	    col_collector *fin = make_col_collector (attr_ids[c], attr_types[c], (std::size_t) sample_size, sample_seed);
 	    if (fin == NULL && category_of (attr_types[c]) != value_category::unsupported)
 	      {
 		/* OOM (non-throwing new): a supported column losing its merged collector must fail
@@ -1775,15 +1782,16 @@ cleanup:
   static int
   parallel_build_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-			int sample_size, bool with_fullscan, double *null_frequency, char **histogram_blob,
-			int *blob_length, INT64 *out_ndv, INT64 *out_total_rows, bool *did_parallel)
+			int sample_size, bool with_fullscan, std::uint64_t sample_seed, double *null_frequency,
+			char **histogram_blob, int *blob_length, INT64 *out_ndv, INT64 *out_total_rows,
+			bool *did_parallel)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
     double sample_fraction = 1.0;
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, with_fullscan, merged, &total_rows, &sample_fraction,
-					   did_parallel);
+					   sample_size, with_fullscan, sample_seed, merged, &total_rows,
+					   &sample_fraction, did_parallel);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
@@ -1926,7 +1934,7 @@ cleanup:
      * allowed when no sketches are requested */
     bool force_full = with_fullscan || (out_sketches != NULL);
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-					   sample_size, force_full, merged, &total_rows,
+					   sample_size, force_full, 0 /* fixed seed */, merged, &total_rows,
 					   &sample_fraction, did_parallel);
     if (error != NO_ERROR || !*did_parallel)
       {
@@ -2033,8 +2041,8 @@ histogram_scan_targets (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID
 int
 xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
-    int sample_size, bool with_fullscan, double *null_frequency, char **histogram_blob, int *blob_length,
-    INT64 *out_ndv, INT64 *out_total_rows)
+    int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency, char **histogram_blob,
+    int *blob_length, INT64 *out_ndv, INT64 *out_total_rows)
 {
   HEAP_SCANCACHE scan_cache;
   HEAP_CACHE_ATTRINFO attr_info;
@@ -2107,8 +2115,9 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     {
       bool did_parallel = false;
       int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
-				       max_buckets, sample_size, with_fullscan, null_frequency, histogram_blob,
-				       blob_length, out_ndv, out_total_rows, &did_parallel);
+				       max_buckets, sample_size, with_fullscan, (std::uint64_t) sample_seed,
+				       null_frequency, histogram_blob, blob_length, out_ndv, out_total_rows,
+				       &did_parallel);
       if (perr != NO_ERROR)
 	{
 	  return perr;
@@ -2144,7 +2153,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
    * type that is an OOM and must fail the request, not silently drop the column's statistics. */
   for (i = 0; i < attr_cnt; i++)
     {
-      collectors[i] = make_col_collector (attr_ids[i], attr_types[i], (std::size_t) sample_size);
+      collectors[i] = make_col_collector (attr_ids[i], attr_types[i], (std::size_t) sample_size,
+					  (std::uint64_t) sample_seed);
       if (collectors[i] == NULL && category_of (attr_types[i]) != value_category::unsupported)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (col_collector_t<double>));
@@ -2212,7 +2222,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 		  error = ER_INTERRUPTED;
 		  goto cleanup;
 		}
-	      cur_page_accepted = histogram_sample_accepts_page (serial_threshold, inst_oid.volid, inst_oid.pageid);
+	      cur_page_accepted = histogram_sample_accepts_page (serial_threshold, (std::uint64_t) sample_seed,
+								 inst_oid.volid, inst_oid.pageid);
 	      serial_pages_seen++;
 	      if (cur_page_accepted)
 		{

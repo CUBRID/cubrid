@@ -4420,7 +4420,7 @@ sm_update_statistics_without_gathering_stats (MOP classop, bool with_fullscan)
  */
 
 int
-sm_update_all_statistics (bool with_fullscan)
+sm_update_all_statistics (bool with_fullscan, int random_seed)
 {
   int error = NO_ERROR;
   DB_OBJLIST *cl;
@@ -4467,7 +4467,7 @@ sm_update_all_statistics (bool with_fullscan)
     }
 
   {
-    error = update_histogram_for_all_classes ();
+    error = update_histogram_for_all_classes (random_seed);
     if (error != NO_ERROR)
       {
 	return error;

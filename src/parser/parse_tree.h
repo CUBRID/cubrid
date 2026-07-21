@@ -2015,6 +2015,7 @@ struct pt_histogram_info
   PT_NODE *target_columns;	/* PT_COLUMN_LIST (PT_NAME) */
   int bucket_count;		/* bucket count */
   int with_fullscan;		/* with fullscan */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
 };
 
 /* CREATE/DROP INDEX INFO */
@@ -3038,6 +3039,7 @@ struct pt_update_stats_info
   PT_NODE *class_list;		/* PT_NAME */
   int all_classes;		/* 1 iff ALL CLASSES */
   int with_fullscan;		/* 1 iff WITH FULLSCAN */
+  int random_seed;		/* 1 iff WITH RANDOM SEED */
 };
 
 /* GET STATISTICS INFO */

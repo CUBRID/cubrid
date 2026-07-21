@@ -1665,6 +1665,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> PUBLIC
 %token <cptr> QUARTER
 %token <cptr> QUEUES
+%token <cptr> RANDOM_
 %token <cptr> RANGE_
 %token <cptr> RANK
 %token <cptr> REBUILD
@@ -1686,6 +1687,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> DISK_SIZE
 %token <cptr> ROW_NUMBER
 %token <cptr> SECTIONS
+%token <cptr> SEED_
 %token <cptr> SEMICOLON
 %token <cptr> SEPARATOR
 %token <cptr> SERIAL
@@ -4754,7 +4756,8 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
-			    ups->info.update_stats.with_fullscan = $5;
+			    ups->info.update_stats.with_fullscan = ($5 == 1);
+			    ups->info.update_stats.random_seed = ($5 == 2);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4766,7 +4769,8 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = ($6 == 1);
+			    ups->info.update_stats.random_seed = ($6 == 2);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4778,7 +4782,8 @@ update_statistics_stmt
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
-			    ups->info.update_stats.with_fullscan = $6;
+			    ups->info.update_stats.with_fullscan = ($6 == 1);
+			    ups->info.update_stats.random_seed = ($6 == 2);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4819,7 +4824,8 @@ update_histogram_stmt
 
                             uhs->info.histogram.target_columns = $6;
                             uhs->info.histogram.bucket_count = $7;
-                            uhs->info.histogram.with_fullscan = $8;             
+                            uhs->info.histogram.with_fullscan = ($8 == 1);
+                            uhs->info.histogram.random_seed = ($8 == 2);             
                         }
 
                         $$ = uhs;
@@ -4882,6 +4888,10 @@ opt_with_fullscan
         | WITH FULLSCAN
                 {{
                         $$ = 1;
+                }}
+        | WITH RANDOM_ SEED_
+                {{
+                        $$ = 2;
                 }}
         ;
 
@@ -20703,6 +20713,7 @@ identifier
 	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANDOM_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20722,6 +20733,7 @@ identifier
 	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEED_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}

@@ -4678,7 +4678,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
 
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
-					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING);
+					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
+					statement->info.update_stats.random_seed);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -4775,6 +4776,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		histogram_info.target_columns = NULL;
 		histogram_info.bucket_count = -1;
 		histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		histogram_info.random_seed = statement->info.update_stats.random_seed;
 		error =
 		  update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE);
 		if (error == NO_ERROR)

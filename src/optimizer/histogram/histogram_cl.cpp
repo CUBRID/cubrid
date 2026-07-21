@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <cmath>
+#include <random>
 #include <string>
 #include <vector>
 #include "parser.h"
@@ -139,7 +140,7 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* server builds the histogram by full-scan reservoir sampling; sample_size 0 -> default */
   int attr_unique = attr_is_single_col_unique (classop, attr_id) ? 1 : 0;
   error = histogram_build_by_reservoir_request (class_oid, attr_id, (int) attr_type, attr_unique, max_number_of_buckets,
-	  0, with_fullscan, &null_frequency, &histogram_blob, &histogram_total_length);
+	  0, with_fullscan, 0 /* fixed seed */, &null_frequency, &histogram_blob, &histogram_total_length);
   if (error != NO_ERROR)
     {
       if (histogram_blob != NULL)
@@ -225,13 +226,27 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
  */
 int
 analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
-				    int with_fullscan, MOP classop, CLASS_ATTR_NDV *out_ndv_info, INT64 *out_total_rows,
-				    HISTOGRAM_COLLECT *out_collect)
+				    int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+				    INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect)
 {
   OID *class_oid = ws_oid (classop);
   if (class_oid == NULL || OID_ISNULL (class_oid))
     {
       return ER_FAILED;
+    }
+
+  /* WITH RANDOM SEED: draw a fresh sampling seed for this collection so every run picks a
+   * different page sample / reservoir stream. The default (0) keeps the fixed seed, so
+   * repeated collections of an unchanged table reproduce the same statistics. */
+  UINT64 sample_seed = 0;
+  if (random_seed)
+    {
+      std::random_device rd;
+      sample_seed = (((UINT64) rd ()) << 32) | (UINT64) rd ();
+      if (sample_seed == 0)
+	{
+	  sample_seed = 1;
+	}
     }
 
   std::vector<int> attr_ids;
@@ -266,8 +281,8 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
 
   int error =
 	  histogram_build_multi_by_reservoir_request (class_oid, n, attr_ids.data (), attr_types.data (),
-	      attr_unique.data (), max_number_of_buckets, 0, with_fullscan, null_freqs.data (), blobs.data (),
-	      blob_lens.data (), ndvs.data (), &total_rows);
+	      attr_unique.data (), max_number_of_buckets, 0, with_fullscan, sample_seed, null_freqs.data (),
+	      blobs.data (), blob_lens.data (), ndvs.data (), &total_rows);
   if (error != NO_ERROR)
     {
       for (int i = 0; i < n; i++)

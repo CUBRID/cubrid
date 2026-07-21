@@ -1475,7 +1475,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     }
   else
     {
-      if (sm_update_all_statistics (STATS_WITH_SAMPLING) != NO_ERROR)
+      if (sm_update_all_statistics (STATS_WITH_SAMPLING, 0) != NO_ERROR)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
 	  db_shutdown ();
