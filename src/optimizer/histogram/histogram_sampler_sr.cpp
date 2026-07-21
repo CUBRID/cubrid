@@ -47,12 +47,12 @@
 #include "hyperloglog.hpp"
 #include "reservoir_sampler.hpp"
 #include "statistics.h"
+#include "file_manager.h"
 #include "system_parameter.h"
 #include "thread_entry.hpp"
 #if defined (SERVER_MODE)
 #include "bit.h"
 #include "error_code.h"
-#include "file_manager.h"
 #include "ftab_set.hpp"
 #include "page_buffer.h"
 #include "px_parallel.hpp"
@@ -936,8 +936,16 @@ cleanup:
     *out_wm = NULL;
     *out_sample_fraction = 1.0;
 
-    int npages = 0, nobjs = 0, avg_len = 0;
-    (void) heap_get_num_objects (thread_p, hfid, &npages, &nobjs, &avg_len);
+    /* page count from the file allocation metadata only: heap_get_num_objects () syncs the
+     * best-space statistics by walking EVERY heap page, which alone costs a full-scan's worth
+     * of page fixes and would cancel the sampling's I/O savings. The user page count is also
+     * what the ftab walker actually enumerates, so the fraction matches the sampled universe. */
+    int npages = 0;
+    if (file_get_num_user_pages (thread_p, &hfid->vfid, &npages) != NO_ERROR)
+      {
+	er_clear ();
+	npages = 0;
+      }
 
     *out_sample_fraction = histogram_compute_sample_fraction (npages, sample_rows_target, with_fullscan);
 
@@ -2137,11 +2145,16 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   int serial_npages = 0;
   for (const std::pair<OID, HFID> &tgt : targets)
     {
-      int np = 0, nobj = 0, alen = 0;
-      (void) heap_get_num_objects (thread_p, &tgt.second, &np, &nobj, &alen);
-      if (np > 0)
+      /* allocation metadata only -- see reserve_and_split (): heap_get_num_objects () would
+       * walk every page of every target heap just to refresh best-space statistics */
+      int np = 0;
+      if (file_get_num_user_pages (thread_p, &tgt.second.vfid, &np) == NO_ERROR && np > 0)
 	{
 	  serial_npages += np;
+	}
+      else
+	{
+	  er_clear ();
 	}
     }
   const double serial_fraction = histogram_compute_sample_fraction (serial_npages, sample_size, with_fullscan);
