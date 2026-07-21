@@ -629,6 +629,8 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
     default:
       return false;
     }
+
+  return true;
 }
 
 /* numeric domain fraction less than function for int64_t and uint64_t and double and string */
@@ -2287,9 +2289,9 @@ bind_fp_hash_value (const DB_VALUE *val)
 	case hist::histogram_key_kind::str:
 	{
 	  std::uint64_t h = 1469598103934665603ULL;
-	  for (const char *s = key.str; *s != '\0'; s++)
+	  for (const char c : key.str)
 	    {
-	      h ^= (unsigned char) (*s);
+	      h ^= (unsigned char) c;
 	      h *= 1099511628211ULL;
 	    }
 	  return bind_fp_mix (4, h);

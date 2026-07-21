@@ -33,6 +33,8 @@
 // Forward declaration for PT_NODE
 struct parser_node;
 typedef struct parser_node PT_NODE;
+struct parser_context;
+typedef struct parser_context PARSER_CONTEXT;
 typedef struct hist_stats HIST_STATS;
 typedef struct db_value DB_VALUE;
 

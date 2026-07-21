@@ -48,6 +48,7 @@
 #include "reservoir_sampler.hpp"
 #include "statistics.h"
 #include "system_parameter.h"
+#include "thread_entry.hpp"
 #if defined (SERVER_MODE)
 #include "bit.h"
 #include "error_code.h"
@@ -611,10 +612,6 @@ namespace
     return true;
   }
 
-#if defined (SERVER_MODE)
-  /* Page-level iterator over an ftab_set. Kept out of the shared ftab_set (which is a plain sector
-   * container used by parallel scan / index load / external sort) so only this histogram consumer
-   * carries the per-walk cursor. Built by moving a split ftab partition into it. */
   /* deterministic page-sampling predicate: keep a page iff hash (vpid) < threshold. Shared by the
    * parallel walker and the serial scans so every path keeps the same reproducible page set. */
   static inline bool
@@ -645,6 +642,34 @@ namespace
     return 1.0;
   }
 
+  /* scope guard: mark this thread's page unfixes as non-promoting (vacuum-style scan resistance)
+   * for the duration of a collection scan, so the scan cannot push the production working set out
+   * of the hot LRU zones. Restores the flag on every exit path. */
+  struct pgbuf_no_boost_guard
+  {
+    THREAD_ENTRY *m_thread;
+
+    explicit pgbuf_no_boost_guard (THREAD_ENTRY *thread_p)
+      : m_thread (thread_p)
+    {
+      if (m_thread != NULL)
+	{
+	  m_thread->pgbuf_no_boost_scan = true;
+	}
+    }
+    ~pgbuf_no_boost_guard ()
+    {
+      if (m_thread != NULL)
+	{
+	  m_thread->pgbuf_no_boost_scan = false;
+	}
+    }
+  };
+
+#if defined (SERVER_MODE)
+  /* Page-level iterator over an ftab_set. Kept out of the shared ftab_set (which is a plain sector
+   * container used by parallel scan / index load / external sort) so only this histogram consumer
+   * carries the per-walk cursor. Built by moving a split ftab partition into it. */
   class ftab_page_walker : public ftab_set
   {
     public:
@@ -725,30 +750,6 @@ namespace
       std::uint64_t m_sample_threshold = UINT64_MAX;
       std::int64_t m_pages_seen = 0;
       std::int64_t m_pages_kept = 0;
-  };
-
-  /* scope guard: mark this thread's page unfixes as non-promoting (vacuum-style scan resistance)
-   * for the duration of a collection scan, so the scan cannot push the production working set out
-   * of the hot LRU zones. Restores the flag on every exit path. */
-  struct pgbuf_no_boost_guard
-  {
-    THREAD_ENTRY *m_thread;
-
-    explicit pgbuf_no_boost_guard (THREAD_ENTRY *thread_p)
-      : m_thread (thread_p)
-    {
-      if (m_thread != NULL)
-	{
-	  m_thread->pgbuf_no_boost_scan = true;
-	}
-    }
-    ~pgbuf_no_boost_guard ()
-    {
-      if (m_thread != NULL)
-	{
-	  m_thread->pgbuf_no_boost_scan = false;
-	}
-    }
   };
 
   /* Scan every allocated data page contained in the ftab partition `part` (heap header page
@@ -2545,6 +2546,9 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
       out_ndv[i] = -1;		/* unsupported / not computed by default */
     }
 
+  PAGEID ndv_cur_pageid = NULL_PAGEID;
+  short ndv_cur_volid = -1;
+
   error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
   if (error != NO_ERROR)
     {
@@ -2560,9 +2564,6 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
       goto cleanup;
     }
   attrinfo_inited = true;
-
-  PAGEID ndv_cur_pageid = NULL_PAGEID;
-  short ndv_cur_volid = -1;
 
   OID_SET_NULL (&inst_oid);
   scan_class_oid = *class_oid;
