@@ -582,8 +582,6 @@ static int *pt_make_identity_offsets (PT_NODE * attr_list);
 
 static void pt_to_pred_terms (PARSER_CONTEXT * parser, PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
 
-static VAL_LIST *pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list);
-
 static TABLE_INFO *pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec);
 
 static SYMBOL_INFO *pt_symbol_info_alloc (void);
@@ -3763,7 +3761,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   return:
  *   attribute_list(in):
  */
-static VAL_LIST *
+VAL_LIST *
 pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;
@@ -4498,15 +4496,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 }
 
 /*
- * pt_find_attribute () -
+ * pt_find_attribute_with_func_index_expr () -
  *   return: index of a name in an attribute symbol list,
  *           or -1 if the name is not found in the list
  *   parser(in):
  *   name(in):
  *   attributes(in):
+ *   check_func_index_exprs(in): if true, a function-index expression name
+ *                              also matches an identical expression in the list
  */
 int
-pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes)
+pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes,
+					bool check_func_index_exprs)
 {
   PT_NODE *attr, *save_attr;
   int i = 0;
@@ -4547,9 +4548,61 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
 	      attr = save_attr;	/* restore */
 	    }
 	}
+      else if (check_func_index_exprs && pt_is_function_index_expression ((PT_NODE *) name))
+	{
+	  /* Match a function-index expression by its normalized printed form
+	   * (parser_print_function_index_expr, as the optimizer does in lookup_seg),
+	   * so the same expression at different parse tree nodes still matches. */
+	  const char *name_str = NULL;
+
+	  for (attr = (PT_NODE *) attributes; attr != NULL; attr = attr->next)
+	    {
+	      save_attr = attr;	/* save */
+
+	      CAST_POINTER_TO_NODE (attr);
+
+	      if (attr == name)
+		{
+		  return i;
+		}
+
+	      if (pt_is_function_index_expression (attr))
+		{
+		  const char *attr_str;
+
+		  if (name_str == NULL)
+		    {
+		      name_str = parser_print_function_index_expr (parser, (PT_NODE *) name);
+		    }
+
+		  attr_str = parser_print_function_index_expr (parser, attr);
+		  if (name_str != NULL && attr_str != NULL && intl_identifier_casecmp (name_str, attr_str) == 0)
+		    {
+		      return i;
+		    }
+		}
+	      i++;
+
+	      attr = save_attr;	/* restore */
+	    }
+	}
     }
 
   return -1;
+}
+
+/*
+ * pt_find_attribute () -
+ *   return: index of a name in an attribute symbol list,
+ *           or -1 if the name is not found in the list
+ *   parser(in):
+ *   name(in):
+ *   attributes(in):
+ */
+int
+pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes)
+{
+  return pt_find_attribute_with_func_index_expr (parser, name, attributes, false);
 }
 
 static void
@@ -7690,6 +7743,33 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      if (parser->symbols != NULL && parser->symbols->current_listfile != NULL
+		  && parser->symbols->listfile_value_list != NULL && pt_is_function_index_expression (node))
+		{
+		  int list_index =
+		    pt_find_attribute_with_func_index_expr (parser, node, parser->symbols->current_listfile, true);
+
+		  if (list_index >= 0)
+		    {
+		      /* The expression value is already carried as a list column,
+		       * so bind that column instead of re-evaluating the expression. */
+		      value =
+			pt_index_value (parser->symbols->listfile_value_list,
+					list_index + parser->symbols->listfile_attr_offset);
+		      if (value != NULL)
+			{
+			  regu_alloc (regu);
+			  if (regu != NULL)
+			    {
+			      regu->type = TYPE_CONSTANT;
+			      regu->domain = pt_xasl_node_to_domain (parser, node);
+			      regu->value.dbvalptr = value;
+			      break;
+			    }
+			}
+		    }
+		}
+
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
 		  //TODO FIND WHY NEXT WASN'T RESTORED
@@ -17226,9 +17306,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
-	      && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan))
 	    {
+	      /*
+	       * When need_final_sort is true,
+	       * qo_top_plan_new appends a SORT_ORDERBY plan on top even in the orderby_skip case
+	       * (without orderby_skip, one is appended regardless of need_final_sort),
+	       * so the top plan's plan_type becomes QO_PLANTYPE_SORT and qo_plan_skip_orderby () returns false.
+	       * Therefore a plan with need_final_sort can never enter this block.
+	       */
+	      assert (!qo_plan->need_final_sort);
+
 	      orderby_skip = true;
 
 	      /* move orderby_num() to inst_num() */
