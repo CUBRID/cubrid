@@ -799,20 +799,24 @@ log_2pc_commit (THREAD_ENTRY * thread_p, log_tdes * tdes, LOG_2PC_EXECUTE execut
 
 #ifdef CCI_XA
   /*
-   * CCI_XA: FULL/PREPARE flows are completed in phase 1 via log_complete(); phase 2
-   * is redundant for those types.  COMMIT_DECISION/ABORT_DECISION arrive when CUBRID
-   * is acting as an XA resource manager (e.g. JDBC XA), not as the DBLink coordinator.
-   * In that role the local branch must still be committed/aborted through phase 2,
-   * because phase 1 was never entered for these execute types.
+   * CCI_XA: FULL/PREPARE flows are completed entirely in phase 1 via log_complete().
+   * log_complete() calls logtb_get_new_tran_id() → logtb_clear_tdes() which resets
+   * tdes->state to TRAN_ACTIVE for the next transaction.  The terminal state
+   * (TRAN_UNACTIVE_COMMITTED or TRAN_UNACTIVE_ABORTED) is captured inside
+   * log_complete() before the reset and returned via the &state out-parameter of
+   * log_2pc_commit_first_phase().  Do NOT read tdes->state here; it no longer holds
+   * the terminal state and would silently return TRAN_ACTIVE to the caller.
+   *
+   * COMMIT_DECISION/ABORT_DECISION arrive when CUBRID acts as an XA resource manager
+   * (e.g. JDBC XA), not as the DBLink coordinator.  Phase 1 was never entered for
+   * those types, so phase 2 must still execute.
    */
   if (execute_2pc_type == LOG_2PC_EXECUTE_COMMIT_DECISION || execute_2pc_type == LOG_2PC_EXECUTE_ABORT_DECISION)
     {
       state = log_2pc_commit_second_phase (thread_p, tdes, decision);
     }
-  else
-    {
-      state = tdes->state;
-    }
+  /* else: FULL/PREPARE — state already holds the correct terminal value from
+   *       log_2pc_commit_first_phase(); leave it unchanged. */
 #else
   /*
    * PHASE II of 2PC: Inform decision to participants (i.e., either commit or
@@ -1214,6 +1218,44 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
 
   TR_TABLE_CS_ENTER (thread_p);
 
+#ifdef CCI_XA
+  /*
+   * CCI_XA: The 2PC daemon may arrive before xboot_unregister_client() has promoted
+   * the participant's prepared transaction to a loose-end (i.e., before
+   * net_server_conn_down() runs after the participant CAS closes its TCP socket).
+   * In that window num_prepared_loose_end_indices is still 0, so the normal guard
+   * would falsely return ER_LOG_2PC_UNKNOWN_GTID.  dblink_2pc_send_decision_one_participant()
+   * treats that error as idempotent success (deletes the _db_global_tran row) without
+   * ever committing the participant — the data is silently lost.
+   *
+   * Fix: skip the counter guard and search directly.  If the prepared tdes is found
+   * but not yet marked as a loose-end, promote it now (incrementing the counter) so
+   * that log_2pc_attach_client() can safely decrement it.  When xboot_unregister_client()
+   * eventually fires for the old CAS connection it will see tdes->client_id != conn->client_id
+   * (log_2pc_attach_client updates client_id to the daemon's id) and return early,
+   * so the counter stays balanced.
+   */
+  tdes = log_2pc_find_tran_descriptor (gtrid);
+  if (tdes != NULL)
+    {
+      if (!tdes->isloose_end)
+	{
+	  tdes->isloose_end = true;
+	  log_Gl.trantable.num_prepared_loose_end_indices++;
+	}
+
+      if (log_2pc_attach_client (thread_p, tdes, client_tdes) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_2PC_CANNOT_ATTACH, 2, gtrid, client_tdes->trid);
+
+	  TR_TABLE_CS_EXIT (thread_p);
+	  return NULL_TRAN_INDEX;
+	}
+
+      TR_TABLE_CS_EXIT (thread_p);
+      return (tdes->tran_index);
+    }
+#else
   if (log_Gl.trantable.num_prepared_loose_end_indices > 0)
     {
       tdes = log_2pc_find_tran_descriptor (gtrid);
@@ -1233,6 +1275,7 @@ log_2pc_attach_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       TR_TABLE_CS_EXIT (thread_p);
       return (tdes->tran_index);
     }
+#endif
 
 error:
 
