@@ -794,15 +794,24 @@ tde_validate_mk (const unsigned char *master_key, const unsigned char *mk_hash)
 static void
 tde_make_mk_hash (const unsigned char *master_key, unsigned char *mk_hash)
 {
-  SHA256_CTX sha_ctx;
+  EVP_MD_CTX *sha_ctx;
 
   assert (SHA256_DIGEST_LENGTH == TDE_MASTER_KEY_LENGTH);
   assert (master_key != NULL);
   assert (mk_hash != NULL);
 
-  SHA256_Init (&sha_ctx);
-  SHA256_Update (&sha_ctx, master_key, TDE_MASTER_KEY_LENGTH);
-  SHA256_Final (mk_hash, &sha_ctx);
+  /* Use the EVP digest API; the low-level SHA256_* functions are deprecated since OpenSSL 3.0. */
+  sha_ctx = EVP_MD_CTX_new ();
+  if (sha_ctx == NULL)
+    {
+      assert (false);
+      return;
+    }
+
+  EVP_DigestInit_ex (sha_ctx, EVP_sha256 (), NULL);
+  EVP_DigestUpdate (sha_ctx, master_key, TDE_MASTER_KEY_LENGTH);
+  EVP_DigestFinal_ex (sha_ctx, mk_hash, NULL);
+  EVP_MD_CTX_free (sha_ctx);
 }
 
 /*

@@ -17,15 +17,15 @@
 
 set(WITH_FLEX_URL "https://github.com/CUBRID/3rdparty/raw/develop/flex/flex-2.6.4.tar.gz")                    # flex
 set(WITH_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/bison/bison-3.4.1.tar.gz")                 # bison
-set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.6.4.tar.gz")             # expat library sources URL
-set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.10.tar.gz")         # jansson library sources URL
+set(WITH_LIBEXPAT_URL "https://github.com/CUBRID/3rdparty/raw/develop/expat/expat-2.8.2.tar.gz")             # expat library sources URL
+set(WITH_LIBJANSSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/jansson/jansson-2.14.1.tar.gz")         # jansson library sources URL
 set(WITH_LIBEDIT_URL "https://github.com/CUBRID/libedit/archive/refs/tags/csql_v1.2.tar.gz")                  # editline library sources URL
-set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0.tar.gz")              # rapidjson library sources URL
-set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-1.1.1w.tar.gz")       # openssl library sources URL
-set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.9.tar.gz")     # unixODBC library sources URL
+set(WITH_RAPIDJSON_URL "https://github.com/CUBRID/3rdparty/raw/develop/rapidjson/v1.1.0-250205.tar.gz")              # rapidjson library sources URL
+set(WITH_LIBOPENSSL_URL "https://github.com/CUBRID/3rdparty/raw/develop/openssl/openssl-3.5.7.tar.gz")       # openssl library sources URL
+set(WITH_LIBUNIXODBC_URL "https://github.com/CUBRID/3rdparty/raw/develop/unixODBC/unixODBC-2.3.14.tar.gz")     # unixODBC library sources URL
 set(WITH_LIBTBB_URL "https://github.com/CUBRID/3rdparty/raw/develop/tbb/v2021.11.0.tar.gz")                   # intel oneTBB library sources URL
-set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2022-06-01.tar.gz")                      # RE2
-set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/v1.9.4.tar.gz")                          # LZ4
+set(WITH_RE2_URL "https://github.com/CUBRID/3rdparty/raw/develop/re2/2023-03-01.tar.gz")                      # RE2
+set(WITH_LZ4_URL "https://github.com/CUBRID/3rdparty/raw/develop/lz4/lz4-1.10.0.tar.gz")                          # LZ4
 set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_bison/win_flex_bison-2.5.22.zip") # Windows
 
 # URL_HASH is a hash value used to verify the integrity of a file downloaded from a specified URL.
@@ -39,19 +39,19 @@ set(WIN_FLEX_BISON_URL "https://github.com/CUBRID/3rdparty/raw/develop/win_flex_
 # How to generate the URL_HASH:
 # - Use the `sha256sum` command to compute the hash of the downloaded tarball.
 #   Example:
-#   $ sha256sum openssl-1.1.1f.tar.gz
+#   $ sha256sum openssl-3.5.7.tar.gz
 #   Then set the resulting SHA256 hash in the format: "SHA256=<hash_value>"
 #
 # Below are the URL_HASH values for different libraries used in this project:
-set(WITH_LIBEXPAT_URL_HASH "SHA256=fd03b7172b3bd7427a3e7a812063f74754f24542429b634e0db6511b53fb2278")		# expat library 
-set(WITH_LIBJANSSON_URL_HASH "SHA256=78215ad1e277b42681404c1d66870097a50eb084be9d771b1d15576575cf6447")         # jansson library 
+set(WITH_LIBEXPAT_URL_HASH "SHA256=ef7d1994f533c9e7343d6c19f31064fc8ebbcbcaa144be3812b4f43052a05f4c")		# expat library 
+set(WITH_LIBJANSSON_URL_HASH "SHA256=2521cd51a9641d7a4e457f7215a4cd5bb176f690bc11715ddeec483e85d9e2b3")         # jansson library 
 set(WITH_LIBEDIT_URL_HASH "SHA256=140312cd2dd22b4981d22448f02ef215fd7685ca57bb90b1427e496234d2d7da")            # editline libray
-set(WITH_RAPIDJSON_URL_HASH "SHA256=bf7ced29704a1e696fbccf2a2b4ea068e7774fa37f6d7dd4039d0787f8bed98e")          # rapidjson library 
-set(WITH_LIBOPENSSL_URL_HASH "SHA256=cf3098950cb4d853ad95c0841f1f9c6d3dc102dccfcacd521d93925208b76ac8")         # openssl library 
-set(WITH_LIBUNIXODBC_URL_HASH "SHA256=52833eac3d681c8b0c9a5a65f2ebd745b3a964f208fc748f977e44015a31b207")        # unixODBC library 
+set(WITH_RAPIDJSON_URL_HASH "SHA256=2d2601a82d2d3b7e143a3c8d43ef616671391034bc46891a9816b79cf2d3e7a8")          # rapidjson library 
+set(WITH_LIBOPENSSL_URL_HASH "SHA256=a8c0d28a529ca480f9f36cf5792e2cd21984552a3c8e4aa11a24aa31aeac98e8")         # openssl library 
+set(WITH_LIBUNIXODBC_URL_HASH "SHA256=4e2814de3e01fc30b0b9f75e83bb5aba91ab0384ee951286504bb70205524771")        # unixODBC library 
 set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4cda7ad4e77550ac363")             # intel oneTBB library 
-set(WITH_RE2_URL_HASH "SHA256=f89c61410a072e5cbcf8c27e3a778da7d6fd2f2b5b1445cd4f4508bee946ab0f")		# RE2
-set(WITH_LZ4_URL_HASH "SHA256=0b0e3aa07c8c063ddf40b082bdf7e37a1562bda40a0ff5272957f3e987e0e54b")		# LZ4
+set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
+set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
@@ -361,10 +361,32 @@ set(LIBOPENSSL_TARGET libopenssl)
 if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
   if(UNIX)
     #compile OpenSSL library given an internet url to a OpenSSL archive
-    #e.g. https://www.openssl.org/source/openssl-1.1.1f.tar.gz
+    #e.g. https://www.openssl.org/source/openssl-3.5.7.tar.gz
     set(LIBOPENSSL_LIBS ${3RDPARTY_LIBS_DIR}/lib/libssl.a ${3RDPARTY_LIBS_DIR}/lib/libcrypto.a)
     set(LIBOPENSSL_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBOPENSSL" ${LIBOPENSSL_LIBS})
+
+    # OpenSSL 3.x's build scripts (Configure / Makefile) need several Perl modules
+    # (IPC::Cmd, Time::Piece, Digest::SHA, ...) that are missing from minimal Perl
+    # installs. Check them up front so the user gets an actionable message instead
+    # of a cryptic failure deep inside the OpenSSL build.
+    find_program(OPENSSL_PERL_EXECUTABLE perl)
+    if(NOT OPENSSL_PERL_EXECUTABLE)
+      message(FATAL_ERROR "Perl is required to build OpenSSL. Please install it (e.g. 'sudo dnf install -y perl-core').")
+    endif()
+    execute_process(
+      COMMAND ${OPENSSL_PERL_EXECUTABLE} -MIPC::Cmd -MTime::Piece -e "1"
+      RESULT_VARIABLE OPENSSL_PERL_MODULES_RC
+      OUTPUT_QUIET ERROR_QUIET)
+    if(NOT OPENSSL_PERL_MODULES_RC EQUAL 0)
+      message(FATAL_ERROR
+        "Building OpenSSL 3.x requires Perl modules (IPC::Cmd, Time::Piece) that are not "
+        "available in the current Perl installation.\n"
+        "  Rocky/RHEL/CentOS : sudo dnf install -y perl-core\n"
+        "                      (minimal: perl-IPC-Cmd perl-Time-Piece)\n"
+        "  Debian/Ubuntu     : sudo apt-get install -y perl\n"
+        "Then re-run the build.")
+    endif()
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
@@ -373,7 +395,10 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} no-shared # ${DEFAULT_CONFIGURE_OPTS}
+      # no-shared + no-module: build static libs only and compile the legacy
+      # provider into libcrypto so DES-ECB is usable via OSSL_PROVIDER_add_builtin()
+      # without shipping an external ossl-modules/legacy module.
+      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} --libdir=lib no-shared no-module # ${DEFAULT_CONFIGURE_OPTS}
       BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
@@ -404,7 +429,7 @@ set(LIBUNIXODBC_TARGET libodbc)
 if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
   if(UNIX)
     #compile unixODBC library given an internet url to a unixODBC archive
-    #e.g. http://www.unixodbc.org/unixODBC-2.3.9.tar.gz
+    #e.g. https://github.com/lurcher/unixODBC/releases/download/2.3.14/unixODBC-2.3.14.tar.gz
     set(LIBUNIXODBC_LIBS ${3RDPARTY_LIBS_DIR}/lib/libodbc.so)
     set(LIBUNIXODBC_INCLUDES ${3RDPARTY_LIBS_DIR}/include)
     ADD_BY_PRODUCTS_VARIABLE ("LIBUNIXODBC" ${LIBUNIXODBC_LIBS})
