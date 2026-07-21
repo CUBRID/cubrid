@@ -11891,12 +11891,12 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* true iff the DELETE WHERE clause is a single positive predicate over a subquery that the phase-1
- * value-push sink supports by shape: col IN (subquery), col = ANY (subquery), or a scalar comparison
- * col {= | < | > | <= | >=} (subquery). Forms excluded here fall through to the existing "local mixed remote
- * DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF list, caught by op or
- * cond->next), comparison ANY/ALL (PT_*_SOME except PT_EQ_SOME, PT_*_ALL), negation (PT_IS_NOT_IN, PT_NE),
- * EXISTS, and a value-list IN (arg2 is not a query).
+/* true iff the DELETE WHERE clause is a single positive predicate over a subquery that the value-push
+ * sink supports by shape: col IN (subquery), col {= | <> | < | > | <= | >=} ANY (subquery), or a scalar
+ * comparison col {= | <> | < | > | <= | >=} (subquery). Forms excluded here fall through to the existing
+ * "local mixed remote DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF
+ * list, caught by op or cond->next), comparison ALL (PT_*_ALL), negation of IN (PT_IS_NOT_IN), EXISTS, and
+ * a value-list IN (arg2 is not a query).
  *
  * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
  * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
@@ -11919,7 +11919,13 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
     {
     case PT_IS_IN:		/* col IN (subquery) */
     case PT_EQ_SOME:		/* col = ANY (subquery) */
-    case PT_EQ:		/* scalar: col {= | < | > | <= | >=} (subquery) */
+    case PT_NE_SOME:		/* col <> ANY (subquery) */
+    case PT_LT_SOME:		/* col < ANY (subquery) */
+    case PT_GT_SOME:		/* col > ANY (subquery) */
+    case PT_LE_SOME:		/* col <= ANY (subquery) */
+    case PT_GE_SOME:		/* col >= ANY (subquery) */
+    case PT_EQ:		/* scalar: col {= | <> | < | > | <= | >=} (subquery) */
+    case PT_NE:
     case PT_LT:
     case PT_GT:
     case PT_LE:
