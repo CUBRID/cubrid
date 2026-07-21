@@ -47,19 +47,19 @@
 #include "hyperloglog.hpp"
 #include "reservoir_sampler.hpp"
 #include "statistics.h"
-#include "file_manager.h"
-#include "system_parameter.h"
-#include "thread_entry.hpp"
-#if defined (SERVER_MODE)
 #include "bit.h"
 #include "error_code.h"
+#include "file_manager.h"
 #include "ftab_set.hpp"
 #include "page_buffer.h"
+#include "system_parameter.h"
+#include "thread_entry.hpp"
+#include <atomic>
+#if defined (SERVER_MODE)
 #include "px_parallel.hpp"
 #include "px_worker_manager.hpp"
 #include "thread_entry_task.hpp"
 #include "thread_manager.hpp"
-#include <atomic>
 #endif /* SERVER_MODE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -666,7 +666,6 @@ namespace
     }
   };
 
-#if defined (SERVER_MODE)
   /* Page-level iterator over an ftab_set. Kept out of the shared ftab_set (which is a plain sector
    * container used by parallel scan / index load / external sort) so only this histogram consumer
    * carries the per-walk cursor. Built by moving a split ftab partition into it. */
@@ -753,6 +752,8 @@ namespace
       std::int64_t m_pages_seen = 0;
       std::int64_t m_pages_kept = 0;
   };
+
+#if defined (SERVER_MODE)
 
   /* Scan every allocated data page contained in the ftab partition `part` (heap header page
    * excluded), pull MVCC-visible rows with heap_next_1page under the shared snapshot, and feed
@@ -1207,9 +1208,10 @@ cleanup:
       }
   }
 
-#if defined (SERVER_MODE)
-  /* Worker side of the parallel multi-column build: scan one ftab page partition with
-   * heap_next_1page under the shared snapshot, feeding every column's collector. */
+  /* Scan one ftab page partition with heap_next_1page under the shared snapshot, feeding
+   * every column's collector. Used by the parallel workers AND by the serial fallback
+   * (partitioned classes, SA mode, no free workers), so only the sampled pages are ever
+   * fixed -- the sampling saves page I/O on every path. */
   static int
   scan_ftab_partition_multi (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids,
 			     int attr_cnt, MVCC_SNAPSHOT *snapshot, ftab_page_walker &part,
@@ -1382,6 +1384,7 @@ cleanup:
     return error;
   }
 
+#if defined (SERVER_MODE)
   struct multi_worker_result
   {
     std::vector<col_collector *> collectors;	/* one per column, owned by the driver */
@@ -2140,8 +2143,9 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   /* serial fallback (partitioned classes, SA mode, no free workers): page-sample here too.
    * The fraction is computed over the summed page count of every target heap and the same
    * deterministic per-VPID predicate is applied, so a partitioned table is sampled uniformly
-   * across its partitions. heap_next () still walks every page slot, so the saving is the
-   * per-row column processing (extract/reservoir/HLL), not IO -- acceptable for the fallback. */
+   * across its partitions. The pages are pre-picked from each heap's file allocation bitmap
+   * (ftab) and only the picked pages are fixed, so the sampling saves page I/O here exactly
+   * like on the parallel path. */
   int serial_npages = 0;
   for (const std::pair<OID, HFID> &tgt : targets)
     {
@@ -2184,113 +2188,47 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	}
     }
 
-  /* shared full scan over every target heap: each row feeds every column's reservoir */
+  /* shared scan over every target heap: each row of the picked pages feeds every column's
+   * reservoir. The page set of each heap comes from its ftab, so unpicked pages are never
+   * fixed. */
   for (const std::pair<OID, HFID> &tgt : targets)
     {
       const OID *tgt_oid = &tgt.first;
       const HFID *tgt_hfid = &tgt.second;
+      std::int64_t tgt_rows = 0;
 
-      error = heap_scancache_start (thread_p, &scan_cache, tgt_hfid, tgt_oid, true /* cache_last_fix_page */,
-				    snapshot);
-      if (error != NO_ERROR)
+      FILE_FTAB_COLLECTOR ftab_collector;
+      if (file_get_all_data_sectors (thread_p, &tgt_hfid->vfid, &ftab_collector) != NO_ERROR)
 	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-      scancache_inited = true;
-
-      error = heap_attrinfo_start (thread_p, tgt_oid, attr_cnt, attr_ids, &attr_info);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto cleanup;
-	}
-      attrinfo_inited = true;
-
-      OID_SET_NULL (&inst_oid);
-      scan_class_oid = *tgt_oid;
-      cur_pageid = NULL_PAGEID;
-      cur_volid = -1;
-      cur_page_accepted = false;
-
-      while (true)
-	{
-	  /* reset recdes before every fetch (mirrors the executor's heap scan): a stale PEEK
-	   * pointer left by the previous row makes heap_get_visible_version_from_log () treat
-	   * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
-	   * updated row's visible version must be read from the undo log */
-	  recdes.data = NULL;
-	  sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
-	  if (sc != S_SUCCESS)
+	  if (ftab_collector.partsect_ftab != NULL)
 	    {
-	      break;
-	    }
-	  if (inst_oid.pageid != cur_pageid || inst_oid.volid != cur_volid)
-	    {
-	      cur_pageid = inst_oid.pageid;
-	      cur_volid = inst_oid.volid;
-	      if (logtb_is_interrupted (thread_p, true, &dummy_continue_checking))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
-		  error = ER_INTERRUPTED;
-		  goto cleanup;
-		}
-	      cur_page_accepted = histogram_sample_accepts_page (serial_threshold, (std::uint64_t) sample_seed,
-				  inst_oid.volid, inst_oid.pageid);
-	      serial_pages_seen++;
-	      if (cur_page_accepted)
-		{
-		  serial_pages_kept++;
-		}
-	    }
-	  if (!cur_page_accepted)
-	    {
-	      continue;	/* page not chosen by the sampling filter */
-	    }
-	  total_rows++;
-
-	  error = heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &recdes, &attr_info);
-	  if (error != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      goto cleanup;
-	    }
-
-	  try
-	    {
-	      for (i = 0; i < attr_cnt; i++)
-		{
-		  if (collectors[i] == NULL)
-		    {
-		      continue;
-		    }
-		  collectors[i]->feed (heap_attrinfo_access (attr_ids[i], &attr_info));
-		}
-	    }
-	  catch (const std::bad_alloc &)
-	    {
-	      /* sampled string copies allocate through STL; fail the scan cleanly */
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
-	      error = ER_OUT_OF_VIRTUAL_MEMORY;
-	      goto cleanup;
-	    }
-	}
-
-      if (sc != S_END)
-	{
-	  /* make sure an er message exists: ER_FAILED alone reaches the client as "(null)" */
-	  if (er_errid () == NO_ERROR)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
 	    }
 	  ASSERT_ERROR_AND_SET (error);
 	  goto cleanup;
 	}
 
-      heap_attrinfo_end (thread_p, &attr_info);
-      attrinfo_inited = false;
-      (void) heap_scancache_end (thread_p, &scan_cache);
-      scancache_inited = false;
+      {
+	ftab_set tgt_ftab;
+	tgt_ftab.convert (&ftab_collector);
+	if (ftab_collector.partsect_ftab != NULL)
+	  {
+	    db_private_free_and_init (thread_p, ftab_collector.partsect_ftab);
+	  }
+
+	ftab_page_walker walker (std::move (tgt_ftab));
+	walker.set_page_sample (serial_fraction, (std::uint64_t) sample_seed);
+
+	error = scan_ftab_partition_multi (thread_p, tgt_oid, tgt_hfid, attr_ids, attr_cnt, snapshot, walker,
+					   collectors, &tgt_rows, NULL /* abort_flag */);
+	serial_pages_seen += walker.pages_seen ();
+	serial_pages_kept += walker.pages_kept ();
+      }
+      if (error != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      total_rows += tgt_rows;
     }
 
   if (serial_fraction < 1.0 && serial_pages_kept > 0)
