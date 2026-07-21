@@ -1062,3 +1062,37 @@ sp_args_get_entry_name (int index)
 {
   return sp_args_entry_names[index];
 }
+
+  MOP
+  sp_find_pkg_var (const char *pkg_unique_name, const char *name)
+  {
+    MOP mop = NULL;
+    DB_VALUE keyvals[2];
+    const DB_VALUE *keys[2];
+    int save;
+
+    if (!pkg_unique_name || !name)
+      {
+        return NULL;
+      }
+
+    AU_SAVE_AND_DISABLE (save);
+
+    /* primary key columns: (pkg_unique_name, name) */
+    db_make_string (&keyvals[0], pkg_unique_name);
+    db_make_string (&keyvals[1], name);
+    keys[0] = &keyvals[0];
+    keys[1] = &keyvals[1];
+
+    mop = db_find_primary_key (db_find_class (CT_PACKAGE_VAR_NAME), keys, 2, DB_FETCH_READ);
+
+    if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+      {
+        er_clear ();
+        mop = NULL;
+      }
+
+    AU_RESTORE (save);
+    return mop;
+  }
+

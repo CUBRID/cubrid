@@ -168,4 +168,7 @@ std::string sp_args_get_entry_name (int index);
 void sp_normalize_name (std::string &s);
 void sp_split_target_signature (const std::string &s, std::string &target_cls, std::string &target_mth);
 
+// package
+MOP sp_find_pkg_var (const char *pkg_unique_name, const char *name);
+
 #endif // _SP_CATALOG_HPP_

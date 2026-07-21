@@ -42,6 +42,7 @@
 #include "execute_statement.h"
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
+#include "sp_catalog.hpp"
 
 using namespace cubpl;
 
@@ -859,25 +860,9 @@ exit:
     return result;
   }
 
-  static int
-  get_id_type_info (global_semantics_question &question, global_semantics_response_id_type &res)
+  static void
+  split_str(const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
   {
-    int err = NO_ERROR;
-
-    const std::string &name = question.name;
-    if (name.empty () == true)
-      {
-	err = res.err_id = ER_FAILED;
-	res.err_msg = "Invalid parameter";
-	return err;
-      }
-
-    std::string owner_name;
-    std::string class_name;
-    std::string attr_name;
-
-    auto split_str = [] (const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
-    {
       cur = name.find ('.', prev);
       if (cur != std::string::npos)
 	{
@@ -888,7 +873,22 @@ exit:
 	{
 	  out_name = name.substr (prev);
 	}
-    };
+  }
+
+  /*
+   * separate name into qualifier and id and make them lowercase.
+   * prepend qualifier with owner name if necessary.
+   */
+  static int
+  normalize_id(const std::string& name, std::string& qualifier, std::string& id)
+  {
+    if (name.empty ())
+      {
+        return ER_FAILED;
+      }
+
+    std::string owner_name;
+    std::string class_name;
 
     size_t prev = 0, cur = 0;
     int dot_cnt = std::count (name.begin (), name.end(), '.');
@@ -897,36 +897,106 @@ exit:
 	split_str (name, prev, cur, owner_name);
 	owner_name += ".";
       }
-    else
-      {
-	assert (dot_cnt == 1);
-      }
+    else if (dot_cnt != 1) {
+	return ER_FAILED;
+    }
 
     split_str (name, prev, cur, class_name);
-    split_str (name, prev, cur, attr_name);
+    split_str (name, prev, cur, id);
 
     std::string class_name_with_owner = owner_name + class_name;
     char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
     sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
 
-    transform (attr_name.begin(), attr_name.end(), attr_name.begin(), ::tolower);
-    DB_ATTRIBUTE *attr = db_get_attribute_by_name (realname, attr_name.c_str ());
-    if (attr == NULL)
-      {
+    qualifier = realname;
+    transform (id.begin(), id.end(), id.begin(), ::tolower);
+
+    return NO_ERROR;
+  }
+
+  static int
+  get_id_type_info (global_semantics_question &question, global_semantics_response_id_type &res)
+  {
+    int err, match_cnt;
+    std::string qualifier;
+    std::string id;
+
+    err = normalize_id(question.name, qualifier, id);
+    if (err != NO_ERROR) {
+	res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+	return err;
+    }
+
+    match_cnt = 0;
+    DB_ATTRIBUTE *attr = db_get_attribute_by_name (qualifier.c_str(), id.c_str ());
+    if (attr) {
+        match_cnt++;
+    }
+    MOP pkg_var = sp_find_pkg_var(qualifier.c_str(), id.c_str ());
+    if (pkg_var) {
+        match_cnt++;
+    }
+
+    if (match_cnt == 0) {
 	err = res.err_id = ER_FAILED;
 	res.err_msg = "Failed to get attribute information";
-      }
-    else
+        return err;
+    } else if (match_cnt == 2) {
+	err = res.err_id = ER_FAILED;
+	res.err_msg = "Ambiguous: a table column and a package variable match";
+        return err;
+    }
+
+    int db_type, prec;
+    short scale;
+
+    if (attr)
       {
 	DB_DOMAIN *domain = db_attribute_domain (attr);
-	int precision = db_domain_precision (domain);
-	short scale = db_domain_scale (domain);
-	int db_type = TP_DOMAIN_TYPE (domain);
-
-	type_info info (db_type, scale, precision);
-
-	res.t_info = std::move (info);
+	db_type = TP_DOMAIN_TYPE (domain);
+	prec = db_domain_precision (domain);
+	scale = db_domain_scale (domain);
       }
+    else if (pkg_var) {
+        int save;
+        DB_VALUE value;
+
+        AU_SAVE_AND_DISABLE (save);
+
+        err = db_get(pkg_var, PKG_VAR_ATTR_DATA_TYPE, &value);
+        if (err != NO_ERROR) {
+            res.err_id = err;
+            res.err_msg = er_msg();
+            AU_RESTORE(save);
+            return err;
+        }
+        db_type = db_get_int(&value);
+
+        err = db_get(pkg_var, PKG_VAR_ATTR_PREC, &value);
+        if (err != NO_ERROR) {
+            res.err_id = err;
+            res.err_msg = er_msg();
+            AU_RESTORE(save);
+            return err;
+        }
+        prec = db_get_int(&value);
+
+        err = db_get(pkg_var, PKG_VAR_ATTR_SCALE, &value);
+        if (err != NO_ERROR) {
+            res.err_id = err;
+            res.err_msg = er_msg();
+            AU_RESTORE(save);
+            return err;
+        }
+        scale = (short) db_get_int(&value);
+
+        AU_RESTORE (save);
+    } else {
+        assert (false); // unreachable
+    }
+
+    res.t_info = type_info (db_type, scale, prec);
 
     return err;
   }
