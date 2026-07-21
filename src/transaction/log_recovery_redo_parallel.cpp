@@ -675,7 +675,7 @@ namespace cublog
       {
 	auto task = std::make_unique<redo_parallel::redo_task> (task_idx, a_do_monitor_unapplied_log_lsa,
 		    m_task_state_bookkeeping, copy_context);
-	m_worker_pool->execute (task.get ());
+	m_worker_pool->execute (task.get (), {});
 	m_redo_tasks.push_back (std::move (task));
       }
 

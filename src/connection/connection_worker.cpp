@@ -594,7 +594,8 @@ namespace cubconn::connection
   void worker::push_task_into_worker_pool (context *ctx)
   {
     cubthread::task_submission_options options;
-    if ((ctx->m_recv.m_command_flags & NET_HEADER_FLAG_METHOD_MODE) != 0)
+    if ((ctx->m_recv.m_command_flags & NET_HEADER_FLAG_METHOD_MODE) != 0
+	&& ctx->m_conn->has_outstanding_method_callback ())
       {
 	options.admission = cubthread::task_admission::blocking_continuation;
       }

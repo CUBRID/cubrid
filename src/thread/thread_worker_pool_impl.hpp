@@ -125,11 +125,11 @@ namespace cubthread
       void initialize (std::size_t worker_count, std::size_t core_count) override;
 
       // execute task; execution is guaranteed, even if maximum number of tasks is reached.
-      void execute (task_type *work_arg, task_submission_options options = {}) override;
+      void execute (task_type *work_arg, task_submission_options options) override;
 
       // execute on give core.
       void execute_on_core (task_type *work_arg, std::size_t core_hash,
-			    task_submission_options options = {}) override;
+			    task_submission_options options) override;
 
       // ensure every available worker has a live thread waiting for tasks.
       // workers currently executing a task are skipped — they already have a thread.
@@ -305,7 +305,7 @@ namespace cubthread
 
       // notify workers to stop; if any of core's workers are still running, returns true
       bool stop_execution (void) override;
-      std::deque<wrapped_task> take_queued_tasks (void);
+      virtual std::deque<wrapped_task> take_queued_tasks (void);
 
       // get a task or add worker to free active list (still running, but ready to execute another task)
       std::optional<wrapped_task> get_task_or_become_available (worker &worker_arg);
