@@ -674,10 +674,12 @@ namespace
 		      {
 			continue;	/* heap file header page, no user records */
 		      }
+		    m_pages_seen++;
 		    if (!histogram_sample_accepts_page (m_sample_threshold, out->volid, out->pageid))
 		      {
 			continue;	/* page not chosen by the sampling filter */
 		      }
+		    m_pages_kept++;
 		    return true;
 		  }
 	      }
@@ -696,11 +698,25 @@ namespace
 	  }
       }
 
+      /* data pages enumerated / accepted by the filter: the walker visits the WHOLE ftab, so the
+       * ratio is the EXACT realized sampling fraction -- the population expansion uses it instead
+       * of the metadata page-count estimate the fraction was derived from */
+      std::int64_t pages_seen () const
+      {
+	return m_pages_seen;
+      }
+      std::int64_t pages_kept () const
+      {
+	return m_pages_kept;
+      }
+
     private:
       FILE_PARTIAL_SECTOR m_walk_sector = FILE_PARTIAL_SECTOR_INITIALIZER;
       size_t m_walk_pgoff = 0;
       bool m_walk_in_sector = false;
       std::uint64_t m_sample_threshold = UINT64_MAX;
+      std::int64_t m_pages_seen = 0;
+      std::int64_t m_pages_kept = 0;
   };
 
   /* scope guard: mark this thread's page unfixes as non-promoting (vacuum-style scan resistance)
@@ -1348,10 +1364,12 @@ cleanup:
   {
     std::vector<col_collector *> collectors;	/* one per column, owned by the driver */
     std::int64_t total_rows;
+    std::int64_t pages_seen;	/* data pages enumerated / accepted by this worker's walker; their */
+    std::int64_t pages_kept;	/* global ratio is the exact realized sampling fraction */
     int error;
     int er_area_len;		/* > 0: er_area holds the failed worker's flattened er context */
     alignas (sizeof (int)) char er_area[1024];
-    multi_worker_result () : total_rows (0), error (NO_ERROR), er_area_len (0) {}
+    multi_worker_result () : total_rows (0), pages_seen (0), pages_kept (0), error (NO_ERROR), er_area_len (0) {}
   };
 
   class multi_scan_task : public cubthread::entry_task
@@ -1385,6 +1403,8 @@ cleanup:
 
 	m_result->error = scan_ftab_partition_multi (&thread_ref, &m_class_oid, &m_hfid, m_attr_ids, m_attr_cnt,
 			  m_snapshot, m_part, m_result->collectors, &m_result->total_rows, m_abort);
+	m_result->pages_seen = m_part.pages_seen ();
+	m_result->pages_kept = m_part.pages_kept ();
 	if (m_result->error != NO_ERROR)
 	  {
 	    /* this worker's er context is thread-local and gone once the pooled thread moves on;
@@ -1440,6 +1460,7 @@ cleanup:
 			     std::int64_t *out_total_rows, double *out_sample_fraction, bool *did_parallel)
   {
     int w, c;
+    std::int64_t pages_seen = 0, pages_kept = 0;
     *did_parallel = false;
     *out_total_rows = 0;
     *out_sample_fraction = 1.0;
@@ -1532,6 +1553,15 @@ cleanup:
 	    failed_w = w;
 	  }
 	total_rows += results[w].total_rows;
+	pages_seen += results[w].pages_seen;
+	pages_kept += results[w].pages_kept;
+      }
+    if (*out_sample_fraction < 1.0 && pages_seen > 0 && pages_kept > 0)
+      {
+	/* the walkers enumerated the whole ftab, so kept/seen is the EXACT realized fraction --
+	 * use it for the population expansion instead of the metadata page-count estimate the
+	 * requested fraction was derived from (heap_get_num_objects can be stale) */
+	*out_sample_fraction = (double) pages_kept / (double) pages_seen;
       }
     if (push_oom && error == NO_ERROR)
       {
