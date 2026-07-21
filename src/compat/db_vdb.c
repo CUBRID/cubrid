@@ -131,32 +131,22 @@ struct prepared_tree_entry
 
 static PREPARED_TREE_ENTRY *db_Prepared_tree_registry = NULL;
 
-/*
- * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
- * return    : the kept session or NULL
- * name (in) : prepared statement name
- */
-static DB_SESSION *
-db_prepared_tree_lookup (const char *name)
-{
-  PREPARED_TREE_ENTRY *e;
-
-  for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
-    {
-      if (strcmp (e->name, name) == 0)
-	{
-	  return e->session;
-	}
-    }
-  return NULL;
-}
+/* Guards only the registry links. It is taken for pointer manipulation only and is never
+ * held across the compilation or the execution of a kept session, so it adds no
+ * serialization to statement processing. The db_ client layer is effectively
+ * single-threaded per connection (csql/CAS), but a multi-threaded direct-API client must
+ * not be able to corrupt the list itself. */
+static pthread_mutex_t db_Prepared_tree_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /*
- * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
+ * db_prepared_tree_unlink_nolock() - detach the entry of a prepared statement from the
+ *   registry. The caller holds db_Prepared_tree_lock and frees the returned entry after
+ *   releasing it.
+ * return    : the detached entry or NULL
  * name (in) : prepared statement name
  */
-static void
-db_prepared_tree_remove (const char *name)
+static PREPARED_TREE_ENTRY *
+db_prepared_tree_unlink_nolock (const char *name)
 {
   PREPARED_TREE_ENTRY **prev = &db_Prepared_tree_registry;
   PREPARED_TREE_ENTRY *e;
@@ -166,13 +156,73 @@ db_prepared_tree_remove (const char *name)
       if (strcmp (e->name, name) == 0)
 	{
 	  *prev = e->next;
-	  db_close_session_local (e->session);
-	  free_and_init (e->name);
-	  free_and_init (e);
-	  return;
+	  e->next = NULL;
+	  return e;
 	}
       prev = &e->next;
     }
+  return NULL;
+}
+
+/*
+ * db_prepared_tree_entry_free() - release a detached registry entry and its subsession.
+ *   Called outside db_Prepared_tree_lock (closing a session is not a pointer operation).
+ * e (in) : detached entry (may be NULL)
+ */
+static void
+db_prepared_tree_entry_free (PREPARED_TREE_ENTRY * e)
+{
+  if (e != NULL)
+    {
+      db_close_session_local (e->session);
+      free_and_init (e->name);
+      free_and_init (e);
+    }
+}
+
+/*
+ * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
+ * return    : the kept session or NULL
+ * name (in) : prepared statement name
+ *
+ * Note: the returned session is owned by the registry; the caller uses it on the same
+ *       connection thread that PREPAREs/EXECUTEs/DROPs this name, which is what scopes
+ *       its lifetime (the registry never frees it behind that thread's back except
+ *       through the same statement flow).
+ */
+static DB_SESSION *
+db_prepared_tree_lookup (const char *name)
+{
+  PREPARED_TREE_ENTRY *e;
+  DB_SESSION *found = NULL;
+
+  pthread_mutex_lock (&db_Prepared_tree_lock);
+  for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
+    {
+      if (strcmp (e->name, name) == 0)
+	{
+	  found = e->session;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&db_Prepared_tree_lock);
+  return found;
+}
+
+/*
+ * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
+ * name (in) : prepared statement name
+ */
+static void
+db_prepared_tree_remove (const char *name)
+{
+  PREPARED_TREE_ENTRY *e;
+
+  pthread_mutex_lock (&db_Prepared_tree_lock);
+  e = db_prepared_tree_unlink_nolock (name);
+  pthread_mutex_unlock (&db_Prepared_tree_lock);
+
+  db_prepared_tree_entry_free (e);
 }
 
 /*
@@ -187,8 +237,7 @@ static bool
 db_prepared_tree_register (const char *name, DB_SESSION * subsession)
 {
   PREPARED_TREE_ENTRY *e;
-
-  db_prepared_tree_remove (name);
+  PREPARED_TREE_ENTRY *old;
 
   e = (PREPARED_TREE_ENTRY *) malloc (sizeof (PREPARED_TREE_ENTRY));
   if (e == NULL)
@@ -202,8 +251,14 @@ db_prepared_tree_register (const char *name, DB_SESSION * subsession)
       return false;
     }
   e->session = subsession;
+
+  pthread_mutex_lock (&db_Prepared_tree_lock);
+  old = db_prepared_tree_unlink_nolock (name);
   e->next = db_Prepared_tree_registry;
   db_Prepared_tree_registry = e;
+  pthread_mutex_unlock (&db_Prepared_tree_lock);
+
+  db_prepared_tree_entry_free (old);
   return true;
 }
 
@@ -214,14 +269,20 @@ db_prepared_tree_register (const char *name, DB_SESSION * subsession)
 void
 db_free_prepared_tree_registry (void)
 {
-  while (db_Prepared_tree_registry != NULL)
-    {
-      PREPARED_TREE_ENTRY *e = db_Prepared_tree_registry;
+  PREPARED_TREE_ENTRY *head;
 
-      db_Prepared_tree_registry = e->next;
-      db_close_session_local (e->session);
-      free_and_init (e->name);
-      free_and_init (e);
+  pthread_mutex_lock (&db_Prepared_tree_lock);
+  head = db_Prepared_tree_registry;
+  db_Prepared_tree_registry = NULL;
+  pthread_mutex_unlock (&db_Prepared_tree_lock);
+
+  while (head != NULL)
+    {
+      PREPARED_TREE_ENTRY *e = head;
+
+      head = head->next;
+      e->next = NULL;
+      db_prepared_tree_entry_free (e);
     }
 }
 
