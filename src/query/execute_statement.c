@@ -4679,7 +4679,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
 					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
-					statement->info.update_stats.random_seed);
+					statement->info.update_stats.random_seed,
+					statement->info.update_stats.no_histogram);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -4755,46 +4756,48 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      bool stats_updated = false;
 
-	      {
-		DB_OBJECT *obj;
-		PT_HISTOGRAM_INFO histogram_info;
-		int save;
+	      if (!statement->info.update_stats.no_histogram)
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
 
-		AU_SAVE_AND_DISABLE (save);
-		obj = db_find_class (sm_get_ch_name (class_mop));
-		if (obj == NULL)
-		  {
-		    assert (er_errid () != NO_ERROR);
-		    AU_RESTORE (save);
-		    return er_errid ();
-		  }
+		  AU_SAVE_AND_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_RESTORE (save);
+		      return er_errid ();
+		    }
 
-		/* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
-		 * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
-		 * class once more only to have its result overwritten right away. Run the combined path first
-		 * and fall back to the plain statistics update only when it could not. */
-		histogram_info.target_columns = NULL;
-		histogram_info.bucket_count = -1;
-		histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
-		histogram_info.random_seed = statement->info.update_stats.random_seed;
-		error =
-		  update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE);
-		if (error == NO_ERROR)
-		  {
-		    stats_updated = true;
-		  }
-		else if (error == ER_OBJ_INVALID_ARGUMENTS)
-		  {
-		    /* nothing histogrammable on this class; fall through to the plain statistics update */
-		    error = NO_ERROR;
-		  }
-		else
-		  {
-		    AU_RESTORE (save);
-		    return error;
-		  }
-		AU_RESTORE (save);
-	      }
+		  /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
+		   * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
+		   * class once more only to have its result overwritten right away. Run the combined path first
+		   * and fall back to the plain statistics update only when it could not. */
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  error =
+		    update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+						     DO_HISTOGRAM_CREATE);
+		  if (error == NO_ERROR)
+		    {
+		      stats_updated = true;
+		    }
+		  else if (error == ER_OBJ_INVALID_ARGUMENTS)
+		    {
+		      /* nothing histogrammable on this class; fall through to the plain statistics update */
+		      error = NO_ERROR;
+		    }
+		  else
+		    {
+		      AU_RESTORE (save);
+		      return error;
+		    }
+		  AU_RESTORE (save);
+		}
 
 	      if (error == NO_ERROR && !stats_updated)
 		{

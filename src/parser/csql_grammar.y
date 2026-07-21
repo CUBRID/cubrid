@@ -594,6 +594,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %type <boolean> opt_invisible
 %type <number> opt_paren_plus
 %type <number> opt_with_fullscan
+%type <number> opt_stats_options
+%type <number> stats_option_list
+%type <number> stats_option
 %type <number> opt_with_n_buckets
 %type <number> online_parallel
 %type <number> comp_op
@@ -4749,41 +4752,44 @@ opt_with_column_list
         ;
 
 update_statistics_stmt
-	: UPDATE STATISTICS ON_ only_class_name_list opt_with_fullscan
+	: UPDATE STATISTICS ON_ only_class_name_list opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = $4;
 			    ups->info.update_stats.all_classes = 0;
-			    ups->info.update_stats.with_fullscan = ($5 == 1);
-			    ups->info.update_stats.random_seed = ($5 == 2);
+			    ups->info.update_stats.with_fullscan = (($5 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($5 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($5 & 0x04) != 0);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ ALL CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ ALL CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = 1;
-			    ups->info.update_stats.with_fullscan = ($6 == 1);
-			    ups->info.update_stats.random_seed = ($6 == 2);
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
-	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_with_fullscan
+	| UPDATE STATISTICS ON_ CATALOG CLASSES opt_stats_options
 		{{
 			PT_NODE *ups = parser_new_node (this_parser, PT_UPDATE_STATS);
 			if (ups)
 			  {
 			    ups->info.update_stats.class_list = NULL;
 			    ups->info.update_stats.all_classes = -1;
-			    ups->info.update_stats.with_fullscan = ($6 == 1);
-			    ups->info.update_stats.random_seed = ($6 == 2);
+			    ups->info.update_stats.with_fullscan = (($6 & 0x01) != 0);
+			    ups->info.update_stats.random_seed = (($6 & 0x02) != 0);
+			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4892,6 +4898,43 @@ opt_with_fullscan
         | WITH RANDOM_ SEED_
                 {{
                         $$ = 2;
+                }}
+        ;
+
+opt_stats_options
+        : /* empty */
+                {{
+                        $$ = 0;
+                }}
+        | WITH stats_option_list
+                {{
+                        $$ = $2;
+                }}
+        ;
+
+stats_option_list
+        : stats_option
+                {{
+                        $$ = $1;
+                }}
+        | stats_option_list ',' stats_option
+                {{
+                        $$ = $1 | $3;
+                }}
+        ;
+
+stats_option
+        : FULLSCAN
+                {{
+                        $$ = 0x01;
+                }}
+        | RANDOM_ SEED_
+                {{
+                        $$ = 0x02;
+                }}
+        | NO HISTOGRAM
+                {{
+                        $$ = 0x04;
                 }}
         ;
 

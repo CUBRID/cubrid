@@ -3040,6 +3040,7 @@ struct pt_update_stats_info
   int all_classes;		/* 1 iff ALL CLASSES */
   int with_fullscan;		/* 1 iff WITH FULLSCAN */
   int random_seed;		/* 1 iff WITH RANDOM SEED */
+  int no_histogram;		/* 1 iff WITH NO HISTOGRAM: refresh base statistics only */
 };
 
 /* GET STATISTICS INFO */

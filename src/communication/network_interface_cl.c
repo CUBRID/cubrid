@@ -6137,11 +6137,12 @@ is_top_level_class (MOBJ mobj)
  * NOTE:
  */
 int
-stats_update_all_statistics (int with_fullscan)
+stats_update_all_statistics (int with_fullscan, int print_summary)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
   LIST_MOPS *lmops = NULL;
+  int n_tables = 0, n_cols = 0;
 
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
@@ -6159,10 +6160,23 @@ stats_update_all_statistics (int with_fullscan)
 	    {
 	      break;
 	    }
+	  n_tables++;
+	  for (DB_ATTRIBUTE * att = db_get_attributes_force (class_mop); att != NULL; att = db_attribute_next (att))
+	    {
+	      n_cols++;
+	    }
 	}
     }
 
   locator_free_list_mops (lmops);
+
+  if (error == NO_ERROR && print_summary && n_tables > 0)
+    {
+      /* WITH NO HISTOGRAM skips the histogram pass that normally prints this summary */
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      fflush (stdout);
+    }
 
   return error;
 }
