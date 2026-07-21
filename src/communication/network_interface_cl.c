@@ -6183,6 +6183,8 @@ update_histogram_for_all_classes (void)
       return ER_FAILED;
     }
 
+  int n_tables = 0, n_cols = 0;
+
   for (int i = 0; i < lmops->num; i++)
     {
       class_mop = lmops->mops[i];
@@ -6198,14 +6200,27 @@ update_histogram_for_all_classes (void)
       histogram_info.target_columns = NULL;
       histogram_info.bucket_count = -1;
       histogram_info.with_fullscan = false;
-      error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
+      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE);
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
 	  AU_RESTORE (save);
 	  return error;
 	}
+
+      n_tables++;
+      for (DB_ATTRIBUTE * att = db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	{
+	  n_cols++;
+	}
     }
   AU_RESTORE (save);
+
+  if (error == NO_ERROR && n_tables > 0)
+    {
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      fflush (stdout);
+    }
 
   return error;
 }
