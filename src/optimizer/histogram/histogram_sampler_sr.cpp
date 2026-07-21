@@ -2041,6 +2041,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   short cur_volid = -1;
   bool cur_page_accepted = false;
   bool dummy_continue_checking = true;
+  std::int64_t serial_pages_seen = 0;
+  std::int64_t serial_pages_kept = 0;
   std::int64_t total_rows = 0;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
   pgbuf_no_boost_guard no_boost_guard (thread_p);
@@ -2202,6 +2204,11 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 		  goto cleanup;
 		}
 	      cur_page_accepted = histogram_sample_accepts_page (serial_threshold, inst_oid.volid, inst_oid.pageid);
+	      serial_pages_seen++;
+	      if (cur_page_accepted)
+		{
+		  serial_pages_kept++;
+		}
 	    }
 	  if (!cur_page_accepted)
 	    {
@@ -2253,10 +2260,11 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       scancache_inited = false;
     }
 
-  if (serial_fraction < 1.0)
+  if (serial_fraction < 1.0 && serial_pages_kept > 0)
     {
-      /* expand the sampled counts to population estimates (see parallel_build_multi) */
-      const double inv_fraction = 1.0 / serial_fraction;
+      /* expand the sampled counts to population estimates -- by the fraction the scan actually
+       * realized (kept/seen pages), not the metadata estimate (see parallel_scan_merge_multi) */
+      const double inv_fraction = (double) serial_pages_seen / (double) serial_pages_kept;
       total_rows = (std::int64_t) ((double) total_rows * inv_fraction + 0.5);
       for (i = 0; i < attr_cnt; i++)
 	{
