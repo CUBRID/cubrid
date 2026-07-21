@@ -1711,6 +1711,7 @@ css_make_queue_entry (CSS_CONN_ENTRY * conn, unsigned int key, char *buffer,
   p->transaction_id = transid;
   p->invalidate_snapshot = invalidate_snapshot;
   p->db_error = db_error;
+  p->in_method = conn->in_method;
 
   return p;
 }

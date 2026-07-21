@@ -136,6 +136,7 @@ namespace cubthread
       // for worker
       std::unique_ptr<concurrency_slot> try_acquire_slot ();
       std::unique_ptr<concurrency_slot> try_acquire_slot (std::unique_lock<std::mutex> &ulock);
+      std::unique_ptr<concurrency_slot> acquire_temporary_slot (std::unique_lock<std::mutex> &ulock);
 
       bool acquire_slot (cubthread::entry *thread_p);
       // wait path may return with ulock unlocked

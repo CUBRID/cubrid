@@ -593,8 +593,15 @@ namespace cubconn::connection
 
   void worker::push_task_into_worker_pool (context *ctx)
   {
+    cubthread::task_submission_options options;
+    if ((ctx->m_recv.m_command_flags & NET_HEADER_FLAG_METHOD_MODE) != 0)
+      {
+	options.admission = cubthread::task_admission::blocking_continuation;
+      }
+
     /* push new task into worker pool */
-    css_push_server_task (*ctx->m_conn);
+    css_push_server_task (*ctx->m_conn, options);
+    ctx->m_recv.m_command_flags = 0;
   }
 
   void worker::purge_stale_contexts ()
@@ -1776,6 +1783,7 @@ respond:
 	ctx->m_recv.m_receiver.release (packet.data ());
       }
     ctx->m_recv.m_command = false;
+    ctx->m_recv.m_command_flags = 0;
     NEXT_STATE (ctx, m_recv, HEADER);
     return result::Ok;
   }
@@ -1881,6 +1889,7 @@ respond:
 
     if (css_is_request_aborted (ctx->m_conn, ctx->m_recv.m_request_id))
       {
+	ctx->m_recv.m_command_flags = 0;
 	ctx->m_recv.m_receiver.release (packet.data ());
 	return result::Aborted;
       }
@@ -1895,6 +1904,7 @@ respond:
 				 conn->get_tran_index (), conn->invalidate_snapshot, conn->db_error);
     if (error != NO_ERRORS)
       {
+	ctx->m_recv.m_command_flags = 0;
 	ctx->m_recv.m_receiver.release (packet.data ());
 	return result::Error;
       }
@@ -1958,6 +1968,7 @@ respond:
       {
       case COMMAND_TYPE:
 	/* no more packets are requested */
+	ctx->m_recv.m_command_flags = flags;
 	status = this->handle_command_header_packet (ctx, packet);
 	break;
 
@@ -1970,6 +1981,7 @@ respond:
 	/* no more packets are requested */
 	ctx->m_recv.m_receiver.release (packet.data ());
 	ctx->m_recv.m_command = false;
+	ctx->m_recv.m_command_flags = 0;
 	css_process_abort_packet (ctx->m_conn, ctx->m_recv.m_request_id);
 	break;
 

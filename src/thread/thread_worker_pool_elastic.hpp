@@ -215,7 +215,7 @@ namespace cubthread
       bool has_available_worker (void) const;
 
       // execute task
-      void execute_task (task_type *task_p) override;
+      void execute_task (task_type *task_p, task_submission_options options) override;
       bool has_queued_task (std::unique_lock<std::mutex> &ulock);
 
       bool stop_execution (void) override;
@@ -241,8 +241,9 @@ namespace cubthread
 
       std::unique_ptr<worker> allocate_worker () override;
 
-      bool reserve_available_worker ();
-      worker_elastic *get_or_make_available_worker ();
+      unique_slot acquire_slot (task_admission admission, std::unique_lock<std::mutex> &ulock);
+      bool reserve_available_worker (task_admission admission);
+      worker_elastic *get_or_make_available_worker (task_admission admission);
       bool try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock);
       bool request_worker_retirement (worker_elastic *w);
       void retire_available_excess_workers (std::unique_lock<std::mutex> &ulock);
@@ -592,7 +593,8 @@ namespace cubthread
       }
 
     while (!this->m_task_queue.empty () && // the tasks exist in queue
-	   m_slots.available_slots () > 0)
+	   (m_slots.available_slots () > 0
+	    || this->m_task_queue.front ().get_admission () == task_admission::blocking_continuation))
       {
 	if (!try_dispatch_queued_task (ulock))
 	  {
@@ -648,15 +650,25 @@ namespace cubthread
 	return false;
       }
 
-    ++m_progress_worker_count;
+    // previous expansion may have been reset while its workers were still busy. preserve those live surplus
+    // reservations in the new target before asking for one more worker; otherwise the local soft-limit check would
+    // reject the expansion even though the global hard limit still has room.
+    std::size_t previous_progress_worker_count = m_progress_worker_count;
+    assert (m_reserved_worker_count >= m_retiring_worker_count);
+    std::size_t active_worker_count = m_reserved_worker_count - m_retiring_worker_count;
+    std::size_t active_surplus_worker_count = 0;
+    if (active_worker_count > m_max_concurrency)
+      {
+	active_surplus_worker_count = active_worker_count - m_max_concurrency;
+      }
+    m_progress_worker_count = std::max (m_progress_worker_count, active_surplus_worker_count) + 1;
     m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 
     if (!try_dispatch_queued_task (ulock))
       {
 	// target increase is useful only if it starts queued work. in particular, do not accumulate slots while
 	// std::thread creation repeatedly fails or another core consumes the last global worker reservation.
-	assert (m_progress_worker_count > 0);
-	--m_progress_worker_count;
+	m_progress_worker_count = previous_progress_worker_count;
 	m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 	retire_available_excess_workers (ulock);
 	return false;
@@ -684,13 +696,13 @@ namespace cubthread
 
   template <stats_t Stats>
   void
-  worker_pool_elastic<Stats>::core_elastic::execute_task (task_type *task_p)
+  worker_pool_elastic<Stats>::core_elastic::execute_task (task_type *task_p, task_submission_options options)
   {
     assert (task_p != nullptr);
 
     worker_elastic *worker_p = nullptr;
 
-    wrapped_task task_ref (task_p);
+    wrapped_task task_ref (task_p, options);
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     if (!this->m_parent_pool->is_running ())
@@ -701,10 +713,19 @@ namespace cubthread
 	return;
       }
 
-    unique_slot slot = m_slots.try_acquire_slot (ulock);
+    // the new submission is enqueued behind existing work, but either it or the FIFO head may carry the admission
+    // that makes dispatch possible. use the less restrictive policy only to acquire capacity; task order is unchanged.
+    task_admission dispatch_admission = options.admission;
+    if (!this->m_task_queue.empty ()
+	&& this->m_task_queue.front ().get_admission () == task_admission::blocking_continuation)
+      {
+	dispatch_admission = task_admission::blocking_continuation;
+      }
+
+    unique_slot slot = acquire_slot (dispatch_admission, ulock);
     if (slot)
       {
-	worker_p = get_or_make_available_worker ();
+	worker_p = get_or_make_available_worker (dispatch_admission);
 
 	if (worker_p)
 	  {
@@ -793,8 +814,12 @@ namespace cubthread
 	return std::nullopt;
       }
 
+    bool has_blocking_continuation = !this->m_task_queue.empty ()
+				     && this->m_task_queue.front ().get_admission ()
+				     == task_admission::blocking_continuation;
     std::size_t target_worker_count = m_max_concurrency + m_progress_worker_count;
-    if (m_reserved_worker_count - m_retiring_worker_count > target_worker_count && worker_p->can_retire ())
+    if (!has_blocking_continuation
+	&& m_reserved_worker_count - m_retiring_worker_count > target_worker_count && worker_p->can_retire ())
       {
 	(void) request_worker_retirement (worker_p);
 	return std::nullopt;
@@ -802,7 +827,8 @@ namespace cubthread
 
     if (!this->m_task_queue.empty ())
       {
-	unique_slot slot = m_slots.try_acquire_slot (ulock);
+	task_admission admission = this->m_task_queue.front ().get_admission ();
+	unique_slot slot = acquire_slot (admission, ulock);
 	if (slot)
 	  {
 	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
@@ -838,8 +864,9 @@ namespace cubthread
     if (!retire_requested)
       {
 	// if the worker was claimed while the old detached thread was returning, its replacement owns the object now.
+	std::size_t target_worker_count = m_max_concurrency + m_progress_worker_count;
 	if (available_it == this->m_available_workers.end ()
-	    || m_reserved_worker_count - m_retiring_worker_count <= m_max_concurrency || !w->can_retire ())
+	    || m_reserved_worker_count - m_retiring_worker_count <= target_worker_count || !w->can_retire ())
 	  {
 	    return;
 	  }
@@ -896,12 +923,26 @@ namespace cubthread
   }
 
   template <stats_t Stats>
+  typename worker_pool_elastic<Stats>::unique_slot
+  worker_pool_elastic<Stats>::core_elastic::acquire_slot (task_admission admission,
+      std::unique_lock<std::mutex> &ulock)
+  {
+    unique_slot slot = m_slots.try_acquire_slot (ulock);
+    if (!slot && admission == task_admission::blocking_continuation)
+      {
+	slot = m_slots.acquire_temporary_slot (ulock);
+      }
+    return slot;
+  }
+
+  template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::core_elastic::reserve_available_worker ()
+  worker_pool_elastic<Stats>::core_elastic::reserve_available_worker (task_admission admission)
   {
     std::size_t expected, desired;
 
-    if (m_reserved_worker_count >= m_max_concurrency + m_progress_worker_count)
+    if (admission == task_admission::regular
+	&& m_reserved_worker_count >= m_max_concurrency + m_progress_worker_count)
       {
 	return false;
       }
@@ -1010,12 +1051,12 @@ namespace cubthread
 
   template <stats_t Stats>
   typename worker_pool_elastic<Stats>::core_elastic::worker_elastic *
-  worker_pool_elastic<Stats>::core_elastic::get_or_make_available_worker ()
+  worker_pool_elastic<Stats>::core_elastic::get_or_make_available_worker (task_admission admission)
   {
     worker *worker_p;
 
     worker_p = this->get_available_worker ();
-    if (!worker_p && reserve_available_worker ())
+    if (!worker_p && reserve_available_worker (admission))
       {
 	// create a worker when none is available
 	this->m_workers.push_back (this->allocate_worker ());
@@ -1031,19 +1072,24 @@ namespace cubthread
   {
     assert (ulock.owns_lock ());
 
-    if (this->m_task_queue.empty () || m_slots.available_slots () == 0)
+    if (this->m_task_queue.empty ())
       {
 	return false;
       }
 
-    worker_elastic *worker_p = get_or_make_available_worker ();
+    task_admission admission = this->m_task_queue.front ().get_admission ();
+    auto slot = acquire_slot (admission, ulock);
+    if (!slot)
+      {
+	return false;
+      }
+
+    worker_elastic *worker_p = get_or_make_available_worker (admission);
     if (worker_p == nullptr)
       {
+	release_slot (std::move (slot), ulock);
 	return false;
       }
-
-    auto slot = m_slots.try_acquire_slot (ulock);
-    assert (slot);
 
     wrapped_task queued_task = std::move (this->m_task_queue.front ());
     this->m_task_queue.pop_front ();

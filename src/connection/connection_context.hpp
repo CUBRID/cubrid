@@ -167,6 +167,7 @@ namespace cubconn::connection
 
       NET_HEADER m_header;
       int m_request_id;
+      unsigned short m_command_flags;
 
       /* if received command packet, task will be pushed into worker pool */
       /* when data packet is completely received. */

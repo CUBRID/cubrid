@@ -125,10 +125,11 @@ namespace cubthread
       void initialize (std::size_t worker_count, std::size_t core_count) override;
 
       // execute task; execution is guaranteed, even if maximum number of tasks is reached.
-      void execute (task_type *work_arg) override;
+      void execute (task_type *work_arg, task_submission_options options = {}) override;
 
       // execute on give core.
-      void execute_on_core (task_type *work_arg, std::size_t core_hash) override;
+      void execute_on_core (task_type *work_arg, std::size_t core_hash,
+			    task_submission_options options = {}) override;
 
       // ensure every available worker has a live thread waiting for tasks.
       // workers currently executing a task are skipped — they already have a thread.
@@ -296,7 +297,7 @@ namespace cubthread
       void initialize (std::size_t worker_count) override;
 
       // execute task
-      void execute_task (task_type *task_p) override;
+      void execute_task (task_type *task_p, task_submission_options options) override;
 
       // ensure every available worker has a live thread waiting for tasks.
       // workers currently executing a task are skipped — they already have a thread.
@@ -510,7 +511,7 @@ namespace cubthread
       using inner_type = typename std::conditional_t<Stats == stats_t::on, task_with_stats, task_only>;
 
     public:
-      explicit wrapped_task (task_type *task_p);
+      explicit wrapped_task (task_type *task_p, task_submission_options options = {});
       ~wrapped_task ();
 
       wrapped_task (const wrapped_task &) = delete;
@@ -520,6 +521,7 @@ namespace cubthread
       wrapped_task &operator= (wrapped_task &&other) = delete;
 
       cubperf::time_point &get_time (void);
+      task_admission get_admission (void) const;
 
       // helper
       void execute (context_type &thread_ref);
@@ -527,6 +529,7 @@ namespace cubthread
 
     private:
       inner_type m_inner;
+      task_submission_options m_options;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -632,7 +635,7 @@ namespace cubthread
 
   template <stats_t Stats>
   void
-  worker_pool_impl<Stats>::execute (task_type *work_arg)
+  worker_pool_impl<Stats>::execute (task_type *work_arg, task_submission_options options)
   {
     assert (work_arg != nullptr);
 
@@ -643,14 +646,15 @@ namespace cubthread
       }
 
     std::size_t core_index = get_next_core () % m_cores.size ();
-    m_cores[core_index]->execute_task (work_arg);
+    m_cores[core_index]->execute_task (work_arg, options);
 
     end_task_submission ();
   }
 
   template <stats_t Stats>
   void
-  worker_pool_impl<Stats>::execute_on_core (task_type *work_arg, std::size_t core_hash)
+  worker_pool_impl<Stats>::execute_on_core (task_type *work_arg, std::size_t core_hash,
+      task_submission_options options)
   {
     assert (work_arg != nullptr);
 
@@ -661,7 +665,7 @@ namespace cubthread
       }
 
     std::size_t core_index = core_hash % m_cores.size ();
-    m_cores[core_index]->execute_task (work_arg);
+    m_cores[core_index]->execute_task (work_arg, options);
 
     end_task_submission ();
   }
@@ -1097,7 +1101,7 @@ namespace cubthread
 
   template <stats_t Stats>
   void
-  worker_pool_impl<Stats>::core_impl::execute_task (task_type *task_p)
+  worker_pool_impl<Stats>::core_impl::execute_task (task_type *task_p, task_submission_options options)
   {
     // find an available worker
     // 1. one already active is preferable
@@ -1108,7 +1112,7 @@ namespace cubthread
 
     worker_impl *worker_p = nullptr;
 
-    wrapped_task task_ref (task_p);
+    wrapped_task task_ref (task_p, options);
     std::unique_lock<std::mutex> ulock (m_core_mutex);
 
     if (!m_parent_pool->is_running ())
@@ -2027,7 +2031,8 @@ namespace cubthread
   //////////////////////////////////////////////////////////////////////////
 
   template <stats_t Stats>
-  worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p)
+  worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p, task_submission_options options)
+    : m_options (options)
   {
     assert (task_p != nullptr);
 
@@ -2046,6 +2051,7 @@ namespace cubthread
 
   template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (wrapped_task &&other)
+    : m_options (other.m_options)
   {
     m_inner.task = other.m_inner.task;
     other.m_inner.task = nullptr;
@@ -2054,6 +2060,13 @@ namespace cubthread
       {
 	m_inner.time = other.m_inner.time;
       }
+  }
+
+  template <stats_t Stats>
+  task_admission
+  worker_pool_impl<Stats>::wrapped_task::get_admission (void) const
+  {
+    return m_options.admission;
   }
 
   template <stats_t Stats>

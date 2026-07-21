@@ -144,10 +144,11 @@ namespace cubthread
 
       // push task to worker pool created with this manager
       // if worker_pool_arg is NULL, the task is executed immediately
-      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p);
+      void push_task (worker_pool *worker_pool_arg, entry_task *exec_p, task_submission_options options = {});
       // push task on the given core of entry worker pool.
       // read cubthread::worker_pool::execute_on_core for details.
-      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash);
+      void push_task_on_core (worker_pool *worker_pool_arg, entry_task *exec_p, std::size_t core_hash,
+			      task_submission_options options = {});
 
       //////////////////////////////////////////////////////////////////////////
       // daemon management
