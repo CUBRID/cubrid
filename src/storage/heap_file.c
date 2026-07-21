@@ -10107,6 +10107,21 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	  num_found_attrs++;
 	  continue;
 	}
+      else if (IS_FUNC_INDEX_RESULT_ATTR_ID (value->attrid))
+	{
+	  /* Reserved id used by a covering function-index scan to carry the precomputed function result read
+	   * from the index key. There is no heap representation for it; its value and domain are filled
+	   * directly from the midxkey by btree_attrinfo_read_dbvalues, so just mark it as found here. */
+	  value->attr_type = HEAP_INSTANCE_ATTR;
+	  value->last_attrepr = NULL;
+	  value->read_attrepr = NULL;
+	  if (value->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      db_make_null (&value->dbvalue);
+	    }
+	  num_found_attrs++;
+	  continue;
+	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
 	{
@@ -11656,6 +11671,24 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
   if (value == NULL)
     {
       goto exit_on_error;
+    }
+
+  if (IS_FUNC_INDEX_RESULT_ATTR_ID (attrid))
+    {
+      /* Reserved function-result attribute of a covering function-index scan: it has no heap representation
+       * (last_attrepr is NULL), so just store the given value directly. */
+      ret = pr_clear_value (&value->dbvalue);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      ret = pr_clone_value (attr_val, &value->dbvalue);
+      if (ret != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      value->state = HEAP_WRITTEN_ATTRVALUE;
+      return ret;
     }
 
   pr_type = pr_type_from_id (value->last_attrepr->type);

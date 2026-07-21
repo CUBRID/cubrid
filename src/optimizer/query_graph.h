@@ -139,6 +139,10 @@ struct qo_index_entry
   /* true if the index cover all segments */
   bool cover_segments;
 
+  /* true if a covering scan must materialize a function index result for a projected function expression
+   * whose argument column is not itself stored as a regular key column (see qo_is_coverage_index) */
+  bool cover_func_result;
+
   /* index of first sort column used for multi range optimization */
   int first_sort_column;
 
