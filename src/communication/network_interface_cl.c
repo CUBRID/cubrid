@@ -5842,7 +5842,9 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
   char *area = NULL;
   int area_size = 0;
   char *ptr;
-  int request_size = OR_OID_SIZE + OR_INT_SIZE * 4 + OR_INT64_SIZE + attr_cnt * (OR_INT_SIZE * 3);
+  /* or_pack_int64 aligns to 8 bytes before writing, so reserve alignment slack too;
+   * the actually packed length (ptr - request) is what gets sent */
+  int request_size = OR_OID_SIZE + OR_INT_SIZE * 4 + MAX_ALIGNMENT + OR_INT64_SIZE + attr_cnt * (OR_INT_SIZE * 3);
   char *request = (char *) malloc ((size_t) request_size);
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -5867,7 +5869,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     }
 
   req_error =
-    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, request_size, reply,
+    net_client_request2 (NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR, request, (int) (ptr - request), reply,
 			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &area, &area_size);
   free (request);
 
