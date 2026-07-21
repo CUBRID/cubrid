@@ -861,18 +861,18 @@ exit:
   }
 
   static void
-  split_str(const std::string& name, size_t &prev, size_t &cur, std::string& out_name)
+  split_str (const std::string &name, size_t &prev, size_t &cur, std::string &out_name)
   {
-      cur = name.find ('.', prev);
-      if (cur != std::string::npos)
-	{
-	  out_name = name.substr (prev, cur - prev);
-	  prev = cur + 1;
-	}
-      else
-	{
-	  out_name = name.substr (prev);
-	}
+    cur = name.find ('.', prev);
+    if (cur != std::string::npos)
+      {
+	out_name = name.substr (prev, cur - prev);
+	prev = cur + 1;
+      }
+    else
+      {
+	out_name = name.substr (prev);
+      }
   }
 
   /*
@@ -880,11 +880,11 @@ exit:
    * prepend qualifier with owner name if necessary.
    */
   static int
-  normalize_id(const std::string& name, std::string& qualifier, std::string& id)
+  normalize_id (const std::string &name, std::string &qualifier, std::string &id)
   {
     if (name.empty ())
       {
-        return ER_FAILED;
+	return ER_FAILED;
       }
 
     std::string owner_name;
@@ -897,16 +897,17 @@ exit:
 	split_str (name, prev, cur, owner_name);
 	owner_name += ".";
       }
-    else if (dot_cnt != 1) {
+    else if (dot_cnt != 1)
+      {
 	return ER_FAILED;
-    }
+      }
 
     split_str (name, prev, cur, class_name);
     split_str (name, prev, cur, id);
 
     std::string class_name_with_owner = owner_name + class_name;
-    char realname[DB_MAX_IDENTIFIER_LENGTH] = { '\0' };
-    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH);
+    char realname[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
+    sm_user_specified_name (class_name_with_owner.c_str (), realname, DB_MAX_IDENTIFIER_LENGTH + 1);
 
     qualifier = realname;
     transform (id.begin(), id.end(), id.begin(), ::tolower);
@@ -921,32 +922,42 @@ exit:
     std::string qualifier;
     std::string id;
 
-    err = normalize_id(question.name, qualifier, id);
-    if (err != NO_ERROR) {
+    err = normalize_id (question.name, qualifier, id);
+    if (err != NO_ERROR)
+      {
 	res.err_id = ER_FAILED;
 	res.err_msg = "Invalid parameter";
 	return err;
-    }
+      }
 
     match_cnt = 0;
     DB_ATTRIBUTE *attr = db_get_attribute_by_name (qualifier.c_str(), id.c_str ());
-    if (attr) {
-        match_cnt++;
-    }
-    MOP pkg_var = sp_find_pkg_var(qualifier.c_str(), id.c_str ());
-    if (pkg_var) {
-        match_cnt++;
-    }
+    if (attr)
+      {
+	match_cnt++;
+      }
+    MOP pkg_var = sp_find_pkg_var (qualifier.c_str(), id.c_str ());
+    if (pkg_var)
+      {
+	match_cnt++;
+      }
 
-    if (match_cnt == 0) {
+    if (match_cnt == 0)
+      {
 	err = res.err_id = ER_FAILED;
 	res.err_msg = "Failed to get attribute information";
-        return err;
-    } else if (match_cnt == 2) {
+	return err;
+      }
+    else if (match_cnt == 2)
+      {
 	err = res.err_id = ER_FAILED;
-	res.err_msg = "Ambiguous: a table column and a package variable match";
-        return err;
-    }
+#define ERR_MSG_TEMPLATE        ("Ambiguous: '%s' matches both a table column and a package variable")
+	char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, question.name.c_str());
+#undef ERR_MSG_TEMPLATE
+	res.err_msg = buffer;
+	return err;
+      }
 
     int db_type, prec;
     short scale;
@@ -958,43 +969,49 @@ exit:
 	prec = db_domain_precision (domain);
 	scale = db_domain_scale (domain);
       }
-    else if (pkg_var) {
-        int save;
-        DB_VALUE value;
+    else if (pkg_var)
+      {
+	int save;
+	DB_VALUE value;
 
-        AU_SAVE_AND_DISABLE (save);
+	AU_SAVE_AND_DISABLE (save);
 
-        err = db_get(pkg_var, PKG_VAR_ATTR_DATA_TYPE, &value);
-        if (err != NO_ERROR) {
-            res.err_id = err;
-            res.err_msg = er_msg();
-            AU_RESTORE(save);
-            return err;
-        }
-        db_type = db_get_int(&value);
+	err = db_get (pkg_var, PKG_VAR_ATTR_DATA_TYPE, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	db_type = db_get_int (&value);
 
-        err = db_get(pkg_var, PKG_VAR_ATTR_PREC, &value);
-        if (err != NO_ERROR) {
-            res.err_id = err;
-            res.err_msg = er_msg();
-            AU_RESTORE(save);
-            return err;
-        }
-        prec = db_get_int(&value);
+	err = db_get (pkg_var, PKG_VAR_ATTR_PREC, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	prec = db_get_int (&value);
 
-        err = db_get(pkg_var, PKG_VAR_ATTR_SCALE, &value);
-        if (err != NO_ERROR) {
-            res.err_id = err;
-            res.err_msg = er_msg();
-            AU_RESTORE(save);
-            return err;
-        }
-        scale = (short) db_get_int(&value);
+	err = db_get (pkg_var, PKG_VAR_ATTR_SCALE, &value);
+	if (err != NO_ERROR)
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    AU_RESTORE (save);
+	    return err;
+	  }
+	scale = (short) db_get_int (&value);
 
-        AU_RESTORE (save);
-    } else {
-        assert (false); // unreachable
-    }
+	AU_RESTORE (save);
+      }
+    else
+      {
+	assert (false); // unreachable
+      }
 
     res.t_info = type_info (db_type, scale, prec);
 

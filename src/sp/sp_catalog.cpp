@@ -1063,6 +1063,7 @@ sp_args_get_entry_name (int index)
   return sp_args_entry_names[index];
 }
 
+/*
   MOP
   sp_find_pkg_var (const char *pkg_unique_name, const char *name)
   {
@@ -1078,7 +1079,7 @@ sp_args_get_entry_name (int index)
 
     AU_SAVE_AND_DISABLE (save);
 
-    /* primary key columns: (pkg_unique_name, name) */
+    // primary key columns: (pkg_unique_name, name)
     db_make_string (&keyvals[0], pkg_unique_name);
     db_make_string (&keyvals[1], name);
     keys[0] = &keyvals[0];
@@ -1095,4 +1096,34 @@ sp_args_get_entry_name (int index)
     AU_RESTORE (save);
     return mop;
   }
+ */
+MOP
+sp_find_pkg_var (const char *pkg_unique_name, const char *name)
+{
+  MOP classobj, mop = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { PKG_VAR_ATTR_PKG_UNIQUE_NAME, PKG_VAR_ATTR_NAME };
+  int au_save;
+
+  if (!pkg_unique_name || !name)
+    {
+      return NULL;
+    }
+
+  classobj = db_find_class (CT_PACKAGE_VAR_NAME);
+  if (classobj == NULL)
+    {
+      return NULL;
+    }
+
+  db_make_string (&value[0], pkg_unique_name);
+  db_make_string (&value[1], name);
+
+  AU_SAVE_AND_DISABLE (au_save);
+  mop = db_find_multi_unique (classobj, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
+  AU_RESTORE (au_save);
+
+  return mop;
+}
 

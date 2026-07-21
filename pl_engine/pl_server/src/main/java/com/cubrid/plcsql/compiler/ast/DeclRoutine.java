@@ -234,7 +234,7 @@ public abstract class DeclRoutine extends Decl {
         CompileResponse.PkgSp pkgSp =
                 new CompileResponse.PkgSp(
                         getJavaSignature(),
-                        name,
+                        name.toLowerCase(),
                         isProcedure()
                                 ? ServerConstants.SP_TYPE_PROCEDURE
                                 : ServerConstants.SP_TYPE_FUNCTION,
@@ -245,7 +245,7 @@ public abstract class DeclRoutine extends Decl {
 
         for (DeclParam dp : paramList.nodes) {
             pkgSp.addArg(
-                    dp.name,
+                    dp.name.toLowerCase(),
                     dp.typeSpec.type.dbType,
                     dp.getMode(),
                     dp.getDefaultValStr(),
