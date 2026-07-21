@@ -219,6 +219,7 @@ namespace cubthread
       bool has_queued_task (std::unique_lock<std::mutex> &ulock);
 
       bool stop_execution (void) override;
+      std::deque<wrapped_task> take_queued_tasks (void) override;
 
       // concurrency slot interface
       void release_slot (unique_slot slot);
@@ -244,6 +245,9 @@ namespace cubthread
       unique_slot acquire_slot (task_admission admission, std::unique_lock<std::mutex> &ulock);
       bool reserve_available_worker (task_admission admission);
       worker_elastic *get_or_make_available_worker (task_admission admission);
+      bool has_queued_task_unlocked (void) const;
+      void enqueue_task (wrapped_task &&task_ref, bool front = false);
+      wrapped_task dequeue_task (void);
       bool try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock);
       bool request_worker_retirement (worker_elastic *w);
       void retire_available_excess_workers (std::unique_lock<std::mutex> &ulock);
@@ -253,6 +257,8 @@ namespace cubthread
 				       std::unique_lock<std::mutex> &ulock);
 
       concurrency_slot_pool m_slots;
+      // FIFO is preserved within each class; progress-critical continuations are always selected before regular work.
+      std::deque<wrapped_task> m_blocking_continuation_queue;
 
       // per core
       std::size_t m_max_concurrency;
@@ -592,9 +598,8 @@ namespace cubthread
 	return;
       }
 
-    while (!this->m_task_queue.empty () && // the tasks exist in queue
-	   (m_slots.available_slots () > 0
-	    || this->m_task_queue.front ().get_admission () == task_admission::blocking_continuation))
+    while (has_queued_task_unlocked () && // the tasks exist in queue
+	   (m_slots.available_slots () > 0 || !m_blocking_continuation_queue.empty ()))
       {
 	if (!try_dispatch_queued_task (ulock))
 	  {
@@ -616,7 +621,7 @@ namespace cubthread
       }
 
     completed_task_count = m_completed_task_count;
-    auto progress = tracker.observe (now, !this->m_task_queue.empty (), m_completed_task_count);
+    auto progress = tracker.observe (now, has_queued_task_unlocked (), m_completed_task_count);
 
     if (progress.reset_expansion)
       {
@@ -637,7 +642,7 @@ namespace cubthread
   {
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
-    if (!this->m_parent_pool->is_running () || this->m_task_queue.empty ()
+    if (!this->m_parent_pool->is_running () || !has_queued_task_unlocked ()
 	|| m_completed_task_count != completed_task_count)
       {
 	return false;
@@ -700,8 +705,6 @@ namespace cubthread
   {
     assert (task_p != nullptr);
 
-    worker_elastic *worker_p = nullptr;
-
     wrapped_task task_ref (task_p, options);
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
@@ -709,53 +712,14 @@ namespace cubthread
       {
 	// this task belongs to a submission admitted before shutdown closed the gate. leave retirement to the shutdown
 	// queue pass, after the submitter has released its admission count.
-	this->m_task_queue.push_back (std::move (task_ref));
+	enqueue_task (std::move (task_ref));
 	return;
       }
 
-    // the new submission is enqueued behind existing work, but either it or the FIFO head may carry the admission
-    // that makes dispatch possible. use the less restrictive policy only to acquire capacity; task order is unchanged.
-    task_admission dispatch_admission = options.admission;
-    if (!this->m_task_queue.empty ()
-	&& this->m_task_queue.front ().get_admission () == task_admission::blocking_continuation)
-      {
-	dispatch_admission = task_admission::blocking_continuation;
-      }
-
-    unique_slot slot = acquire_slot (dispatch_admission, ulock);
-    if (slot)
-      {
-	worker_p = get_or_make_available_worker (dispatch_admission);
-
-	if (worker_p)
-	  {
-	    // preserve FIFO order when queued tasks already exist
-	    if (!this->m_task_queue.empty ())
-	      {
-		// enqueue the new task behind existing work
-		this->m_task_queue.push_back (std::move (task_ref));
-
-		// dispatch the oldest queued task first
-		wrapped_task queued_task = std::move (this->m_task_queue.front ());
-		this->m_task_queue.pop_front ();
-
-		try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot), ulock);
-	      }
-	    else
-	      {
-		try_execute_task_with_slot (worker_p, std::move (task_ref), std::move (slot), ulock);
-	      }
-
-	    // successfully execute the task
-	    return;
-	  }
-
-	// release the slot
-	release_slot (std::move (slot), ulock);
-      }
-
-    // enqueue the task until a slot is available
-    this->m_task_queue.push_back (std::move (task_ref));
+    // blocking continuations are kept in their own FIFO. the capacity granted by their admission is therefore
+    // consumed by a continuation itself, rather than by unrelated regular work that may block its caller.
+    enqueue_task (std::move (task_ref));
+    (void) try_dispatch_queued_task (ulock);
   }
 
   template <stats_t Stats>
@@ -776,7 +740,24 @@ namespace cubthread
   {
     assert (ulock.owns_lock ());
 
-    return !this->m_task_queue.empty ();
+    return has_queued_task_unlocked ();
+  }
+
+  template <stats_t Stats>
+  std::deque<typename worker_pool_elastic<Stats>::wrapped_task>
+  worker_pool_elastic<Stats>::core_elastic::take_queued_tasks (void)
+  {
+    std::deque<wrapped_task> queued_tasks;
+
+    std::lock_guard<std::mutex> lock (this->m_core_mutex);
+
+    queued_tasks.swap (m_blocking_continuation_queue);
+    while (!this->m_task_queue.empty ())
+      {
+	queued_tasks.push_back (std::move (this->m_task_queue.front ()));
+	this->m_task_queue.pop_front ();
+      }
+    return queued_tasks;
   }
 
   template <stats_t Stats>
@@ -814,9 +795,7 @@ namespace cubthread
 	return std::nullopt;
       }
 
-    bool has_blocking_continuation = !this->m_task_queue.empty ()
-				     && this->m_task_queue.front ().get_admission ()
-				     == task_admission::blocking_continuation;
+    bool has_blocking_continuation = !m_blocking_continuation_queue.empty ();
     std::size_t target_worker_count = m_max_concurrency + m_progress_worker_count;
     if (!has_blocking_continuation
 	&& m_reserved_worker_count - m_retiring_worker_count > target_worker_count && worker_p->can_retire ())
@@ -825,17 +804,17 @@ namespace cubthread
 	return std::nullopt;
       }
 
-    if (!this->m_task_queue.empty ())
+    if (has_queued_task_unlocked ())
       {
-	task_admission admission = this->m_task_queue.front ().get_admission ();
+	wrapped_task queued_task = dequeue_task ();
+	task_admission admission = queued_task.get_admission ();
 	unique_slot slot = acquire_slot (admission, ulock);
 	if (slot)
 	  {
-	    wrapped_task queued_task = std::move (this->m_task_queue.front ());
-	    this->m_task_queue.pop_front ();
-
 	    return std::optional<std::pair<wrapped_task, unique_slot>> (std::in_place, std::move (queued_task), std::move (slot));
 	  }
+
+	enqueue_task (std::move (queued_task), true);
       }
 
     // add this worker to the available list
@@ -927,6 +906,8 @@ namespace cubthread
   worker_pool_elastic<Stats>::core_elastic::acquire_slot (task_admission admission,
       std::unique_lock<std::mutex> &ulock)
   {
+    // both acquisition paths must keep ulock continuously held. dispatch removes a task from its queue before
+    // calling this helper and relies on this contract to restore the task safely if no slot is available.
     unique_slot slot = m_slots.try_acquire_slot (ulock);
     if (!slot && admission == task_admission::blocking_continuation)
       {
@@ -1003,6 +984,7 @@ namespace cubthread
 
     // worker may already have requested retirement while returning from its last task. Wait for those reservations
     // too, so a later core can consume the released global headroom during this same two-phase progress check.
+    // condition_variable::wait releases m_core_mutex while sleeping, allowing the exiting worker to erase itself.
     if (m_retiring_worker_count > 0)
       {
 	m_worker_retire_cv.wait (ulock, [this] ()
@@ -1068,31 +1050,70 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
+  worker_pool_elastic<Stats>::core_elastic::has_queued_task_unlocked (void) const
+  {
+    return !m_blocking_continuation_queue.empty () || !this->m_task_queue.empty ();
+  }
+
+  template <stats_t Stats>
+  void
+  worker_pool_elastic<Stats>::core_elastic::enqueue_task (wrapped_task &&task_ref, bool front)
+  {
+    std::deque<wrapped_task> &queue = task_ref.get_admission () == task_admission::blocking_continuation
+				      ? m_blocking_continuation_queue : this->m_task_queue;
+
+    if (front)
+      {
+	queue.push_front (std::move (task_ref));
+      }
+    else
+      {
+	queue.push_back (std::move (task_ref));
+      }
+  }
+
+  template <stats_t Stats>
+  typename worker_pool_elastic<Stats>::wrapped_task
+  worker_pool_elastic<Stats>::core_elastic::dequeue_task (void)
+  {
+    assert (has_queued_task_unlocked ());
+
+    std::deque<wrapped_task> &queue = m_blocking_continuation_queue.empty () ? this->m_task_queue
+				      : m_blocking_continuation_queue;
+    wrapped_task task_ref = std::move (queue.front ());
+    queue.pop_front ();
+    return task_ref;
+  }
+
+  template <stats_t Stats>
+  bool
   worker_pool_elastic<Stats>::core_elastic::try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock)
   {
     assert (ulock.owns_lock ());
 
-    if (this->m_task_queue.empty ())
+    if (!has_queued_task_unlocked ())
       {
 	return false;
       }
 
-    task_admission admission = this->m_task_queue.front ().get_admission ();
+    wrapped_task queued_task = dequeue_task ();
+    task_admission admission = queued_task.get_admission ();
     auto slot = acquire_slot (admission, ulock);
     if (!slot)
       {
+	enqueue_task (std::move (queued_task), true);
 	return false;
       }
 
     worker_elastic *worker_p = get_or_make_available_worker (admission);
     if (worker_p == nullptr)
       {
+	// release_slot may temporarily drop the core lock while waking a waiter. restore queue visibility first so a
+	// concurrent one-pass shutdown drain cannot miss this task.
+	enqueue_task (std::move (queued_task), true);
 	release_slot (std::move (slot), ulock);
 	return false;
       }
-
-    wrapped_task queued_task = std::move (this->m_task_queue.front ());
-    this->m_task_queue.pop_front ();
 
     return try_execute_task_with_slot (worker_p, std::move (queued_task), std::move (slot), ulock);
   }
@@ -1108,8 +1129,8 @@ namespace cubthread
     if (unexecuted.has_value ())
       {
 	// could not start a new thread; put the task and slot back
-	// requeue the task at the front to preserve FIFO order
-	this->m_task_queue.push_front (std::move (unexecuted->first));
+	// requeue in front of the same priority class to preserve its FIFO order
+	enqueue_task (std::move (unexecuted->first), true);
 	// release the slot
 	release_slot (std::move (unexecuted->second), ulock);
 	// return the worker to the available list

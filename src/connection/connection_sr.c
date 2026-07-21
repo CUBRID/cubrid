@@ -262,6 +262,7 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->set_tran_index (NULL_TRAN_INDEX);
   conn->init_pending_request ();
   conn->init_working_task ();
+  conn->init_method_callback ();
   conn->invalidate_snapshot = 1;
   conn->in_method = false;
   err = css_get_next_client_id ();
