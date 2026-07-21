@@ -1768,11 +1768,6 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
   int err_code;
   int rc;
 
-  if (g_trace_log_level == 1)
-    {
-      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] current stage (%d), lsa (%lld)\n", g_stage, *lsa);
-    }
-
   if (g_stage != CUBRID_LOG_STAGE_PREPARATION && g_stage != CUBRID_LOG_STAGE_EXTRACTION)
     {
       CUBRID_LOG_ERROR_HANDLING (CUBRID_LOG_INVALID_FUNC_CALL_STAGE,
@@ -1786,6 +1781,11 @@ cubrid_log_extract (uint64_t * lsa, CUBRID_LOG_ITEM ** log_item_list, int *list_
 				 "lsa (%s), log_item_list(%s), list_size(%s) must not be null\n",
 				 lsa ? "not null" : "null", log_item_list ? "not null" : "null",
 				 list_size ? "not null" : "null");
+    }
+
+  if (g_trace_log_level == 1)
+    {
+      CUBRID_LOG_WRITE_TRACELOG ("[INPUT] current stage (%d), lsa (%lld)\n", g_stage, *lsa);
     }
 
   memcpy (&g_next_lsa, lsa, sizeof (LOG_LSA));
