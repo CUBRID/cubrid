@@ -107,9 +107,11 @@ namespace
       case DB_TYPE_SHORT:
       case DB_TYPE_INTEGER:
       case DB_TYPE_BIGINT:
+      case DB_TYPE_ENUMERATION:	/* sampled as its member index (SHORT) */
 	return value_category::integer;
       case DB_TYPE_FLOAT:
       case DB_TYPE_DOUBLE:
+      case DB_TYPE_MONETARY:	/* sampled as its amount; the currency unit is per-column in practice */
       case DB_TYPE_NUMERIC:
 	/* NUMERIC histogram values (MCV/bucket endpoints) are collected as double, so precision
 	 * beyond ~16 significant digits (2^53) is lost and adjacent NUMERIC values can merge into
@@ -432,6 +434,9 @@ namespace
       case DB_TYPE_BIGINT:
 	out = db_get_bigint (v);
 	break;
+      case DB_TYPE_ENUMERATION:
+	out = db_get_enum_short (v);
+	break;
       default:
 	return false;
       }
@@ -460,6 +465,9 @@ namespace
 	break;
       case DB_TYPE_DOUBLE:
 	d = db_get_double (v);
+	break;
+      case DB_TYPE_MONETARY:
+	d = db_get_monetary (v)->amount;
 	break;
       case DB_TYPE_NUMERIC:
 	/* numeric is sampled as double, matching the client histogram key (histogram_cl.cpp) */
@@ -2356,6 +2364,9 @@ namespace
 	  case DB_TYPE_BIGINT:
 	    out = db_get_bigint (v);
 	    break;
+	  case DB_TYPE_ENUMERATION:
+	    out = db_get_enum_short (v);
+	    break;
 	  default:
 	    return false;
 	  }
@@ -2378,6 +2389,9 @@ namespace
 	    break;
 	  case DB_TYPE_DOUBLE:
 	    out = db_get_double (v);
+	    break;
+	  case DB_TYPE_MONETARY:
+	    out = db_get_monetary (v)->amount;
 	    break;
 	  default:
 	    return false;

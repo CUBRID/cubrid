@@ -11079,6 +11079,30 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 	}
     }
 
+  if (error == NO_ERROR && change_mode != SM_ATTR_CHG_NOT_NEEDED)
+    {
+      /* the attribute's definition changed: a histogram collected under the old definition would
+       * be decoded with stale semantics (an ENUM's member indices, a different key kind), so drop
+       * it here -- the next UPDATE STATISTICS rebuilds it under the new definition. A missing
+       * histogram row is not an error for the ALTER. */
+      PT_NODE *hist_att_def = alter->info.alter.alter_clause.attr_mthd.attr_def_list;
+      PT_NODE *hist_old = alter->info.alter.alter_clause.attr_mthd.attr_old_name;
+      const char *hist_new_name = (hist_att_def != NULL && hist_att_def->info.attr_def.attr_name != NULL)
+	? hist_att_def->info.attr_def.attr_name->info.name.original : NULL;
+      const char *hist_old_name = (hist_old != NULL) ? hist_old->info.name.original : NULL;
+
+      if (hist_new_name != NULL)
+	{
+	  (void) sm_drop_histogram (class_obj, hist_new_name);
+	}
+      if (hist_old_name != NULL
+	  && (hist_new_name == NULL || intl_identifier_casecmp (hist_old_name, hist_new_name) != 0))
+	{
+	  (void) sm_drop_histogram (class_obj, hist_old_name);
+	}
+      er_clear ();
+    }
+
 exit:
 
   if (ctemplate != NULL)
