@@ -53,6 +53,7 @@
 #include "network_interface_cl.h"
 #include "transaction_cl.h"
 #include "dbtype.h"
+#include "histogram_cl.hpp"
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
@@ -1931,6 +1932,40 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
   else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
+      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY) && PT_IS_QUERY (statement)
+	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
+	{
+	  UINT64 bind_fp = 0;
+
+	  if (histogram_bind_fingerprint (parser, statement, &bind_fp) && statement->info.query.bind_fp != bind_fp)
+	    {
+	      /* The bound values land in different histogram territory (a different MCV/bucket,
+	       * hence a different selectivity) than the values the cached plan was chosen under --
+	       * or this is the first execution and the plan was compiled with unbound markers.
+	       * Regenerate the plan FROM THE KEPT POST-TRANSFORM TREE: do_prepare_statement ()
+	       * redoes only plan selection and XASL generation; parsing, semantic checks and
+	       * rewrites are NOT repeated. With the values now bound, the histogram probes price
+	       * the predicates with their real selectivities. */
+	      if (statement->xasl_id)
+		{
+		  pt_free_statement_xasl_id (statement);
+		}
+	      statement->flag.recompile = 1;
+	      er_clear ();
+	      pt_reset_error (parser);
+	      parser->query_id = NULL_QUERY_ID;
+
+	      err = do_prepare_statement (parser, statement);
+	      if (err != NO_ERROR)
+		{
+		  update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
+		  assert (result == NULL || *result == NULL);
+		  return err;
+		}
+	      statement->info.query.bind_fp = bind_fp;
+	    }
+	}
+
       /* now, execute the statement by calling do_execute_statement() */
       err = do_execute_statement (parser, statement);
       if (((err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE

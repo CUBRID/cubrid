@@ -2923,6 +2923,9 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (quantized selectivities of host-var predicates); 0 = not recorded.
+				 * See histogram_bind_fingerprint (). */
 };
 
 /* Info for Set Optimization Level statement */

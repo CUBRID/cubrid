@@ -2235,6 +2235,186 @@ is_histogrammable_type (DB_TYPE type)
 }
 
 /*===========================================================================*/
+/* bind-value plan fingerprint */
+
+/* splitmix64-style mixing step: order-sensitive, well distributed */
+static std::uint64_t
+bind_fp_mix (std::uint64_t h, std::uint64_t v)
+{
+  h ^= v + 0x9E3779B97F4A7C15ULL + (h << 6) + (h >> 2);
+  return h;
+}
+
+static std::uint64_t
+bind_fp_hash_name (const PT_NODE *name)
+{
+  const char *s = (name->info.name.original != NULL) ? name->info.name.original : "";
+  std::uint64_t h = 1469598103934665603ULL;	/* FNV-1a */
+
+  for (; *s != '\0'; s++)
+    {
+      h ^= (unsigned char) (*s);
+      h *= 1099511628211ULL;
+    }
+  return bind_fp_mix (h, (std::uint64_t) name->info.name.spec_id);
+}
+
+/* typed hash of a bound value -- the fallback granularity (value equality) when the predicate has
+ * no usable histogram estimate */
+static std::uint64_t
+bind_fp_hash_value (const DB_VALUE *val)
+{
+  if (val == NULL || DB_IS_NULL (val))
+    {
+      return 0x9E1BULL;
+    }
+
+  hist::histogram_key key;
+  if (histogram_extract_key (val, key))
+    {
+      switch (key.kind)
+	{
+	case hist::histogram_key_kind::i64:
+	  return bind_fp_mix (1, (std::uint64_t) key.i64);
+	case hist::histogram_key_kind::dbl:
+	{
+	  std::uint64_t bits;
+	  memcpy (&bits, &key.dbl, sizeof (bits));
+	  return bind_fp_mix (2, bits);
+	}
+	case hist::histogram_key_kind::u64:
+	  return bind_fp_mix (3, key.u64);
+	case hist::histogram_key_kind::str:
+	{
+	  std::uint64_t h = 1469598103934665603ULL;
+	  for (const char *s = key.str; *s != '\0'; s++)
+	    {
+	      h ^= (unsigned char) (*s);
+	      h *= 1099511628211ULL;
+	    }
+	  return bind_fp_mix (4, h);
+	}
+	default:
+	  break;
+	}
+    }
+  return bind_fp_mix (5, (std::uint64_t) DB_VALUE_TYPE (val));
+}
+
+struct bind_fp_walk_ctx
+{
+  PARSER_CONTEXT *parser;
+  std::uint64_t fp;
+  bool found;
+};
+
+static PT_NODE *
+bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  bind_fp_walk_ctx *ctx = (bind_fp_walk_ctx *) arg;
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+
+  PT_OP_TYPE op = node->info.expr.op;
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+    {
+      return node;
+    }
+
+  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
+  PT_NODE *a2 = node->info.expr.arg2;
+  PT_NODE *name, *hv;
+  bool reversed = false;
+
+  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
+    {
+      name = a1;
+      hv = a2;
+    }
+  else if (a1 != NULL && a1->node_type == PT_HOST_VAR
+	   && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
+    {
+      name = a2;
+      hv = a1;
+      reversed = true;		/* ? op col  ==  col op' ? */
+    }
+  else
+    {
+      return node;
+    }
+
+  int idx = hv->info.host_var.index;
+  if (idx < 0 || idx >= parser->host_var_count + parser->auto_param_count || parser->host_variables == NULL)
+    {
+      return node;
+    }
+  DB_VALUE *val = &parser->host_variables[idx];
+
+  double sel = 0.0;
+  bool ok = false;
+  switch (op)
+    {
+    case PT_EQ:
+      histogram_get_equal_selectivity (name, val, &sel, &ok);
+      break;
+    case PT_GT:
+      histogram_get_comp_selectivity (name, val, !reversed, false, &sel, &ok);
+      break;
+    case PT_GE:
+      histogram_get_comp_selectivity (name, val, !reversed, true, &sel, &ok);
+      break;
+    case PT_LT:
+      histogram_get_comp_selectivity (name, val, reversed, false, &sel, &ok);
+      break;
+    case PT_LE:
+      histogram_get_comp_selectivity (name, val, reversed, true, &sel, &ok);
+      break;
+    default:
+      break;
+    }
+
+  std::uint64_t component;
+  if (ok)
+    {
+      /* quantized selectivity: values falling in the same MCV/bucket produce the same estimate,
+       * hence the same fingerprint, hence plan reuse */
+      component = (std::uint64_t) (sel * 1.0e12);
+    }
+  else
+    {
+      component = bind_fp_hash_value (val);
+    }
+
+  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) op), bind_fp_hash_name (name)),
+			 component);
+  ctx->found = true;
+  return node;
+}
+
+bool
+histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp)
+{
+  assert (out_fp != NULL);
+
+  bind_fp_walk_ctx ctx;
+  ctx.parser = parser;
+  ctx.fp = 0;
+  ctx.found = false;
+
+  (void) parser_walk_tree (parser, statement, bind_fp_walk, &ctx, NULL, NULL);
+
+  if (!ctx.found)
+    {
+      return false;
+    }
+  *out_fp = (ctx.fp == 0) ? 1 : ctx.fp;	/* 0 is the "not recorded" sentinel */
+  return true;
+}
+
+/*===========================================================================*/
 /* dump_histogram */
 
 /*

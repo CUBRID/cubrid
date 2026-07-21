@@ -91,6 +91,12 @@ int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, 
 int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
 					int with_fullscan, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
 					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect);
+/* fingerprint of the host-variable predicate values as the plan would see them: for each
+ * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
+ * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.
+ * Returns false when the statement has no such predicate (no bind sensitivity). */
+bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
+
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
