@@ -6416,7 +6416,7 @@ scan_next_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
 /*
  * scan_next_vector_index_scan () - fetch vector index record and evaluate data filter
- *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR, S_DOESNT_EXIST)
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
  *   isidp(in/out): Index scan identifier
  *   data_filter(in): data filter information
@@ -6501,16 +6501,28 @@ scan_next_vector_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 				      NULL_CHN);
 	  if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
 	    {
-	      return S_DOESNT_EXIST;	/* not qualified, continue to the next tuple */
+	      continue;		/* not visible in this snapshot, continue to the next tuple */
+	    }
+	  else if (sp_scan == S_DOESNT_EXIST)
+	    {
+	      /* Unlike b-tree range scan, HNSW search returns OIDs without MVCC snapshot filtering. A row
+	       * inserted after this snapshot was taken has no visible prior version, so the visibility check
+	       * returns S_DOESNT_EXIST and recdes is left unfilled; skip it. The skip loop lives here (not in
+	       * the caller as in the b-tree path), so returning would abort the whole scan. */
+	      er_clear ();
+	      continue;		/* not visible in this snapshot, continue to the next tuple */
 	    }
 	  else if (sp_scan == S_ERROR)
 	    {
 	      ASSERT_ERROR ();
 	      return sp_scan;
 	    }
-	  else
+	  else if (sp_scan != S_SUCCESS && sp_scan != S_SUCCESS_CHN_UPTODATE)
 	    {
-	      assert (sp_scan == S_SUCCESS || sp_scan == S_SUCCESS_CHN_UPTODATE);
+	      /* recdes is not filled for any other code; reading it would access garbage */
+	      assert (false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return S_ERROR;
 	    }
 
 #if 0
