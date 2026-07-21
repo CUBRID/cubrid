@@ -4937,7 +4937,13 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
       if (poll (&input_fd, 1, timeout * 1000))
 	{
-	  if (scanf ("%d", &trid) != 1)
+	  int scan_ret = scanf ("%d", &trid);
+	  if (scan_ret == EOF)
+	    {
+	      /* Non-interactive/EOF stdin (e.g. pipe or redirection): quit instead of looping forever. */
+	      goto error_exit;
+	    }
+	  if (scan_ret != 1)
 	    {
 	      /* When non integer value is input, the input buffer must be flushed. */
 	      clean_stdin ();

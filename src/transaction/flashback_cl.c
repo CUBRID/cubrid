@@ -77,7 +77,7 @@ flashback_util_get_winsize ()
     }
 }
 
-static char
+static int
 flashback_util_get_char ()
 {
   int c;
@@ -88,7 +88,7 @@ flashback_util_get_char ()
 }
 
 #else
-static char
+static int
 flashback_util_get_char ()
 {
   int c;
@@ -285,14 +285,15 @@ flashback_unpack_and_print_summary (char **summary_buffer, FLASHBACK_SUMMARY_INF
 	    }
 	}
 
-      if (line_cnt >= max_window_size)
+      if (!stop_print && line_cnt >= max_window_size)
 	{
-	  char c;
+	  int c;
 	  printf ("press 'q' to quit or press anything to continue");
 
 	  c = flashback_util_get_char ();
-	  if (c == 'q')
+	  if (c == 'q' || c == EOF)
 	    {
+	      /* 'q' or EOF (non-interactive/EOF stdin) stops further paging output. */
 	      stop_print = true;
 	    }
 
