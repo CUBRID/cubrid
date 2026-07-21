@@ -76,6 +76,14 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	case TYPE_CLASS_ATTR_ID:
 	  if (regu_var->value.attr_descr.cache_dbvalp != NULL)
 	    {
+	      /* cache_slot is set only for deferred (lazy) attrs: reuse the cached pointer only while its slot
+	       * was already read this row (HEAP_READ_ATTRVALUE); a slot reset to HEAP_LAZY_ATTRVALUE (first
+	       * reference in a new row) falls to fetch_peek_dbval_slow () to be read on demand. */
+	      if (regu_var->value.attr_descr.cache_slot != NULL
+		  && regu_var->value.attr_descr.cache_slot->state != HEAP_READ_ATTRVALUE)
+		{
+		  break;
+		}
 	      *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
 	      return NO_ERROR;
 	    }

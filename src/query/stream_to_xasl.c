@@ -5828,6 +5828,7 @@ stx_build_attr_descr (THREAD_ENTRY * thread_p, char *ptr, ATTR_DESCR * attr_desc
     }
 
   attr_descr->cache_dbvalp = NULL;
+  attr_descr->cache_slot = NULL;
 
   return ptr;
 }

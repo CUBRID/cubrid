@@ -2729,17 +2729,11 @@ update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualific
 }
 
 /*
- * eval_mark_lazy_always_eager_regu () - mark a TYPE_ATTR_ID regu of the always-evaluated
- *   first predicate term (recursing into arithmetic/function operands) and its slot in the
- *   predicate attr_cache. The dbvalues of marked attributes are read eagerly every row by
- *   heap_attrinfo_read_dbvalues_lazy (), so their regus keep the fast-peek path (see
- *   fetch_peek_dbval_slow ()). Under-marking is safe: unmarked attrs simply stay lazy.
- *   return: none
- *   regu(in/out): regu variable referenced by the first predicate term
- *   attr_cache(in/out): predicate attribute cache
+ * eval_mark_lazy_always_eager_regu () - if regu (recursively, through arithmetic / function operands)
+ *   references an attribute of attr_cache, flag its value slot to be read eagerly even in lazy mode.
  */
 static void
-eval_mark_lazy_always_eager_regu (REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * attr_cache)
+eval_mark_lazy_always_eager_regu (const REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * attr_cache)
 {
   REGU_VARIABLE_LIST operand;
   int i;
@@ -2752,6 +2746,8 @@ eval_mark_lazy_always_eager_regu (REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * at
   switch (regu->type)
     {
     case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
       if (regu->value.attr_descr.cache_attrinfo == attr_cache)
 	{
 	  for (i = 0; i < attr_cache->num_values; i++)
@@ -2759,7 +2755,6 @@ eval_mark_lazy_always_eager_regu (REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * at
 	      if (attr_cache->values[i].attrid == regu->value.attr_descr.id)
 		{
 		  attr_cache->values[i].lazy_always_eager = true;
-		  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_LAZY_ALWAYS_EAGER);
 		  break;
 		}
 	    }
@@ -2792,15 +2787,15 @@ eval_mark_lazy_always_eager_regu (REGU_VARIABLE * regu, HEAP_CACHE_ATTRINFO * at
 }
 
 /*
- * eval_mark_first_term_attrs () - find the leftmost predicate term — eval_pred () walks the
- *   right-linear AND/OR chains left to right with short-circuit, so that term is evaluated for
- *   EVERY row and the lazy read cannot skip its attributes; it would only pay the
- *   fetch_peek_dbval_slow () dispatch on them. Mark those attributes to stay on the eager path.
+ * eval_mark_first_term_attrs () - find the leftmost predicate term - eval_pred () walks the right-linear
+ *   AND/OR chains left to right with short-circuit, so that term is evaluated for EVERY row and the lazy
+ *   read cannot skip its attributes; it would only pay the fetch_peek_dbval_slow () dispatch on them. Flag
+ *   those attributes' slots to stay on the eager path (heap_attrinfo_read_dbvalues_lazy () reads them now).
  *   return: none
  *   pr(in): data filter predicate
  *   attr_cache(in/out): predicate attribute cache
  */
-static void
+void
 eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cache)
 {
   while (pr != NULL)
@@ -2878,33 +2873,14 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
-      if (recdesp == NULL || recdesp->data == NULL)
+      /* Defer reading the predicate values: mark them and stash the record, so columns skipped by
+       * short-circuit evaluation in eval_pred () below are never read. heap_attrvalue_access () reads
+       * each one on demand. The first-evaluated term's column(s) were flagged lazy_always_eager at scan
+       * setup (eval_mark_first_term_attrs () in scan_start_scan ()) so they stay on the eager path. For
+       * class attribute scans (recdesp == NULL) this reads everything now. */
+      if (heap_attrinfo_read_dbvalues_lazy (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
 	{
-	  /* no record to defer the reads from — class attribute and index info scans read
-	   * shared/class attributes and default values instead of a heap record. Read
-	   * everything now, exactly as before. */
-	  if (heap_attrinfo_read_dbvalues (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
-	    {
-	      return V_ERROR;
-	    }
-	}
-      else
-	{
-	  if (!scan_attrsp->attr_cache->lazy_first_term_marked)
-	    {
-	      /* once per scan: the attrs of the always-evaluated first predicate term gain
-	       * nothing from the lazy read — mark them to stay on the eager (fast-peek) path */
-	      eval_mark_first_term_attrs (scan_predp->pred_expr, scan_attrsp->attr_cache);
-	      scan_attrsp->attr_cache->lazy_first_term_marked = true;
-	    }
-
-	  /* Prepare the predicate attributes for LAZY, on-demand reads instead of reading all of
-	   * them now. eval_pred () below short-circuits, so the dbvalues of columns in
-	   * un-evaluated terms are fetched (and read on demand) only if actually reached. */
-	  if (heap_attrinfo_read_dbvalues_lazy (thread_p, oid, recdesp, scan_attrsp->attr_cache) != NO_ERROR)
-	    {
-	      return V_ERROR;
-	    }
+	  return V_ERROR;
 	}
 
       if (oid == NULL && recdesp == NULL && filterp->val_list)
