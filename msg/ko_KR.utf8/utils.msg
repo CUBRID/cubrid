@@ -516,10 +516,6 @@ loaddb: 데이터베이스에 객체 및 스키마 적재\n\
       --ignore-class-file=FILE   적재하지 않을 클래스 이름이 있는 파일\n\
       --no-user-specified-name   소유자 이름 없이 객체 이름으로 CLASS, SERIAL 및 TRIGGER를 찾음.\n\
                                  CUBRID 11.2 전 버전에서 생성된 파일을 불러오기 위함.\n\
-      --no-logging-index         인덱스 페이지 로깅을 생략하여 인덱스 적재를 빠르게 수행;\n\
-                                 client-server 모드 전용 (standalone 모드에서는 무시됨)\n\
-                                 경고: loaddb 이전에 받은 백업으로는 인덱스 빌드 구간을 넘는\n\
-                                 log replay가 불가능하므로, loaddb 완료 후 전체 백업 필요\n\
       --schema-file-list=FILE    이 파일의 내용은 loaddb에서 사용할 스키마 파일 이름 목록이다.\n\
                                  loaddb는 위에서부터 순차적으로 실행된다.\n\
                                  경고: -s 옵션과 함께 사용 할 수 없습니다.\n

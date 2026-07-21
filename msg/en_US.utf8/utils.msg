@@ -523,10 +523,6 @@ valid options:\n\
       --ignore-class-file=FILE   input file of class names that skip load\n\
       --no-user-specified-name   Ignore user-specified names when resolving user schema–dependent objects for backward compatibility.\n\
                                  This behavior may be conditionally disabled.\n\
-      --no-logging-index         create indexes without page logging for faster index loading;\n\
-                                 client-server mode only (ignored in standalone mode)\n\
-                                 WARNING: backups taken before loaddb cannot replay past the\n\
-                                 index build; take a full backup after loaddb completes\n\
       --schema-file-list=FILE    The content of this file is a list of schema file names to be used in loaddb.\n\
                                  loaddb is executed sequentially from the top.\n\
                                  WARNING: Cannot be used with the -s option.\n
