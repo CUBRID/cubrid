@@ -114,7 +114,7 @@ extern int do_recreate_filter_index_constr (PARSER_CONTEXT * parser, SM_PREDICAT
 extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIENT_UPDATE_INFO ** assigns_data,
 			     int *assigns_count, CLIENT_UPDATE_CLASS_INFO ** cls_data, int *cls_count,
 			     DB_VALUE ** values, int *values_cnt, bool has_delete);
-extern int update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
+extern int update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj, bool quiet,
 					    PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram);
 
 #endif /* _EXECUTE_SCHEMA_H_ */

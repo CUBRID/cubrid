@@ -4466,14 +4466,13 @@ sm_update_all_statistics (bool with_fullscan)
 	}
     }
 
-  if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
-    {
-      error = update_histogram_for_all_classes ();
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
+  {
+    error = update_histogram_for_all_classes ();
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+  }
 
   return error;
 }

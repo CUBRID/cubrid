@@ -4273,7 +4273,7 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
  *   histogram_info(in): Histogram information
 */
 int
-update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
+update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj, bool quiet,
 				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram)
 {
   int error = NO_ERROR;
@@ -4420,7 +4420,8 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
-	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
+	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); !quiet && att != NULL;
+	       att = db_attribute_next (att))
 	    {
 	      attr_type = TP_DOMAIN_TYPE (att->domain);
 	      if (!is_histogrammable_type (attr_type))
@@ -4483,8 +4484,15 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	       * returns NO_ERROR, so `error` is reset and the statement still succeeds -- the
 	       * statistics refreshed above stand as a normal, committed-with-the-statement effect.
 	       * No savepoint rollback is needed here. */
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+	      if (quiet)
+		{
+		  error = NO_ERROR;	/* same net effect as the printed notice path below */
+		}
+	      else
+		{
+		  error = ER_OBJ_INVALID_ARGUMENTS;
+		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		}
 	      continue;
 	    }
 	  /* create histogram catalog entry */
@@ -4493,7 +4501,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    {
 	      if (error != ER_LC_CLASSNAME_EXIST)
 		{
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  if (!quiet)
+		    {
+		      error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		    }
 		  (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 		  return error;
 		}
@@ -4641,7 +4652,7 @@ do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_CREATE);
+  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_CREATE);
 
   if (error != NO_ERROR)
     {
@@ -4693,7 +4704,7 @@ do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_DROP);
+  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_DROP);
 
   if (error != NO_ERROR)
     {
@@ -4733,7 +4744,7 @@ do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
-  error = update_or_drop_histogram_helper (parser, obj, &statement->info.histogram, DO_HISTOGRAM_SHOW);
+  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_SHOW);
 
   if (error != NO_ERROR)
     {
