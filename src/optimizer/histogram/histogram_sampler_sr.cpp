@@ -1152,7 +1152,7 @@ cleanup:
 	    m_hll.merge (pt->m_hll);	/* register-wise max == one sketch over all partitions */
 	  }
 	m_merged = cubsampling::merge_partition_samples<T> (parts, seens, capacity,
-							    cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
+		   cubsampling::RESERVOIR_DEFAULT_SEED ^ m_sample_seed);
 	m_has_merged = true;
       }
 
@@ -2223,7 +2223,7 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 		  goto cleanup;
 		}
 	      cur_page_accepted = histogram_sample_accepts_page (serial_threshold, (std::uint64_t) sample_seed,
-								 inst_oid.volid, inst_oid.pageid);
+				  inst_oid.volid, inst_oid.pageid);
 	      serial_pages_seen++;
 	      if (cur_page_accepted)
 		{
