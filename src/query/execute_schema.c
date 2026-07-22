@@ -4286,8 +4286,12 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
   /* fill infos for catlaog table */
   nnames = pt_length_of_list (histogram_info->target_columns);
+  /* no explicit WITH n BUCKETS: UPDATE STATISTICS passes -1 and ANALYZE passes 0 -- both
+   * mean "use the default". Treating only 0 as the default let the -1 fall through to the
+   * range clamp below and every UPDATE STATISTICS histogram was built with the parameter's
+   * LOWER BOUND (4 buckets) instead of the default (300). */
   bucket_count =
-    (histogram_info->bucket_count ==
+    (histogram_info->bucket_count <=
      0) ? prm_get_integer_value (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT) : histogram_info->bucket_count;
 
   sysprm_get_range (PRM_ID_DEFAULT_HISTOGRAM_BUCKET_COUNT, &bucket_count_min, &bucket_count_max);
