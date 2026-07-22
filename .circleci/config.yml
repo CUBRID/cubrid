@@ -95,7 +95,6 @@ jobs:
                       name: Test
                       environment:
                         BRANCH_TESTCASES: "${TC_BRANCH}"
-                        BRANCH_TESTTOOLS: "hina-temp"
                       shell: /bin/bash
                       no_output_timeout: 45m
                       command: |
