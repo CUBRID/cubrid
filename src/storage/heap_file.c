@@ -91,6 +91,7 @@ static int rv;
 
 /* ATTRIBUTE LOCATION */
 
+
 #define OR_FIXED_ATTRIBUTES_OFFSET_BY_OBJ(obj, nvars) \
   (OR_HEADER_SIZE(obj) + OR_VAR_TABLE_SIZE_INTERNAL(nvars, OR_GET_OFFSET_SIZE(obj)))
 
