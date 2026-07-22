@@ -192,7 +192,12 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook
+      # CentOS 6 (glibc 2.12, kernel headers 2.6.32) exposes no getrandom/getentropy/
+      # arc4random nor the SYS_getrandom syscall, so expat's build-time entropy source
+      # detection fails with an #error. Use /dev/urandom (XML_DEV_URANDOM), the option
+      # documented by expat for older Linux. CPPFLAGS is separate from the CFLAGS=-w set
+      # in DEFAULT_CONFIGURE_OPTS, so this does not clash.
+      CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook CPPFLAGS=-DXML_DEV_URANDOM
       BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEXPAT_BYPRODUCTS}"
