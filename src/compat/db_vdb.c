@@ -2074,15 +2074,18 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  do_recompile = true;
 	}
 
-      if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
+      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+	  && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
 	  && statement->info.execute.name != NULL)
 	{
-	  /* re-execute on the kept post-transform tree of this prepared statement. With
-	   * plan_cache_bind_sensitivity on, the check inside
+	  /* opt-in (plan_cache_bind_sensitivity): re-execute on the kept post-transform
+	   * tree of this prepared statement; the check inside
 	   * db_execute_and_keep_statement_local () replans there (plan selection + XASL
 	   * generation only) when the USING values land in a different histogram bucket
-	   * than the values the plan was chosen under; with it off the plan stays fixed
-	   * as chosen under the first execution's values */
+	   * than the values the plan was chosen under. With the parameter off the whole
+	   * EXECUTE path is the legacy one: the PREPARE-time XASL is reused as-is, so
+	   * host-variable typing stays value-independent (an EXECUTE may bind different
+	   * types on every run) */
 	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original);
 
 	  if (kept != NULL)
@@ -3458,14 +3461,16 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       new_session->statements[0]->flag.do_not_use_subquery_cache = 1;
       new_session->statements[0]->flag.recompile = statement->info.execute.recompile;
     }
-  else if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.using_list != NULL)
+  else if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+	   && statement->info.execute.stmt_type == CUBRID_STMT_SELECT
+	   && statement->info.execute.using_list != NULL)
     {
-      /* first execution of this prepared statement in this client: the values bound below
-       * are visible to the compilation, so force plan regeneration here -- the plan gets
-       * fixed under the actual bind values instead of the unbound markers the PREPARE-time
-       * plan in the XASL cache was chosen under. This holds regardless of
-       * plan_cache_bind_sensitivity; the parameter only controls whether LATER value
-       * changes replan again. */
+      /* opt-in: on the first execution the values bound below are visible to the
+       * compilation, so force plan regeneration -- the plan gets chosen under the actual
+       * bind values instead of the unbound markers of the PREPARE-time plan. NOT done
+       * with the parameter off: regenerating from a value-bound tree also hardwires the
+       * values' TYPES into the XASL, which breaks prepared statements that bind different
+       * types on different executions (legacy semantics types them per execution). */
       new_session->statements[0]->flag.recompile = 1;
     }
 
@@ -3512,7 +3517,8 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
   err = db_execute_and_keep_statement_local (new_session, 1, result);
 
-  if (err >= 0 && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.name != NULL)
+  if (err >= 0 && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+      && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.name != NULL)
     {
       /* keep the compiled (post-transform) tree for the next EXECUTE of this name: the
        * bind-sensitivity check can then replan from it without re-parsing the statement */
