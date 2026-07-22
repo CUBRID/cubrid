@@ -425,15 +425,33 @@ jobs:
       TEST_SUITE: "shell"
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
-      - resolve-testcases
+      # Testcases branch is resolved once in download-build and shared via the
+      # workspace, so the 50 shell pods never hit cubrid-testcases themselves.
+      - attach_workspace:
+          at: /tmp/tcws
+      - run:
+          name: Load shared testcases branch
+          command: |
+            echo "export BRANCH_TESTCASES=$(cat /tmp/tcws/BRANCH_TESTCASES)" >> "$BASH_ENV"
       - run-tests
 
   download-build:
-    description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
+    description: "Download CUBRID build to GlusterFS and resolve the testcases branch once for all shell pods"
     executor: cubrid-test-shell
     parallelism: 1
     steps:
       - download-build-to-glusterfs
+      # Resolve the testcases branch a single time (reuses resolve-testcases,
+      # which exports BRANCH_TESTCASES) and hand it to the shell pods.
+      - resolve-testcases
+      - run:
+          name: Persist testcases branch for shell pods
+          command: |
+            mkdir -p /tmp/tcws
+            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+      - persist_to_workspace:
+          root: /tmp/tcws
+          paths: [ BRANCH_TESTCASES ]
 
 # --------------------------------------------------
 # 4. Workflow (conditional test jobs via expression-based filters)
