@@ -1629,6 +1629,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> ONLINE
+%token <cptr> OOS
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
 %token <cptr> OVER
@@ -7512,6 +7513,14 @@ show_type_id
 	| ALL HEAP CAPACITY
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
+		}}
+	| HEAP OOS
+		{{
+			$$ = SHOWSTMT_HEAP_OOS;
+		}}
+	| ALL HEAP OOS
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_OOS;
 		}}
 	| ALL INDEXES HEADER
 		{{
@@ -20706,6 +20715,7 @@ identifier
 	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
+	| OOS                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
 	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}

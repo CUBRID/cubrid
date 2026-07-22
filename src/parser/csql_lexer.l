@@ -754,6 +754,9 @@ IDL       [a-zA-Z0-9_]
                                                                                 csql_yylval.cptr = pt_makename(yytext);
                                                                                 return ONLINE; }
 [oO][nN][lL][yY]							{ begin_token(yytext);   return ONLY; }
+[oO][oO][sS]								{ begin_token(yytext);
+										csql_yylval.cptr = pt_makename(yytext);
+										return OOS; }
 [oO][pP][eE][nN]							{ begin_token(yytext);
 										csql_yylval.cptr = pt_makename(yytext);
 										return OPEN; }

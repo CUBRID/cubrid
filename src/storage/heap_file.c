@@ -38,6 +38,7 @@
 
 #include "heap_file.h"
 #include "heap_oos.hpp"
+#include "heap_show_scan_context.hpp"
 #include "oos_file.hpp"
 #include "oos_util.hpp"
 
@@ -494,13 +495,6 @@ struct heap_stats_bestspace_cache
   int free_list_count;		/* number of entries in free */
   HEAP_STATS_ENTRY *free_list;
   pthread_mutex_t bestspace_mutex;
-};
-
-typedef struct heap_show_scan_ctx HEAP_SHOW_SCAN_CTX;
-struct heap_show_scan_ctx
-{
-  HFID *hfids;			/* Array of class HFID */
-  int hfids_count;		/* Count of above hfids array */
 };
 
 static int heap_Maxslotted_reclength;
@@ -19600,7 +19594,8 @@ heap_header_capacity_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALU
       goto cleanup;
     }
 
-  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+  is_all = (show_type == SHOWSTMT_ALL_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	    || show_type == SHOWSTMT_ALL_HEAP_OOS);
 
   if (is_all && partition_type == DB_PARTITIONED_CLASS)
     {

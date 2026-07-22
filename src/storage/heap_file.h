@@ -644,6 +644,8 @@ extern SCAN_CODE heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_
 					void *ptr);
 extern SCAN_CODE heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
 					  void *ptr);
+extern SCAN_CODE heap_oos_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_values, int out_cnt,
+				     void *ptr);
 extern int heap_header_capacity_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 
 extern SCAN_CODE heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid, VPID * prev_vpid,
