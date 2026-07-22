@@ -1780,6 +1780,14 @@ log_final (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
+	      /* Loose-end transactions (e.g. 2PC prepared) are intentionally left un-aborted here
+	       * since their outcome is still undecided. But their locks must still be dropped from
+	       * the in-memory lock table before it is torn down below; anyloose_ends forces a
+	       * checkpoint instead of a clean-shutdown mark, so recovery will reacquire these same
+	       * locks via lock_reacquire_crash_locks on the next restart. Releasing them here only
+	       * affects this process' in-memory bookkeeping, the same as what a crash would do. */
+	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
+	      lock_unlock_all (thread_p);
 	      anyloose_ends = true;
 	    }
 	}
