@@ -125,16 +125,34 @@ commands:
       - run:
           name: Resolve testcases branch and SHA
           command: |
+            TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git"
+
+            # ls-remote the testcases repo with retries. A transient network error
+            # (e.g. "Empty reply from server" under the 50-way shell fan-out) must not
+            # fail the job: on persistent failure we return empty and fall back to develop.
+            resolve_sha() {
+              local i out
+              for i in 1 2 3 4 5; do
+                if out=$(git ls-remote "$TC_REPO" "$1" 2>/dev/null); then
+                  echo "$out" | cut -f1
+                  return 0
+                fi
+                echo "[warn] ls-remote '$1' failed (attempt $i); retrying" >&2
+                sleep $((i * 3))
+              done
+              echo "[warn] ls-remote '$1' failed after retries; continuing without SHA" >&2
+            }
+
             if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
               TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
             else
               TC_BRANCH="develop"
             fi
 
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
+            TC_SHA=$(resolve_sha "$TC_BRANCH")
             if [ -z "$TC_SHA" ]; then
               TC_BRANCH="develop"
-              TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+              TC_SHA=$(resolve_sha develop)
             fi
 
             CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
