@@ -275,6 +275,12 @@ typedef struct hashjoin_fetch_info
   TP_DOMAIN **coerce_domains;
   bool need_coerce_domains;
 
+  /* True when the regu_list_pred values are ready in val_descr for the current tuple,
+   * so a predicate can reuse them instead of preparing them again.
+   * Also true when initialized to NULL for a null-padded build side.
+   * Reset per probe row (probe side) and per candidate (build side). */
+  bool is_ready;
+
   /* Pointer to a member of HASHJOIN_INPUT. */
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
@@ -368,6 +374,7 @@ typedef struct hashjoin_context
 
   HASH_LIST_SCAN hash_scan;
   PRED_EXPR *during_join_pred;
+  PRED_EXPR *after_join_pred;
   VAL_DESCR *val_descr;
 
   HASHJOIN_STATUS status;
@@ -388,8 +395,9 @@ typedef struct hashjoin_manager
   JOIN_TYPE join_type;
   int key_cnt;
 
-  /* Pointer to a member of XASL_NODE. */
+  /* Pointers to members of XASL_NODE. */
   PRED_EXPR *during_join_pred;
+  PRED_EXPR *after_join_pred;
   int num_parallel_threads;
 
   /* Pointer to a member of XASL_STATE. */
@@ -472,12 +480,16 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
 void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
-/* Hash Join Partitioning */
+/* Hash Join Processing */
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
 int hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		     QFILE_TUPLE_RECORD * tuple_record);
+DB_LOGICAL hjoin_eval_pred (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * probe, HASHJOIN_FETCH_INFO * build,
+			    PRED_EXPR * pred, VAL_DESCR * val_descr);
+
+/* Merge QFILE_LIST_ID */
 int hjoin_merge_tuple_to_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 				  QFILE_TUPLE_RECORD * outer_record, QFILE_TUPLE_RECORD * inner_record,
 				  QFILE_LIST_MERGE_INFO * merge_info, QFILE_TUPLE_RECORD * overflow_record);
