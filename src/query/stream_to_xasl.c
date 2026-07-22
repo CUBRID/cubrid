@@ -4723,6 +4723,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   access_spec->grouped_scan = false;
   access_spec->fixed_scan = false;
+  access_spec->cached_scan = false;	/* runtime-only; recomputed at every open */
 
   ptr = or_unpack_int (ptr, &tmp);
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
