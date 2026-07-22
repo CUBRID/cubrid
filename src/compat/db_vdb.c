@@ -92,6 +92,7 @@ static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_lis
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
+static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan);
@@ -2160,16 +2161,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	       * redoes only plan selection and XASL generation; parsing, semantic checks and
 	       * rewrites are NOT repeated. With the values now bound, the histogram probes price
 	       * the predicates with their real selectivities. */
-	      if (statement->xasl_id)
-		{
-		  pt_free_statement_xasl_id (statement);
-		}
-	      statement->flag.recompile = 1;
-	      er_clear ();
-	      pt_reset_error (parser);
-	      parser->query_id = NULL_QUERY_ID;
-
-	      err = do_prepare_statement (parser, statement);
+	      err = do_replan_statement_with_bind_peek (parser, statement);
 	      if (err != NO_ERROR)
 		{
 		  update_execution_values (parser, -1, CUBRID_MAX_STMT_TYPE);
@@ -3352,6 +3344,41 @@ exit:
 }
 
 /*
+ * do_replan_statement_with_bind_peek () - regenerate ONLY plan selection and XASL from an
+ *   already-compiled statement, letting the optimizer see the CURRENT bind values without
+ *   letting them into the XASL's typing.
+ *   set_host_var stays OFF for the regeneration: with it on, pt_host_var_db_value ()
+ *   resolves MAYBE-typed nodes from the current values and the XASL hardwires those TYPES,
+ *   which breaks prepared statements that bind different types on later executions (the
+ *   same statement may legally run with int, double and string arguments). The optimizer's
+ *   histogram probes read parser->host_variables directly, so plan selection still prices
+ *   the predicates with the actual values.
+ * return : error code
+ * parser (in)    : parser holding the compiled statement and the bound values
+ * statement (in) : compiled statement to replan
+ */
+static int
+do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int err;
+
+  if (statement->xasl_id != NULL)
+    {
+      pt_free_statement_xasl_id (statement);
+    }
+  statement->flag.recompile = 1;
+  er_clear ();
+  pt_reset_error (parser);
+  parser->query_id = NULL_QUERY_ID;
+
+  parser->flag.plan_peek_hv_untyped = 1;
+  err = do_prepare_statement (parser, statement);
+  parser->flag.plan_peek_hv_untyped = 0;
+
+  return err;
+}
+
+/*
  * do_reexecute_prepared_statement_from_kept_tree () - execute a prepared statement on
  *   its kept compiled subsession: only the USING values are re-bound; parsing, semantic
  *   checks and rewrites are not repeated. The bind-sensitivity check downstream replans
@@ -3393,16 +3420,7 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 
       /* replan on the kept tree with the current values and record their fingerprint so
        * the bind-sensitivity check downstream does not replan a second time */
-      if (stmt0->xasl_id != NULL)
-	{
-	  pt_free_statement_xasl_id (stmt0);
-	}
-      stmt0->flag.recompile = 1;
-      er_clear ();
-      pt_reset_error (kept->parser);
-      kept->parser->query_id = NULL_QUERY_ID;
-
-      err = do_prepare_statement (kept->parser, stmt0);
+      err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
       if (err != NO_ERROR)
 	{
 	  return err;
@@ -3461,17 +3479,17 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       new_session->statements[0]->flag.do_not_use_subquery_cache = 1;
       new_session->statements[0]->flag.recompile = statement->info.execute.recompile;
     }
-  else if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
-	   && statement->info.execute.stmt_type == CUBRID_STMT_SELECT
-	   && statement->info.execute.using_list != NULL)
+
+
+  /* compile FIRST, with the host variables still unbound, exactly like PREPARE (and like
+   * the db_compile/db_push_values client flow): the semantic pass must type the host
+   * variables from their context, not from the current values -- a prepared statement may
+   * legally bind different types on every execution. The values are bound afterwards. */
+  idx = db_compile_statement (new_session);
+  if (idx < 0)
     {
-      /* opt-in: on the first execution the values bound below are visible to the
-       * compilation, so force plan regeneration -- the plan gets chosen under the actual
-       * bind values instead of the unbound markers of the PREPARE-time plan. NOT done
-       * with the parameter off: regenerating from a value-bound tree also hardwires the
-       * values' TYPES into the XASL, which breaks prepared statements that bind different
-       * types on different executions (legacy semantics types them per execution). */
-      new_session->statements[0]->flag.recompile = 1;
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
     }
 
   /* set host variable values in new session */
@@ -3482,12 +3500,6 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       return err;
     }
   new_session->parser->flag.set_host_var = 0;
-  idx = db_compile_statement (new_session);
-  if (idx < 0)
-    {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
 
   if (new_session->parser->flag.set_host_var == 0)
     {
@@ -3499,17 +3511,32 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	}
     }
 
-  if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY) && new_session->statements[0] != NULL
-      && PT_IS_QUERY (new_session->statements[0]) && new_session->parser->flag.set_host_var
-      && new_session->parser->host_var_count > 0)
+  if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.using_list != NULL
+      && new_session->statements[0] != NULL && PT_IS_QUERY (new_session->statements[0]))
     {
-      UINT64 fp = 0;
-
-      /* the plan above was already chosen under the current values; record their
-       * fingerprint so the bind-sensitivity check does not replan a second time */
-      if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
+      /* first execution: fix the plan under the actual bind values instead of the unbound
+       * markers the PREPARE-time plan was chosen under. Regardless of
+       * plan_cache_bind_sensitivity -- with the parameter off this plan simply stays for
+       * every later execution; with it on, later bucket changes replan again. The peeked
+       * regeneration keeps the XASL's host-variable typing generic (see
+       * do_replan_statement_with_bind_peek), so per-execution value typing is preserved. */
+      err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+      if (err != NO_ERROR)
 	{
-	  new_session->statements[0]->info.query.bind_fp = fp;
+	  return err;
+	}
+
+      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY) && new_session->parser->flag.set_host_var
+	  && new_session->parser->host_var_count > 0)
+	{
+	  UINT64 fp = 0;
+
+	  /* the plan was just chosen under the current values; record their fingerprint
+	   * so the bind-sensitivity check does not replan a second time */
+	  if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
+	    {
+	      new_session->statements[0]->info.query.bind_fp = fp;
+	    }
 	}
     }
 

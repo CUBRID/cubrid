@@ -6394,6 +6394,13 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
     {
       val = &parser->host_variables[node->info.host_var.index];
       typ = DB_VALUE_DOMAIN_TYPE (val);
+      if (parser->flag.plan_peek_hv_untyped)
+	{
+	  /* planning under peeked values: the generated XASL must stay as value-type-agnostic
+	   * as a PREPARE-time compilation, so type the host variable as if it were unbound --
+	   * the same statement may bind different types on its next execution */
+	  typ = DB_TYPE_NULL;
+	}
 
       regu->type = TYPE_POS_VALUE;
       regu->value.val_pos = node->info.host_var.index;
