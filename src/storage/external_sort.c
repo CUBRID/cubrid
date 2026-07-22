@@ -3496,49 +3496,6 @@ sort_index_run_decode_key_at (THREAD_ENTRY * thread_p, VFID * temp, char *iomem,
   return sort_index_page_decode_key (thread_p, iomem, slot, load_args, key);
 }
 
-static int
-sort_index_run_prev_coord (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, int page, int slot,
-			   int *prev_page, int *prev_slot)
-{
-  if (slot > 0)
-    {
-      *prev_page = page;
-      *prev_slot = slot - 1;
-      return NO_ERROR;
-    }
-  if (page <= 0)
-    {
-      return ER_FAILED;
-    }
-  if (sort_read_area (thread_p, temp, page - 1, 1, iomem) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  *prev_page = page - 1;
-  *prev_slot = sort_spage_get_numrecs (iomem) - 1;
-  return *prev_slot >= 0 ? NO_ERROR : ER_FAILED;
-}
-
-static int
-sort_index_run_next_coord (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, int npages, int *page, int *slot)
-{
-  if (*page >= npages)
-    {
-      return NO_ERROR;
-    }
-  if (sort_read_area (thread_p, temp, *page, 1, iomem) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  (*slot)++;
-  if (*slot >= sort_spage_get_numrecs (iomem))
-    {
-      (*page)++;
-      *slot = 0;
-    }
-  return NO_ERROR;
-}
-
 /*
  * sort_px_run_lower_bound () - first (page, slot) of the run whose key is >= splitter; (npages, 0) when every
  *   record's key is smaller.  Records with equal keys never straddle the returned position in different
@@ -3649,82 +3606,304 @@ sort_px_run_lower_bound (THREAD_ENTRY * thread_p, VFID * temp, int npages, char 
   return NO_ERROR;
 }
 
+/* oversampling factor for global weighted-quantile splitter selection: each run contributes up to
+ * c * (parallel_num - 1) page-proportional key samples. */
+#define SORT_PX_SPLITTER_OVERSAMPLE 4
+
+typedef struct sort_px_splitter_cand SORT_PX_SPLITTER_CAND;
+struct sort_px_splitter_cand
+{
+  DB_VALUE key;			/* decoded sample key; owned here until moved into splitters[] */
+  INT64 weight;			/* fixed-point page mass: (run_npages << 16) / n_pos of its run */
+  bool moved;			/* ownership transferred to splitters[] -- must not be cleared here */
+};
+
+typedef struct sort_px_key_group SORT_PX_KEY_GROUP;
+struct sort_px_key_group
+{
+  int cand_idx;			/* representative candidate (first in merge order); key stays in cand[] */
+  INT64 weight;			/* accumulated weight of all equal-key candidates */
+};
+
 /*
- * sort_px_select_splitters () - choose up to parallel_num - 1 strictly increasing splitter keys from the pilot
- *   (largest) run at page-proportional positions, each advanced to the first record of a key group -- the same
- *   never-split-a-duplicate-group invariant the single-run splitter enforced.  Selected keys own their memory;
- *   the caller clears them.
+ * sort_px_select_splitters () - choose up to parallel_num - 1 strictly increasing distinct splitter keys from
+ *   page-proportional samples of EVERY run (weighted global quantiles).  A single hot key group whose weight
+ *   reaches W / parallel_num is atomically isolated into a dedicated shard (its start/end boundary keys are
+ *   force-emitted under a reserved budget), which is the optimum reachable under group atomicity.
+ *   Correctness never depends on where splitters come from: every run is cut by the same keys with
+ *   sort_px_run_lower_bound, so no duplicate-key group is ever split.  Any decode/compare error fails the
+ *   parallel build (no serial fallback).  Selected keys own their memory; the caller clears them.
  */
 static int
-sort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * temp, int npages, char *iomem, LOAD_ARGS * load_args,
-			  TP_DOMAIN * key_type, int parallel_num, DB_VALUE * splitters, int *n_splitters)
+sort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * run_temp, const int *run_npages, int n_runs,
+			  char *iomem, LOAD_ARGS * load_args, TP_DOMAIN * key_type, int parallel_num,
+			  DB_VALUE * splitters, int *n_splitters)
 {
-  int prev_page = 0, prev_slot = 0;	/* run start: boundaries must strictly advance past it */
-  int m = 0;
-  int error;
+  SORT_PX_SPLITTER_CAND *cand = NULL;
+  SORT_PX_KEY_GROUP *grp = NULL;
+  int *hot_order = NULL;
+  bool *forced = NULL;
+  bool *iso = NULL;
+  int cand_begin[SORT_MAX_PARALLEL], cand_end[SORT_MAX_PARALLEL], head[SORT_MAX_PARALLEL];
+  int n_cand = 0, k = 0, n_hot = 0, n_iso = 0, used = 0, m = 0;
+  const int B = parallel_num - 1;
+  INT64 W = 0, iso_mass = 0, thr;
+  int error = NO_ERROR;
 
-  for (int i = 1; i < parallel_num; i++)
+  *n_splitters = 0;
+  assert (n_runs >= 1 && n_runs <= SORT_MAX_PARALLEL && parallel_num >= 2);
+
+  for (int r = 0; r < n_runs; r++)
     {
-      int page = (int) (((INT64) npages * i) / parallel_num);
-      int slot = 0;
-      if (page >= npages)
-	{
-	  break;
-	}
-      if (page < prev_page || (page == prev_page && slot <= prev_slot))
-	{
-	  continue;
-	}
-      /* advance to the start of the next key group */
-      for (;;)
-	{
-	  int pp, ps, compare;
-	  DB_VALUE left, right;
-	  db_make_null (&left);
-	  db_make_null (&right);
-	  if (sort_index_run_prev_coord (thread_p, temp, iomem, page, slot, &pp, &ps) != NO_ERROR
-	      || sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, pp, ps, &left) != NO_ERROR
-	      || sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, page, slot, &right) != NO_ERROR)
-	    {
-	      pr_clear_value (&left);
-	      pr_clear_value (&right);
-	      return ER_FAILED;
-	    }
-	  compare = btree_compare_key (&left, &right, key_type, 0, 1, NULL);
-	  pr_clear_value (&left);
-	  pr_clear_value (&right);
-	  if (compare != DB_EQ)
-	    {
-	      break;
-	    }
-	  if (sort_index_run_next_coord (thread_p, temp, iomem, npages, &page, &slot) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  if (page >= npages)
-	    {
-	      break;
-	    }
-	}
-      if (page >= npages)
-	{
-	  break;
-	}
-      if (page < prev_page || (page == prev_page && slot <= prev_slot))
-	{
-	  continue;
-	}
-      error = sort_index_run_decode_key_at (thread_p, temp, iomem, load_args, page, slot, &splitters[m]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      prev_page = page;
-      prev_slot = slot;
-      m++;
+      int n_pos = MIN (SORT_PX_SPLITTER_OVERSAMPLE * B, run_npages[r]);
+      assert (n_pos >= 1);
+      cand_begin[r] = n_cand;
+      n_cand += n_pos;
+      cand_end[r] = n_cand;
     }
-  *n_splitters = m;
-  return NO_ERROR;
+
+  /* cand must be allocated AND fully initialized before any other allocation can fail: the common cleanup
+   * path reads cand[i].moved and clears cand[i].key for every element, so reaching it with a partially
+   * initialized cand[] would touch garbage. */
+  cand = (SORT_PX_SPLITTER_CAND *) malloc ((size_t) n_cand * sizeof (SORT_PX_SPLITTER_CAND));
+  if (cand == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n_cand * sizeof (SORT_PX_SPLITTER_CAND));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  for (int i = 0; i < n_cand; i++)
+    {
+      db_make_null (&cand[i].key);
+      cand[i].moved = false;
+    }
+  grp = (SORT_PX_KEY_GROUP *) malloc ((size_t) n_cand * sizeof (SORT_PX_KEY_GROUP));
+  hot_order = (int *) malloc ((size_t) n_cand * sizeof (int));
+  forced = (bool *) malloc (((size_t) n_cand + 1) * sizeof (bool));
+  iso = (bool *) malloc ((size_t) n_cand * sizeof (bool));
+  if (grp == NULL || hot_order == NULL || forced == NULL || iso == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n_cand * sizeof (SORT_PX_KEY_GROUP));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  memset (forced, 0, ((size_t) n_cand + 1) * sizeof (bool));
+  memset (iso, 0, (size_t) n_cand * sizeof (bool));
+
+  /* candidate collection: page-proportional slot-0 keys; per-run candidate lists are ascending by key
+   * because each run is sorted. */
+  for (int r = 0; r < n_runs; r++)
+    {
+      int n_pos = cand_end[r] - cand_begin[r];
+      INT64 w = (((INT64) run_npages[r]) << 16) / n_pos;
+      for (int i = 0; i < n_pos; i++)
+	{
+	  int page = (int) (((INT64) run_npages[r] * i) / n_pos);
+	  SORT_PX_SPLITTER_CAND *c = &cand[cand_begin[r] + i];
+	  error = sort_index_run_decode_key_at (thread_p, &run_temp[r], iomem, load_args, page, 0, &c->key);
+	  if (error != NO_ERROR)
+	    {
+	      goto cleanup;
+	    }
+	  c->weight = w;
+	  W += w;
+	}
+      head[r] = cand_begin[r];
+    }
+
+  /* n_runs-way merge of the per-run ascending lists, aggregating equal keys into distinct groups grp[0..k).
+   * Every comparison can fail immediately (DB_UNK -> build failure) -- no error-blind qsort comparator. */
+  for (int done = 0; done < n_cand; done++)
+    {
+      int best = -1;
+      for (int r = 0; r < n_runs; r++)
+	{
+	  int cmp;
+	  if (head[r] >= cand_end[r])
+	    {
+	      continue;
+	    }
+	  if (best < 0)
+	    {
+	      best = r;
+	      continue;
+	    }
+	  cmp = btree_compare_key (&cand[head[r]].key, &cand[head[best]].key, key_type, 0, 1, NULL);
+	  if (cmp == DB_LT)
+	    {
+	      best = r;		/* DB_EQ keeps the lower run index: stable and deterministic */
+	    }
+	  else if (cmp != DB_GT && cmp != DB_EQ)
+	    {
+	      error = ER_FAILED;
+	      goto cleanup;
+	    }
+	}
+      assert (best >= 0);
+      {
+	int idx = head[best]++;
+	if (k > 0)
+	  {
+	    int cmp = btree_compare_key (&cand[grp[k - 1].cand_idx].key, &cand[idx].key, key_type, 0, 1, NULL);
+	    if (cmp == DB_EQ)
+	      {
+		grp[k - 1].weight += cand[idx].weight;
+		continue;
+	      }
+	    if (cmp != DB_LT)
+	      {
+		error = ER_FAILED;
+		goto cleanup;
+	      }
+	  }
+	grp[k].cand_idx = idx;
+	grp[k].weight = cand[idx].weight;
+	k++;
+      }
+    }
+  assert (k >= 1);
+
+  /* Pass 1 -- atomic hot admission (all-or-nothing per hot group; shared boundaries counted once).
+   * Priority: weight descending, ties by ascending group index -- deterministic. */
+  thr = W / parallel_num;
+  if (thr > 0)
+    {
+      for (int j = 0; j < k; j++)
+	{
+	  if (grp[j].weight >= thr)
+	    {
+	      hot_order[n_hot++] = j;
+	    }
+	}
+    }
+  for (int a = 1; a < n_hot; a++)
+    {
+      int j = hot_order[a];
+      int b = a - 1;
+      while (b >= 0 && (grp[hot_order[b]].weight < grp[j].weight
+			|| (grp[hot_order[b]].weight == grp[j].weight && hot_order[b] > j)))
+	{
+	  hot_order[b + 1] = hot_order[b];
+	  b--;
+	}
+      hot_order[b + 1] = j;
+    }
+  for (int a = 0; a < n_hot; a++)
+    {
+      int j = hot_order[a];
+      int need = (j > 0 && !forced[j] ? 1 : 0) + (j < k - 1 && !forced[j + 1] ? 1 : 0);
+      if (used + need > B)
+	{
+	  continue;		/* not isolated at all -- ordinary mass; partial isolation is prohibited */
+	}
+      if (j > 0)
+	{
+	  forced[j] = true;
+	}
+      if (j < k - 1)
+	{
+	  forced[j + 1] = true;
+	}
+      used += need;
+      iso[j] = true;
+      n_iso++;
+      iso_mass += grp[j].weight;
+    }
+
+  /* Pass 2 -- boundary emission.  Invariant m + F <= B reserves budget so every forced boundary is emitted
+   * (no silent partial isolation); every group's mass is attributed exactly once regardless of emission. */
+  {
+    int last_j = -1, F = used, attributed = 0, S = parallel_num - n_iso;
+    INT64 M = W - iso_mass, acc = 0, consumed = 0;
+
+    for (int j = 1; j < k; j++)
+      {
+	bool take_f, take_g;
+	if (!iso[j - 1])
+	  {
+	    acc += grp[j - 1].weight;
+	    attributed++;
+	  }
+	take_f = forced[j];
+	take_g = (!take_f && S >= 2 && acc >= M / S && m < B - F);
+	if (!take_f && !take_g)
+	  {
+	    continue;
+	  }
+	assert (j > last_j && m < B);
+	if (m > 0)
+	  {
+	    /* strictly-increasing check BEFORE the move: splitters[m - 1] owns the previous key, the source
+	     * candidate is untouched.  Distinct ascending groups make a non-DB_LT result impossible unless
+	     * the comparison itself failed -- treat it as a hard error either way. */
+	    int cmp = btree_compare_key (&splitters[m - 1], &cand[grp[j].cand_idx].key, key_type, 0, 1, NULL);
+	    if (cmp != DB_LT)
+	      {
+		error = ER_FAILED;
+		goto cleanup;
+	      }
+	  }
+	splitters[m] = cand[grp[j].cand_idx].key;	/* struct move -- source is never referenced again */
+	cand[grp[j].cand_idx].moved = true;
+	m++;
+	last_j = j;
+	if (take_f)
+	  {
+	    F--;
+	  }
+	if (acc > 0)
+	  {
+	    consumed += acc;	/* a non-hot segment just became a shard */
+	    M -= acc;
+	    S = MAX (S - 1, 1);
+	    acc = 0;
+	  }
+      }
+    if (!iso[k - 1])
+      {
+	attributed++;		/* the last group needs no boundary; it belongs to the last shard */
+      }
+    attributed += n_iso;
+    assert (F == 0);		/* forced subset of emitted: m + F <= B held throughout */
+    assert (m <= B);
+    assert (attributed == k);	/* every group attributed exactly once */
+    assert (consumed + acc + (iso[k - 1] ? 0 : grp[k - 1].weight) + iso_mass == W);	/* mass conservation */
+  }
+
+  *n_splitters = m;		/* m == 0 (single key group) -> caller demotes to the legacy serial path */
+
+cleanup:
+  if (cand != NULL)
+    {
+      for (int i = 0; i < n_cand; i++)
+	{
+	  if (!cand[i].moved)
+	    {
+	      pr_clear_value (&cand[i].key);
+	    }
+	}
+      free_and_init (cand);
+    }
+  if (grp != NULL)
+    {
+      free_and_init (grp);
+    }
+  if (hot_order != NULL)
+    {
+      free_and_init (hot_order);
+    }
+  if (forced != NULL)
+    {
+      free_and_init (forced);
+    }
+  if (iso != NULL)
+    {
+      free_and_init (iso);
+    }
+  /* on error, keys already moved into splitters[] are cleared by the caller's common exit path */
+  return error;
 }
 
 static void
@@ -3757,7 +3936,7 @@ sort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
   LOAD_ARGS *load_args = (LOAD_ARGS *) sort_param->put_arg;
   TP_DOMAIN *key_type = ((SORT_ARGS *) sort_param->get_arg)->key_type;
   char *iomem = sort_param->internal_memory;
-  int n_runs = 0, pilot = -1, m = 0, n_shards;
+  int n_runs = 0, m = 0, n_shards;
   INT64 total_pages = 0;
   int error = NO_ERROR;
 
@@ -3775,10 +3954,6 @@ sort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
 	}
       run_temp[n_runs] = px_sort_param[i].temp[idx];
       run_npages[n_runs] = npages;
-      if (pilot < 0 || npages > run_npages[pilot])
-	{
-	  pilot = n_runs;
-	}
       total_pages += npages;
       n_runs++;
     }
@@ -3794,7 +3969,7 @@ sort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_par
       db_make_null (&splitters[i]);
     }
 
-  error = sort_px_select_splitters (thread_p, &run_temp[pilot], run_npages[pilot], iomem, load_args, key_type,
+  error = sort_px_select_splitters (thread_p, run_temp, run_npages, n_runs, iomem, load_args, key_type,
 				    parallel_num, splitters, &m);
   if (error != NO_ERROR)
     {
@@ -5721,7 +5896,9 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
    * while putting, replacing the fan-in merge to a single temp run.  The put order is unchanged: the sort
    * comparator is a strict total order over (key, OID), so the per-shard merged stream is exactly the
    * subsequence a single merged run would have yielded for that key range, and no duplicate-key group is
-   * split across shards (splitters are key-group starts, records partition by key < / >= splitter).
+   * split across shards (splitters are strictly increasing distinct keys chosen from global weighted
+   * quantiles; records partition by key < / >= splitter, a property of the shared lower_bound cuts).
+   * Splitter-selection errors fail the parallel build (BT_PX_ERROR) -- there is no serial fallback.
    */
   error = sort_px_slice_runs_index_leaf (thread_p, px_sort_param, sort_param, parallel_num, shard_inputs,
 					 &n_runs, &n_shards, &total_pages_64);
