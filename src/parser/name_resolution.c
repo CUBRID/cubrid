@@ -435,6 +435,15 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       return node;
     }
 
+  /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
+   * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
+   * on any unbound name in the value clause. */
+  if (spec->info.spec.remote_server_name)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   level_p = (short *) spec->etc;
 
   switch (node->node_type)
