@@ -102,9 +102,9 @@ const VPID vpid_Null_vpid = { NULL_PAGEID, NULL_VOLID };
 static int rv;
 #endif /* !SERVER_MODE */
 
-/* default timeout seconds for infinite wait */
+/* default page latch timeout in milliseconds */
 #define PGBUF_FIX_COUNT_THRESHOLD           64	/* fix count threshold. used as indicator for hot pages. */
-static int pgbuf_latch_timeout = 300 * 1000;	/* timeout seconds */
+static int pgbuf_latch_timeout_msecs = 300 * 1000;	/* timeout milliseconds */
 
 /* size of io page */
 #if defined(CUBRID_DEBUG)
@@ -390,7 +390,7 @@ typedef struct pgbuf_status PGBUF_STATUS;
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
 typedef struct pgbuf_status_old PGBUF_STATUS_OLD;
 
-struct pgbuf_status
+struct alignas (64) pgbuf_status
 {
   unsigned long long num_hit;
   unsigned long long num_page_request;
@@ -399,7 +399,6 @@ struct pgbuf_status
   unsigned long long num_pages_read;
   unsigned int num_flusher_waiting_threads;
   unsigned int dummy;
-  char m_pad[64 - 5 * sizeof (unsigned long long) - 2 * sizeof (unsigned int)];
 };
 
 struct pgbuf_status_snapshot
@@ -857,6 +856,81 @@ static char pgbuf_Guard[8] = { MEM_REGION_GUARD_MARK, MEM_REGION_GUARD_MARK, MEM
 };
 #endif /* CUBRID_DEBUG */
 
+/* ----------------------------------------------------------------------------------------------
+ * Pgbuf opaque copy-buffer API for cached heap scans (CBRD-27041).
+ *
+ * The copy buffer is not a real BCB slot: it is a stand-alone <dummy BCB, iopage> pair, private to
+ * this file, so that the PAGE_PTR returned by pgbuf_copy_buffer_get_page_ptr () satisfies the same
+ * CAST_PGPTR_TO_BFPTR / CAST_PGPTR_TO_IOPGPTR invariants as a real fixed page.
+ * ---------------------------------------------------------------------------------------------- */
+struct pgbuf_copy_buffer
+{
+  PGBUF_BCB dummy_bcb;		/* real BCB struct, only vpid field meaningful */
+  PGBUF_IOPAGE_BUFFER iopage_buf;	/* flexible-payload; actual size determined by alloc */
+};
+
+/* CRITICAL: sizeof (struct pgbuf_copy_buffer) under-allocates because FILEIO_PAGE.page is char[1].
+ * Must use dynamic sizing. */
+#define PGBUF_COPY_BUFFER_ALLOC_SIZE \
+  ((size_t) (offsetof (struct pgbuf_copy_buffer, iopage_buf) + PGBUF_IOPAGE_BUFFER_SIZE))
+
+PGBUF_COPY_BUFFER_HANDLE
+pgbuf_copy_buffer_alloc (void)
+{
+  struct pgbuf_copy_buffer *buf = (struct pgbuf_copy_buffer *) malloc (PGBUF_COPY_BUFFER_ALLOC_SIZE);
+
+  if (buf == NULL)
+    {
+      return NULL;		/* OOM: caller handles graceful degradation */
+    }
+  /* PGBUF_BCB embeds a std::atomic member, so a raw memset trips -Wclass-memaccess; value-initialize
+   * via placement new instead (same net effect: every field zeroed). */
+  placement_new (&buf->dummy_bcb);
+  buf->iopage_buf.bcb = &buf->dummy_bcb;
+  buf->dummy_bcb.iopage_buffer = &buf->iopage_buf;
+  VPID_SET_NULL (&buf->dummy_bcb.vpid);
+#if defined (CUBRID_DEBUG)
+  /* Init guard bytes at page[DB_PAGESIZE], matching PGBUF_FIND_BUFFER_GUARD. */
+  memcpy (&buf->iopage_buf.iopage.page[DB_PAGESIZE], pgbuf_Guard, sizeof (pgbuf_Guard));
+#endif /* CUBRID_DEBUG */
+
+  er_log_debug (ARG_FILE_LINE, "cached scan buffer allocated");
+
+  return buf;
+}
+
+void
+pgbuf_copy_buffer_free (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  if (handle != NULL)
+    {
+      /* end the lifetime started by the placement new in pgbuf_copy_buffer_alloc (); currently a
+       * no-op, but keeps construction/destruction symmetric if PGBUF_BCB members change */
+      handle->dummy_bcb. ~ pgbuf_bcb ();
+    }
+  free_and_init (handle);
+}
+
+void
+pgbuf_copy_page_for_scan (PAGE_PTR src_pgptr, PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  FILEIO_PAGE *src_iopage;
+  PGBUF_BCB *src_bcb;
+
+  CAST_PGPTR_TO_IOPGPTR (src_iopage, src_pgptr);	/* src must be fixed */
+  memcpy (&handle->iopage_buf.iopage, src_iopage, IO_PAGESIZE);
+
+  /* Update dummy BCB vpid from source. */
+  CAST_PGPTR_TO_BFPTR (src_bcb, src_pgptr);
+  handle->dummy_bcb.vpid = src_bcb->vpid;
+}
+
+PAGE_PTR
+pgbuf_copy_buffer_get_page_ptr (PGBUF_COPY_BUFFER_HANDLE handle)
+{
+  return (PAGE_PTR) handle->iopage_buf.iopage.page;
+}
+
 #define AOUT_HASH_DIVIDE_RATIO 1000
 #define AOUT_HASH_IDX(vpid, list) ((vpid)->pageid % list->num_hashes)
 
@@ -1119,6 +1193,7 @@ STATIC_INLINE bool pgbuf_is_exist_blocked_reader_writer (PGBUF_BCB * bufptr) __a
 static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is_only_fixed, bool is_set_lsa_as_null);
 
 #if defined(SERVER_MODE)
+static void pgbuf_make_latch_timeout (struct timespec *to, int timeout_msecs);
 static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr);
 static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
 STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
@@ -1595,7 +1670,7 @@ pgbuf_initialize (void)
 #endif /* CUBRID_DEBUG */
       pgbuf_Pool.num_buffers = PGBUF_MINIMUM_BUFFERS;
     }
-  pgbuf_latch_timeout = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT) * 1000;
+  pgbuf_latch_timeout_msecs = prm_get_integer_value (PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS);
 #if defined (SERVER_MODE)
 #if defined (NDEBUG)
   pgbuf_Monitor_locks = prm_get_bool_value (PRM_ID_PB_MONITOR_LOCKS);
@@ -1767,7 +1842,10 @@ pgbuf_initialize (void)
       goto error;
     }
 
-  pgbuf_Pool.show_status = (PGBUF_STATUS *) malloc (sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
+  /* cache-line aligned so each per-thread slot owns its own line (no false sharing) */
+  pgbuf_Pool.show_status =
+    (PGBUF_STATUS *) cub_aligned_alloc (64, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1),
+					__FILE__, __LINE__);
   if (pgbuf_Pool.show_status == NULL)
     {
       ASSERT_ERROR ();
@@ -7016,6 +7094,26 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 
 #if defined(SERVER_MODE)
 /*
+ * pgbuf_make_latch_timeout () -
+ *   return:
+ *   to(out):
+ *   timeout_msecs(in):
+ */
+static void
+pgbuf_make_latch_timeout (struct timespec *to, int timeout_msecs)
+{
+  struct timeval now;
+  struct timeval timeout;
+
+  assert (to != NULL);
+  assert (timeout_msecs >= 0);
+
+  gettimeofday (&now, NULL);
+  timeval_add_msec (&timeout, &now, timeout_msecs);
+  timeval_to_timespec (to, &timeout);
+}
+
+/*
  * pgbuf_timed_sleep_error_handling () -
  *   return:
  *   thrd_entry(in):
@@ -7115,7 +7213,7 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 {
   int r;
   struct timespec to;
-  int wait_secs;
+  int wait_msecs;
   int old_wait_msecs;
   int save_request_latch_mode;
   const char *client_prog_name;	/* Client program name for trans */
@@ -7128,23 +7226,22 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   thread_lock_entry (thread_p);
   PGBUF_BCB_UNLOCK (bufptr);
 
-  old_wait_msecs = wait_secs = pgbuf_find_current_wait_msecs (thread_p);
+  old_wait_msecs = wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
 
-  assert (wait_secs == LK_INFINITE_WAIT || wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT
-	  || wait_secs > 0);
+  assert (wait_msecs == LK_INFINITE_WAIT || wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT
+	  || wait_msecs > 0);
 
-  if (wait_secs == LK_ZERO_WAIT || wait_secs == LK_FORCE_ZERO_WAIT)
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
     {
-      wait_secs = 0;
+      wait_msecs = 0;
     }
   else
     {
-      wait_secs = pgbuf_latch_timeout;
+      wait_msecs = pgbuf_latch_timeout_msecs;
     }
 
 try_again:
-  to.tv_sec = (int) time (NULL) + wait_secs;
-  to.tv_nsec = 0;
+  pgbuf_make_latch_timeout (&to, wait_msecs);
 
   if (thread_p->type == TT_WORKER)
     {
@@ -8078,8 +8175,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       high_priority = high_priority || VACUUM_IS_THREAD_VACUUM (thread_p) || pgbuf_is_thread_high_priority (thread_p);
 
       /* add to waiters thread list to be assigned victim directly */
-      to.tv_sec = (int) time (NULL) + pgbuf_latch_timeout;
-      to.tv_nsec = 0;
+      pgbuf_make_latch_timeout (&to, pgbuf_latch_timeout_msecs);
 
       thread_lock_entry (thread_p);
 

@@ -11040,6 +11040,11 @@ end:
   return error;
 
 error:
+  if (supp_recdes.data != NULL)
+    {
+      free_and_init (supp_recdes.data);
+    }
+
   if (supplement_data != NULL)
     {
       free_and_init (supplement_data);
@@ -11142,6 +11147,18 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
       LSA_SET_NULL (&log_info_entry.next_lsa);
       log_info_entry.log_info = NULL;
 
+      /* Re-sync to the requested extraction LSA.  When a new extraction LSA is
+       * set (queue reinit / initialize / cleanup), the local process_lsa may
+       * still point past it from the previous session; the block below would
+       * then copy that stale local position back into next_extraction_lsa and
+       * resume ahead of the requested LSA, skipping log records.  Reset it to
+       * NULL so the block below adopts next_extraction_lsa instead. */
+      if (cdc_Gl.producer.is_reset_process_lsa)
+	{
+	  LSA_SET_NULL (&process_lsa);
+	  cdc_Gl.producer.is_reset_process_lsa = false;
+	}
+
       if (LSA_ISNULL (&process_lsa))
 	{
 	  LSA_COPY (&process_lsa, &cdc_Gl.producer.next_extraction_lsa);
@@ -11182,6 +11199,9 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 		 LSA_AS_ARGS (&process_lsa));
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+	      free_and_init (log_info_entry.log_info);
+	      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
+	      thread_sleep (50);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      continue;
 	    }
@@ -11189,16 +11209,6 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 	  tmp->length = log_info_entry.length;
 	  tmp->log_info = log_info_entry.log_info;
 	  LSA_COPY (&tmp->next_lsa, &process_lsa);
-
-	  if (cdc_Gl.is_queue_reinitialized)
-	    {
-	      free_and_init (tmp->log_info);
-	      free_and_init (tmp);
-
-	      cdc_Gl.is_queue_reinitialized = false;
-
-	      continue;
-	    }
 
           /* *INDENT-OFF* */
 	  cdc_Gl.loginfo_queue->produce (tmp);
@@ -11265,8 +11275,16 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
-	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+	  size_t required_size = (size_t) (-undo_recdes->length);
+	  char *new_data = (char *) realloc (undo_recdes->data, required_size);
+	  if (new_data == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, required_size);
+	      return S_ERROR;
+	    }
+
+	  undo_recdes->data = new_data;
+	  undo_recdes->area_size = required_size;
 
 	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
 	    {
@@ -11930,8 +11948,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE)
 	      {
-		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -12200,6 +12216,14 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   cdc_log ("cdc_get_ovfdata_from_log : process_lsa:(%lld | %d), recovery index:%d, is_redo:%d",
 	   LSA_AS_ARGS (process_lsa), rcvindex, is_redo);
+
+  /* log_page_p may not hold process_lsa's page; e.g. the LOG_DUMMY_OVF_RECORD branch of cdc_get_overflow_recdes ()
+   * passes prev_tranlsa, which can point to a record on another log page. */
+  if (cdc_check_log_page (thread_p, log_page_p, process_lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, DB_SIZEOF (LOG_RECORD_HEADER), process_lsa, log_page_p);
 
   if (is_redo)
@@ -12934,13 +12958,34 @@ cdc_make_dml_loginfo (THREAD_ENTRY * thread_p, int trid, char *user, CDC_DML_TYP
 
       for (i = 0; i < attr_info.num_values; i++)
 	{
+	  db_make_null (&old_values[i]);
+	}
+
+      for (i = 0; i < attr_info.num_values; i++)
+	{
 	  heap_value = &attr_info.values[i];
 
 	  assert (heap_value->read_attrepr != NULL);
 
 	  oldval_deforder = heap_value->read_attrepr->def_order;
 
-	  memcpy (&old_values[oldval_deforder], &heap_value->dbvalue, sizeof (DB_VALUE));
+	  /* reading redo_recdes below reuses attr_info and clears each dbvalue, which frees any buffer
+	   * the dbvalue owns (e.g. the decompressed buffer of a compressed string).
+	   * So the old value must be deep-copied here, not shallow-copied. */
+	  (void) pr_clone_value (&heap_value->dbvalue, &old_values[oldval_deforder]);
+
+	  /* pr_clone_value () returns NO_ERROR even when its internal setval fails (e.g. allocation failure)
+	   * and leaves the clone NULL. Do not pack a NULL old value silently; treat it as an error. */
+	  if (!DB_IS_NULL (&heap_value->dbvalue) && DB_IS_NULL (&old_values[oldval_deforder]))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
+
+	      goto exit;
+	    }
 
 	  record_length += cdc_get_attribute_size (&heap_value->dbvalue);
 	}
@@ -13257,6 +13302,11 @@ exit:
 
   if (old_values != NULL)
     {
+      for (i = 0; i < attr_info.num_values; i++)
+	{
+	  pr_clear_value (&old_values[i]);
+	}
+
       free_and_init (old_values);
     }
 
@@ -14023,6 +14073,29 @@ cdc_min_log_pageid_to_keep ()
   return cdc_Gl.consumer.start_lsa.pageid;
 }
 
+/* Number of cdc_find_lsa() resolutions currently scanning archive volumes.  cdc_find_lsa()
+ * is the single point through which both flashback (flashback_verify_time) and CDC
+ * (scdc_find_lsa) resolve a timestamp into a start LSA by mounting archives one by one.
+ * While this is > 0, archive cleanup must defer, otherwise it could delete an archive a scan
+ * is about to mount and trip assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+ * A counter (not a flag) so concurrent flashback and CDC resolutions don't clear each other's
+ * protection.  Incremented/decremented and read only while holding LOG_CS, so a plain int is
+ * enough; it is a transient runtime hint (reset to 0 on restart) and needs no logging or recovery. */
+static int cdc_Find_lsa_in_progress = 0;
+
+/*
+ * cdc_find_lsa_in_progress - number of in-flight cdc_find_lsa() archive scans
+ *
+ * return : count of active resolutions; archive cleanup defers removal while this is > 0
+ *
+ * note : must be called while holding LOG_CS (cleanup already does)
+ */
+int
+cdc_find_lsa_in_progress ()
+{
+  return cdc_Find_lsa_in_progress;
+}
+
 #if defined (SERVER_MODE)
 REGISTER_DAEMON (cdc_loginfo_producer);
 
@@ -14138,14 +14211,15 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 {
   /*
    * 1. get volume list
-   * 2. get fpage from each volume 
-   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage 
+   * 2. get fpage from each volume
+   * 3. get commit/abort/ha_dummy_server_state which contains time from fpage
    * */
-  int begin = log_Gl.hdr.last_deleted_arv_num;
-  int end = log_Gl.hdr.nxarv_num - 1;
+
+  int begin;
+  int end;
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr = NULL;
-  int num_arvs = end - begin;
+  int num_arvs;
 
   time_t active_start_time = 0;
   time_t archive_start_time = 0;
@@ -14159,10 +14233,23 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
   time_t input_time = *extraction_time;
   int error = NO_ERROR;
 
+  /* Mark a resolution in progress and capture the scan range atomically under LOG_CS.  While
+   * the count is > 0, archive cleanup (which takes LOG_CS as writer) defers, so no archive in
+   * [begin + 1, end] can be removed between here and the cdc_get_start_point_from_file() mounts
+   * below.  This protects both the flashback and CDC entry points, which share this function.
+   * The count is decremented at the single 'end' exit. */
+  LOG_CS_ENTER (thread_p);
+  cdc_Find_lsa_in_progress++;
+  begin = log_Gl.hdr.last_deleted_arv_num;
+  end = log_Gl.hdr.nxarv_num - 1;
+  LOG_CS_EXIT (thread_p);
+
+  num_arvs = end - begin;
+
   /*
-   * 1. traverse from the latest log volume 
-   * 2. when num_arvs > 0, no logic to handle the active log volume 
-   * 3. check condition when i = begin while finding target_arv_num 
+   * 1. traverse from the latest log volume
+   * 2. when num_arvs > 0, no logic to handle the active log volume
+   * 3. check condition when i = begin while finding target_arv_num
    */
 
   /* At first, compare the time in active log volume. */
@@ -14287,6 +14374,11 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
     }
 
 end:
+  /* Resolution finished (success or failure); cleanup may resume once no scan remains. */
+  LOG_CS_ENTER (thread_p);
+  cdc_Find_lsa_in_progress--;
+  LOG_CS_EXIT (thread_p);
+
   if (is_found)
     {
       cdc_log ("cdc_find_lsa : find LOG_LSA (%lld | %d) from time (%lld)", LSA_AS_ARGS (start_lsa), *extraction_time);
@@ -14487,8 +14579,6 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
       goto end;
     }
 
-  cdc_Gl.is_queue_reinitialized = true;
-
   if (LSA_LT (&cdc_Gl.first_loginfo_queue_lsa, start_lsa) && LSA_GE (&cdc_Gl.last_loginfo_queue_lsa, start_lsa))
     {
       cdc_log
@@ -14508,8 +14598,11 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
 
+      LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &next_consume_lsa);
       cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
       cdc_Gl.consumer.consumed_queue_size = 0;
     }
@@ -14525,9 +14618,12 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
+      cdc_Gl.producer.is_reset_process_lsa = true;
 
           /* *INDENT-OFF* */
     delete cdc_Gl.loginfo_queue;
@@ -14994,6 +15090,8 @@ cdc_initialize ()
   LSA_SET_NULL (&cdc_Gl.consumer.start_lsa);
   LSA_SET_NULL (&cdc_Gl.consumer.next_lsa);
 
+  cdc_Gl.producer.is_reset_process_lsa = true;
+
   return 0;
 }
 
@@ -15030,6 +15128,8 @@ cdc_cleanup ()
     {
       cdc_pause_producer ();
     }
+
+  cdc_Gl.producer.is_reset_process_lsa = true;
 
   cdc_free_extraction_filter ();
 

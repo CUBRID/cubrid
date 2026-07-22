@@ -99,22 +99,7 @@ fn_end_tran (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_I
 
   gettimeofday (&end_tran_begin, NULL);
 
-#ifdef CCI_XA
-  if (is_xa_prepared ())
-    {
-      /*
-       * In the 2PC Prepare state, end_tran (commit or rollback) must not be processed.
-       * In this state, commit and rollback must be processed
-       * through the commit decision or abort decision from the coordinator.
-       * In other words, it must be processed with fn_xa_end_tran.
-       */
-      ;
-    }
-  else
-#endif
-    {
-      err_code = ux_end_tran ((char) tran_type, false, false);
-    }
+  err_code = ux_end_tran ((char) tran_type, false, false);
 
   if ((tran_type == CCI_TRAN_ROLLBACK) && (req_info->client_version < CAS_MAKE_VER (8, 2, 0)))
     {

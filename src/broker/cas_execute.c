@@ -4576,7 +4576,8 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	DB_VALUE v;
 	const char *str;
 	int err;
-	char buf[128];
+	int len;
+	char buf[NUMERIC_MAX_STRING_SIZE];
 
 	char_domain = db_type_to_db_domain (DB_TYPE_VARCHAR);
 	err = db_value_coerce (val, &v, char_domain);
@@ -4588,10 +4589,17 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
 	else
 	  {
 	    str = db_get_char (&v);
+	    len = db_get_string_size (&v);
 	    if (str != NULL)
 	      {
-		strncpy (buf, str, sizeof (buf) - 1);
-		buf[sizeof (buf) - 1] = '\0';
+		if (len < 0 || len > (int) sizeof (buf) - 1)
+		  {
+		    /* should not happen */
+		    assert (false);
+		    len = (len < 0) ? 0 : (int) sizeof (buf) - 1;
+		  }
+		memcpy (buf, str, len);
+		buf[len] = '\0';
 		ut_trim (buf);
 		add_res_data_string (net_buf, buf, strlen (buf), ext_col_type, CAS_SCHEMA_DEFAULT_CHARSET, &data_size);
 	      }

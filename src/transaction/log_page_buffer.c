@@ -5516,10 +5516,10 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		}
 	      else
 		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_LOGARCHIVE_NEEDED),
 			   arv_name);
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 
 		  if (fgets (line_buf, PATH_MAX, stdin) == NULL)
 		    {
@@ -5550,7 +5550,8 @@ logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE *
 		  break;
 
 		case 3:	/* Relocate */
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
+		  fprintf (stdout, "%s",
+			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_NEWLOCATION));
 		  if (fgets (line_buf, PATH_MAX, stdin) == 0 || (sscanf (line_buf, format_string, arv_name) != 1))
 		    {
 		      fileio_make_log_archive_name (arv_name, log_Archive_path, log_Prefix, *ret_arv_num);
@@ -6028,6 +6029,19 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
   LOG_CS_ENTER (thread_p);
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
+      LOG_CS_EXIT (thread_p);
+      return 0;
+    }
+
   if (!prm_get_bool_value (PRM_ID_FORCE_REMOVE_LOG_ARCHIVES))
     {
 #if defined(SERVER_MODE)
@@ -6127,7 +6141,6 @@ logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count)
 
 	      _er_log_debug (ARG_FILE_LINE, "First log pageid for flashback is %lld", flashback_first_pageid);
 
-	      /* NULL check for flashback_first_pageid is done in flashback_is_needed_to_keep_archive () */
 	      if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
 		{
 		  min_arv_required_for_flashback = logpb_get_archive_number (thread_p, flashback_first_pageid);
@@ -6236,6 +6249,18 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
+  if (cdc_find_lsa_in_progress () > 0)
+    {
+      /* A cdc_find_lsa() (flashback verify or CDC find) is mounting archives one by one; defer
+       * removal this cycle so an archive it is about to read is not deleted underneath it and
+       * trips assert (!LSA_ISNULL (&process_lsa)) in cdc_get_start_point_from_file().
+       * Kept outside the PRM_ID_SUPPLEMENTAL_LOG block below on purpose: cdc_find_lsa() bumps the
+       * counter regardless of supplemental_log, and the flashback path (flashback_verify_time) has
+       * no supplemental_log gate, so a scan can be in flight even when supplemental_log = 0 -- a
+       * cycle that would otherwise skip cdc/flashback retention and delete the archive being read. */
+      return;
+    }
+
   /* Close any log archives that are opened */
   if (log_Gl.archive.vdes != NULL_VOLDES)
     {
@@ -6301,7 +6326,6 @@ logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info_reason)
       /* flashback */
       if (flashback_is_needed_to_keep_archive ())
 	{
-
 	  flashback_first_pageid = flashback_min_log_pageid_to_keep ();
 
 	  if (flashback_first_pageid != NULL_LOG_PAGEID && logpb_is_page_in_archive (flashback_first_pageid))
@@ -10793,9 +10817,9 @@ logpb_remote_ask_user_before_delete_volumes (THREAD_ENTRY * thread_p, const char
   char user_response[FILEIO_MAX_USER_RESPONSE_SIZE];
   bool r;
 
-  if (asprintf (&ptr1, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS)) < 0
+  if (asprintf (&ptr1, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS)) < 0
       || asprintf (&ptr2, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_DELETE_BKVOLS), volpath) < 0
-      || asprintf (&ptr3, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_ENTER_Y2_CONFIRM)) < 0
+      || asprintf (&ptr3, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_ENTER_Y2_CONFIRM)) < 0
       || asprintf (&fullmsg, "%s%s%s%s", ptr1, ptr2, ptr3, ptr1) < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);

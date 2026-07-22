@@ -582,8 +582,6 @@ static int *pt_make_identity_offsets (PT_NODE * attr_list);
 
 static void pt_to_pred_terms (PARSER_CONTEXT * parser, PT_NODE * terms, UINTPTR id, PRED_EXPR ** pred);
 
-static VAL_LIST *pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list);
-
 static TABLE_INFO *pt_make_table_info (PARSER_CONTEXT * parser, PT_NODE * table_spec);
 
 static SYMBOL_INFO *pt_symbol_info_alloc (void);
@@ -648,6 +646,11 @@ static PT_NODE *pt_make_result_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_
 static int pt_check_analytic_limit_optimization (XASL_NODE * xasl, ANALYTIC_EVAL_TYPE * eval_list);
 static int pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan, ANALYTIC_EVAL_TYPE * eval,
 						ANALYTIC_INFO * info);
+
+static PT_NODE *pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
+static bool pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q);
 
 static void
 pt_init_xasl_supp_info ()
@@ -3758,7 +3761,7 @@ pt_filter_pseudo_specs (PARSER_CONTEXT * parser, PT_NODE * spec)
  *   return:
  *   attribute_list(in):
  */
-static VAL_LIST *
+VAL_LIST *
 pt_make_val_list (PARSER_CONTEXT * parser, PT_NODE * attribute_list)
 {
   VAL_LIST *value_list = NULL;
@@ -3918,7 +3921,7 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
   MOP classop;
   PT_NODE *group_concat_sep_node_save = NULL;
   PT_NODE *pointer = NULL;
-  PT_NODE *pt_val = NULL;
+  PT_NODE *out_name = NULL;
   PT_NODE *percentile = NULL;
 
   // it contains a list of positions
@@ -4130,49 +4133,113 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	       * value_list Note: cume_dist() and percent_rank() also need special operations. */
 	      if (aggregate_list->function != PT_CUME_DIST && aggregate_list->function != PT_PERCENT_RANK)
 		{
-		  // add dummy output name nodes, one for each argument
-		  for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+		  /* Share the input DB_VALUE slot across aggregates that have an identical single argument
+		   * (e.g. sum(c3), avg(c3)). Look the argument up in the per-query registry (info->args); on a
+		   * hit, point this aggregate's operand at the already-produced slot and add NOTHING to
+		   * out_list / value_list / out_names. Only CUME_DIST and PERCENT_RANK are excluded (handled by
+		   * the enclosing branch); multi-argument aggregates fall back to the producer path below. */
+		  PT_NODE *arg = tree->info.function.arg_list;
+		  DB_VALUE *shared_value = NULL;
+		  bool can_share = (arg != NULL && arg->next == NULL && pt_is_shareable_groupby_ref (parser, arg));
+
+		  if (can_share)
 		    {
-		      pt_val = parser_new_node (parser, PT_VALUE);
-		      if (pt_val == NULL)
+		      for (PT_NODE * args = info->args; args != NULL; args = args->next)
 			{
-			  PT_INTERNAL_ERROR (parser, "allocate new node");
+			  if (pt_aggregate_arg_eq (parser, arg, args))
+			    {
+			      shared_value = (DB_VALUE *) args->etc;
+			      break;
+			    }
+			}
+		    }
+
+		  if (shared_value != NULL)
+		    {
+		      /* reuse the shared slot: build a one-element value_list over it and turn it into the
+		       * operand. No producer regu, no out_list / value_list / out_names growth. */
+		      QPROC_DB_VALUE_LIST dbval_list = NULL;
+
+		      regu_alloc (value_list);
+		      regu_alloc (dbval_list);
+		      if (value_list == NULL || dbval_list == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
 			  return NULL;
 			}
 
-		      pt_val->type_enum = PT_TYPE_INTEGER;
-		      pt_val->info.value.data_value.i = 0;
-		      parser_append_node (pt_val, info->out_names);
-		    }
+		      dbval_list->val = shared_value;
+		      dbval_list->dom = pt_xasl_node_to_domain (parser, arg);
+		      dbval_list->next = NULL;
+		      value_list->valp = dbval_list;
+		      value_list->val_cnt = 1;
 
-		  // for each element from arg_list we create a corresponding node in the value_list and regu_list
-		  if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
-							      &value_list, &regu_position_list) == NULL)
+		      error_code = pt_make_constant_regu_list_from_val_list (parser, value_list,
+									     &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		    }
+		  else
 		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
+		      // append a copy of each argument to out_names
+		      for (PT_NODE * it_args = tree->info.function.arg_list; it_args != NULL; it_args = it_args->next)
+			{
+			  out_name = parser_copy_tree (parser, it_args);
+			  if (out_name == NULL)
+			    {
+			      PT_INTERNAL_ERROR (parser, "allocate new node");
+			      return NULL;
+			    }
+
+			  parser_append_node (out_name, info->out_names);
+			}
+
+		      // for each element from arg_list we create a corresponding node in the value_list and regu_list
+		      if (pt_node_list_to_value_and_reguvar_list (parser, tree->info.function.arg_list,
+								  &value_list, &regu_position_list) == NULL)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      error_code =
+			pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
+		      if (error_code != NO_ERROR)
+			{
+			  PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								  MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+			  return NULL;
+			}
+
+		      // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
+		      pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
+
+		      // until now we have constructed the value_list, regu_list and out_list
+		      // they are based on the current aggregate node information and we need to append them to the global
+		      // information, i.e in info
+		      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
+									regu_constant_list);
+
+		      // also we need to update the scan_regu_list from info
+		      pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
+
+		      if (can_share)
+			{
+			  PT_NODE *reg = pt_point (parser, arg);
+			  if (reg != NULL)
+			    {
+			      reg->etc = (void *) pt_index_value (value_list, 0);
+			      info->args = parser_append_node (reg, info->args);
+			    }
+			}
 		    }
-
-		  error_code = pt_make_constant_regu_list_from_val_list (parser, value_list, &aggregate_list->operands);
-		  if (error_code != NO_ERROR)
-		    {
-		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
-							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
-		      return NULL;
-		    }
-
-		  // this regu_list has the TYPE_POSITION type so we need to set the corresponding indexes for elements
-		  pt_set_regu_list_pos_descr_from_idx (regu_position_list, info->out_list->valptr_cnt);
-
-		  // until now we have constructed the value_list, regu_list and out_list
-		  // they are based on the current aggregate node information and we need to append them to the global
-		  // information, i.e in info
-		  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list,
-								    regu_constant_list);
-
-		  // also we need to update the scan_regu_list from info
-		  pt_aggregate_info_update_scan_regu_list (info, scan_regu_constant_list);
 		}
 	      else
 		{
@@ -4398,6 +4465,24 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	  pt_add_regu_var_to_list (&regu_constant_list, to_add);
 
 	  pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, regu_constant_list);
+
+	  REGU_VARIABLE_LIST scan_constant_list = NULL;
+	  regu_alloc (scan_constant_list);
+	  if (scan_constant_list == NULL)
+	    {
+	      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+	      return NULL;
+	    }
+	  scan_constant_list->value = *regu;
+	  pt_aggregate_info_update_scan_regu_list (info, scan_constant_list);
+
+	  PT_NODE *reg = pt_point (parser, tree);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, 0);
+	      info->args = parser_append_node (reg, info->args);
+	    }
 	}
       *continue_walk = PT_LIST_WALK;
     }
@@ -4411,15 +4496,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 }
 
 /*
- * pt_find_attribute () -
+ * pt_find_attribute_with_func_index_expr () -
  *   return: index of a name in an attribute symbol list,
  *           or -1 if the name is not found in the list
  *   parser(in):
  *   name(in):
  *   attributes(in):
+ *   check_func_index_exprs(in): if true, a function-index expression name
+ *                              also matches an identical expression in the list
  */
 int
-pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes)
+pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes,
+					bool check_func_index_exprs)
 {
   PT_NODE *attr, *save_attr;
   int i = 0;
@@ -4460,9 +4548,61 @@ pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE 
 	      attr = save_attr;	/* restore */
 	    }
 	}
+      else if (check_func_index_exprs && pt_is_function_index_expression ((PT_NODE *) name))
+	{
+	  /* Match a function-index expression by its normalized printed form
+	   * (parser_print_function_index_expr, as the optimizer does in lookup_seg),
+	   * so the same expression at different parse tree nodes still matches. */
+	  const char *name_str = NULL;
+
+	  for (attr = (PT_NODE *) attributes; attr != NULL; attr = attr->next)
+	    {
+	      save_attr = attr;	/* save */
+
+	      CAST_POINTER_TO_NODE (attr);
+
+	      if (attr == name)
+		{
+		  return i;
+		}
+
+	      if (pt_is_function_index_expression (attr))
+		{
+		  const char *attr_str;
+
+		  if (name_str == NULL)
+		    {
+		      name_str = parser_print_function_index_expr (parser, (PT_NODE *) name);
+		    }
+
+		  attr_str = parser_print_function_index_expr (parser, attr);
+		  if (name_str != NULL && attr_str != NULL && intl_identifier_casecmp (name_str, attr_str) == 0)
+		    {
+		      return i;
+		    }
+		}
+	      i++;
+
+	      attr = save_attr;	/* restore */
+	    }
+	}
     }
 
   return -1;
+}
+
+/*
+ * pt_find_attribute () -
+ *   return: index of a name in an attribute symbol list,
+ *           or -1 if the name is not found in the list
+ *   parser(in):
+ *   name(in):
+ *   attributes(in):
+ */
+int
+pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes)
+{
+  return pt_find_attribute_with_func_index_expr (parser, name, attributes, false);
 }
 
 static void
@@ -4605,8 +4745,38 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.regu_list = regu_list;
   info.scan_regu_list = scan_regu_list;
   info.out_names = out_names;
+  info.args = NULL;
   info.grbynum_valp = grbynum_valp;
   info.qo_plan = plan;
+
+
+  PT_NODE *out_name = NULL;
+  int i = 0;
+  for (out_name = out_names; out_name; out_name = out_name->next, i++)
+    {
+      bool can_share = pt_is_shareable_groupby_ref (parser, out_name);
+      bool is_exists = false;
+
+      for (PT_NODE * args = info.args; args; args = args->next)
+	{
+	  if (pt_aggregate_arg_eq (parser, out_name, args))
+	    {
+	      is_exists = true;
+	      break;
+	    }
+	}
+
+      if (can_share && !is_exists)
+	{
+	  PT_NODE *reg = pt_point (parser, out_name);
+	  if (reg != NULL)
+	    {
+	      reg->etc = (void *) pt_index_value (value_list, i);
+	      info.args = parser_append_node (reg, info.args);
+	    }
+	}
+    }
+
 
   /* init */
   info.class_name = NULL;
@@ -6771,7 +6941,11 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
 	  return NULL;
 	}
 
-      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig));
+      PT_NODE *default_next_node_list = jsp_get_default_expr_node_list (parser, *(sp->sig), NULL);
+      if (default_next_node_list == NULL && pt_has_error (parser))
+	{
+	  return NULL;
+	}
       node->info.method_call.arg_list = parser_append_node (default_next_node_list, node->info.method_call.arg_list);
 
       DB_TYPE result_type = (DB_TYPE) sp->sig->result_type;
@@ -6986,6 +7160,9 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->value.dbvalptr = xasl->single_tuple->valp->val;
+	      /* mark uncorrelated scalar subquery (precompute/inject/checker-relax):
+	       * stash owning predicate-operand regu at the regu<->xasl linkage. */
+	      xasl->precomp_owner_regu = regu;
 	    }
 	  else
 	    {
@@ -7566,6 +7743,33 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      break;
 
 	    case PT_EXPR:
+	      if (parser->symbols != NULL && parser->symbols->current_listfile != NULL
+		  && parser->symbols->listfile_value_list != NULL && pt_is_function_index_expression (node))
+		{
+		  int list_index =
+		    pt_find_attribute_with_func_index_expr (parser, node, parser->symbols->current_listfile, true);
+
+		  if (list_index >= 0)
+		    {
+		      /* The expression value is already carried as a list column,
+		       * so bind that column instead of re-evaluating the expression. */
+		      value =
+			pt_index_value (parser->symbols->listfile_value_list,
+					list_index + parser->symbols->listfile_attr_offset);
+		      if (value != NULL)
+			{
+			  regu_alloc (regu);
+			  if (regu != NULL)
+			    {
+			      regu->type = TYPE_CONSTANT;
+			      regu->domain = pt_xasl_node_to_domain (parser, node);
+			      regu->value.dbvalptr = value;
+			      break;
+			    }
+			}
+		    }
+		}
+
 	      if (node->info.expr.op == PT_FUNCTION_HOLDER)
 		{
 		  //TODO FIND WHY NEXT WASN'T RESTORED
@@ -7744,6 +7948,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		       || node->info.expr.op == PT_DECRYPT || node->info.expr.op == PT_BIN
 		       || node->info.expr.op == PT_MD5 || node->info.expr.op == PT_SHA_ONE
 		       || node->info.expr.op == PT_SPACE || node->info.expr.op == PT_PRIOR
+		       || node->info.expr.op == PT_UUID_FORMAT || node->info.expr.op == PT_UUID
 		       || node->info.expr.op == PT_CONNECT_BY_ROOT || node->info.expr.op == PT_QPRIOR
 		       || node->info.expr.op == PT_BIT_NOT || node->info.expr.op == PT_REVERSE
 		       || node->info.expr.op == PT_BIT_COUNT || node->info.expr.op == PT_ISNULL
@@ -8639,6 +8844,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_TO_BASE64, domain);
 		  break;
 
+		case PT_UUID_FORMAT:
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID_FORMAT, domain);
+		  break;
+
 		case PT_SPACE:
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_SPACE, domain);
 		  break;
@@ -8961,6 +9170,8 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		    OPERATOR_TYPE op;
 
 		    data_type = pt_make_prim_data_type (parser, PT_TYPE_NUMERIC);
+		    data_type->info.data_type.precision = DB_MAX_FIXED_NUMERIC_PRECISION;
+		    data_type->info.data_type.dec_precision = DB_DEFAULT_NUMERIC_SCALE;
 		    domain = pt_xasl_data_type_to_domain (parser, data_type);
 
 		    serial_mop = pt_resolve_serial (parser, node->info.expr.arg1);
@@ -9171,6 +9382,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 
 		case PT_SYS_GUID:
 		  regu = pt_make_regu_arith (NULL, NULL, NULL, T_SYS_GUID, domain);
+		  break;
+
+		case PT_UUID:
+		  if (node->info.expr.arg1 == NULL)
+		    {
+		      /* UUID() with no argument defaults to version 4; use an integer constant so that the server can
+		       * distinguish it from an actual NULL argument, which is an error */
+		      regu_alloc (val);
+		      db_make_int (val, 4);
+		      r2 = pt_make_regu_constant (parser, val, DB_TYPE_INTEGER, NULL);
+		    }
+		  regu = pt_make_regu_arith (r1, r2, NULL, T_UUID, domain);
 		  break;
 
 		case PT_BIT_TO_BLOB:
@@ -12269,10 +12492,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 	      if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_RECORD_INFO_SCAN))
 		{
 		  access_method = ACCESS_METHOD_SEQUENTIAL_RECORD_INFO;
-		}
-	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_SAMPLING_SCAN))
-		{
-		  access_method = ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN;
 		}
 	      else if (PT_IS_SPEC_FLAG_SET (spec, PT_SPEC_FLAG_PAGE_INFO_SCAN))
 		{
@@ -17087,9 +17306,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 	  /* check order by opt */
-	  if (qo_plan && !qo_plan->need_final_sort && qo_plan_skip_orderby (qo_plan)
-	      && !qo_plan_multi_range_opt (qo_plan))
+	  if (qo_plan && qo_plan_skip_orderby (qo_plan) && !qo_plan_multi_range_opt (qo_plan))
 	    {
+	      /*
+	       * When need_final_sort is true,
+	       * qo_top_plan_new appends a SORT_ORDERBY plan on top even in the orderby_skip case
+	       * (without orderby_skip, one is appended regardless of need_final_sort),
+	       * so the top plan's plan_type becomes QO_PLANTYPE_SORT and qo_plan_skip_orderby () returns false.
+	       * Therefore a plan with need_final_sort can never enter this block.
+	       */
+	      assert (!qo_plan->need_final_sort);
+
 	      orderby_skip = true;
 
 	      /* move orderby_num() to inst_num() */
@@ -17430,12 +17657,6 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   if (xasl->spec_list)
     {
       pt_set_access_spec_for_aggregation (parser, aggregate, xasl->spec_list);
-    }
-
-  /* check sampling scan */
-  if (xasl->spec_list && xasl->spec_list->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
-    {
-      XASL_SET_FLAG (xasl, XASL_SAMPLING_SCAN);
     }
 
   /* save info for derived table size estimation */
@@ -17860,7 +18081,6 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      && !(select_node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
       && !select_node->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
@@ -19012,6 +19232,208 @@ pt_to_xasl_for_dblink (PARSER_CONTEXT * parser, PT_NODE * spec)
 }
 
 /*
+ * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
+ *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
+ *   the executor can stream rows via CCI into the remote table.
+ *
+ * return      : XASL node, or NULL on error.
+ * parser (in) : Parser context.
+ * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
+ */
+static XASL_NODE *
+pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  XASL_NODE *xasl = NULL;
+  INSERT_PROC_NODE *insert = NULL;
+  PT_NODE *aptr_statement = NULL;
+  PT_NODE *into_spec = NULL;
+  PT_NODE *server_node = NULL;
+  PT_DBLINK_INFO *pdblink = NULL;
+  PT_NODE *entity_name = NULL;
+  const OID *oid = NULL;
+
+  assert (parser != NULL && statement != NULL);
+
+  aptr_statement = pt_get_subquery_of_insert_select (statement);
+  assert (aptr_statement != NULL);
+
+  /* build XASL skeleton: aptr (SELECT) + val_list + list scan spec */
+  xasl = pt_make_aptr_parent_node (parser, aptr_statement, INSERT_PROC);
+  if (xasl == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  if (aptr_statement->info.query.flag.subquery_cached)
+    {
+      xasl->aptr_list->sub_xasl_id = aptr_statement->xasl_id;
+      xasl->aptr_list->sub_host_var_count = aptr_statement->sub_host_var_count;
+      xasl->aptr_list->sub_host_var_index = aptr_statement->sub_host_var_index;
+    }
+
+  into_spec = statement->info.insert.spec;
+  server_node = into_spec->info.spec.remote_server_name;
+
+  assert (server_node != NULL && server_node->node_type == PT_DBLINK_TABLE_DML);
+  assert (server_node->info.dblink_table.is_name);
+
+  pdblink = &server_node->info.dblink_table;
+
+  if (pdblink->url == NULL || pdblink->user == NULL || pdblink->pwd == NULL)
+    {
+      PT_ERRORm (parser, server_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      return NULL;
+    }
+
+  insert = &xasl->proc.insert;
+
+  /* remote sink: connection info resolved by pt_resolve_server_names */
+  insert->is_remote_insert = true;
+  insert->remote_url = (char *) pdblink->url->info.value.data_value.str->bytes;
+  insert->remote_user = (char *) pdblink->user->info.value.data_value.str->bytes;
+  insert->remote_pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+
+  /* build qualified remote table name: [owner.]table
+   *
+   * TODO: The remote table name (here) and remote column names (remote_attr_names, below) are
+   *       emitted to the remote server unquoted (dblink_insert_open builds "INSERT INTO <table>
+   *       [(<cols>)] VALUES (?, ...)").  Quoting makes identifiers case-sensitive, but unquoted
+   *       identifiers are normalized differently by DB (Oracle: uppercase, CUBRID: lowercase) and
+   *       the quote character differs (CUBRID/Oracle: "id", MySQL default: `id`).  The remote DBMS
+   *       type is unknown at XASL generation (remote INSERT SELECT also targets Oracle/MySQL via the
+   *       gateway), and info.name.original has already dropped the user's quoting, so faithful
+   *       requoting is not possible here.  Proper per-DB quoting is deferred, consistent with the
+   *       correlated push-down path (CBRD-26601, mq_dblink_append_corr_pred_sql).  Consequence:
+   *       remote table/column names that require quoting (reserved words, mixed-case, special chars)
+   *       are not supported in remote INSERT SELECT. */
+  entity_name = into_spec->info.spec.entity_name;
+  insert->remote_table_name = NULL;
+  if (entity_name->info.name.resolved)
+    {
+      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.resolved);
+      insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, ".");
+    }
+  insert->remote_table_name = pt_append_string (parser, insert->remote_table_name, entity_name->info.name.original);
+  if (insert->remote_table_name == NULL || pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  /* num_vals drives the val_list read loop in the executor. Count only the visible projection
+   * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
+   * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
+   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
+   * trailing ones. */
+  insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
+  insert->num_default_expr = 0;
+  insert->att_id = NULL;
+
+  /* remote column names:
+   *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
+   *                         → remote_attr_names[i] = attr_list column names
+   *   attr_list absent   → positional mapping (INSERT INTO remote SELECT ...)
+   *                         → remote_attr_names = NULL; dblink_insert_open uses INSERT INTO t VALUES (?,?)
+   */
+  if (statement->info.insert.attr_list != NULL)
+    {
+      PT_NODE *col;
+      int n, i;
+      char **names;
+
+      n = pt_length_of_list (statement->info.insert.attr_list);
+      if (n != insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: attr_list and SELECT column count mismatch");
+	  return NULL;
+	}
+
+      names = (char **) parser_alloc (parser, n * sizeof (char *));
+      if (names == NULL)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  return NULL;
+	}
+
+      for (col = statement->info.insert.attr_list, i = 0; col != NULL && i < n; col = col->next, i++)
+	{
+	  const char *col_name = NULL;
+
+	  if (col->node_type == PT_NAME)
+	    {
+	      col_name = col->info.name.original;
+	    }
+	  else if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+	    {
+	      col_name = col->info.dot.arg2->info.name.original;
+	    }
+	  else
+	    {
+	      col_name = col->alias_print;
+	    }
+
+	  if (col_name == NULL)
+	    {
+	      PT_ERROR (parser, col, "dblink: remote INSERT SELECT column has no resolvable name");
+	      return NULL;
+	    }
+	  names[i] = (char *) col_name;
+	}
+
+      insert->remote_attr_names = names;
+      insert->remote_num_attrs = n;
+    }
+  else
+    {
+      /* positional insert: dblink_insert_open builds INSERT INTO t VALUES (?,?) */
+      insert->remote_attr_names = NULL;
+      insert->remote_num_attrs = 0;
+    }
+
+  /* no local class for remote INSERT */
+  OID_SET_NULL (&insert->class_oid);
+  HFID_SET_NULL (&insert->class_hfid);
+  insert->vals = NULL;
+
+  /* XASL cache: OID of the user creating this XASL */
+  oid = ws_identifier (db_get_user ());
+  if (oid != NULL)
+    {
+      COPY_OID (&xasl->creator_oid, oid);
+    }
+  else
+    {
+      OID_SET_NULL (&xasl->creator_oid);
+    }
+
+  /* copy aptr class OID list (local SELECT tables) for locking */
+  if (xasl->aptr_list != NULL)
+    {
+      XASL_NODE *aptr = xasl->aptr_list;
+
+      xasl->dbval_cnt = aptr->dbval_cnt;
+
+      if (aptr->n_oid_list > 0)
+	{
+	  xasl->class_oid_list = regu_oid_array_alloc (aptr->n_oid_list);
+	  xasl->class_locks = regu_int_array_alloc (aptr->n_oid_list);
+	  xasl->tcard_list = regu_int_array_alloc (aptr->n_oid_list);
+	  if (xasl->class_oid_list == NULL || xasl->class_locks == NULL || xasl->tcard_list == NULL)
+	    {
+	      return NULL;
+	    }
+
+	  xasl->n_oid_list = aptr->n_oid_list;
+	  (void) memcpy (xasl->class_oid_list, aptr->class_oid_list, sizeof (OID) * aptr->n_oid_list);
+	  (void) memcpy (xasl->class_locks, aptr->class_locks, sizeof (int) * aptr->n_oid_list);
+	  (void) memcpy (xasl->tcard_list, aptr->tcard_list, sizeof (int) * aptr->n_oid_list);
+	  XASL_SET_FLAG (xasl, aptr->flag & XASL_INCLUDES_TDE_CLASS);
+	}
+    }
+
+  return xasl;
+}
+
+/*
  * pt_to_insert_xasl () - Converts an insert parse tree to an XASL tree for insert server execution.
  *
  * return	  : Xasl node.
@@ -19061,6 +19483,18 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_report_to_ersys_with_statement (parser, PT_SEMANTIC, statement);
 	  return NULL;
+	}
+
+      /* Remote INSERT SELECT with a local source (CCI streaming sink) takes its own XASL path.
+       * It is identified by the absence of a remote DML text (qstr): the sink path only carries
+       * connection info. The same-server case (target and source on one remote server) instead
+       * carries a qstr -- the whole statement is pushed down to that server -- and goes through
+       * pt_to_xasl_for_dblink. */
+      PT_NODE *remote_spec = statement->info.insert.spec->info.spec.remote_server_name;
+      if (pt_get_subquery_of_insert_select (statement) != NULL
+	  && remote_spec->node_type == PT_DBLINK_TABLE_DML && remote_spec->info.dblink_table.qstr == NULL)
+	{
+	  return pt_to_insert_xasl_remote_select (parser, statement);
 	}
 
       return pt_to_xasl_for_dblink (parser, statement->info.insert.spec);
@@ -19292,7 +19726,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
 
-	      AU_DISABLE (save_au);
+	      AU_SAVE_AND_DISABLE (save_au);
 
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
@@ -19313,7 +19747,7 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    }
 		}
 
-	      AU_ENABLE (save_au);
+	      AU_RESTORE (save_au);
 
 	      insert->vals = NULL;
 	      insert->num_vals = num_vals + num_default_expr;
@@ -19449,6 +19883,20 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       xasl->query_alias = statement->alias_print;
     }
+
+#if !defined(NDEBUG)
+  if (prm_get_bool_value (PRM_ID_XASL_DEBUG_DUMP))
+    {
+      if (xasl != NULL)
+	{
+	  qdump_print_xasl (xasl);
+	}
+      else
+	{
+	  printf ("<NULL XASL generation>\n");
+	}
+    }
+#endif /* !NDEBUG */
 
   return xasl;
 }
@@ -22419,8 +22867,8 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 	  new_lhs_of_assign->info.name.resolved = cls->header.ch_name;
 	  new_lhs_of_assign->info.name.spec_id = spec_id;
 
-	  PT_OP_TYPE op = pt_op_type_from_default_expr_type (att->on_update_default_expr);
-	  PT_NODE *new_rhs_of_assign = parser_make_expression (parser, op, NULL, NULL, NULL);
+	  PT_NODE *new_rhs_of_assign = pt_make_expression_default_expr (parser, NULL, att->on_update_default_expr);
+
 	  if (new_rhs_of_assign == NULL)
 	    {
 	      if (new_lhs_of_assign != NULL)
@@ -22613,7 +23061,6 @@ parser_generate_xasl_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 
   return node;
 }
-
 
 /*
  * parser_generate_xasl () - Creates xasl proc for parse tree.
@@ -25973,6 +26420,7 @@ validate_regu_key_function_index (REGU_VARIABLE * regu_var)
 	case T_FROM_UNIXTIME:
 	case T_SUBSTRING_INDEX:
 	case T_MD5:
+	case T_UUID_FORMAT:
 	case T_AES_ENCRYPT:
 	case T_AES_DECRYPT:
 	case T_SHA_ONE:
@@ -28738,6 +29186,7 @@ pt_check_corr_subquery_not_cachable_expr (PARSER_CONTEXT * parser, PT_NODE * nod
       switch (node->info.expr.op)
 	{
 	case PT_SYS_GUID:
+	case PT_UUID:
 	case PT_RAND:
 	case PT_DRAND:
 	case PT_RANDOM:
@@ -28968,4 +29417,181 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     }
 
   return covered_count;
+}
+
+/*
+ * pt_is_shareable_groupby_ref_pre () - parser_walk_tree pre-callback that clears
+ *				     the result flag when it visits a node that
+ *				     cannot be shared. Only a whitelist of node
+ *				     types is allowed (PT_NAME / PT_DOT_ / PT_VALUE /
+ *				     PT_DATA_TYPE, a deterministic / side-effect-free
+ *				     PT_EXPR, and a pure PT_FUNCTION); every other
+ *				     node type (subqueries, method calls, etc.) is
+ *				     rejected by default
+ *   return: node (unchanged)
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool * -- set to false when a disallowed node is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_is_shareable_groupby_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *only_allowed = (bool *) arg;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+    case PT_VALUE:
+    case PT_DATA_TYPE:
+      /* allowed (shareable) node types */
+      break;
+
+    case PT_FUNCTION:
+      {
+	FUNC_CODE ftype = node->info.function.function_type;
+
+	/* only deterministic, side-effect-free functions may share a slot. exclude aggregate / analytic /
+	 * order-dependent functions, foreign (UDF) functions, and object / benchmark functions that read
+	 * external state or have side effects. */
+	if (pt_is_aggregate_function (parser, node) || pt_is_analytic_function (parser, node)
+	    || node->info.function.is_order_dependent
+	    || ftype == PT_GENERIC || ftype == F_GENERIC || ftype == F_VID || ftype == F_CLASS_OF
+	    || ftype == F_BENCHMARK)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
+      break;
+
+    case PT_EXPR:
+      {
+	PT_OP_TYPE op = node->info.expr.op;
+
+	if (PT_IS_EXPR_NODE_WITH_NON_PUSHABLE (node)	/* RAND / DRAND / RANDOM / DRANDOM / SYS_GUID */
+	    || PT_IS_SERIAL (op)	/* NEXT VALUE / CURRENT VALUE */
+	    || PT_IS_NUMBERING_AFTER_EXECUTION (op)	/* INST_NUM / ROWNUM / ORDERBY_NUM */
+	    || op == PT_INCR || op == PT_DECR
+	    || op == PT_DEFINE_VARIABLE || op == PT_EVALUATE_VARIABLE || op == PT_ROW_COUNT
+	    || op == PT_LAST_INSERT_ID || op == PT_EXEC_STATS || op == PT_TRACE_STATS || op == PT_SLEEP)
+	  {
+	    *only_allowed = false;
+	    *continue_walk = PT_STOP_WALK;
+	  }
+      }
+      break;
+
+    default:
+      /* subqueries, method calls, and any other node type: conservatively not shareable */
+      *only_allowed = false;
+      *continue_walk = PT_STOP_WALK;
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_is_shareable_groupby_ref () - determine whether an expression is built only
+ *				  from the allowed (shareable) node types listed
+ *				  in pt_is_shareable_groupby_ref_pre ()
+ *   return: true if every node in node's subtree is an allowed type, false otherwise.
+ *   parser(in):
+ *   node(in): root of the (sub)expression to inspect. Only this node and its
+ *	       descendants are checked; the sibling list (node->next) is not
+ *	       followed.
+ */
+static bool
+pt_is_shareable_groupby_ref (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  bool only_allowed = true;
+  PT_NODE *save_next;
+
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (node);
+  if (node == NULL)
+    {
+      return false;
+    }
+
+  /* restrict the walk to this node's own subtree, not its siblings */
+  save_next = node->next;
+  node->next = NULL;
+  (void) parser_walk_tree (parser, node, pt_is_shareable_groupby_ref_pre, &only_allowed, NULL, NULL);
+  node->next = save_next;
+
+  return only_allowed;
+}
+
+/*
+ * pt_aggregate_arg_eq () - equality test used for aggregate-argument sharing
+ *   return: true if the two expressions compute the exact same value, false otherwise
+ *   parser(in):
+ *   p(in):
+ *   q(in):
+ *   note: identifiers are compared by path (case-insensitive); every other shareable node is compared
+ *	   by its canonical printed form. The printed form captures the full tree, including result
+ *	   type/domain modifiers (CAST target type, COLLATE), so e.g. CAST(c AS CHAR(1)) and
+ *	   CAST(c AS CHAR(10)) are not treated as equal.
+ */
+static bool
+pt_aggregate_arg_eq (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE * q)
+{
+  if (p == NULL && q == NULL)
+    {
+      return true;
+    }
+  if (p == NULL || q == NULL)
+    {
+      return false;
+    }
+
+  CAST_POINTER_TO_NODE (p);
+  CAST_POINTER_TO_NODE (q);
+
+  if (p == NULL || q == NULL)
+    {
+      return (p == q);
+    }
+
+  if (p->node_type != q->node_type)
+    {
+      return false;
+    }
+
+  switch (p->node_type)
+    {
+    case PT_NAME:
+    case PT_DOT_:
+      /* identifiers are case-insensitive; reuse the existing path comparison */
+      return (pt_check_path_eq (parser, p, q) == 0);
+
+    default:
+      {
+	char *p_str, *q_str;
+	unsigned int save_custom = parser->custom_print;
+
+	parser->custom_print |= PT_CONVERT_RANGE;
+	p_str = parser_print_tree (parser, p);
+	q_str = parser_print_tree (parser, q);
+	parser->custom_print = save_custom;
+
+	if (p_str == NULL || q_str == NULL)
+	  {
+	    return false;
+	  }
+	return (pt_str_compare (p_str, q_str, CASE_SENSITIVE) == 0);
+      }
+    }
 }
