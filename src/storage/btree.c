@@ -1425,6 +1425,7 @@ static int btree_ovf_v2_grow_chain (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 static int btree_ovf_v2_append_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
 				       BTREE_INSERT_HELPER * insert_helper, BTREE_OBJECT_INFO * object_info,
 				       PAGE_PTR * first_ovf_page);
+static DISK_ISVALID btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid);
 
 static int btree_delete_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR leaf_pg,
 				       LEAF_REC * leafrec_pnt, BTREE_DELETE_HELPER * delete_helper,
@@ -7989,6 +7990,35 @@ btree_verify_subtree (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT
     }
   else
     {				/* a leaf page */
+      /* CBRD-24094: validate the v2 overflow OID directory (routing invariants) of every key that has an
+       * overflow chain. The generic checks only walk the chain sequentially and cannot see the directory. */
+      for (i = 1; i <= key_cnt; i++)
+	{
+	  LEAF_REC leaf_pnt = { {NULL_PAGEID, NULL_VOLID}, 0 };
+	  bool dummy_clear = false;
+	  int dummy_offset = 0;
+
+	  if (spage_get_record (thread_p, pg_ptr, i, &rec, PEEK) != S_SUCCESS)
+	    {
+	      valid = DISK_ERROR;
+	      goto error;
+	    }
+	  if (btree_read_record (thread_p, btid, pg_ptr, &rec, NULL, &leaf_pnt, BTREE_LEAF_NODE, &dummy_clear,
+				 &dummy_offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	    {
+	      valid = DISK_ERROR;
+	      goto error;
+	    }
+	  if (!VPID_ISNULL (&leaf_pnt.ovfl))
+	    {
+	      valid = btree_ovf_v2_check_dir (thread_p, btid, &leaf_pnt.ovfl);
+	      if (valid != DISK_VALID)
+		{
+		  goto error;
+		}
+	    }
+	}
+
       /* form the INFO structure from the header information */
       INFO->height = 1;
       INFO->tot_key_cnt = key_cnt;
@@ -12776,6 +12806,231 @@ btree_ovf_v2_dir_destroy (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VP
       VPID_COPY (&cur_vpid, &next_vpid);
     }
   return NO_ERROR;
+}
+
+/*
+ * btree_ovf_v2_check_dir () - CBRD-24094 consistency check for a v2 (OID-ordered) overflow chain's separator
+ *   directory. checkdb's generic btree check only walks the chain sequentially (next_vpid) and cannot see the
+ *   directory's routing invariants, so this validates them explicitly. In a single lockstep pass over the data
+ *   chain and the directory it verifies:
+ *     - directory entry count equals the data-page count and entry order matches the chain (next_vpid) order;
+ *     - each directory entry's vpid is the matching data page;
+ *     - separators are strictly ascending;
+ *     - the routing invariant holds: every object in data page i has OID >= sep_i (i > 0; page 0 is the
+ *       catch-all and has no lower bound) and OID < sep_{i+1} (i < last). A corrupt directory that would
+ *       mis-route a point lookup (the CBRD-24094 bug class) fails here.
+ *   Legacy (8 byte header) chains and single-data-page chains (no directory) are trivially valid.
+ *
+ * return		: DISK_VALID, DISK_INVALID or DISK_ERROR.
+ * thread_p (in)	: Thread entry.
+ * btid_int (in)	: B-tree info.
+ * first_ovf_vpid (in)	: VPID of the chain's first data (overflow OID) page.
+ */
+static DISK_ISVALID
+btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * first_ovf_vpid)
+{
+  BTREE_OVERFLOW_HEADER_V2 *hdr_v2;
+  VPID dir_head_vpid, data_vpid, dir_vpid;
+  PAGE_PTR data_page = NULL;
+  PAGE_PTR dir_page = NULL;
+  RECDES data_rec, dir_rec;
+  BTREE_OVF_DIR_ENTRY *entries;
+  int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
+  int dir_idx, dir_num;		/* cursor within the current directory page */
+  int i = 0;			/* data page index in the chain */
+  bool have_prev = false;
+  OID prev_sep, prev_max, cur_sep, cur_min, cur_max;
+  int num_obj;
+  DISK_ISVALID valid = DISK_INVALID;
+
+  assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
+
+  data_page = pgbuf_fix (thread_p, first_ovf_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (data_page == NULL)
+    {
+      return DISK_ERROR;
+    }
+  hdr_v2 = btree_get_overflow_header_v2 (thread_p, data_page);
+  if (hdr_v2 == NULL)
+    {
+      /* Legacy chain: no directory to validate. */
+      pgbuf_unfix_and_init (thread_p, data_page);
+      return DISK_VALID;
+    }
+  VPID_COPY (&dir_head_vpid, &hdr_v2->dir_vpid);
+  if (VPID_ISNULL (&dir_head_vpid))
+    {
+      /* Single-page chain: no directory. */
+      pgbuf_unfix_and_init (thread_p, data_page);
+      return DISK_VALID;
+    }
+
+  /* Open the directory head. */
+  VPID_COPY (&dir_vpid, &dir_head_vpid);
+  dir_page = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (dir_page == NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, data_page);
+      return DISK_ERROR;
+    }
+  if (spage_get_record (thread_p, dir_page, 1, &dir_rec, PEEK) != S_SUCCESS)
+    {
+      goto end;
+    }
+  entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
+  dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
+  dir_idx = 0;
+
+  /* Lockstep walk: data chain and directory entries advance together. */
+  while (data_page != NULL)
+    {
+      /* Fetch the next directory entry (advancing to the next directory page when the current one is exhausted). */
+      while (dir_idx >= dir_num)
+	{
+	  VPID next_dir_vpid;
+
+	  if (btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid) != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  if (VPID_ISNULL (&next_dir_vpid))
+	    {
+	      /* Directory has fewer entries than data pages. */
+	      btree_log_if_enabled ("CBRD-24094 check: directory has fewer entries than data pages "
+				    "(chain first=%d|%d)\n", VPID_AS_ARGS (first_ovf_vpid));
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	  pgbuf_unfix_and_init (thread_p, dir_page);
+	  VPID_COPY (&dir_vpid, &next_dir_vpid);
+	  dir_page = pgbuf_fix (thread_p, &dir_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (dir_page == NULL)
+	    {
+	      valid = DISK_ERROR;
+	      goto end;
+	    }
+	  if (spage_get_record (thread_p, dir_page, 1, &dir_rec, PEEK) != S_SUCCESS)
+	    {
+	      goto end;
+	    }
+	  entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
+	  dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
+	  dir_idx = 0;
+	}
+
+      COPY_OID (&cur_sep, &entries[dir_idx].sep_oid);
+
+      /* Entry order/vpid must match the chain order. */
+      if (!VPID_EQ (&entries[dir_idx].vpid, pgbuf_get_vpid_ptr (data_page)))
+	{
+	  btree_log_if_enabled ("CBRD-24094 check: directory entry %d vpid %d|%d != data page %d|%d\n", i,
+				VPID_AS_ARGS (&entries[dir_idx].vpid),
+				VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+
+      /* Read this data page's object range (objects are OID-ordered: min = first, max = last). */
+      if (spage_get_record (thread_p, data_page, 1, &data_rec, PEEK) != S_SUCCESS)
+	{
+	  goto end;
+	}
+      num_obj = data_rec.length / obj_size;
+      if (num_obj <= 0)
+	{
+	  btree_log_if_enabled ("CBRD-24094 check: empty data page %d|%d\n",
+				VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+      BTREE_GET_OID (data_rec.data, &cur_min);
+      BTREE_GET_OID (data_rec.data + (num_obj - 1) * obj_size, &cur_max);
+
+      if (have_prev)
+	{
+	  /* separators strictly ascending */
+	  if (!OID_LT (&prev_sep, &cur_sep))
+	    {
+	      btree_log_if_enabled ("CBRD-24094 check: separators not ascending at entry %d\n", i);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	  /* previous page's max OID must be below this page's separator (upper bound of prev range) */
+	  if (!OID_LT (&prev_max, &cur_sep))
+	    {
+	      btree_log_if_enabled ("CBRD-24094 check: page %d max OID >= next separator (mis-routing risk)\n", i - 1);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	  /* this (non-head) page's min OID must be at or above its separator */
+	  if (OID_LT (&cur_min, &cur_sep))
+	    {
+	      btree_log_if_enabled ("CBRD-24094 check: page %d min OID < its separator (mis-routing risk)\n", i);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
+	}
+
+      COPY_OID (&prev_sep, &cur_sep);
+      COPY_OID (&prev_max, &cur_max);
+      have_prev = true;
+
+      /* Advance to the next data page. */
+      if (btree_get_next_overflow_vpid (thread_p, data_page, &data_vpid) != NO_ERROR)
+	{
+	  goto end;
+	}
+      pgbuf_unfix_and_init (thread_p, data_page);
+      dir_idx++;
+      i++;
+      if (!VPID_ISNULL (&data_vpid))
+	{
+	  data_page = pgbuf_fix (thread_p, &data_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  if (data_page == NULL)
+	    {
+	      valid = DISK_ERROR;
+	      goto end;
+	    }
+	}
+    }
+
+  /* All data pages consumed. The directory must have no leftover entries. */
+  if (dir_idx < dir_num)
+    {
+      btree_log_if_enabled ("CBRD-24094 check: directory has more entries than data pages (chain first=%d|%d)\n",
+			    VPID_AS_ARGS (first_ovf_vpid));
+      valid = DISK_INVALID;
+      goto end;
+    }
+  else
+    {
+      VPID next_dir_vpid;
+
+      if (btree_get_next_overflow_vpid (thread_p, dir_page, &next_dir_vpid) != NO_ERROR)
+	{
+	  goto end;
+	}
+      if (!VPID_ISNULL (&next_dir_vpid))
+	{
+	  btree_log_if_enabled ("CBRD-24094 check: extra directory pages beyond data pages (chain first=%d|%d)\n",
+				VPID_AS_ARGS (first_ovf_vpid));
+	  valid = DISK_INVALID;
+	  goto end;
+	}
+    }
+
+  valid = DISK_VALID;
+
+end:
+  if (data_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, data_page);
+    }
+  if (dir_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, dir_page);
+    }
+  return valid;
 }
 
 /*
