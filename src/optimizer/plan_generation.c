@@ -3100,7 +3100,7 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
  *   plan(in): root plan
  *
  * Note: When the driving table is an index-family scan, compute
- *       metric = ceil (sel * leaf_pages).  If the metric is below the
+ *       metric = ceil (sel * index pages).  If the metric is below the
  *       session threshold (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD) or
  *       any required input is missing, mark the spec with
  *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
@@ -3175,7 +3175,7 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     }
 
   cum_stats = &index_entry->cum_stats;
-  if (!cum_stats->is_indexed || cum_stats->leafs <= 0)
+  if (!cum_stats->is_indexed || cum_stats->pages <= 0)
     {
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;
@@ -3203,7 +3203,7 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     }
 
   threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
-  metric = ceil (sel * (double) cum_stats->leafs);
+  metric = ceil (sel * (double) cum_stats->pages);
 
   if (metric < (double) threshold)
     {

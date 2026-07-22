@@ -1408,7 +1408,7 @@ extern "C"
 	assert_release_error (er_errid () != NO_ERROR);
 	return er_errid ();
       }
-    if (num_index_pages < prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD))
+    if (num_index_pages < prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD))
       {
 	assert (scan_id->type == S_INDX_SCAN);
 	return NO_ERROR;
