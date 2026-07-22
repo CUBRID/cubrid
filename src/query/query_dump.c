@@ -3370,9 +3370,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
-#if !defined (NDEBUG)
       json_object_set_new (groupby, "readrows", json_integer (gstats->read_rows));
-#endif
       json_object_set_new (proc, "GROUPBY", groupby);
       if (gstats->parallel_num > 0)
 	{
@@ -3968,9 +3966,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
-#if !defined (NDEBUG)
       fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
-#endif
       fprintf (fp, ", rows: %d)\n", gstats->rows);
 
       if (gstats->parallel_num > 0)
