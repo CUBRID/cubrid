@@ -120,16 +120,24 @@ commands:
       - collect-build-logs
 
   resolve-testcases:
-    description: "Resolve testcases branch/SHA; export BRANCH_TESTCASES and materialize cache-key inputs"
+    description: "Resolve testcases branch/SHA for a TC repo; export BRANCH_TESTCASES and materialize cache-key inputs"
+    parameters:
+      tc-repo:
+        # Resolve against the repo the suite actually checks out: public
+        # cubrid-testcases for sql/medium, private cubrid-testcases-private-ex
+        # for shell. Their tc/pr-<N> branches are created independently and
+        # often diverge, so each suite must resolve against its own repo.
+        type: string
+        default: cubrid-testcases
     steps:
       - run:
-          name: Resolve testcases branch and SHA
+          name: Resolve testcases branch and SHA (<< parameters.tc-repo >>)
           command: |
-            TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git"
+            TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/<< parameters.tc-repo >>.git"
 
             # ls-remote the testcases repo with retries. A transient network error
-            # (e.g. "Empty reply from server" under the 50-way shell fan-out) must not
-            # fail the job: on persistent failure we return empty and fall back to develop.
+            # (e.g. "Empty reply from server") must not fail the job: on persistent
+            # failure we return empty and fall back to develop.
             resolve_sha() {
               local i out
               for i in 1 2 3 4 5; do
@@ -442,8 +450,10 @@ jobs:
     steps:
       - download-build-to-glusterfs
       # Resolve the testcases branch a single time (reuses resolve-testcases,
-      # which exports BRANCH_TESTCASES) and hand it to the shell pods.
-      - resolve-testcases
+      # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell runs
+      # the private repo, so resolve against cubrid-testcases-private-ex.
+      - resolve-testcases:
+          tc-repo: cubrid-testcases-private-ex
       - run:
           name: Persist testcases branch for shell pods
           command: |
