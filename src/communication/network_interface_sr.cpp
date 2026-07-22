@@ -2109,7 +2109,14 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
-  if (reqlen < OR_OID_SIZE + 4 * OR_INT_SIZE + OR_INT64_SIZE)
+  /* fixed request header size, INCLUDING the alignment padding or_pack_int64 () inserts
+   * before the seed: OID + 3 ints, aligned up to MAX_ALIGNMENT, + int64 + attr_cnt int.
+   * Without the padding a 4-byte-short packet passes the check and attr_cnt is read past
+   * the end of the receive buffer. */
+  const int fixed_request_size =
+	  DB_ALIGN (OR_OID_SIZE + 3 * OR_INT_SIZE, MAX_ALIGNMENT) + OR_INT64_SIZE + OR_INT_SIZE;
+
+  if (reqlen < fixed_request_size)
     {
       /* short packet: the fixed header must be length-checked before it is unpacked */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
@@ -2126,7 +2133,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   ptr = or_unpack_int (ptr, &attr_cnt);
 
   if (attr_cnt <= 0
-      || (INT64) OR_OID_SIZE + 4 * OR_INT_SIZE + OR_INT64_SIZE + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
+      || (INT64) fixed_request_size + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
     {
       /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
        * the received request -- prevents unpacking past the request buffer and absurd allocations */
