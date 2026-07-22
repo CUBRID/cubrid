@@ -174,6 +174,14 @@ namespace cubpl
     DB_VALUE value; // only for auto parameterized
   };
 
+  enum global_semantics_question_type
+  {
+    GSQT_PROCEDURE = 1,
+    GSQT_FUNCTION = 2,
+    GSQT_SERIAL = 3,
+    GSQT_ID_TYPE = 4,
+  };
+
   struct EXPORT_IMPORT global_semantics_question : public cubpacking::packable_object
   {
     global_semantics_question () = default;

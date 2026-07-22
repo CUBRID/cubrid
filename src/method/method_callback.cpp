@@ -43,6 +43,7 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 #include "sp_catalog.hpp"
+#include "sp_constants.hpp"
 
 using namespace cubpl;
 
@@ -729,30 +730,196 @@ namespace cubmethod
       }
   }
 
-  // TODO: move it to proper place
   static int
-  get_user_defined_procedure_function_info (global_semantics_question &question, global_semantics_response_udpf &res)
+  find_routine_of_type (const char *uniq_name, bool wants_function, MOP &routine_mop, bool ignore_err_when_not_found)
   {
-    DB_OBJECT *mop_p;
-    DB_VALUE return_type;
+
     int err = NO_ERROR;
+    MOP found;
     int save;
-    const char *name = question.name.c_str ();
+    DB_VALUE val;
+
+    found = jsp_find_stored_procedure (uniq_name, DB_AUTH_NONE);
+    if (found)
+      {
+	AU_SAVE_AND_DISABLE (save);
+	err = db_get (found, SP_ATTR_SP_TYPE, &val);
+	if (err == NO_ERROR)
+	  {
+	    int sp_type = db_get_int (&val);
+	    if ((sp_type == SP_TYPE_FUNCTION) == wants_function)
+	      {
+		routine_mop = found;
+	      }
+	  }
+	AU_RESTORE (save);
+      }
+    else
+      {
+	assert (er_errid () != NO_ERROR);
+	if (ignore_err_when_not_found)
+	  {
+	    er_clear();
+	  }
+	else
+	  {
+	    err = er_errid();
+	  }
+      }
+
+    return err;
+  }
+
+  static void
+  split_str (const std::string &name, size_t &start_pos, std::string &out_name)
+  {
+    size_t dot_pos = name.find ('.', start_pos);
+    if (dot_pos != std::string::npos)
+      {
+	out_name = name.substr (start_pos, dot_pos - start_pos);
+	start_pos = dot_pos + 1;        // for the next call
+      }
+    else
+      {
+	out_name = name.substr (start_pos);
+      }
+  }
+
+  static void
+  prepend_user_name (std::string &name, char *buf, int buf_size)
+  {
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    std::string pkg, temp;
+    size_t start_pos = 0;
+    split_str (name, start_pos, pkg);
+    assert (start_pos); // name has a dot
+    sm_user_specified_name (pkg.c_str(), uniq_name, sizeof (uniq_name)); // prepend the current user name
+    temp = uniq_name;
+    temp += ".";
+    temp += name.substr (start_pos);
+    sm_downcase_name (temp.c_str(), buf, buf_size);
+  }
+
+  static int
+  get_user_defined_routine_info (global_semantics_question &question, global_semantics_response_udpf &res)
+  {
+    int err = NO_ERROR, match_cnt = 0;
+    int save;
+    char uniq_name[DB_MAX_IDENTIFIER_LENGTH + 1];
+    std::string &name = question.name;
+    bool wants_function = (question.type == GSQT_FUNCTION);
+    MOP routine_mop = NULL;
+
+    int dot_cnt = std::count (name.begin (), name.end(), '.');
+    switch (dot_cnt)
+      {
+      case 0: // case <name>
+	sm_user_specified_name (name.c_str(), uniq_name, sizeof (uniq_name));
+	break;
+
+      case 2: // case <owner>.<package>.<name>
+	sm_downcase_name (name.c_str(), uniq_name, sizeof (uniq_name));
+	break;
+
+      case 1: // case <user>.<name> or <pkg>.<name>. decide a single case
+
+	// first, try <user>.<name> case: search a routine with the name intact
+      {
+	MOP routine_mop1 = NULL;
+	sm_downcase_name (name.c_str(), uniq_name, sizeof (uniq_name));
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop1, true);
+	if (err == NO_ERROR)
+	  {
+	    if (routine_mop1)
+	      {
+		routine_mop = routine_mop1;
+		match_cnt++;
+	      }
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    return err;
+	  }
+      }
+
+	// second, try <pkg>.<name> case: search a routine with the name prefixed with the current owner
+      {
+	MOP routine_mop2 = NULL;
+	prepend_user_name (name, uniq_name, sizeof (uniq_name));
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, true);
+	if (err == NO_ERROR)
+	  {
+	    if (routine_mop2)
+	      {
+		routine_mop = routine_mop2;
+		match_cnt++;
+	      }
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg();
+	    return err;
+	  }
+      }
+
+      if (match_cnt == 0)
+	{
+	  err = res.err_id = ER_FAILED;
+	  res.err_msg = "Failed to get attribute information";
+	  return err;
+	}
+      else if (match_cnt == 2)
+	{
+	  err = res.err_id = ER_FAILED;
+#define ERR_MSG_TEMPLATE        ("Ambiguous: '%s' matches both <user>.<name> pattern and <package>.<name> pattern")
+	  char buffer[sizeof (ERR_MSG_TEMPLATE) + DB_MAX_IDENTIFIER_LENGTH];
+	  snprintf (buffer, sizeof (buffer), ERR_MSG_TEMPLATE, name.c_str());
+#undef ERR_MSG_TEMPLATE
+	  res.err_msg = buffer;
+	  return err;
+	}
+
+	// NOTE: at this point of execution, routine_mop is non-null with a single match.
+
+      break;
+
+      default:
+	res.err_id = ER_FAILED;
+	res.err_msg = "Invalid parameter";
+	return ER_FAILED;
+      }
+
+    if (!routine_mop)
+      {
+
+	// after the above case 0 and 2
+
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop, false);
+	if (err == NO_ERROR)
+	  {
+	    assert (routine_mop);
+	  }
+	else
+	  {
+	    res.err_id = err;
+	    res.err_msg = er_msg ();
+	    return err;
+	  }
+      }
+
+    // Now, the routine is found
 
     AU_SAVE_AND_DISABLE (save);
     {
-      // TODO
-      mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
-      if (mop_p == NULL)
-	{
-	  assert (er_errid () != NO_ERROR);
-	  err = er_errid ();
-	  goto exit;
-	}
-
       DB_VALUE temp;
+      DB_VALUE return_type;
       int num_args = -1;
-      err = db_get (mop_p, SP_ATTR_ARG_COUNT, &temp);
+      err = db_get (routine_mop, SP_ATTR_ARG_COUNT, &temp);
       if (err == NO_ERROR)
 	{
 	  num_args = db_get_int (&temp);
@@ -768,7 +935,7 @@ namespace cubmethod
 
       DB_VALUE args;
       /* arg_mode, arg_type */
-      err = db_get (mop_p, SP_ATTR_ARGS, &args);
+      err = db_get (routine_mop, SP_ATTR_ARGS, &args);
       if (err == NO_ERROR)
 	{
 	  DB_SET *param_set = db_get_set (&args);
@@ -810,7 +977,7 @@ namespace cubmethod
 	  pr_clear_value (&args);
 	}
 
-      if (db_get (mop_p, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
+      if (db_get (routine_mop, SP_ATTR_RETURN_TYPE, &return_type) == NO_ERROR)
 	{
 	  res.ret.type = db_get_int (&return_type);
 	  pr_clear_value (&return_type);
@@ -860,21 +1027,6 @@ exit:
     return result;
   }
 
-  static void
-  split_str (const std::string &name, size_t &prev, size_t &cur, std::string &out_name)
-  {
-    cur = name.find ('.', prev);
-    if (cur != std::string::npos)
-      {
-	out_name = name.substr (prev, cur - prev);
-	prev = cur + 1;
-      }
-    else
-      {
-	out_name = name.substr (prev);
-      }
-  }
-
   /*
    * separate name into qualifier and id and make them lowercase.
    * prepend qualifier with owner name if necessary.
@@ -890,11 +1042,11 @@ exit:
     std::string owner_name;
     std::string class_name;
 
-    size_t prev = 0, cur = 0;
+    size_t start_pos = 0;
     int dot_cnt = std::count (name.begin (), name.end(), '.');
     if (dot_cnt == 2)
       {
-	split_str (name, prev, cur, owner_name);
+	split_str (name, start_pos, owner_name);
 	owner_name += ".";
       }
     else if (dot_cnt != 1)
@@ -902,8 +1054,8 @@ exit:
 	return ER_FAILED;
       }
 
-    split_str (name, prev, cur, class_name);
-    split_str (name, prev, cur, id);
+    split_str (name, start_pos, class_name);
+    split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
     char realname[DB_MAX_IDENTIFIER_LENGTH + 1] = { '\0' };
@@ -1032,16 +1184,16 @@ exit:
       {
 	switch (question.type)
 	  {
-	  case 1: // PROCEDURE
-	  case 2: // FUNCTION
+	  case GSQT_PROCEDURE:
+	  case GSQT_FUNCTION:
 	  {
 	    auto res_ptr = std::make_unique <global_semantics_response_udpf> ();
 	    res_ptr->idx = i++;
-	    error = get_user_defined_procedure_function_info (question, *res_ptr);
+	    error = get_user_defined_routine_info (question, *res_ptr);
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
-	  case 3: // SERIAL
+	  case GSQT_SERIAL:
 	  {
 	    auto res_ptr = std::make_unique <global_semantics_response_serial> ();
 	    res_ptr->idx = i++;
@@ -1049,7 +1201,7 @@ exit:
 	    response.qs.push_back (std::move (res_ptr));
 	    break;
 	  }
-	  case 4: // ID_TYPE
+	  case GSQT_ID_TYPE:
 	  {
 	    auto res_ptr = std::make_unique <global_semantics_response_id_type> ();
 	    res_ptr->idx = i++;
