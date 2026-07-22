@@ -35,8 +35,7 @@
 #include "px_scan_input_handler_heap.hpp"
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
-#include "heap_file.h"				/* heap_attrinfo_end */
-#include "file_manager.h"			/* file_get_num_user_pages */
+#include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -360,7 +359,7 @@ extern "C"
 				ACCESS_SPEC_TYPE *spec, OID *class_oid, HFID *class_hfid, XASL_NODE *xasl,
 				QUERY_ID query_id)
   {
-    int num_user_pages = -1;
+    int num_data_pages = -1;
     parallel_query::worker_manager *worker_manager_p = nullptr;
     int num_parallel_threads;
     int error = NO_ERROR;
@@ -404,7 +403,7 @@ extern "C"
     /* try parallel-thread heap scan */
 
     /* check if pages are enough for parallel-thread heap scan */
-    error = file_get_num_user_pages (thread_p, &class_hfid->vfid, &num_user_pages);
+    error = heap_get_num_data_pages (thread_p, class_hfid, &num_data_pages);
     if (error != NO_ERROR)
       {
 	assert_release_error (er_errid () != NO_ERROR);
@@ -415,7 +414,7 @@ extern "C"
 	    || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS));
 
     num_parallel_threads = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SCAN,
-			   num_user_pages, spec->num_parallel_threads /* hint */);
+			   num_data_pages, spec->num_parallel_threads /* hint */);
     if (num_parallel_threads < 2)
       {
 	/* try single-thread heap scan */

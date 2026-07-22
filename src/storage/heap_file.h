@@ -99,9 +99,6 @@ class record_descriptor;
     } \
   while (0)
 
-/* A good space to accept insertions */
-#define HEAP_DROP_FREE_SPACE (int)(DB_PAGESIZE * 0.3)
-
 /*
  * Heap scan structures
  */
@@ -114,13 +111,6 @@ struct heap_mvcc_delete_info
 {
   MVCCID row_delid;		/* row delete id */
   MVCC_SATISFIES_DELETE_RESULT satisfies_delete_result;	/* can delete row? */
-};
-
-typedef struct heap_bestspace HEAP_BESTSPACE;
-struct heap_bestspace
-{
-  VPID vpid;			/* Vpid of one of the best pages */
-  int freespace;		/* Estimated free space in this page */
 };
 
 typedef struct heap_scancache_node HEAP_SCANCACHE_NODE;
@@ -405,6 +395,7 @@ extern int heap_classrepr_dump_anyfixed (void);
 extern int heap_manager_initialize (void);
 extern int heap_classrepr_restart_cache (void);
 extern int heap_manager_finalize (void);
+extern int heap_update_all_bestspaces (THREAD_ENTRY * thread_p);
 extern int heap_assign_address (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oid,
 				int expected_length);
 extern const OID *heap_ovf_delete (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, VFID * ovf_vfid_p);
@@ -430,10 +421,11 @@ extern SCAN_CODE heap_next_record_info (THREAD_ENTRY * thread_p, const HFID * hf
 					DB_VALUE ** cache_recordinfo);
 extern SCAN_CODE heap_prev (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * prev_oid,
 			    RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
-extern SCAN_CODE heap_page_next_fix_old (THREAD_ENTRY * thread_p, HFID * hfid, VPID * curr_vpid,
-					 HEAP_SCANCACHE * scan_cache);
 extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, OID * class_oid,
 				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
+
+extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
+
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
 					DB_VALUE ** cache_recordinfo);
@@ -462,6 +454,7 @@ extern SCAN_CODE heap_scanrange_last (THREAD_ENTRY * thread_p, OID * last_oid, R
 
 extern bool heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
 extern bool heap_is_object_not_null (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid);
+extern int heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, int *num_pages);
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
 
 extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, int *nobjs, int *avg_length);
@@ -679,8 +672,9 @@ extern int heap_rv_nop (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_update_chain_after_mvcc_op (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern INT16 heap_rv_remove_flags_from_offset (INT16 offset);
 
-extern void heap_stats_update (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, const HFID * hfid, int prev_freespace);
-extern bool heap_should_try_update_stat (const int current_freespace, const int prev_freespace);
+extern void heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::uint16_t prev_freespace =
+			       0, PGBUF_WATCHER * header_watcher = NULL);
+
 extern int heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache, MVCCID threshold_mvccid);
 extern SCAN_CODE heap_get_visible_version (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
@@ -703,7 +697,6 @@ extern SCAN_CODE heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEA
 extern SCAN_CODE heap_get_class_record (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes_p,
 					HEAP_SCANCACHE * scan_cache, int ispeeking);
 extern int heap_rv_undo_ovf_update (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
-extern int heap_get_best_space_num_stats_entries (void);
 
 extern int heap_get_hfid_from_vfid (THREAD_ENTRY * thread_p, const VFID * vfid, HFID * hfid);
 extern int heap_scan_cache_allocate_area (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p, int size);
@@ -711,6 +704,8 @@ extern bool heap_is_page_header (THREAD_ENTRY * thread_p, PAGE_PTR page);
 
 extern int heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_WATCHER * home_hint_p,
 				VPID * new_page_vpid);
+extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
+				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
 
