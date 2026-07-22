@@ -26,17 +26,23 @@
 #include "heap_oos.hpp"
 
 #include "dbtype.h"
+#include "deduplicate_key.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
 #include "heap_file.h"
 #include "heap_show_scan_context.hpp"
+#include "log_impl.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
 #include "oos_util.hpp"
+#include "porting.h"
 #include "storage_common.h"
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+#include <atomic>
+#endif
 #include <cassert>
 #include <cstring>
 #include <new>
@@ -59,14 +65,18 @@ struct HEAP_OOS_EXPAND_STATE
   int src_vot_bytes;
   int dst_vot_bytes;
   int fixed_bitmap_bytes;
-  std::vector<int> vot_raw;
-  std::vector<std::vector<char>> oos_blobs;
+  std::vector<int> vot_entries;
+  std::vector<std::vector<char>> oos_payloads;
 };
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+static std::atomic<bool> heap_Oos_test_fail_before_vfid_lookup { false };
+#endif
 
 /*
  * heap_oos_parse_vot () - Walk the source VOT and collect each entry (including flag bits).
  *   return: NO_ERROR or ER_FAILED
- *   state(in/out): fills vot_raw and n_var
+ *   state(in/out): fills vot_entries and n_var
  */
 static int
 heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
@@ -74,7 +84,7 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
   const char *src_vot = (const char *) OR_GET_OBJECT_VAR_TABLE (state->src);
   const int capacity = (state->src_length - state->src_header_size) / state->src_offset_size;
 
-  state->vot_raw.reserve (capacity + 1);
+  state->vot_entries.reserve (capacity + 1);
   state->n_var = -1;
 
   for (int i = 0; i <= capacity; ++i)
@@ -85,26 +95,26 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      int raw;
+      int entry;
       const char *ep = src_vot + i * state->src_offset_size;
       switch (state->src_offset_size)
 	{
 	case OR_BYTE_SIZE:
-	  raw = OR_GET_BYTE (ep);
+	  entry = OR_GET_BYTE (ep);
 	  break;
 	case OR_SHORT_SIZE:
-	  raw = OR_GET_SHORT (ep);
+	  entry = OR_GET_SHORT (ep);
 	  break;
 	case OR_INT_SIZE:
-	  raw = OR_GET_INT (ep);
+	  entry = OR_GET_INT (ep);
 	  break;
 	default:
 	  assert_release (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      state->vot_raw.push_back (raw);
-      if (OR_IS_LAST_ELEMENT (raw))
+      state->vot_entries.push_back (entry);
+      if (OR_IS_LAST_ELEMENT (entry))
 	{
 	  state->n_var = i;
 	  break;
@@ -123,57 +133,48 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 }
 
 /*
- * heap_oos_read_blobs () - Read the OOS blob for every OOS-tagged variable index.
+ * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
- *   state(in/out): oos_blobs must be resized to n_var (empty vectors)
+ *   state(in/out): oos_payloads must be resized to n_var (empty vectors)
  */
 static int
-heap_oos_read_blobs (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
+heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
 {
+  std::vector<oos_read_request> requests;
+
   for (int i = 0; i < state->n_var; ++i)
     {
-      if (!OR_IS_OOS (state->vot_raw[i]))
+      if (!OR_IS_OOS (state->vot_entries[i]))
 	{
 	  continue;
 	}
 
-      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
-      if (value_offset + OR_OOS_INLINE_SIZE > state->src_length)
+      const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
+      OID oos_oid;
+      DB_BIGINT oos_len;
+
+      /* Reuse the single inline-reference parser (same [OID (8B) | full_length (8B)] layout and
+       * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
+      RECDES rec = { state->src_length, state->src_length, REC_HOME, (char *) state->src };
+      if (heap_oos_parse_inline_ref (&rec, state->src + value_offset, &oos_oid, &oos_len) != NO_ERROR)
 	{
-	  assert_release (false && "OOS inline slot extends past record bounds");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  NULL_VOLID, NULL_PAGEID, NULL_SLOTID);
 	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
 	}
 
-      /* Inline OOS slot layout (M2+): [OID (8B) | full_length (8B bigint)]. */
-      OID oos_oid = OID_INITIALIZER;
-      DB_BIGINT oos_len = 0;
-      int rc = NO_ERROR;
-      OR_BUF buf;
-      or_init (&buf, (char *) state->src + value_offset, OR_OOS_INLINE_SIZE);
-      if (or_get_oid (&buf, &oos_oid) != NO_ERROR || OID_ISNULL (&oos_oid))
-	{
-	  assert_release (false && "failed to read OOS OID from inline slot");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  OID_AS_ARGS (&oos_oid));
-	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
-	}
-      oos_len = or_get_bigint (&buf, &rc);
-      if (rc != NO_ERROR || oos_len <= 0 || oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
-	{
-	  assert_release (false && "invalid OOS inline length");
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3,
-		  OID_AS_ARGS (&oos_oid));
-	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
-	}
+      state->oos_payloads[i].resize ((std::size_t) oos_len);
+      oos_read_request request = { oos_oid,
+				   oos_buffer (state->oos_payloads[i].data (), (std::size_t) oos_len)
+				 };
+      requests.push_back (request);
+    }
 
-      state->oos_blobs[i].resize ((std::size_t) oos_len);
-      int oos_err = oos_read (thread_p, oos_oid, oos_buffer (state->oos_blobs[i].data (), (std::size_t) oos_len));
+  if (!requests.empty ())
+    {
+      int oos_err = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
       if (oos_err != NO_ERROR)
 	{
-	  oos_error ("oos_read failed for OID %d|%d|%d", OID_AS_ARGS (&oos_oid));
+	  oos_error ("oos_read_many failed while expanding OOS record");
 	  return oos_err;
 	}
     }
@@ -193,7 +194,7 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
   state->src_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, state->src_offset_size);
   state->dst_vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (state->n_var, dst_offset_size);
 
-  state->fixed_bitmap_bytes = OR_GET_VAR_OFFSET (state->vot_raw[0]) - state->src_vot_bytes;
+  state->fixed_bitmap_bytes = OR_GET_VAR_OFFSET (state->vot_entries[0]) - state->src_vot_bytes;
   if (state->fixed_bitmap_bytes < 0)
     {
       assert_release (false);
@@ -204,8 +205,8 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
   int64_t new_values_bytes = 0;
   for (int i = 0; i < state->n_var; ++i)
     {
-      const int this_off = OR_GET_VAR_OFFSET (state->vot_raw[i]);
-      const int next_off = OR_GET_VAR_OFFSET (state->vot_raw[i + 1]);
+      const int this_off = OR_GET_VAR_OFFSET (state->vot_entries[i]);
+      const int next_off = OR_GET_VAR_OFFSET (state->vot_entries[i + 1]);
       const int src_val_len = next_off - this_off;
       if (src_val_len < 0 || state->src_header_size + next_off > state->src_length)
 	{
@@ -213,10 +214,10 @@ heap_oos_compute_layout (HEAP_OOS_EXPAND_STATE *state)
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 	  return ER_FAILED;
 	}
-      if (OR_IS_OOS (state->vot_raw[i]))
+      if (OR_IS_OOS (state->vot_entries[i]))
 	{
 	  assert_release (src_val_len == OR_OOS_INLINE_SIZE);
-	  new_values_bytes += (int64_t) state->oos_blobs[i].size ();
+	  new_values_bytes += (int64_t) state->oos_payloads[i].size ();
 	}
       else
 	{
@@ -290,9 +291,9 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   for (int i = 0; i < state->n_var; ++i)
     {
       OR_PUT_INT (dst_vot + i * dst_offset_size, dst_first_value_rel + cumulative);
-      const int val_len = (OR_IS_OOS (state->vot_raw[i])
-			   ? (int) state->oos_blobs[i].size ()
-			   : (OR_GET_VAR_OFFSET (state->vot_raw[i + 1]) - OR_GET_VAR_OFFSET (state->vot_raw[i])));
+      const int val_len = (OR_IS_OOS (state->vot_entries[i])
+			   ? (int) state->oos_payloads[i].size ()
+			   : (OR_GET_VAR_OFFSET (state->vot_entries[i + 1]) - OR_GET_VAR_OFFSET (state->vot_entries[i])));
       cumulative += val_len;
     }
   OR_PUT_INT (dst_vot + state->n_var * dst_offset_size, OR_SET_VAR_LAST_ELEMENT (dst_first_value_rel + cumulative));
@@ -315,15 +316,15 @@ heap_oos_build_record (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context, const 
   int dst_pos = state->src_header_size + state->dst_vot_bytes + state->fixed_bitmap_bytes;
   for (int i = 0; i < state->n_var; ++i)
     {
-      if (OR_IS_OOS (state->vot_raw[i]))
+      if (OR_IS_OOS (state->vot_entries[i]))
 	{
-	  std::memcpy (dst + dst_pos, state->oos_blobs[i].data (), state->oos_blobs[i].size ());
-	  dst_pos += (int) state->oos_blobs[i].size ();
+	  std::memcpy (dst + dst_pos, state->oos_payloads[i].data (), state->oos_payloads[i].size ());
+	  dst_pos += (int) state->oos_payloads[i].size ();
 	}
       else
 	{
-	  const int src_off = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_raw[i]);
-	  const int len = OR_GET_VAR_OFFSET (state->vot_raw[i + 1]) - OR_GET_VAR_OFFSET (state->vot_raw[i]);
+	  const int src_off = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
+	  const int len = OR_GET_VAR_OFFSET (state->vot_entries[i + 1]) - OR_GET_VAR_OFFSET (state->vot_entries[i]);
 	  std::memcpy (dst + dst_pos, state->src + src_off, len);
 	  dst_pos += len;
 	}
@@ -394,9 +395,9 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 	  return S_ERROR;
 	}
 
-      state.oos_blobs.resize (state.n_var);
+      state.oos_payloads.resize (state.n_var);
 
-      if (heap_oos_read_blobs (thread_p, &state) != NO_ERROR)
+      if (heap_oos_read_values (thread_p, &state) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -414,6 +415,262 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       return S_ERROR;
     }
 }
+
+/*
+ * heap_oos_parse_inline_ref () - Validate and parse the inline OOS reference of an OOS-marked
+ *   variable attribute. Inline layout (M2+): [OID (8B) | full_length (8B bigint)].
+ *
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the reference is corrupted.
+ *   recdes(in): heap record holding the attribute (only data/length are read)
+ *   inline_ptr(in): start of the OOS-marked variable region inside recdes
+ *   oos_oid(out): forwarder OID of the OOS record
+ *   oos_len(out): full byte length of the referenced OOS payload
+ */
+int
+heap_oos_parse_inline_ref (RECDES *recdes, const char *inline_ptr, OID *oos_oid, DB_BIGINT *oos_len)
+{
+  OR_BUF buf;
+  int rc = NO_ERROR;
+
+  /* Keep the OOS OID well-defined for corruption errors raised before it is read. */
+  OID_SET_NULL (oos_oid);
+  *oos_len = 0;
+
+  buf.ptr = (char *) inline_ptr;
+  buf.endptr = recdes->data + recdes->length;
+
+  /* The OOS-marked variable region must start with [OID | bigint]. */
+  if (buf.endptr - buf.ptr < OR_OID_SIZE + OR_BIGINT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  or_get_oid (&buf, oos_oid);
+  *oos_len = or_get_bigint (&buf, &rc);
+
+  /* Reject an unreadable length, a NULL OOS OID, or a length outside the stored-value range. */
+  if (rc != NO_ERROR || OID_ISNULL (oos_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (oos_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * heap_oos_find_attr_inline_ref () - Find the OOS inline reference stored in a heap record for
+ *   a requested variable attribute.
+ *
+ *   return: pointer to the 16-byte [OOS OID | full length] reference in the variable area, or
+ *           NULL when this requested attribute has no OOS reference in this record. NULL also
+ *           covers conditions the per-attribute read path skips or reports itself, including corrupt
+ *           offset-size metadata.
+ */
+static const char *
+heap_oos_find_attr_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
+{
+  OR_ATTRIBUTE *attrepr = value->read_attrepr;
+  int vot_entry;
+
+  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
+    {
+      return NULL;
+    }
+
+  if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
+      || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0
+      || OR_VAR_IS_NULL (recdes->data, attrepr->location))
+    {
+      return NULL;
+    }
+
+  if (heap_recdes_get_var_offset_entry (recdes, attrepr->location, &vot_entry) != NO_ERROR
+      || !OR_IS_OOS (vot_entry))
+    {
+      return NULL;
+    }
+
+  return recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+}
+
+/*
+ * heap_oos_read_grouped_payloads () - Prefetch requested OOS-marked attributes of one record
+ *   through a single grouped oos_read_many() call when at least two requested attributes are OOS-backed.
+ *
+ *   return: NO_ERROR, or an error from inline-reference parsing, buffer allocation, or oos_read_many.
+ *   grouped_applied(out): true when grouped Resolve was selected; false when the caller must use scalar Resolve.
+ *   oos_payloads(out): resized and populated only when grouped_applied is true. oos_payloads[i].data
+ *              != NULL holds the raw disk bytes of an OOS-resolved attribute; oos_payloads[i].data ==
+ *              NULL means "not OOS here: read per-attribute". Always release with
+ *              heap_oos_free_grouped_payloads(), including on error (partial buffers may be attached).
+ */
+int
+heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
+				std::vector<RECDES> &oos_payloads, bool *grouped_applied)
+{
+  const RECDES empty_payload = { -1, -1, REC_UNKNOWN, NULL };
+  std::vector<oos_read_request> requests;
+  int requested_oos_count = 0;
+  int error = NO_ERROR;
+  int i;
+
+  assert (grouped_applied != NULL);
+  assert (recdes != NULL && recdes->data != NULL && heap_recdes_contains_oos (recdes));
+  *grouped_applied = false;
+
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]) != NULL)
+	{
+	  requested_oos_count++;
+	}
+    }
+
+  if (requested_oos_count < 2)
+    {
+      return NO_ERROR;
+    }
+  *grouped_applied = true;
+
+  try
+    {
+      oos_payloads.resize ((std::size_t) attr_info->num_values, empty_payload);
+      requests.reserve ((std::size_t) requested_oos_count);
+    }
+  catch (std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) attr_info->num_values * sizeof (RECDES)
+	      + (size_t) requested_oos_count * sizeof (oos_read_request));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
+    {
+      const char *inline_ptr = heap_oos_find_attr_inline_ref (recdes, &attr_info->values[i]);
+      OID oos_oid;
+      DB_BIGINT oos_len;
+
+      if (inline_ptr == NULL)
+	{
+	  continue;		/* not OOS here: the per-attribute reader handles it */
+	}
+
+      error = heap_oos_parse_inline_ref (recdes, inline_ptr, &oos_oid, &oos_len);
+      if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (error == NO_ERROR)
+	{
+	  oos_payloads[i].length = (int) oos_len;
+	  oos_read_request request = { oos_oid, oos_buffer (oos_payloads[i].data, (std::size_t) oos_len) };
+	  requests.push_back (request);
+	}
+    }
+
+  if (error == NO_ERROR)
+    {
+      error = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
+    }
+
+  return error;
+}
+
+/*
+ * heap_oos_free_grouped_payloads () - Release the raw OOS buffers attached by
+ *   heap_oos_read_grouped_payloads(). Safe on an empty vector (grouped path not taken).
+ */
+void
+heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads)
+{
+  for (RECDES &payload : oos_payloads)
+    {
+      if (payload.data != NULL)
+	{
+	  recdes_free_data_area (&payload);
+	}
+    }
+  oos_payloads.clear ();
+}
+
+/*
+ * heap_oos_begin_insert_publication () - Start one logical heap-record OOS insert preparation.
+ *
+ * Resolve the transaction descriptor before clearing either publication container. This makes the
+ * reset all-or-nothing: a missing descriptor preserves both containers and returns a fatal error.
+ */
+SCAN_CODE
+heap_oos_begin_insert_publication (THREAD_ENTRY *thread_p)
+{
+  const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
+  if (tdes == NULL)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_UNKNOWN_TRANINDEX, 1, tran_index);
+      return S_ERROR;
+    }
+
+  thread_p->oos_oids.clear ();
+  tdes->oos_insert_lsa_queue.clear ();
+  return S_SUCCESS;
+}
+
+/*
+ * heap_oos_insert_serialized_values () - Insert already-serialized attribute payloads into
+ *   the class OOS file.
+ *
+ * heap_file.c keeps DB_VALUE-to-RECDES serialization, including the BLOB/CLOB ELO-locator copy
+ * step. The logical heap caller owns the publication-state reset before serialization. This helper
+ * owns class OOS file lookup and the batched OOS API call.
+ */
+SCAN_CODE
+heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, const OID *class_oid,
+				   cubbase::span<oos_insert_request> requests)
+{
+  HFID oos_hfid;
+  VFID oos_vfid;
+
+  if (heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (heap_Oos_test_fail_before_vfid_lookup.exchange (false, std::memory_order_relaxed))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return S_ERROR;
+    }
+#endif
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+    {
+      return S_ERROR;
+    }
+
+  if (!requests.empty () && oos_insert_many (thread_p, oos_vfid, requests) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  return S_SUCCESS;
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+void
+heap_oos_test_fail_before_vfid_lookup_once ()
+{
+  heap_Oos_test_fail_before_vfid_lookup.store (true, std::memory_order_relaxed);
+}
+
+void
+heap_oos_test_disarm_fail_before_vfid_lookup ()
+{
+  heap_Oos_test_fail_before_vfid_lookup.store (false, std::memory_order_relaxed);
+}
+#endif
 
 /*
  * heap_oos_delete_unreferenced () - Eagerly delete the OOS records referenced by old_recdes and
