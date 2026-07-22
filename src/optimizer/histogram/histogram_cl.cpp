@@ -35,6 +35,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <cmath>
+#include <chrono>
 #include <random>
 #include <string>
 #include <vector>
@@ -241,8 +242,13 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
   UINT64 sample_seed = 0;
   if (random_seed)
     {
+      /* std::random_device may be a deterministic PRNG on some toolchains (every process
+       * gets the same first draws), so mix in the wall clock -- WITH RANDOM SEED must
+       * observe a different sample on every run */
       std::random_device rd;
       sample_seed = (((UINT64) rd ()) << 32) | (UINT64) rd ();
+      sample_seed ^= (UINT64) std::chrono::high_resolution_clock::now ().time_since_epoch ().count ();
+      sample_seed ^= sample_seed >> 33;
       if (sample_seed == 0)
 	{
 	  sample_seed = 1;
