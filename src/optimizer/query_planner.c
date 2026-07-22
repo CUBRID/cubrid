@@ -10898,6 +10898,11 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		}
 	    }
 	}
+      else
+	{
+	  /* op not estimated above (e.g. unnormalized PT_BETWEEN_AND) */
+	  env->sel_hist_fallback = true;
+	}
 
 
       selectivity = MAX (selectivity, 0.0);

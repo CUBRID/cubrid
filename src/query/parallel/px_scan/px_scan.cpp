@@ -1396,13 +1396,17 @@ extern "C"
 
     /* server-side gate: actual index size (user pages of the b-tree file; overflow files excluded) */
     INDX_INFO *indx_info = scan_id->s.isid.indx_info;
-    int num_index_pages;
-    if (indx_info == nullptr
-	|| file_get_num_user_pages (thread_p, &indx_info->btid.vfid, &num_index_pages) != NO_ERROR)
+    if (indx_info == nullptr)
       {
-	er_clear ();
 	assert (scan_id->type == S_INDX_SCAN);
 	return NO_ERROR;
+      }
+    int num_index_pages;
+    error = file_get_num_user_pages (thread_p, &indx_info->btid.vfid, &num_index_pages);
+    if (error != NO_ERROR)
+      {
+	assert_release_error (er_errid () != NO_ERROR);
+	return er_errid ();
       }
     if (num_index_pages < prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD))
       {
