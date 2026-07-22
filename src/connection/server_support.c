@@ -2496,8 +2496,9 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  // the elastic target may be above max_request_concurrency, and waiting handlers may already have returned their slots.
-  // decide from actual worker headroom instead of comparing the context count with the normal slot target.
+  // the elastic target may be above max_request_concurrency, and waiting handlers may already have returned their
+  // slots. use the bounded regular-worker limit instead of the absolute hard cap; capacity available only to a
+  // blocking continuation cannot run an ordinary request that would break this suspended state.
   return checked_threads_count > 0 && !css_Server_request_worker_pool->has_available_execution_capacity ();
 }
 
