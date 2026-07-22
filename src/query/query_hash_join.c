@@ -1328,6 +1328,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
 
   UINT64 mem_limit;
   INT64 min_tuple_cnt;
+  UINT64 per_entry_size;
   UINT32 part_cnt;
 
   assert (thread_p != NULL);
@@ -1347,9 +1348,12 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
   assert (min_tuple_cnt >= 0);
 
-  part_cnt =
-    CEIL_PTVDIV ((sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) * min_tuple_cnt,
-		 mem_limit * PARTITION_FILL_FACTOR);
+  /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
+   * Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate
+   * (each partition re-selects its method). */
+  per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
+
+  part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
       if (IS_OUTER_JOIN_TYPE (manager->join_type))
@@ -2659,11 +2663,30 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
   if (list_id != NULL)
     {
-      if ((UINT64) list_id->page_cnt * DB_PAGESIZE <= mem_limit)
+      UINT64 in_mem_size = 0;
+      UINT64 hybrid_size = 0;
+
+      /* the slot array is int-indexed; the estimates are computable only when tuple_cnt fits in int */
+      if (list_id->tuple_cnt <= INT_MAX)
+	{
+	  UINT64 slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
+	  UINT64 entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
+	  UINT64 payload_size;
+
+	  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+	  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
+	  in_mem_size = slot_array_size + entries_size + payload_size;
+
+	  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+	  payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
+	  hybrid_size = slot_array_size + entries_size + payload_size;
+	}
+
+      if (list_id->tuple_cnt <= INT_MAX && in_mem_size <= mem_limit)
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: In Memory\n");
-	  fprintf (stdout, "  - Page Count: %d <= %lu\n", list_id->page_cnt, mem_limit / 16344);
+	  fprintf (stdout, "  - in_mem_size %lu <= mem_limit %lu\n", in_mem_size, mem_limit);
 #endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
@@ -2676,13 +2699,12 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 
 	  hash_scan->memory.curr_hash_entry = NULL;
 	}
-      else if ((UINT64) list_id->tuple_cnt * (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)) <= mem_limit)
+      else if (list_id->tuple_cnt <= INT_MAX && hybrid_size <= mem_limit)
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: Hybrid\n");
-	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-	  fprintf (stdout, "  - Tuple Count: %ld <= %lu\n", list_id->tuple_cnt,
-		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+	  fprintf (stdout, "  - in_mem_size %lu > mem_limit %lu\n", in_mem_size, mem_limit);
+	  fprintf (stdout, "  - hybrid_size %lu <= mem_limit %lu\n", hybrid_size, mem_limit);
 #endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
@@ -2699,9 +2721,7 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 	{
 #if HASHJOIN_DUMP_BUILD
 	  fprintf (stdout, "\nHash Join Method: File\n");
-	  fprintf (stdout, "  - Page Count: %d > %lu\n", list_id->page_cnt, mem_limit / 16344);
-	  fprintf (stdout, "  - Tuple Count: %ld > %lu\n", list_id->tuple_cnt,
-		   mem_limit / (sizeof (HENTRY_HLS) + sizeof (QFILE_TUPLE_SIMPLE_POS)));
+	  fprintf (stdout, "  - hybrid_size %lu > mem_limit %lu\n", hybrid_size, mem_limit);
 #endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
@@ -2775,7 +2795,6 @@ hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan)
     case HASH_METH_HYBRID:
       if (hash_scan->memory.hash_table != NULL)
 	{
-	  mht_clear_hls (hash_scan->memory.hash_table, qdata_free_hscan_entry, (void *) thread_p);
 	  mht_destroy_hls (hash_scan->memory.hash_table);
 	  hash_scan->memory.hash_table = NULL;
 	}
@@ -3236,7 +3255,7 @@ static int
 hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		 QFILE_TUPLE_RECORD * tuple_record)
 {
-  HASH_SCAN_VALUE *hash_value = NULL;
+  MHT_HLS_ENTRY *entry = NULL;
   TFTID tftid;
 
   assert (thread_p != NULL);
@@ -3249,17 +3268,15 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
     case HASH_METH_IN_MEM:
       assert (hash_scan->memory.hash_table != NULL);
 
-      hash_value = qdata_alloc_hscan_value (thread_p, tuple_record->tpl);
-      if (hash_value == NULL)
+      entry = qdata_alloc_hscan_value (thread_p, hash_scan->memory.hash_table->heap_id, tuple_record->tpl);
+      if (entry == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
-      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
+      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, entry) == NULL)
 	{
-	  qdata_free_hscan_value (thread_p, hash_value);
-
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
@@ -3268,17 +3285,15 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
     case HASH_METH_HYBRID:
       assert (hash_scan->memory.hash_table != NULL);
 
-      hash_value = qdata_alloc_hscan_value_OID (thread_p, list_scan_id);
-      if (hash_value == NULL)
+      entry = qdata_alloc_hscan_value_OID (thread_p, hash_scan->memory.hash_table->heap_id, list_scan_id);
+      if (entry == NULL)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
 
-      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, (void *) hash_value) == NULL)
+      if (mht_put_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key, entry) == NULL)
 	{
-	  qdata_free_hscan_value (thread_p, hash_value);
-
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
@@ -4051,9 +4066,10 @@ int
 hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		 QFILE_TUPLE_RECORD * tuple_record)
 {
-  HASH_SCAN_VALUE *hash_value = NULL;
+  MHT_HLS_ENTRY *entry = NULL;
   TFTID tftid;
   EH_SEARCH eh_search;
+  QFILE_TUPLE_SIMPLE_POS *simple_pos;
   QFILE_TUPLE_POSITION tuple_position;
   SCAN_CODE scan_code;
 
@@ -4069,20 +4085,20 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (tuple_record->tpl == NULL)
 	{
-	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-					     (void **) &hash_scan->memory.curr_hash_entry);
+	  entry =
+	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+			 &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
-	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-						  (void **) &hash_scan->memory.curr_hash_entry);
+	  entry =
+	    mht_get_next_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+			      &hash_scan->memory.curr_hash_entry);
 	}
 
-      if (hash_value != NULL)
+      if (entry != NULL)
 	{
-	  tuple_record->tpl = hash_value->tuple;
+	  tuple_record->tpl = (QFILE_TUPLE) MHT_HLS_ENTRY_PAYLOAD (entry);
 	  tuple_record->size = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_record->tpl);
 	}
       else
@@ -4098,21 +4114,21 @@ hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 
       if (tuple_record->tpl == NULL)
 	{
-	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
-					     (void **) &hash_scan->memory.curr_hash_entry);
+	  entry =
+	    mht_get_hls (hash_scan->memory.hash_table, (void *) &hash_scan->curr_hash_key,
+			 &hash_scan->memory.curr_hash_entry);
 	}
       else
 	{
-	  hash_value =
-	    (HASH_SCAN_VALUE *) mht_get_next_hls (hash_scan->memory.hash_table,
-						  (void *) &hash_scan->curr_hash_key,
-						  (void **) &hash_scan->memory.curr_hash_entry);
+	  entry =
+	    mht_get_next_hls (hash_scan->memory.hash_table,
+			      (void *) &hash_scan->curr_hash_key, &hash_scan->memory.curr_hash_entry);
 	}
 
-      if (hash_value != NULL)
+      if (entry != NULL)
 	{
-	  MAKE_TUPLE_POSTION (tuple_position, hash_value->pos, list_scan_id);
+	  simple_pos = (QFILE_TUPLE_SIMPLE_POS *) MHT_HLS_ENTRY_PAYLOAD (entry);
+	  MAKE_TUPLE_POSTION (tuple_position, simple_pos, list_scan_id);
 	  scan_code = qfile_jump_scan_tuple_position (thread_p, list_scan_id, &tuple_position, tuple_record, PEEK);
 	  if (scan_code != S_SUCCESS)
 	    {
