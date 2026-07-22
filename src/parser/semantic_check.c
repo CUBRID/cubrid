@@ -12166,13 +12166,21 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
-	      /* For a remote INSERT SELECT the SELECT subquery runs locally, but the remote DML path
+	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
+	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
 	       * breaks out of the normal query semantic check below, so the subquery is never processed
 	       * as a stand-alone query. Run the same steps a top-level SELECT receives
 	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
 	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
 	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
-	      if (node->node_type == PT_INSERT)
+	      /* Sink form only (DML text not serialized, qstr == NULL): the SELECT subquery runs
+	       * locally, so it needs the local semantic pass below. The full-pushdown form
+	       * (qstr set) ships the whole statement to the remote server, where it is parsed
+	       * and type-checked; the local pass would fail on remote columns whose types are
+	       * unknown locally. */
+	      if (node->node_type == PT_INSERT
+		  && node->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
 		  if (subq != NULL)

@@ -13999,22 +13999,19 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
   UINTPTR spec_id;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (parser == NULL)
     {
       parser = parser_create_parser ();
       if (parser == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
-
-
-  parser->au_save = save;
 
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = attr_name;
@@ -14039,7 +14036,7 @@ mq_get_attribute (DB_OBJECT * vclass_object, const char *attr_name, DB_OBJECT * 
 
   parser_free_parser (parser);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -14062,8 +14059,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
   DB_OBJECT *virt_class;
 
   /* DO NOT RETURN FROM WITHIN THE BODY OF THIS PROCEDURE */
-  AU_DISABLE (save);
-  parser->au_save = save;
+  AU_SAVE_AND_DISABLE (save);
 
   parser_init_node (&attr, PT_NAME);
   attr.info.name.original = "";	/* oid's have null string attr name */
@@ -14084,7 +14080,7 @@ mq_oid (PARSER_CONTEXT * parser, PT_NODE * spec)
 
   expr = parser_walk_tree (parser, expr, mq_set_all_ids, spec, NULL, NULL);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return expr;
 }

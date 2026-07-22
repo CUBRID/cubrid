@@ -101,7 +101,7 @@ struct json_t;
 					NULL); \
 	(parser)->jmp_env_active = 0; \
 	if ((parser)->au_save) \
-	    AU_ENABLE((parser)->au_save); \
+	    AU_RESTORE((parser)->au_save); \
 	return NULL; \
       } \
         else (parser)->jmp_env_active = 1; \
@@ -1246,7 +1246,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED			(1ULL << 33)	/* do not push predicates */
 #define  PT_HINT_NO_MERGE			(1ULL << 34)	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN		(1ULL << 35)	/* do not eliminate join */
-#define  PT_HINT_SAMPLING_SCAN			(1ULL << 36)	/* SELECT sampling data instead of full data */
+/* (1ULL << 36) was PT_HINT_SAMPLING_SCAN, removed with the query-based statistics sampling path */
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
@@ -1595,7 +1595,7 @@ typedef enum
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
-  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
+  /* 0x2000 was PT_SPEC_FLAG_SAMPLING_SCAN, removed with the query-based statistics sampling path */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
@@ -2867,6 +2867,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
 #define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
+							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
