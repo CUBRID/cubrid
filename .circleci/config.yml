@@ -1,9 +1,7 @@
 version: 2.1
-setup: true
-orbs:
-  continuation: circleci/continuation@1.1.0
+
 # --------------------------------------------------
-# Pipeline-level parameters (values passed from GitHub Actions)
+# Pipeline-level parameters (values passed from GitHub Actions comment trigger)
 # --------------------------------------------------
 parameters:
   baseline:
@@ -23,492 +21,425 @@ parameters:
     default: false
 
 # --------------------------------------------------
-# Jobs
+# 1. Reusable executors
 # --------------------------------------------------
-jobs:
-  # Setup job that generates the dynamic configuration
-  setup:
-    executor: continuation/default
+executors:
+  # Build machine: ccache environment baked in so both build jobs share it
+  cubrid-build:
+    docker:
+      - image: cubridci/cubridci:develop
+    resource_class: xlarge
+    working_directory: /home
     environment:
-      RUN_MEDIUM_TEST: << pipeline.parameters.run_medium_test >>
-      RUN_SQL_TEST: << pipeline.parameters.run_sql_test >>
-      RUN_SHELL_TEST: << pipeline.parameters.run_shell_test >>
-      RUN_ALL_TEST: << pipeline.parameters.run_all_test >>
-      BASELINE: << pipeline.parameters.baseline >>
+      MAKEFLAGS: -j 8
+      CC: "ccache gcc"
+      CXX: "ccache g++"
+      CCACHE_DIR: /home/.ccache
+      CCACHE_COMPILERCHECK: content
+      CCACHE_HARDLINK: 1
+
+  cubrid-default:
+    docker:
+      - image: cubridci/cubridci:develop
+    working_directory: /home
+
+  cubrid-test-shell:
+    docker:
+      - image: cubridci/cubridci:test_shell
+    # self-hosted runner
+    resource_class: cubrid/ramdisk
+    working_directory: /home
+
+# --------------------------------------------------
+# 2. Reusable commands
+# --------------------------------------------------
+commands:
+  submodules:
+    description: "Sync and init git submodules"
+    steps:
+      - run:
+          name: Submodules
+          command: |
+            git submodule sync
+            git submodule update --init
+
+  collect-build-logs:
+    description: "Collect build logs and store them"
+    steps:
+      - run:
+          name: Store Build Logs
+          command: |
+            mkdir -p /tmp/build_logs
+            mv -f build.log /tmp/build_logs || true
+      - run:
+          name: Store Commits
+          command: |
+            mkdir -p /tmp/build_logs
+            git log | head -n 1000 > commits.log || true
+            mv -f commits.log /tmp/build_logs
+      - store_artifacts:
+          path: /tmp/build_logs
+          when: always
+
+  build-cubrid:
+    description: "Build CUBRID with ccache (shared by release and debug builds)"
+    parameters:
+      ccache-prefix:
+        type: string
+      mode:
+        type: string
+        default: release
+      build-args:
+        type: string
+        default: ""
     steps:
       - checkout
+      - restore_cache:
+          keys:
+            - << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-{{ .Revision }}
+            - << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
+      - submodules
       - run:
-          name: Generate continuation config
+          name: Build (<< parameters.mode >>)
           command: |
-            echo "Pipeline parameters:"
-            echo "RUN_MEDIUM_TEST: $RUN_MEDIUM_TEST"
-            echo "RUN_SQL_TEST: $RUN_SQL_TEST"
-            echo "RUN_SHELL_TEST: $RUN_SHELL_TEST"
-            echo "RUN_ALL_TEST: $RUN_ALL_TEST"
-            echo "BASELINE: $BASELINE"
+            mkdir -p $CCACHE_DIR
+            ccache --max-size=5G
+            ccache -z
+            scl enable devtoolset-8 -- /entrypoint.sh build << parameters.build-args >>
+            ccache -s
+      # ccache save: write only on develop-branch builds -> a single shared warm cache
+      # (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
+      - when:
+          condition:
+            equal: [ develop, << pipeline.git.branch >> ]
+          steps:
+            - save_cache:
+                key: << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-{{ .Revision }}
+                paths:
+                  - /home/.ccache
+      - collect-build-logs
 
+  resolve-testcases:
+    description: "Resolve testcases branch/SHA; export BRANCH_TESTCASES and materialize cache-key inputs"
+    steps:
+      - run:
+          name: Resolve testcases branch and SHA
+          command: |
             if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
               TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
             else
               TC_BRANCH="develop"
             fi
-            
+
             TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
-            [ -z "$TC_SHA" ] && TC_BRANCH="develop" && TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)           
-            
+            if [ -z "$TC_SHA" ]; then
+              TC_BRANCH="develop"
+              TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+            fi
+
             CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
-            
+
             echo "TC_BRANCH: $TC_BRANCH"
-            echo "sha value from tc repository.(from $TC_BRANCH branch)"
             echo "TC_SHA: $TC_SHA"
             echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
 
-            # Generate dynamic configuration file (continue.yml)
-            cat \<<EOF > .circleci/continue.yml
-            version: 2.1
-            
-            parameters:
-              baseline:
-                type: string
-                default: << pipeline.parameters.baseline >>
-              run_shell_test:
-                type: boolean
-                default: << pipeline.parameters.run_shell_test >>
-              run_sql_test:
-                type: boolean
-                default: << pipeline.parameters.run_sql_test >>
-              run_medium_test:
-                type: boolean
-                default: << pipeline.parameters.run_medium_test >>
-              run_all_test:
-                type: boolean
-                default: << pipeline.parameters.run_all_test >>
-            
-            # --------------------------------------------------
-            # 1. Reusable commands
-            # --------------------------------------------------
-            commands:
-              attach-and-run-tests:
-                description: "Run test scripts (CUBRID must be at /home/CUBRID)"
-                steps:
-                  - run:
-                      name: Test
-                      environment:
-                        BRANCH_TESTCASES: "${TC_BRANCH}"
-                      shell: /bin/bash
-                      no_output_timeout: 45m
-                      command: |
-                        # Limit core files to 10mb
-                        ulimit -c 10485760
+            # checkout reads BRANCH_TESTCASES to select the testcases branch
+            echo "export BRANCH_TESTCASES=$TC_BRANCH" >> "$BASH_ENV"
 
-                        echo "[debug] Check out testcases and testtools"
-                        /entrypoint.sh checkout
-                        case "\$TEST_SUITE" in
-                          none)
-                            echo "TEST_SUITE is none"
-                            exit 1
-                            ;;
-                          sql)
-                            base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
-                            ;;
-                          shell)
-                            base_dir="cubrid-testcases-private-ex"
-                            rm -rf \$base_dir/shell/_25_unstable
-                            glob_path="\$base_dir/\$TEST_SUITE/_*/**/*.sh"
-                            ;;
-                          *)
-                            base_dir="cubrid-testcases"
-                            glob_path="\$base_dir/\$TEST_SUITE/_*"
-                            ;;
-                        esac
+            # Cache keys cannot read shell vars, so materialize the runtime values
+            # to files and reference them via {{ checksum }} in restore_cache/save_cache.
+            echo "$CACHE_KEY_BRANCH" > /tmp/tc_cache_branch
+            echo "$TC_SHA" > /tmp/tc_cache_sha
+            echo "develop" > /tmp/tc_cache_develop
 
-                        if [ "\$TEST_SUITE" = "shell" ]; then
-                          echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
-                            | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+  run-tests:
+    description: "Run test scripts (CUBRID must be at /home/CUBRID)"
+    steps:
+      - run:
+          name: Test
+          shell: /bin/bash
+          no_output_timeout: 45m
+          command: |
+            # Limit core files to 10mb
+            ulimit -c 10485760
 
-                          # Check if tc.list exists and is not empty (tests were assigned to this node)
-                          if [ ! -s tc.list ]; then
-                            echo "[debug] No tests assigned to this node"
-                            circleci-agent step halt
-                            exit 0
-                          fi
-                          cat tc.list | xargs -n1 dirname > tc_dirs.list
-                          echo "[debug] total testcases: \$(wc -l tc_dirs.list)"
-                          echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
-                        else
-                          echo "[debug] split tests for parallel execution"
-                          circleci tests glob "\$glob_path" \
-                            | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
-                            
-                          # Check if tc.list exists and is not empty (tests were assigned to this node)
-                          if [ ! -s tc.list ]; then
-                            echo "[debug] No tests assigned to this node"
-                            circleci-agent step halt
-                            exit 0
-                          fi
-                          echo "[debug] total testcases: \$(wc -l tc.list)"
-                          echo "[debug] Remove tests that are not in the list"
-                          find \$base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
-                        fi
+            echo "[debug] Check out testcases and testtools"
+            /entrypoint.sh checkout
+            case "$TEST_SUITE" in
+              none)
+                echo "TEST_SUITE is none"
+                exit 1
+                ;;
+              sql)
+                base_dir="cubrid-testcases"
+                glob_path="$base_dir/$TEST_SUITE/_*"
+                ;;
+              shell)
+                base_dir="cubrid-testcases-private-ex"
+                rm -rf $base_dir/shell/_25_unstable
+                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+                ;;
+              *)
+                base_dir="cubrid-testcases"
+                glob_path="$base_dir/$TEST_SUITE/_*"
+                ;;
+            esac
 
-                        echo "[debug] Run the tests"
-                        /entrypoint.sh test
-                  - run:
-                      name: Collect Logs
-                      when: on_fail
-                      command: |
-                        mkdir -p /tmp/logs
-                        cp -f /tmp/tests/* /tmp/logs || true
-                        if [ "\$TEST_SUITE" = "shell" ]; then
-                          mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
-                        else
-                          mv -f CUBRID/log /tmp/logs/cubrid_log || true
-                          mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
-                        fi
-                        [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
-                        mv -f tc.list /tmp/logs/ || true
-                  - store_test_results:
-                      path: /tmp/tests
-                      when: always
-                  - store_artifacts:
-                      path: /tmp/logs
-                      when: on_fail
+            if [ "$TEST_SUITE" = "shell" ]; then
+              echo "[debug] split tests for parallel execution"
+              circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
+                | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
 
-              collect-build-logs:
-                description: "Collect build logs and store them"
-                steps:
-                  - run:
-                      name: Store Build Logs
-                      command: |
-                        mkdir -p /tmp/build_logs
-                        mv -f build.log /tmp/build_logs || true
-                  - run:
-                      name: Store Commits
-                      command: |
-                        mkdir -p /tmp/build_logs
-                        git log | head -n 1000 > commits.log || true
-                        mv -f commits.log /tmp/build_logs
-                  - store_artifacts:
-                      path: /tmp/build_logs
-                      when: always
+              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              if [ ! -s tc.list ]; then
+                echo "[debug] No tests assigned to this node"
+                circleci-agent step halt
+                exit 0
+              fi
+              cat tc.list | xargs -n1 dirname > tc_dirs.list
+              echo "[debug] total testcases: $(wc -l tc_dirs.list)"
+              echo "[debug] Remove tests that are not in the list"
+              find $base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
+            else
+              echo "[debug] split tests for parallel execution"
+              circleci tests glob "$glob_path" \
+                | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
 
-              download-build-from-artifact:
-                description: "Download CUBRID build from artifact (for sql/medium tests)"
-                steps:
-                  - attach_workspace:
-                      at: /tmp/workspace
-                  - run:
-                      name: Download build from artifact
-                      command: |
-                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM_DEBUG)
-                        echo "Downloading build from job #\${BUILD_NUM}..."
-                        
-                        # Fetch artifact list
-                        RESPONSE=\$(curl -s -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
-                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${BUILD_NUM}/artifacts")
-                        
-                        # Extract CUBRID.tar.gz URL
-                        ARTIFACT_URL=\$(echo "\$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
-                        
-                        if [ -z "\$ARTIFACT_URL" ]; then
-                          echo "ERROR: CUBRID.tar.gz artifact not found"
-                          echo "Response: \$RESPONSE"
-                          exit 1
-                        fi
-                        
-                        echo "Artifact URL: \$ARTIFACT_URL"
-                        
-                        # Download and extract
-                        curl -L -o /tmp/CUBRID.tar.gz "\$ARTIFACT_URL"
-                        tar xzf /tmp/CUBRID.tar.gz -C /home/
-                        rm /tmp/CUBRID.tar.gz
-                        
-                        echo "Build extracted to /home/CUBRID"
-                        ls -la /home/CUBRID
-
-              download-build-to-glusterfs:
-                description: "Download CUBRID build to GlusterFS shared storage (for shell tests)"
-                steps:
-                  - attach_workspace:
-                      at: /tmp/workspace
-                  - run:
-                      name: Download build to GlusterFS
-                      command: |
-                        BUILD_NUM=\$(cat /tmp/workspace/BUILD_NUM_DEBUG)
-                        # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
-                        BUILD_DIR="/home/build-cache/builds/\${CIRCLE_SHA1}"
-                        
-                        echo "CIRCLE_SHA1: \${CIRCLE_SHA1}"
-                        echo "BUILD_NUM: \${BUILD_NUM}"
-                        echo "BUILD_DIR: \${BUILD_DIR}"
-                        
-                        # Check if build already exists (same commit = same build)
-                        if [ -d "\${BUILD_DIR}/CUBRID" ]; then
-                          echo "Build already exists for this commit, skipping download"
-                          ls -la "\${BUILD_DIR}/CUBRID"
-                          exit 0
-                        fi
-                        
-                        mkdir -p "\${BUILD_DIR}"
-                        
-                        echo "Downloading build from job #\${BUILD_NUM}..."
-                        
-                        # Fetch artifact list
-                        RESPONSE=\$(curl -s -H "Circle-Token: \${CIRCLECI_TOKEN}" \\
-                          "https://circleci.com/api/v2/project/gh/\${CIRCLE_PROJECT_USERNAME}/\${CIRCLE_PROJECT_REPONAME}/\${BUILD_NUM}/artifacts")
-                        
-                        # Extract CUBRID.tar.gz URL
-                        ARTIFACT_URL=\$(echo "\$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
-                        
-                        if [ -z "\$ARTIFACT_URL" ]; then
-                          echo "ERROR: CUBRID.tar.gz artifact not found"
-                          echo "Response: \$RESPONSE"
-                          exit 1
-                        fi
-                        
-                        echo "Artifact URL: \$ARTIFACT_URL"
-                        
-                        # Download to GlusterFS
-                        curl -L -o "\${BUILD_DIR}/CUBRID.tar.gz" "\$ARTIFACT_URL"
-                        tar xzf "\${BUILD_DIR}/CUBRID.tar.gz" -C "\${BUILD_DIR}"
-                        rm "\${BUILD_DIR}/CUBRID.tar.gz"
-                        
-                        echo "Build extracted to \${BUILD_DIR}/CUBRID"
-                        ls -la "\${BUILD_DIR}/CUBRID"
-                        df -h /home/build-cache
-                      
-            # --------------------------------------------------
-            # 2. Reusable executors
-            # --------------------------------------------------
-            executors:
-              cubrid-default:
-                docker:
-                  - image: cubridci/cubridci:develop
-                working_directory: /home
-
-              cubrid-test-shell:
-                docker:
-                  - image: cubridci/cubridci:test_shell
-                # self-hosted runner
-                resource_class: cubrid/ramdisk
-                working_directory: /home
-                
-            # --------------------------------------------------
-            # 3. Jobs
-            # --------------------------------------------------
-            jobs:
-              build:
-                executor: cubrid-default
-                resource_class: xlarge
-                environment:
-                  MAKEFLAGS: -j 8
-                  CC: "ccache gcc"
-                  CXX: "ccache g++"
-                  CCACHE_DIR: /home/.ccache
-                  CCACHE_COMPILERCHECK: content
-                  CCACHE_HARDLINK: 1
-                steps:
-                  - checkout
-                  - restore_cache:
-                      keys:
-                        - ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
-                        - ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
-                  - run:
-                      name: Submodules
-                      command: |
-                        git submodule sync
-                        git submodule update --init
-                  - run:
-                      name: Build (release)
-                      command: |
-                        mkdir -p \$CCACHE_DIR
-                        ccache --max-size=5G
-                        ccache -z
-                        scl enable devtoolset-8 -- /entrypoint.sh build
-                        ccache -s
-            EOF
-            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
-            if [ "$CIRCLE_BRANCH" = "develop" ]; then
-            cat \<<EOF >> .circleci/continue.yml
-                  - save_cache:
-                      key: ccache-global-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
-                      paths:
-                        - /home/.ccache
-            EOF
+              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              if [ ! -s tc.list ]; then
+                echo "[debug] No tests assigned to this node"
+                circleci-agent step halt
+                exit 0
+              fi
+              echo "[debug] total testcases: $(wc -l tc.list)"
+              echo "[debug] Remove tests that are not in the list"
+              find $base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
             fi
-            cat \<<EOF >> .circleci/continue.yml
-                  - collect-build-logs
 
-              build_debug:
-                executor: cubrid-default
-                resource_class: xlarge
-                environment:
-                  MAKEFLAGS: -j 8
-                  CC: "ccache gcc"
-                  CXX: "ccache g++"
-                  CCACHE_DIR: /home/.ccache
-                  CCACHE_COMPILERCHECK: content
-                  CCACHE_HARDLINK: 1
-                steps:
-                  - checkout
-                  - restore_cache:
-                      keys:
-                        - ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
-                        - ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
-                  - run:
-                      name: Submodules
-                      command: |
-                        git submodule sync
-                        git submodule update --init
-                  - run:
-                      name: Build (optdebug)
-                      command: |
-                        mkdir -p \$CCACHE_DIR
-                        ccache --max-size=5G
-                        ccache -z
-                        scl enable devtoolset-8 -- /entrypoint.sh build -m optdebug
-                        ccache -s
-            EOF
-            # ccache save: write only on develop-branch builds -> a single shared warm cache (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
-            if [ "$CIRCLE_BRANCH" = "develop" ]; then
-            cat \<<EOF >> .circleci/continue.yml
-                  - save_cache:
-                      key: ccache-debug-v2-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-${CIRCLE_SHA1}
-                      paths:
-                        - /home/.ccache
-            EOF
+            echo "[debug] Run the tests"
+            /entrypoint.sh test
+      - run:
+          name: Collect Logs
+          when: on_fail
+          command: |
+            mkdir -p /tmp/logs
+            cp -f /tmp/tests/* /tmp/logs || true
+            if [ "$TEST_SUITE" = "shell" ]; then
+              mv -f cubrid-testtools/CTP/result/shell/current_runtime_logs /tmp/logs/ctp_log || true
+            else
+              mv -f CUBRID/log /tmp/logs/cubrid_log || true
+              mv -f cubrid-testtools/CTP/sql/log /tmp/logs/ctp_log || true
             fi
-            cat \<<EOF >> .circleci/continue.yml
-                  - collect-build-logs
-                  - run:
-                      name: Stop after build logs on default trigger
-                      command: |
-                        case "${CIRCLE_BRANCH:-}" in
-                          */head*)
-                            echo "[info] head trigger detected (${CIRCLE_BRANCH}); continue to package artifacts"
-                            ;;
-                          *)
-                            echo "[info] default trigger detected (${CIRCLE_BRANCH}); stop after collect-build-logs"
-                            circleci-agent step halt
-                            exit 0
-                            ;;
-                        esac
-                  - run:
-                      name: Package build for artifact
-                      command: |
-                        tar czf CUBRID.tar.gz CUBRID
-                        echo "Build packaged: \$(ls -lh CUBRID.tar.gz | awk '{print \$5}')"
-                  - store_artifacts:
-                      path: CUBRID.tar.gz
-                      destination: CUBRID.tar.gz
-                  - run:
-                      name: Save build metadata for test jobs
-                      command: |
-                        mkdir -p workspace
-                        echo "\${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_DEBUG
-                        echo "Saved BUILD_NUM_DEBUG: \$(cat workspace/BUILD_NUM_DEBUG)"
-                  - persist_to_workspace:
-                      root: workspace
-                      paths: [ BUILD_NUM_DEBUG ]
-              
-              test_medium:
-                executor: cubrid-default
-                resource_class: medium
-                parallelism: 1
-                environment:
-                  TEST_SUITE: "medium"
-                steps:
-                  - restore_cache:
-                      keys:
-                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
-                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-"
-                        - "cubrid-testcases-develop-"
-                  - download-build-from-artifact
-                  - attach-and-run-tests
-                  - run:
-                      name: Clean up tc before save_cache
-                      command: |
-                        cd cubrid-testcases
-                        git clean -fd
-                        git reset --hard
-                  - save_cache:
-                      key: "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
-                      paths:
-                        - cubrid-testcases
-                      
-              test_sql:
-                executor: cubrid-default
-                resource_class: medium
-                parallelism: 10
-                environment:
-                  TEST_SUITE: "sql"
-                steps:
-                  - restore_cache:
-                      keys:
-                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
-                        - "cubrid-testcases-${CACHE_KEY_BRANCH}-"
-                        - "cubrid-testcases-develop-"
-                  - download-build-from-artifact
-                  - attach-and-run-tests
-                  - run:
-                      name: Clean up tc before save_cache
-                      command: |
-                        cd cubrid-testcases
-                        git clean -fd
-                        git reset --hard
-                  - save_cache:
-                      key: "cubrid-testcases-${CACHE_KEY_BRANCH}-${TC_SHA}"
-                      paths:
-                        - cubrid-testcases
-                      
-              test_shell:
-                executor: cubrid-test-shell
-                parallelism: 50
-                environment:
-                  BASELINE: << pipeline.parameters.baseline >>
-                  TEST_SUITE: "shell"
-                  GITHUB_TOKEN: \$GHI_TOKEN
-                steps:
-                  - attach-and-run-tests
+            [ -e CUBRID/log/coredump ] && mv -f CUBRID/log/coredump /tmp/logs/coredump || true
+            mv -f tc.list /tmp/logs/ || true
+      - store_test_results:
+          path: /tmp/tests
+          when: always
+      - store_artifacts:
+          path: /tmp/logs
+          when: on_fail
 
-              download-build:
-                description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
-                executor: cubrid-test-shell
-                parallelism: 1
-                steps:
-                  - download-build-to-glusterfs
-            
-            # --------------------------------------------------
-            # 4. Conditional workflows
-            # --------------------------------------------------
-            workflows:
-              build_test:
-                jobs:
-                  - build
-                  - build_debug
-            EOF
+  download-build-from-artifact:
+    description: "Download CUBRID build from artifact (for sql/medium tests)"
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Download build from artifact
+          command: |
+            BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
+            echo "Downloading build from job #${BUILD_NUM}..."
 
-            echo "[debug] Conditionally add test jobs based on parameters"
-            [ "$RUN_MEDIUM_TEST"  = "true" ] && echo "      - test_medium:    {requires: [build, build_debug]}" >> .circleci/continue.yml
-            [ "$RUN_SQL_TEST"     = "true" ] && echo "      - test_sql:       {requires: [build, build_debug]}" >> .circleci/continue.yml
-            if [ "$RUN_SHELL_TEST" = "true" ]; then
-              echo "      - download-build: {requires: [build, build_debug]}" >> .circleci/continue.yml
-              echo "      - test_shell:     {requires: [download-build]}" >> .circleci/continue.yml
+            # Fetch artifact list
+            RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
+              "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
+
+            # Extract CUBRID.tar.gz URL
+            ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+
+            if [ -z "$ARTIFACT_URL" ]; then
+              echo "ERROR: CUBRID.tar.gz artifact not found"
+              echo "Response: $RESPONSE"
+              exit 1
             fi
-            
-            echo "[debug] Output generated configuration (.circleci/continue.yml)"
-            cat .circleci/continue.yml
-      
-      - continuation/continue:
-          configuration_path: .circleci/continue.yml
+
+            echo "Artifact URL: $ARTIFACT_URL"
+
+            # Download and extract
+            curl -L -o /tmp/CUBRID.tar.gz "$ARTIFACT_URL"
+            tar xzf /tmp/CUBRID.tar.gz -C /home/
+            rm /tmp/CUBRID.tar.gz
+
+            echo "Build extracted to /home/CUBRID"
+            ls -la /home/CUBRID
+
+  download-build-to-glusterfs:
+    description: "Download CUBRID build to GlusterFS shared storage (for shell tests)"
+    steps:
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Download build to GlusterFS
+          command: |
+            BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
+            # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
+            BUILD_DIR="/home/build-cache/builds/${CIRCLE_SHA1}"
+
+            echo "CIRCLE_SHA1: ${CIRCLE_SHA1}"
+            echo "BUILD_NUM: ${BUILD_NUM}"
+            echo "BUILD_DIR: ${BUILD_DIR}"
+
+            # Check if build already exists (same commit = same build)
+            if [ -d "${BUILD_DIR}/CUBRID" ]; then
+              echo "Build already exists for this commit, skipping download"
+              ls -la "${BUILD_DIR}/CUBRID"
+              exit 0
+            fi
+
+            mkdir -p "${BUILD_DIR}"
+
+            echo "Downloading build from job #${BUILD_NUM}..."
+
+            # Fetch artifact list
+            RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
+              "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
+
+            # Extract CUBRID.tar.gz URL
+            ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+
+            if [ -z "$ARTIFACT_URL" ]; then
+              echo "ERROR: CUBRID.tar.gz artifact not found"
+              echo "Response: $RESPONSE"
+              exit 1
+            fi
+
+            echo "Artifact URL: $ARTIFACT_URL"
+
+            # Download to GlusterFS
+            curl -L -o "${BUILD_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
+            tar xzf "${BUILD_DIR}/CUBRID.tar.gz" -C "${BUILD_DIR}"
+            rm "${BUILD_DIR}/CUBRID.tar.gz"
+
+            echo "Build extracted to ${BUILD_DIR}/CUBRID"
+            ls -la "${BUILD_DIR}/CUBRID"
+            df -h /home/build-cache
 
 # --------------------------------------------------
-# Workflows
+# 3. Jobs
+# --------------------------------------------------
+jobs:
+  build:
+    executor: cubrid-build
+    steps:
+      - build-cubrid:
+          ccache-prefix: ccache-global-v2
+
+  build_debug:
+    executor: cubrid-build
+    steps:
+      - build-cubrid:
+          ccache-prefix: ccache-debug-v2
+          mode: optdebug
+          build-args: "-m optdebug"
+      # Package the debug build only when a test job will consume it.
+      - when:
+          condition:
+            or:
+              - << pipeline.parameters.run_sql_test >>
+              - << pipeline.parameters.run_medium_test >>
+              - << pipeline.parameters.run_shell_test >>
+          steps:
+            - run:
+                name: Package build for artifact
+                command: |
+                  tar czf CUBRID.tar.gz CUBRID
+                  echo "Build packaged: $(ls -lh CUBRID.tar.gz | awk '{print $5}')"
+            - store_artifacts:
+                path: CUBRID.tar.gz
+                destination: CUBRID.tar.gz
+            - run:
+                name: Save build metadata for test jobs
+                command: |
+                  mkdir -p workspace
+                  echo "${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_DEBUG
+                  echo "Saved BUILD_NUM_DEBUG: $(cat workspace/BUILD_NUM_DEBUG)"
+            - persist_to_workspace:
+                root: workspace
+                paths: [ BUILD_NUM_DEBUG ]
+
+  # sql and medium tests share the same shape; parameterized to avoid duplication
+  artifact-test:
+    executor: cubrid-default
+    resource_class: medium
+    parameters:
+      suite:
+        type: string
+      parallelism:
+        type: integer
+    parallelism: << parameters.parallelism >>
+    environment:
+      TEST_SUITE: << parameters.suite >>
+    steps:
+      - resolve-testcases
+      - restore_cache:
+          keys:
+            - cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-{{ checksum "/tmp/tc_cache_sha" }}
+            - cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-
+            - cubrid-testcases-{{ checksum "/tmp/tc_cache_develop" }}-
+      - download-build-from-artifact
+      - run-tests
+      - run:
+          name: Clean up tc before save_cache
+          command: |
+            cd cubrid-testcases
+            git clean -fd
+            git reset --hard
+      - save_cache:
+          key: cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-{{ checksum "/tmp/tc_cache_sha" }}
+          paths:
+            - cubrid-testcases
+
+  test_shell:
+    executor: cubrid-test-shell
+    parallelism: 50
+    environment:
+      BASELINE: << pipeline.parameters.baseline >>
+      TEST_SUITE: "shell"
+      GITHUB_TOKEN: $GHI_TOKEN
+    steps:
+      - resolve-testcases
+      - run-tests
+
+  download-build:
+    description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
+    executor: cubrid-test-shell
+    parallelism: 1
+    steps:
+      - download-build-to-glusterfs
+
+# --------------------------------------------------
+# 4. Workflow (conditional test jobs via expression-based filters)
 # --------------------------------------------------
 workflows:
-  # Initial setup workflow to generate dynamic configuration
-  setup:
-    jobs: [ setup ]
+  build_test:
+    jobs:
+      - build
+      - build_debug
+      - artifact-test:
+          name: test_medium
+          suite: medium
+          parallelism: 1
+          requires: [build_debug]
+          filters: pipeline.parameters.run_medium_test
+      - artifact-test:
+          name: test_sql
+          suite: sql
+          parallelism: 10
+          requires: [build_debug]
+          filters: pipeline.parameters.run_sql_test
+      - download-build:
+          requires: [build_debug]
+          filters: pipeline.parameters.run_shell_test
+      - test_shell:
+          requires: [download-build]
+          filters: pipeline.parameters.run_shell_test
