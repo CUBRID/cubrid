@@ -213,10 +213,28 @@ commands:
 
             if [ "$TEST_SUITE" = "shell" ]; then
               echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
-                | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+              # The split can fail transiently (e.g. the circleci-tests-plugin-cli
+              # download timing out under 50-way fan-out). Retry it, and if it still
+              # fails, fail this node instead of falling through to the "no tests"
+              # halt below, which would silently skip this node's share of the tests.
+              split_tests() {
+                : > tc.list
+                circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
+                  | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+              }
+              n=0
+              until split_tests; do
+                n=$((n + 1))
+                if [ "$n" -ge 4 ]; then
+                  echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
+                  exit 1
+                fi
+                echo "[warn] test split failed; retry $n after backoff"
+                sleep $((n * 10))
+              done
 
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              # Split succeeded. An empty tc.list here is a genuine empty assignment
+              # (normal during "rerun failed tests only") -> halt this node as success.
               if [ ! -s tc.list ]; then
                 echo "[debug] No tests assigned to this node"
                 circleci-agent step halt
@@ -228,10 +246,27 @@ commands:
               find $base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
             else
               echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" \
-                | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+              # Same resilience as the shell branch: retry a transient split failure
+              # and fail the node rather than silently skipping its tests. tc.list is
+              # reset each attempt because the split command appends (>>).
+              split_tests() {
+                : > tc.list
+                circleci tests glob "$glob_path" \
+                  | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+              }
+              n=0
+              until split_tests; do
+                n=$((n + 1))
+                if [ "$n" -ge 4 ]; then
+                  echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
+                  exit 1
+                fi
+                echo "[warn] test split failed; retry $n after backoff"
+                sleep $((n * 10))
+              done
 
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              # Split succeeded. An empty tc.list here is a genuine empty assignment
+              # (normal during "rerun failed tests only") -> halt this node as success.
               if [ ! -s tc.list ]; then
                 echo "[debug] No tests assigned to this node"
                 circleci-agent step halt
