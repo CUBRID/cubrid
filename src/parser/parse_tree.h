@@ -3928,8 +3928,6 @@ struct parser_context
     unsigned abort:1;		/* this flag is for aborting a transaction */
     /* if deadlock occurs during query execution */
     unsigned set_host_var:1;	/* 1 if the user has set host variables */
-    unsigned plan_peek_hv_untyped:1;	/* XASL generation types host variables as unbound while the
-					 * optimizer peeks their values for plan selection */
     unsigned dont_prt_long_string:1;	/* make pt_print_value fail if the string is too long to print */
     unsigned long_string_skipped:1;	/* pt_print_value sets it to 1 when it skipped printing a long string */
     unsigned print_type_ambiguity:1;	/* pt_print_value sets it to 1 when it printed a value whose type cannot be

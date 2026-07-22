@@ -3051,6 +3051,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	    }
 	}
+
     }
 
 cleanup:
@@ -3344,15 +3345,12 @@ exit:
 }
 
 /*
- * do_replan_statement_with_bind_peek () - regenerate ONLY plan selection and XASL from an
- *   already-compiled statement, letting the optimizer see the CURRENT bind values without
- *   letting them into the XASL's typing.
- *   set_host_var stays OFF for the regeneration: with it on, pt_host_var_db_value ()
- *   resolves MAYBE-typed nodes from the current values and the XASL hardwires those TYPES,
- *   which breaks prepared statements that bind different types on later executions (the
- *   same statement may legally run with int, double and string arguments). The optimizer's
- *   histogram probes read parser->host_variables directly, so plan selection still prices
- *   the predicates with the actual values.
+ * do_replan_statement_with_bind_peek () - regenerate plan selection and XASL from an
+ *   already-compiled statement with the CURRENT bind values in place, so the optimizer's
+ *   histogram probes price the predicates with the actual values. Only called when the
+ *   statement has a host-variable predicate the histogram can use (see the call sites),
+ *   so the value typing it bakes into the XASL lands on a predicate constant (coerced to
+ *   the column domain anyway), never on an unrelated select-list host variable.
  * return : error code
  * parser (in)    : parser holding the compiled statement and the bound values
  * statement (in) : compiled statement to replan
@@ -3371,9 +3369,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
   pt_reset_error (parser);
   parser->query_id = NULL_QUERY_ID;
 
-  parser->flag.plan_peek_hv_untyped = 1;
   err = do_prepare_statement (parser, statement);
-  parser->flag.plan_peek_hv_untyped = 0;
 
   return err;
 }
@@ -3514,29 +3510,25 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.using_list != NULL
       && new_session->statements[0] != NULL && PT_IS_QUERY (new_session->statements[0]))
     {
-      /* first execution: fix the plan under the actual bind values instead of the unbound
-       * markers the PREPARE-time plan was chosen under. Regardless of
-       * plan_cache_bind_sensitivity -- with the parameter off this plan simply stays for
-       * every later execution; with it on, later bucket changes replan again. The peeked
-       * regeneration keeps the XASL's host-variable typing generic (see
-       * do_replan_statement_with_bind_peek), so per-execution value typing is preserved. */
-      err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
+      UINT64 fp = 0;
 
-      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY) && new_session->parser->flag.set_host_var
-	  && new_session->parser->host_var_count > 0)
+      /* first execution: if the statement has a host-variable PREDICATE the histogram can
+       * price (histogram_bind_fingerprint returns true), fix the plan under the actual
+       * bind values instead of the unbound markers the PREPARE-time plan was chosen under.
+       * Gating on a real predicate candidate keeps the value-typed regeneration off
+       * statements whose only host variables are select-list arguments (e.g. analytic
+       * min(?) over ()), which must stay generically typed for per-execution typing.
+       * This runs regardless of plan_cache_bind_sensitivity -- with the parameter off the
+       * fixed plan simply stays for every later execution; with it on, later bucket
+       * changes replan again. */
+      if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
 	{
-	  UINT64 fp = 0;
-
-	  /* the plan was just chosen under the current values; record their fingerprint
-	   * so the bind-sensitivity check does not replan a second time */
-	  if (histogram_bind_fingerprint (new_session->parser, new_session->statements[0], &fp))
+	  err = do_replan_statement_with_bind_peek (new_session->parser, new_session->statements[0]);
+	  if (err != NO_ERROR)
 	    {
-	      new_session->statements[0]->info.query.bind_fp = fp;
+	      return err;
 	    }
+	  new_session->statements[0]->info.query.bind_fp = fp;
 	}
     }
 
