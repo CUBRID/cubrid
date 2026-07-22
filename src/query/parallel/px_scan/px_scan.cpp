@@ -36,6 +36,9 @@
 #include "px_parallel.hpp"			/* parallel_query::compute_parallel_degree */
 #include "list_file.h"				/* qfile_close_list, qfile_destroy_list */
 #include "heap_file.h"				/* heap_attrinfo_end, heap_get_num_data_pages */
+#include "file_manager.h"			/* file_get_num_user_pages */
+#include "system_parameter.h"			/* prm_get_integer_value */
+#include "thread_manager.hpp"			/* cubthread::system_core_count */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1383,8 +1386,31 @@ extern "C"
     assert (xasl != nullptr);
     assert (vd != nullptr);
 
-    /* index scan degree set client-side by optimizer; trust spec->num_parallel_threads verbatim. */
+    /* index scan degree set client-side by optimizer; re-gated below by actual index size and core/page limits. */
     num_parallel_threads = spec->num_parallel_threads;
+    if (num_parallel_threads < 2)
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
+    /* server-side gate: actual index size (user pages of the b-tree file; overflow files excluded) */
+    INDX_INFO *indx_info = scan_id->s.isid.indx_info;
+    int num_index_pages;
+    if (indx_info == nullptr
+	|| file_get_num_user_pages (thread_p, &indx_info->btid.vfid, &num_index_pages) != NO_ERROR)
+      {
+	er_clear ();
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+    if (num_index_pages < prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD))
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+    num_parallel_threads = MIN (num_parallel_threads, (int) cubthread::system_core_count ());
+    num_parallel_threads = MIN (num_parallel_threads, num_index_pages);
     if (num_parallel_threads < 2)
       {
 	assert (scan_id->type == S_INDX_SCAN);

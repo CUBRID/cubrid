@@ -3106,7 +3106,8 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
  *       PT_SPEC_FLAG_NO_PARALLEL_SCAN (fail-safe).  Otherwise pick a
  *       degree and record it on the spec so xasl_generation propagates
  *       it to the server exactly like a user hint.
- *       An explicit PARALLEL(N) hint bypasses the metric check.
+ *       An explicit PARALLEL(N) hint bypasses the metric check and the
+ *       auto parallelism cap; the server re-gates by actual index size.
  */
 static void
 qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
@@ -3158,15 +3159,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   has_hint = (select->info.query.q.select.hint & PT_HINT_PARALLEL) != 0;
   if (has_hint)
     {
-      /* Parallel index scan needs at least two threads after applying the global cap. */
-      cap = prm_get_integer_value (PRM_ID_PARALLELISM);
-      if (cap <= 1 || spec->info.spec.num_parallel_threads <= 1)
+      /* hint bypasses the metric check and the auto parallelism cap */
+      if (spec->info.spec.num_parallel_threads <= 1)
 	{
 	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
-	}
-      else if (spec->info.spec.num_parallel_threads > cap)
-	{
-	  spec->info.spec.num_parallel_threads = cap;
 	}
       return;
     }
@@ -3179,7 +3175,7 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     }
 
   cum_stats = &index_entry->cum_stats;
-  if (!cum_stats->is_indexed || cum_stats->pages <= 0)
+  if (!cum_stats->is_indexed || cum_stats->leafs <= 0)
     {
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;
@@ -3190,6 +3186,11 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   for (t = bitset_iterate (&(driving->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_SEL_FROM_HISTOGRAM))
+	{
+	  spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	  return;
+	}
       sel *= QO_TERM_SELECTIVITY (termp);
     }
   if (sel > 1.0)
@@ -3202,7 +3203,7 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
     }
 
   threshold = prm_get_integer_value (PRM_ID_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD);
-  metric = ceil (sel * (double) cum_stats->pages);
+  metric = ceil (sel * (double) cum_stats->leafs);
 
   if (metric < (double) threshold)
     {
