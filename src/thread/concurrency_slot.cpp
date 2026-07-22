@@ -939,6 +939,8 @@ namespace cubthread
 	return;
       }
 
+    // worker_pool_elastic samples progress on this cadence too. Because both timers are sampled by this loop, a check
+    // that lands just before its deadline is deferred to the next iteration (an effective 50-100 ms cadence).
     looper loop = looper (std::chrono::milliseconds (50));
     concurrency_slot_daemon_task *daemon_task = new concurrency_slot_daemon_task (this);
 

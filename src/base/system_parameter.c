@@ -966,7 +966,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
  * Other macros
  */
 #define PRM_DEFAULT_BUFFER_SIZE 256
-#define PRM_REQUEST_WORKER_ELASTIC_HEADROOM 32
 #define PRM_REQUEST_CONCURRENCY_PER_CORE 6
 
 /* initial error and integer lists */
@@ -10010,26 +10009,17 @@ prm_tune_parameters (void)
 
       if (!PRM_IS_SET (max_request_concurrency_prm))
 	{
-	  /* client count describes ingress pressure, not useful execution concurrency. Keep the normal target stable;
-	   * the elastic worker pool adds temporary capacity only when queued work stops making progress. */
+	  /* client count describes ingress pressure, not useful execution concurrency. Keep the normal target stable */
+	  /* the elastic worker pool adds temporary capacity only when queued work stops making progress. */
 	  client_limit = std::min (PRM_GET_INT (max_clients_prm->value), CSS_MAX_CLIENT_COUNT);
 	  max_value = std::min (system_cpu_count * PRM_REQUEST_CONCURRENCY_PER_CORE,
 				std::min (client_limit, CSS_MAX_CLIENT_COUNT / 2));
 	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
 	  (void) prm_set (max_request_concurrency_prm, newval, false);
 	}
-      if (!PRM_IS_SET (max_request_worker_prm))
-	{
-	  /* waiting request workers keep their threads while returning concurrency slots.  */
-	  /* keep worker headroom proportional to request concurrency.                      */
-	  max_value = std::min (PRM_GET_INT (max_request_concurrency_prm->value) * 2
-				+ PRM_REQUEST_WORKER_ELASTIC_HEADROOM, CSS_MAX_CLIENT_COUNT);
-	  if (PRM_GET_INT (max_request_worker_prm->value) > max_value)
-	    {
-	      sprintf (newval, "%d", max_value);
-	      (void) prm_set (max_request_worker_prm, newval, false);
-	    }
-	}
+      /* max_request_worker is an absolute lazy hard cap. keep its default at CSS_MAX_CLIENT_COUNT. regular stall */
+      /* recovery has a lower derived safety cap to prevent a blocked-thread storm while the lock victimizer waits, */
+      /* while progress-critical blocking continuations may use the remaining headroom. */
       if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
 	{
 	  sprintf (newval, "%d", PRM_GET_INT (max_request_concurrency_prm->value));
