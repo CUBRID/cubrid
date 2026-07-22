@@ -2085,6 +2085,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	  pg_cnt +=
 	    qexec_clear_regu_list (thread_p, xasl_p, p->s_id.s.llsid.hlsid.probe_regu_list, is_final,
 				   for_parallel_aptr);
+
+	  /* defensive: parallel/error/XASL-clear teardown can reach here without scan_close_scan,
+	   * which would leak the hash table and its obstack payloads. */
+	  scan_free_hash_list_scan (thread_p, &p->s_id.s.llsid.hlsid);
 	  break;
 	case S_PARALLEL_LIST_SCAN:
 #if SERVER_MODE
