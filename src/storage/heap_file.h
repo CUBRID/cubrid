@@ -739,6 +739,10 @@ extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data
 extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 
+/* Shared with heap_oos.cpp: reads one raw variable-offset-table entry (with the OOS/NULL flag bits)
+ * so the grouped OOS prefetch path locates OOS-marked attributes exactly as heap_file.c does. */
+extern int heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out);
+
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,
 						 const std::vector<VPID> &heap_pages_array);

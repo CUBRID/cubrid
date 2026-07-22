@@ -42,6 +42,18 @@ using OOS_RECDES = RECDES;
  * .c-file formatter mangles `cubbase::span<char>(...)`'s angle brackets. */
 using oos_buffer = cubbase::span<char>;
 
+struct oos_insert_request
+{
+  oos_buffer src;
+  OID *oid_out;
+};
+
+struct oos_read_request
+{
+  OID oid;
+  oos_buffer dest;
+};
+
 #define OOS_NUM_BEST_SPACESTATS 10
 
 #define OOS_STATS_NEXT_BEST_INDEX(i) \
@@ -86,9 +98,12 @@ extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
+/* Inserts requests in logical order; each request receives its head OOS OID. */
+extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbase::span<oos_insert_request> requests);
 /* Reads exactly dest.size() bytes; the caller obtains the length from the
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
+extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
  * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
@@ -122,15 +137,25 @@ using OOS_STATS_INFO = struct oos_stats_info;
 extern int xoos_get_stats_by_class_oid (THREAD_ENTRY *thread_p, const OID *class_oid, OOS_STATS_INFO *out);
 extern int oos_get_stats_by_vfid (THREAD_ENTRY *thread_p, const VFID &oos_vfid, OOS_STATS_INFO *out);
 
-#ifdef __cplusplus
-extern "C"
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+struct oos_debug_counters
 {
-#endif
+  unsigned long long insert_many_calls;
+  unsigned long long insert_many_requests;
+  unsigned long long single_page_batch_count;
+  unsigned long long insert_reused_pages;
+  unsigned long long insert_fresh_pages;
+  unsigned long long insert_values_per_fixed_page;
+  unsigned long long read_many_calls;
+  unsigned long long read_many_requests;
+  unsigned long long read_many_grouped_head_pages;
+  unsigned long long read_values_per_fixed_page;
+};
 
-extern void oos_push_oos_oid (THREAD_ENTRY *thread_p, const OID *oid);
-
-#ifdef __cplusplus
-}
+/* One-shot publication failure seams used by focused SERVER_MODE tests. */
+extern void oos_test_fail_insert_many_after_publications (int publication_count);
+extern void oos_test_throw_bad_alloc_on_next_oid_publication ();
+extern void oos_test_disarm_insert_publication_failures ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */
