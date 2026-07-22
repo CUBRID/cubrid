@@ -594,7 +594,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 row = Misc.getNormalizedText(ctx.identifier());
             }
         } else {
-            // row can be one of owner.table, and (owner.)pkg.cursor
+            // row can be one of owner.table, (TODO and (owner.)pkg.cursor)
             row = Misc.getNormalizedText(ctx.qualified_id(), false);
         }
 
@@ -1129,8 +1129,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         Qualified_idContext qualifiedName = ctx.func_call_name().qualified_id();
         if (qualifiedName == null) {
 
+            // in this case, function name is not qualified
+
             name = Misc.getNormalizedText(ctx.func_call_name().func_name());
         } else {
+
+            // in this case, function name is qualified
 
             boolean isGlobalCall = true;
 
@@ -1140,8 +1144,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 name = Misc.getNormalizedText(qualifiedName.name);
                 if (qual.equals(spOwner) && name.equals(spName) && isSpFunc) {
 
-                    // OK: recursive call of the stored procedure being defined
-                    // Note that owner name is unused afterwards.
+                    // OK: this is a recursive call of the stored function being defined
+                    // Note that the owner name is not used afterwards.
                     isGlobalCall = false;
                 }
             }
@@ -1198,6 +1202,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + name
                                     + " does not match the number of its formal parameters");
                 } else if (res > 0) {
+                    // in this case, res indicates the index of the problematic argument.
                     throw new SemanticError(
                             Misc.getLineColumnOf(args.nodes.get(res - 1).ctx), // s010
                             "argument "
@@ -2816,8 +2821,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
-        Qualified_idContext qualifiedName = ctx.proc_call_name().qualified_id();
-        if (qualifiedName == null) {
+        Qualified_idContext qualifiedId = ctx.proc_call_name().qualified_id();
+        if (qualifiedId == null) {
+
+            // in this case, procedure name is not qualified
 
             name = Misc.getNormalizedText(ctx.proc_call_name().identifier());
 
@@ -2830,16 +2837,18 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         } else {
 
+            // in this case, procedure name is qualified
+
             boolean isGlobalCall = true;
 
-            if (qualifiedName.qualSingle != null) {
+            if (qualifiedId.qualSingle != null) {
 
-                String qual = Misc.getNormalizedText(qualifiedName.qualSingle);
-                name = Misc.getNormalizedText(qualifiedName.name);
+                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
+                name = Misc.getNormalizedText(qualifiedId.name);
                 if (qual.equals(spOwner) && name.equals(spName) && !isSpFunc) {
 
-                    // OK: recursive call of the stored procedure being defined
-                    // Note that owner name is unused afterwards.
+                    // OK: this is a recursive call of the stored procedure being defined
+                    // Note that the owner name is not used afterwards.
                     isGlobalCall = false;
                 }
             }
@@ -2851,9 +2860,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 // Take this as a global procedure call.
                 connectionRequired = true;
 
-                String uniqName =
-                        Misc.getNormalizedText(
-                                qualifiedName, false); // TODO: check if this has dots or not
+                String uniqName = Misc.getNormalizedText(qualifiedId, false);
                 StmtGlobalProcCall ret =
                         new StmtGlobalProcCall(ctx, uniqName, args, getSqlSerialNo());
                 addToSqlUses(ret);
@@ -2880,15 +2887,16 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 throw new SemanticError(
                         Misc.getLineColumnOf(ctx), // s044
                         "the number of arguments to procedure "
-                                + Misc.detachPkgName(name)
+                                + name
                                 + " does not match the number of its formal parameters");
             } else if (res > 0) {
+                // in this case, res indicates the index of the problematic argument.
                 throw new SemanticError(
                         Misc.getLineColumnOf(args.nodes.get(res - 1).ctx), // s045
                         "argument "
                                 + res
                                 + " to the procedure "
-                                + Misc.detachPkgName(name)
+                                + name
                                 + " must be updatable because it is to an OUT parameter");
             }
 

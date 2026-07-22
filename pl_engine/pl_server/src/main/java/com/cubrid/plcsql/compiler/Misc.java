@@ -102,11 +102,6 @@ public class Misc {
         return (nl == null || nl.nodes.size() == 0);
     }
 
-    public static String detachPkgName(String routineName) {
-        int idx = routineName.indexOf('$');
-        return idx >= 0 ? routineName.substring(idx + 1) : routineName;
-    }
-
     public static int[] getLineColumnOf(TerminalNode node) {
         if (node == null) {
             return UNKNOWN_LINE_COLUMN;
