@@ -10017,9 +10017,8 @@ prm_tune_parameters (void)
 	  sprintf (newval, "%d", std::max (system_cpu_count, max_value));
 	  (void) prm_set (max_request_concurrency_prm, newval, false);
 	}
-      /* max_request_worker is an absolute lazy hard cap. keep its default at CSS_MAX_CLIENT_COUNT. regular stall */
-      /* recovery has a lower derived safety cap to prevent a blocked-thread storm while the lock victimizer waits, */
-      /* while progress-critical blocking continuations may use the remaining headroom. */
+      /* max_request_worker is an absolute lazy hard cap. keep its default at CSS_MAX_CLIENT_COUNT. the worker pool */
+      /* approaches it with bounded pool-wide growth and reserves a small portion for blocking continuations. */
       if (PRM_GET_INT (max_request_worker_prm->value) < PRM_GET_INT (max_request_concurrency_prm->value))
 	{
 	  sprintf (newval, "%d", PRM_GET_INT (max_request_concurrency_prm->value));
