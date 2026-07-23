@@ -41,14 +41,12 @@ public class Unit extends AstNode {
         return visitor.visitUnit(this);
     }
 
-    public final boolean autonomousTransaction;
     public final boolean connectionRequired;
     public final DeclRoutine routine;
     public final String revision;
 
     public Unit(
             ParserRuleContext ctx,
-            boolean autonomousTransaction,
             boolean connectionRequired,
             DeclRoutine routine,
             String revision) {
@@ -56,7 +54,6 @@ public class Unit extends AstNode {
 
         assert routine.scope.level == 1;
 
-        this.autonomousTransaction = autonomousTransaction;
         this.connectionRequired = connectionRequired;
         this.routine = routine;
         this.revision = revision;
