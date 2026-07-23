@@ -72,6 +72,7 @@ namespace cubthread
 
       // pure policy helpers kept public for deterministic boundary tests
       static std::size_t calculate_regular_worker_limit (std::size_t max_concurrency, std::size_t max_worker);
+      static std::size_t calculate_next_expansion_count (std::size_t current_expansion_count);
       static std::size_t calculate_active_regular_worker_count (std::size_t reserved_worker_count,
 	  std::size_t retiring_worker_count, std::size_t blocking_continuation_worker_count,
 	  std::size_t retiring_blocking_continuation_worker_count);
@@ -88,9 +89,8 @@ namespace cubthread
       std::size_t get_max_concurrency (void) const;
       std::size_t get_max_worker (void) const;
 
-      // capacity for regular request work
-      // the blocking-continuation reserve is intentionally excluded
-      bool has_available_execution_capacity (void) const;
+      // true if any core still has work that could not be dispatched
+      bool has_queued_tasks (void) const;
 
       void check_progress (void);
 
@@ -103,8 +103,11 @@ namespace cubthread
 			   wait_seconds idle_timeout = std::chrono::seconds (5));
 
       static constexpr std::size_t MAX_BLOCKING_CONTINUATION_WORKER_RESERVE = 32;
-      static constexpr std::size_t REGULAR_WORKER_SAFETY_HEADROOM = 32;
+      // the slot daemon normally wakes every 50 ms. poll at the same cadence, but gate actual pool-wide capacity
+      // changes to 500 ms so daemon wakeup jitter cannot multiply the growth rate.
       static constexpr std::chrono::milliseconds PROGRESS_CHECK_INTERVAL { 50 };
+      static constexpr std::chrono::milliseconds CAPACITY_ADJUSTMENT_INTERVAL { 500 };
+      static constexpr std::size_t MAX_CAPACITY_ADJUSTMENT_COUNT = 32;
 
       std::unique_ptr<worker_pool::core> allocate_core (bool pool_threads) override;
 
@@ -113,22 +116,27 @@ namespace cubthread
       std::atomic<std::size_t> m_current_regular_worker;
 
       std::atomic<std::size_t> m_max_concurrency;
-      // hard cap and lower cap applied to regular stall expansion
+      // absolute hard cap and regular ceiling that preserves the blocking-continuation reserve
       std::atomic<std::size_t> m_max_worker;
       std::atomic<std::size_t> m_max_regular_worker;
 
       std::chrono::steady_clock::time_point m_next_progress_check;
       std::vector<progress_tracker> m_progress_trackers;
       std::vector<std::size_t> m_expansion_requests;
+      std::vector<std::size_t> m_shrink_requests;
       std::vector<std::uint64_t> m_observed_completed_task_counts;
       std::size_t m_next_progress_core;
+      std::size_t m_next_shrink_core;
+      std::size_t m_next_expansion_count;
+      std::chrono::steady_clock::time_point m_next_expansion_time;
+      std::chrono::steady_clock::time_point m_next_shrink_time;
       std::atomic<bool> m_initialized;
   };
 
   // worker_pool_elastic<Stats>::progress_tracker
   //
   // description
-  //    tracks whether a core with queued work has stopped completing tasks and requests bounded exponential recovery.
+  //    tracks stable stall and idle periods. The pool applies the global exponential ramp to requested adjustments.
   //
   template <stats_t Stats>
   class worker_pool_elastic<Stats>::progress_tracker
@@ -138,16 +146,19 @@ namespace cubthread
 
       struct decision
       {
-	std::size_t expansion_count = 0;
-	bool reset_expansion = false;
+	bool request_expansion = false;
+	bool request_shrink = false;
+	bool stalled = false;
+	bool idle = false;
       };
 
-      explicit progress_tracker (clock::duration stall_timeout = std::chrono::milliseconds (500))
+      explicit progress_tracker (clock::duration stall_timeout = CAPACITY_ADJUSTMENT_INTERVAL)
 	: m_stall_timeout (stall_timeout)
 	, m_no_progress_since ()
 	, m_completed_task_count (0)
-	, m_next_expansion_count (1)
 	, m_had_queued_task (false)
+	, m_stalled (false)
+	, m_idle (false)
 	, m_initialized (false)
       {
       }
@@ -173,29 +184,39 @@ namespace cubthread
 
 	if (!has_queued_task)
 	  {
-	    result.reset_expansion = queue_stopped || made_progress;
-	    m_no_progress_since = now;
-	    m_next_expansion_count = 1;
+	    m_stalled = false;
+	    if (queue_stopped || made_progress)
+	      {
+		m_no_progress_since = now;
+		m_idle = false;
+	      }
+	    else if (now - m_no_progress_since >= m_stall_timeout)
+	      {
+		m_no_progress_since = now;
+		m_idle = true;
+		result.request_shrink = true;
+	      }
+
+	    result.idle = m_idle;
 	    return result;
 	  }
 
+	m_idle = false;
 	if (queue_started || made_progress)
 	  {
-	    result.reset_expansion = true;
 	    m_no_progress_since = now;
-	    m_next_expansion_count = 1;
+	    m_stalled = false;
 	    return result;
 	  }
 
-	if (now - m_no_progress_since < m_stall_timeout)
+	if (now - m_no_progress_since >= m_stall_timeout)
 	  {
-	    return result;
+	    m_no_progress_since = now;
+	    m_stalled = true;
+	    result.request_expansion = true;
 	  }
 
-	result.expansion_count = m_next_expansion_count;
-	m_next_expansion_count = std::min (m_next_expansion_count * 2, MAX_EXPANSION_COUNT);
-	m_no_progress_since = now;
-
+	result.stalled = m_stalled;
 	return result;
       }
 
@@ -203,19 +224,19 @@ namespace cubthread
       {
 	m_no_progress_since = now;
 	m_completed_task_count = completed_task_count;
-	m_next_expansion_count = 1;
 	m_had_queued_task = false;
+	m_stalled = false;
+	m_idle = false;
 	m_initialized = true;
       }
 
     private:
-      static constexpr std::size_t MAX_EXPANSION_COUNT = 8;
-
       clock::duration m_stall_timeout;
       clock::time_point m_no_progress_since;
       std::uint64_t m_completed_task_count;
-      std::size_t m_next_expansion_count;
       bool m_had_queued_task;
+      bool m_stalled;
+      bool m_idle;
       bool m_initialized;
   };
 
@@ -242,15 +263,15 @@ namespace cubthread
       void adjust_runtime_parameter (std::size_t max_concurrency);
       void adjust_workers ();
       void adjust_workers (std::unique_lock<std::mutex> &ulock);
-      std::size_t observe_progress (std::chrono::steady_clock::time_point now, progress_tracker &tracker,
-				    std::uint64_t &completed_task_count);
+      typename progress_tracker::decision observe_progress (std::chrono::steady_clock::time_point now,
+	  progress_tracker &tracker, std::uint64_t &completed_task_count);
       bool expand_for_stall (std::uint64_t completed_task_count);
+      bool shrink_idle_capacity (void);
       std::uint64_t get_completed_task_count () const;
-      bool has_available_regular_worker (void) const;
-      void wait_for_worker_retirements (void);
 
       // execute task
       void execute_task (task_type *task_p, task_submission_options options) override;
+      bool has_queued_task (void) const;
       bool has_queued_task (std::unique_lock<std::mutex> &ulock);
 
       bool stop_execution (void) override;
@@ -394,17 +415,25 @@ namespace cubthread
     // split a small elastic range between both recovery paths and give the odd worker to the continuation reserve.
     std::size_t continuation_reserve = std::min (MAX_BLOCKING_CONTINUATION_WORKER_RESERVE,
 				       elastic_headroom / 2 + elastic_headroom % 2);
-    std::size_t regular_reservation_limit = max_worker - continuation_reserve;
 
-    // regular stall recovery must not create thousands of blocked OS threads while the lock victimizer is waiting
-    // for its next fallback epoch. blocking continuations may still use the remaining absolute hard-cap headroom.
-    std::size_t regular_worker_limit = max_concurrency;
-    std::size_t remaining = regular_reservation_limit - regular_worker_limit;
-    std::size_t proportional_headroom = std::min (max_concurrency, remaining);
-    regular_worker_limit += proportional_headroom;
-    remaining -= proportional_headroom;
-    regular_worker_limit += std::min (REGULAR_WORKER_SAFETY_HEADROOM, remaining);
-    return regular_worker_limit;
+    // Regular work may grow lazily up to the hard cap, except for the headroom reserved for progress-critical
+    // continuations. Growth is governed separately by a pool-wide bounded ramp, so this limit is only a ceiling.
+    return max_worker - continuation_reserve;
+  }
+
+  template <stats_t Stats>
+  std::size_t
+  worker_pool_elastic<Stats>::calculate_next_expansion_count (std::size_t current_expansion_count)
+  {
+    if (current_expansion_count == 0)
+      {
+	return 1;
+      }
+    if (current_expansion_count >= MAX_CAPACITY_ADJUSTMENT_COUNT)
+      {
+	return MAX_CAPACITY_ADJUSTMENT_COUNT;
+      }
+    return std::min (current_expansion_count * 2, MAX_CAPACITY_ADJUSTMENT_COUNT);
   }
 
   template <stats_t Stats>
@@ -437,8 +466,13 @@ namespace cubthread
     , m_next_progress_check (progress_tracker::clock::now () + PROGRESS_CHECK_INTERVAL)
     , m_progress_trackers (core_count)
     , m_expansion_requests (core_count, 0)
+    , m_shrink_requests (core_count, 0)
     , m_observed_completed_task_counts (core_count, 0)
     , m_next_progress_core (0)
+    , m_next_shrink_core (0)
+    , m_next_expansion_count (1)
+    , m_next_expansion_time (progress_tracker::clock::now ())
+    , m_next_shrink_time (progress_tracker::clock::now ())
     , m_initialized (false)
   {
   }
@@ -501,6 +535,13 @@ namespace cubthread
 	m_progress_trackers[it].reset (progress_tracker::clock::now (), core->get_completed_task_count ());
       }
 
+    auto now = progress_tracker::clock::now ();
+    std::fill (m_expansion_requests.begin (), m_expansion_requests.end (), 0);
+    std::fill (m_shrink_requests.begin (), m_shrink_requests.end (), 0);
+    m_next_expansion_count = 1;
+    m_next_expansion_time = now;
+    m_next_shrink_time = now;
+
     // Shrinking cores above released their idle worker reservations. Dispatch only after every core has applied its
     // new target, so a core that grows earlier in index order cannot be starved by a core that shrinks later.
     for (it = 0; it < this->m_cores.size (); ++it)
@@ -525,7 +566,7 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::has_available_execution_capacity (void) const
+  worker_pool_elastic<Stats>::has_queued_tasks (void) const
   {
     if (!this->is_running ())
       {
@@ -534,17 +575,12 @@ namespace cubthread
 
     for (const auto &core : this->m_cores)
       {
-	if (static_cast<const core_elastic *> (core.get ())->has_available_regular_worker ())
+	if (static_cast<const core_elastic *> (core.get ())->has_queued_task ())
 	  {
 	    return true;
 	  }
       }
-
-    // runtime parameter propagation updates these atomics separately. every min keeps a mixed snapshot conservative.
-    std::size_t regular_worker_limit = std::min (m_max_regular_worker.load (std::memory_order_acquire),
-				       m_max_worker.load (std::memory_order_acquire));
-    return m_current_regular_worker.load (std::memory_order_acquire) < regular_worker_limit
-	   && m_current_worker.load (std::memory_order_acquire) < m_max_worker.load (std::memory_order_acquire);
+    return false;
   }
 
   template <stats_t Stats>
@@ -564,51 +600,128 @@ namespace cubthread
       }
     m_next_progress_check = now + PROGRESS_CHECK_INTERVAL;
 
-    std::fill (m_expansion_requests.begin (), m_expansion_requests.end (), 0);
-    std::fill (m_observed_completed_task_counts.begin (), m_observed_completed_task_counts.end (), 0);
-
-    // apply every reset before granting new expansions. this makes worker headroom released by one core immediately
-    // available to another core in the same daemon iteration.
+    bool has_stalled_core = false;
     for (std::size_t index = 0; index < this->m_cores.size (); ++index)
       {
-	m_expansion_requests[index] = static_cast<core_elastic *> (this->m_cores[index].get ())->observe_progress (
-					      now, m_progress_trackers[index], m_observed_completed_task_counts[index]);
+	auto decision = static_cast<core_elastic *> (this->m_cores[index].get ())->observe_progress (
+				now, m_progress_trackers[index], m_observed_completed_task_counts[index]);
+
+	if (decision.request_expansion)
+	  {
+	    m_expansion_requests[index] = 1;
+	  }
+	else if (!decision.stalled)
+	  {
+	    m_expansion_requests[index] = 0;
+	  }
+
+	if (decision.request_shrink)
+	  {
+	    m_shrink_requests[index] = 1;
+	  }
+	else if (!decision.idle)
+	  {
+	    m_shrink_requests[index] = 0;
+	  }
+
+	has_stalled_core = has_stalled_core || decision.stalled;
       }
 
     std::size_t core_count = this->m_cores.size ();
-    std::size_t max_expansion_count = *std::max_element (m_expansion_requests.begin (), m_expansion_requests.end ());
-    if (max_expansion_count > 0)
+    if (core_count == 0)
       {
-	// reset paths request retirement asynchronously. wait only when this epoch actually needs the released global
-	// headroom; this keeps routine progress observation from blocking slot stealing, redistribution, and wakeup.
-	for (const auto &core : this->m_cores)
+	return;
+      }
+
+    // Reclaim only capacity that is observably idle. Each successful step removes one unused target slot and asks an
+    // excess regular worker to retire asynchronously; running expanded work is therefore never cut back underneath it.
+    bool has_shrink_request = std::any_of (m_shrink_requests.begin (), m_shrink_requests.end (),
+					   [] (std::size_t request)
+    {
+      return request != 0;
+    });
+    if (has_shrink_request && now >= m_next_shrink_time)
+      {
+	std::size_t shrink_count = 0;
+	bool made_adjustment = true;
+	while (shrink_count < MAX_CAPACITY_ADJUSTMENT_COUNT && made_adjustment)
 	  {
-	    static_cast<core_elastic *> (core.get ())->wait_for_worker_retirements ();
+	    made_adjustment = false;
+	    for (std::size_t offset = 0; offset < core_count && shrink_count < MAX_CAPACITY_ADJUSTMENT_COUNT; ++offset)
+	      {
+		std::size_t index = (m_next_shrink_core + offset) % core_count;
+		if (m_shrink_requests[index] == 0)
+		  {
+		    continue;
+		  }
+
+		if (static_cast<core_elastic *> (this->m_cores[index].get ())->shrink_idle_capacity ())
+		  {
+		    ++shrink_count;
+		    made_adjustment = true;
+		  }
+		else
+		  {
+		    m_shrink_requests[index] = 0;
+		  }
+	      }
+	  }
+
+	std::fill (m_shrink_requests.begin (), m_shrink_requests.end (), 0);
+	if (shrink_count > 0)
+	  {
+	    m_next_shrink_time = now + CAPACITY_ADJUSTMENT_INTERVAL;
+	    m_next_shrink_core = (m_next_shrink_core + 1) % core_count;
 	  }
       }
 
-    for (std::size_t expansion_index = 0; expansion_index < max_expansion_count; ++expansion_index)
+    if (!has_stalled_core)
       {
-	for (std::size_t offset = 0; offset < core_count; ++offset)
-	  {
-	    std::size_t index = (m_next_progress_core + offset) % core_count;
-	    if (m_expansion_requests[index] <= expansion_index)
-	      {
-		continue;
-	      }
-
-	    if (!static_cast<core_elastic *> (this->m_cores[index].get ())->expand_for_stall (
-			m_observed_completed_task_counts[index]))
-	      {
-		// do not retry the same core in this epoch after its queue, progress snapshot, or capacity changed.
-		m_expansion_requests[index] = expansion_index;
-	      }
-	  }
+	m_next_expansion_count = 1;
+	m_next_expansion_time = now;
       }
 
-    if (max_expansion_count > 0)
+    bool has_expansion_request = std::any_of (m_expansion_requests.begin (), m_expansion_requests.end (),
+				 [] (std::size_t request)
+    {
+      return request != 0;
+    });
+    if (has_expansion_request && now >= m_next_expansion_time)
       {
-	m_next_progress_core = (m_next_progress_core + 1) % core_count;
+	std::size_t expansion_count = 0;
+	bool made_adjustment = true;
+	while (expansion_count < m_next_expansion_count && made_adjustment)
+	  {
+	    made_adjustment = false;
+	    for (std::size_t offset = 0; offset < core_count && expansion_count < m_next_expansion_count; ++offset)
+	      {
+		std::size_t index = (m_next_progress_core + offset) % core_count;
+		if (m_expansion_requests[index] == 0)
+		  {
+		    continue;
+		  }
+
+		if (static_cast<core_elastic *> (this->m_cores[index].get ())->expand_for_stall (
+			    m_observed_completed_task_counts[index]))
+		  {
+		    ++expansion_count;
+		    made_adjustment = true;
+		  }
+		else
+		  {
+		    // Do not retry a core in this epoch after its queue, progress snapshot, or capacity changed.
+		    m_expansion_requests[index] = 0;
+		  }
+	      }
+	  }
+
+	std::fill (m_expansion_requests.begin (), m_expansion_requests.end (), 0);
+	if (expansion_count > 0)
+	  {
+	    m_next_expansion_count = calculate_next_expansion_count (m_next_expansion_count);
+	    m_next_expansion_time = now + CAPACITY_ADJUSTMENT_INTERVAL;
+	    m_next_progress_core = (m_next_progress_core + 1) % core_count;
+	  }
       }
   }
 
@@ -743,7 +856,7 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  std::size_t
+  typename worker_pool_elastic<Stats>::progress_tracker::decision
   worker_pool_elastic<Stats>::core_elastic::observe_progress (std::chrono::steady_clock::time_point now,
       progress_tracker &tracker, std::uint64_t &completed_task_count)
   {
@@ -751,23 +864,11 @@ namespace cubthread
 
     if (!this->m_parent_pool->is_running ())
       {
-	return 0;
+	return typename progress_tracker::decision {};
       }
 
     completed_task_count = m_completed_task_count;
-    auto progress = tracker.observe (now, has_queued_task_unlocked (), m_completed_task_count);
-
-    if (progress.reset_expansion)
-      {
-	if (m_progress_worker_count > 0)
-	  {
-	    m_progress_worker_count = 0;
-	    m_slots.adjust_concurrency (m_max_concurrency, ulock);
-	  }
-	retire_available_excess_workers (ulock);
-      }
-
-    return progress.expansion_count;
+    return tracker.observe (now, has_queued_task_unlocked (), m_completed_task_count);
   }
 
   template <stats_t Stats>
@@ -786,28 +887,30 @@ namespace cubthread
   }
 
   template <stats_t Stats>
+  bool
+  worker_pool_elastic<Stats>::core_elastic::shrink_idle_capacity (void)
+  {
+    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
+
+    if (!this->m_parent_pool->is_running () || has_queued_task_unlocked () || m_progress_worker_count == 0
+	|| m_slots.available_slots () == 0)
+      {
+	return false;
+      }
+
+    --m_progress_worker_count;
+    m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
+    retire_available_excess_workers (ulock);
+    return true;
+  }
+
+  template <stats_t Stats>
   std::uint64_t
   worker_pool_elastic<Stats>::core_elastic::get_completed_task_count () const
   {
     std::unique_lock<std::mutex> ulock (this->m_core_mutex);
 
     return m_completed_task_count;
-  }
-
-  template <stats_t Stats>
-  bool
-  worker_pool_elastic<Stats>::core_elastic::has_available_regular_worker (void) const
-  {
-    std::lock_guard<std::mutex> guard (this->m_core_mutex);
-    return has_available_worker (task_admission::regular);
-  }
-
-  template <stats_t Stats>
-  void
-  worker_pool_elastic<Stats>::core_elastic::wait_for_worker_retirements (void)
-  {
-    std::unique_lock<std::mutex> ulock (this->m_core_mutex);
-    wait_for_worker_retirements (ulock);
   }
 
   template <stats_t Stats>
@@ -843,6 +946,14 @@ namespace cubthread
     // wait for snapshot readers and erase itself, so the retirement count must also participate in shutdown.
     std::lock_guard<std::mutex> guard (this->m_core_mutex);
     return has_running_workers || m_retiring_worker_count > 0;
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_elastic<Stats>::core_elastic::has_queued_task (void) const
+  {
+    std::lock_guard<std::mutex> guard (this->m_core_mutex);
+    return has_queued_task_unlocked ();
   }
 
   template <stats_t Stats>
@@ -1203,7 +1314,9 @@ namespace cubthread
     if (replace_with_regular && this->m_parent_pool->is_running () && m_blocking_continuation_queue.empty ()
 	&& !this->m_task_queue.empty ())
       {
-	(void) try_expand_for_queued_task (ulock);
+	// Reuse already admitted regular capacity immediately. If none exists, leave target growth to the pool-wide
+	// progress controller so simultaneous continuation retirements cannot bypass its bounded ramp.
+	adjust_workers (ulock);
       }
   }
 
@@ -1342,16 +1455,15 @@ namespace cubthread
 	return false;
       }
 
-    // reset may leave busy regular surplus workers alive. preserve those reservations before asking for one more
-    // continuation-only workers are tracked separately and must not inflate the regular target.
-    std::size_t previous_progress_worker_count = m_progress_worker_count;
-    std::size_t active_regular_worker_count = get_active_regular_worker_count ();
-    std::size_t active_surplus_worker_count = 0;
-    if (active_regular_worker_count > m_max_concurrency)
+    if (admission == task_admission::blocking_continuation)
       {
-	active_surplus_worker_count = active_regular_worker_count - m_max_concurrency;
+	// Continuations use a temporary slot and their reserved hard-cap headroom. They must not permanently raise the
+	// regular target, which would later allow unrelated requests to consume that emergency capacity.
+	return try_dispatch_queued_task (ulock);
       }
-    m_progress_worker_count = std::max (m_progress_worker_count, active_surplus_worker_count) + 1;
+
+    std::size_t previous_progress_worker_count = m_progress_worker_count;
+    ++m_progress_worker_count;
     m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 
     if (!try_dispatch_queued_task (ulock))
@@ -1360,7 +1472,6 @@ namespace cubthread
 	m_progress_worker_count = previous_progress_worker_count;
 	m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 	retire_available_excess_workers (ulock);
-	wait_for_worker_retirements (ulock);
 	return false;
       }
 

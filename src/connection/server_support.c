@@ -2496,10 +2496,11 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  // the elastic target may be above max_request_concurrency, and waiting handlers may already have returned their
-  // slots. use the bounded regular-worker limit instead of the absolute hard cap; capacity available only to a
-  // blocking continuation cannot run an ordinary request that would break this suspended state.
-  return checked_threads_count > 0 && !css_Server_request_worker_pool->has_available_execution_capacity ();
+  // the hard worker cap is a resource ceiling, not a deadlock detection threshold. waiting for the elastic pool to
+  // consume all remaining headroom could create thousands of blocked threads before the fallback victimizer runs.
+  // if every running handler is suspended and undispatched work remains, another worker alone has not proven that it
+  // can make progress. let the lock manager's delayed fallback break the stall independently of elastic headroom.
+  return checked_threads_count > 0 && css_Server_request_worker_pool->has_queued_tasks ();
 }
 
 //
