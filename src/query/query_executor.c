@@ -25570,7 +25570,23 @@ qexec_execute_build_columns (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 
 	  /* default values */
 	  alloced_string = 0;
-	  if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+	  if (attrepr->default_value.default_expr.default_expr_text != NULL)
+	    {
+	      /* Expression-Derived Literal: report the DEFAULT as its original
+	       * expression text, consistent with ;schema and SHOW CREATE TABLE. */
+	      size_t deflen = strlen (attrepr->default_value.default_expr.default_expr_text) + 1;
+
+	      default_value_string = (char *) malloc (deflen);
+	      if (default_value_string == NULL)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      memcpy (default_value_string, attrepr->default_value.default_expr.default_expr_text, deflen);
+	      db_make_string (out_values[idx_val], default_value_string);
+	      out_values[idx_val]->need_clear = true;
+	      idx_val++;
+	    }
+	  else if (attrepr->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      const char *default_expr_op_string = NULL;
 
