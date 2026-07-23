@@ -23,6 +23,7 @@
 #ifndef _THREAD_TASK_HPP_
 #define _THREAD_TASK_HPP_
 
+#include <cstdint>
 #include <functional>
 #include <mutex>
 #include <thread>
@@ -31,6 +32,21 @@
 
 namespace cubthread
 {
+  // scheduling admission attached to a task submission. blocking continuation is work required to make progress
+  // for an already admitted task that is synchronously waiting. worker pools may let it exceed normal soft limits,
+  // but it never bypasses a pool's global worker hard limit and therefore cannot guarantee progress once that limit
+  // is exhausted.
+  enum class task_admission : std::uint8_t
+  {
+    regular,
+    blocking_continuation
+  };
+
+  struct task_submission_options
+  {
+    task_admission admission = task_admission::regular;
+  };
+
   // cubthread::task
   //
   //  description:

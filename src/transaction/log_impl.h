@@ -953,7 +953,7 @@ extern bool cdc_Logging;
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
-extern cubthread::worker_pool_type *g_backup_read_worker_pool;
+extern worker_pool_type<> *g_backup_read_worker_pool;
 // *INDENT-ON*
 #endif
 

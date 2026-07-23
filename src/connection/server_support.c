@@ -139,7 +139,8 @@ static HA_LOG_APPLIER_STATE_TABLE ha_Log_applier_state[HA_LOG_APPLIER_STATE_TABL
 static int ha_Log_applier_state_num = 0;
 
 // *INDENT-OFF*
-static cubthread::stats_worker_pool_type *css_Server_request_worker_pool = NULL;
+using css_request_worker_pool_t = worker_pool_type<cubthread::stats_t::on, cubthread::pool_t::elastic>;
+static css_request_worker_pool_t *css_Server_request_worker_pool = NULL;
 
 class css_server_task : public cubthread::entry_task
 {
@@ -189,7 +190,7 @@ private:
   cubthread::entry_task *m_task;
 };
 
-static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 4;
+static const size_t CSS_JOB_QUEUE_SCAN_COLUMN_COUNT = 7;
 
 static void css_set_shutdown_timeout (int timeout);
 static int css_get_master_request (SOCKET master_fd);
@@ -209,12 +210,13 @@ static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
-static void css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int &busy_count);
 
-// cubthread::stats_worker_pool_type::core_impl confuses indent
-static void css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
+// WorkerPoolCore template parameter confuses indent
+template <typename WorkerPoolCore>
+static void css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                                          THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                                          int & error_code);
+
 static void
 css_is_any_thread_not_suspended_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper, size_t & count, bool & found);
 static void
@@ -241,11 +243,6 @@ static void css_start_all_threads (void);
  *
  * NOTE: job queues don't really exist anymore, at least not the way SHOW JOB QUEUES statement was created for.
  *       we now have worker pool "cores" that act as partitions of workers and queued tasks.
- *       for backward compatibility, the statement is not changed; only its columns are reinterpreted
- *       1. job queue index => core index
- *       2. job queue max workers => core max workers
- *       3. job queue busy workers => core busy workers
- *       4. job queue connection workers => 0    // connection workers are separated in a different worker pool
  */
 int
 css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
@@ -263,8 +260,13 @@ css_job_queues_start_scan (THREAD_ENTRY * thread_p, int show_type, DB_VALUE ** a
       return error;
     }
 
-  size_t core_index = 0;	// core index starts with 0
-  css_Server_request_worker_pool->map_cores (css_wp_core_job_scan_mapper, thread_p, ctx, core_index, error);
+  // core index starts with 0
+  size_t core_index = 0;
+
+  //*INDENT-OFF*
+  using request_pool_core_t = css_request_worker_pool_t::core_impl;
+  css_Server_request_worker_pool->map_cores (&css_wp_core_job_scan_mapper<request_pool_core_t>, thread_p, ctx, core_index, error);
+  //*INDENT-ON*
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -547,7 +549,7 @@ css_start_shutdown_server ()
  *       css_initialize_server_interfaces before calling this function.
  */
 // *INDENT-OFF*
-REGISTER_WORKERPOOL (transaction, []() { return (int) prm_get_integer_value (PRM_ID_TASK_WORKER); });
+REGISTER_WORKERPOOL (transaction, CSS_MAX_CLIENT_COUNT);
 // *INDENT-ON*
 
 int
@@ -555,8 +557,9 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
 {
   cubconn::master::connector connector;
   cubconn::connection::pool connections;
-  std::size_t task_group, task_worker;
+  std::size_t max_request_concurrency, max_request_worker;
   std::size_t max_connection_workers, min_connection_workers;
+  std::size_t max_connections;
   std::string name;
   int status = NO_ERROR;
 
@@ -566,21 +569,30 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
   name = std::string (server_name, name_length);
 
-  // initialize worker pool for server requests
-#define MAX_WORKERS css_get_max_workers ()
-#define MAX_TASK_COUNT css_get_max_task_count ()
-#define MAX_CONNECTIONS css_get_max_connections ()
+  max_request_concurrency = prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY);
+  max_request_worker = prm_get_integer_value (PRM_ID_MAX_REQUEST_WORKER);
 
-  task_group = (int) prm_get_integer_value (PRM_ID_TASK_GROUP);
-  task_worker = (int) prm_get_integer_value (PRM_ID_TASK_WORKER);
-  max_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
-  min_connection_workers = (int) prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+  max_connection_workers = prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
+  min_connection_workers = prm_get_integer_value (PRM_ID_CSS_MIN_CONNECTION_WORKER);
+
+  max_connections = css_get_max_connections ();
+
+  // initialize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::initialize ();
 
   // create request worker pool
-  css_Server_request_worker_pool =
-    thread_create_stats_worker_pool (task_worker, task_group, "transaction", thread_get_entry_manager (),
-				     css_get_server_request_thread_pooling_configuration (),
-				     css_get_server_request_thread_timeout_configuration ());
+  //*INDENT-OFF*
+  css_Server_request_worker_pool = thread_create_worker_pool<cubthread::stats_t::on, cubthread::pool_t::elastic> (
+      CSS_MAX_CLIENT_COUNT,
+      cubthread::system_core_count (),
+      max_request_concurrency,
+      max_request_worker,
+      "transaction",
+      thread_get_entry_manager (),
+      css_get_server_request_thread_pooling_configuration (),
+      css_get_server_request_thread_timeout_configuration ()
+      );
+  //*INDENT-ON*
   // m_log = cubthread::is_logging_configured (cubthread::LOG_WORKER_POOL_TRAN_WORKERS)
 
   if (css_Server_request_worker_pool == NULL)
@@ -591,7 +603,7 @@ css_init (THREAD_ENTRY * thread_p, char *server_name, int name_length, int port_
     }
 
   /* initialize epoll worker pool */
-  if (!connections.initialize (MAX_CONNECTIONS, max_connection_workers, min_connection_workers))
+  if (!connections.initialize (max_connections, max_connection_workers, min_connection_workers))
     {
       _er_log_debug (ARG_FILE_LINE, "connection::pool failed to prepare DMRB for connection contexts.\n");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 32 * 1024);
@@ -618,6 +630,9 @@ shutdown:
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
   css_stop_all_workers (*thread_p, THREAD_STOP_WORKERS_EXCEPT_LOGWR);
+
+  // finalize the concurrency slot daemon
+  cubthread::concurrency_slot_daemon::finalize ();
 
   /* stop vacuum threads. */
   vacuum_stop_workers (thread_p);
@@ -2365,7 +2380,7 @@ css_get_current_conn_entry (void)
  * TODO: this is also used externally due to legacy design; should be internalized completely
  */
 void
-css_push_server_task (CSS_CONN_ENTRY &conn_ref)
+css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_options options)
 {
   // push the task
   //
@@ -2377,7 +2392,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref)
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-                                            static_cast<size_t> (conn_ref.idx), conn_ref.in_method);
+					    static_cast<size_t> (conn_ref.idx), options);
 }
 
 void
@@ -2652,6 +2667,35 @@ css_get_thread_stats (UINT64 *stats_out)
   css_Server_request_worker_pool->get_stats (stats_out);
 }
 
+/*
+ * css_get_thread_runtime_stats () - get runtime statistics for server request handlers
+ *
+ * total_slots (out)     : total slots count
+ * target_slots (out)    : target slots count
+ * busy_slots (out)      : busy slots count
+ * total_workers (out)   : total worker count
+ * target_workers (out)  : target worker count
+ * busy_workers (out)    : busy worker count
+ */
+void
+css_get_thread_runtime_stats (UINT64 *total_slots, UINT64 *target_slots, UINT64 *busy_slots,
+			      UINT64 *total_workers, UINT64 *target_workers, UINT64 *busy_workers)
+{
+  if (css_Server_request_worker_pool == NULL)
+    {
+      *total_slots = 0;
+      *target_slots = 0;
+      *busy_slots = 0;
+      *total_workers = 0;
+      *target_workers = 0;
+      *busy_workers = 0;
+      return;
+    }
+
+  css_Server_request_worker_pool->get_runtime_stats (*total_slots, *target_slots, *busy_slots,
+						     *total_workers, *target_workers, *busy_workers);
+}
+
 //
 // css_get_task_stats () - get task statistics for server request handlers
 //
@@ -2664,35 +2708,12 @@ css_get_task_stats (UINT64 *stats_out)
 }
 
 //
-// css_get_num_request_workers () - get number of workers executing server requests
+// css_get_num_request_workers () - get max number of workers executing server requests
 //
 size_t
 css_get_num_request_workers (void)
 {
-  return css_Server_request_worker_pool->get_worker_count ();
-}
-
-//
-// css_wp_worker_get_busy_count_mapper () - function to map through worker pool entries and count busy workers
-//
-// thread_ref (in)      : thread entry (context)
-// stop_mapper (in/out) : normally used to stop mapping early, ignored here
-// busy_count (out)     : increment when busy worker is found
-//
-static void
-css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapper, int & busy_count)
-{
-  (void) stop_mapper;   // suppress unused parameter warning
-
-  if (thread_ref.tran_index != NULL_TRAN_INDEX)
-    {
-      // busy thread
-      busy_count++;
-    }
-  else
-    {
-      // must be waiting for task; not busy
-    }
+  return css_Server_request_worker_pool->get_max_worker ();
 }
 
 //
@@ -2705,12 +2726,18 @@ css_wp_worker_get_busy_count_mapper (THREAD_ENTRY & thread_ref, bool & stop_mapp
 // core_index (in/out)  : current core index; is incremented on each call
 // error_code (out)     : output error_code if any errors occur
 //
+template <typename WorkerPoolCore>
 static void
-css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl & wp_core, bool & stop_mapper,
+css_wp_core_job_scan_mapper (const WorkerPoolCore & wp_core, bool & stop_mapper,
                              THREAD_ENTRY * thread_p, SHOWSTMT_ARRAY_CONTEXT * ctx, size_t & core_index,
                              int & error_code)
 {
-  DB_VALUE *vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
+  size_t val_index;
+  UINT64 total_slots, target_slots, total_workers, target_workers, busy_workers;
+  INT64 busy_slots;
+  DB_VALUE *vals;
+
+  vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
   if (vals == NULL)
     {
       assert (false);
@@ -2719,20 +2746,30 @@ css_wp_core_job_scan_mapper (const cubthread::stats_worker_pool_type::core_impl 
       return;
     }
 
-  // add core index; it used to be job queue index
-  size_t val_index = 0;
+  val_index = 0;
+  total_slots = 0;
+  target_slots = 0;
+  busy_slots = 0;
+  total_workers = 0;
+  target_workers = 0;
+  busy_workers = 0;
+
+  assert (dynamic_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core)));
+  static_cast<css_request_worker_pool_t::core_elastic *> (const_cast<css_request_worker_pool_t::core_impl *> (&wp_core))->get_runtime_stats (total_slots,
+					      target_slots, busy_slots, total_workers, target_workers, busy_workers);
+
+  // core index; it used to be job queue index
   (void) db_make_int (&vals[val_index++], (int) core_index);
 
-  // add max worker count; it used to be max thread workers per job queue
-  (void) db_make_int (&vals[val_index++], (int) wp_core.get_worker_count ());
+  // Num_request_concurrency_total, Num_request_concurrency_target, Num_request_concurrency_busy
+  (void) db_make_int (&vals[val_index++], (int) total_slots);
+  (void) db_make_int (&vals[val_index++], (int) target_slots);
+  (void) db_make_int (&vals[val_index++], (int) busy_slots);
 
-  // number of busy workers; core does not keep it, we need to count them manually
-  int busy_count = 0;
-  wp_core.map_running_contexts (stop_mapper, css_wp_worker_get_busy_count_mapper, busy_count);
-  (void) db_make_int (&vals[val_index++], (int) busy_count);
-
-  // number of connection workers; just for backward compatibility, there are no connections workers here
-  (void) db_make_int (&vals[val_index++], 0);
+  // Num_request_worker_total, Num_request_worker_target, Num_request_worker_busy
+  (void) db_make_int (&vals[val_index++], (int) total_workers);
+  (void) db_make_int (&vals[val_index++], (int) target_workers);
+  (void) db_make_int (&vals[val_index++], (int) busy_workers);
 
   // increment core_index
   ++core_index;
@@ -2779,16 +2816,11 @@ css_are_all_request_handlers_suspended (void)
       return false;
     }
 
-  if (checked_threads_count == css_Server_request_worker_pool->get_worker_count ())
-    {
-      // all threads are suspended
-      return true;
-    }
-  else
-    {
-      // at least one thread is free
-      return false;
-    }
+  // the hard worker cap is a resource ceiling, not a deadlock detection threshold. waiting for the elastic pool to
+  // consume all remaining headroom could create thousands of blocked threads before the fallback victimizer runs.
+  // if every running handler is suspended and undispatched work remains, another worker alone has not proven that it
+  // can make progress. let the lock manager's delayed fallback break the stall independently of elastic headroom.
+  return checked_threads_count > 0 && css_Server_request_worker_pool->has_queued_tasks ();
 }
 
 //
@@ -2872,14 +2904,18 @@ css_count_transaction_worker_threads (THREAD_ENTRY * thread_p, int tran_index, i
   return count;
 }
 
-size_t css_get_max_workers ()
+void
+css_set_max_concurrency_and_workers (std::size_t max_concurrency, std::size_t max_worker)
 {
-  return css_get_max_conn () + 1; // = css_Num_max_conn in connection_sr.c
+  if (css_Server_request_worker_pool)
+    {
+      assert (max_concurrency > 0);
+      assert (max_worker >= max_concurrency);
+
+      css_Server_request_worker_pool->adjust_runtime_parameter (max_concurrency, max_worker);
+    }
 }
-size_t css_get_max_task_count ()
-{
-  return 2 * css_get_max_workers ();	// not that it matters...
-}
+
 size_t css_get_max_connections ()
 {
   return css_get_max_conn () + 1;
