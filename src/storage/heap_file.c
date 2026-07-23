@@ -18650,7 +18650,7 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
       /* get page pointer to next page */
       pg_watcher.pgptr =
 	heap_scan_pb_latch_and_fetch (thread_p, next_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
-				     &pg_watcher);
+				      &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -18749,7 +18749,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     {
       pg_watcher.pgptr =
 	heap_scan_pb_latch_and_fetch (thread_p, prev_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
-				     &pg_watcher);
+				      &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
