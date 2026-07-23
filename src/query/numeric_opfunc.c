@@ -1354,13 +1354,14 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
 {
   int i;
   int result_prec, result_scale, result_digits, exponent10;
-  int word_count = NUMERIC_AS_WORDS + 1;
+  enum
+  { WORD_COUNT = NUMERIC_AS_WORDS + 1 };
   int word_bytes = NUMERIC_AS_WORD_BYTES + 8;
   uint128_t temp;
 
   /* use 4-word buffer to safely handle scaling (up to ~77 digits) */
-  uint64_t dividend_word[word_count] = { 0, 0, 0, dividend_val };
-  uint64_t quotient_word[word_count] = { 0 };
+  uint64_t dividend_word[WORD_COUNT] = { 0, 0, 0, dividend_val };
+  uint64_t quotient_word[WORD_COUNT] = { 0 };
   uint64_t remainder_word = 0;
 
   /* 1) compare mantissa */
@@ -1397,16 +1398,16 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
   /* 3) scale the dividend (normalization). exponent10 > 0 shifts up, < 0 truncates */
   if (exponent10 > 0)
     {
-      float_numeric_mul_normalize (dividend_word, word_count, word_bytes, exponent10);
+      float_numeric_mul_normalize (dividend_word, WORD_COUNT, word_bytes, exponent10);
     }
   else if (exponent10 < 0)
     {
       /* reduces digits for normalization; does not perform rounding */
-      (void) float_numeric_div_normalize (dividend_word, word_count, word_bytes, -exponent10);
+      (void) float_numeric_div_normalize (dividend_word, WORD_COUNT, word_bytes, -exponent10);
     }
 
   /* 4) division */
-  for (i = 0; i < word_count; i++)
+  for (i = 0; i < WORD_COUNT; i++)
     {
       temp = ((uint128_t) remainder_word << 64) | dividend_word[i];
       quotient_word[i] = (uint64_t) (temp / divisor_val);
@@ -1416,12 +1417,12 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
   /* 5) round up if necessary */
   if (((uint128_t) remainder_word * 2) >= divisor_val)
     {
-      float_numeric_increment (quotient_word, word_count, 1);
+      float_numeric_increment (quotient_word, WORD_COUNT, 1);
     }
 
   /* 6) round and pack to DB_NUMERIC_BUF_SIZE bytes */
-  result_prec = float_numeric_get_decimal_digit (quotient_word, word_count);
-  if (*result_sign && result_prec == 1 && quotient_word[word_count - 1] == 0)
+  result_prec = float_numeric_get_decimal_digit (quotient_word, WORD_COUNT);
+  if (*result_sign && result_prec == 1 && quotient_word[WORD_COUNT - 1] == 0)
     {
       /* Prevent -0; zero is always treated as positive. */
       *result_sign = false;
@@ -1430,7 +1431,7 @@ float_numeric_div_fast (uint64_t dividend_val, uint64_t divisor_val,
    * Ignoring the return value here is intentional: any scale boundary overflow
    * from round-carry is surfaced by the caller's float_numeric_check_overflow_and_adjust_scale().
    */
-  (void) float_numeric_round_and_pack (quotient_word, word_count, word_bytes, result_buf, &result_prec, &result_scale);
+  (void) float_numeric_round_and_pack (quotient_word, WORD_COUNT, word_bytes, result_buf, &result_prec, &result_scale);
   *result_prec_out = result_prec;
   *result_scale_out = result_scale;
 }
@@ -1944,8 +1945,10 @@ float_numeric_compare (uint8_t * arg1, uint8_t * arg2, int prec1, int scale1, in
   calc_words = NUMERIC_GET_WORD_COUNT (needed_bytes);
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
-  uint64_t arg1_buf[calc_words] = { 0 };
-  uint64_t arg2_buf[calc_words] = { 0 };
+  uint64_t arg1_buf[calc_words];
+  uint64_t arg2_buf[calc_words];
+  memset (arg1_buf, 0, sizeof (arg1_buf));
+  memset (arg2_buf, 0, sizeof (arg2_buf));
 
   numeric_bytes_to_words (arg1, DB_NUMERIC_BUF_SIZE, arg1_buf, calc_words, calc_nbytes);
   numeric_bytes_to_words (arg2, DB_NUMERIC_BUF_SIZE, arg2_buf, calc_words, calc_nbytes);
@@ -2521,9 +2524,12 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
   /* 3) initialize new calculation buffers and pad absolute values */
-  uint64_t dbv1_word[calc_words] = { 0 };
-  uint64_t dbv2_word[calc_words] = { 0 };
-  uint64_t result_word[calc_words] = { 0 };
+  uint64_t dbv1_word[calc_words];
+  uint64_t dbv2_word[calc_words];
+  uint64_t result_word[calc_words];
+  memset (dbv1_word, 0, sizeof (dbv1_word));
+  memset (dbv2_word, 0, sizeof (dbv2_word));
+  memset (result_word, 0, sizeof (result_word));
 
   numeric_bytes_to_words (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE, dbv1_word, calc_words, calc_nbytes);
   numeric_bytes_to_words (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE, dbv2_word, calc_words, calc_nbytes);
@@ -2794,9 +2800,12 @@ float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
   /* 3) initialize new calculation buffers and pad absolute values */
-  uint64_t dbv1_word[calc_words] = { 0 };
-  uint64_t dbv2_word[calc_words] = { 0 };
-  uint64_t result_word[calc_words] = { 0 };
+  uint64_t dbv1_word[calc_words];
+  uint64_t dbv2_word[calc_words];
+  uint64_t result_word[calc_words];
+  memset (dbv1_word, 0, sizeof (dbv1_word));
+  memset (dbv2_word, 0, sizeof (dbv2_word));
+  memset (result_word, 0, sizeof (result_word));
 
   numeric_bytes_to_words (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE, dbv1_word, calc_words, calc_nbytes);
   numeric_bytes_to_words (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE, dbv2_word, calc_words, calc_nbytes);
@@ -3027,9 +3036,12 @@ float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
   /* 3) initialize new calculation buffers and pad absolute values */
-  uint64_t dbv1_word[calc_words] = { 0 };
-  uint64_t dbv2_word[calc_words] = { 0 };
-  uint64_t result_word[calc_words] = { 0 };
+  uint64_t dbv1_word[calc_words];
+  uint64_t dbv2_word[calc_words];
+  uint64_t result_word[calc_words];
+  memset (dbv1_word, 0, sizeof (dbv1_word));
+  memset (dbv2_word, 0, sizeof (dbv2_word));
+  memset (result_word, 0, sizeof (result_word));
 
   numeric_bytes_to_words (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE, dbv1_word, calc_words, calc_nbytes);
   numeric_bytes_to_words (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE, dbv2_word, calc_words, calc_nbytes);
@@ -3388,10 +3400,14 @@ float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   calc_words = NUMERIC_GET_WORD_COUNT (needed_bytes);
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
-  uint64_t dividend_work[calc_words] = { 0 };
-  uint64_t divisor_work[calc_words] = { 0 };
-  uint64_t quotient_work[calc_words] = { 0 };
-  uint64_t remainder_work[calc_words] = { 0 };
+  uint64_t dividend_work[calc_words];
+  uint64_t divisor_work[calc_words];
+  uint64_t quotient_work[calc_words];
+  uint64_t remainder_work[calc_words];
+  memset (dividend_work, 0, sizeof (dividend_work));
+  memset (divisor_work, 0, sizeof (divisor_work));
+  memset (quotient_work, 0, sizeof (quotient_work));
+  memset (remainder_work, 0, sizeof (remainder_work));
 
   numeric_bytes_to_words (db_locate_numeric (dbv1), DB_NUMERIC_BUF_SIZE, dividend_work, calc_words, calc_nbytes);
   numeric_bytes_to_words (db_locate_numeric (dbv2), DB_NUMERIC_BUF_SIZE, divisor_work, calc_words, calc_nbytes);
@@ -4139,10 +4155,14 @@ float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB
   calc_words = NUMERIC_GET_WORD_COUNT (needed_bytes);
   calc_nbytes = NUMERIC_GET_BYTE_COUNT (calc_words);
 
-  uint64_t dividend_work[calc_words] = { 0 };
-  uint64_t divisor_work[calc_words] = { 0 };
-  uint64_t quotient_work[calc_words] = { 0 };
-  uint64_t remainder_work[calc_words] = { 0 };
+  uint64_t dividend_work[calc_words];
+  uint64_t divisor_work[calc_words];
+  uint64_t quotient_work[calc_words];
+  uint64_t remainder_work[calc_words];
+  memset (dividend_work, 0, sizeof (dividend_work));
+  memset (divisor_work, 0, sizeof (divisor_work));
+  memset (quotient_work, 0, sizeof (quotient_work));
+  memset (remainder_work, 0, sizeof (remainder_work));
 
   numeric_bytes_to_words (db_locate_numeric (value1), DB_NUMERIC_BUF_SIZE, dividend_work, calc_words, calc_nbytes);
   numeric_bytes_to_words (db_locate_numeric (value2), DB_NUMERIC_BUF_SIZE, divisor_work, calc_words, calc_nbytes);

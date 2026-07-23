@@ -240,6 +240,7 @@ extern char **db_get_lock_classes (DB_SESSION * session);
 extern void db_drop_all_statements (DB_SESSION * session);
 #if !defined (SERVER_MODE)
 extern PARSER_CONTEXT *db_get_parser (DB_SESSION * session);
+extern int db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits);
 #endif /* !defined (SERVER_MODE) */
 extern DB_NODE *db_get_statement (DB_SESSION * session, int id);
 extern DB_SESSION *db_make_session_for_one_statement_execution (FILE * file);

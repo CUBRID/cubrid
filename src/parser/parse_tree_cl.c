@@ -2939,7 +2939,24 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
   for (n = p; n; n = n->next)
     {				/* print in the original order ... */
+      /* A term shipped into the DBLink conn_sql runs on the remote side only; the plan-dump
+       * printers request it hidden so the dump matches the actual local predicate.  The " and "
+       * separator is emitted before every term but the first printed one, so a skipped term
+       * leaves no dangling separator; if every term is skipped, NULL is returned and the
+       * caller omits the "where" keyword as for an empty list. */
+      if ((parser->custom_print & PT_PRINT_SUPPRESS_DBLINK_PUSHED) && n->node_type == PT_EXPR
+	  && PT_EXPR_INFO_IS_FLAGED (n, PT_EXPR_INFO_DBLINK_PUSHED))
+	{
+	  continue;
+	}
+
       r1 = pt_print_bytes (parser, n);
+
+      if (q != NULL)
+	{
+	  q = pt_append_nulstring (parser, q, " and ");
+	}
+
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
@@ -2950,11 +2967,6 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
       else
 	{
 	  q = pt_append_varchar (parser, q, r1);
-	}
-
-      if (n->next)
-	{
-	  q = pt_append_nulstring (parser, q, " and ");
 	}
     }
 
@@ -4028,6 +4040,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "list_dbs ";
     case PT_SYS_GUID:
       return "sys_guid ";
+    case PT_UUID:
+      return "uuid ";
     case PT_OID_OF_DUPLICATE_KEY:
       return "oid_of_duplicate_key ";
     case PT_BIT_TO_BLOB:
@@ -4110,6 +4124,8 @@ pt_show_binopcode (PT_OP_TYPE n)
       return "conv_tz";
     case PT_COLLECTION_TO_STRING:
       return "collection_to_string";
+    case PT_UUID_FORMAT:
+      return "uuid_format";
     default:
       assert (false);
       return "unknown opcode";
@@ -7840,13 +7856,20 @@ pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p)
   if (p->info.sp.type == PT_SP_FUNCTION)
     {
       q = pt_append_nulstring (parser, q, parser->flag.is_unloading_plcsql_def ? " RETURN " : " return ");
-      if (p->info.sp.ret_data_type)
+      if ((p->info.sp.body->info.sp_body.lang == SP_LANG_PLCSQL) && (p->info.sp.ret_type == PT_TYPE_RESULTSET))
 	{
-	  q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
+	  q = pt_append_nulstring (parser, q, "sys_refcursor");
 	}
       else
 	{
-	  q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+	  if (p->info.sp.ret_data_type)
+	    {
+	      q = pt_append_varchar (parser, q, pt_print_bytes (parser, p->info.sp.ret_data_type));
+	    }
+	  else
+	    {
+	      q = pt_append_nulstring (parser, q, pt_show_type_enum (p->info.sp.ret_type));
+	    }
 	}
     }
 
@@ -10560,6 +10583,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
       q = pt_append_nulstring (parser, q, ")");
       break;
+    case PT_UUID_FORMAT:
+      q = pt_append_nulstring (parser, q, " uuid_format(");
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") ");
+      break;
     case PT_AES_ENCRYPT:
       q = pt_append_nulstring (parser, q, " aes_encrypt(");
       r1 = pt_print_bytes (parser, p->info.expr.arg1);
@@ -12130,6 +12159,13 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
 
     case PT_SYS_GUID:
       q = pt_append_nulstring (parser, q, " sys_guid() ");
+      break;
+
+    case PT_UUID:
+      q = pt_append_nulstring (parser, q, " uuid(");
+      r1 = pt_print_bytes_l (parser, p->info.expr.arg1);
+      q = pt_append_varchar (parser, q, r1);
+      q = pt_append_nulstring (parser, q, ") ");
       break;
 
     case PT_PATH_EXPR_SET:
@@ -14894,11 +14930,6 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_nulstring (parser, q, ") ");
 	    }
 
-	  if (p->info.query.q.select.hint & PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED)
-	    {
-	      q = pt_append_nulstring (parser, q, "NLJ_KEEP_HEAP_PAGE_PINNED ");
-	    }
-
 	  if (p->info.query.q.select.hint & PT_HINT_NO_ELIMINATE_JOIN)
 	    {
 	      q = pt_append_nulstring (parser, q, "NO_ELIMINATE_JOIN ");
@@ -14931,11 +14962,6 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  if (p->info.query.q.select.hint & PT_HINT_SELECT_RECORD_INFO)
 	    {
 	      q = pt_append_nulstring (parser, q, "SELECT_RECORD_INFO ");
-	    }
-
-	  if (p->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
-	    {
-	      q = pt_append_nulstring (parser, q, "SAMPLING_SCAN ");
 	    }
 
 	  if (p->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
@@ -18751,6 +18777,7 @@ pt_expr_is_allowed_as_function_index (const PT_NODE * expr)
     case PT_TO_DATETIME_TZ:
     case PT_TO_TIMESTAMP_TZ:
     case PT_CRC32:
+    case PT_UUID_FORMAT:
       return true;
     case PT_TZ_OFFSET:
     default:
@@ -19586,8 +19613,15 @@ pt_print_dblink_table (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  /* For Query-cache:
-	   * Separate comments have been added 
+	   * Separate comments have been added
 	   * for cases where there is no change in the query but information on the server has changed. */
+	}
+    }
+  else
+    {
+      if (!pt->url || !pt->user || !pt->pwd)
+	{
+	  print_detail = false;
 	}
     }
 

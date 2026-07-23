@@ -88,8 +88,9 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_client);
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
+static int css_get_client_type_from_data_request (const char *server_name, int data_length);
 static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
-					    CSS_SERVER_REQUEST request);
+					    CSS_SERVER_REQUEST request, int client_type);
 static void css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERVER_REQUEST request);
 static void css_process_new_connection (SOCKET fd);
 static int css_enroll_read_sockets (SOCKET_QUEUE_ENTRY * anchor_p, fd_set * fd_var);
@@ -413,17 +414,12 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 	      if (entry != NULL)
 		{
 		  server_name += length;
-		  entry->version_string = (char *) malloc (strlen (server_name) + 1);
+		  entry->version_string = strdup (server_name);
 		  if (entry->version_string != NULL)
 		    {
-		      strcpy (entry->version_string, server_name);
 		      server_name += strlen (entry->version_string) + 1;
 
-		      entry->env_var = (char *) malloc (strlen (server_name) + 1);
-		      if (entry->env_var != NULL)
-			{
-			  strcpy (entry->env_var, server_name);
-			}
+		      entry->env_var = strdup (server_name);
 
 		      server_name += strlen (server_name) + 1;
 
@@ -491,10 +487,7 @@ css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_
 	  if (length < server_name_length)
 	    {
 	      server_name += length;
-	      if ((entry->version_string = (char *) malloc (strlen (server_name) + 1)) != NULL)
-		{
-		  strcpy (entry->version_string, server_name);
-		}
+	      entry->version_string = strdup (server_name);
 	    }
 	}
     }
@@ -635,16 +628,11 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 			  char *recv_data;
 
 			  recv_data = server_name + length;
-			  entry->version_string = (char *) malloc (strlen (recv_data) + 1);
+			  entry->version_string = strdup (recv_data);
 			  if (entry->version_string != NULL)
 			    {
-			      strcpy (entry->version_string, recv_data);
 			      recv_data += strlen (entry->version_string) + 1;
-			      entry->env_var = (char *) malloc (strlen (recv_data) + 1);
-			      if (entry->env_var != NULL)
-				{
-				  strcpy (entry->env_var, recv_data);
-				}
+			      entry->env_var = strdup (recv_data);
 			      recv_data += strlen (recv_data) + 1;
 			      entry->pid = atoi (recv_data);
 			    }
@@ -681,6 +669,53 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  */
 
 /*
+ * css_get_client_type_from_data_request() - unpack client type appended after server name
+ *   return: client type if present and valid, DB_CLIENT_TYPE_UNKNOWN otherwise
+ *   payload(in):
+ *   payload_length(in):
+ */
+static int
+css_get_client_type_from_data_request (const char *payload, int payload_length)
+{
+  int server_name_length = 0;
+  int client_type;
+  const char *ptr;
+
+  if (payload == NULL || payload_length <= 0)
+    {
+      return DB_CLIENT_TYPE_UNKNOWN;
+    }
+
+  while (server_name_length < payload_length && payload[server_name_length] != '\0')
+    {
+      server_name_length++;
+    }
+
+  if (server_name_length >= payload_length)
+    {
+      return DB_CLIENT_TYPE_UNKNOWN;
+    }
+  server_name_length++;
+
+  if (payload_length < server_name_length + CSS_CLIENT_TYPE_INFO_SIZE)
+    {
+      return DB_CLIENT_TYPE_UNKNOWN;
+    }
+
+  ptr = payload + server_name_length;
+  memcpy (&client_type, ptr, sizeof (client_type));
+
+  client_type = ntohl (client_type);
+
+  if (client_type < DB_CLIENT_TYPE_DEFAULT || client_type >= DB_CLIENT_TYPE_MAX)
+    {
+      return DB_CLIENT_TYPE_UNKNOWN;
+    }
+
+  return client_type;
+}
+
+/*
  * css_send_new_request_to_server() - Attempts to transfer a clients request
  *                                    to the server
  *   return: true if success
@@ -689,9 +724,10 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
  *   rid(in)
  */
 static bool
-css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request)
+css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid, CSS_SERVER_REQUEST request,
+				int client_type)
 {
-  return (css_transfer_fd (server_fd, client_fd, rid, request));
+  return (css_transfer_fd (server_fd, client_fd, rid, request, client_type));
 }
 
 /*
@@ -716,11 +752,12 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 {
   SOCKET_QUEUE_ENTRY *temp;
   char *server_name = NULL;
-  int name_length, buffer;
+  int name_length, buffer, client_type;
 
   name_length = 1024;
   if (__gv_cvar.css_receive_data (conn, rid, &server_name, &name_length, -1) == NO_ERRORS && server_name != NULL)
     {
+      client_type = css_get_client_type_from_data_request (server_name, name_length);
       temp = css_return_entry_of_server (server_name, css_Master_socket_anchor);
       if (temp != NULL
 #if !defined(WINDOWS)
@@ -749,7 +786,7 @@ css_send_to_existing_server (CSS_CONN_ENTRY * conn, unsigned short rid, CSS_SERV
 		      return;
 		    }
 #endif
-		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request))
+		  if (css_send_new_request_to_server (temp->fd, conn->fd, rid, request, client_type))
 		    {
 		      free_and_init (server_name);
 		      __gv_cvar.css_free_conn (conn);
@@ -1450,10 +1487,9 @@ css_add_request_to_socket_queue (CSS_CONN_ENTRY * conn_p, int info_p, char *name
 
   if (name_p)
     {
-      p->name = (char *) malloc (strlen (name_p) + 1);
+      p->name = strdup (name_p);
       if (p->name)
 	{
-	  strcpy (p->name, name_p);
 #if !defined(WINDOWS)
 	  if (IS_MASTER_CONN_NAME_HA_SERVER (p->name) || IS_MASTER_CONN_NAME_HA_COPYLOG (p->name)
 	      || IS_MASTER_CONN_NAME_HA_APPLYLOG (p->name))

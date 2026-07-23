@@ -144,8 +144,6 @@ PT_RESERVED_NAME pt_Reserved_name_table[] = {
   {"p_offset_to_free_area", RESERVED_P_OFFSET_TO_FREE_AREA, DB_TYPE_INTEGER}
   ,
   {"p_is_saving", RESERVED_P_IS_SAVING, DB_TYPE_INTEGER}
-  ,
-  {"p_update_best", RESERVED_P_UPDATE_BEST, DB_TYPE_INTEGER}
 
   /* key info attributes */
   ,
@@ -1216,6 +1214,8 @@ parser_create_parser (void)
   srand48_r (t.tv_usec, &rand_buf);
   lrand48_r (&rand_buf, &parser->lrand);
   drand48_r (&rand_buf, &parser->drand);
+  parser->uuidv7_last_ms = 0;
+  parser->uuidv7_seq = 0;
   db_make_null (&parser->sys_datetime);
   db_make_null (&parser->sys_epochtime);
 

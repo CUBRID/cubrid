@@ -526,6 +526,20 @@ sc_current_schema_owner (void)
   return Current_Schema.owner;
 }
 
+/*
+ * sc_clear_current_schema()
+ *   return: void
+ *
+ * Note :
+ *   Clears the owner and name of the current schema.
+ */
+void
+sc_clear_current_schema (void)
+{
+  Current_Schema.owner = NULL;
+  Current_Schema.name[0] = '\0';
+}
+
 
 /*
  * sm_add_static_method() - Adds an element to the static link table.
@@ -2093,6 +2107,9 @@ sm_final ()
 {
   SM_DESCRIPTOR *d, *next;
 
+  /* Clear the current schema before ws_final () frees the owner MOP. */
+  sc_clear_current_schema ();
+
 #if defined(WINDOWS)
   /* unload any DLL's we may have opened for methods */
   sm_method_final ();
@@ -2297,13 +2314,13 @@ char *
 sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
 {
   const char *dot = NULL;
-  char user_specified_name[DB_MAX_SERIAL_NAME_LENGTH];
+  char user_specified_name[DB_MAX_IDENTIFIER_LENGTH];
   int user_specified_name_len;
   const char *current_schema_name = NULL;
   int error = NO_ERROR;
 
   assert (buf != NULL);
-  assert (buf_size >= DB_MAX_SERIAL_NAME_LENGTH);
+  assert (buf_size >= DB_MAX_IDENTIFIER_LENGTH);
 
   if (name == NULL || name[0] == '\0')
     {
@@ -2323,7 +2340,7 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       assert (strchr (dot + 1, '.') == NULL);
 
       assert (STATIC_CAST (int, dot - name) < SM_MAX_USER_LENGTH);
-      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH);
+      assert (strlen (dot + 1) < DB_MAX_SERIAL_NAME_LENGTH);
 
       /*
        * e.g.   name: user_name.object_name
@@ -2332,11 +2349,11 @@ sm_user_specified_name_for_serial (const char *name, char *buf, int buf_size)
       return sm_downcase_name (name, buf, buf_size);
     }
 
-  /* If the length of the object name was not previously checked, it may exceed 482 bytes.
+  /* If the length of the object name was not previously checked, it may exceed 222 bytes.
    * In this case, return only the object name without raising an error. And expect that the object is not found */
-  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH - SM_MAX_USER_LENGTH)
+  if (strlen (name) >= DB_MAX_SERIAL_NAME_LENGTH)
     {
-      assert (strlen (name) < DB_MAX_SERIAL_NAME_LENGTH);
+      assert (strlen (name) < SM_MAX_IDENTIFIER_LENGTH);
 
       /*
        * e.g.   name: object_name (exceeds)
@@ -2984,7 +3001,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
     }
 
   /* rename related auto_increment serial obj name */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   is_au_disabled = true;
 
   for (att = class_->attributes; att; att = (SM_ATTRIBUTE *) att->header.next)
@@ -3021,7 +3038,7 @@ sm_rename_class (MOP class_mop, const char *new_name)
 	  db_value_clear (&value);
 	}
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   is_au_disabled = false;
 
   if (is_partition == DB_PARTITIONED_CLASS)
@@ -3053,7 +3070,7 @@ end:
 
   if (is_au_disabled)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -3403,12 +3420,12 @@ sm_is_partitioned_class (MOP op)
     }
   if (result)
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       if (au_fetch_class_force (op, &class_, AU_FETCH_READ) == NO_ERROR)
 	{
 	  result = (class_->partition != NULL);
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return result;
@@ -3439,17 +3456,17 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 
   *partition_type = DB_NOT_PARTITIONED_CLASS;
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   error = au_fetch_class (classop, &smclass, AU_FETCH_READ, AU_SELECT);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return error;
     }
   if (!smclass->partition)
     {
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return NO_ERROR;
     }
 
@@ -3464,7 +3481,7 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	{
 	  *partition_type = DB_PARTITIONED_CLASS;
 	}
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       return NO_ERROR;
     }
 
@@ -3550,12 +3567,12 @@ sm_partitioned_class_type (DB_OBJECT * classop, int *partition_type, char *keyat
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return NO_ERROR;
 
 partition_failed:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   if (subobjs)
     {
       free_and_init (subobjs);
@@ -4172,8 +4189,11 @@ sm_get_class_with_statistics (MOP classop)
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
+	      /* histogram is optional; a transient fetch failure (e.g. concurrent ANALYZE
+	       * rewriting _db_histogram) must not fail the query -- proceed without it */
 	      stats_free_histogram_and_init (class_->histogram);
-	      return NULL;
+	      class_->histogram = NULL;
+	      er_clear ();
 	    }
 	}
     }
@@ -4186,9 +4206,10 @@ sm_get_class_with_statistics (MOP classop)
 	  int err = stats_get_histogram (classop, &class_->histogram);
 	  if (err != NO_ERROR)
 	    {
+	      /* optional; see above -- do not fail the query on a transient fetch error */
 	      stats_free_histogram_and_init (class_->histogram);
 	      class_->histogram = NULL;
-	      return NULL;
+	      er_clear ();
 	    }
 	}
     }
@@ -4258,7 +4279,7 @@ sm_get_statistics_force (MOP classop)
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, bool with_fullscan)
+sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
@@ -4285,7 +4306,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, with_fullscan);
+      error = stats_update_statistics (classop, with_fullscan, provided_ndv);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
@@ -5052,7 +5073,7 @@ sm_get_class_name_internal (MOP op, bool return_null)
 
   if (op != NULL)
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       if (au_fetch_class (op, &class_, AU_FETCH_READ, AU_SELECT) == NO_ERROR)
 	{
 	  if (class_)
@@ -5060,7 +5081,7 @@ sm_get_class_name_internal (MOP op, bool return_null)
 	      name = class_->header.name;
 	    }
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return (name ? name : (return_null ? NULL : ""));
@@ -5589,9 +5610,9 @@ sm_find_synonym (const char *name)
   sm_user_specified_name (name, realname, SM_MAX_IDENTIFIER_LENGTH);
   db_make_string (&value, realname);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   synonym_obj = db_find_unique (synonym_class_obj, "unique_name", &value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (synonym_obj == NULL)
     {
@@ -5632,9 +5653,9 @@ sm_get_synonym_target_name (MOP synonym, char *buf, int buf_size)
   assert (buf != NULL);
   assert (buf_size > 0);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   db_get (synonym, "target_unique_name", &value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   target_name = db_get_string (&value);
   len = db_get_string_size (&value);
@@ -6154,9 +6175,9 @@ sm_class_has_unique_constraint (MOBJ classobj, MOP classop, bool check_subclasse
     }
   else
     {
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       error = au_fetch_class_by_classmop (classop, &class_, AU_FETCH_READ, AU_SELECT);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
 
       if (error != NO_ERROR)
 	{
@@ -11050,12 +11071,12 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   MOP owner_clsop = NULL;
   int save, error;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11065,7 +11086,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
       pk = classobj_find_cons_primary_key (ref_class_->constraints);
       if (pk == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
@@ -11079,7 +11100,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   template_ = dbt_edit_class (owner_clsop);
   if (template_ == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
@@ -11089,7 +11110,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11097,7 +11118,7 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11105,13 +11126,13 @@ update_foreign_key_ref (MOP ref_clsop, SM_FOREIGN_KEY_INFO * fk_info)
   if (ref_clsop == NULL)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 }
 
@@ -11133,12 +11154,12 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   MOP owner_clsop = NULL;
   int save, error;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
   if (error != NO_ERROR)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11148,7 +11169,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
       pk = classobj_find_cons_primary_key (ref_class_->constraints);
       if (pk == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	  return ER_FK_REF_CLASS_HAS_NOT_PK;
 	}
@@ -11162,7 +11183,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   template_ = dbt_edit_class (owner_clsop);
   if (template_ == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
@@ -11170,7 +11191,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11178,7 +11199,7 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (error != NO_ERROR)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return error;
     }
 
@@ -11186,11 +11207,11 @@ sm_rename_foreign_key_ref (MOP ref_clsop, const BTID * btid, const char *old_nam
   if (ref_clsop == NULL)
     {
       dbt_abort_class (template_);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return (er_errid () != NO_ERROR) ? er_errid () : ER_FAILED;
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 }
 #endif
@@ -11333,7 +11354,7 @@ find_index_catalog (const char *index_name)
   MOP db_index_inst = NULL;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_index_class = db_find_class (CT_INDEX_NAME);
   if (db_index_class == NULL)
@@ -11346,7 +11367,7 @@ find_index_catalog (const char *index_name)
   db_index_inst = db_find_unique (db_index_class, "index_name", &value);
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return db_index_inst;
 }
@@ -11696,15 +11717,13 @@ drop_foreign_key_ref (MOP classop, SM_CLASS * class_, SM_CLASS_CONSTRAINT * flat
   assert (class_ != NULL && class_->constraints != NULL && *cons != NULL);
 
   name_length = strlen ((*cons)->name) + 1;
-  saved_name = (char *) malloc (name_length);
+  saved_name = strdup ((*cons)->name);
   if (saved_name == NULL)
     {
       error = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) name_length);
       goto end;
     }
-
-  strcpy (saved_name, (*cons)->name);
 
   /* Since the constraints may be reallocated during the following process, we have to mark a special status flag to be
    * used for identifying whether the instance will have been reallocated. */
@@ -11766,7 +11785,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
   SM_CLASS_CONSTRAINT *con;
   SM_FOREIGN_KEY_INFO *fk;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   ref_clsop = ws_mop (&cons->fk_info->ref_class_oid, NULL);
 
@@ -11797,7 +11816,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
       err = au_fetch_class_force (ref_clsop, &ref_class_, AU_FETCH_READ);
       if (err != NO_ERROR)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return err;
 	}
       if (ref_class_->inheritance != NULL)
@@ -11806,7 +11825,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
 	  pk = classobj_find_cons_primary_key (ref_class_->constraints);
 	  if (pk == NULL)
 	    {
-	      AU_ENABLE (save);
+	      AU_RESTORE (save);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_REF_CLASS_HAS_NOT_PK, 1, sm_ch_name ((MOBJ) ref_class_));
 	      return ER_FK_REF_CLASS_HAS_NOT_PK;
 	    }
@@ -11820,7 +11839,7 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
       refcls_template = dbt_edit_class (owner_clsop);
       if (refcls_template == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
@@ -11847,12 +11866,12 @@ drop_foreign_key_ref_internal (MOP classop, SM_CLASS_CONSTRAINT * flat_cons, SM_
 	}
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 error:
   dbt_abort_class (refcls_template);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err;
 }
@@ -13372,9 +13391,9 @@ update_class (SM_TEMPLATE * template_, MOP * classmop, int auto_res, DB_AUTH aut
 	    {
 	      SM_CLASS *super_class = NULL;
 	      int au_save;
-	      AU_DISABLE (au_save);
+	      AU_SAVE_AND_DISABLE (au_save);
 	      error = au_fetch_class (template_->inheritance->op, &super_class, AU_FETCH_READ, AU_SELECT);
-	      AU_ENABLE (au_save);
+	      AU_RESTORE (au_save);
 
 	      if (error != NO_ERROR)
 		{
@@ -13777,21 +13796,21 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	}
     }
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   for (att = class_->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
 
       /* class_of, key_attr */
       if (class_->attributes == NULL)
 	{
-	  AU_ENABLE (au_save);
+	  AU_RESTORE (au_save);
 	  goto end;
 	}
 
       error = db_get_histogram (op, att->header.name, &histogram_obj);
       if (error != NO_ERROR)
 	{
-	  AU_ENABLE (au_save);
+	  AU_RESTORE (au_save);
 	  goto end;
 	}
 
@@ -13801,16 +13820,16 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	  histogram_obj = NULL;
 	  if (error != NO_ERROR)
 	    {
-	      AU_ENABLE (au_save);
+	      AU_RESTORE (au_save);
 	      goto end;
 	    }
 
 	}
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   /* remove auto_increment serial object if exist */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   is_au_disabled = true;
 
   for (att = class_->ordered_attributes; att; att = att->order_link)
@@ -13833,9 +13852,9 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 		  oidp = ws_identifier (att->auto_increment);
 		  COPY_OID (&serial_obj_id, oidp);
 
-		  AU_DISABLE (save);
+		  AU_SAVE_AND_DISABLE (save);
 		  error = obj_delete (att->auto_increment);
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 
 		  if (error == NO_ERROR)
 		    {
@@ -13851,7 +13870,7 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    }
 	}
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   is_au_disabled = false;
 
   /* we don't really need this but some of the support routines use it */
@@ -14046,7 +14065,7 @@ end:
 
   if (is_au_disabled)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;

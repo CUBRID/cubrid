@@ -110,14 +110,6 @@ namespace
 /* avoid truncation when dumping large plans */
 #define PLAN_DUMP_STREAM_CHUNK_SIZE (64 * 1024)
 
-#if defined(CS_MODE)
-#if !defined(MULTI_CONN_TO_A_SERVER)
-unsigned short method_request_id;	// TODO: dive into class connection_cl // ctshim
-#else
-unsigned short method_request_id;
-#endif
-#endif /* CS_MODE */
-
 /* Contains the name of the current sever host machine.  */
 static CUB_THREAD_LOCAL char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
 
@@ -1394,14 +1386,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		      }
 		    else
 		      {
-#if defined(CS_MODE)
-			bool need_to_reset = false;
-			if (method_request_id == 0)
-			  {
-			    method_request_id = CSS_RID_FROM_EID (rc);
-			    need_to_reset = true;
-			  }
-#endif /* CS_MODE */
 			error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 			if (error == NO_ERROR)
@@ -1421,13 +1405,6 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      }
 			  }
-#if defined(CS_MODE)
-			if (need_to_reset == true)
-			  {
-			    method_request_id = 0;
-			    need_to_reset = false;
-			  }
-#endif /* CS_MODE */
 		      }
 		  }
 		else
@@ -1523,7 +1500,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    while (error == NO_ERROR && retry_in)
 		      {
 			/* Display prompt, then get user's input. */
-			fprintf (stdout, display_string);
+			fprintf (stdout, "%s", display_string);
 			pr_status = ER_FAILED;
 			pr_len = 0;
 			retry_in = false;
@@ -1541,7 +1518,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else
@@ -1587,7 +1564,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else if (x == reprompt_value)
@@ -1716,7 +1693,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &print_str);
-			fprintf (stdout, print_str);
+			fprintf (stdout, "%s", print_str);
 			fflush (stdout);
 		      }
 		    free_and_init (print_data);
@@ -1826,14 +1803,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 		  }
 		else
 		  {
-#if defined(CS_MODE)
-		    bool need_to_reset = false;
-		    if (method_request_id == 0)
-		      {
-			method_request_id = CSS_RID_FROM_EID (rc);
-			need_to_reset = true;
-		      }
-#endif /* CS_MODE */
 		    error = COMPARE_SIZE_AND_BUFFER (&methoddata_size, size, &methoddata, reply);
 
 		    if (error == NO_ERROR)
@@ -1853,13 +1822,6 @@ net_client_request_method_callback (int request, char *argbuf, int argsize, char
 			    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			  }
 		      }
-#if defined(CS_MODE)
-		    if (need_to_reset == true)
-		      {
-			method_request_id = 0;
-			need_to_reset = false;
-		      }
-#endif /* CS_MODE */
 		  }
 	      }
 	    else
@@ -3659,13 +3621,13 @@ net_client_shutdown_server (void)
  *    communications. It sets up CSS and verifies connection with the server.
  */
 int
-net_client_init (const char *dbname, const char *hostname)
+net_client_init (const char *dbname, const char *hostname, int client_type)
 {
   int error = NO_ERROR;
 
   /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
-  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
+  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname, client_type);
   if (error != NO_ERROR)
     {
       goto end;
@@ -3738,7 +3700,7 @@ net_client_sub_init ()
 
   if (error == NO_ERROR)
     {
-      error = __gv_cvar.css_client_sub_init (g_server_db_name, g_server_host_name);
+      error = __gv_cvar.css_client_sub_init (g_server_db_name, g_server_host_name, db_get_client_type ());
       if (error == ER_CSS_ALLOC)
 	{
 	  __gv_cvar.css_client_sub_terminate (g_server_host_name);
@@ -3746,6 +3708,9 @@ net_client_sub_init ()
     }
 
   return error;
+  // ctshim
+  //return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
+
 }
 
 void

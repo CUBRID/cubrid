@@ -151,6 +151,13 @@ struct walk_info
   QO_TERM *term;
 };
 
+typedef struct qo_implied_join_pair QO_IMPLIED_JOIN_PAIR;
+struct qo_implied_join_pair
+{
+  QO_SEGMENT *head_seg;
+  QO_SEGMENT *tail_seg;
+};
+
 double QO_INFINITY = 0.0;
 
 static QO_PLAN *qo_optimize_helper (QO_ENV * env);
@@ -230,6 +237,10 @@ static QO_ENV *qo_env_new (PARSER_CONTEXT *, PT_NODE *);
 static void qo_discover_partitions (QO_ENV *);
 static void qo_discover_indexes (QO_ENV *);
 static void qo_assign_eq_classes (QO_ENV *);
+static void qo_generate_implied_join_terms (QO_ENV *);
+static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
+static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
@@ -585,6 +596,12 @@ qo_optimize_helper (QO_ENV * env)
 			       pt_continue_walk, NULL);
     }
 
+  /* Generate implied join terms from the union-find segment groups before
+   * qo_discover_edges() rearranges the term array.  New terms are appended at
+   * the end; qo_discover_edges() will fold them into the edge zone and sort.
+   */
+  qo_generate_implied_join_terms (env);
+
   /* finish the rest of the opt structures */
   qo_discover_edges (env);
 
@@ -634,6 +651,7 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 {
   QO_ENV *env;
   int i;
+  int extra_term_cap;
   size_t size;
 
   if (query == NULL)
@@ -676,10 +694,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
 	}
     }
 
+  /* Pre-allocate room for implied join terms (at most C(nnodes,2) extras per eqclass in
+   * practice).  Sufficient for typical queries; generation stops gracefully if exceeded.
+   * This avoids realloc after setup, which would require rebinding inline bitset pointers. */
+  extra_term_cap = env->nnodes * (env->nnodes - 1) / 2;
   env->terms = NULL;
-  if (env->nterms > 0)
+  if (env->nterms + extra_term_cap > 0)
     {
-      size = sizeof (QO_TERM) * env->nterms;
+      size = sizeof (QO_TERM) * (env->nterms + extra_term_cap);
       env->terms = (QO_TERM *) malloc (size);
       if (env->terms == NULL)
 	{
@@ -722,14 +744,14 @@ qo_env_init (PARSER_CONTEXT * parser, PT_NODE * query)
       qo_node_clear (env, i);
     }
 
-  for (i = 0; i < env->nterms; ++i)
+  for (i = 0; i < env->nterms + extra_term_cap; ++i)
     {
       qo_term_clear (env, i);
     }
 
   env->Nnodes = env->nnodes;
   env->Nsegs = env->nsegs;
-  env->Nterms = env->nterms;
+  env->Nterms = env->nterms + extra_term_cap;
   env->Neqclasses = MAX (env->nnodes, env->nterms) + env->nsegs;
 
   env->nnodes = 0;
@@ -3403,6 +3425,7 @@ get_opcode_rank (PT_OP_TYPE opcode)
     case PT_TO_BASE64:
     case PT_FROM_BASE64:
     case PT_SYS_GUID:
+    case PT_UUID:
     case PT_SLEEP:
 
       return RANK_EXPR_HEAVY;
@@ -5302,16 +5325,24 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
       /* set Number of Distinct Values */
       attr_infop->ndv += attr_statsp->ndv;
 
-      /* set histogram */
-      if (hist_stats != NULL && attr_hist_statsp_index < hist_stats->n_attrs)
+      /* set histogram. hist_stats->histogram[] is filled in class attribute-list order, which is
+       * NOT the attr_stats order searched above (attr_stats loses id order on schema updates such
+       * as column drops), so match the slot by attribute id instead of reusing that index. */
+      QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
+      QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+      if (hist_stats != NULL && hist_stats->attr_ids != NULL)
 	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[attr_hist_statsp_index];
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[attr_hist_statsp_index];
-	}
-      else
-	{
-	  QO_SEG_PT_NODE (seg)->info.name.histogram = NULL;
-	  QO_SEG_PT_NODE (seg)->info.name.null_frequency = 0.0;
+	  int h;
+
+	  for (h = 0; h < hist_stats->n_attrs; h++)
+	    {
+	      if (hist_stats->attr_ids[h] == attr_id)
+		{
+		  QO_SEG_PT_NODE (seg)->info.name.histogram = hist_stats->histogram[h];
+		  QO_SEG_PT_NODE (seg)->info.name.null_frequency = hist_stats->null_frequency[h];
+		  break;
+		}
+	    }
 	}
 
       if (cum_statsp->valid_limits == false)
@@ -5891,6 +5922,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->partitions = NULL;
   bitset_init (&(env->final_segs), env);
   env->tmp_bitset = NULL;
+  env->implied_pairs = NULL;
   env->bail_out = 0;
   env->planner = NULL;
   env->dump_enable = prm_get_bool_value (PRM_ID_QO_DUMP);
@@ -5901,8 +5933,7 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   assert (query->node_type == PT_SELECT);
   if (PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_INFO_COLS_SCHEMA)
       || PT_SELECT_INFO_IS_FLAGED (query, PT_SELECT_FULL_INFO_COLS_SCHEMA) || query->flag.is_system_generated_stmt
-      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT)
-      || (query->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN))
+      || ((spec = query->info.query.q.select.from) != NULL && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
       env->plan_dump_enabled = false;
     }
@@ -6008,6 +6039,12 @@ qo_env_free (QO_ENV * env)
 	      qo_term_free (QO_ENV_TERM (env, i));
 	    }
 	  free_and_init (env->terms);
+	}
+
+      /* Scratch pairs buffer that survived a longjmp out of qo_generate_implied_join_terms(). */
+      if (env->implied_pairs)
+	{
+	  free_and_init (env->implied_pairs);
 	}
 
       if (env->partitions)
@@ -7588,8 +7625,7 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 		      temp_name = consp->attributes[0]->header.name;
 		      if (temp_name)
 			{
-			  size_t len = strlen (temp_name) + 1;
-			  index_entryp->statistics_attribute_name = (char *) malloc (sizeof (char) * len);
+			  index_entryp->statistics_attribute_name = strdup (temp_name);
 			  if (index_entryp->statistics_attribute_name == NULL)
 			    {
 			      if (seg_idx != seg_idx_arr)
@@ -7597,10 +7633,9 @@ qo_find_node_indexes (QO_ENV * env, QO_NODE * nodep)
 				  free_and_init (seg_idx);
 				}
 			      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-				      sizeof (char) * len);
+				      sizeof (char) * (strlen (temp_name) + 1));
 			      return;
 			    }
-			  strcpy (index_entryp->statistics_attribute_name, temp_name);
 			}
 		    }
 		}
@@ -7701,8 +7736,7 @@ qo_discover_indexes (QO_ENV * env)
 	   * sequential scan is needed).
 	   */
 	  if (!PT_IS_SPEC_FLAG_SET (QO_NODE_ENTITY_SPEC (nodep),
-				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN |
-				     PT_SPEC_FLAG_SAMPLING_SCAN)))
+				    (PT_SPEC_FLAG_RECORD_INFO_SCAN | PT_SPEC_FLAG_PAGE_INFO_SCAN)))
 	    {
 	      qo_find_node_indexes (env, nodep);
 	      if (0 < QO_NODE_INFO_N (nodep) && QO_NODE_INDEXES (nodep) != NULL)
@@ -8104,6 +8138,341 @@ qo_assign_eq_classes (QO_ENV * env)
 }
 
 /*
+ * qo_generate_implied_join_terms () - Generate implied join terms from
+ *   segment equivalence groups using transitive closure.
+ *   env(in):
+ *
+ * Note: Builds a segment union-find from unconditional inner-join equi-join edge terms
+ *   only, then appends join terms for every missing node pair of each group at the end
+ *   of env->terms; qo_discover_edges() — called right after — folds them into the edge zone.
+ */
+static void
+qo_generate_implied_join_terms (QO_ENV * env)
+{
+  int i;
+  QO_IMPLIED_JOIN_PAIR *pairs = NULL;
+  int pair_count = 0, pair_cap = 0;
+  PARSER_CONTEXT *parser;
+  int *root_arr = NULL;
+  int *segs_arr = NULL;
+
+  if (env->nsegs == 0)
+    {
+      return;
+    }
+
+  root_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (root_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      return;
+    }
+
+  segs_arr = (int *) malloc (sizeof (int) * env->nsegs);
+  if (segs_arr == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * env->nsegs);
+      free_and_init (root_arr);
+      return;
+    }
+
+  qo_build_implied_seg_roots (env, root_arr);
+
+  if (qo_collect_implied_join_pairs (env, root_arr, segs_arr, &pairs, &pair_count, &pair_cap) != 0 || pair_count == 0)
+    {
+      if (pairs)
+	{
+	  free_and_init (pairs);
+	}
+      free_and_init (root_arr);
+      free_and_init (segs_arr);
+      return;
+    }
+
+  /* No longer needed below; free before the qo_add_term() loop so that a longjmp
+   * from qo_abort() cannot bypass their cleanup. */
+  free_and_init (root_arr);
+  free_and_init (segs_arr);
+
+  /* Hand pairs to the env so qo_env_free() releases it should qo_add_term() longjmp below. */
+  env->implied_pairs = pairs;
+
+  parser = QO_ENV_PARSER (env);
+
+  for (i = 0; i < pair_count; i++)
+    {
+      QO_SEGMENT *head_seg = pairs[i].head_seg;
+      QO_SEGMENT *tail_seg = pairs[i].tail_seg;
+      PT_NODE *pt_expr;
+      QO_TERM *term;
+
+      /* Pre-allocated capacity (C(nnodes,2)) may be exhausted when the same node pair
+       * appears across multiple independent eqclasses.  Stop gracefully rather than overflow. */
+      if (env->nterms >= env->Nterms)
+	{
+	  break;
+	}
+
+      if (parser == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr = parser_new_node (parser, PT_EXPR);
+      if (pt_expr == NULL)
+	{
+	  continue;
+	}
+
+      pt_expr->info.expr.op = PT_EQ;
+      pt_expr->info.expr.arg1 = parser_copy_tree (parser, QO_SEG_PT_NODE (head_seg));
+      pt_expr->info.expr.arg2 = parser_copy_tree (parser, QO_SEG_PT_NODE (tail_seg));
+
+      if (pt_expr->info.expr.arg1 == NULL || pt_expr->info.expr.arg2 == NULL)
+	{
+	  parser_free_tree (parser, pt_expr);
+	  continue;
+	}
+      pt_expr->type_enum = PT_TYPE_LOGICAL;
+
+      term = qo_add_term (pt_expr, PREDICATE_TERM, env);
+      QO_TERM_SET_FLAG (term, QO_TERM_IMPLIED);
+      QO_TERM_SET_FLAG (term, QO_TERM_COPY_PT_EXPR);
+    }
+
+  env->implied_pairs = NULL;
+  free_and_init (pairs);
+}
+
+/*
+ * qo_build_implied_seg_roots () - Build the segment union-find used for
+ *   implied join term generation.
+ *   env(in):
+ *   root_arr(out): caller-allocated array of env->nsegs entries; on return,
+ *	  root_arr[i] is the canonical root of segment i.
+ *
+ * Note: Unions only unconditional inner-join equi-join edge terms.  Conditional
+ *   equalities (outer-join edge, AFTER/DURING_JOIN; cf. the global eq_root) must not
+ *   seed the closure: an inner term derived across an outer-join boundary changes results.
+ */
+static void
+qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
+{
+  int ti, t;
+
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      root_arr[ti] = ti;
+    }
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      QO_TERM *jterm = QO_ENV_TERM (env, t);
+      QO_SEGMENT *s1, *s2;
+      PT_NODE *tpe;
+      int r1, r2;
+
+      if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
+	{
+	  continue;
+	}
+      /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
+       * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
+      tpe = QO_TERM_PT_EXPR (jterm);
+      if (tpe != NULL && PT_EXPR_INFO_IS_FLAGED (tpe, PT_EXPR_INFO_TRANSITIVE))
+	{
+	  continue;
+	}
+      s1 = QO_TERM_SEG (jterm);
+      s2 = QO_TERM_OID_SEG (jterm);
+      if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+      r1 = QO_SEG_IDX (s1);
+      while (root_arr[r1] != r1)
+	{
+	  root_arr[r1] = root_arr[root_arr[r1]];
+	  r1 = root_arr[r1];
+	}
+      r2 = QO_SEG_IDX (s2);
+      while (root_arr[r2] != r2)
+	{
+	  root_arr[r2] = root_arr[root_arr[r2]];
+	  r2 = root_arr[r2];
+	}
+      if (r1 != r2)
+	{
+	  root_arr[r1] = r2;
+	}
+    }
+
+  /* Flatten so root_arr[i] is the canonical root of segment i. */
+  for (ti = 0; ti < env->nsegs; ti++)
+    {
+      int r = ti;
+      while (root_arr[r] != r)
+	{
+	  r = root_arr[r];
+	}
+      root_arr[ti] = r;
+    }
+}
+
+/*
+ * qo_collect_implied_join_pairs () - Collect candidate implied join
+ *   segment pairs using the caller-built segment union-find (root_arr).
+ *   return: 0 on success, -1 on memory allocation failure
+ *   env(in):
+ *   root_arr(in): Pre-built segment-to-root mapping (size env->nsegs); caller owns allocation.
+ *   segs_arr(in): Scratch buffer of size env->nsegs for collecting group segments; caller owns.
+ *   pairs_p(in/out): Pointer to the dynamically growing pairs array
+ *   count_p(in/out): Pointer to the current number of collected pairs
+ *   cap_p(in/out): Pointer to the current capacity of the pairs array
+ *
+ * Note: env->nsegs must be > 0 and root_arr/segs_arr must be non-NULL.  Emits one pair per
+ *   node pair that shares a 3+ segment group but has no direct (or after/during-join) term.
+ */
+static int
+qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
+			       QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p)
+{
+  int i, j, k, t;
+  int nsegs;
+  QO_SEGMENT *seg1, *seg2, *head_seg, *tail_seg, *nom;
+  QO_NODE *node1, *node2, *head_node, *tail_node;
+  QO_TERM *term;
+  bool already_has_term;
+
+  /* Process each segment that is its own root (i.e., the canonical root of a group). */
+  for (i = 0; i < env->nsegs; i++)
+    {
+      if (root_arr[i] != i)
+	{
+	  continue;
+	}
+
+      /* Collect all segments belonging to this group into the caller-provided scratch buffer. */
+      nsegs = 0;
+      for (j = 0; j < env->nsegs; j++)
+	{
+	  if (root_arr[j] != i)
+	    {
+	      continue;
+	    }
+	  segs_arr[nsegs++] = j;
+	}
+
+      /* A two-segment group is always united by the direct edge term that merged it,
+       * so no new implied pair can come out of it; require at least three segments. */
+      if (nsegs < 3)
+	{
+	  continue;
+	}
+
+      /* Emit one pair per (head_node, tail_node); also check already-collected pairs
+       * to avoid duplicates when the same node has multiple segments in the eqclass. */
+      int group_start_count = *count_p;
+      for (j = 0; j < nsegs; j++)
+	{
+	  for (k = j + 1; k < nsegs; k++)
+	    {
+	      seg1 = QO_ENV_SEG (env, segs_arr[j]);
+	      seg2 = QO_ENV_SEG (env, segs_arr[k]);
+	      node1 = QO_SEG_HEAD (seg1);
+	      node2 = QO_SEG_HEAD (seg2);
+
+	      if (QO_NODE_IDX (node1) == QO_NODE_IDX (node2))
+		{
+		  continue;
+		}
+
+	      if (QO_NODE_IDX (node1) < QO_NODE_IDX (node2))
+		{
+		  head_seg = seg1;
+		  tail_seg = seg2;
+		  head_node = node1;
+		  tail_node = node2;
+		}
+	      else
+		{
+		  head_seg = seg2;
+		  tail_seg = seg1;
+		  head_node = node2;
+		  tail_node = node1;
+		}
+
+	      already_has_term = false;
+	      for (t = 0; t < env->nterms; t++)
+		{
+		  term = QO_ENV_TERM (env, t);
+		  /* Also check AFTER/DURING_JOIN: QO_TC_JOIN terms reclassified by
+		   * qo_classify_outerjoin_terms retain NOMINAL_SEG/HEAD/TAIL. */
+		  if (!QO_IS_EDGE_TERM (term)
+		      && QO_TERM_CLASS (term) != QO_TC_AFTER_JOIN && QO_TERM_CLASS (term) != QO_TC_DURING_JOIN)
+		    {
+		      continue;
+		    }
+		  /* DUMMY_JOIN carries no column equality; skip it. */
+		  if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+		    {
+		      continue;
+		    }
+		  nom = QO_TERM_NOMINAL_SEG (term);
+		  if (nom == NULL || root_arr[QO_SEG_IDX (nom)] != i)
+		    {
+		      continue;
+		    }
+		  if ((QO_TERM_HEAD (term) == head_node && QO_TERM_TAIL (term) == tail_node)
+		      || (QO_TERM_HEAD (term) == tail_node && QO_TERM_TAIL (term) == head_node))
+		    {
+		      already_has_term = true;
+		      break;
+		    }
+		}
+
+	      if (!already_has_term)
+		{
+		  for (t = group_start_count; t < *count_p; t++)
+		    {
+		      if (QO_SEG_HEAD ((*pairs_p)[t].head_seg) == head_node
+			  && QO_SEG_HEAD ((*pairs_p)[t].tail_seg) == tail_node)
+			{
+			  already_has_term = true;
+			  break;
+			}
+		    }
+		}
+
+	      if (already_has_term)
+		{
+		  continue;
+		}
+
+	      if (*count_p >= *cap_p)
+		{
+		  int new_cap = (*cap_p == 0) ? 8 : (*cap_p * 2);
+		  QO_IMPLIED_JOIN_PAIR *np =
+		    (QO_IMPLIED_JOIN_PAIR *) realloc (*pairs_p, sizeof (QO_IMPLIED_JOIN_PAIR) * new_cap);
+		  if (np == NULL)
+		    {
+		      return -1;
+		    }
+		  *pairs_p = np;
+		  *cap_p = new_cap;
+		}
+
+	      (*pairs_p)[*count_p].head_seg = head_seg;
+	      (*pairs_p)[*count_p].tail_seg = tail_seg;
+	      (*count_p)++;
+	    }
+	}
+    }
+
+  return 0;
+}
+
+/*
  * qo_env_dump () -
  *   return:
  *   env(in):
@@ -8467,6 +8836,7 @@ qo_seg_width (QO_SEGMENT * seg)
    */
   int size;
   DB_DOMAIN *domain;
+  double ratio;
 
   domain = pt_node_to_db_domain (QO_ENV_PARSER (QO_SEG_ENV (seg)), QO_SEG_PT_NODE (seg), NULL);
   if (domain)
@@ -8479,15 +8849,18 @@ qo_seg_width (QO_SEGMENT * seg)
       return sizeof (int);
     }
 
-  size = tp_domain_disk_size (domain);
   switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_VARBIT:
     case DB_TYPE_VARCHAR:
-      /* do guessing for variable character type */
-      size = size * (2 / 3);
+      /* guessing for variable character type */
+      ratio = (domain->precision <= 32) ? 0.8 :
+	(domain->precision <= 128) ? 0.5 : (domain->precision <= 512) ? 0.3 : (domain->precision <= 4000) ? 0.2 : 0.1;
+      /* to avoid the issue of the variable character type precision being too large. */
+      size = MIN (domain->precision * ratio, 4000);
       break;
     default:
+      size = tp_domain_disk_size (domain);
       break;
     }
 
@@ -9680,6 +10053,13 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
       if (QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
 	{
 	  /* skip always true dummy join terms */
+	  continue;
+	}
+
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_IMPLIED))
+	{
+	  /* skip implied join terms; they add no independent constraints and must not
+	   * falsely invalidate the PK-FK full-join */
 	  continue;
 	}
 

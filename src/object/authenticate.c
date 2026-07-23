@@ -324,7 +324,8 @@ au_dump_user (MOP user, FILE * fp)
   groups = NULL;
   if (au_get_set (user, "direct_groups", &groups) == NO_ERROR)
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_DIRECT_GROUPS));
+      fprintf (fp, "%s",
+	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_DIRECT_GROUPS));
       card = set_cardinality (groups);
       for (i = 0; i < card; i++)
 	{
@@ -344,7 +345,7 @@ au_dump_user (MOP user, FILE * fp)
   groups = NULL;
   if (au_get_set (user, "groups", &groups) == NO_ERROR)
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_GROUPS));
+      fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_USER_GROUPS));
       card = set_cardinality (groups);
       for (i = 0; i < card; i++)
 	{
@@ -411,7 +412,7 @@ au_dump_to_file (FILE * fp)
       /* error is row count if not negative. */
       if (error > 0)
 	{
-	  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_ROOT_USERS));
+	  fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_ROOT_USERS));
 	  while (db_query_next_tuple (query_result) == DB_CURSOR_SUCCESS)
 	    {
 	      if (db_query_get_tuple_value (query_result, 0, &user_val) == NO_ERROR)
@@ -450,7 +451,7 @@ au_dump_to_file (FILE * fp)
       free_and_init (query);
     }
 
-  fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_AUTH_TITLE));
+  fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_AUTH_TITLE));
   au_dump_auth (fp);
 }
 

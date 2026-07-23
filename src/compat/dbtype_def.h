@@ -563,6 +563,8 @@ extern "C"
 /* Maximum allowable class name. */
 #define DB_MAX_CLASS_LENGTH (223)	// (DB_MAX_IDENTIFIER_LENGTH - DB_MAX_SCHEMA_LENGTH - 1 /* '.' */ + 1  /* '\0' */)
 
+#define DB_MAX_SERIAL_NAME_LENGTH (223)
+
 #define DB_MAX_SPEC_LENGTH       (0x3FFFFFFF)
 
 /* Maximum allowable class comment length */
@@ -730,7 +732,7 @@ extern "C"
 
 #define NULL_DEFAULT_EXPRESSION_OPERATOR (-1)
 
-#define DB_IS_DATETIME_DEFAULT_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
+#define DB_IS_DEFAULT_DATETIME_EXPR(v) ((v) == DB_DEFAULT_SYSDATE || \
     (v) == DB_DEFAULT_CURRENTTIME || (v) == DB_DEFAULT_CURRENTDATE || \
     (v) == DB_DEFAULT_SYSDATETIME || (v) == DB_DEFAULT_SYSTIMESTAMP || \
     (v) == DB_DEFAULT_UNIX_TIMESTAMP || (v) == DB_DEFAULT_CURRENTDATETIME || \
@@ -1273,7 +1275,23 @@ extern "C"
     DB_DEFAULT_CURRENTDATE = 10,
     DB_DEFAULT_SYSTIME = 11,
     DB_DEFAULT_FORMATTED_SYSDATE = 12,
+    DB_DEFAULT_SYSGUID = 13,
+    DB_DEFAULT_UUIDV4 = 14,
+    DB_DEFAULT_UUIDV7 = 15,
   } DB_DEFAULT_EXPR_TYPE;
+
+#define DB_IS_DEFAULT_UUID_EXPR(c) \
+  ( (c) == DB_DEFAULT_SYSGUID || (c) == DB_DEFAULT_UUIDV4 || (c) == DB_DEFAULT_UUIDV7  )
+
+#define DB_IS_DEFAULT_UUID_TIMEBASE_EXPR(c) \
+  ( (c) == DB_DEFAULT_UUIDV7  )
+
+#define DB_IS_DEFAULT_DETERMINE_BY_STATEMENT(c) \
+  ( DB_IS_DEFAULT_DATETIME_EXPR(c) || (c) == DB_DEFAULT_USER || (c) == DB_DEFAULT_CURR_USER \
+  || (c) == DB_DEFAULT_FORMATTED_SYSDATE )
+
+#define DB_IS_DEFAULT_DETERMINE_BY_ROW(c) \
+  ( DB_IS_DEFAULT_UUID_EXPR(c) )
 
   /* An attribute having valid default expression, must have NULL default value. Currently, we allow simple expressions
    * like SYS_DATE, CURRENT_TIME. Also we allow to_char expression.

@@ -32,6 +32,7 @@
 #include "boot_sr.h"
 #include "btree.h"
 #include "dbtype.h"
+#include "bestspace.hpp"
 #include "heap_file.h"
 #include "lockfree_circular_queue.hpp"
 #include "log_append.hpp"
@@ -57,6 +58,7 @@
 #include "thread_worker_pool_impl.hpp"
 #include "monitor_vacuum_ovfp_threshold.hpp"
 #endif // SERVER_MODE
+#include "tde.h"
 #include "util_func.h"
 
 #include <atomic>
@@ -1375,7 +1377,9 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
   if (vacuum_Worker_threads != NULL)
     {
 #if defined (SERVER_MODE)
+#if !defined (NDEBUG)
       vacuum_Worker_threads->er_log_stats ();
+#endif
       vacuum_Worker_threads->stop_execution ();
 #endif // SERVER_MODE
 
@@ -1675,7 +1679,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   (void) pgbuf_check_page_ptype (thread_p, helper.home_page, PAGE_HEAP);
 #endif /* !NDEBUG */
 
-  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page, NULL);
+  helper.initial_home_free_space = spage_get_free_space_without_saving (thread_p, helper.home_page);
 
   if (HFID_IS_NULL (hfid))
     {
@@ -2414,23 +2418,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 
       spage_vacuum_slot (thread_p, helper->forward_page, helper->forward_oid.slotid, true);
 
-      if (prm_get_integer_value (PRM_ID_HF_MAX_BESTSPACE_ENTRIES) > 0)
-	{
-	  int freespace = spage_get_free_space_without_saving (thread_p, helper->forward_page, NULL);
-
-	  if (freespace > HEAP_DROP_FREE_SPACE)
-	    {
-	      /*
-	       * NOTE:
-	       * By checking the freespace > HEAP_DROP_FREE_SPACE condition, heap_Bestspace->bestspace_mutex contention is reduced
-	       * and the unnecessarily frequent extraction from heap_Bestspace->vpid_ht due to small free space is prevented in heap_stats_find_page_in_bestspace().
-	       * And Passing the prev_freespace argument to 0 is a trick to get heap_stats_add_bestspace() called from heap_stats_update().
-	       *
-	       * This part will be refactored right away in the related issue, at which time this comment will be removed.
-	       */
-	      heap_stats_update (thread_p, helper->forward_page, &helper->hfid, 0);
-	    }
-	}
+      /* add candidate page into bestspace candidates */
+      heap_add_bestpage (thread_p, &helper->hfid, helper->forward_page);
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
 
@@ -2611,7 +2600,7 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
   if (update_best_space_stat == true && helper->initial_home_free_space != -1)
     {
       assert (!HFID_IS_NULL (&helper->hfid));
-      heap_stats_update (thread_p, helper->home_page, &helper->hfid, helper->initial_home_free_space);
+      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, helper->initial_home_free_space);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
@@ -3043,6 +3032,18 @@ vacuum_master_task::execute (cubthread::entry &thread_ref)
   pgbuf_flush_if_requested (&thread_ref, (PAGE_PTR) vacuum_Data.last_page);
 
   decrease_outstanding_job (m_cursor.force_data_update ());
+
+  /* any vacuum block may reference a TDE-encrypted log page. Keep its metadata persistent, but do not dispatch jobs
+   * until the cipher is available. The backlog is preserved and can be processed after restarting with the key. */
+  if (!tde_is_loaded ())
+    {
+      m_cursor.unload ();
+#if !defined (NDEBUG)
+      vacuum_verify_vacuum_data_page_fix_count (&thread_ref);
+#endif /* !NDEBUG */
+      PERF_UTIME_TRACKER_TIME (&thread_ref, &perf_tracker, PSTAT_VAC_MASTER);
+      return;
+    }
 
   vacuum_er_log (VACUUM_ER_LOG_MASTER | VACUUM_ER_LOG_JOBS, "Start searching jobs at " vacuum_job_cursor_print_format,
                  vacuum_job_cursor_print_args (m_cursor));
@@ -6420,6 +6421,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
     {
       (void) heap_delete_hfid_from_cache (thread_p, class_oid);
     }
+  cubstorage::bestspaces.destroy (&rcv_data->vfid);
 
   /* Success */
   return NO_ERROR;
