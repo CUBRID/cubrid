@@ -46,7 +46,7 @@ oos_oid_in_vector (const std::vector<OID> &oids, const OID *oid)
 
 #if !defined (NDEBUG)
 /*
- * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_MVCC_FLAG_HAS_OOS
+ * heap_recdes_compute_oos_flag_debug - debug-only audit of OR_RECORD_FLAG_HAS_OOS
  *                                      against the on-disk VOT
  *    return: true if the VOT contains any OOS-flagged entry, false otherwise
  *    recdes(in): heap record being written

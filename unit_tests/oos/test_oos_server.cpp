@@ -137,7 +137,7 @@ build_replicated_heap_recdes (const OID &class_oid, const std::vector<OID> &plac
   recdes.length = total_size;
   std::memset (recdes.data, 0, total_size);
   OR_PUT_INT (recdes.data + OR_REP_OFFSET,
-	      (OR_MVCC_FLAG_HAS_OOS << OR_MVCC_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_2BYTE);
+	      (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_2BYTE);
 
   char *vot = recdes.data + header_size;
   for (int i = 0; i <= n_variables; i++)

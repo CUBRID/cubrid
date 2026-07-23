@@ -155,14 +155,11 @@
 #define OR_OFFSET_SIZE_2BYTE 0x40000000
 #define OR_OFFSET_SIZE_4BYTE 0x60000000
 
-/* Use for MVCC flags the remainder of 5 bits in the first byte. */
-/* Flag will be shifter by 24 bits to the right */
-#define OR_MVCC_FLAG_MASK	    0x1f
-#define OR_MVCC_HEADER_SIZE_LOOKUP_MASK	0x7	// == 0b111, we only use 3 bits to determine the header size.
-					    // The size of the 'mvcc_header_size_lookup' array is currently 8.
-					    // Buffer overflow may happen when the flag value is greater than 7.
-					    // TODO: remove all usages of this macro and wrap the access to the 'mvcc_header_size_lookup' array with a function that checks the flag value before accessing the array.
-#define OR_MVCC_FLAG_SHIFT_BITS	    24
+/* The first representation word reserves five bits for record flags. */
+#define OR_RECORD_FLAG_MASK		0x1f
+#define OR_RECORD_MVCC_FLAG_MASK	0x07
+#define OR_RECORD_FLAG_SHIFT_BITS	24
+#define OR_RECORD_FLAG_MASK_IN_WORD	(OR_RECORD_FLAG_MASK << OR_RECORD_FLAG_SHIFT_BITS)
 
 /* The following flags are used for dynamic MVCC information */
 /* The record contains MVCC insert id */
@@ -174,8 +171,8 @@
 /* The record have an LSA with the location of the previous version */
 #define OR_MVCC_FLAG_VALID_PREV_VERSION   0x04
 
-// TODO: OOS is not related to MVCC, move to another place when POC ends
-#define OR_MVCC_FLAG_HAS_OOS                       0x08	// 0b00001000
+/* Record format metadata. This flag does not affect the MVCC header size. */
+#define OR_RECORD_FLAG_HAS_OOS		  0x08
 
 #define OR_MVCC_REPID_MASK	  0x00FFFFFF
 
