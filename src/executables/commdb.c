@@ -1434,7 +1434,7 @@ error:
   goto end;
 
 usage:
-  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
+  printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMMDB, COMMDB_STRING7));
   msgcat_final ();
   status = EXIT_FAILURE;
 

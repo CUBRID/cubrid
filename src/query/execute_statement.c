@@ -767,7 +767,7 @@ do_create_serial_internal (MOP * serial_object, const char *serial_name, DB_VALU
   db_make_null (&value);
 
   /* temporarily disable authorization to access _db_serial class */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   serial_class = sm_find_class (CT_SERIAL_NAME);
   if (serial_class == NULL)
@@ -943,7 +943,7 @@ end:
     {
       dbt_abort_object (obj_tmpl);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 
@@ -985,7 +985,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
       return error;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   au_disable_flag = true;
 
   /*
@@ -1057,7 +1057,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 
   serial_object = dbt_finish_object (obj_tmpl);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   au_disable_flag = false;
 
   if (serial_object == NULL)
@@ -1072,7 +1072,7 @@ do_update_auto_increment_serial_on_rename (MOP serial_obj, const char *class_nam
 update_auto_increment_error:
   if (au_disable_flag == true)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   /* if dbt_finish_object() succeeded, it would never come here, so we just check if obj_tmpl and clear it. */
@@ -1370,9 +1370,9 @@ do_get_obj_id (DB_IDENTIFIER * obj_id, DB_OBJECT * class_mop, const char *name, 
   intl_identifier_lower (name, p);
   db_make_string (&val, p);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   mop = db_find_unique (class_mop, attr_name, &val);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (mop == NULL)
     {
@@ -1974,13 +1974,13 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* now create serial object which is insert into _db_serial */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   au_disable_flag = true;
 
   error = do_create_serial_internal (&serial_object, downcase_serial_name, &start_val, &inc_val, &min_val,
 				     &max_val, cyclic, cached_num, 0, comment, NULL, NULL);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   au_disable_flag = false;
 
   if (error < 0)
@@ -1993,7 +1993,7 @@ do_create_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
 end:
   if (au_disable_flag == true)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -2401,7 +2401,7 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* update serial object in _db_serial */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   au_disable_flag = true;
 
   obj_tmpl = dbt_edit_object (serial_mop);
@@ -2440,7 +2440,7 @@ end:
 
   if (au_disable_flag == true)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   pr_clear_value (&e38);
@@ -2526,7 +2526,7 @@ do_alter_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
   db_make_null (&range_val);
   OID_SET_NULL (&serial_obj_id);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   /*
    * find _db_serial class
    */
@@ -3152,7 +3152,7 @@ end:
       (void) serial_decache ((OID *) (&serial_obj_id));
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   if (obj_tmpl != NULL)
     {
@@ -3209,7 +3209,7 @@ do_drop_serial (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto end;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   au_disable_flag = true;
 
   error = db_get (serial_object, SERIAL_ATTR_CLASS_NAME, &class_name_val);
@@ -3253,7 +3253,7 @@ end:
 
   if (au_disable_flag == true)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -3751,6 +3751,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  free_and_init (reserved_oid);
 
   if (error == ER_FAILED)
     {
@@ -4458,6 +4460,8 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  free_and_init (reserved_oid);
+
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
 
@@ -4577,7 +4581,7 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list, c
 
   save_user = Au_user;
   Au_user = Au_dba_user;
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   for (stmt_str = internal_stmt_list; stmt_str != NULL; stmt_str = stmt_str->next)
     {
@@ -4595,7 +4599,7 @@ do_internal_statements (PARSER_CONTEXT * parser, PT_NODE * internal_stmt_list, c
     }
 
   Au_user = save_user;
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   return error;
 }
@@ -4715,6 +4719,23 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
 	      return error;
 	    }
+
+	  /* The reservoir-based collector scans the heap directly on the server, so the SELECT
+	   * authorization that the legacy collector enforced through its internal SELECT query is
+	   * no longer exercised; the collected histogram also stores sampled values (MCVs, bucket
+	   * bounds). Keep requiring SELECT explicitly. Report it as a command-level error (not a
+	   * parse-tree error) so the message framing matches what the legacy query raised. */
+	  error = au_check_class_authorization (class_mop, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      char au_msg[SM_MAX_IDENTIFIER_LENGTH + 64];
+	      const char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+						MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON);
+	      snprintf (au_msg, sizeof (au_msg), fmt ? fmt : "%s is not authorized on %s", "SELECT",
+			db_get_class_name (class_mop));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, au_msg);
+	      return error;
+	    }
 	}
 
       // update stats
@@ -4725,32 +4746,51 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (class_type == SM_CLASS_CT)
 	    {
-	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
-	      if (error == NO_ERROR && prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+	      bool stats_updated = false;
+
+	      if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
 		  int save;
 
-		  AU_DISABLE (save);
+		  AU_SAVE_AND_DISABLE (save);
 		  obj = db_find_class (sm_get_ch_name (class_mop));
 		  if (obj == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
-		      AU_ENABLE (save);
+		      AU_RESTORE (save);
 		      return er_errid ();
 		    }
 
+		  /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
+		   * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
+		   * class once more only to have its result overwritten right away. Run the combined path first
+		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
 		  histogram_info.bucket_count = -1;
-		  histogram_info.with_fullscan = false;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
 		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
-		  if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+		  if (error == NO_ERROR)
 		    {
-		      AU_ENABLE (save);
+		      stats_updated = true;
+		    }
+		  else if (error == ER_OBJ_INVALID_ARGUMENTS)
+		    {
+		      /* nothing histogrammable on this class; fall through to the plain statistics update */
+		      error = NO_ERROR;
+		    }
+		  else
+		    {
+		      AU_RESTORE (save);
 		      return error;
 		    }
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
+		}
+
+	      if (error == NO_ERROR && !stats_updated)
+		{
+		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
 	    }
 	}
@@ -5728,22 +5768,25 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
     case TRAN_READ_COMMITTED:
       *tran_isolation = TRAN_READ_COMMITTED;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
     case TRAN_REPEATABLE_READ:
       *tran_isolation = TRAN_REPEATABLE_READ;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
     case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_S_SERIAL_I));
       break;
     case 0:
@@ -6533,7 +6576,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
       goto cleanup;
     }
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
   /* Check if we have a splitted spec that has no records */
   for (node = statement->info.delete_.del_stmt_list; node != NULL; node = node->next)
     {
@@ -6617,7 +6660,7 @@ do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * stateme
 
 cleanup:
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   /* free allocated resources */
   if (classes_names != NULL)
@@ -7638,7 +7681,8 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
       if (statement)
 	{
 	  /* This enables authorization checking during methods in queries */
-	  AU_ENABLE (parser->au_save);
+	  int au_save = 0;
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select_for_ins_upd (parser, statement) < NO_ERROR)
@@ -7647,7 +7691,7 @@ get_select_list_to_update (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * co
 	      statement = NULL;
 	    }
 
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	}
     }
 
@@ -9319,7 +9363,7 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, in
   *has_uniques = 0;
   *server_allowed = 0;
 
-  AU_DISABLE (save_au);
+  AU_SAVE_AND_DISABLE (save_au);
 
   /* check if at least one spec that will be updated is virtual or has triggers */
   while (spec && !trigger_involved && !is_virt)
@@ -9363,7 +9407,7 @@ is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, in
   *server_allowed = ((!trigger_involved && !is_virt)
 		     && !update_check_having_meta_attr (parser, statement->info.update.assignment));
 
-  AU_ENABLE (save_au);
+  AU_RESTORE (save_au);
   return error;
 
 error_exit:
@@ -9372,7 +9416,7 @@ error_exit:
       parser_free_tree (parser, *non_null_attrs);
       *non_null_attrs = NULL;
     }
-  AU_ENABLE (save_au);
+  AU_RESTORE (save_au);
   return error;
 }
 
@@ -9389,6 +9433,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
+  int au_save = 0;
   const char *savepoint_name = NULL;
   bool savepoint_started = false;
 
@@ -9396,7 +9441,7 @@ do_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. DON'T return from the body of this
    * function. Break out of the loop if necessary. */
-  AU_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   /* savepoint for statement atomicity */
   if ((statement != NULL && statement->next != NULL)
@@ -9467,7 +9512,7 @@ end:
     }
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. */
-  AU_ENABLE (parser->au_save);
+  AU_RESTORE (au_save);
 
   return result;
 }
@@ -9831,6 +9876,7 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      if (err != NO_ERROR)
 		{
 		  parser_free_tree (parser, select_statement);
+		  AU_RESTORE (au_save);
 		  break;
 		}
 	    }
@@ -10196,7 +10242,8 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
       if (statement)
 	{
 	  /* This enables authorization checking during methods in queries */
-	  AU_ENABLE (parser->au_save);
+	  int au_save = 0;
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  assert (parser->query_id == NULL_QUERY_ID);
 	  if (do_select (parser, statement) < NO_ERROR)
@@ -10205,7 +10252,7 @@ select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE 
 	      statement = NULL;
 	    }
 
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	}
     }
 
@@ -10780,6 +10827,7 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   int result = NO_ERROR;
+  int au_save = 0;
   PT_NODE *spec;
   const char *savepoint_name = NULL;
 
@@ -10789,7 +10837,7 @@ do_delete (PARSER_CONTEXT * parser, PT_NODE * statement)
    *
    * DON'T return from the body of this function. Break out of the loop if necessary. */
 
-  AU_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   /* savepoint for statement atomicity */
   if (statement != NULL && statement->next != NULL)
@@ -10856,7 +10904,7 @@ end:
 
   /* DON'T REMOVE this, correct authorization validation of views depends on this. */
 
-  AU_ENABLE (parser->au_save);
+  AU_RESTORE (au_save);
 
   return result;
 }
@@ -12007,7 +12055,7 @@ is_server_insert_allowed (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   statement->info.insert.server_allowed = SERVER_INSERT_IS_NOT_ALLOWED;
 
-  AU_DISABLE (save_au);
+  AU_SAVE_AND_DISABLE (save_au);
 
   class_ = statement->info.insert.spec->info.spec.flat_entity_list;
 
@@ -12146,7 +12194,7 @@ end:
 	  error = ER_FAILED;
 	}
     }
-  AU_ENABLE (save_au);
+  AU_RESTORE (save_au);
   return error;
 }
 
@@ -13849,7 +13897,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
       return ER_GENERIC_ERROR;
     }
 
-  AU_DISABLE (save_au);
+  AU_SAVE_AND_DISABLE (save_au);
   attr = db_get_attributes (class_);
   while (attr)
     {
@@ -13863,7 +13911,7 @@ check_missing_non_null_attrs (const PARSER_CONTEXT * parser, const PT_NODE * spe
 	}
       attr = db_attribute_next (attr);
     }
-  AU_ENABLE (save_au);
+  AU_RESTORE (save_au);
 
   return error;
 }
@@ -14053,9 +14101,8 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  /* DO NOT RETURN UNTIL AFTER AU_ENABLE! */
-  AU_DISABLE (save);
-  parser->au_save = save;
+  /* DO NOT RETURN UNTIL AFTER AU_RESTORE! */
+  AU_SAVE_AND_DISABLE (save);
 
   if (need_savepoint == false && statement->info.insert.odku_assignments != NULL)
     {
@@ -14063,7 +14110,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_UPDATE);
       if (error != NO_ERROR)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return error;
 	}
       if (has_trigger != 0)
@@ -14082,7 +14129,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_class_has_triggers (class_->info.name.db_object, &has_trigger, TR_EVENT_INSERT);
       if (error != NO_ERROR)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return error;
 	}
       if (has_trigger != 0)
@@ -14114,13 +14161,13 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
       savepoint_name = mq_generate_name (parser, "UisP", &insert_savepoint_number);
       if (savepoint_name == NULL)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return ER_GENERIC_ERROR;
 	}
       error = tran_system_savepoint (savepoint_name);
       if (error != NO_ERROR)
 	{
-	  AU_ENABLE (save);
+	  AU_RESTORE (save);
 	  return error;
 	}
     }
@@ -14140,7 +14187,7 @@ insert_local (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   error = do_insert_template (parser, &otemplate, statement, &savepoint_name, &row_count_total);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   /* restore the obt_Last_insert_id_generated flag after insert. */
   if (!is_trigger_involved && obt_Last_insert_id_generated)
@@ -14259,7 +14306,7 @@ do_prepare_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  AU_DISABLE (save_au);
+  AU_SAVE_AND_DISABLE (save_au);
 
   /* We do not allow multi statements. To be checked! */
   if (pt_length_of_list (statement) > 1)
@@ -14315,7 +14362,7 @@ cleanup:
       parser_free_tree (parser, update);
     }
 
-  AU_ENABLE (save_au);
+  AU_RESTORE (save_au);
 
   return error;
 }
@@ -14692,7 +14739,6 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   const char *into_label;
   DB_VALUE *vals, *v;
   int save;
-  int prev_parser_au_save;
   QUERY_FLAG query_flag;
   XASL_STREAM stream;
   bool query_trace = false;
@@ -14709,9 +14755,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
       CHECK_MODIFICATION_ERROR ();
     }
 
-  AU_DISABLE (save);
-  prev_parser_au_save = parser->au_save;
-  parser->au_save = save;
+  AU_SAVE_AND_DISABLE (save);
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -14850,8 +14894,7 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
 
-  parser->au_save = prev_parser_au_save;
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -16931,8 +16974,7 @@ do_execute_do (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   init_xasl_stream (&stream);
 
-  AU_DISABLE (save);
-  parser->au_save = save;
+  AU_SAVE_AND_DISABLE (save);
 
   /* mark the beginning of another level of xasl packing */
   pt_enter_packing_buf ();
@@ -17002,7 +17044,7 @@ end:
 
   /* mark the end of another level of xasl packing */
   pt_exit_packing_buf ();
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -17338,6 +17380,8 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
   int wait_msecs = -2, old_wait_msecs = -2;
   float hint_waitsecs;
   int result = 0;
+  int au_save = 0;
+  int outer_au_save = 0;
   bool insert_only = false;
   PT_NODE *copy_assigns, *save_assigns;
 
@@ -17356,7 +17400,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       goto exit;
     }
 
-  AU_DISABLE (parser->au_save);
+  AU_SAVE_AND_DISABLE (outer_au_save);
 
   if (pt_false_where (parser, statement))
     {
@@ -17438,9 +17482,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  /* restore tree structure; pt_get_assignment_lists() */
 	  pt_restore_assignment_links (statement->info.merge.update.assignment, links, -1);
 
-	  AU_ENABLE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  upd_select_stmt = mq_translate (parser, upd_select_stmt);
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 	  if (upd_select_stmt == NULL)
 	    {
 	      err = er_errid ();
@@ -17489,9 +17533,9 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (err >= NO_ERROR && (values_list = statement->info.merge.insert.value_clauses) != NULL)
 	{
 	  ins_select_stmt = pt_to_merge_insert_query (parser, values_list->info.node_list.list, &statement->info.merge);
-	  AU_ENABLE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 	  ins_select_stmt = mq_translate (parser, ins_select_stmt);
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (ins_select_stmt == NULL)
 	    {
@@ -17507,7 +17551,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_select_stmt->etc = NULL;
 
 	  /* enable authorization checking during methods in queries */
-	  AU_ENABLE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
@@ -17515,7 +17559,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  ins_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (err < NO_ERROR)
 	    {
@@ -17563,7 +17607,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    }
 
 	  /* enable authorization checking during methods in queries */
-	  AU_ENABLE (parser->au_save);
+	  AU_SAVE_AND_ENABLE (au_save);
 
 	  query_id_self = parser->query_id;
 	  parser->query_id = NULL_QUERY_ID;
@@ -17571,7 +17615,7 @@ do_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  upd_query_id = parser->query_id;
 	  parser->query_id = query_id_self;
 
-	  AU_DISABLE (parser->au_save);
+	  AU_RESTORE (au_save);
 
 	  if (err < NO_ERROR)
 	    {
@@ -17723,7 +17767,7 @@ exit:
       (void) db_abort_to_savepoint (savepoint_name);
     }
 
-  AU_ENABLE (parser->au_save);
+  AU_RESTORE (outer_au_save);
 
   return (err < NO_ERROR) ? err : result;
 }
@@ -18728,7 +18772,7 @@ do_alter_synonym_internal (const char *synonym_name, const char *target_name, DB
   int error = NO_ERROR;
   int save = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   class_obj = db_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
@@ -18873,7 +18917,7 @@ end:
       dbt_abort_object (obj_tmpl);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -18980,7 +19024,7 @@ do_create_synonym_internal (const char *synonym_name, DB_OBJECT * synonym_owner,
   int error = NO_ERROR;
   int save = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /* synonym class object */
   class_obj = db_find_class (CT_SYNONYM_NAME);
@@ -19172,7 +19216,7 @@ end:
       dbt_abort_object (obj_tmpl);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -19236,7 +19280,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
   int error = NO_ERROR;
   int save = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (synonym_class_obj != NULL)
     {
@@ -19312,7 +19356,7 @@ do_drop_synonym_internal (const char *synonym_name, const int is_public_synonym,
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -19375,7 +19419,7 @@ do_rename_synonym_internal (const char *old_synonym_name, const char *new_synony
   int error = NO_ERROR;
   int save = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   class_obj = db_find_class (CT_SYNONYM_NAME);
   if (class_obj == NULL)
@@ -19512,7 +19556,7 @@ end:
       dbt_abort_object (obj_tmpl);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -21112,9 +21156,9 @@ do_drop_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   int save;
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = db_drop (server_object);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -21132,7 +21176,7 @@ do_create_server_internal (MOP * server_object, DB_VALUE * port_no, DB_VALUE * p
   db_make_null (&value);
 
   /* temporarily disable authorization to access _db_server class */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   server_class = sm_find_class (CT_SERVER_NAME);
   if (server_class == NULL)
@@ -21215,7 +21259,7 @@ end:
     {
       dbt_abort_object (obj_tmpl);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 
@@ -21389,11 +21433,11 @@ do_create_server (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   server_object = NULL;
   /* now create server object which is insert into _db_server */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error =
     do_create_server_internal (&server_object, &port_no, &passwd, owner_obj, attr_names, attr_val,
 			       sizeof (attr_names) / sizeof (attr_names[0]));
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error >= 0)
     {
       error = NO_ERROR;
@@ -21433,13 +21477,13 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       DB_VALUE owner_val, name_val;
 
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       error = db_get (server_object, SERVER_ATTR_OWNER, &owner_val);
       if (error == NO_ERROR)
 	{
 	  error = db_get (db_get_object (&owner_val), "name", &name_val);
 	}
-      AU_ENABLE (save);
+      AU_RESTORE (save);
 
       if (error != NO_ERROR)
 	{
@@ -21502,17 +21546,17 @@ do_rename_server (PARSER_CONTEXT * parser, PT_NODE * statement)
   sm_downcase_name (new_name, name_buf, SERVER_ATTR_LINK_NAME_BUF_SIZE);
   db_make_string (&value, name_buf);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = db_put (server_object, SERVER_ATTR_LINK_NAME, &value);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   pr_clear_value (&value);
 
   if (error == NO_ERROR)
     {
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       error = db_update_obj_timestamp (server_object);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return error;
@@ -21541,7 +21585,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
       return er_errid ();
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (alter->xbits.bit_pwd)
     {
@@ -21775,7 +21819,7 @@ do_alter_server (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -21799,7 +21843,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, P
       return er_errid ();
     }
 
-  AU_DISABLE (au_save);		// disable checking authorization
+  AU_SAVE_AND_DISABLE (au_save);	// disable checking authorization
   for (cnt = 0; cnt < 4; cnt++)
     {
       db_make_null (&(values[cnt]));
@@ -21878,7 +21922,7 @@ get_dblink_info_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_name, P
     }
 
 error_end:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   pr_clear_value (&pwd_val);
   while (--cnt >= 0)
@@ -21907,7 +21951,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
       return er_errid ();
     }
 
-  AU_DISABLE (au_save);		// disable checking authorization
+  AU_SAVE_AND_DISABLE (au_save);	// disable checking authorization
 
   if (owner_nm == NULL)
     {
@@ -21919,7 +21963,7 @@ get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE * server_n
 	}
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   pr_clear_value (&user_val);
 
   return error;
@@ -22166,7 +22210,7 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
   db_make_null (&values[0]);
   db_make_null (&values[1]);
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   /*
    * backup the optimization level for executing internal query to find server-name,
@@ -22249,7 +22293,7 @@ err:
   parser_free_parser (parser);
   db_query_end (query_result);
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
 
   if (error != NO_ERROR)
     {
