@@ -502,6 +502,14 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
       return node;
     }
 
+  /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
+   * post callback must not decrement it either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name)
+    {
+      return node;
+    }
+
   level_p = (short *) spec->etc;
   if (level_p == NULL)
     {
