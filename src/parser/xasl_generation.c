@@ -19749,6 +19749,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *cond, *arg1, *arg2;
   const char *op_sql = NULL;
   const char *key_col = NULL;
+  DBLINK_REMOTE_SINK_MODE sink_mode = DBLINK_SINK_MODE_PER_ROW;
 
   assert (parser != NULL && statement != NULL);
 
@@ -19768,9 +19769,11 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* operator -> remote WHERE SQL text (fixed safe set; each op pushes one remote predicate per
-   * list-file value -- IN/=ANY/scalar-= as equality, <>(_SOME) as inequality, the rest as their
-   * own comparison; ANY semantics fall out of the per-row OR-union the runtime already does) */
+  /* operator -> remote WHERE SQL text (fixed safe set) + sink mode. IN/=ANY/scalar-=/comparison ANY
+   * push one remote predicate per list-file value (PER_ROW, ANY semantics fall out of the per-row
+   * OR-union the runtime already does); comparison ALL instead reduces the whole local subquery result
+   * to a single value pushed once (REDUCE_MIN/REDUCE_MAX/EQ_ALL) -- the reduction itself is done at
+   * runtime, not here (see qexec_execute_remote_dml_sink). */
   switch (cond->info.expr.op)
     {
     case PT_IS_IN:
@@ -19797,6 +19800,26 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_NE:
     case PT_NE_SOME:
       op_sql = "<>";
+      break;
+    case PT_EQ_ALL:
+      op_sql = "=";
+      sink_mode = DBLINK_SINK_MODE_EQ_ALL;
+      break;
+    case PT_LT_ALL:
+      op_sql = "<";
+      sink_mode = DBLINK_SINK_MODE_REDUCE_MIN;
+      break;
+    case PT_LE_ALL:
+      op_sql = "<=";
+      sink_mode = DBLINK_SINK_MODE_REDUCE_MIN;
+      break;
+    case PT_GT_ALL:
+      op_sql = ">";
+      sink_mode = DBLINK_SINK_MODE_REDUCE_MAX;
+      break;
+    case PT_GE_ALL:
+      op_sql = ">=";
+      sink_mode = DBLINK_SINK_MODE_REDUCE_MAX;
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
@@ -19882,6 +19905,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
+  del->remote_sink_mode = sink_mode;
   if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {
       return NULL;
