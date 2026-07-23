@@ -1119,11 +1119,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_ENTER (thread_p);
 
+  /* Boot-only flag, cleared at every exit; must not leak in from a prior call. */
+  assert (logtb_Reuse_boot_managers == false);
+
   if (log_Gl.trantable.area != NULL)
     {
       /* Boot defined this trantable (and its pgbuf/lock/file/mvcc) early; reuse
-       * that pool across the redefine below instead of rebuilding it. */
-      logtb_Reuse_boot_managers = true;
+       * that pool across the redefine below instead of rebuilding it. Not on
+       * emergency restart (recovery is skipped). */
+      logtb_Reuse_boot_managers = !init_emergency;
       log_final (thread_p);
     }
 

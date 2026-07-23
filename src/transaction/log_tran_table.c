@@ -103,6 +103,10 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
 
+/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
+ * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
+bool logtb_Reuse_boot_managers = false;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -362,10 +366,6 @@ error:
  * Note: Define the transaction table which is used to support the
  *              number of expected transactions.
  */
-/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
- * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
-bool logtb_Reuse_boot_managers = false;
-
 void
 logtb_define_trantable (THREAD_ENTRY * thread_p, int num_expected_tran_indices, int num_expected_locks)
 {
@@ -591,6 +591,14 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
       pgbuf_finalize ();
       file_manager_final ();
     }
+#if !defined (NDEBUG)
+  else
+    {
+      /* Carried into recovery while pristine: pre-recovery logs nothing (WAL),
+       * so no lock is held (hence no MVCCID assigned). */
+      assert (lock_get_number_object_locks () == 0);
+    }
+#endif /* !NDEBUG */
 
   if (log_Gl.trantable.area != NULL)
     {
