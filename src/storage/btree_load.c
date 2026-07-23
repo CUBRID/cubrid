@@ -5215,6 +5215,13 @@ get_next_vpid (THREAD_ENTRY * thread_p, ftab_set & ftab, FILE_PARTIAL_SECTOR * f
 		  return S_ERROR;
 		}
 
+	      if (heap_page_is_bestspace (thread_p, scan_cache->page_watcher.pgptr))
+		{
+		  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+		  PGBUF_CLEAR_WATCHER (&scan_cache->page_watcher);
+		  continue;
+		}
+
 	      return S_SUCCESS;
 	    }
 	}

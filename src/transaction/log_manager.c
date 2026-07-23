@@ -1780,6 +1780,14 @@ log_final (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
+	      /* Loose-end transactions (e.g. 2PC prepared) are intentionally left un-aborted here
+	       * since their outcome is still undecided. But their locks must still be dropped from
+	       * the in-memory lock table before it is torn down below; anyloose_ends forces a
+	       * checkpoint instead of a clean-shutdown mark, so recovery will reacquire these same
+	       * locks via lock_reacquire_crash_locks on the next restart. Releasing them here only
+	       * affects this process' in-memory bookkeeping, the same as what a crash would do. */
+	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
+	      lock_unlock_all (thread_p);
 	      anyloose_ends = true;
 	    }
 	}
@@ -11040,6 +11048,11 @@ end:
   return error;
 
 error:
+  if (supp_recdes.data != NULL)
+    {
+      free_and_init (supp_recdes.data);
+    }
+
   if (supplement_data != NULL)
     {
       free_and_init (supplement_data);
@@ -11194,6 +11207,9 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 		 LSA_AS_ARGS (&process_lsa));
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+	      free_and_init (log_info_entry.log_info);
+	      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
+	      thread_sleep (50);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      continue;
 	    }
@@ -11267,8 +11283,16 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
-	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+	  size_t required_size = (size_t) (-undo_recdes->length);
+	  char *new_data = (char *) realloc (undo_recdes->data, required_size);
+	  if (new_data == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, required_size);
+	      return S_ERROR;
+	    }
+
+	  undo_recdes->data = new_data;
+	  undo_recdes->area_size = required_size;
 
 	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
 	    {
@@ -11932,8 +11956,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE)
 	      {
-		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -12202,6 +12224,14 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   cdc_log ("cdc_get_ovfdata_from_log : process_lsa:(%lld | %d), recovery index:%d, is_redo:%d",
 	   LSA_AS_ARGS (process_lsa), rcvindex, is_redo);
+
+  /* log_page_p may not hold process_lsa's page; e.g. the LOG_DUMMY_OVF_RECORD branch of cdc_get_overflow_recdes ()
+   * passes prev_tranlsa, which can point to a record on another log page. */
+  if (cdc_check_log_page (thread_p, log_page_p, process_lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, DB_SIZEOF (LOG_RECORD_HEADER), process_lsa, log_page_p);
 
   if (is_redo)
@@ -14576,8 +14606,11 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
 
+      LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &next_consume_lsa);
       cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
       cdc_Gl.consumer.consumed_queue_size = 0;
     }
@@ -14593,6 +14626,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
