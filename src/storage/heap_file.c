@@ -12706,9 +12706,11 @@ for (RECDES & payload:*payloads)
   payloads->clear ();
 }
 
+// *INDENT-OFF*
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
 #endif
+// *INDENT-ON*
 
 /*
  * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
@@ -12875,8 +12877,7 @@ heap_attrinfo_transform_header_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTR
       else
 	{
 	  LOG_LSA null_lsa = LSA_INITIALIZER;
-	  repid_bits |=
-	    ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
+	  repid_bits |= ((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
 	  if ((buf->ptr + OR_MVCC_INSERT_HEADER_SIZE + OR_MVCC_PREV_VERSION_LSA_SIZE) > buf->endptr)
 	    {
 	      return S_DOESNT_FIT;
@@ -20667,8 +20668,7 @@ heap_set_mvcc_rec_header_on_overflow (PAGE_PTR ovf_page, MVCC_REC_HEADER * mvcc_
     }
 
   /* Safe guard */
-  assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header) & OR_RECORD_MVCC_FLAG_MASK] ==
-	  OR_MVCC_MAX_HEADER_SIZE);
+  assert (mvcc_header_size_lookup[MVCC_GET_FLAG (mvcc_header) & OR_RECORD_MVCC_FLAG_MASK] == OR_MVCC_MAX_HEADER_SIZE);
   return or_mvcc_set_header (&ovf_recdes, mvcc_header);
 }
 
@@ -22610,8 +22610,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	{
 	  return ER_FAILED;
 	}
-      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag & OR_RECORD_MVCC_FLAG_MASK] ==
-	      OR_MVCC_MAX_HEADER_SIZE);
+      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag & OR_RECORD_MVCC_FLAG_MASK] == OR_MVCC_MAX_HEADER_SIZE);
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
@@ -28223,7 +28222,9 @@ SCAN_CODE
 bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_CACHE_ATTRINFO attr_info = { };
+  // *INDENT-OFF*
   std::vector<heap_oos_column_plan> oos_plan;
+  // *INDENT-ON*
 
   COPY_OID (&attr_info.class_oid, class_oid);
   attr_info.num_values = 0;
