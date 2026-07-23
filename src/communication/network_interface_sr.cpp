@@ -4629,6 +4629,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   bool eligible_no_redo = false;
   int ib_thread_count = 0;
   int no_logging_index = 0;
+  size_t tail_offset;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4716,7 +4717,13 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
-  ptr = or_unpack_int (ptr, &no_logging_index);	/* Get no-logging index build request. */
+  /* Optional tail: older clients do not send this field and their request may end exactly at ptr, so
+   * bound it with integer offsets only (a pointer past one-past-the-end is UB even if only compared). */
+  tail_offset = DB_ALIGN ((size_t) (ptr - request), INT_ALIGNMENT);
+  if (tail_offset + OR_INT_SIZE <= (size_t) reqlen)
+    {
+      ptr = or_unpack_int (ptr, &no_logging_index);	/* Get no-logging index build request. */
+    }
   /* The client flag is only a request; the server decides. Restricting the no-redo build to
    * loaddb client types keeps it out of ordinary traffic no matter what a client sends. */
   eligible_no_redo = no_logging_index != 0

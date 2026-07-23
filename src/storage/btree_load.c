@@ -1392,7 +1392,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       /*
        * Durability barrier.  Bulk pages are only marked dirty during the build (their
-       * content is never WAL-logged), so before the replay barrier record (RVBT_BULK_BUILD_DURABLE)
+       * content is never WAL-logged), so before the barrier record (RVBT_BULK_BUILD_DURABLE)
        * and the eventual commit can become durable, every bulk page must actually be ON DISK.
        *
        * Flush the whole buffer pool, then synchronize every permanent volume (which also
@@ -1403,6 +1403,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
        * sysop abort and the replacement empty index is fully WAL-logged) takes the same
        * gate.  The order is: pool flush first, DWB drain + fsync second, barrier record
        * append only after success.
+       *
+       * The barrier is appended as a commit-time postpone instead of a plain redo record, so that
+       * it lives and dies with the transaction: log_do_postpone skips the postpone records of a
+       * sysop region that was rolled back, and log_sysop_attach_to_outer () below hands this one
+       * to the outer transaction's postpone list.
        */
       if (pgbuf_flush_all (thread_p, NULL_VOLID) != NO_ERROR)
 	{
@@ -1417,7 +1422,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     {
       LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
-      log_append_redo_data (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, 0, NULL);
+      log_append_postpone (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, 0, NULL);
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);

@@ -43,11 +43,16 @@
 #include "page_buffer.h"
 #include "porting_inline.hpp"
 #include "recovery.h"
+#include "scope_exit.hpp"
 #include "slotted_page.h"
 #include "system_parameter.h"
 #include "thread_manager.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+/* True while log_recovery () replays a media crash (restoredb).  Held for the whole function -- redo scan and
+ * finish-postpone alike -- so the bulk-build recovery functions below fail-stop in either phase. */
+static bool log_Rcv_is_media_crash = false;
 
 static void log_rv_undo_record (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_page_p,
 				LOG_RCVINDEX rcvindex, const VPID * rcv_vpid, LOG_RCV * rcv,
@@ -752,6 +757,12 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   int error_code = NO_ERROR;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
+
+  /* Cleared on every path out of this function. */
+  log_Rcv_is_media_crash = (ismedia_crash != false);
+  // *INDENT-OFF*
+  scope_exit reset_rcv_media_crash_flag {[] { log_Rcv_is_media_crash = false; }};
+  // *INDENT-ON*
 
   /* Save the transaction index and find the transaction descriptor */
 
@@ -3259,16 +3270,14 @@ REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo
 #endif
 
 /*
- * log_recovery_refuse_bulk_build_replay () - a no-redo bulk index build (loaddb) replay barrier record
- *   (RVBT_BULK_BUILD_DURABLE) was found while replaying a backup (media recovery / restoredb) and the
- *   build's transaction completed within the replay window.  The pages that build produced were never
- *   WAL-logged, so replaying past this point cannot reconstruct them; the restore must stop here with a
- *   clean, structured failure.  Ordinary crash recovery (restart) never calls this function: it dispatches
- *   the barrier record through its no-op redo function like any other record.  Neither does a replay in
- *   which the build's transaction never completes: its undo removes the index file entirely.
+ * log_recovery_refuse_bulk_build_replay () - fail-stop a media recovery replay that reaches a record left
+ *   by a no-redo bulk index build (loaddb).  Its bulk pages were never WAL-logged, so replaying past it
+ *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
+ *   barrier postpone (RVBT_BULK_BUILD_DURABLE) or its committed marker (RVBT_BULK_BUILD_COMMITTED)
+ *   first, and both refuse here; a build that never committed leaves no marker and the replay undoes it.
  *
  * thread_p(in): thread entry
- * lsa(in): LSA of the barrier record
+ * lsa(in): LSA of the barrier or marker record, or NULL if unavailable on this dispatch path
  */
 static void
 log_recovery_refuse_bulk_build_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa)
@@ -3282,7 +3291,60 @@ log_recovery_refuse_bulk_build_replay (THREAD_ENTRY * thread_p, const LOG_LSA * 
 	"time before it.";
     }
 
-  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s (barrier record LSA = %lld|%d)", catmsg, LSA_AS_ARGS (lsa));
+  if (lsa != NULL && !LSA_ISNULL (lsa))
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s (barrier record LSA = %lld|%d)", catmsg,
+			 LSA_AS_ARGS (lsa));
+    }
+  else
+    {
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s", catmsg);
+    }
+}
+
+/*
+ * log_rv_bulk_build_durable_redo () - redo for RVBT_BULK_BUILD_DURABLE, the barrier postpone action.
+ *   Media recovery refuses; otherwise the barrier is really executing (runtime commit, or restart
+ *   recovery finishing an interrupted one), so append the redo-only RVBT_BULK_BUILD_COMMITTED marker.
+ *
+ * return: NO_ERROR (does not return while media recovery is in progress)
+ * thread_p(in): thread entry
+ * rcv(in): recovery structure; rcv->reference_lsa carries the barrier's LSA when available
+ */
+int
+log_rv_bulk_build_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  if (log_Rcv_is_media_crash)
+    {
+      log_recovery_refuse_bulk_build_replay (thread_p, &rcv->reference_lsa);
+      /* not reached: log_recovery_refuse_bulk_build_replay() never returns */
+    }
+
+  LOG_DATA_ADDR addr = { NULL, NULL, 0 };
+  log_append_redo_data (thread_p, RVBT_BULK_BUILD_COMMITTED, &addr, 0, NULL);
+
+  return NO_ERROR;
+}
+
+/*
+ * log_rv_bulk_build_committed_redo () - redo for RVBT_BULK_BUILD_COMMITTED, the marker recording that a
+ *   bulk build's barrier postpone executed.  Replaying it under media recovery means the chain contains a
+ *   completed no-redo build -- refuse.  A no-op everywhere else.
+ *
+ * return: NO_ERROR (does not return while media recovery is in progress)
+ * thread_p(in): thread entry
+ * rcv(in): recovery structure; rcv->reference_lsa carries the marker's LSA when available
+ */
+int
+log_rv_bulk_build_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
+{
+  if (log_Rcv_is_media_crash)
+    {
+      log_recovery_refuse_bulk_build_replay (thread_p, &rcv->reference_lsa);
+      /* not reached: log_recovery_refuse_bulk_build_replay() never returns */
+    }
+
+  return NO_ERROR;
 }
 
 static void
@@ -3591,19 +3653,6 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 		  {
 		    /* Reset log header MVCC info */
 		    logpb_vacuum_reset_log_header_cache (thread_p, &log_Gl.hdr);
-		  }
-		else if (rec_info_redo.m_logrec.data.rcvindex == RVBT_BULK_BUILD_DURABLE && is_media_crash
-			 && logtb_find_tran_index (thread_p, tran_id) == NULL_TRAN_INDEX)
-		  {
-		    /* The no-redo bulk build completed within the replay window (the analysis phase clears
-		     * completed transactions from the transaction table): its content pages were never
-		     * WAL-logged, so replaying past this point cannot reconstruct the index -- refuse the
-		     * restore.  When the transaction is still in the table -- a partial (point-in-time)
-		     * restore that stops before the build's completion, or a build interrupted by the
-		     * crash -- the undo phase removes the index file entirely, leaving the database as if
-		     * the statement never ran, so the replay may safely proceed past the barrier. */
-		    log_recovery_refuse_bulk_build_replay (thread_p, &rcv_lsa);
-		    /* not reached: log_recovery_refuse_bulk_build_replay() never returns */
 		  }
 
 		rcv_redo_perf_stat.time_and_increment (cublog::PERF_STAT_ID_READ_LOG);
