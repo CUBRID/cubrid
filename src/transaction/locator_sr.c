@@ -8420,7 +8420,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
       index = &(new_attrinfo->last_classrepr->indexes[i]);
       if (rk_btid_index == -1 && repl_info != NULL && repl_info->need_replication == true
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && or_is_replication_candidate_key (index)
-	  && log_does_allow_replication () == true)
+	  && heap_is_replication_class (thread_p, class_oid) && log_does_allow_replication () == true)
 	{
 	  rk_btid_index = i;
 	}
@@ -8805,7 +8805,6 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	       */
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
-
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
