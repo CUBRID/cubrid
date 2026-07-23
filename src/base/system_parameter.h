@@ -535,6 +535,8 @@ enum param_id
 
   PRM_ID_HARDWARE_AFFINITY,
 
+  PRM_ID_BESTSPACE_SHARD_COUNT,
+
   PRM_ID_AUTO_INCREMENT_CACHE_SIZE,
 
   /* change PRM_LAST_ID when adding new system parameters */
