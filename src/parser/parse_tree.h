@@ -960,6 +960,12 @@ enum pt_custom_print
   PT_PRINT_LOWER = (0x1 << 30)
 };
 
+/* Hide terms flagged PT_EXPR_INFO_DBLINK_PUSHED (already shipped into the DBLink conn_sql, not evaluated
+ * locally) when printing CNF lists.  Set only by the plan-dump printers: the XASL cache key print must keep
+ * the term, since two queries that differ only in the pushed term's outer side would otherwise collide.
+ * Defined outside enum pt_custom_print: (0x1 << 31) does not fit the enum's underlying int. */
+#define PT_PRINT_SUPPRESS_DBLINK_PUSHED (0x80000000U)
+
 /* all statement node types should be assigned their API statement enumeration */
 enum pt_node_type
 {
@@ -2340,6 +2346,12 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_DBLINK_PUSHED 2097152	/* 0x200000, correlated equality shipped into the DBLink conn_sql
+						 * ("WHERE col = ?").  The term must stay in the tree - the planner
+						 * re-derives correlation by scanning the tree for outer references
+						 * (get_local_subqueries), and a subquery left with none is reset to
+						 * uncorrelated and pre-executed only once - but the term is excluded
+						 * from the local access_pred and hidden from the plan dump. */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
