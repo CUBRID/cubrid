@@ -3086,6 +3086,156 @@ bool do_Trigger_involved;
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
 bool cdc_Trigger_involved = false;
 
+static bool
+is_replication_class (const char *classname)
+{
+  DB_OBJECT *class_obj;
+
+  if (classname == NULL)
+    {
+      return false;
+    }
+
+  class_obj = db_find_class (classname);
+  if (class_obj == NULL)
+    {
+      assert (false);
+      return false;
+    }
+
+  return sm_is_replication_class (class_obj);
+}
+
+/* Safely extract the class name from a PT_SPEC; returns NULL when the spec has no entity name
+ * (e.g. a derived table). is_replication_class (NULL) is false, so callers stay null-safe. */
+static const char *
+get_spec_classname (PT_NODE * spec)
+{
+  if (spec == NULL || spec->info.spec.entity_name == NULL)
+    {
+      return NULL;
+    }
+
+  return spec->info.spec.entity_name->info.name.original;
+}
+
+/* parser_walk_tree callback: set *found when a spec in the (derived) subtree
+ * resolves to a replication class. Used for updatable vclass targets that
+ * mq_rewrite_vclass_spec_as_derived pushed into a derived table (the outer
+ * spec's entity_name/flat_entity_list are cleared, so the real base classes
+ * live only inside the derived subtree). */
+static PT_NODE *
+pt_spec_repl_class_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+  PT_NODE *cls;
+
+  if (*found)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (node != NULL && node->node_type == PT_SPEC)
+    {
+      for (cls = node->info.spec.flat_entity_list; cls != NULL; cls = cls->next)
+	{
+	  if (cls->info.name.db_object != NULL && sm_is_replication_class (cls->info.name.db_object))
+	    {
+	      *found = true;
+	      *continue_walk = PT_STOP_WALK;
+	      return node;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/* A modify target may be named directly (entity_name / flat_entity_list) or,
+ * when an updatable vclass is rewritten into a derived table, have its real
+ * base classes only inside the derived subtree. Inspect both so SBR is not
+ * skipped for a derived vclass INSERT/UPDATE/DELETE target. */
+static bool
+spec_has_replication_class (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *cls;
+  bool found = false;
+
+  if (spec == NULL)
+    {
+      return false;
+    }
+
+  /* named / non-derived target: entity_name + resolved flat_entity_list */
+  if (is_replication_class (get_spec_classname (spec)))
+    {
+      return true;
+    }
+  for (cls = spec->info.spec.flat_entity_list; cls != NULL; cls = cls->next)
+    {
+      if (cls->info.name.db_object != NULL && sm_is_replication_class (cls->info.name.db_object))
+	{
+	  return true;
+	}
+    }
+
+  /* derived vclass target: the real base classes are inside the derived subtree */
+  if (spec->info.spec.derived_table != NULL)
+    {
+      parser_walk_tree (parser, spec->info.spec.derived_table, pt_spec_repl_class_walk, &found, NULL, NULL);
+    }
+
+  return found;
+}
+
+bool
+is_data_repl_log_enabled (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_NODE *spec;
+
+  if (statement == NULL)
+    {
+      return false;
+    }
+
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      /* INSERT has a single target spec. The INSERT...SELECT source tables are not modify targets and
+       * are intentionally not inspected here. */
+      return spec_has_replication_class (parser, statement->info.insert.spec);
+
+    case PT_UPDATE:
+      /* Only the specs actually updated decide replication, not join-only specs. In a multi-table UPDATE
+       * the modified tables are the ones flagged PT_SPEC_FLAG_UPDATE (the first FROM spec is not
+       * necessarily a target). Generate SBR when any updated target is a replication class. */
+      for (spec = statement->info.update.spec; spec != NULL; spec = spec->next)
+	{
+	  if ((spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) && spec_has_replication_class (parser, spec))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    case PT_DELETE:
+      /* Only the specs actually deleted decide replication, not join-only specs. The deleted tables are
+       * the ones flagged PT_SPEC_FLAG_DELETE. Generate SBR when any deleted target is a replication class. */
+      for (spec = statement->info.delete_.spec; spec != NULL; spec = spec->next)
+	{
+	  if ((spec->info.spec.flag & PT_SPEC_FLAG_DELETE) && spec_has_replication_class (parser, spec))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    default:
+      return true;
+    }
+}
+
 /*
  * do_statement() -
  *   return: Error code
@@ -3141,7 +3291,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
        * error. */
 
       /* disable data replication log for schema replication log types in HA mode */
-      if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+      if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && is_data_repl_log_enabled (parser, statement))
 	{
 	  need_stmt_replication = true;
 
@@ -3838,7 +3988,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* for the subset of nodes which represent top level statements, process them; for any other node, return an error */
 
   /* disable data replication log for schema replication log types in HA mode */
-  if (!HA_DISABLED () && is_stmt_based_repl_type (statement))
+  if (!HA_DISABLED () && is_stmt_based_repl_type (statement) && is_data_repl_log_enabled (parser, statement))
     {
       need_stmt_based_repl = true;
 
