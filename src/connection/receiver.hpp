@@ -29,6 +29,7 @@
 #include "DMRBMemoryPool.hpp"
 
 #include <cstring>
+#include <mutex>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
@@ -63,6 +64,8 @@ namespace cubconn
 
     private:
       statistics::metrics<statistics::context> *m_stats;
+
+      std::mutex m_mutex;
 
       state m_state;
       cubbase::DMRBMemoryPool m_buf;

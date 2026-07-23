@@ -88,6 +88,7 @@ namespace cubconn
 
   void receiver::reset ()
   {
+    std::lock_guard<std::mutex> lock (m_mutex);
     cubbase::span<std::byte> buffer;
 
     m_state = state::Recv;
@@ -96,6 +97,10 @@ namespace cubconn
     m_size = 0;
 
     m_result.clear ();
+    for (std::byte *ptr : m_allocated)
+      {
+	delete[] ptr;
+      }
     m_allocated.clear ();
 
     /* if m_buf is already in use, it may be corrupted by subsequent reception. */
@@ -439,6 +444,7 @@ namespace cubconn
 
   result receiver::drain (int fd, size_t limit)
   {
+    std::lock_guard<std::mutex> lock (m_mutex);
     result status;
     size_t consumption;
 
@@ -502,6 +508,7 @@ namespace cubconn
 
   void receiver::release (std::byte *ptr)
   {
+    std::lock_guard<std::mutex> lock (m_mutex);
     cubbase::span<std::byte> source;
     int size;
 
@@ -533,4 +540,3 @@ namespace cubconn
     return &m_result;
   }
 }
-
