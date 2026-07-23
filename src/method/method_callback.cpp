@@ -738,7 +738,7 @@ namespace cubmethod
     int save;
     const char *name = question.name.c_str ();
 
-    AU_DISABLE (save);
+    AU_SAVE_AND_DISABLE (save);
     {
       // TODO
       mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
@@ -817,7 +817,7 @@ namespace cubmethod
     }
 
 exit:
-    AU_ENABLE (save);
+    AU_RESTORE (save);
 
     res.err_id = err;
     if (err != NO_ERROR)

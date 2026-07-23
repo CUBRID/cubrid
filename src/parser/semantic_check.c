@@ -12158,6 +12158,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
 #endif /* 0 */
 
+      sc_info_ptr->system_class = false;
       if (!pt_has_error (parser))
 	{
 	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
@@ -12165,11 +12166,88 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
+	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
+	       * breaks out of the normal query semantic check below, so the subquery is never processed
+	       * as a stand-alone query. Run the same steps a top-level SELECT receives
+	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
+	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
+	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
+	      /* Sink form only (DML text not serialized, qstr == NULL): the SELECT subquery runs
+	       * locally, so it needs the local semantic pass below. The full-pushdown form
+	       * (qstr set) ships the whole statement to the remote server, where it is parsed
+	       * and type-checked; the local pass would fail on remote columns whose types are
+	       * unknown locally. */
+	      if (node->node_type == PT_INSERT
+		  && node->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+		{
+		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+		  if (subq != NULL)
+		    {
+		      PT_NODE *saved_top = sc_info_ptr->top_node;
+
+		      pt_resolve_names (parser, subq, sc_info_ptr);
+		      if (!pt_has_error (parser))
+			{
+			  sc_info_ptr->top_node = subq;
+			  subq = pt_check_where (parser, subq);
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq =
+				parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      /* The remote DML path skips the statement-level mq_translate (db_vdb.c, the whole
+			       * statement is sent to the remote server). For a remote INSERT SELECT the SELECT
+			       * subquery runs locally, so translate it here as a stand-alone query: this applies
+			       * view expansion, dblink derived-table rewrite and set-operator operand marking
+			       * (PT_IS_UNION_SUBQUERY) from the canonical code, so the operand/derived XASLs are
+			       * gathered into aptr_list and executed. Runs after the local semantic check above,
+			       * matching the normal semantic-check -> mq_translate order. */
+			      subq = mq_translate (parser, subq);
+			      if (subq == NULL && !pt_has_error (parser))
+				{
+				  /* Match the canonical mq_translate contract (db_vdb.c): a NULL result is a
+				   * failure even when no error was recorded. Without this the stale subquery
+				   * would reach XASL generation. */
+				  PT_INTERNAL_ERROR (parser,
+						     "remote INSERT SELECT: failed to translate the SELECT subquery");
+				}
+			    }
+			  sc_info_ptr->top_node = saved_top;
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      node->info.insert.value_clauses->info.node_list.list = subq;
+
+			      /* The remote path also skips the INSERT-level attribute/value count check, so an
+			       * explicit column list whose size differs from the SELECT projection would reach
+			       * XASL generation and abort there. Validate it here with the same semantic error a
+			       * local INSERT uses. */
+			      if (node->info.insert.attr_list != NULL)
+				{
+				  int ac = pt_length_of_list (node->info.insert.attr_list);
+				  int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
+								     EXCLUDE_HIDDEN_COLUMNS);
+				  if (ac != cc)
+				    {
+				      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
+				    }
+				}
+			    }
+			}
+		    }
+		}
 	      break;
 	    }
 	}
 
-      sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
       if (!pt_has_error (parser))
