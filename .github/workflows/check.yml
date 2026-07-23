@@ -27,7 +27,7 @@ jobs:
     name: license
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - uses: jitterbit/get-changed-files@v1
         id: files
         continue-on-error: true
@@ -90,7 +90,7 @@ jobs:
     env:
       working-directory: .github/workflows
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - name: Install packages
         run: |
           # dependencies to build GNU indent
@@ -110,9 +110,9 @@ jobs:
           # download google-java-format-1.7-all-deps.jar
           wget https://github.com/CUBRID/3rdparty/raw/develop/google-java-format/google-java-format-1.7-all-deps.jar
         working-directory: ${{ env.working-directory }}
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v5
         with:
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-version: '8'
       - id: files
         uses: jitterbit/get-changed-files@v1
@@ -150,7 +150,7 @@ jobs:
           echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
 
           cd $wd
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - uses: jitterbit/get-changed-files@v1
         id: files
         continue-on-error: true
@@ -219,7 +219,7 @@ jobs:
     name: memory-monitor-check
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - uses: jitterbit/get-changed-files@v1
         id: files
         continue-on-error: true

@@ -224,7 +224,6 @@ metadata_of_slotted_page_header (void)
     {"Total_free_area", "int"},
     {"Contiguous_free_area", "int"},
     {"Free_space_offset", "int"},
-    {"Need_update_best_hint", "int"},
     {"Is_saving", "int"},
     {"Flags", "int"}
   };
@@ -305,21 +304,11 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
     {"Header_page_id", "int"},
     {"Overflow_vfid", "varchar(64)"},
     {"Next_vpid", "varchar(64)"},
+    {"Last_vpid", "varchar(64)"},
     {"Unfill_space", "int"},
-    {"Estimates_num_pages", "bigint"},
-    {"Estimates_num_recs", "bigint"},
-    {"Estimates_avg_rec_len", "int"},
-    {"Estimates_num_high_best", "int"},
-    {"Estimates_num_others_high_best", "int"},
-    {"Estimates_head", "int"},
-    {"Estimates_best_list", "varchar(512)"},
-    {"Estimates_num_second_best", "int"},
-    {"Estimates_head_second_best", "int"},
-    {"Estimates_tail_second_best", "int"},
-    {"Estimates_num_substitutions", "int"},
-    {"Estimates_second_best_list", "varchar(256)"},
-    {"Estimates_last_vpid", "varchar(64)"},
-    {"Estimates_full_search_vpid", "varchar(64)"}
+    {"Num_pages", "bigint"},
+    {"Num_recs", "bigint"},
+    {"Avg_rec_len", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {

@@ -746,6 +746,10 @@ namespace
 	  {
 	    continue;
 	  }
+	if (heap_page_is_bestspace (thread_p, scan_cache.page_watcher.pgptr))
+	  {
+	    continue;
+	  }
 
 	OID_SET_NULL (&cur_oid);
 	while (true)
@@ -1111,6 +1115,10 @@ cleanup:
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
 	  {
 	    continue;		/* not a heap data page; skip */
+	  }
+	if (heap_page_is_bestspace (thread_p, scan_cache.page_watcher.pgptr))
+	  {
+	    continue;		/* heap-internal metadata page; skip */
 	  }
 
 	OID_SET_NULL (&cur_oid);

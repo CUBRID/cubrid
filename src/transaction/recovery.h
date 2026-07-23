@@ -203,7 +203,8 @@ typedef enum
    * its undo is logged as MVCC undo (chained for the forward-walk) yet vacuum must not "collect" the
    * already-deleted slot. Crash recovery replays the delete identically to RVHF_DELETE. */
   RVHF_DELETE_NEWHOME_NOTIFY_VACUUM = 136,
-  RV_LAST_LOGID = RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
+  RVHF_UPDATE_BESTSPACE_ENTRIES = 137,
+  RV_LAST_LOGID = RVHF_UPDATE_BESTSPACE_ENTRIES,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;

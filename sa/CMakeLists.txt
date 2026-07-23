@@ -507,6 +507,7 @@ set(TRANSACTION_HEADERS
   )
 
 set(STORAGE_SOURCES
+  ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
   ${STORAGE_DIR}/btree_unique.cpp
@@ -541,6 +542,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/tde.c
   )
 set(STORAGE_HEADERS
+  ${STORAGE_DIR}/bestspace.hpp
   ${STORAGE_DIR}/btree_unique.hpp
   ${STORAGE_DIR}/ftab_set.hpp
   ${STORAGE_DIR}/record_descriptor.hpp
@@ -784,6 +786,12 @@ target_link_libraries(cubridsa
     rt
     cascci
   )
+
+if(UNIX)
+  target_include_directories(cubridsa PUBLIC ${TBB_INCLUDES})
+  target_link_libraries(cubridsa PRIVATE ${TBB_LIBS})
+  add_dependencies(cubridsa ${TBB_TARGETS})
+endif(UNIX)
 
 add_dependencies(cubridsa
   gen_csql_grammar

@@ -4682,6 +4682,19 @@ pt_set_access_spec_for_aggregation (PARSER_CONTEXT * parser, AGGREGATE_TYPE * ag
     {
       ACCESS_SPEC_SET_FLAG (access_spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN);
     }
+  else
+    {
+      /* The per-aggregate MIN/MAX shortcut (taking the boundary key of an ordered
+       * scan) is only correct when the whole scan is a dedicated min/max-only scan,
+       * which lets it skip the leading NULL keys of the ordering column. When the
+       * query has other aggregates (e.g. SUM, COUNT), the scan reads every row and
+       * the shortcut would still latch onto the first (possibly NULL) key. Clear the
+       * flag so those aggregates fall back to normal, NULL-skipping accumulation. */
+      for (agg = aggregate; agg != NULL; agg = agg->next)
+	{
+	  agg->flag.min_max_optimized = false;
+	}
+    }
 }
 
 /*
@@ -4784,8 +4797,14 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
   info.flag_agg_min_max_optimized = false;
 
   /* TODO : for multi table */
+  /* Only enable the index-based MIN/MAX optimization when the ordering column is known
+   * NULL-free at scan time (pt_add_null_filter_for_min_max_opt): either a "col IS NOT NULL"
+   * term was added or the column carries a NOT NULL constraint. That both confirms the query
+   * is a safe single-column MIN/MAX candidate and rules out the leading NULL keys that would
+   * otherwise be returned as a wrong result (CBRD-24890). */
   if (!select_node->info.query.q.select.group_by && !select_node->info.query.order_by
-      && !select_node->info.query.orderby_for && from->next == NULL)
+      && !select_node->info.query.orderby_for && from->next == NULL
+      && PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED))
     {
       info.flag_agg_min_max_optimized = true;
     }
@@ -12902,44 +12921,20 @@ pt_to_showstmt_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * whe
 }
 
 /*
- * pt_dblink_corr_side_has_spec () - return true if node is a PT_NAME
- *   that belongs to the given spec (identified by spec_id).
- */
-static bool
-pt_dblink_corr_side_has_spec (PT_NODE * node, UINTPTR spec_id)
-{
-  return node != NULL && node->node_type == PT_NAME && node->info.name.spec_id == spec_id;
-}
-
-/*
- * pt_dblink_corr_side_is_outer_ref () - return true
- *   if node is a PT_NAME that belongs to an outer query block (correlation_level > 0) and is not
- *   the inner DBLink spec.  Using correlation_level mirrors mq_dblink_corr_classify_side() and
- *   correctly excludes same-level tables (e.g. a local table joined with DBLink in the same subquery).
- *   A literal or NULL has no spec_id (== 0) and returns false.
- *   An inner-spec column (spec_id == dblink_sid) also returns false.
- */
-static bool
-pt_dblink_corr_side_is_outer_ref (PT_NODE * node, UINTPTR dblink_sid)
-{
-  return node != NULL && node->node_type == PT_NAME
-    && node->info.name.spec_id != 0 && node->info.name.spec_id != dblink_sid && node->info.name.correlation_level > 0;
-}
-
-/*
  * pt_remove_corr_dblink_term () - remove the correlated-equality term that was push-downed
- *   into conn_sql from the access_pred AND list.  Unlinks only a PT_EQ that is a cross-spec equality:
- *   exactly one side must belong to the inner DBLink spec (dblink_sid) and the other side must be an outer
- *   column reference (spec_id != 0 and spec_id != dblink_sid).  This avoids removing constant filters such
- *   as "r.status = 'A'" (literal has spec_id == 0) or inner-only equalities like "r.a = r.b" (both sides have
- *   spec_id == dblink_sid).  Returns the (possibly new) list head.  Does NOT free unlinked nodes.
+ *   into conn_sql from the access_pred AND list.  Unlinks exactly the terms the push marked
+ *   with PT_EXPR_INFO_DBLINK_PUSHED when it finalized the remote SQL — the remote side
+ *   already filters via "WHERE col = ?", so evaluating the term locally again is redundant.
+ *   Keying on the flag keeps detection and removal in lockstep by construction (no separate
+ *   re-classification that could drift).  Returns the (possibly new) list head.  Does NOT
+ *   free unlinked nodes.
  *
  * NOTE: This function mutates the ->next links of the list in place.  The caller must use the returned head
  *   and must NOT re-walk the original where_list pointer after this call, as the first node may have been
  *   unlinked (its ->next is set to NULL).
  */
 static PT_NODE *
-pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
+pt_remove_corr_dblink_term (PT_NODE * where_list)
 {
   PT_NODE *prev = NULL, *curr, *next;
   PT_NODE *head = where_list;
@@ -12951,27 +12946,18 @@ pt_remove_corr_dblink_term (PT_NODE * where_list, UINTPTR dblink_sid)
       PT_NODE *actual = curr;
       CAST_POINTER_TO_NODE (actual);
 
-      if (actual != NULL && actual->node_type == PT_EXPR && actual->info.expr.op == PT_EQ)
+      if (actual != NULL && actual->node_type == PT_EXPR && PT_EXPR_INFO_IS_FLAGED (actual, PT_EXPR_INFO_DBLINK_PUSHED))
 	{
-	  PT_NODE *arg1 = actual->info.expr.arg1;
-	  PT_NODE *arg2 = actual->info.expr.arg2;
-	  bool is_corr_term = (pt_dblink_corr_side_has_spec (arg1, dblink_sid)
-			       && pt_dblink_corr_side_is_outer_ref (arg2, dblink_sid))
-	    || (pt_dblink_corr_side_has_spec (arg2, dblink_sid) && pt_dblink_corr_side_is_outer_ref (arg1, dblink_sid));
-
-	  if (is_corr_term)
+	  if (prev == NULL)
 	    {
-	      if (prev == NULL)
-		{
-		  head = next;
-		}
-	      else
-		{
-		  prev->next = next;
-		}
-	      curr->next = NULL;
-	      continue;
+	      head = next;
 	    }
+	  else
+	    {
+	      prev->next = next;
+	    }
+	  curr->next = NULL;
+	  continue;
 	}
       prev = curr;
     }
@@ -13014,15 +13000,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   effective_where = where_part;
   if (subquery_proc != NULL && IS_CORR_DBLINK_XASL (subquery_proc))
     {
-      PT_NODE *inner_spec;
-      for (inner_spec = subquery->info.query.q.select.from; inner_spec; inner_spec = inner_spec->next)
-	{
-	  if (inner_spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE)
-	    {
-	      effective_where = pt_remove_corr_dblink_term (where_part, inner_spec->info.spec.id);
-	      break;
-	    }
-	}
+      effective_where = pt_remove_corr_dblink_term (where_part);
     }
 
   tbl_info = pt_find_table_info (spec->info.spec.id, parser->symbols->table_info);
@@ -13294,8 +13272,7 @@ pt_to_dblink_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE *
    * equality from the local access_pred — the remote side already filters via "WHERE col = ?".
    * pt_remove_corr_dblink_term mutates the list in place — use effective_where_p exclusively from here on;
    * do NOT re-walk where_p after this point. */
-  PT_NODE *effective_where_p = (pdblink->corr_key_count > 0)
-    ? pt_remove_corr_dblink_term (where_p, spec->info.spec.id) : where_p;
+  PT_NODE *effective_where_p = (pdblink->corr_key_count > 0) ? pt_remove_corr_dblink_term (where_p) : where_p;
 
   PRED_EXPR *where = pt_to_pred_expr (parser, effective_where_p);
 
@@ -17976,7 +17953,7 @@ pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  unsigned int save_custom;
 	  save_custom = parser->custom_print;
-	  parser->custom_print |= PT_CONVERT_RANGE;
+	  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 	  fprintf (db_query_get_plan_dump_fp (), "\nQuery stmt:%s\n\n%s\n\n", "",
 		   parser_print_tree (parser, select_node));
 
@@ -17987,6 +17964,260 @@ pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
   return xasl;
 }
 
+
+typedef struct pt_min_max_opt_info PT_MIN_MAX_OPT_INFO;
+struct pt_min_max_opt_info
+{
+  PT_NODE *column;		/* the single column referenced by every MIN/MAX aggregate */
+  bool valid;			/* set to false once the query is disqualified */
+};
+
+/*
+ * pt_check_min_max_column_walk () - pre-function that verifies every aggregate
+ *     found in a query's select list is a MIN or MAX over one and the same
+ *     simple column. Used by pt_add_null_filter_for_min_max_opt ().
+ *   return: node
+ *   parser(in): context
+ *   node(in): node to check
+ *   arg(in/out): PT_MIN_MAX_OPT_INFO collecting the result
+ *   continue_walk(in/out): walk control
+ */
+static PT_NODE *
+pt_check_min_max_column_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_MIN_MAX_OPT_INFO *info = (PT_MIN_MAX_OPT_INFO *) arg;
+  PT_NODE *arg_list;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  /* do not dive into subqueries: their aggregates are not the outer query's */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) || pt_is_analytic_function (parser, node))
+    {
+      info->valid = false;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  if (pt_is_aggregate_function (parser, node))
+    {
+      FUNC_CODE ftype = node->info.function.function_type;
+
+      if (ftype != PT_MIN && ftype != PT_MAX)
+	{
+	  /* other aggregates (SUM, COUNT, ...) would be affected by removing NULL rows */
+	  info->valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      arg_list = node->info.function.arg_list;
+      if (arg_list == NULL || arg_list->next != NULL || arg_list->node_type != PT_NAME)
+	{
+	  /* not a simple single-column MIN/MAX */
+	  info->valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      if (info->column == NULL)
+	{
+	  info->column = arg_list;
+	}
+      else if (pt_check_path_eq (parser, info->column, arg_list) != 0)
+	{
+	  /* MIN/MAX reference different columns */
+	  info->valid = false;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+
+      /* do not descend into the aggregate argument */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  /* a bare column reference outside of a MIN/MAX makes the rewrite unsafe */
+  if (node->node_type == PT_NAME)
+    {
+      info->valid = false;
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  return node;
+}
+
+/*
+ * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list
+ *     already rejects NULL values of the given column, mirroring the criteria
+ *     qo_fold_is_and_not_null () uses to fold a user-written "col IS NOT NULL"
+ *     away: a single-predicate term (no or_next) of the WHERE location whose
+ *     first argument or right-hand side is that column. IS NULL and <=> accept
+ *     NULL operands and therefore do not count.
+ *   return: bool
+ *   parser(in): context
+ *   where(in): CNF WHERE list
+ *   column(in): PT_NAME node of the min/max column
+ */
+static bool
+pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * column)
+{
+  PT_NODE *term, *term_prior;
+
+  for (term = where; term != NULL; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->or_next != NULL || term->info.expr.location != 0)
+	{
+	  /* not a single-predicate conjunct of the WHERE proper: an OR-ed predicate
+	   * can still accept a NULL of the column through its other disjuncts */
+	  continue;
+	}
+
+      if (term->info.expr.op == PT_IS_NULL || term->info.expr.op == PT_NULLSAFE_EQ)
+	{
+	  /* these evaluate to true on NULL operands */
+	  continue;
+	}
+
+      term_prior = pt_get_first_arg_ignore_prior (term);
+      if ((term_prior != NULL && pt_check_path_eq (parser, column, term_prior) == 0)
+	  || (term->info.expr.arg2 != NULL && pt_check_path_eq (parser, column, term->info.expr.arg2) == 0))
+	{
+	  /* a NULL column value makes this conjunct UNKNOWN, so the row cannot qualify */
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_add_null_filter_for_min_max_opt () - for a single-table, single-tuple
+ *     aggregate query whose aggregates are all MIN/MAX over one and the same
+ *     simple column, add "<column> IS NOT NULL" to the WHERE clause.
+ *
+ *     This is result-preserving because MIN/MAX ignore NULLs, and it lets the
+ *     index-based MIN/MAX scan (CBRD-24890) skip the leading NULL keys of the
+ *     ordering column. Without it, an ascending scan of a composite index
+ *     (e.g. WHERE a = 5 on index (a, b) with MIN(b)) would pick a NULL key as
+ *     the minimum and return a wrong NULL result.
+ *
+ *     A column under a NOT NULL constraint gets no filter (the rewriter folds such
+ *     always-true terms away, qo_fold_is_and_not_null); only the NULL-free flag is set.
+ *   return: void
+ *   parser(in): context
+ *   select_node(in): of PT_SELECT type
+ */
+static void
+pt_add_null_filter_for_min_max_opt (PARSER_CONTEXT * parser, PT_NODE * select_node)
+{
+  PT_MIN_MAX_OPT_INFO info;
+  PT_NODE *from, *col_copy, *not_null;
+
+  if (select_node == NULL || select_node->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  /* candidate shape: no grouping/ordering, no having/connect-by */
+  if (select_node->info.query.q.select.group_by != NULL || select_node->info.query.order_by != NULL
+      || select_node->info.query.orderby_for != NULL || select_node->info.query.q.select.having != NULL
+      || select_node->info.query.q.select.connect_by != NULL)
+    {
+      return;
+    }
+
+  /* skip correlated subqueries: they are planned per outer row and the min/max-only
+   * scan gives no benefit there; keep their original plans (and plan dumps) intact */
+  if (select_node->info.query.correlation_level != 0)
+    {
+      return;
+    }
+
+  /* skip when index skip scan or loose index scan is hinted: the extra filter term can
+   * disqualify those scans (e.g. loose index scan eligibility), and with ISS/LIS the
+   * min/max column is not the leading sort column anyway, so the min/max-only scan
+   * would not engage */
+  if (select_node->info.query.q.select.hint & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
+    {
+      return;
+    }
+
+  /* only a single table */
+  from = select_node->info.query.q.select.from;
+  if (from == NULL || from->next != NULL)
+    {
+      return;
+    }
+
+  /* a query without a WHERE clause uses the btree-statistics MIN/MAX optimization,
+   * which already skips NULL keys; do not disturb it. */
+  if (select_node->info.query.q.select.where == NULL)
+    {
+      return;
+    }
+
+  if (!pt_is_single_tuple (parser, select_node))
+    {
+      return;
+    }
+
+  info.column = NULL;
+  info.valid = true;
+  (void) parser_walk_tree (parser, select_node->info.query.q.select.list, pt_check_min_max_column_walk, &info, NULL,
+			   NULL);
+
+  if (!info.valid || info.column == NULL)
+    {
+      return;
+    }
+
+  if (pt_check_not_null_constraint (parser, from, info.column))
+    {
+      /* the column can never be NULL by constraint, so the index holds no NULL keys and the
+       * min/max scan is safe without a filter. Do not add the always-true term the rewriter
+       * folds away anyway (qo_fold_is_and_not_null); just record the guarantee. */
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED);
+      return;
+    }
+
+  if (pt_where_rejects_column_null (parser, select_node->info.query.q.select.where, info.column))
+    {
+      /* some conjunct already rejects NULLs of the column (the same criteria under which the
+       * rewriter folds a user-written IS NOT NULL away, but that fold runs before this point,
+       * so a term added here would survive). No NULL row passes the scan predicates and the
+       * min/max early-stop only inspects fully qualified rows, so just record the guarantee. */
+      PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED);
+      return;
+    }
+
+  col_copy = parser_copy_tree (parser, info.column);
+  if (col_copy == NULL)
+    {
+      return;
+    }
+  col_copy->next = NULL;
+
+  not_null = pt_expression_1 (parser, PT_IS_NOT_NULL, col_copy);
+  if (not_null == NULL)
+    {
+      return;
+    }
+  not_null->type_enum = PT_TYPE_LOGICAL;
+
+  /* prepend as an additional conjunct of the (CNF) WHERE list */
+  not_null->next = select_node->info.query.q.select.where;
+  select_node->info.query.q.select.where = not_null;
+
+  /* record that the ordering column is now guaranteed NULL-free at scan time, so
+   * the index-based MIN/MAX optimization may safely be applied (see pt_to_aggregate). */
+  PT_SELECT_INFO_SET_FLAG (select_node, PT_SELECT_INFO_MINMAX_NULL_FILTERED);
+}
 
 /*
  * pt_plan_query () -
@@ -18008,6 +18239,9 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
     {
       return NULL;
     }
+
+  /* let the index-based MIN/MAX scan skip NULL keys of the ordering column (CBRD-24890) */
+  pt_add_null_filter_for_min_max_opt (parser, select_node);
 
   /* Check for join, path expr, and index optimizations */
   plan = qo_optimize_query (parser, select_node);
@@ -18111,6 +18345,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	  save_custom = parser->custom_print;
 	  parser->custom_print |= PT_CONVERT_RANGE;
 	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
+	  parser->custom_print |= PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 	  fprintf (dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
@@ -28017,8 +28252,6 @@ pt_reserved_id_to_valuelist_index (PARSER_CONTEXT * parser, PT_RESERVED_NAME_ID 
       return HEAP_PAGE_INFO_OFFSET_TO_FREE_AREA;
     case RESERVED_P_IS_SAVING:
       return HEAP_PAGE_INFO_IS_SAVING;
-    case RESERVED_P_UPDATE_BEST:
-      return HEAP_PAGE_INFO_UPDATE_BEST;
 
       /* Key info names */
     case RESERVED_KEY_VOLUMEID:

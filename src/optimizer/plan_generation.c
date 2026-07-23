@@ -511,6 +511,18 @@ make_mergelist_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * left, PT_NODE * l
       merge->proc.mergelist.inner_spec_list = merge->spec_list;
       merge->proc.mergelist.inner_val_list = merge->val_list;
 
+      /* Unlike init_list_scan_proc(), do not translate the query's parallel-scan hints
+       *   PT_HINT_NO_PARALLEL_SCAN -> ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN
+       *   PT_HINT_PARALLEL         -> ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS
+       * onto the merge's outer/inner list specs.
+       *
+       * Reasons:
+       *   - parallel scan of a sort-merge result is not considered/verified here;
+       *   - px_scan_checker already forces ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN on these specs,
+       *     guarding the s.llsid union from a parallel pllsid_parallel overwrite.
+       *
+       * TODO: revisit whether parallel-scanning a sorted merge result is valid/worthwhile. */
+
       merge->spec_list = NULL;
       merge->val_list = NULL;
 
@@ -984,6 +996,27 @@ init_list_scan_proc (QO_ENV * env, XASL_NODE * xasl, XASL_NODE * listfile, PT_NO
       instnum_pred = make_pred_from_bitset (env, predset, is_totally_after_join_term);
 
       xasl = ptqo_to_list_scan_proc (QO_ENV_PARSER (env), xasl, SCAN_PROC, listfile, namelist, access_pred, poslist);
+
+      /* Parallel-scan hints flag only the FROM specs,
+       * not this generated list spec of a materialized intermediate (hash/merge join result);
+       * propagate them here too. */
+      if (xasl != NULL && xasl->spec_list != NULL && env->pt_tree != NULL && env->pt_tree->node_type == PT_SELECT)
+	{
+	  if (env->pt_tree->info.query.q.select.hint & PT_HINT_NO_PARALLEL_SCAN)
+	    {
+	      ACCESS_SPEC_SET_FLAG (xasl->spec_list, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+	    }
+
+	  if (env->pt_tree->info.query.q.select.hint & PT_HINT_PARALLEL)
+	    {
+	      ACCESS_SPEC_SET_FLAG (xasl->spec_list, ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS);
+	      xasl->spec_list->num_parallel_threads = env->pt_tree->info.query.q.select.num_parallel_threads;
+	    }
+	  else
+	    {
+	      assert (xasl->spec_list->num_parallel_threads == -1 /* auto-compute from regu_init */ );
+	    }
+	}
 
       if (env->pt_tree->node_type == PT_SELECT && env->pt_tree->info.query.q.select.connect_by)
 	{
