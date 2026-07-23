@@ -442,10 +442,7 @@ struct insert_proc_node
 /* how the remote DELETE sink derives the value(s) it pushes for the WHERE predicate. PER_ROW pushes
  * one remote statement per row of the local subquery's result (IN / ANY / scalar comparisons); the
  * REDUCE_* / EQ_ALL modes instead push a single remote statement built from a value reduced locally
- * over the whole subquery result (comparison ALL). Not yet wired into xts_process_delete_proc /
- * xts_sizeof_delete_proc / stx_build_delete_proc -- a CS-mode pack/unpack round trip currently leaves
- * this field as uninitialized memory, not PER_ROW. Nothing reads it yet, but any runtime code path
- * that does must land the serialization wiring first. */
+ * over the whole subquery result (comparison ALL). */
 typedef enum dblink_remote_sink_mode
 {
   DBLINK_SINK_MODE_PER_ROW = 0,	/* col {= | <> | < | > | <= | >=} (subquery|ANY): one push per row */
