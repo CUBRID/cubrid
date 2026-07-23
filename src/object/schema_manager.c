@@ -134,7 +134,7 @@ typedef struct schema_def
  *    currently is called only from AU_SET_USER
  */
 
-static SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
+static CUB_THREAD_LOCAL SCHEMA_DEF Current_Schema = { {'\0'}, NULL, NULL, NULL, NULL };
 
 #define WC_PERIOD L'.'
 

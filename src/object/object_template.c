@@ -73,7 +73,11 @@
  * checking is enabled.
  * This state can be modifed using obt_enable_unique_checking()
  */
+#if defined (SA_MODE)
 static bool obt_Check_uniques = true;
+#else
+static const bool obt_Check_uniques = true;
+#endif
 
 /*
  * State variable used when creating object template, to indicate whether enable
@@ -2795,6 +2799,7 @@ obt_disable_serializable_conflict_checking (OBJ_TEMPLATE * template_ptr)
     }
 }
 
+#if defined (SA_MODE)
 /*
  * obt_enable_unique_checking - This is used by the loader to disable unique
  *                              constraint checking for all templates created.
@@ -2814,6 +2819,7 @@ obt_enable_unique_checking (bool new_state)
   obt_Check_uniques = new_state;
   return (old_state);
 }
+#endif
 
 /*
  * obj_set_force_flush - set force_flush flag of the template
