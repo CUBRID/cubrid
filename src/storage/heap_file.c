@@ -25970,7 +25970,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   heap_hdr_watcher.pgptr = NULL;
 
   new_pg_watcher->pgptr =
-    heap_scan_pb_lock_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, X_LOCK, NULL, new_pg_watcher);
+    heap_scan_pb_lock_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, NULL, new_pg_watcher);
   if (new_pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
