@@ -144,7 +144,7 @@ namespace cubconn::connection
 	if (bytes > 0)
 	  {
 	    sent_size = static_cast<std::size_t> (bytes);
-	    ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL, sent_size);
+	    ctx->m_atomic_stats.bytes_out_total.fetch_add (sent_size, std::memory_order_relaxed);
 	  }
 	else if (bytes < 0)
 	  {
@@ -896,6 +896,11 @@ retry:
     message.statistics.contexts.reserve (m_context.size ());
     for (context *ctx : m_context)
       {
+	/* integrate atomic stats to owned stats */
+	ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL,
+			  ctx->m_atomic_stats.bytes_out_total.exchange (0, std::memory_order_relaxed));
+
+	/* store */
 	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
       }
 
