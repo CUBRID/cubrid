@@ -12841,6 +12841,7 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
   bool have_prev = false;
   OID prev_sep, prev_max, cur_sep, cur_min, cur_max;
   int num_obj;
+  char err_buf[LINE_MAX];
   DISK_ISVALID valid = DISK_INVALID;
 
   assert (first_ovf_vpid != NULL && !VPID_ISNULL (first_ovf_vpid));
@@ -12896,8 +12897,9 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
 	  if (VPID_ISNULL (&next_dir_vpid))
 	    {
 	      /* Directory has fewer entries than data pages. */
-	      btree_log_if_enabled ("CBRD-24094 check: directory has fewer entries than data pages "
-				    "(chain first=%d|%d)\n", VPID_AS_ARGS (first_ovf_vpid));
+	      snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: directory has fewer entries than data pages "
+			"(chain first=%d|%d)\n", VPID_AS_ARGS (first_ovf_vpid));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	      valid = DISK_INVALID;
 	      goto end;
 	    }
@@ -12923,9 +12925,9 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
       /* Entry order/vpid must match the chain order. */
       if (!VPID_EQ (&entries[dir_idx].vpid, pgbuf_get_vpid_ptr (data_page)))
 	{
-	  btree_log_if_enabled ("CBRD-24094 check: directory entry %d vpid %d|%d != data page %d|%d\n", i,
-				VPID_AS_ARGS (&entries[dir_idx].vpid),
-				VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: directory entry %d vpid %d|%d != data page %d|%d\n", i,
+		    VPID_AS_ARGS (&entries[dir_idx].vpid), VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	  valid = DISK_INVALID;
 	  goto end;
 	}
@@ -12938,8 +12940,9 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
       num_obj = data_rec.length / obj_size;
       if (num_obj <= 0)
 	{
-	  btree_log_if_enabled ("CBRD-24094 check: empty data page %d|%d\n",
-				VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: empty data page %d|%d\n",
+		    VPID_AS_ARGS (pgbuf_get_vpid_ptr (data_page)));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	  valid = DISK_INVALID;
 	  goto end;
 	}
@@ -12951,21 +12954,26 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
 	  /* separators strictly ascending */
 	  if (!OID_LT (&prev_sep, &cur_sep))
 	    {
-	      btree_log_if_enabled ("CBRD-24094 check: separators not ascending at entry %d\n", i);
+	      snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: separators not ascending at entry %d\n", i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	      valid = DISK_INVALID;
 	      goto end;
 	    }
 	  /* previous page's max OID must be below this page's separator (upper bound of prev range) */
 	  if (!OID_LT (&prev_max, &cur_sep))
 	    {
-	      btree_log_if_enabled ("CBRD-24094 check: page %d max OID >= next separator (mis-routing risk)\n", i - 1);
+	      snprintf (err_buf, LINE_MAX,
+			"btree_ovf_v2_check_dir: page %d max OID >= next separator (mis-routing risk)\n", i - 1);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	      valid = DISK_INVALID;
 	      goto end;
 	    }
 	  /* this (non-head) page's min OID must be at or above its separator */
 	  if (OID_LT (&cur_min, &cur_sep))
 	    {
-	      btree_log_if_enabled ("CBRD-24094 check: page %d min OID < its separator (mis-routing risk)\n", i);
+	      snprintf (err_buf, LINE_MAX,
+			"btree_ovf_v2_check_dir: page %d min OID < its separator (mis-routing risk)\n", i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	      valid = DISK_INVALID;
 	      goto end;
 	    }
@@ -12997,8 +13005,10 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
   /* All data pages consumed. The directory must have no leftover entries. */
   if (dir_idx < dir_num)
     {
-      btree_log_if_enabled ("CBRD-24094 check: directory has more entries than data pages (chain first=%d|%d)\n",
-			    VPID_AS_ARGS (first_ovf_vpid));
+      snprintf (err_buf, LINE_MAX,
+		"btree_ovf_v2_check_dir: directory has more entries than data pages (chain first=%d|%d)\n",
+		VPID_AS_ARGS (first_ovf_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
       valid = DISK_INVALID;
       goto end;
     }
@@ -13012,8 +13022,10 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
 	}
       if (!VPID_ISNULL (&next_dir_vpid))
 	{
-	  btree_log_if_enabled ("CBRD-24094 check: extra directory pages beyond data pages (chain first=%d|%d)\n",
-				VPID_AS_ARGS (first_ovf_vpid));
+	  snprintf (err_buf, LINE_MAX,
+		    "btree_ovf_v2_check_dir: extra directory pages beyond data pages (chain first=%d|%d)\n",
+		    VPID_AS_ARGS (first_ovf_vpid));
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
 	  valid = DISK_INVALID;
 	  goto end;
 	}
