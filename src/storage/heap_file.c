@@ -20997,7 +20997,16 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
        * after locking. Non-MVCC classes take no self-lock and still need the per-row X-lock below. */
       if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
 	{
+#if defined (SERVER_MODE)
+	  /* CBRD-27079 fallback: track the row for 2PC prepare's per-row lock materialization; on failure take
+	   * the per-row lock below instead. */
+	  if (logtb_track_lockless_insert (thread_p, &context->res_oid, &context->class_oid) == NO_ERROR)
+	    {
+	      return NO_ERROR;
+	    }
+#else /* !SERVER_MODE */
 	  return NO_ERROR;
+#endif /* !SERVER_MODE */
 	}
 
       /* lock the object to be inserted conditionally */
