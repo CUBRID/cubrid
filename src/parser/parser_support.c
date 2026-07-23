@@ -11891,12 +11891,14 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* true iff the DELETE WHERE clause is a single positive predicate over a subquery that the value-push
- * sink supports by shape: col IN (subquery), col {= | <> | < | > | <= | >=} ANY (subquery), or a scalar
- * comparison col {= | <> | < | > | <= | >=} (subquery). Forms excluded here fall through to the existing
- * "local mixed remote DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF
- * list, caught by op or cond->next), comparison ALL (PT_*_ALL), negation of IN (PT_IS_NOT_IN), EXISTS, and
- * a value-list IN (arg2 is not a query).
+/* true iff the DELETE WHERE clause is a single positive predicate over a subquery whose shape is a
+ * sink candidate: col IN (subquery), col {= | <> | < | > | <= | >=} ANY (subquery), a scalar comparison
+ * col {= | <> | < | > | <= | >=} (subquery), or col {= | < | > | <= | >=} ALL (subquery). This only
+ * gates the predicate *shape*; how each shape is executed (per-row push vs. a reduced single value) is
+ * decided downstream in XASL generation. Forms excluded here fall through to the existing "local mixed
+ * remote DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF list, caught
+ * by op or cond->next), col <> ALL (PT_NE_ALL is excluded: whole-set semantics equivalent to NOT IN, not
+ * value-push), negation of IN (PT_IS_NOT_IN), EXISTS, and a value-list IN (arg2 is not a query).
  *
  * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
  * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
@@ -11930,6 +11932,11 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
     case PT_GT:
     case PT_LE:
     case PT_GE:
+    case PT_EQ_ALL:		/* col = ALL (subquery) */
+    case PT_LT_ALL:		/* col < ALL (subquery) */
+    case PT_GT_ALL:		/* col > ALL (subquery) */
+    case PT_LE_ALL:		/* col <= ALL (subquery) */
+    case PT_GE_ALL:		/* col >= ALL (subquery) */
       break;
     default:
       return false;
