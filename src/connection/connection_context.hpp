@@ -155,6 +155,7 @@ namespace cubconn::connection
     /* ignore guards (ERR/HUP) */
     ignore_level m_ignore;
     bool m_removed;
+    bool m_epoll_registered;
 
     /* --------------------------------------------------------------------------- */
     /* reception								   */

@@ -46,10 +46,12 @@ namespace cubconn
 
       template <typename... Spans>
       void push_for_send (const cubbase::span<std::byte> &&first, const Spans &&... rest);
+      void push (const cubbase::span<std::byte> &data);
       void push_for_deleter (std::function<void ()> &&deleter);
       void stamp ();
 
       bool empty ();
+      std::size_t get_buffer_count ();
       void clear ();
 
     private:
@@ -63,6 +65,11 @@ namespace cubconn
   void transmitter::push_for_send (const cubbase::span<std::byte> &&first, const Spans &&... rest)
   {
     m_buf.push_for_send (std::forward<const cubbase::span<std::byte>> (first), std::forward<Spans> (rest)...);
+  }
+
+  inline void transmitter::push (const cubbase::span<std::byte> &data)
+  {
+    m_buf.push (data);
   }
 }
 

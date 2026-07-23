@@ -95,6 +95,8 @@ namespace cubconn::connection
       };
 
     public:
+      static constexpr std::size_t MAX_DIRECT_PACKET_COUNT = 8;
+
       enum class queue_type : uint8_t
       {
 	IMMEDIATE,
@@ -121,7 +123,6 @@ namespace cubconn::connection
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 
-	SEND_PACKET,
 	RELEASE_PACKET,
 
 	TYPE_COUNT
@@ -158,12 +159,8 @@ namespace cubconn::connection
 	  /* the members below are used to deliver a target data */
 	  /* each comment is a message_type using that member */
 
-	  /* SEND_PACKET    */
 	  /* RELEASE_PACKET */
 	  std::vector<cubbase::span<std::byte>> packet;
-
-	  /* SEND_PACKET    */
-	  std::function<void ()> deleter;
 
 	  /* HANDOFF_CLIENT */
 	  worker *worker_ptr;
@@ -176,7 +173,6 @@ namespace cubconn::connection
 	  /* waiter handle (implemented only for START, SHUTDOWN_CLIENT) */
 	  /* START	     */
 	  /* SHUTDOWN_CLIENT */
-	  /* SEND_PACKET     */
 	  std::shared_ptr<message_blocker> waiter_handle;
 
 	  /* debug purpose */
@@ -198,6 +194,10 @@ namespace cubconn::connection
       bool run ();
 
       void attach ();
+
+      static unsigned int send_packet (css_conn_entry *conn, const cubbase::span<std::byte> *packet,
+				       std::size_t packet_count, const bool *retain_packet,
+				       std::function<void ()> &&deleter, int wait_time);
 
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
@@ -310,7 +310,6 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      bool handle_message_queue_send_packet (message &item);
       bool handle_message_queue_release_packet (message &item);
 
       bool handle_message_queue_new_client (message &item);

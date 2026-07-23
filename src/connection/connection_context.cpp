@@ -76,6 +76,7 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -98,6 +99,7 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -130,6 +132,7 @@ namespace cubconn::connection
     m_id = 0;
     m_ignore = ignore_level::DONT_IGNORE;
     m_removed = false;
+    m_epoll_registered = false;
 
     m_recv.m_state = state::HEADER;
     m_recv.m_receiver.reset ();

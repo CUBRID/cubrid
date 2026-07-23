@@ -78,6 +78,11 @@ namespace cubbase
     return m_length;
   }
 
+  std::size_t packet_buffer::get_buffer_count ()
+  {
+    return m_buf.size ();
+  }
+
   void packet_buffer::stamp_msghdr ()
   {
     assert (m_buf.size () != 0);
@@ -119,4 +124,3 @@ namespace cubbase
       }
   }
 }
-

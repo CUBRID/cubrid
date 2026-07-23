@@ -65,6 +65,7 @@ namespace cubbase
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
       std::size_t get_length ();
+      std::size_t get_buffer_count ();
 
       void stamp_msghdr ();
       struct ::msghdr &get_msghdr ();

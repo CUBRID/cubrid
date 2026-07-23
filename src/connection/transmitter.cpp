@@ -150,6 +150,11 @@ namespace cubconn
     return m_buf.get_msghdr ().msg_iovlen == 0;
   }
 
+  std::size_t transmitter::get_buffer_count ()
+  {
+    return m_buf.get_buffer_count ();
+  }
+
   void transmitter::clear ()
   {
     for (auto &deleter : m_deleter)
