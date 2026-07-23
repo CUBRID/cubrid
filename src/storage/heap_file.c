@@ -630,7 +630,8 @@ static DISK_ISVALID heap_hfid_isvalid (HFID * hfid);
 static DISK_ISVALID heap_scanrange_isvalid (HEAP_SCANRANGE * scan_range);
 #endif /* CUBRID_DEBUG */
 static OID *heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECDES * recdes);
-static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes);
+static const OID *heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
+				   LOG_LSA * change_link_lsa);
 static int heap_ovf_flush (THREAD_ENTRY * thread_p, const OID * ovf_oid);
 static int heap_ovf_get_length (THREAD_ENTRY * thread_p, const OID * ovf_oid);
 static SCAN_CODE heap_ovf_get (THREAD_ENTRY * thread_p, const OID * ovf_oid, RECDES * recdes, int chn,
@@ -6062,11 +6063,13 @@ heap_ovf_insert (THREAD_ENTRY * thread_p, const HFID * hfid, OID * ovf_oid, RECD
  *   hfid(in): Object heap file identifier
  *   ovf_oid(in): Overflow address
  *   recdes(in): Record descriptor
+ *   change_link_lsa(out): LSA used to reconstruct the updated overflow record
  *
  * Note: Update the content of a multipage object.
  */
 static const OID *
-heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes)
+heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid, RECDES * recdes,
+		 LOG_LSA * change_link_lsa)
 {
   VFID ovf_vfid;
   VPID ovf_vpid;
@@ -6079,7 +6082,7 @@ heap_ovf_update (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * ovf_oid
   ovf_vpid.pageid = ovf_oid->pageid;
   ovf_vpid.volid = ovf_oid->volid;
 
-  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP) != NO_ERROR)
+  if (overflow_update (thread_p, &ovf_vfid, &ovf_vpid, recdes, FILE_MULTIPAGE_OBJECT_HEAP, change_link_lsa) != NO_ERROR)
     {
       ASSERT_ERROR ();
       return NULL;
@@ -16968,67 +16971,97 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   if (value->state == HEAP_UNINIT_ATTRVALUE)
     {
       OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-      if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+      const char *cached_serial_name = att->auto_increment.serial_name.load ();
+
+      if (OID_ISNULL (&serial_obj_oid))
 	{
-	  if (serial_name[0] == '\0')
+	  if (cached_serial_name == NULL)
 	    {
-	      ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
+	      char *serial_name_local = NULL;
 
-	  if (OID_ISNULL (&serial_obj_oid))
-	    {
-	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
-				   LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	      if (serial_name[0] == '\0')
 		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
-	      if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
-	      if (classrep == NULL)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      if (classrep->indexes)
-		{
-		  BTREE_SEARCH search_result;
-		  OID serial_oid;
-
-		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		  search_result =
-		    xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
-					&serial_oid, false);
-		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		  if (search_result != BTREE_KEY_FOUND)
+		  ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+		  if (ret != NO_ERROR)
 		    {
-		      ret = ER_FAILED;
 		      goto exit_on_error;
 		    }
+		}
 
-		  assert (!OID_ISNULL (&serial_oid));
-		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
-		  or_aligned_oid serial_aligned_oid = { serial_oid };
-		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+	      serial_name_local = strdup (serial_name);
+	      if (serial_name_local == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (serial_name) + 1);
+		  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto exit_on_error;
+		}
+
+	      char *dummy_null_serial_name = NULL;
+	      auto serial_name_cache = &att->auto_increment.serial_name;
+	      if (!serial_name_cache->compare_exchange_strong (dummy_null_serial_name, serial_name_local))
+		{
+		  free_and_init (serial_name_local);
+		  cached_serial_name = dummy_null_serial_name;
 		}
 	      else
 		{
-		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  cached_serial_name = serial_name_local;
+		}
+	    }
+
+	  if (cached_serial_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, cached_serial_name,
+			       (int) strlen (cached_serial_name), LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
+	  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
+	  if (classrep == NULL)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (classrep->indexes)
+	    {
+	      BTREE_SEARCH search_result;
+	      OID serial_oid;
+
+	      BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
+	      search_result =
+		xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid, &serial_oid, false);
+	      heap_classrepr_free_and_init (classrep, &idx_in_cache);
+	      if (search_result != BTREE_KEY_FOUND)
+		{
 		  ret = ER_FAILED;
 		  goto exit_on_error;
 		}
+
+	      assert (!OID_ISNULL (&serial_oid));
+	      or_aligned_oid null_aligned_oid = { oid_Null_oid };
+	      or_aligned_oid serial_aligned_oid = { serial_oid };
+	      att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+	    }
+	  else
+	    {
+	      heap_classrepr_free_and_init (classrep, &idx_in_cache);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
 	    }
 	}
 
@@ -17069,10 +17102,18 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  const char *cached_serial_name = att->auto_increment.serial_name.load ();
 
 	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
 	  assert (tdes != NULL);
+	  assert (cached_serial_name != NULL);
+	  if (cached_serial_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
 
 	  if (!tdes->has_supplemental_log)
 	    {
@@ -17081,7 +17122,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	      tdes->has_supplemental_log = true;
 	    }
 
-	  log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
+	  log_append_supplemental_serial (thread_p, cached_serial_name, 1, &att->classoid, &serial_obj_oid);
 	  thread_p->no_supplemental_log = false;
 	}
     }
@@ -22024,6 +22065,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   bool is_old_home_updated;
   RECDES new_home_recdes;
   VFID ovf_vfid;
+  LOG_LSA change_link_lsa = LSA_INITIALIZER;
 
   LOG_TDES *tdes = NULL;
 
@@ -22104,7 +22146,8 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
       /* overflow -> overflow update */
       is_old_home_updated = false;
 
-      if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p) == NULL)
+      if (heap_ovf_update (thread_p, &context->hfid, &context->ovf_oid, context->recdes_p,
+			   context->do_supplemental_log ? &change_link_lsa : NULL) == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  goto exit;
@@ -22115,11 +22158,13 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
        * 2. NON-MVCC : undo, redo lsa for SUPPLEMENT_UPDATE */
       if (context->do_supplemental_log)
 	{
-	  LSA_COPY (&context->supp_redo_lsa, &tdes->tail_lsa);
+	  assert (!LSA_ISNULL (&change_link_lsa));
+	  /* Page deallocation may append LOG_POSTPONE records, so do not use the transaction tail LSA here. */
+	  LSA_COPY (&context->supp_redo_lsa, &change_link_lsa);
 
 	  if (!is_mvcc_op)
 	    {
-	      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	      LSA_COPY (&context->supp_undo_lsa, &change_link_lsa);
 	    }
 	}
 
