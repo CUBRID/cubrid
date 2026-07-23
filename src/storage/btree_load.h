@@ -31,6 +31,24 @@
 #include <atomic>
 
 #include "btree.h"
+#include "dbtype.h"
+#include "object_representation_constants.h"
+#include "error_manager.h"
+#include "storage_common.h"
+#include "oid.h"
+#include "system_parameter.h"
+#include "object_domain.h"
+#include "slotted_page.h"
+
+/* Forward declarations for filter predicate and XASL unpack types */
+typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
+typedef struct xasl_unpack_info XASL_UNPACK_INFO;
+
+/* *INDENT-OFF* */
+class ftab_set;
+/* *INDENT-ON* */
+
+/* Types and constants shared by the b+tree bulk load path (btree_load.c and external_sort.c) */
 
 #define BT_LOAD_VACUUM_SLOT_LIMIT ((size_t) 64 * 1024 * 1024)
 
@@ -50,22 +68,6 @@ typedef enum bt_load_px_outcome
   BT_PX_TREE_DONE,
   BT_PX_ERROR
 } BT_LOAD_PX_OUTCOME;
-#include "dbtype.h"
-#include "object_representation_constants.h"
-#include "error_manager.h"
-#include "storage_common.h"
-#include "oid.h"
-#include "system_parameter.h"
-#include "object_domain.h"
-#include "slotted_page.h"
-
-/* Forward declarations for filter predicate and XASL unpack types */
-typedef struct pred_expr_with_context PRED_EXPR_WITH_CONTEXT;
-typedef struct xasl_unpack_info XASL_UNPACK_INFO;
-
-/* *INDENT-OFF* */
-class ftab_set;
-/* *INDENT-ON* */
 
 /*
  * Constants related to b+tree structure
