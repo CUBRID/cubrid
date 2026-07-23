@@ -81,8 +81,7 @@ struct attr_descr_node
   HEAP_CACHE_ATTRINFO *cache_attrinfo;	/* used to cache catalog info */
   DB_VALUE *cache_dbvalp;	/* cached value for particular attr */
   /* in cache_attrinfo */
-  struct heap_attrvalue *cache_slot;	/* owning slot of cache_dbvalp; lets the inline fetch_peek_dbval () check the
-					 * slot state of a deferred (lazy) attr without re-locating it. NULL otherwise. */
+  struct heap_attrvalue *cache_slot;	/* slot owning cache_dbvalp; inline peeks its lazy state, no re-locate */
 
   void reset ()
   {

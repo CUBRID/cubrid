@@ -4009,8 +4009,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
 	{
 	  HEAP_ATTRVALUE *slot =
-	    heap_attrvalue_access (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
-	  if (slot == NULL)
+	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	  if (slot == NULL || heap_attrvalue_access (slot, regu_var->value.attr_descr.cache_attrinfo) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }

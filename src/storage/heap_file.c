@@ -11150,53 +11150,33 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
- * heap_attrvalue_access () - Access the value slot of an attribute which has been already read
- *   return: the owning HEAP_ATTRVALUE slot (NULL on error)
- *   attrid(in): The desired attribute identifier
- *   attr_info(in/out): The attribute information structure which describe the
- *                      desired attributes
+ * heap_attrvalue_access () - read a value slot on demand if it is deferred (HEAP_LAZY_ATTRVALUE)
+ *   return: NO_ERROR or ER_code
+ *   value(in/out): the value slot the caller already holds (located by heap_attrvalue_locate () in
+ *                  fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
+ *   attr_info(in): the attribute cache holding the stashed record (lazy_recdes)
  *
- * Note: Same as heap_attrinfo_access () but returns the slot itself, so a caller (e.g. fetch.c) can
- * cache it and inspect its state. A deferred (HEAP_LAZY_ATTRVALUE) slot is read on demand here.
+ * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here.
  */
-HEAP_ATTRVALUE *
-heap_attrvalue_access (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
+int
+heap_attrvalue_access (HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
-
-  /* check to make sure the attr_info has been used */
-  if (attr_info->num_values == -1)
-    {
-      return NULL;
-    }
-
-  value = heap_attrvalue_locate (attrid, attr_info);
-  if (value == NULL)
-    {
-      er_log_debug (ARG_FILE_LINE, "heap_attrinfo_access: Unknown attrid = %d", attrid);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return NULL;
-    }
-
   if (value->state == HEAP_LAZY_ATTRVALUE)
     {
       /* deferred predicate column referenced for the first time in this row: read it now from the
        * stashed record (see heap_attrinfo_read_dbvalues_lazy ()). heap_attrvalue_read () sets state
        * to HEAP_READ_ATTRVALUE, so later references in the same row reuse the value. */
-      if (heap_attrvalue_read (attr_info->lazy_recdes, value, attr_info) != NO_ERROR)
-	{
-	  return NULL;
-	}
+      return heap_attrvalue_read (attr_info->lazy_recdes, value, attr_info);
     }
   else if (value->state == HEAP_UNINIT_ATTRVALUE)
     {
       /* genuinely uninitialized (not lazy): this is a bug, keep the original fatal behavior. */
-      er_log_debug (ARG_FILE_LINE, "heap_attrinfo_access: Unknown attrid = %d", attrid);
+      er_log_debug (ARG_FILE_LINE, "heap_attrvalue_access: uninitialized value");
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return NULL;
+      return ER_GENERIC_ERROR;
     }
 
-  return value;
+  return NO_ERROR;
 }
 
 /*

@@ -76,6 +76,8 @@ struct heap_cache_attrinfo
 				 * on demand by heap_attrinfo_access (). Set by heap_attrinfo_read_dbvalues_lazy (). */
 };
 
+extern int heap_attrvalue_access (HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
+
 #else /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 /* XASL generation uses pointer to heap_cache_attrinfo. we need to just declare a dummy struct here. */
