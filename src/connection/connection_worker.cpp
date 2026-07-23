@@ -628,7 +628,8 @@ namespace cubconn::connection
       {
 	std::lock_guard<std::mutex> lock (handle->m);
 	handle->done = true;
-	handle->cv.notify_one ();
+	/* blocker may be shared by every sender blocked on the same transmitter */
+	handle->cv.notify_all ();
       }
   }
 
@@ -2322,6 +2323,8 @@ respond:
 		break;
 
 	      case message_type::TAKEOVER_CLIENT:
+		/* sender may be blocked on a transmission queued while this context was in handoff */
+		this->wakeup_blocked_worker (std::move (request.ctx->m_send.m_blocker));
 		css_free_conn (request.ctx->m_conn);
 		m_parent->retire_context (request.ctx);
 		break;

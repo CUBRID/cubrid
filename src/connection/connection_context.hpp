@@ -181,8 +181,8 @@ namespace cubconn::connection
     {
       transmitter m_transmitter;
 
-      /* if multiple task workers request blocking transmissions simultaneously, below */
-      /* member should be replaced with a vector (or a similar collection)	       */
+      /* shared by every sender blocked on this transmitter (bad case) all of them are woken */
+      /* together (notify_all) when the pending transmission drains or is discarded */
       std::shared_ptr<message_blocker> m_blocker;
     } m_send;
 
