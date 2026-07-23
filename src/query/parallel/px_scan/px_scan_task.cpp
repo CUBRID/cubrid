@@ -666,6 +666,26 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
+	if (m_xasl->after_join_pred)
+	  {
+	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
+	    if (ev_res != V_TRUE)
+	      {
+		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
+		  {
+		    continue;
+		  }
+		else
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+	      }
+	  }
+
 	if (m_xasl->if_pred)
 	  {
 	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);

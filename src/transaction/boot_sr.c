@@ -3081,6 +3081,9 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* remove lob ces temp dir */
   (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
+  /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
+  (void) heap_update_all_bestspaces (thread_p);
+
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();
 

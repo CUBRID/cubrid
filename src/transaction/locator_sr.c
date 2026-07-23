@@ -12887,6 +12887,25 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		}
 	    }
 
+	  if (heap_page_is_bestspace (thread_p, scan_cache.page_watcher.pgptr))
+	    {
+	      error = heap_vpid_next (thread_p, &hfid, scan_cache.page_watcher.pgptr, &vpid);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+
+	      /* keep latch on current page until the next page is fixed */
+	      pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_page_watcher);
+
+	      if (VPID_ISNULL (&vpid))
+		{
+		  /* no more pages in the current heap file */
+		  is_scan_end = true;
+		}
+	      continue;
+	    }
+
 	  slotid = 0;
 	  while (true)
 	    {

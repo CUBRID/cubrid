@@ -27634,7 +27634,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	btree_get_max_new_data_size (thread_p, btid_int, *crt_page, node_type, max_key_len, insert_helper, false);
 
       /* Split is needed if there is a risk that inserted data doesn't fit the root node. */
-      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page, NULL));
+      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page));
 
       /* If root node should suffer changes, its latch must be promoted to exclusive. */
       if (insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ
@@ -27907,7 +27907,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   max_new_data_size =
     btree_get_max_new_data_size (thread_p, btid_int, child_page, node_type, max_key_len, insert_helper, false);
 
-  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page, NULL);
+  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page);
 
   /* If split is needed, we first need to make sure current node is latched exclusively. A new entry must be added.
    * Promoting latch from read to write may be required if the node is not already latched exclusively. Node is not
@@ -28559,7 +28559,7 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Does a new object fit the page? */
-      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page, NULL));
+      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page));
     }
   else
     {
@@ -34456,7 +34456,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       bool key_already_in_page = false;
       int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, BTREE_LEAF_NODE, key_len,
 						      &helper->insert_helper, key_already_in_page);
-      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
+      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page))
 	{
 	  /* no more space in page */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);

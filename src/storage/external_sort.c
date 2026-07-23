@@ -35,6 +35,7 @@
 #include "memory_alloc.h"
 #include "external_sort.h"
 #include "file_manager.h"
+#include "heap_file.h"
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "disk_manager.h"
@@ -5173,7 +5174,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      int n_user_pages = 0, n_sects = 0, tmp_pg = 0, tmp_sects = 0, error_code = NO_ERROR;
+      int n_data_pages = 0, n_sects = 0, tmp_pages = 0, tmp_sects = 0, error_code = NO_ERROR;
       if (sort_args_p->n_classes > 1)
 	{
 	  /* not partition, partition has own indexes, this means like this :
@@ -5183,7 +5184,7 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
       /* get number of pages to sort */
       for (int i = 0; i < sort_args_p->n_classes; i++)
 	{
-	  error_code = file_get_num_user_pages (thread_p, &sort_args_p->hfids[i].vfid, &tmp_pg);
+	  error_code = heap_get_num_data_pages (thread_p, &sort_args_p->hfids[i], &tmp_pages);
 	  if (error_code != NO_ERROR)
 	    {
 	      return 1;
@@ -5193,11 +5194,11 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
 	    {
 	      return 1;
 	    }
-	  n_user_pages += tmp_pg;
+	  n_data_pages += tmp_pages;
 	  n_sects += tmp_sects;
 	}
 
-      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_user_pages,
+      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_data_pages,
 							      -1 /* no hint at parallel index build */ );
 
       if (parallel_num < 2)
