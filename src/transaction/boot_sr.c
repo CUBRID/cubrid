@@ -2662,7 +2662,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       logtb_disable_update (NULL);
     }
 
-  error_code = serial_initialize_cache_pool (thread_p);
+  /* Skip the eager _db_serial attribute-info load on the restore-from-backup path: restoredb
+   * restarts the server without a client workspace, so the load would crash in ws_mop, and it
+   * never generates serial values anyway. */
+  error_code = serial_initialize_cache_pool (thread_p, !(r_args != NULL && r_args->is_restore_from_backup));
   if (error_code != NO_ERROR)
     {
       goto error;
