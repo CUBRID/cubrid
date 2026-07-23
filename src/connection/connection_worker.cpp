@@ -96,6 +96,14 @@ namespace cubconn::connection
     bool retain_deleter = false;
     int send_errno = 0;
     int r;
+    auto release_allocated = [&allocated, &allocated_count] ()
+    {
+      for (std::size_t allocation = 0; allocation < allocated_count; allocation++)
+	{
+	  delete [] allocated[allocation];
+	}
+      allocated_count = 0;
+    };
 
     assert (conn != nullptr);
     assert (packet != nullptr);
@@ -215,10 +223,7 @@ namespace cubconn::connection
 	  copy = new std::byte[available];
 	  if (copy == nullptr)
 	    {
-	      for (std::size_t allocation = 0; allocation < allocated_count; allocation++)
-		{
-		  delete [] allocated[allocation];
-		}
+	      release_allocated ();
 	      r = rmutex_unlock (NULL, &conn->cmutex);
 	      assert (r == NO_ERROR);
 	      if (deleter)
@@ -237,21 +242,13 @@ namespace cubconn::connection
       assert (pending_size == total_size - sent_size);
     }
 
-    if (ctx->m_send.m_transmitter.get_buffer_count () + pending_count > IOV_MAX)
+    if (!ctx->m_send.m_transmitter.prepare_append (pending_count))
       {
-	std::size_t existing_count = ctx->m_send.m_transmitter.get_buffer_count ();
 	std::byte *coalesced;
 
-	for (std::size_t allocation = 0; allocation < allocated_count; allocation++)
+	if (!ctx->m_send.m_transmitter.prepare_append (1))
 	  {
-	    delete [] allocated[allocation];
-	  }
-	allocated_count = 0;
-	pending_count = 0;
-	retain_deleter = false;
-
-	if (existing_count >= IOV_MAX)
-	  {
+	    release_allocated ();
 	    r = rmutex_unlock (NULL, &conn->cmutex);
 	    assert (r == NO_ERROR);
 	    if (deleter)
@@ -262,6 +259,10 @@ namespace cubconn::connection
 	    css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
 	    return INTERNAL_CSS_ERROR;
 	  }
+
+	release_allocated ();
+	pending_count = 0;
+	retain_deleter = false;
 
 	coalesced = new std::byte[pending_size];
 	if (coalesced == nullptr)

@@ -65,7 +65,7 @@ namespace cubbase
       void push (const cubbase::span<std::byte> &first, const Spans &... rest);
 
       std::size_t get_length ();
-      std::size_t get_buffer_count ();
+      bool prepare_append (std::size_t additional_count, std::size_t &completed_iov_count);
 
       void stamp_msghdr ();
       struct ::msghdr &get_msghdr ();
@@ -78,6 +78,7 @@ namespace cubbase
       std::vector<std::byte *> m_heap;
       std::size_t m_length;
       std::size_t m_index;
+      std::size_t m_compacted_iov_count;
 
       struct ::msghdr m_msg;
 

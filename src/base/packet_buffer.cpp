@@ -56,6 +56,7 @@ namespace cubbase
     m_buf.clear ();
     m_length = 0;
     m_index = 0;
+    m_compacted_iov_count = 0;
 
     for (auto p : m_heap)
       {
@@ -78,9 +79,43 @@ namespace cubbase
     return m_length;
   }
 
-  std::size_t packet_buffer::get_buffer_count ()
+  bool packet_buffer::prepare_append (std::size_t additional_count, std::size_t &completed_iov_count)
   {
-    return m_buf.size ();
+    std::size_t active_count;
+
+    this->save_index ();
+    assert (m_index <= m_buf.size ());
+
+    active_count = m_buf.size () - m_index;
+    completed_iov_count = m_compacted_iov_count + m_index;
+    if (active_count > m_iovmax || additional_count > m_iovmax - active_count)
+      {
+	return false;
+      }
+
+    if (m_buf.size () <= m_iovmax - additional_count)
+      {
+	return true;
+      }
+
+    /* keep a partially consumed first iovec and discard only the fully consumed prefix. */
+    assert (m_index > 0);
+    m_buf.erase (m_buf.begin (), m_buf.begin () + m_index);
+    m_compacted_iov_count += m_index;
+    m_index = 0;
+
+    if (m_buf.empty ())
+      {
+	m_msg.msg_iov = nullptr;
+	m_msg.msg_iovlen = 0;
+      }
+    else
+      {
+	this->stamp_msghdr ();
+      }
+
+    assert (m_buf.size () <= m_iovmax - additional_count);
+    return true;
   }
 
   void packet_buffer::stamp_msghdr ()
