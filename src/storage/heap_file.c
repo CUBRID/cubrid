@@ -2578,7 +2578,7 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS *
 
   *last_vpid = heap_hdr->last_vpid;
   pg_watcher->pgptr =
-    heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, pg_watcher);
+    heap_scan_pb_latch_and_fetch (thread_p, last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, pg_watcher);
   if (pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -7665,8 +7665,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* A prior visible-record return released the live page. Re-fix it before reading the current
 		       * live page chain; the links in the local copy may be stale. */
 		      scan_cache->page_watcher.pgptr =
-			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
-						     S_LOCK, scan_cache, &scan_cache->page_watcher);
+			heap_scan_pb_latch_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
+						      PGBUF_LATCH_READ, scan_cache, &scan_cache->page_watcher);
 		      if (scan_cache->page_watcher.pgptr == NULL)
 			{
 			  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -18649,7 +18649,7 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     {
       /* get page pointer to next page */
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
+	heap_scan_pb_latch_and_fetch (thread_p, next_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
 				     &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
@@ -18748,7 +18748,7 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
   while (true)
     {
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, prev_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
+	heap_scan_pb_latch_and_fetch (thread_p, prev_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
 				     &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
@@ -25970,7 +25970,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   heap_hdr_watcher.pgptr = NULL;
 
   new_pg_watcher->pgptr =
-    heap_scan_pb_lock_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, NULL, new_pg_watcher);
+    heap_scan_pb_latch_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, NULL, new_pg_watcher);
   if (new_pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
