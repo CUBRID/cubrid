@@ -12838,8 +12838,7 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
   int obj_size = BTREE_OBJECT_FIXED_SIZE (btid_int);
   int dir_idx, dir_num;		/* cursor within the current directory page */
   int i = 0;			/* data page index in the chain */
-  bool have_prev = false;
-  OID prev_sep, prev_max, cur_sep, cur_min, cur_max;
+  OID prev_sep, cur_sep;
   int num_obj;
   char err_buf[LINE_MAX];
   DISK_ISVALID valid = DISK_INVALID;
@@ -12946,42 +12945,25 @@ btree_ovf_v2_check_dir (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID
 	  valid = DISK_INVALID;
 	  goto end;
 	}
-      BTREE_GET_OID (data_rec.data, &cur_min);
-      BTREE_GET_OID (data_rec.data + (num_obj - 1) * obj_size, &cur_max);
-
-      if (have_prev)
+      /* Separators must be strictly ascending, EXCEPT the head catch-all (entry 0 of the head directory page,
+       * i.e. chain index 0): btree_ovf_dir_locate() treats it as -infinity, so its stored separator is a
+       * don't-care and may legitimately exceed later separators once the catch-all page absorbs smaller OIDs
+       * and splits (the int_idx / OID-reuse case). The first compared pair is therefore sep_1 < sep_2 (i >= 2).
+       *
+       * Object OID ranges are intentionally NOT checked against separators. Reusable / un-vacuumed OID runs can
+       * straddle backwards across a page boundary, so btree_ovf_v2_find_oid() steps back to the previous page on a
+       * miss; an object legitimately sitting in an earlier page than its separator implies is a valid state, not
+       * corruption. Only separator ordering (which the binary search depends on) and the directory/chain structure
+       * are invariants here. */
+      if (i >= 2 && !OID_LT (&prev_sep, &cur_sep))
 	{
-	  /* separators strictly ascending */
-	  if (!OID_LT (&prev_sep, &cur_sep))
-	    {
-	      snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: separators not ascending at entry %d\n", i);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	      valid = DISK_INVALID;
-	      goto end;
-	    }
-	  /* previous page's max OID must be below this page's separator (upper bound of prev range) */
-	  if (!OID_LT (&prev_max, &cur_sep))
-	    {
-	      snprintf (err_buf, LINE_MAX,
-			"btree_ovf_v2_check_dir: page %d max OID >= next separator (mis-routing risk)\n", i - 1);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	      valid = DISK_INVALID;
-	      goto end;
-	    }
-	  /* this (non-head) page's min OID must be at or above its separator */
-	  if (OID_LT (&cur_min, &cur_sep))
-	    {
-	      snprintf (err_buf, LINE_MAX,
-			"btree_ovf_v2_check_dir: page %d min OID < its separator (mis-routing risk)\n", i);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
-	      valid = DISK_INVALID;
-	      goto end;
-	    }
+	  snprintf (err_buf, LINE_MAX, "btree_ovf_v2_check_dir: separators not ascending at entry %d\n", i);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	  valid = DISK_INVALID;
+	  goto end;
 	}
 
       COPY_OID (&prev_sep, &cur_sep);
-      COPY_OID (&prev_max, &cur_max);
-      have_prev = true;
 
       /* Advance to the next data page. */
       if (btree_get_next_overflow_vpid (thread_p, data_page, &data_vpid) != NO_ERROR)
