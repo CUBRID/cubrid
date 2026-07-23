@@ -227,6 +227,8 @@ namespace cubconn::connection
       /* index is a type of timer handle block */
       std::array<timer_handle, static_cast<std::size_t> (timer_type::TYPE_COUNT)> m_timer_handler;
 
+      /* true while an eventfd notification is pending or being handled */
+      std::atomic<bool> m_notified;
       bool m_has_retry;
 
       /* this is a multi-producer single-consumer queue, so */

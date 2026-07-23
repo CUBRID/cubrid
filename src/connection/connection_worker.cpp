@@ -381,6 +381,7 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
+    m_notified (false),
     m_has_retry (false)
   {
     std::size_t i;
@@ -483,6 +484,11 @@ namespace cubconn::connection
     std::uint64_t u;
     ssize_t bytes;
 
+    if (m_notified.exchange (true, std::memory_order_acq_rel))
+      {
+	return true;
+      }
+
     u = 1;
     while (true)
       {
@@ -494,6 +500,7 @@ namespace cubconn::connection
 
 	if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
 	  {
+	    m_notified.store (false, std::memory_order_release);
 	    return false;
 	  }
 
@@ -507,6 +514,7 @@ namespace cubconn::connection
 	  {
 	    break;
 	  }
+	m_notified.store (false, std::memory_order_release);
 	return false;
       }
 
@@ -1160,6 +1168,8 @@ retry:
 	    return false;
 	  }
 
+	/* RMW closes the StoreLoad window */
+	m_notified.exchange (false, std::memory_order_acq_rel);
 	if (!this->handle_message_queue ())
 	  {
 	    return false;
