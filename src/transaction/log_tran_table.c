@@ -1147,7 +1147,6 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index != LOG_SYSTEM_TRAN_INDEX && tdes != NULL)
     {
-      tdes->mvccinfo.reset ();
       TR_TABLE_CS_ENTER (thread_p);
 
       /*
@@ -1163,11 +1162,18 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
       if (LOG_ISTRAN_2PC_PREPARE (tdes))
 	{
+	  /* Do NOT reset mvccinfo here: the MVCC ID must survive until the 2PC daemon
+	   * attaches and commits this transaction.  Resetting it now would make
+	   * logtb_complete_mvcc() see MVCCID_NULL and skip updating the MVCC bitsets,
+	   * leaving all rows inserted by this transaction invisible to concurrent readers
+	   * even after the daemon successfully commits (data only becomes visible after
+	   * a server restart when log recovery rebuilds the MVCC state from the WAL). */
 	  tdes->isloose_end = true;
 	  log_Gl.trantable.num_prepared_loose_end_indices++;
 	}
       else
 	{
+	  tdes->mvccinfo.reset ();
 	  if (LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes))
 	    {
 	      tdes->isloose_end = true;

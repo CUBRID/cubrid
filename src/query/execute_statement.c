@@ -3752,6 +3752,11 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
+
   if (error == ER_FAILED)
     {
       assert (er_errid () != NO_ERROR);
@@ -4458,6 +4463,11 @@ end:
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
 
+  if (reserved_oid != NULL)
+    {
+      free_and_init (reserved_oid);
+    }
+
   return ((err == ER_FAILED && (err = er_errid ()) == NO_ERROR) ? ER_GENERIC_ERROR : err);
 }				/* do_execute_statement() */
 
@@ -4715,6 +4725,23 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
 	      return error;
 	    }
+
+	  /* The reservoir-based collector scans the heap directly on the server, so the SELECT
+	   * authorization that the legacy collector enforced through its internal SELECT query is
+	   * no longer exercised; the collected histogram also stores sampled values (MCVs, bucket
+	   * bounds). Keep requiring SELECT explicitly. Report it as a command-level error (not a
+	   * parse-tree error) so the message framing matches what the legacy query raised. */
+	  error = au_check_class_authorization (class_mop, AU_SELECT);
+	  if (error != NO_ERROR)
+	    {
+	      char au_msg[SM_MAX_IDENTIFIER_LENGTH + 64];
+	      const char *fmt = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+						MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON);
+	      snprintf (au_msg, sizeof (au_msg), fmt ? fmt : "%s is not authorized on %s", "SELECT",
+			db_get_class_name (class_mop));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PT_ERROR, 1, au_msg);
+	      return error;
+	    }
 	}
 
       // update stats
@@ -4725,8 +4752,9 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (class_type == SM_CLASS_CT)
 	    {
-	      error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
-	      if (error == NO_ERROR && prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
+	      bool stats_updated = false;
+
+	      if (prm_get_bool_value (PRM_ID_UPDATE_STATISTICS_UPDATE_HISTOGRAM))
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4741,16 +4769,34 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		      return er_errid ();
 		    }
 
+		  /* the all-columns histogram build refreshes the class statistics itself, reusing the NDV and
+		   * row count of its single heap scan; running sm_update_statistics () beforehand would scan the
+		   * class once more only to have its result overwritten right away. Run the combined path first
+		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
 		  histogram_info.bucket_count = -1;
-		  histogram_info.with_fullscan = false;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
 		  error = update_or_drop_histogram_helper (NULL, obj, &histogram_info, DO_HISTOGRAM_CREATE);
-		  if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
+		  if (error == NO_ERROR)
+		    {
+		      stats_updated = true;
+		    }
+		  else if (error == ER_OBJ_INVALID_ARGUMENTS)
+		    {
+		      /* nothing histogrammable on this class; fall through to the plain statistics update */
+		      error = NO_ERROR;
+		    }
+		  else
 		    {
 		      AU_RESTORE (save);
 		      return error;
 		    }
 		  AU_RESTORE (save);
+		}
+
+	      if (error == NO_ERROR && !stats_updated)
+		{
+		  error = sm_update_statistics (class_mop, statement->info.update_stats.with_fullscan);
 		}
 	    }
 	}
@@ -5728,22 +5774,25 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
     case TRAN_READ_COMMITTED:
       *tran_isolation = TRAN_READ_COMMITTED;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
     case TRAN_REPEATABLE_READ:
       *tran_isolation = TRAN_REPEATABLE_READ;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
     case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
       fprintf (stdout,
-	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout,
+	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
+				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
+      fprintf (stdout, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_S_SERIAL_I));
       break;
     case 0:

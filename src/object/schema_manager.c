@@ -4271,7 +4271,7 @@ sm_get_statistics_force (MOP classop)
  *       "alter table ..." or "create index ...".
  */
 int
-sm_update_statistics (MOP classop, bool with_fullscan)
+sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv)
 {
   int error = NO_ERROR, is_class = 0;
   SM_CLASS *class_;
@@ -4298,7 +4298,7 @@ sm_update_statistics (MOP classop, bool with_fullscan)
 	  return er_errid ();
 	}
 
-      error = stats_update_statistics (classop, with_fullscan);
+      error = stats_update_statistics (classop, with_fullscan, provided_ndv);
       if (error == NO_ERROR)
 	{
 	  /* only recache if the class itself is cached */
