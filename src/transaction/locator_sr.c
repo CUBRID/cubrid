@@ -181,8 +181,10 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 FUNC_PRED_UNPACK_INFO * func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
 						 bool skip_checking_fk);
+static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
-				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
+				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
+				      ATTR_ID * att_id, int n_att_id);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4007,6 +4009,39 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
 }
 
 /*
+ * locator_index_has_attr () - Check whether any of the given attributes is a column of the index.
+ *
+ * return: true if any attribute in att_id is a column of the index, or if att_id is "all" (NULL); false otherwise.
+ * index(in): the index to check
+ * att_id(in): array of attribute IDs to look for (NULL means "all")
+ * n_att_id(in): number of entries in att_id (0 means "all")
+ */
+static bool
+locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id)
+{
+  int i, j;
+
+  if (att_id == NULL || n_att_id <= 0)
+    {
+      /* Conservative: full update or unknown attribute set. */
+      return true;
+    }
+
+  for (i = 0; i < index->n_atts; i++)	/* index columns */
+    {
+      for (j = 0; j < n_att_id; j++)	/* att_id entries */
+	{
+	  if (att_id[j] == index->atts[i]->id)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * locator_check_foreign_key () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4018,10 +4053,13 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
  *   new_recdes(in):
  *   is_cached(in):
  *   copyarea(in):
+ *   att_id(in): array of updated attribute ids (NULL means "all attributes")
+ *   n_att_id(in): number of entries in att_id (<= 0 means "all attributes")
  */
 static int
 locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid, RECDES * recdes,
-			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea)
+			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea, ATTR_ID * att_id,
+			   int n_att_id)
 {
   int num_found, i;
   HEAP_CACHE_ATTRINFO index_attrinfo;
@@ -4067,6 +4105,18 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       if (index->type != BTREE_FOREIGN_KEY)
 	{
+	  continue;
+	}
+
+      if (!locator_index_has_attr (index, att_id, n_att_id))
+	{
+	  /* Because this update modifies none of this FK's referencing columns,
+	   * the child row still references the same parent row as before, which was already valid,
+	   * so the constraint holds and needs no re-check.
+	   * We can therefore skip ahead, sparing the parent PK lookup
+	   * and, above all, the WS_LOCK it would place on that parent row,
+	   * which would only add contention while the value is unchanged.
+	   * (On the INSERT path att_id is NULL, so nothing is ever skipped.) */
 	  continue;
 	}
 
@@ -5200,7 +5250,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
-				       &cache_attr_copyarea);
+				       &cache_attr_copyarea, NULL, 0);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error1;
@@ -5377,7 +5427,7 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
   OR_CLASSREP *classrepr = NULL;
   int classrepr_cacheindex = -1;
   OR_INDEX *index;
-  int i, j, k;
+  int i;
   bool has_pk = false;
 
   if (att_id == NULL || n_att_id <= 0)
@@ -5403,17 +5453,11 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
 
       has_pk = true;
 
-      for (j = 0; j < index->n_atts; j++)
+      if (locator_index_has_attr (index, att_id, n_att_id))
 	{
-	  for (k = 0; k < n_att_id; k++)
-	    {
-	      if (att_id[k] == index->atts[j]->id)
-		{
-		  /* PK column is being changed — must use X_LOCK. */
-		  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-		  return X_LOCK;
-		}
-	    }
+	  /* PK column is being changed — must use X_LOCK. */
+	  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+	  return X_LOCK;
 	}
 
       /* only one PK per class; no need to scan the remaining indexes */
@@ -6084,7 +6128,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    {
 	      error_code =
 		locator_check_foreign_key (thread_p, hfid, class_oid, oid, recdes, &new_record, &is_cached,
-					   &cache_attr_copyarea);
+					   &cache_attr_copyarea, att_id, n_att_id);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
