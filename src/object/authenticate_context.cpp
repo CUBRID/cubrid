@@ -270,9 +270,9 @@ authenticate_context::login (const char *name, const char *password, bool ignore
   else
     {
       /* Change users within an active database. */
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       error = perform_login (name, password, ignore_dba_privilege);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
   return (error);
 }
@@ -291,7 +291,7 @@ authenticate_context::install (void)
   AU_USER_CACHE *user_cache;
   int exists, save, index;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * create the system authorization objects, add attributes later since they
@@ -500,7 +500,7 @@ authenticate_context::install (void)
 
   au_add_method_check_authorization ();
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return NO_ERROR;
 
@@ -542,7 +542,7 @@ exit_on_error:
       db_drop_class (root_cls);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (er_errid () == NO_ERROR ? ER_FAILED : er_errid ());
 }
 
@@ -882,7 +882,7 @@ authenticate_context::get_current_user_name (void)
 	  return ws_copy_string (upper_sc_name);
 	}
 
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
 
       if (obj_get (current_user, "name", &value) == NO_ERROR)
 	{
@@ -903,7 +903,7 @@ authenticate_context::get_current_user_name (void)
 	    }
 	}
 
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return name;
@@ -1087,7 +1087,7 @@ au_add_method_check_authorization (void)
   SM_TEMPLATE *def;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   auth = db_find_class (AU_AUTH_CLASS_NAME);
   if (auth == NULL)
@@ -1107,10 +1107,10 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 exit_on_error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return ER_FAILED;
 }

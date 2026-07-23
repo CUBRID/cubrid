@@ -441,8 +441,8 @@ cgw_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
 		    err_info.err_number, db_err_msg);
 	}
 
-      cas_log_write_and_end (0, false, msg_buf);
-      cas_slow_log_write_and_end (NULL, 0, msg_buf);
+      cas_log_write_and_end (0, false, "%s", msg_buf);
+      cas_slow_log_write_and_end (NULL, 0, "%s", msg_buf);
       cas_finish_session (client_sock_fd, ssl_client);
       return err_code;
     }
