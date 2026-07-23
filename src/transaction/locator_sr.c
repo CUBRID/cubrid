@@ -6730,11 +6730,11 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	      goto error;
 	    }
 
-	  /* update */
+	  /* update: full-record flush (att_id=NULL) -> pin X_LOCK (never WX_LOCK) */
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, MULTI_ROW_UPDATE, &scan_cache, &force_count, false, repl_info,
-				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true, NULL_LOCK);
+				  DB_NOT_PARTITIONED_CLASS, NULL, NULL, UPDATE_INPLACE_NONE, true, X_LOCK);
 	  if (error_code != NO_ERROR)
 	    {
 	      /*
@@ -7102,11 +7102,12 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	      /* Full-record flush (att_id=NULL): pin X_LOCK (never WX_LOCK). */
 	      error_code =
 		locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes, has_index,
 				      NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				      REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true,
-				      NULL_LOCK);
+				      X_LOCK);
 
 	      if (error_code == NO_ERROR)
 		{
@@ -7298,11 +7299,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 	case LC_FLUSH_UPDATE_PRUNE:
 	case LC_FLUSH_UPDATE_PRUNE_VERIFY:
 	  pruning_type = locator_area_op_to_pruning_type (obj->operation);
+	  /* Full-record flush (att_id=NULL): pin X_LOCK (never WX_LOCK). */
 	  error_code =
 	    locator_update_force (thread_p, &obj->hfid, &obj->class_oid, &obj->oid, NULL, &recdes,
 				  has_index, NULL, 0, SINGLE_ROW_UPDATE, force_scancache, &force_count, false,
 				  REPL_INFO_TYPE_RBR_NORMAL, pruning_type, NULL, NULL, UPDATE_INPLACE_NONE, true,
-				  NULL_LOCK);
+				  X_LOCK);
 
 	  if (error_code == NO_ERROR)
 	    {
@@ -7584,8 +7586,9 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
+	  /* WX_LOCK is instance-level only; the class side uses X_LOCK. */
 	  assert ((lock_get_object_lock (oid, &class_oid) >= WX_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= WX_LOCK));
+		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
 	}
       else
 	{
@@ -7600,8 +7603,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  {
-	    /* qexec pre-decides this lock once per class; other callers (e.g. ODKU) pass NULL_LOCK,
-	     * so decide it here per row. The result is reused below by locator_update_force () via fallthrough. */
+	    /* Only qexec pre-decides and passes a lock (internal_class->update_lock, once per class).
+	     * Every other caller passes NULL_LOCK, decided per row here if reached. */
 	    if (update_lock == NULL_LOCK)
 	      {
 		update_lock = locator_decide_update_lock (thread_p, &class_oid, att_id, n_att_id);
@@ -13060,6 +13063,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       lock_acquired = true;
     }
 
+  /* WS_LOCK never reaches here: FK existence checks lock at the btree-key level
+   * (btree_key_lock_object), not through this heap-object path. */
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK || lock_mode == WX_LOCK);
 
   /* Lock should be aquired now -> get recdes */

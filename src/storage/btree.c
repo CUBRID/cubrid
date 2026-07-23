@@ -23954,8 +23954,9 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
   PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
-  /* Locking is required. */
-  assert (find_unique_helper->lock_mode >= WS_LOCK);
+  /* Locking is required. WS_LOCK is FK-only (FK references a unique PK).
+   * It never reaches a non-unique index, so S_LOCK is the floor here. */
+  assert (find_unique_helper->lock_mode >= S_LOCK);
 
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND if key is found and its first object is
    * successfully locked. */
