@@ -561,6 +561,9 @@ static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_st
 					    bool * skip_row);
 static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					  DBLINK_DML_KIND kind);
+static int qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					       REMOTE_DML_SINK * sink, const char *key_col, const char *op,
+					       DBLINK_REMOTE_SINK_MODE sink_mode);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
@@ -12567,6 +12570,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
+  DBLINK_REMOTE_SINK_MODE sink_mode = DBLINK_SINK_MODE_PER_ROW;
 
   assert (specp != NULL);
 
@@ -12595,6 +12599,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &del->sink;
 	key_col = del->remote_key_col;
 	op = del->remote_op;
+	sink_mode = del->remote_sink_mode;
 	break;
       }
     default:
@@ -12604,6 +12609,17 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
     }
 
   assert (sink->is_remote);
+
+  /* comparison ALL (< ALL / <= ALL / > ALL / >= ALL) reduces to a single remote push instead of one
+   * per local subquery row -- handled by a dedicated path that scans the local subquery before opening
+   * the remote connection, since the bound value must be known before the DELETE can be prepared.
+   * EQ_ALL is not yet covered here (its "all rows share one value" check is a separate task) and falls
+   * through to the per-row loop below like PER_ROW. */
+  if (kind == DBLINK_DML_DELETE
+      && (sink_mode == DBLINK_SINK_MODE_REDUCE_MIN || sink_mode == DBLINK_SINK_MODE_REDUCE_MAX))
+    {
+      return qexec_execute_remote_delete_reduce (thread_p, xasl, xasl_state, sink, key_col, op, sink_mode);
+    }
 
   /* open remote connection and prepare the INSERT/DELETE statement */
   if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
@@ -12707,6 +12723,164 @@ exit_on_error:
   dblink_dml_rollback (thread_p, &dblink_state);
   qexec_end_scan (thread_p, specp);
   qexec_close_scan (thread_p, specp);
+
+  return ER_FAILED;
+}
+
+/*
+ * qexec_execute_remote_delete_reduce () - Reduce-mode variant of the remote DELETE sink for comparison
+ *   ALL: scan the local subquery fully first to find the single MIN/MAX bound, then push at most one
+ *   remote DELETE using that bound, instead of one push per local subquery row.
+ *   return: NO_ERROR or ER_FAILED
+ *   xasl(in)       : DELETE_PROC XASL with sink.is_remote set; specp scans the already-materialized
+ *                    local subquery list file (see qexec_execute_remote_dml_sink's Note)
+ *   xasl_state(in) : XASL state
+ *   sink(in)       : remote connection info (url/user/pwd/table_name)
+ *   key_col(in)    : remote WHERE column
+ *   op(in)         : comparison operator SQL text ("<", "<=", ">", ">=")
+ *   sink_mode(in)  : DBLINK_SINK_MODE_REDUCE_MIN or DBLINK_SINK_MODE_REDUCE_MAX
+ *
+ * Note: A NULL anywhere in the local subquery result makes the comparison unknown for every remote row
+ *   (ALL over a set containing NULL), so this leaves the remote table untouched -- no connection is
+ *   opened. An empty local subquery result is also left untouched here; turning that into "delete every
+ *   remote row" is a separate follow-up (empty set is vacuously true for ALL, the SQL builder needs a
+ *   WHERE-less DELETE for it).
+ */
+static int
+qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+				    REMOTE_DML_SINK * sink, const char *key_col, const char *op,
+				    DBLINK_REMOTE_SINK_MODE sink_mode)
+{
+  ACCESS_SPEC_TYPE *specp = xasl->spec_list;
+  SCAN_CODE xb_scan, ls_scan;
+  SCAN_ID *s_id = NULL;
+  DB_VALUE *bindv[1];
+  DB_VALUE boundary;
+  bool has_boundary = false;
+  bool null_seen = false;
+  int row_count = 0;
+  int row_affected;
+  DBLINK_DML_STATE dblink_state = { -1, -1 };
+
+  db_make_null (&boundary);
+
+  if (qexec_open_scan (thread_p, specp, xasl->val_list, &xasl_state->vd, false, specp->fixed_scan,
+		       specp->grouped_scan, true, &specp->s_id, xasl_state->query_id, S_SELECT, false,
+		       NULL, xasl) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  while ((xb_scan = qexec_next_scan_block_iterations (thread_p, xasl)) == S_SUCCESS)
+    {
+      s_id = &xasl->curr_spec->s_id;
+
+      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
+	{
+	  bool skip_row;
+
+	  if (qexec_collect_remote_delete_key (s_id, xasl_state, bindv, &skip_row) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  if (skip_row)
+	    {
+	      /* NULL in the set: the final answer (no-op) is already decided, but keep draining the
+	       * scan to completion rather than introducing an early-exit path for it. */
+	      null_seen = true;
+	      continue;
+	    }
+	  if (null_seen)
+	    {
+	      continue;
+	    }
+
+	  row_count++;
+	  if (!has_boundary)
+	    {
+	      if (pr_clone_value (bindv[0], &boundary) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  goto exit_on_error;
+		}
+	      has_boundary = true;
+	    }
+	  else
+	    {
+	      DB_VALUE_COMPARE_RESULT cmp = tp_value_compare (bindv[0], &boundary, 1, 1);
+
+	      if (cmp != DB_LT && cmp != DB_EQ && cmp != DB_GT)
+		{
+		  /* not cleanly comparable (e.g. DB_UNK) -- ALL's boundary becomes undecidable,
+		   * the same conservative call as a NULL in the set. */
+		  null_seen = true;
+		  continue;
+		}
+
+	      if ((sink_mode == DBLINK_SINK_MODE_REDUCE_MIN && cmp == DB_LT)
+		  || (sink_mode == DBLINK_SINK_MODE_REDUCE_MAX && cmp == DB_GT))
+		{
+		  pr_clear_value (&boundary);
+		  if (pr_clone_value (bindv[0], &boundary) != NO_ERROR)
+		    {
+		      qexec_failure_line (__LINE__, xasl_state);
+		      goto exit_on_error;
+		    }
+		}
+	    }
+	}
+
+      if (ls_scan != S_END)
+	{
+	  qexec_failure_line (__LINE__, xasl_state);
+	  goto exit_on_error;
+	}
+    }
+
+  if (xb_scan != S_END)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      goto exit_on_error;
+    }
+
+  qexec_close_scan (thread_p, specp);
+
+  if (null_seen || row_count == 0)
+    {
+      pr_clear_value (&boundary);
+      return NO_ERROR;
+    }
+
+  if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, sink->url, sink->user, sink->pwd, sink->table_name, NULL, 0, 0,
+		       key_col, op, &dblink_state) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      pr_clear_value (&boundary);
+      return ER_FAILED;
+    }
+
+  bindv[0] = &boundary;
+  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+      dblink_dml_close (&dblink_state);
+      dblink_dml_rollback (thread_p, &dblink_state);
+      pr_clear_value (&boundary);
+      return ER_FAILED;
+    }
+
+  xasl->list_id->tuple_cnt += row_affected;
+
+  dblink_dml_close (&dblink_state);
+  pr_clear_value (&boundary);
+
+  return NO_ERROR;
+
+exit_on_error:
+  qexec_end_scan (thread_p, specp);
+  qexec_close_scan (thread_p, specp);
+  pr_clear_value (&boundary);
 
   return ER_FAILED;
 }
