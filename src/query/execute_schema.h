@@ -54,8 +54,7 @@ typedef struct client_update_class_info CLIENT_UPDATE_CLASS_INFO;
 
 typedef enum
 {
-  DO_HISTOGRAM_CREATE, DO_HISTOGRAM_DROP,
-  DO_HISTOGRAM_SHOW
+  DO_HISTOGRAM_CREATE, DO_HISTOGRAM_DROP
 } DO_HISTOGRAM;
 
 /* Class info structure used in update execution on client */

@@ -41,6 +41,7 @@
 #include "schema_manager.h"
 #include "string_buffer.hpp"
 #include "trigger_description.hpp"
+#include "histogram_cl.hpp"
 #include "trigger_manager.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -714,6 +715,21 @@ help_print_info (const char *command, FILE * fpp)
       else
 	{
 	  stats_ndv_dump (buffer, fpp);
+	}
+    }
+  else if (MATCH_TOKEN (buffer, "histogram"))
+    {
+      char attr_name[128];
+
+      ptr = obj_print_next_token (ptr, buffer);
+      if (!strlen (buffer))
+	{
+	  fprintf (fpp, "Info histogram class-name [attribute-name]\n");
+	}
+      else
+	{
+	  ptr = obj_print_next_token (ptr, attr_name);
+	  (void) histogram_info_dump (buffer, (strlen (attr_name) > 0) ? attr_name : NULL, fpp);
 	}
     }
 }

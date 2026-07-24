@@ -124,5 +124,6 @@ bool is_histogrammable_type (DB_TYPE type);
 int stats_get_histogram (MOP classop, HIST_STATS ** histogram);
 int stats_free_histogram_and_init (HIST_STATS * histogram);
 int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool detailed, int error, FILE * f);
+int histogram_info_dump (const char *class_name, const char *attr_name, FILE *fpp);
 
 #endif // _HISTOGRAM_CL_HPP_

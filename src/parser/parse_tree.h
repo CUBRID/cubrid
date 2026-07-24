@@ -3041,6 +3041,8 @@ struct pt_update_stats_info
   int with_fullscan;		/* 1 iff WITH FULLSCAN */
   int random_seed;		/* 1 iff WITH RANDOM SEED */
   int no_histogram;		/* 1 iff WITH NO HISTOGRAM: refresh base statistics only */
+  int drop_histogram;		/* 1 iff WITH DROP HISTOGRAM: drop histograms, then refresh base statistics */
+  int bucket_count;		/* histogram bucket count from WITH n BUCKETS; 0 means the default */
 };
 
 /* GET STATISTICS INFO */

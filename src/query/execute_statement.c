@@ -3393,8 +3393,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_CREATE_SERIAL:
 	case PT_CREATE_TRIGGER:
 	case PT_CREATE_USER:
-	case PT_UPDATE_HISTOGRAM:
-	case PT_DROP_HISTOGRAM:
 	case PT_ALTER:
 	case PT_ALTER_INDEX:
 	case PT_ALTER_SERIAL:
@@ -3470,14 +3468,6 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	case PT_CREATE_INDEX:
 	  error = do_create_index (parser, statement);
-	  break;
-
-	case PT_UPDATE_HISTOGRAM:
-	  error = do_update_histogram (parser, statement);
-	  break;
-
-	case PT_DROP_HISTOGRAM:
-	  error = do_drop_histogram (parser, statement);
 	  break;
 
 
@@ -4103,7 +4093,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_VACUUM:
     case PT_QUERY_TRACE:
     case PT_KILL_STMT:
-    case PT_SHOW_HISTOGRAM:
 
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
       break;
@@ -4114,8 +4103,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_CREATE_SERIAL:
     case PT_CREATE_TRIGGER:
     case PT_CREATE_USER:
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
     case PT_ALTER:
     case PT_ALTER_INDEX:
     case PT_ALTER_SERIAL:
@@ -4188,15 +4175,6 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       break;
     case PT_CREATE_USER:
       err = do_create_user (parser, statement);
-      break;
-    case PT_UPDATE_HISTOGRAM:
-      err = do_update_histogram (parser, statement);
-      break;
-    case PT_DROP_HISTOGRAM:
-      err = do_drop_histogram (parser, statement);
-      break;
-    case PT_SHOW_HISTOGRAM:
-      err = do_show_histogram (parser, statement);
       break;
     case PT_ALTER:
       /* err = do_alter(parser, statement); */
@@ -4668,6 +4646,16 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
+  if (statement->info.update_stats.all_classes != 0
+      && (statement->info.update_stats.drop_histogram || statement->info.update_stats.bucket_count > 0))
+    {
+      /* DROP HISTOGRAM and n BUCKETS act on one class's histogram catalog rows; the
+       * all/catalog-classes statistics refresh runs server-side and has no per-class
+       * histogram parameters to thread them through */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (statement->info.update_stats.all_classes > 0)
     {
       // ALL CLASSES
@@ -4756,7 +4744,35 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    {
 	      bool stats_updated = false;
 
-	      if (!statement->info.update_stats.no_histogram)
+	      if (statement->info.update_stats.drop_histogram)
+		{
+		  DB_OBJECT *obj;
+		  PT_HISTOGRAM_INFO histogram_info;
+		  int save;
+
+		  AU_SAVE_AND_DISABLE (save);
+		  obj = db_find_class (sm_get_ch_name (class_mop));
+		  if (obj == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      AU_RESTORE (save);
+		      return er_errid ();
+		    }
+
+		  histogram_info.target_columns = NULL;
+		  histogram_info.bucket_count = -1;
+		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
+		  histogram_info.random_seed = statement->info.update_stats.random_seed;
+		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
+							   DO_HISTOGRAM_DROP);
+		  AU_RESTORE (save);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		  /* the histograms are gone; fall through to the plain statistics update below */
+		}
+	      else if (!statement->info.update_stats.no_histogram)
 		{
 		  DB_OBJECT *obj;
 		  PT_HISTOGRAM_INFO histogram_info;
@@ -4776,7 +4792,8 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * class once more only to have its result overwritten right away. Run the combined path first
 		   * and fall back to the plain statistics update only when it could not. */
 		  histogram_info.target_columns = NULL;
-		  histogram_info.bucket_count = -1;
+		  histogram_info.bucket_count =
+		    (statement->info.update_stats.bucket_count > 0) ? statement->info.update_stats.bucket_count : -1;
 		  histogram_info.with_fullscan = statement->info.update_stats.with_fullscan;
 		  histogram_info.random_seed = statement->info.update_stats.random_seed;
 		  error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info,
@@ -16655,18 +16672,6 @@ do_replicate_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
     case PT_DROP_INDEX:
       name = pt_print_bytes (parser, statement->info.index.indexed_class);
       repl_stmt.statement_type = CUBRID_STMT_DROP_INDEX;
-      break;
-
-    case PT_UPDATE_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_UPDATE_HISTOGRAM;
-      break;
-
-    case PT_DROP_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_DROP_HISTOGRAM;
-      break;
-
-    case PT_SHOW_HISTOGRAM:
-      repl_stmt.statement_type = CUBRID_STMT_SHOW_HISTOGRAM;
       break;
 
     case PT_CREATE_SERIAL:

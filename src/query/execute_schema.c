@@ -4381,15 +4381,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		  return error;
 		}
 	    }
-	  else if (do_histogram == DO_HISTOGRAM_SHOW)
-	    {
-	      attr_type = TP_DOMAIN_TYPE (att->domain);
-	      error = dump_histogram (obj, attname, attr_type, true, error, stdout);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
 	}
 
       /* single heap scan builds the histograms for every histogrammable column at once
@@ -4532,33 +4523,6 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      return error;
 	    }
 	}
-      else if (do_histogram == DO_HISTOGRAM_SHOW)
-	{
-	  DB_ATTRIBUTE *attribute;
-	  DB_DOMAIN *attr_domain;
-
-	  attribute = db_get_attribute (obj, attname);
-	  if (attribute == NULL)
-	    {
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      assert (false);
-	      return error;
-	    }
-	  attr_domain = db_attribute_domain (attribute);
-	  if (attr_domain == NULL)
-	    {
-	      error = ER_OBJ_INVALID_ARGUMENTS;
-	      assert (false);
-	      return error;
-	    }
-
-	  attr_type = TP_DOMAIN_TYPE (attr_domain);
-	  error = dump_histogram (obj, attname, attr_type, true, error, stdout);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	}
     }
 
   if (error != NO_ERROR)
@@ -4609,159 +4573,8 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 }
 
 
-/**
- * do_update_histogram() - Create or Update a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a create histogram statement
- */
-int
-do_update_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  CHECK_MODIFICATION_ERROR ();
-  AU_SAVE_AND_DISABLE (save);
 
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
 
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  /* The histogram build below runs with authorization disabled and scans every row of the
-   * class server-side; the blob it stores exposes sampled values (MCVs, bucket bounds).
-   * Require the same rights as UPDATE STATISTICS: ALTER, and SELECT for the data read.
-   * (au_check_class_authorization ignores Au_disable, so it still checks under AU_DISABLE.) */
-  error = au_check_class_authorization (obj, AU_ALTER);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_RESTORE (save);
-      return error;
-    }
-  error = au_check_class_authorization (obj, AU_SELECT);
-  if (error != NO_ERROR)
-    {
-      PT_ERRORmf2 (parser, cls, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_IS_NOT_AUTHORIZED_ON,
-		   "SELECT", db_get_class_name (obj));
-      AU_RESTORE (save);
-      return error;
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_CREATE);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-
-  AU_RESTORE (save);
-  return error;
-}
-
-/**
- * do_drop_histogram () - drop a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a create histogram statement
- */
-int
-do_drop_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  CHECK_MODIFICATION_ERROR ();
-  AU_SAVE_AND_DISABLE (save);
-
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
-
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  /* Dropping a histogram is a statistics change on the class; require ALTER like
-   * UPDATE STATISTICS (the drop runs with authorization disabled below). */
-  error = au_check_class_authorization (obj, AU_ALTER);
-  if (error != NO_ERROR)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_ALTER_FAILURE, 0);
-      AU_RESTORE (save);
-      return error;
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_DROP);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-
-  AU_RESTORE (save);
-  return error;
-}
-
-/**
- * do_show_histogram() - Show a histogram on a class.
- *   return: Error code if it fails
- *   parser(in): Parser context
- *   statement(in): Parse tree of a show histogram statement
- */
-int
-do_show_histogram (PARSER_CONTEXT * parser, PT_NODE * statement)
-{
-  PT_NODE *cls;
-  DB_OBJECT *obj;
-  int error = NO_ERROR, save;
-  AU_SAVE_AND_DISABLE (save);
-
-  /* class should be already available */
-  assert (statement->info.histogram.target_table_spec);
-
-  cls = statement->info.histogram.target_table_spec->info.spec.entity_name;
-  obj = db_find_class (cls->info.name.original);
-  if (obj == NULL)
-    {
-      assert (er_errid () != NO_ERROR);
-      AU_RESTORE (save);
-      return er_errid ();
-    }
-
-  error = update_or_drop_histogram_helper (parser, obj, false, &statement->info.histogram, DO_HISTOGRAM_SHOW);
-
-  if (error != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error = er_errid ();
-      AU_RESTORE (save);
-      return error;
-    }
-  AU_RESTORE (save);
-
-  return NO_ERROR;
-}
 
 /*
  * do_create_partition() -  Creates partitions

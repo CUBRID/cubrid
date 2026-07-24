@@ -213,7 +213,6 @@ static PT_NODE *pt_apply_commit_work (PARSER_CONTEXT * parser, PT_NODE * p, void
 static PT_NODE *pt_apply_constraint (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_entity (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_index (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
-static PT_NODE *pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_create_user (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_data_default (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PT_NODE *pt_apply_datatype (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
@@ -342,8 +341,6 @@ static PARSER_VARCHAR *pt_print_constraint (PARSER_CONTEXT * parser, PT_NODE * p
 static PARSER_VARCHAR *pt_print_col_def_constraint (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
-static PARSER_VARCHAR *pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_serial (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_create_trigger (PARSER_CONTEXT * parser, PT_NODE * p);
@@ -3091,12 +3088,6 @@ pt_show_node_type (PT_NODE * node)
       return "CREATE_ENTITY";
     case PT_CREATE_INDEX:
       return "CREATE_INDEX";
-    case PT_UPDATE_HISTOGRAM:
-      return "update_histogram";
-    case PT_SHOW_HISTOGRAM:
-      return "show histogram";
-    case PT_DROP_HISTOGRAM:
-      return "DROP_HISTOGRAM";
     case PT_CREATE_USER:
       return "CREATE_USER";
     case PT_CREATE_TRIGGER:
@@ -5064,9 +5055,6 @@ pt_init_apply_f (void)
   pt_apply_func_array[PT_COMMIT_WORK] = pt_apply_commit_work;
   pt_apply_func_array[PT_CREATE_ENTITY] = pt_apply_create_entity;
   pt_apply_func_array[PT_CREATE_INDEX] = pt_apply_create_index;
-  pt_apply_func_array[PT_UPDATE_HISTOGRAM] = pt_apply_update_histogram;
-  pt_apply_func_array[PT_DROP_HISTOGRAM] = pt_apply_update_histogram;
-  pt_apply_func_array[PT_SHOW_HISTOGRAM] = pt_apply_update_histogram;
   pt_apply_func_array[PT_CREATE_USER] = pt_apply_create_user;
   pt_apply_func_array[PT_CREATE_TRIGGER] = pt_apply_create_trigger;
   pt_apply_func_array[PT_CREATE_SERIAL] = pt_apply_create_serial;
@@ -5201,9 +5189,6 @@ pt_init_init_f (void)
   pt_init_func_array[PT_COMMIT_WORK] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_ENTITY] = pt_init_create_entity;
   pt_init_func_array[PT_CREATE_INDEX] = pt_init_create_index;
-  pt_init_func_array[PT_UPDATE_HISTOGRAM] = pt_init_func_null_function;
-  pt_init_func_array[PT_DROP_HISTOGRAM] = pt_init_func_null_function;
-  pt_init_func_array[PT_SHOW_HISTOGRAM] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_USER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_TRIGGER] = pt_init_func_null_function;
   pt_init_func_array[PT_CREATE_SERIAL] = pt_init_func_null_function;
@@ -5334,9 +5319,6 @@ pt_init_print_f (void)
   pt_print_func_array[PT_COMMIT_WORK] = pt_print_commit_work;
   pt_print_func_array[PT_CREATE_ENTITY] = pt_print_create_entity;
   pt_print_func_array[PT_CREATE_INDEX] = pt_print_create_index;
-  pt_print_func_array[PT_UPDATE_HISTOGRAM] = pt_print_analyze_histogram;
-  pt_print_func_array[PT_DROP_HISTOGRAM] = pt_print_analyze_histogram;
-  pt_print_func_array[PT_SHOW_HISTOGRAM] = pt_print_show_histogram;
   pt_print_func_array[PT_CREATE_USER] = pt_print_create_user;
   pt_print_func_array[PT_CREATE_TRIGGER] = pt_print_create_trigger;
   pt_print_func_array[PT_CREATE_SERIAL] = pt_print_create_serial;
@@ -7367,111 +7349,8 @@ pt_print_create_entity (PARSER_CONTEXT * parser, PT_NODE * p)
   return q;
 }
 
-/*
- * pt_apply_update_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PT_NODE *
-pt_apply_update_histogram (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
-{
-  PT_APPLY_WALK (parser, p->info.histogram.target_table_spec, arg);
-  PT_APPLY_WALK (parser, p->info.histogram.target_columns, arg);
-  return p;
-}
-
-/*
- * pt_print_update_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PARSER_VARCHAR *
-pt_print_analyze_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
-  unsigned int saved_cp = parser->custom_print;
-  PT_NODE *target_columns;
 
 
-  b = pt_append_nulstring (parser, b, "analyze table ");
-  if (p->info.histogram.target_table_spec)
-    {
-      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
-    }
-
-  b = pt_append_varchar (parser, b, tbl);
-
-  if (p->node_type == PT_UPDATE_HISTOGRAM)
-    {
-      b = pt_append_nulstring (parser, b, " update histogram");
-    }
-  else if (p->node_type == PT_DROP_HISTOGRAM)
-    {
-      b = pt_append_nulstring (parser, b, " drop histogram");
-    }
-
-  b = pt_append_nulstring (parser, b, " on ");
-
-  if (p->info.histogram.target_columns)
-    {
-      target_columns = p->info.histogram.target_columns;
-      cl = pt_print_bytes_l (parser, target_columns);
-    }
-
-  b = pt_append_nulstring (parser, b, " (");
-  b = pt_append_varchar (parser, b, cl);
-  b = pt_append_nulstring (parser, b, ") ");
-
-  parser->custom_print = saved_cp;
-
-  return b;
-}
-
-/*
- * pt_print_show_histogram () -
- *   return:
- *   parser(in):
- *   p(in):
- *   g(in):
- *   arg(in):
- */
-static PARSER_VARCHAR *
-pt_print_show_histogram (PARSER_CONTEXT * parser, PT_NODE * p)
-{
-  PARSER_VARCHAR *b = 0, *tbl = 0, *cl = 0;
-  unsigned int saved_cp = parser->custom_print;
-  PT_NODE *target_columns;
-
-  b = pt_append_nulstring (parser, b, "show histogram ");
-  if (p->info.histogram.target_table_spec)
-    {
-      tbl = pt_print_bytes (parser, p->info.histogram.target_table_spec);
-    }
-
-  b = pt_append_varchar (parser, b, tbl);
-
-  b = pt_append_nulstring (parser, b, " on ");
-
-  if (p->info.histogram.target_columns)
-    {
-      target_columns = p->info.histogram.target_columns;
-      cl = pt_print_bytes_l (parser, target_columns);
-    }
-
-  b = pt_append_nulstring (parser, b, " (");
-  b = pt_append_varchar (parser, b, cl);
-  b = pt_append_nulstring (parser, b, ") ");
-
-  parser->custom_print = saved_cp;
-
-  return b;
-}
 
 /* CREATE_INDEX */
 /*
@@ -16288,10 +16167,44 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.update_stats.with_fullscan > 0)
+  if (p->info.update_stats.with_fullscan > 0 || p->info.update_stats.random_seed > 0
+      || p->info.update_stats.no_histogram > 0 || p->info.update_stats.drop_histogram > 0
+      || p->info.update_stats.bucket_count > 0)
     {
-      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
-      b = pt_append_nulstring (parser, b, " with fullscan");
+      const char *sep = " with ";
+      char buf[32];
+
+      if (p->info.update_stats.with_fullscan > 0)
+	{
+	  assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
+	  b = pt_append_nulstring (parser, b, sep);
+	  b = pt_append_nulstring (parser, b, "fullscan");
+	  sep = ", ";
+	}
+      if (p->info.update_stats.random_seed > 0)
+	{
+	  b = pt_append_nulstring (parser, b, sep);
+	  b = pt_append_nulstring (parser, b, "random seed");
+	  sep = ", ";
+	}
+      if (p->info.update_stats.no_histogram > 0)
+	{
+	  b = pt_append_nulstring (parser, b, sep);
+	  b = pt_append_nulstring (parser, b, "no histogram");
+	  sep = ", ";
+	}
+      if (p->info.update_stats.drop_histogram > 0)
+	{
+	  b = pt_append_nulstring (parser, b, sep);
+	  b = pt_append_nulstring (parser, b, "drop histogram");
+	  sep = ", ";
+	}
+      if (p->info.update_stats.bucket_count > 0)
+	{
+	  snprintf (buf, sizeof (buf), "%d buckets", p->info.update_stats.bucket_count);
+	  b = pt_append_nulstring (parser, b, sep);
+	  b = pt_append_nulstring (parser, b, buf);
+	}
     }
 
   return b;

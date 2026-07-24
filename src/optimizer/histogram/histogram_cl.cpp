@@ -2670,3 +2670,63 @@ dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool deta
 
   return NO_ERROR;
 }
+/*
+ * histogram_info_dump () - csql ";info histogram" handler: dump the stored histogram(s)
+ *			    of a class (every histogrammable column, or one given column)
+ *			    in the detailed format (MCVs, bucket boundaries)
+ *   return: NO_ERROR or error code
+ *   class_name(in): class to inspect
+ *   attr_name(in): optional column name; NULL means all histogrammable columns
+ *   fpp(in): output stream
+ */
+int
+histogram_info_dump (const char *class_name, const char *attr_name, FILE *fpp)
+{
+  DB_OBJECT *classop;
+  int error = NO_ERROR;
+
+  if (class_name == NULL || fpp == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  classop = db_find_class (class_name);
+  if (classop == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      fprintf (fpp, "\nERROR: %s\n", er_msg ());
+      return er_errid ();
+    }
+
+  if (attr_name != NULL)
+    {
+      DB_ATTRIBUTE *att = db_get_attribute (classop, attr_name);
+
+      if (att == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  fprintf (fpp, "\nERROR: %s\n", er_msg ());
+	  return er_errid ();
+	}
+
+      return dump_histogram (classop, attr_name, db_attribute_type (att), true, NO_ERROR, fpp);
+    }
+
+  for (DB_ATTRIBUTE *att = db_get_attributes (classop); att != NULL; att = db_attribute_next (att))
+    {
+      DB_TYPE attr_type = db_attribute_type (att);
+
+      if (!is_histogrammable_type (attr_type))
+	{
+	  continue;
+	}
+
+      error = dump_histogram (classop, db_attribute_name (att), attr_type, true, NO_ERROR, fpp);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return error;
+}
