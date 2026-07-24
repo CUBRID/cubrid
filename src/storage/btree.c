@@ -7186,8 +7186,13 @@ exit_on_error:
 }
 
 /* seek budget of the prefix skip scan: with more distinct leading values than this the leaf
- * sampling is reliable anyway (transitions are spread over the leaves), so the scan bails out */
+ * sampling is reliable anyway (transitions are spread over the leaves), so the scan bails out.
+ * Deeper levels get the previous level's distinct count on top of it -- enumerating level k
+ * costs one seek per (k + 1)-column combination, so a budget relative to what is already known
+ * lets an exact count through whenever the per-level increment is small, no matter how large
+ * the shallower levels are -- capped at the MAX below to keep the whole scan bounded. */
 #define BTREE_STATS_PREFIX_SEEK_BUDGET 1024
+#define BTREE_STATS_PREFIX_SEEK_BUDGET_MAX (16 * BTREE_STATS_PREFIX_SEEK_BUDGET)
 
 /*
  * btree_get_stats_prefix_skip_scan_level () - exact distinct count of the (level + 1)-column
@@ -7195,6 +7200,7 @@ exit_on_error:
  *   return: NO_ERROR
  *   env(in/out): stats environment already filled by the AR sampling
  *   level(in): pkeys level to enumerate (prefix of level + 1 leading columns)
+ *   budget(in): seek budget for this level
  *   exhausted(out): set when the seek budget ran out before the rightmost leaf
  *   count(out): distinct prefixes enumerated -- exact unless exhausted, then a lower bound
  *
@@ -7215,8 +7221,8 @@ exit_on_error:
  * leading column) does transition and is counted by both.
  */
 static int
-btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, bool * exhausted,
-					int *count)
+btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, int budget,
+					bool * exhausted, int *count)
 {
   BTID_INT *btid_int;
   PAGE_PTR page = NULL;
@@ -7355,7 +7361,7 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
 	}
       groups++;
 
-      if (++seeks > BTREE_STATS_PREFIX_SEEK_BUDGET)
+      if (++seeks > budget)
 	{
 	  *exhausted = true;	/* many distinct prefixes: the sampled estimate is fine */
 	  break;
@@ -7519,13 +7525,17 @@ btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
  *   return: NO_ERROR
  *   env(in/out): stats environment already filled by the AR sampling
  *
- * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep. Prefix distinct
- * counts are non-decreasing with depth, so once a level exhausts its seek budget every deeper
- * level would too and enumeration stops there. The last level (the whole key) is never
- * enumerated: it degenerates to visiting every key.
+ * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep, with a seek
+ * budget relative to the previous level's (exact or estimated) distinct count: a level is worth
+ * enumerating whenever its increment over the level above fits the base budget, no matter how
+ * many distinct prefixes the shallower levels hold. An exhausted level takes the reservoir
+ * (Duj1) estimate with the enumerated part as a lower bound, and enumeration keeps going while
+ * the relative budget stays under the cap. The last level (the whole key) is never enumerated
+ * nor estimated: enumeration degenerates to visiting every key, and the reservoir holds b-tree
+ * keys, which are unique, so its Duj1 estimate reproduces the sampled key count.
  *
- * The levels the skip scan could not enumerate are re-estimated from the key reservoir with
- * the Duj1 estimator: the transition count of the sampled leaves is corrupted by their random
+ * The levels the skip scan could not enumerate are estimated from the key reservoir with the
+ * Duj1 estimator: the transition count of the sampled leaves is corrupted by their random
  * visit order (the state carried across non-adjacent leaves fabricates a prefix transition at
  * almost every jump, inflating few-zone prefixes; one dominant value deflates them instead).
  */
@@ -7533,8 +7543,8 @@ static int
 btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
 {
   BTID_INT *btid_int;
-  bool exhausted;
-  int level, first_estimated, lower_bound = 0, count, i;
+  bool exhausted, have_sample;
+  int level, prev_final = 0, budget, count, i;
   int ret = NO_ERROR;
 
   assert (env != NULL);
@@ -7550,35 +7560,44 @@ btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       return NO_ERROR;
     }
 
-  first_estimated = env->pkeys_val_num - 1;
+  have_sample = (env->prefix_sample != NULL && env->sample_size > 0);
+
+  /* The last level (the whole key) is never touched: enumerating it means visiting every key,
+   * and estimating it is pointless -- the reservoir holds b-tree keys, which are unique, so its
+   * Duj1 estimate degenerates to the key count the AR sampling already produced. */
   for (level = 0; level < env->pkeys_val_num - 1; level++)
     {
+      budget = BTREE_STATS_PREFIX_SEEK_BUDGET + prev_final;
+      if (budget > BTREE_STATS_PREFIX_SEEK_BUDGET_MAX)
+	{
+	  break;		/* enumeration priced out; deeper levels are estimated below */
+	}
       exhausted = false;
-      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, &exhausted, &count);
+      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, budget, &exhausted, &count);
       if (ret != NO_ERROR)
 	{
 	  return ret;
 	}
-      if (exhausted)
+      if (!exhausted)
 	{
-	  first_estimated = level;
-	  lower_bound = count;
-	  break;
+	  env->stat_info->pkeys[level] = count;	/* exact */
 	}
-      env->stat_info->pkeys[level] = count;	/* exact */
+      else if (have_sample)
+	{
+	  /* what the exhausted skip scan enumerated is still a valid lower bound */
+	  env->stat_info->pkeys[level] = MAX (btree_get_stats_duj1_estimate (env, level), count);
+	}
+      else if (env->stat_info->pkeys[level] < count)
+	{
+	  env->stat_info->pkeys[level] = count;
+	}
+      prev_final = env->stat_info->pkeys[level];
     }
 
-  if (env->prefix_sample != NULL && env->sample_size > 0)
+  /* levels the budget cap priced out of enumeration keep a reservoir estimate instead */
+  for (; have_sample && level < env->pkeys_val_num - 1; level++)
     {
-      for (level = first_estimated; level < env->pkeys_val_num; level++)
-	{
-	  env->stat_info->pkeys[level] = btree_get_stats_duj1_estimate (env, level);
-	}
-    }
-  if (first_estimated < env->pkeys_val_num && env->stat_info->pkeys[first_estimated] < lower_bound)
-    {
-      /* what the exhausted skip scan enumerated is still a valid lower bound */
-      env->stat_info->pkeys[first_estimated] = lower_bound;
+      env->stat_info->pkeys[level] = btree_get_stats_duj1_estimate (env, level);
     }
 
   /* prefix distinct counts are non-decreasing by definition; the key count bounds them all */
