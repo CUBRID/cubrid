@@ -51,6 +51,7 @@
 #include "network_interface_cl.h"
 #include "dbtype.h"
 #include "regu_var.hpp"
+#include "memory_hash.h"	/* MHT_HLS_ENTRY for hash-join spill cost */
 #include "histogram_cl.hpp"
 
 #define TEST_DUMP_PLAN_SCAN_COST 0
@@ -58,7 +59,6 @@
 #define TEST_DUMP_PLAN_JOIN_COST 0
 #define TEST_DUMP_PLAN_FOLLOW_COST 0
 
-#define TEST_HASH_JOIN_ENABLE 0
 #define TEST_HASH_JOIN_FORCE_ENABLE 0
 
 #define INDENT_INCR		4
@@ -82,11 +82,21 @@
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
 #define ISCAN_OID_ACCESS_OVERHEAD 5
 #define MJ_CPU_OVERHEAD_FACTOR 20
-#define HJ_BUILD_CPU_OVERHEAD_FACTOR 30
+#define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
 #define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
-#define HJ_FILE_IO_WEIGHT 0.5	/* Unused */
+#define HJ_MEM_ALLOC_CONSTANT 1500	/* Heuristic offset to prefer NL join over hash join:
+					   ~1500 cost observed for NL with ~3000 rows,
+					   preventing hash join selection for small inputs */
+#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
+#define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
+					   the executor spills to a partitioned hash join once the build
+					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
+#define HJ_HASH_ENTRY_POS_SIZE 12	/* sizeof (QFILE_TUPLE_SIMPLE_POS): the per-entry tuple-position size
+					   added to sizeof (MHT_HLS_ENTRY) for the spill threshold. The struct is
+					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
+					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
-#define SSCAN_DEFAULT_CARD 100
+#define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
 #define RBO_CHECK_COST 50
@@ -1254,6 +1264,31 @@ qo_top_plan_new (QO_PLAN * plan)
 		bool yn = true;
 		qo_walk_plan_tree (plan, qo_set_orderby_skip, &yn);
 	      }
+
+	      if (plan->need_final_sort)
+		{
+		  /*
+		   * orderby_skip was accepted because the outermost index scan returns rows in ORDER BY order.
+		   * However, the hash/merge join above it (for which qo_join_new sets need_final_sort)
+		   * breaks that order, since a hash join may not preserve the order of its probe input
+		   * when partitioned or run in parallel and a merge join re-sorts both inputs by the join column
+		   * in S_ASC order regardless of direction. Therefore, append a SORT_ORDERBY plan on top
+		   * to guarantee the final order, which allows the subplans to keep the order by skip
+		   * such as the key-limited index scan under a SORT-LIMIT plan.
+		   */
+		  bool save_use_iscan_descending = plan->use_iscan_descending;
+
+		  plan = qo_sort_new (plan, QO_UNORDERED, SORT_ORDERBY);
+		  if (plan != NULL)
+		    {
+		      /*
+		       * Since qo_sort_new does not propagate it,
+		       * keep the descending scan direction visible at the top
+		       * so that qo_optimize applies qo_set_use_desc to the subplan index scans.
+		       */
+		      plan->use_iscan_descending = save_use_iscan_descending;
+		    }
+		}
 	    }
 	  else
 	    {
@@ -2858,6 +2893,14 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
 
+  /* An nl/idx join (or cartesian product) emits rows in its outer's order,
+   * so it inherits only the outer's final-sort requirement:
+   * the inner is probed per outer row and does not change the output order,
+   * and order-by-skip likewise follows only the outer.
+   * (A right outer join is normalized to a left one, so the outer is still the order-driving side.)
+   * The hash/merge branches below override this to true for their own output. */
+  plan->need_final_sort = outer->need_final_sort;
+
   switch (join_method)
     {
 
@@ -3076,6 +3119,7 @@ qo_join_free (QO_PLAN * plan)
   bitset_delset (&(plan->plan_un.join.join_terms));
   bitset_delset (&(plan->plan_un.join.during_join_terms));
   bitset_delset (&(plan->plan_un.join.after_join_terms));
+  bitset_delset (&(plan->plan_un.join.hash_terms));
 }
 
 /*
@@ -3382,6 +3426,12 @@ qo_nljoin_cost (QO_PLAN * planp)
   planp->variable_cpu_cost = inner_cpu_cost + outer_cpu_cost;
   planp->variable_io_cost = inner_io_cost + outer_io_cost;
 
+#if 0
+  /* The cost of subqueries is already accounted for in the inner plan.
+   * Therefore, this routine is unnecessary.
+   * Moreover, since it applies only to NL joins, it unfairly penalizes NL.
+   * This logic be removed.
+   */
   {
     QO_ENV *env;
     int i;
@@ -3418,6 +3468,7 @@ qo_nljoin_cost (QO_PLAN * planp)
     planp->variable_cpu_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_cpu_cost;
     planp->variable_io_cost += guessed_result_cardinality * ISCAN_IO_HIT_RATIO * subq_io_cost;	/* assume IO as # blocks */
   }
+#endif
 
 #if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nNested Loop Cost: \n");
@@ -3526,6 +3577,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 {
   QO_PLAN *inner_plan_p, *outer_plan_p;
   double inner_cardinality, outer_cardinality;
+  double inner_pages, outer_pages;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
 
@@ -3552,6 +3604,11 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_cardinality = inner_plan_p->info->cardinality;
   outer_cardinality = outer_plan_p->info->cardinality;
 
+  inner_pages = inner_cardinality * (double) inner_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  outer_pages = outer_cardinality * (double) outer_plan_p->info->projected_size / (double) IO_PAGESIZE;
+  inner_pages = MAX (1.0, inner_pages);
+  outer_pages = MAX (1.0, outer_pages);
+
   /**
    * STEP 1: Sum up the fixed and variable costs from both the outer and inner.
    */
@@ -3566,32 +3623,40 @@ qo_hjoin_cost (QO_PLAN * plan_p)
    */
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
-  inner_build_io_cost = 0.0;
+  inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  inner_build_io_cost = inner_pages;
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
    */
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
-  outer_build_io_cost = 0.0;
+  outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
+  outer_build_io_cost = outer_pages;
 
-#if 0
-  /* No need to increase weight since partitioned hash join is used even when mem_limit is exceeded. */
+  /* Partitioned hash join spills to disk once the build input exceeds the in-memory
+   * hash limit. The executor switches to a partitioned (spilling) hash join at
+   * mem_limit * PARTITION_FILL_FACTOR, not the raw max_hash_list_scan_size, so apply the
+   * same fill-factor here; otherwise a build sized in (fill-factor*limit, limit] spills at
+   * run time while the cost model omits the spill IO and underestimates the hash join. */
+  {
+    UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
 
-  UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+    /* Per-entry size must mirror hjoin_check_partition() in query_hash_join.c:
+     * ~2 open-addressing slots (load factor) + one entry + a tuple position.
+     * Keep the two in sync. */
+    UINT64 per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + HJ_HASH_ENTRY_POS_SIZE;
 
-  if ((inner_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      inner_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      inner_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
+    if ((inner_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
+      {
+	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+      }
 
-  if ((outer_cardinality * (sizeof (HENTRY_HLS) + 16 /* sizeof (QFILE_TUPLE_SIMPLE_POS) */ )) > mem_limit)
-    {
-      outer_build_io_cost += (inner_cardinality * HJ_FILE_IO_WEIGHT);
-      outer_build_io_cost += (outer_cardinality * HJ_FILE_IO_WEIGHT);
-    }
-#endif
+    if ((outer_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
+      {
+	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+      }
+  }
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -3736,6 +3801,7 @@ qo_follow_new (QO_INFO * info, QO_PLAN * head_plan, QO_TERM * path_term, BITSET 
   plan->plan_un.follow.path = path_term;
 
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
+  plan->need_final_sort = head_plan->need_final_sort;
 
   bitset_assign (&(plan->sarged_terms), sarged_terms);
   bitset_remove (&(plan->sarged_terms), QO_TERM_IDX (path_term));
@@ -6541,7 +6607,7 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 		      BITSET * duj_terms, BITSET * afj_terms, BITSET * sarged_terms, BITSET * pinned_subqueries)
 {
   QO_PLAN *outer_plan, *inner_plan;
-  QO_NODE *outer_node, *inner_node;
+  QO_NODE *outer_node, *inner_node, *hint_node;
   QO_NODE_INDEX *node_index;
   QO_TERM *term;
   BITSET_ITERATOR bitset_iter;
@@ -6596,31 +6662,51 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	}
     }
 
-  /* At here, inner is single class spec */
+  /* inner_node is the single-class inner used for the key-limit / index checks below. */
   inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
-  if (QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH)
+  /* Determine the node that carries the join-method hint.  For a right outer join the
+   * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
+   * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
+   * USE_NL / USE_MERGE / USE_IDX / NO_USE_HASH are honored for right outer joins.  A
+   * table-level hint applies only when that side is a single class; for a multi-node
+   * (temp) inner the table hint is not applicable and the cost decides. */
+  if (join_type == JOIN_RIGHT)
     {
-      /* join hint: disable hash-join */
-      goto exit;
-    }
-  else if (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-    {
-      /* join hint: force hash-join */
-    }
-  else if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
-    {
-      /* join hint: force nl-join, idx-join, m-join; skip hash-join */
-      goto exit;
+      if (bitset_cardinality (&(outer->nodes)) == 1)
+	{
+	  hint_node = QO_ENV_NODE (outer->env, bitset_first_member (&(outer->nodes)));
+	}
+      else
+	{
+	  hint_node = NULL;
+	}
     }
   else
     {
-      /* default: disable hash-join */
-#if TEST_HASH_JOIN_ENABLE
-      /* fall through */
-#else /* TEST_HASH_JOIN_ENABLE */
-      goto exit;
-#endif /* TEST_HASH_JOIN_ENABLE */
+      hint_node = inner_node;
+    }
+
+  if (hint_node != NULL)
+    {
+      if (QO_NODE_HINT (hint_node) & PT_HINT_NO_USE_HASH)
+	{
+	  /* join hint: disable hash-join */
+	  goto exit;
+	}
+      else if (QO_NODE_HINT (hint_node) & PT_HINT_USE_HASH)
+	{
+	  /* join hint: force hash-join */
+	}
+      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+	{
+	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
+	  goto exit;
+	}
+      else
+	{
+	  /* fall through */
+	}
     }
 
   /* Check if a click counter is set. */
@@ -8095,9 +8181,18 @@ planner_nodeset_join_cost (QO_PLANNER * planner, BITSET * nodeset)
 	}
 
       objects = (plan->info)->cardinality;
-      result_size = objects * (double) (plan->info)->projected_size;
-      pages = result_size / (double) IO_PAGESIZE;
-      pages = MAX (1.0, pages);
+      /* TCARD-based lookahead: filtered rows x measured pages-per-row (TCARD/NCARD).
+       * Uses measured disk-page statistics instead of the estimated tuple width
+       * (projected_size), which is fragile to width-estimation errors. */
+      if (QO_NODE_NCARD (node) > 0)
+	{
+	  result_size = objects * (double) QO_NODE_TCARD (node) / (double) QO_NODE_NCARD (node);
+	  pages = MAX (1.0, result_size);
+	}
+      else
+	{
+	  pages = 0.0;
+	}
 
       /* apply join cost; add to the total cost */
       total_cost += pages;
@@ -9765,6 +9860,22 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   /* traverse OR list */
   for (node = pt_expr; node; node = node->or_next)
     {
+      if (node->node_type != PT_EXPR)
+	{
+	  /* rewrites can replace a disjunct with a folded constant VALUE node (e.g.
+	   * qo_reduce_equality_terms substituting an equality into a sibling term); it has no
+	   * expr fields to read. A true constant makes the whole disjunction always true;
+	   * a false one contributes nothing to an OR. */
+	  if (node->node_type == PT_VALUE && !pt_false_search_condition (QO_ENV_PARSER (env), node))
+	    {
+	      total_selectivity = 1.0;
+	    }
+	  continue;
+	}
+
+      /* per-node: an IS [NOT] NULL node must not suppress the null-correction of its siblings */
+      not_null_calculated = false;
+
       switch (node->info.expr.op)
 	{
 	case PT_OR:
@@ -9822,12 +9933,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 	case PT_LIKE:
 	  {
-	    selectivity = qo_like_selectivity (env, pt_expr);
+	    selectivity = qo_like_selectivity (env, node);
 	    break;
 	  }
 	case PT_NOT_LIKE:
 	  {
-	    selectivity = 1 - qo_like_selectivity (env, pt_expr);
+	    selectivity = 1 - qo_like_selectivity (env, node);
 	    break;
 	  }
 	case PT_SETNEQ:
@@ -9867,9 +9978,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NULL:
-	  if (pt_expr->info.expr.arg1->node_type == PT_NAME && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
+	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = pt_expr->info.expr.arg1->info.name.null_frequency;
+	      selectivity = node->info.expr.arg1->info.name.null_frequency;
 	    }
 	  else
 	    {
@@ -9879,9 +9990,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NOT_NULL:
-	  if (pt_expr->info.expr.arg1->node_type == PT_NAME && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
+	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
-	      selectivity = pt_expr->info.expr.arg1->info.name.null_frequency;
+	      selectivity = node->info.expr.arg1->info.name.null_frequency;
 	    }
 	  else
 	    {
@@ -9899,18 +10010,50 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 	}
 
-      if (!not_null_calculated)
+      /* Only PT_EXPR nodes have valid info.expr.arg1/arg2. The or_next chain can also hold
+       * non-expr nodes (e.g. a constant-folded PT_VALUE such as "(299<502 or 299>937)"), whose
+       * info.expr union members are garbage; dereferencing arg1/arg2 on those crashes. A constant
+       * predicate has no column null-fraction to restore, so skipping the correction is correct. */
+      if (!not_null_calculated && PT_IS_EXPR_NODE (node))
 	{
-	  if (pt_expr->info.expr.arg1 && pt_expr->info.expr.arg1->node_type == PT_NAME
-	      && pt_expr->info.expr.arg1->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - pt_expr->info.expr.arg1->info.name.null_frequency);
-	    }
-	  if (pt_expr->info.expr.arg2 && pt_expr->info.expr.arg2->node_type == PT_NAME
-	      && pt_expr->info.expr.arg2->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - pt_expr->info.expr.arg2->info.name.null_frequency);
-	    }
+	  /* the histogram estimators return a NON-null-conditional selectivity; restore the
+	   * all-rows fraction with the CURRENT node's columns. Using the chain head (pt_expr)
+	   * here applied the head's null fraction to every sibling, so a high-null column
+	   * behind a null-free head kept its conditional selectivity (inflated by 1/(1-nf)). */
+	  {
+	    /* a qualified reference kept as a PT_DOT_ chain resolves to its terminal name node --
+	     * the same unwrap the histogram readers apply, so the correction cannot be skipped
+	     * for an argument whose estimate was histogram-based */
+	    PT_NODE *corr_arg1 = pt_get_end_path_node (node->info.expr.arg1);
+	    PT_NODE *corr_arg2 = pt_get_end_path_node (node->info.expr.arg2);
+
+	    bool nf1_known = (corr_arg1 != NULL && corr_arg1->node_type == PT_NAME
+			      && corr_arg1->info.name.null_frequency >= 0.0);
+	    bool nf2_known = (corr_arg2 != NULL && corr_arg2->node_type == PT_NAME
+			      && corr_arg2->info.name.null_frequency >= 0.0);
+
+	    if (node->info.expr.op == PT_NULLSAFE_EQ && nf1_known && nf2_known)
+	      {
+		/* a null-safe equality (<=>) also matches the two sides' NULL rows: scale the
+		 * non-null equality estimate to the non-null pair fraction, then add the
+		 * NULL-NULL pair mass that plain equality never produces */
+		double nf1 = corr_arg1->info.name.null_frequency;
+		double nf2 = corr_arg2->info.name.null_frequency;
+
+		selectivity = selectivity * (1 - nf1) * (1 - nf2) + nf1 * nf2;
+	      }
+	    else
+	      {
+		if (nf1_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg1->info.name.null_frequency);
+		  }
+		if (nf2_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg2->info.name.null_frequency);
+		  }
+	      }
+	  }
 	}
 
       total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
@@ -9927,56 +10070,51 @@ qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   PT_NODE *lhs, *rhs;
   DB_VALUE *host_var = NULL;
   PRED_CLASS pc_lhs, pc_rhs;
+  double selectivity = 0.0;
+  bool success = false;
 
-  double selectivity;
-  double total_selectivity = 0.0;
+  /* Evaluate ONLY the given LIKE node. The caller (qo_expr_selectivity) walks the
+   * OR (or_next) list itself and combines the per-node selectivities; iterating the
+   * list here as well made every non-LIKE sibling contribute twice -- once through
+   * this function (fed to the LIKE estimator with a NULL or stale pattern, so it
+   * degraded to the LIKE default selectivity) and once through its own operator
+   * case in the caller. */
+  lhs = pt_expr->info.expr.arg1;
+  rhs = pt_expr->info.expr.arg2;
 
-  PT_NODE *like_node;
-
-  for (like_node = pt_expr; like_node; like_node = like_node->or_next)
+  if (lhs && rhs)
     {
-      bool success = false;
+      pc_lhs = qo_classify (lhs);
+      pc_rhs = qo_classify (rhs);
 
-      lhs = like_node->info.expr.arg1;
-      rhs = like_node->info.expr.arg2;
-
-      if (lhs && rhs)
+      if (pc_lhs == PC_ATTR)
 	{
-	  pc_lhs = qo_classify (lhs);
-	  pc_rhs = qo_classify (rhs);
-
-	  if (pc_lhs == PC_ATTR)
+	  if (pc_rhs == PC_CONST)
 	    {
-	      if (pc_rhs == PC_CONST)
-		{
-		  host_var = &rhs->info.value.db_value;
-		}
-	      else if (pc_rhs == PC_HOST_VAR)
-		{
-		  host_var = &env->parser->host_variables[rhs->info.host_var.index];
-		}
-
-	      histogram_get_like_selectivity (lhs, host_var, &selectivity, &success);
-
-	      if (!success)
-		{
-		  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
-		}
+	      host_var = &rhs->info.value.db_value;
 	    }
-	  else
+	  else if (pc_rhs == PC_HOST_VAR)
+	    {
+	      host_var = &env->parser->host_variables[rhs->info.host_var.index];
+	    }
+
+	  histogram_get_like_selectivity (lhs, host_var, &selectivity, &success);
+
+	  if (!success)
 	    {
 	      selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	    }
-
-	  total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
-	  total_selectivity = MAX (total_selectivity, 0.0);
-	  total_selectivity = MIN (total_selectivity, 1.0);
+	}
+      else
+	{
+	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	}
 
+      selectivity = MAX (selectivity, 0.0);
+      selectivity = MIN (selectivity, 1.0);
     }
 
-
-  return total_selectivity;
+  return selectivity;
 }
 
 /*
@@ -10076,6 +10214,14 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_ATTR:
 	  /* attr = attr */
 
+	  /* non-null equality estimate, valid for = and <=> alike: the caller scales it to the
+	   * non-null pair fraction and, for a null-safe join, adds the NULL-NULL pair mass. */
+	  histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
+	  if (success)
+	    {
+	      break;
+	    }
+
 	  /* check for indexes on either of the attributes */
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  rhs_icard = qo_index_cardinality (env, rhs);
@@ -10090,7 +10236,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
 	    }
 
-	  /* TODO: add histogram selectivity */
 	  break;
 
 	case PC_CONST:
@@ -10137,26 +10282,21 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
 
     case PC_CONST:
-      switch (pc_rhs)
-	{
-	case PC_ATTR:
-	  histogram_get_equal_selectivity (rhs, &lhs->info.value.db_value, &selectivity, &success);
-	  break;
-
-	default:
-	  break;
-	}
-      if (success)
-	{
-	  break;
-	}
-      [[fallthrough]];
-
     case PC_HOST_VAR:
       switch (pc_rhs)
 	{
 	case PC_ATTR:
-	  host_var = &env->parser->host_variables[lhs->info.host_var.index];
+	  /* const = attr : probe the attribute's histogram with the constant / host-var value.
+	   * Read the value slot according to pc_lhs; a fallthrough into a foreign case would
+	   * otherwise read the wrong union member (e.g. host_var.index on a PT_VALUE node). */
+	  if (pc_lhs == PC_HOST_VAR)
+	    {
+	      host_var = &env->parser->host_variables[lhs->info.host_var.index];
+	    }
+	  else
+	    {
+	      host_var = &lhs->info.value.db_value;
+	    }
 	  histogram_get_equal_selectivity (rhs, host_var, &selectivity, &success);
 	  break;
 
@@ -10438,19 +10578,23 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		}
 	      if (pt_expr->info.expr.op == PT_GE)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, false, &selectivity, &success);
+		  /* v >= col is col <= v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, true, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_GT)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, true, &selectivity, &success);
+		  /* v > col is col < v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, false, false, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_LE)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, false, &selectivity, &success);
+		  /* v <= col is col >= v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, true, &selectivity, &success);
 		}
 	      else if (pt_expr->info.expr.op == PT_LT)
 		{
-		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, true, &selectivity, &success);
+		  /* v < col is col > v */
+		  histogram_get_comp_selectivity (rhs, lhs_db_value, true, false, &selectivity, &success);
 		}
 	      break;
 	    }
@@ -12950,7 +13094,7 @@ qo_top_plan_print_json (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
-  parser->custom_print |= PT_CONVERT_RANGE;
+  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
 
   json_object_set_new (json, "rewritten query", json_string (parser_print_tree (parser, select)));
 
@@ -13282,7 +13426,7 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
     }
 
   save_custom = parser->custom_print;
-  parser->custom_print |= PT_CONVERT_RANGE;
+  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
   sql = parser_print_tree (parser, select);
   parser->custom_print = save_custom;
 

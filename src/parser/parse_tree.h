@@ -102,7 +102,7 @@ struct json_t;
 					NULL); \
 	(parser)->jmp_env_active = 0; \
 	if ((parser)->au_save) \
-	    AU_ENABLE((parser)->au_save); \
+	    AU_RESTORE((parser)->au_save); \
 	return NULL; \
       } \
         else (parser)->jmp_env_active = 1; \
@@ -961,6 +961,12 @@ enum pt_custom_print
   PT_PRINT_LOWER = (0x1 << 30)
 };
 
+/* Hide terms flagged PT_EXPR_INFO_DBLINK_PUSHED (already shipped into the DBLink conn_sql, not evaluated
+ * locally) when printing CNF lists.  Set only by the plan-dump printers: the XASL cache key print must keep
+ * the term, since two queries that differ only in the pushed term's outer side would otherwise collide.
+ * Defined outside enum pt_custom_print: (0x1 << 31) does not fit the enum's underlying int. */
+#define PT_PRINT_SUPPRESS_DBLINK_PUSHED (0x80000000U)
+
 /* all statement node types should be assigned their API statement enumeration */
 enum pt_node_type
 {
@@ -1241,7 +1247,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED			(1ULL << 33)	/* do not push predicates */
 #define  PT_HINT_NO_MERGE			(1ULL << 34)	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN		(1ULL << 35)	/* do not eliminate join */
-#define  PT_HINT_SAMPLING_SCAN			(1ULL << 36)	/* SELECT sampling data instead of full data */
+/* (1ULL << 36) was PT_HINT_SAMPLING_SCAN, removed with the query-based statistics sampling path */
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
@@ -1590,7 +1596,7 @@ typedef enum
   PT_SPEC_FLAG_MVCC_COND_REEV = 0x400,	/* the spec is used in mvcc condition reevaluation */
   PT_SPEC_FLAG_MVCC_ASSIGN_REEV = 0x800,	/* the spec is used in UPDATE assignment reevaluation */
   PT_SPEC_FLAG_DOESNT_HAVE_UNIQUE = 0x1000,	/* the spec was checked and does not have any uniques */
-  PT_SPEC_FLAG_SAMPLING_SCAN = 0x2000,	/* spec for sampling scan */
+  /* 0x2000 was PT_SPEC_FLAG_SAMPLING_SCAN, removed with the query-based statistics sampling path */
   PT_SPEC_FLAG_REFERENCED_AT_ODKU = 0x4000,	/* spec for odku assignment */
   PT_SPEC_FLAG_NO_PARALLEL_SCAN = 0x8000,	/* spec for not for parallel scan */
   PT_SPEC_FLAG_PARALLEL_THREAD = 0x10000,	/* spec for setted number of parallel query execution threads */
@@ -2342,6 +2348,12 @@ struct pt_expr_info
 #define PT_EXPR_INFO_ROWNUM_ONLY 262144	/* 0x40000, rownum only predicate */
 #define PT_EXPR_INFO_SP_NUMERIC 524288	/* 0x80000, CAST as NUMERIC for SP */
 #define PT_EXPR_INFO_REMOVABLE 1048576	/* 0x100000, expression is removable */
+#define PT_EXPR_INFO_DBLINK_PUSHED 2097152	/* 0x200000, correlated equality shipped into the DBLink conn_sql
+						 * ("WHERE col = ?").  The term must stay in the tree - the planner
+						 * re-derives correlation by scanning the tree for outer references
+						 * (get_local_subqueries), and a subquery left with none is reset to
+						 * uncorrelated and pre-executed only once - but the term is excluded
+						 * from the local access_pred and hidden from the plan dump. */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
@@ -2541,7 +2553,6 @@ typedef enum
   RESERVED_P_CONT_FREE,
   RESERVED_P_OFFSET_TO_FREE_AREA,
   RESERVED_P_IS_SAVING,
-  RESERVED_P_UPDATE_BEST,
 
   /* Reserved key info names */
   RESERVED_KEY_VOLUMEID,
@@ -2570,7 +2581,7 @@ typedef enum
   RESERVED_LAST_RECORD_INFO = RESERVED_T_MVCC_PREV_VERSION_LSA,
 
   RESERVED_FIRST_PAGE_INFO = RESERVED_P_CLASS_OID,
-  RESERVED_LAST_PAGE_INFO = RESERVED_P_UPDATE_BEST,
+  RESERVED_LAST_PAGE_INFO = RESERVED_P_IS_SAVING,
 
   RESERVED_FIRST_KEY_INFO = RESERVED_KEY_VOLUMEID,
   RESERVED_LAST_KEY_INFO = RESERVED_KEY_OVERFLOW_OIDS,
@@ -2857,6 +2868,8 @@ struct pt_select_info
 #define PT_SELECT_INFO_DISABLE_LOOSE_SCAN  0x4000	/* loose scan not possible on query */
 #define PT_SELECT_INFO_MVCC_LOCK_NEEDED	   0x8000	/* lock returned rows */
 #define PT_SELECT_INFO_READ_ONLY         0x010000	/* read-only system generated queries like show statement */
+#define PT_SELECT_INFO_MINMAX_NULL_FILTERED 0x020000	/* a "col IS NOT NULL" term was added so the index-based
+							 * MIN/MAX scan may skip NULL keys (CBRD-24890) */
 
 #define PT_SELECT_INFO_IS_FLAGED(s, f)  \
           ((s)->info.query.q.select.flag & (f))
@@ -4027,12 +4040,24 @@ typedef enum cdc_ddl_object_type CDC_DDL_OBJECT_TYPE;
 typedef struct
 {
   int local_cnt;
-  int server_cnt;
-  int server_node_cnt;
+  int server_cnt;		/* raw count of dblink spec nodes walked so far (no dedup); unrelated to
+				 * stored_cnt/distinct_cnt below, used only to detect whether a sub-walk
+				 * encountered any new dblink spec (before/after diff) */
+  /* invariant: 0 <= stored_cnt <= 2; server[i] (0 <= i < stored_cnt) is always non-NULL */
+  int stored_cnt;		/* # entries actually stored in server[]/len[]/server_full_name[];
+				 * the only bound used for indexing/iterating those arrays */
+  int distinct_cnt;		/* # distinct remote servers found so far; multi-remote decision only,
+				 * may exceed 2 (array capacity) on overflow */
   int len[2];
   char *server_full_name[2];
   PT_NODE *server[2];
   bool has_dblink_query;
+  bool is_remote_insert_select;	/* remote-target INSERT SELECT routed to the CCI streaming sink.
+				 * Set for a local source, and kept for a same-server local+remote mixed
+				 * source (local_cnt > 0 && distinct_cnt == 1) whose remote part is
+				 * rewritten to a dblink scan. Cleared when the source is purely remote
+				 * (same-server @A<-@A falls back to full-pushdown) or spans other/multiple
+				 * servers (then multi-remote / local-mixed are rejected). */
 } SERVER_NAME_LIST;
 
 void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);

@@ -435,6 +435,15 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       return node;
     }
 
+  /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
+   * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
+   * on any unbound name in the value clause. */
+  if (spec->info.spec.remote_server_name)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   level_p = (short *) spec->etc;
 
   switch (node->node_type)
@@ -489,6 +498,14 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   short *level_p = NULL;
 
   if (spec == NULL)
+    {
+      return node;
+    }
+
+  /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
+   * post callback must not decrement it either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name)
     {
       return node;
     }
@@ -2071,12 +2088,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* mark spec to scan for record info */
 	      node->info.query.q.select.from->info.spec.flag =
 		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
-	    }
-	  else if (node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
-	    {
-	      /* mark spec to scan for sampling scan */
-	      node->info.query.q.select.from->info.spec.flag =
-		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_SAMPLING_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
