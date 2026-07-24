@@ -159,7 +159,6 @@
 #define OR_RECORD_FLAG_MASK		0x1f
 #define OR_RECORD_MVCC_FLAG_MASK	0x07
 #define OR_RECORD_FLAG_SHIFT_BITS	24
-#define OR_RECORD_FLAG_MASK_IN_WORD	(OR_RECORD_FLAG_MASK << OR_RECORD_FLAG_SHIFT_BITS)
 
 /* The following flags are used for dynamic MVCC information */
 /* The record contains MVCC insert id */

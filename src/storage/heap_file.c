@@ -21716,12 +21716,6 @@ heap_insert_adjust_recdes_header (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEX
 
   MVCC_CLEAR_FLAG_BITS (&mvcc_rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
 
-  if (has_oos)
-    {
-      // preserve HAS_OOS flag in SA mode
-      mvcc_rec_header.mvcc_flag |= OR_RECORD_FLAG_HAS_OOS;
-    }
-
   if (is_mvcc_class && heap_is_big_length (record_size))
     {
       if (has_oos)
