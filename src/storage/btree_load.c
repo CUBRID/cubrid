@@ -4197,6 +4197,17 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 	{
 	  return ret;
 	}
+
+      if (load_args->worker_idx < 0)
+	{
+	  /* Transaction thread (serial build, or the px leader's own put): append directly, as the
+	   * pre-parallel code did -- no queue, no memory cap.  Only shard workers must queue below: they
+	   * share the leader's transaction descriptor and cannot append to its log stream themselves. */
+	  log_append_undo_data2 (thread_p, RVBT_MVCC_NOTIFY_VACUUM, &load_args->btid->sys_btid->vfid, NULL, -1,
+				 notify_vacuum_rv_data_length, *notify_vacuum_rv_data);
+	  pgbuf_set_dirty (thread_p, pgptr, DONT_FREE);
+	  return NO_ERROR;
+	}
       size_t new_capacity = load_args->vacuum_capacity == 0 ? 16 : load_args->vacuum_capacity * 2;
       size_t reserved_size;
       BT_LOAD_VACUUM_ITEM *new_items;
