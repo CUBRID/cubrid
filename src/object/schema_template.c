@@ -1380,11 +1380,8 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	    {
 	      pr_clear_value (&att->default_value.value);
 	      pr_clone_value (value, &att->default_value.value);
-	      if (default_expr == NULL)
-		{
-		  classobj_initialize_default_expr (&att->default_value.default_expr);
-		}
-	      else
+	      classobj_clear_default_expr (&att->default_value.default_expr);
+	      if (default_expr != NULL)
 		{
 		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
@@ -1438,9 +1435,9 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
 
+  classobj_clear_default_expr (&att->default_value.default_expr);
   if (default_expr == NULL)
     {
-      classobj_initialize_default_expr (&att->default_value.default_expr);
       return NO_ERROR;
     }
 

@@ -2703,6 +2703,42 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 	  pr_clear_value (&def_expr);
 
+	  /* residual DEFAULT: restore the serialized REGU form for Server Evaluation */
+	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr_regu", &def_expr) > 0)
+	    {
+	      const char *stream = db_get_string (&def_expr);
+	      int stream_size = db_get_string_size (&def_expr);
+
+	      if (stream != NULL && stream_size > 0)
+		{
+		  char *stream_copy = (char *) malloc (stream_size);
+		  char *stream_copy2 = (char *) malloc (stream_size);
+
+		  if (stream_copy != NULL && stream_copy2 != NULL)
+		    {
+		      memcpy (stream_copy, stream, stream_size);
+		      att->default_value.default_expr.default_expr_regu_stream = stream_copy;
+		      att->default_value.default_expr.default_expr_regu_stream_size = stream_size;
+		      memcpy (stream_copy2, stream, stream_size);
+		      att->current_default_value.default_expr.default_expr_regu_stream = stream_copy2;
+		      att->current_default_value.default_expr.default_expr_regu_stream_size = stream_size;
+		    }
+		  else
+		    {
+		      /* losing the stream would silently freeze the DEFAULT to
+		       * its DDL-time snapshot -- fail the representation load */
+		      free_and_init (stream_copy);
+		      free_and_init (stream_copy2);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) stream_size);
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		}
+	    }
+
+	  pr_clear_value (&def_expr);
+
 	  if (att_props != NULL && classobj_get_prop (att_props, "update_default", &def_expr) > 0)
 	    {
 	      /* simple expressions like SYS_DATE */
@@ -3671,6 +3707,11 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.default_expr.default_expr_text);
 	    }
 
+	  if (att->default_value.default_expr.default_expr_regu_stream != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_regu_stream);
+	    }
+
 	  if (att->current_default_value.value != NULL)
 	    {
 	      free_and_init (att->current_default_value.value);
@@ -3684,6 +3725,11 @@ or_free_classrep (OR_CLASSREP * rep)
 	  if (att->current_default_value.default_expr.default_expr_text != NULL)
 	    {
 	      free_and_init (att->current_default_value.default_expr.default_expr_text);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_regu_stream != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_regu_stream);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)

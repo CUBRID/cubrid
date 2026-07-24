@@ -4966,17 +4966,7 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
   classobj_clear_attribute_value (&att->default_value.value);
   classobj_clear_attribute_value (&att->default_value.original_value);
 
-  if (att->default_value.default_expr.default_expr_format)
-    {
-      ws_free_string (att->default_value.default_expr.default_expr_format);
-      att->default_value.default_expr.default_expr_format = NULL;
-    }
-
-  if (att->default_value.default_expr.default_expr_text)
-    {
-      ws_free_string (att->default_value.default_expr.default_expr_text);
-      att->default_value.default_expr.default_expr_text = NULL;
-    }
+  classobj_clear_default_expr (&att->default_value.default_expr);
 
   att->header.name = NULL;
 
@@ -8780,6 +8770,76 @@ error:
 }
 
 /*
+ * classobj_clear_default_expr() - Frees the workspace storage owned by a
+ *    default expression and re-initializes it.
+ *    return: nothing
+ *
+ *   default_expr(in/out): default expression
+ */
+void
+classobj_clear_default_expr (DB_DEFAULT_EXPR * default_expr)
+{
+  assert (default_expr != NULL);
+
+  if (default_expr->default_expr_format)
+    {
+      ws_free_string (default_expr->default_expr_format);
+    }
+
+  if (default_expr->default_expr_text)
+    {
+      ws_free_string (default_expr->default_expr_text);
+    }
+
+  if (default_expr->default_expr_regu_stream)
+    {
+      db_ws_free ((void *) default_expr->default_expr_regu_stream);
+    }
+
+  if (default_expr->default_expr_tree_stream)
+    {
+      db_ws_free ((void *) default_expr->default_expr_tree_stream);
+    }
+
+  classobj_initialize_default_expr (default_expr);
+}
+
+/*
+ * classobj_copy_default_expr_stream() - Copies a sized binary stream of a
+ *    default expression into fresh workspace storage.
+ *    return: error code
+ *
+ *   src(in): source stream (NULL yields an empty destination)
+ *   src_size(in): its size in bytes
+ *   dest(out): workspace copy of the stream, or NULL
+ *   dest_size(out): its size in bytes
+ */
+static int
+classobj_copy_default_expr_stream (const char *src, int src_size, const char **dest, int *dest_size)
+{
+  char *stream_copy;
+
+  if (src == NULL || src_size <= 0)
+    {
+      *dest = NULL;
+      *dest_size = 0;
+      return NO_ERROR;
+    }
+
+  stream_copy = (char *) db_ws_alloc (src_size);
+  if (stream_copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) src_size);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (stream_copy, src, src_size);
+  *dest = stream_copy;
+  *dest_size = src_size;
+
+  return NO_ERROR;
+}
+
+/*
  * classobj_copy_default_expr() - Copies default expression.
  *    return: error code
  *
@@ -8821,7 +8881,16 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
       dest->default_expr_text = NULL;
     }
 
-  return NO_ERROR;
+  int error = classobj_copy_default_expr_stream (src->default_expr_regu_stream, src->default_expr_regu_stream_size,
+						 &dest->default_expr_regu_stream,
+						 &dest->default_expr_regu_stream_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return classobj_copy_default_expr_stream (src->default_expr_tree_stream, src->default_expr_tree_stream_size,
+					    &dest->default_expr_tree_stream, &dest->default_expr_tree_stream_size);
 }
 
 /*
