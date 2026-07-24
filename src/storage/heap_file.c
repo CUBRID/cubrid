@@ -20521,6 +20521,22 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	}
     }
 
+  /* Replace the per-row X-lock on appended rows with a self-lock keyed by the inserter's MVCCID; unique/FK
+   * checkers that see the row INSERT_IN_PROGRESS wait on it. Only MVCC classes carry an observable insert
+   * MVCCID, so only they take it. */
+#if defined (SERVER_MODE)
+  if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
+    {
+      /* Take the inserter's MVCCID self-lock (keyed by the row's insert-id stamp) so unique/FK checkers can wait
+       * on it; logtb_ensure_mvccid_self_lock acquires it at most once per (sub-)transaction. */
+      error_code = logtb_ensure_mvccid_self_lock (thread_p);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+#endif /* SERVER_MODE */
+
   /* retrieve number of slots in page */
   slot_count = spage_number_of_slots (context->home_page_watcher_p->pgptr);
 
@@ -20540,6 +20556,24 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	{
 	  /* immediately return without locking it */
 	  return NO_ERROR;
+	}
+
+      /* MVCC class: the self-lock above covers the unique/FK check, so skip the per-row lock on every slot,
+       * appended or reused. Reused-slot skip is safe -- a slot is reusable only after the old deleter committed
+       * (its X-lock bars any surviving conflicting holder), and DML consumers re-validate the row's MVCCID
+       * after locking. Non-MVCC classes take no self-lock and still need the per-row X-lock below. */
+      if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
+	{
+#if defined (SERVER_MODE)
+	  /* CBRD-27079 fallback: track the row for 2PC prepare's per-row lock materialization; on failure take
+	   * the per-row lock below instead. */
+	  if (logtb_track_lockless_insert (thread_p, &context->res_oid, &context->class_oid) == NO_ERROR)
+	    {
+	      return NO_ERROR;
+	    }
+#else /* !SERVER_MODE */
+	  return NO_ERROR;
+#endif /* !SERVER_MODE */
 	}
 
       /* lock the object to be inserted conditionally */
@@ -23526,6 +23560,17 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert ((!is_mvcc_op && HEAP_IS_UPDATE_INPLACE (context->update_in_place))
 	  || (is_mvcc_op && !HEAP_IS_UPDATE_INPLACE (context->update_in_place)));
   /* the update in place concept should be changed in terms of mvcc */
+
+  /* An MVCC update's new version may be seen INSERT_IN_PROGRESS by unique/FK checkers, so take the same
+   * self-lock the insert path takes, keyed by the row's insert MVCCID (logtb_get_current_mvccid, sub-aware). */
+  if (is_mvcc_op)
+    {
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
 #endif /* SERVER_MODE */
 
 #if defined(ENABLE_SYSTEMTAP)
