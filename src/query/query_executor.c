@@ -80,6 +80,7 @@
 #include "regu_var.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_unpack_info.hpp"
 #include "xasl_analytic.hpp"
 #include "xasl_predicate.hpp"
 #include "subquery_cache.h"
@@ -12559,6 +12560,69 @@ exit_on_error:
 }
 
 /*
+ * qexec_eval_default_expr_stream () - evaluate a residual DEFAULT expression
+ *	from its serialized REGU form (Server Evaluation of a Stored DEFAULT
+ *	Form).  STABLE state (e.g. sys_datetime) comes from xasl_state->vd,
+ *	which is fixed for the whole statement, so every row of one INSERT
+ *	statement observes the same value.
+ *   return: NO_ERROR or ER_code
+ *   thread_p(in): thread entry
+ *   attr(in): attribute metadata carrying the REGU stream
+ *   xasl_state(in): XASL state containing value descriptor
+ *   result(out): evaluated value, cast to the attribute domain
+ */
+static int
+qexec_eval_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, XASL_STATE * xasl_state,
+				DB_VALUE * result)
+{
+  FUNC_PRED *func_pred = NULL;
+  XASL_UNPACK_INFO *unpack_info = NULL;
+  TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
+  int error = NO_ERROR;
+
+  assert (attr->current_default_value.default_expr.default_expr_regu_stream != NULL);
+
+  error = stx_map_stream_to_func_pred (thread_p, &func_pred,
+				       (char *) attr->current_default_value.default_expr.default_expr_regu_stream,
+				       attr->current_default_value.default_expr.default_expr_regu_stream_size,
+				       &unpack_info);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = fetch_copy_dbval (thread_p, func_pred->func_regu, &xasl_state->vd, NULL, NULL, NULL, result);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  dom_status = tp_value_cast (result, result, attr->domain, false);
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result, attr->domain);
+    }
+
+end:
+  if (func_pred != NULL)
+    {
+      /* Release the DB_VALUEs cached on the func_regu during evaluation
+       * (e.g. CONCAT result buffers db_private_alloc'd in string_opfunc.c):
+       * this ad-hoc func_pred is not part of the XASL tree that
+       * qexec_clear_xasl walks, so free_xasl_unpack_info alone (which frees
+       * only the unpack arena) would leak them -- a leak the debug resource
+       * tracker turns into a fatal abort at net_server_request end. */
+      (void) qexec_clear_func_pred (thread_p, func_pred);
+    }
+  if (unpack_info != NULL)
+    {
+      free_xasl_unpack_info (thread_p, unpack_info);
+    }
+
+  return error;
+}
+
+/*
  * qexec_generate_row_default_expr () - Generate a row-level default expression value
  *   return: NO_ERROR or ER_code
  *   attr(in): attribute metadata
@@ -13085,7 +13149,20 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  break;
 
 	case DB_DEFAULT_NONE:
-	  if (attr->current_default_value.val_length <= 0)
+	  if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
+	    {
+	      /* residual DEFAULT: re-evaluate the stored REGU form once per
+	       * statement instead of reading the frozen DDL-time snapshot.
+	       * The result lands in new_val already cast to the attribute
+	       * domain, so the shared clone/cast tail below is unnecessary. */
+	      error = qexec_eval_default_expr_stream (thread_p, attr, xasl_state, new_val);
+	      if (error != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      continue;
+	    }
+	  else if (attr->current_default_value.val_length <= 0)
 	    {
 	      /* leave default value as NULL */
 	      break;
