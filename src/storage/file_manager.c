@@ -1413,22 +1413,6 @@ file_header_dump (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
 }
 
 /*
- * file_oos_descriptor_is_legacy () - return true for ownerless OOS descriptors created before CBRD-27038
- *
- * return         : true if all owner fields have their historical byte-zeroed representation
- * descriptor (in): OOS file descriptor
- */
-STATIC_INLINE bool
-file_oos_descriptor_is_legacy (const FILE_DESCRIPTORS * descriptor)
-{
-  return (descriptor->heap_overflow.hfid.vfid.fileid == 0
-	  && descriptor->heap_overflow.hfid.vfid.volid == 0
-	  && descriptor->heap_overflow.hfid.hpgid == 0
-	  && descriptor->heap_overflow.class_oid.pageid == 0
-	  && descriptor->heap_overflow.class_oid.slotid == 0 && descriptor->heap_overflow.class_oid.volid == 0);
-}
-
-/*
  * file_header_dump_descriptor () - dump descriptor in file header
  *
  * return        : void
@@ -1445,15 +1429,8 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
-      if (file_oos_descriptor_is_legacy (&fhead->descriptor))
-	{
-	  fprintf (fp, "OOS file (owner descriptor unavailable)\n");
-	}
-      else
-	{
-	  file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap_overflow.class_oid);
-	  fprintf (fp, ", OOS for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_overflow.hfid));
-	}
+      file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap_oos.class_oid);
+      fprintf (fp, ", OOS for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_oos.hfid));
       break;
 
     case FILE_HEAP:
@@ -10907,7 +10884,6 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   int error_code = NO_ERROR;
-  bool skip_legacy_oos = false;
 
   assert (class_oid != NULL && OID_ISNULL (class_oid));
 
@@ -10988,8 +10964,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       *class_oid = fhead->descriptor.btree.class_oid;
       break;
     case FILE_OOS:
-      skip_legacy_oos = file_oos_descriptor_is_legacy (&fhead->descriptor);
-      *class_oid = fhead->descriptor.heap_overflow.class_oid;
+      *class_oid = fhead->descriptor.heap_oos.class_oid;
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
@@ -11007,21 +10982,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
   pgbuf_unfix (thread_p, page_fhead);
 
-  if (skip_legacy_oos)
-    {
-      /* OOS file descriptors created before CBRD-27038 were byte-zeroed and cannot protect online scans. */
-      OID_SET_NULL (class_oid);
-      return NO_ERROR;
-    }
-
   if (OID_ISNULL (class_oid))
     {
-      if ((FILE_TYPE) item->type == FILE_OOS)
-	{
-	  /* OOS files created before owner descriptors were introduced cannot be protected against DROP TABLE.
-	   * Preserve the legacy behavior by skipping them during interruptible online scans. */
-	  return NO_ERROR;
-	}
       /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
       *stop = true;
       return NO_ERROR;
@@ -11386,6 +11348,9 @@ file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
 	case FILE_MULTIPAGE_OBJECT_HEAP:
 	  class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
 	  break;
+	case FILE_OOS:
+	  class_oid_p = &fhead->descriptor.heap_oos.class_oid;
+	  break;
 	case FILE_BTREE:
 	  class_oid_p = &fhead->descriptor.btree.class_oid;
 	  break;
@@ -11558,6 +11523,9 @@ file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_o
       break;
     case FILE_MULTIPAGE_OBJECT_HEAP:
       class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
+      break;
+    case FILE_OOS:
+      class_oid_p = &fhead->descriptor.heap_oos.class_oid;
       break;
     case FILE_BTREE:
       class_oid_p = &fhead->descriptor.btree.class_oid;

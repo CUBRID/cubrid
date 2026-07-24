@@ -95,7 +95,7 @@ struct oos_hdr_stats
 
 extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
-/* Low-level OOS tests use ownerless files to exercise storage in isolation and to model legacy descriptors. */
+/* Low-level OOS tests use a synthetic, non-null owner descriptor while exercising storage in isolation. */
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 #endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);

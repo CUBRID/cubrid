@@ -48,7 +48,7 @@ int bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY *thread_p, const OID *
 static std::string make_filled_payload (int size, char ch);
 static void clear_oos_insert_publication_state_for_test ();
 static void build_insert_requests (std::vector<std::string> &payloads, std::vector<OID> &oids,
-			   std::vector<oos_insert_request> &requests);
+				   std::vector<oos_insert_request> &requests);
 
 static LOG_TDES *
 get_current_tdes ()
@@ -265,17 +265,10 @@ TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
   ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
   ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
 
-  VFID legacy_oos_vfid;
-  ASSERT_EQ (oos_create_file (thread_p, legacy_oos_vfid), NO_ERROR);
-  scope_exit destroy_legacy_oos ([&] () noexcept
-  {
-    (void) oos_remove_file (thread_p, legacy_oos_vfid);
-  });
-
   FILE_DESCRIPTORS descriptor;
   ASSERT_EQ (file_descriptor_get (thread_p, &oos_vfid, &descriptor), NO_ERROR);
-  EXPECT_TRUE (HFID_EQ (&descriptor.heap_overflow.hfid, &hfid));
-  EXPECT_TRUE (OID_EQ (&descriptor.heap_overflow.class_oid, &class_oid));
+  EXPECT_TRUE (HFID_EQ (&descriptor.heap_oos.hfid, &hfid));
+  EXPECT_TRUE (OID_EQ (&descriptor.heap_oos.class_oid, &class_oid));
 
   FILE *dump_fp = tmpfile ();
   ASSERT_NE (dump_fp, nullptr);
@@ -295,10 +288,9 @@ TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
 
   char expected_owner[256];
   snprintf (expected_owner, sizeof (expected_owner),
-	    "CLASS_OID: %5d|%10d|%5d (_db_user), OOS for HFID: %10d|%5d|%10d", OID_AS_ARGS (&class_oid),
-	    HFID_AS_ARGS (&hfid));
+	    "CLASS_OID: %5d|%10d|%5d (_db_user), OOS for HFID: %10d|%5d|%10d", class_oid.volid,
+	    class_oid.pageid, class_oid.slotid, hfid.hpgid, hfid.vfid.volid, hfid.vfid.fileid);
   EXPECT_NE (dump_output.find (expected_owner), std::string::npos);
-  EXPECT_NE (dump_output.find ("OOS file (owner descriptor unavailable)"), std::string::npos);
 
   VFID iter_vfid;
   VFID_SET_NULL (&iter_vfid);
@@ -334,7 +326,7 @@ TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
 
 	  TRAN_STATE ddl_tran_state;
 	  ddl_tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &ddl_tran_state,
-						   TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+			   TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
 	  ASSERT_NE (ddl_tran_index, NULL_TRAN_INDEX);
 	  ASSERT_NE (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_M_LOCK, LK_COND_LOCK), LK_GRANTED);
 	  schema_modification_was_blocked = true;
@@ -344,7 +336,6 @@ TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
     }
   EXPECT_TRUE (found_oos_vfid);
   EXPECT_TRUE (schema_modification_was_blocked);
-  /* The ownerless file models a byte-zeroed legacy descriptor and is never returned without protection. */
   EXPECT_TRUE (VFID_ISNULL (&iter_vfid));
   EXPECT_TRUE (OID_ISNULL (&locked_class_oid));
 
@@ -477,7 +468,7 @@ TEST (OosServerTest, OosInsertManyPartialPublicationFailureClearsBothSides)
   });
 
   EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), ER_GENERIC_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), ER_GENERIC_ERROR);
   assert_oos_insert_publication_state_empty ();
   er_clear ();
 }
@@ -507,7 +498,7 @@ TEST (OosServerTest, OosInsertManyPublicationAllocationFailureIsConvertedAndClea
   });
 
   EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())),
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())),
 	     ER_OUT_OF_VIRTUAL_MEMORY);
   EXPECT_EQ (er_errid (), ER_OUT_OF_VIRTUAL_MEMORY);
   assert_oos_insert_publication_state_empty ();
@@ -524,7 +515,7 @@ TEST (OosServerTest, OosInsertManyValidationFailureDoesNotClaimPublicationStart)
   VFID invalid_vfid = VFID_INITIALIZER;
   oos_insert_request invalid_request = { oos_buffer (nullptr, 0), &output_oid };
   EXPECT_EQ (oos_insert_many (thread_p, invalid_vfid,
-	      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
+			      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
   assert_oos_insert_publication_state (stale_oid, stale_lsa);
   er_clear ();
 }
@@ -546,7 +537,7 @@ TEST (OosServerTest, OosSuccessfulPublicationWithoutReplicationTrackingKeepsOidO
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
@@ -574,7 +565,7 @@ TEST (OosServerTest, OosTrackedSingleChunkBatchKeepsPairedPublication)
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
@@ -605,7 +596,7 @@ TEST (OosServerTest, OosTrackedMixedBatchPreservesDummyAndHeadPairing)
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 4U);

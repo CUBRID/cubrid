@@ -12430,9 +12430,11 @@ for (RECDES & payload:*payloads)
   payloads->clear ();
 }
 
+// *INDENT-OFF*
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
 #endif
+// *INDENT-ON*
 
 /*
  * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
@@ -27873,7 +27875,7 @@ SCAN_CODE
 bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_CACHE_ATTRINFO attr_info = { };
-  std::vector<heap_oos_column_plan> oos_plan;
+  std::vector < heap_oos_column_plan > oos_plan;
 
   COPY_OID (&attr_info.class_oid, class_oid);
   attr_info.num_values = 0;

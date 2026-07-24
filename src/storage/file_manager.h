@@ -94,6 +94,14 @@ struct file_ovf_heap_des
   OID class_oid;
 };
 
+/* OOS file descriptor */
+typedef struct file_oos_des FILE_OOS_DES;
+struct file_oos_des
+{
+  HFID hfid;
+  OID class_oid;
+};
+
 /* Btree file descriptor */
 typedef struct file_btree_des FILE_BTREE_DES;
 struct file_btree_des
@@ -132,6 +140,7 @@ union file_descriptors
 {
   FILE_HEAP_DES heap;
   FILE_OVF_HEAP_DES heap_overflow;
+  FILE_OOS_DES heap_oos;
   FILE_BTREE_DES btree;
   FILE_OVF_BTREE_DES btree_key_overflow;	/* TODO: rename FILE_OVF_BTREE_DES */
   FILE_EHASH_DES ehash;
