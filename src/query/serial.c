@@ -157,7 +157,7 @@ static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
-				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
+				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
 				    DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * started, DB_VALUE * cyclic,
 				    DB_VALUE * last_val, int cached_num);
@@ -505,7 +505,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
     {
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
-			      num_alloc, &next_val);
+			      num_alloc, &next_val, false);
 
       error = numeric_db_value_compare (&next_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
@@ -527,7 +527,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (nturns * entry->cached_num), &entry->last_cached_val);
+			      &entry->cyclic, (nturns * entry->cached_num), &entry->last_cached_val, true);
 
       if (error != NO_ERROR)
 	{
@@ -548,7 +548,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
     {
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
-			      num_alloc, &next_val);
+			      num_alloc, &next_val, false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -845,7 +845,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
 	      ret =
 		serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * (cached_num - 1)),
-				      &last_val);
+				      &last_val, true);
 	    }
 
 	  num_alloc--;
@@ -859,12 +859,13 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	  ret =
-	    serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num), &last_val);
+	    serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num), &last_val,
+				  true);
 	}
 
       if (ret == NO_ERROR)
 	{
-	  ret = serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, num_alloc, &next_val);
+	  ret = serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, num_alloc, &next_val, false);
 	}
     }
 
@@ -1100,7 +1101,7 @@ exit_on_error:
  */
 static int
 serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * cyclic,
-		      int nth, DB_VALUE * result_val)
+		      int nth, DB_VALUE * result_val, bool clamp_block)
 {
   DB_VALUE tmp_val, cmp_result, add_val;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
@@ -1148,6 +1149,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	    {
 	      pr_share_value (min_val, result_val);
 	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would overshoot max_val; clamp it to the boundary so
+	       * values up through max_val stay usable instead of failing early. */
+	      pr_share_value (max_val, result_val);
+	    }
 	  else
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SERIAL_RANGE_OVERFLOW, 0);
@@ -1180,6 +1187,12 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 	  if (db_get_int (cyclic))
 	    {
 	      pr_share_value (max_val, result_val);
+	    }
+	  else if (clamp_block)
+	    {
+	      /* Reserving a cache block would undershoot min_val; clamp it to the boundary so
+	       * values down through min_val stay usable instead of failing early. */
+	      pr_share_value (min_val, result_val);
 	    }
 	  else
 	    {
