@@ -3358,6 +3358,18 @@ exit:
  * parser (in)    : parser holding the compiled statement and the bound values
  * statement (in) : compiled statement to replan
  */
+static PT_NODE *
+db_reset_cte_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node != NULL && node->node_type == PT_CTE)
+    {
+      /* the previous generation's CTE proc must not be reused: with host variables
+       * bound, parser_generate_xasl_post () asserts cte.xasl == NULL and regenerates */
+      node->info.cte.xasl = NULL;
+    }
+  return node;
+}
+
 static int
 do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -3367,6 +3379,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
     {
       pt_free_statement_xasl_id (statement);
     }
+  (void) parser_walk_tree (parser, statement, db_reset_cte_xasl_pre, NULL, NULL, NULL);
   statement->flag.recompile = 1;
   er_clear ();
   pt_reset_error (parser);
@@ -3481,25 +3494,48 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
     }
 
 
-  /* compile FIRST, with the host variables still unbound, exactly like PREPARE (and like
-   * the db_compile/db_push_values client flow): the semantic pass must type the host
-   * variables from their context, not from the current values -- a prepared statement may
-   * legally bind different types on every execution. The values are bound afterwards. */
-  idx = db_compile_statement (new_session);
-  if (idx < 0)
+  /* SELECT compiles FIRST, with the host variables still unbound, exactly like PREPARE
+   * (and like the db_compile/db_push_values client flow): the semantic pass must type the
+   * host variables from their context, not from the current values -- a prepared statement
+   * may legally bind different types on every execution. The values are bound afterwards.
+   * DML keeps the original bind-then-compile order: its compilation consumes the values
+   * (e.g. the OID-collecting subselect built for a client-side trigger UPDATE evaluates
+   * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows. */
+  if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT)
     {
-      assert (er_errid () != NO_ERROR);
-      return er_errid ();
-    }
+      assert (session->parser->flag.set_host_var == 1);
+      err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      new_session->parser->flag.set_host_var = 0;
 
-  /* set host variable values in new session */
-  assert (session->parser->flag.set_host_var == 1);
-  err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
-  if (err != NO_ERROR)
-    {
-      return err;
+      idx = db_compile_statement (new_session);
+      if (idx < 0)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
     }
-  new_session->parser->flag.set_host_var = 0;
+  else
+    {
+      idx = db_compile_statement (new_session);
+      if (idx < 0)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      /* set host variable values in new session */
+      assert (session->parser->flag.set_host_var == 1);
+      err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      new_session->parser->flag.set_host_var = 0;
+    }
 
   if (new_session->parser->flag.set_host_var == 0)
     {
