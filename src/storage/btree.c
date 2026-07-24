@@ -11757,6 +11757,8 @@ btree_ovf_dir_write_header (THREAD_ENTRY * thread_p, BTID_INT * btid_int, PAGE_P
   memcpy (rv_undo_data, old_header_record.data, old_header_record.length);
   rv_undo_data_length = old_header_record.length;
 
+  /* Clear the struct padding so the full 16 bytes written to the page and the WAL are deterministic. */
+  memset (&header_v2, 0, sizeof (header_v2));
   VPID_COPY (&header_v2.next_vpid, next_vpid);
   VPID_COPY (&header_v2.dir_vpid, dir_vpid);
 
@@ -12880,6 +12882,17 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
   entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
   dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
   dir_idx = 0;
+  if (dir_num <= 0)
+    {
+      /* A valid directory page always holds at least one entry (empty pages are deallocated). Reject it here:
+       * an empty record would otherwise make the advance loop below consume no entries, and a corrupt cyclic
+       * next_vpid could then loop forever. */
+      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: empty directory page record %d|%d\n",
+		VPID_AS_ARGS (&dir_vpid));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+      valid = DISK_INVALID;
+      goto end;
+    }
 
   /* Lockstep walk: data chain and directory entries advance together. */
   while (data_page != NULL)
@@ -12917,6 +12930,16 @@ btree_ovf_dir_check (THREAD_ENTRY * thread_p, BTID_INT * btid_int, const VPID * 
 	  entries = (BTREE_OVF_DIR_ENTRY *) dir_rec.data;
 	  dir_num = (int) (dir_rec.length / sizeof (BTREE_OVF_DIR_ENTRY));
 	  dir_idx = 0;
+	  if (dir_num <= 0)
+	    {
+	      /* See the head-page check above: reject empty directory records so this loop always consumes
+	       * entries and terminates even on a corrupt cyclic next_vpid. */
+	      snprintf (err_buf, LINE_MAX, "btree_ovf_dir_check: empty directory page record %d|%d\n",
+			VPID_AS_ARGS (&dir_vpid));
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_EMERGENCY_ERROR, 1, err_buf);
+	      valid = DISK_INVALID;
+	      goto end;
+	    }
 	}
 
       COPY_OID (&cur_sep, &entries[dir_idx].sep_oid);
