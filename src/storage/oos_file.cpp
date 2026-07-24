@@ -913,7 +913,7 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int 
 {
   int freespace;
 
-  freespace = spage_get_free_space_without_saving (thread_p, pgptr, NULL);
+  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
 
   if (freespace > prev_freespace)
     {

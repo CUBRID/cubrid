@@ -888,6 +888,12 @@ struct rvfun RV_fun[] = {
    heap_rv_undo_delete,
    heap_rv_redo_delete,
    log_rv_dump_hexa,
+   log_rv_dump_hexa},
+  {RVHF_UPDATE_BESTSPACE_ENTRIES,
+   "RVHF_UPDATE_BESTSPACE_ENTRIES",
+   NULL,
+   heap_rv_redo_update,
+   NULL,
    log_rv_dump_hexa}
 };
 
