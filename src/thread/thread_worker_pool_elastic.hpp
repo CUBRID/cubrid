@@ -294,6 +294,12 @@ namespace cubthread
     private:
       using snapshot_guard = typename worker_pool_impl<Stats>::core_impl::snapshot_guard;
 
+      enum class worker_reservation_mode
+      {
+	normal,
+	stall_recovery
+      };
+
       core_elastic (bool pool_threads, std::atomic<std::size_t> &current_worker,
 		    std::atomic<std::size_t> &current_regular_worker, std::atomic<std::size_t> &max_worker,
 		    std::atomic<std::size_t> &max_regular_worker);
@@ -301,14 +307,16 @@ namespace cubthread
       std::unique_ptr<worker> allocate_worker () override;
 
       unique_slot acquire_slot (task_admission admission, std::unique_lock<std::mutex> &ulock);
-      bool reserve_available_worker (task_admission admission);
+      bool reserve_available_worker (task_admission admission, worker_reservation_mode reservation_mode);
       worker_elastic *get_available_worker (task_admission admission);
-      worker_elastic *get_or_make_available_worker (task_admission admission);
+      worker_elastic *get_or_make_available_worker (task_admission admission,
+	  worker_reservation_mode reservation_mode);
       bool has_available_worker (task_admission admission) const;
       bool has_queued_task_unlocked (void) const;
       void enqueue_task (wrapped_task &&task_ref, bool front = false);
       wrapped_task dequeue_task (void);
-      bool try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock);
+      bool try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock,
+				     worker_reservation_mode reservation_mode);
       bool try_expand_for_queued_task (std::unique_lock<std::mutex> &ulock);
       bool request_worker_retirement (worker_elastic *w);
       void retire_available_excess_workers (std::unique_lock<std::mutex> &ulock);
@@ -848,7 +856,7 @@ namespace cubthread
     while (has_queued_task_unlocked () && // the tasks exist in queue
 	   (m_slots.available_slots () > 0 || !m_blocking_continuation_queue.empty ()))
       {
-	if (!try_dispatch_queued_task (ulock))
+	if (!try_dispatch_queued_task (ulock, worker_reservation_mode::normal))
 	  {
 	    break;
 	  }
@@ -933,7 +941,7 @@ namespace cubthread
     // blocking continuations are kept in their own FIFO. the capacity granted by their admission is therefore
     // consumed by a continuation itself, rather than by unrelated regular work that may block its caller.
     enqueue_task (std::move (task_ref));
-    (void) try_dispatch_queued_task (ulock);
+    (void) try_dispatch_queued_task (ulock, worker_reservation_mode::normal);
   }
 
   template <stats_t Stats>
@@ -1146,9 +1154,13 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::core_elastic::reserve_available_worker (task_admission admission)
+  worker_pool_elastic<Stats>::core_elastic::reserve_available_worker (task_admission admission,
+      worker_reservation_mode reservation_mode)
   {
+    // the regular target is a steady-state limit and may temporarily trail active workers after asynchronous shrink.
+    // only a controller-issued stall recovery dispatch may bypass it; the pool-wide ceilings below always apply.
     if (admission == task_admission::regular
+	&& reservation_mode == worker_reservation_mode::normal
 	&& get_active_regular_worker_count () >= m_max_concurrency + m_progress_worker_count)
       {
 	return false;
@@ -1376,12 +1388,13 @@ namespace cubthread
 
   template <stats_t Stats>
   typename worker_pool_elastic<Stats>::core_elastic::worker_elastic *
-  worker_pool_elastic<Stats>::core_elastic::get_or_make_available_worker (task_admission admission)
+  worker_pool_elastic<Stats>::core_elastic::get_or_make_available_worker (task_admission admission,
+      worker_reservation_mode reservation_mode)
   {
     worker_elastic *worker_p;
 
     worker_p = get_available_worker (admission);
-    if (!worker_p && reserve_available_worker (admission))
+    if (!worker_p && reserve_available_worker (admission, reservation_mode))
       {
 	// create a worker when none is available
 	this->m_workers.push_back (this->allocate_worker ());
@@ -1457,18 +1470,20 @@ namespace cubthread
 
     if (admission == task_admission::blocking_continuation)
       {
-	// Continuations use a temporary slot and their reserved hard-cap headroom. They must not permanently raise the
-	// regular target, which would later allow unrelated requests to consume that emergency capacity.
-	return try_dispatch_queued_task (ulock);
+	// continuations use a temporary slot and their reserved hard-cap headroom. they must not permanently raise the
+	// regular target, which would later allow unrelated requests to consume that emergency capacity
+	return try_dispatch_queued_task (ulock, worker_reservation_mode::normal);
       }
 
     std::size_t previous_progress_worker_count = m_progress_worker_count;
     ++m_progress_worker_count;
     m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 
-    if (!try_dispatch_queued_task (ulock))
+    // async shrink may leave active regular workers above the new target
+    // this controller-issued dispatch may bypass that soft target once; the pool-wide regular-worker ceiling and absolute hard cap are still enforced
+    if (!try_dispatch_queued_task (ulock, worker_reservation_mode::stall_recovery))
       {
-	// Do not accumulate slots while thread creation repeatedly fails or another core consumes the last reservation.
+	// DO NOT accumulate slots while thread creation repeatedly fails or another core consumes the last reservation
 	m_progress_worker_count = previous_progress_worker_count;
 	m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
 	retire_available_excess_workers (ulock);
@@ -1480,7 +1495,8 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::core_elastic::try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock)
+  worker_pool_elastic<Stats>::core_elastic::try_dispatch_queued_task (std::unique_lock<std::mutex> &ulock,
+      worker_reservation_mode reservation_mode)
   {
     assert (ulock.owns_lock ());
 
@@ -1498,7 +1514,7 @@ namespace cubthread
 	return false;
       }
 
-    worker_elastic *worker_p = get_or_make_available_worker (admission);
+    worker_elastic *worker_p = get_or_make_available_worker (admission, reservation_mode);
     if (worker_p == nullptr)
       {
 	// release_slot may temporarily drop the core lock while waking a waiter. restore queue visibility first so a
