@@ -6608,6 +6608,36 @@ lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOC
 }
 
 /*
+ * lock_has_xlock_or_self_lock () - Debug precondition for an in-place update: does the current
+ *   transaction exclusively own the object -- either an X-lock on the object (or its class), or the
+ *   inserter's MVCCID self-lock covering its own uncommitted appended row?
+ *
+ * return       : true if the object is exclusively owned by the current transaction.
+ * thread_p (in): Thread entry.
+ * oid (in)     : Object identifier.
+ * class_oid(in): Class identifier of the object.
+ */
+bool
+lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+{
+  if (lock_get_object_lock (oid, class_oid) >= X_LOCK || lock_get_object_lock (class_oid, oid_Root_class_oid) >= X_LOCK)
+    {
+      return true;
+    }
+#if defined (SERVER_MODE)
+  {
+    /* appended MVCC rows take no per-row X-lock; the inserter's MVCCID self-lock is the protection. */
+    MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+    if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
+      {
+	return true;
+      }
+  }
+#endif /* SERVER_MODE */
+  return false;
+}
+
+/*
  * lock_subclass () - Lock a class in a class hierarchy
  *
  * return: one of following values)

@@ -222,6 +222,7 @@ extern int lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * cl
 extern int lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int cond_flag);
 extern void lock_unlock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
 extern int lock_has_lock_on_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock);
+extern bool lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * superclass_oid, LOCK lock,
 			  int cond_flag);
 extern int lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK class_lock);
