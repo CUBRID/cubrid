@@ -5882,6 +5882,7 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
   int n_shards = 0;
   int n_runs = 0;
   int error = NO_ERROR;
+  bool file_sysop_open = false;
   INT64 total_pages_64 = 0;
   int total_pages, est_main_pages, est_ovf_pages = 0;
   INT64 ovf_upper = 0;
@@ -5922,9 +5923,11 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
       return BT_PX_NOT_ATTEMPTED;
     }
 
-  /* Committed to the parallel shard path: create the main and overflow-key files together, in one sysop,
-   * attached to the outer transaction only once both succeed. */
+  /* Committed to the parallel shard path: create the main and overflow-key files, open the page provider
+   * and allocate every shard's LOAD_ARGS inside one sysop that stays open until all of them exist (nested
+   * span sysops attach to this parent), so a failure in between aborts it and destroys the files too. */
   log_sysop_start (thread_p);
+  file_sysop_open = true;
   error = btree_create_file (thread_p, &sort_args->class_ids[0], sort_args->attr_ids[0], sort_args->btid->sys_btid);
   if (error != NO_ERROR)
     {
@@ -5944,8 +5947,6 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
       bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
       return BT_PX_ERROR;
     }
-  log_sysop_attach_to_outer (thread_p);
-  assert (log_get_system_op_level (thread_p) < 0);
 
   total_pages = (int) MIN ((INT64) INT_MAX, total_pages_64);
   est_main_pages = (int) MIN ((INT64) INT_MAX, (INT64) total_pages + MAX ((INT64) 64, (INT64) total_pages / 10));
@@ -5959,11 +5960,8 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
 				 est_ovf_pages, true);
   if (error != NO_ERROR)
     {
-      sort_px_free_shard_inputs (shard_inputs, n_shards);
-      bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
-      return BT_PX_ERROR;
+      goto cleanup;
     }
-  assert (log_get_system_op_level (thread_p) < 0);
 
   for (int i = 0; i < n_shards; i++)
     {
@@ -5977,6 +5975,11 @@ sort_px_construct_index_leaf (THREAD_ENTRY * thread_p, SORT_PARAM * px_sort_para
       px_sort_param[i].px_merge_n_inputs = n_runs;
       px_sort_param[i].px_status = PX_PROGRESS;
     }
+
+  /* Every resource exists: transfer ownership to the outer transaction, right before the workers start. */
+  log_sysop_attach_to_outer (thread_p);
+  file_sysop_open = false;
+  assert (log_get_system_op_level (thread_p) < 0);
 
   if (prm_get_bool_value (PRM_ID_LOG_BTREE_OPS))
     {
@@ -6006,6 +6009,12 @@ cleanup:
   bt_load_provider_close (provider);
   if (error != NO_ERROR)
     {
+      if (file_sysop_open)
+	{
+	  /* Failed before ownership transferred: abort the sysop, destroying the files and every span
+	   * already attached to it. */
+	  log_sysop_abort (thread_p);
+	}
       bt_load_set_px_outcome (main_load_args, BT_PX_ERROR);
       return BT_PX_ERROR;
     }
