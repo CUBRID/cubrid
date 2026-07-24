@@ -10682,7 +10682,7 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
   char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
   if (external_into_label == NULL)
     {
-      goto lable_fail;
+      goto error_exit;
     }
 
   for (i = 0; i < into_cnt; i++)
@@ -10690,13 +10690,13 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
       external_into_label[i] = strdup (into->info.name.original);
       if (external_into_label[i] == NULL)
 	{
-	  goto lable_fail;
+	  goto error_exit;
 	}
       into = into->next;
     }
   is_fail = 0;
 
-lable_fail:
+error_exit:
   if (is_fail == 1)
     {
       // clear memory
