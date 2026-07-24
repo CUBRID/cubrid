@@ -87,6 +87,15 @@ struct xcache_stats
 };
 #define XCACHE_STATS_INITIALIZER { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 
+/* Why an entry is removed from the cache (used for delete statistics). */
+enum xcache_entry_delete_kind
+{
+  XCACHE_DELETE_INVALIDATED,	/* e.g. schema change */
+  XCACHE_DELETE_RECOMPILED,
+  XCACHE_DELETE_AT_CLEANUP
+};
+typedef enum xcache_entry_delete_kind XCACHE_ENTRY_DELETE_KIND;
+
 
 typedef struct xcache_cleanup_candidate XCACHE_CLEANUP_CANDIDATE;
 struct xcache_cleanup_candidate
@@ -288,6 +297,9 @@ static void xcache_invalidate_entries (THREAD_ENTRY * thread_p,
 				       bool (*invalidate_check) (XASL_CACHE_ENTRY *, const void *), const void *arg);
 static INT32 xcache_entry_get_entrysize (XASL_CACHE_ENTRY * xcache_entry);
 static INT32 xcache_entry_get_clonesize (XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_entry_add_mem_size (XASL_CACHE_ENTRY * xcache_entry, INT32 size);
+static void xcache_entry_sub_mem_size (XASL_CACHE_ENTRY * xcache_entry);
+static void xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, XCACHE_ENTRY_DELETE_KIND kind);
 static INT32 xcache_entry_get_one_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
@@ -487,10 +499,70 @@ xcache_entry_init (void *entry)
   xcache_entry->stream.buffer = NULL;
 
   xcache_entry->free_data_on_uninit = false;
+  xcache_entry->mem_size = 0;
   xcache_entry->initialized = true;
 
   assert (xcache_entry->n_cache_clones == 0);
   return NO_ERROR;
+}
+
+/*
+ * xcache_entry_add_mem_size () - Add bytes to this entry's memory size and to the global cache memory counter.
+ *
+ * return	     : Void.
+ * xcache_entry (in) : XASL cache entry.
+ * size (in)	     : Bytes to add.
+ */
+static void
+xcache_entry_add_mem_size (XASL_CACHE_ENTRY * xcache_entry, INT32 size)
+{
+  ATOMIC_INC_32 (&xcache_entry->mem_size, size);
+  ATOMIC_INC_32 (&xcache_Memory_usage_cache, size);
+}
+
+/*
+ * xcache_entry_sub_mem_size () - Subtract this entry's memory size from the global cache memory counter.
+ *				  Called once on uninit.
+ *
+ * return	     : Void.
+ * xcache_entry (in) : XASL cache entry.
+ */
+static void
+xcache_entry_sub_mem_size (XASL_CACHE_ENTRY * xcache_entry)
+{
+  if (xcache_entry->mem_size > 0)
+    {
+      assert (xcache_entry->mem_size == xcache_entry_get_entrysize (xcache_entry));
+      ATOMIC_INC_32 (&xcache_Memory_usage_cache, -xcache_entry->mem_size);
+      xcache_entry->mem_size = 0;
+    }
+}
+
+/*
+ * xcache_stat_entry_deleted () - Update statistics when an entry is removed from the cache.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * kind (in)	 : Delete kind.
+ */
+static void
+xcache_stat_entry_deleted (THREAD_ENTRY * thread_p, XCACHE_ENTRY_DELETE_KIND kind)
+{
+  if (kind == XCACHE_DELETE_AT_CLEANUP)
+    {
+      XCACHE_STAT_INC (deletes_at_cleanup);
+    }
+  else
+    {
+      XCACHE_STAT_INC (deletes);
+    }
+  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
+
+  if (kind != XCACHE_DELETE_RECOMPILED)
+    {
+      /* a recompiled entry was not counted on insert, so do not decrement here. */
+      ATOMIC_INC_32 (&xcache_Entry_count, -1);
+    }
 }
 
 /*
@@ -519,6 +591,8 @@ xcache_entry_uninit (void *entry)
       assert (false);
       return NO_ERROR;
     }
+
+  xcache_entry_sub_mem_size (xcache_entry);
 
   if (xcache_entry->free_data_on_uninit)
     {
@@ -1078,10 +1152,10 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
   error_code =
     stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.buffer,
 			    (*xcache_entry)->stream.buffer_size, &xclone->xasl_buf);
-  if (use_xasl_clone)
+  if (use_xasl_clone && error_code == NO_ERROR)
     {
-      INT32 xasl_clone_size = xcache_entry_get_one_clonesize (*xcache_entry);
-      ATOMIC_INC_32 (&xcache_Memory_usage_clone, xasl_clone_size);
+      /* only a successfully built clone holds memory. */
+      ATOMIC_INC_32 (&xcache_Memory_usage_clone, xcache_entry_get_one_clonesize (*xcache_entry));
     }
 
   if (save_heapid != 0)
@@ -1199,6 +1273,11 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
 
   if (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME)
     {
+      if ((cache_flag & XCACHE_ENTRY_FLAGS_MASK) == XCACHE_ENTRY_WAS_RECOMPILED)
+	{
+	  xcache_stat_entry_deleted (thread_p, XCACHE_DELETE_RECOMPILED);
+	}
+
       /* I am last user after object was marked as deleted. */
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
@@ -1280,12 +1359,9 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 	      XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 	      XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-  XCACHE_STAT_INC (deletes);
-  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-  ATOMIC_INC_32 (&xcache_Entry_count, -1);
+  xcache_stat_entry_deleted (thread_p, XCACHE_DELETE_INVALIDATED);
 
   /* The entry can be deleted if the only fixer is this transaction. */
-  ATOMIC_INC_32 (&xcache_Memory_usage_cache, -xcache_entry_get_entrysize (xcache_entry));
   return (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME);
 }
 
@@ -1535,7 +1611,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 
       /* Now that new entry is initialized, we can try to insert it. */
 
-      int entry_size = xcache_entry_get_entrysize (*xcache_entry);
       inserted = xcache_Hashmap.insert_given (thread_p, xid, *xcache_entry);
       assert (*xcache_entry != NULL);
 
@@ -1544,9 +1619,16 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 
       if (inserted)
 	{
+	  INT32 entry_size = xcache_entry_get_entrysize (*xcache_entry);
+
 	  (*xcache_entry)->free_data_on_uninit = true;
-	  ATOMIC_INC_32 (&xcache_Memory_usage_cache, entry_size);
+	  xcache_entry_add_mem_size (*xcache_entry, entry_size);
 	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_ADD);
+	  if (to_be_recompiled == NULL)
+	    {
+	      /* new entry added */
+	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
+	    }
 	}
       else
 	{
@@ -1587,11 +1669,6 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 			  XCACHE_LOG_ENTRY_ARGS (to_be_recompiled), XCACHE_LOG_TRAN_ARGS (thread_p));
 	      xcache_unfix (thread_p, to_be_recompiled);
 	      to_be_recompiled = NULL;
-	    }
-	  else if (inserted)
-	    {
-	      /* new entry added */
-	      ATOMIC_INC_32 (&xcache_Entry_count, 1);
 	    }
 
 	  xcache_log ("successful find or insert: \n"
@@ -2216,8 +2293,7 @@ static void
 xcache_clone_decache (THREAD_ENTRY * thread_p, XASL_CLONE * xclone, XASL_CACHE_ENTRY * xcache_entry)
 {
 
-  INT32 xasl_clone_size = xcache_entry_get_one_clonesize (xcache_entry);
-  ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xasl_clone_size);
+  ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xcache_entry_get_one_clonesize (xcache_entry));
 
   HL_HEAPID save_heapid = db_change_private_heap (thread_p, 0);
   XASL_SET_FLAG (xclone->xasl, XASL_DECACHE_CLONE);
@@ -2281,6 +2357,7 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
 		}
 	      xcache_entry->cache_clones = new_clones;
 	      xcache_entry->cache_clones_capacity = new_capacity;
+	      xcache_entry_add_mem_size (xcache_entry, (INT32) (sizeof (XASL_CLONE) * (new_capacity - old_capacity)));
 	    }
 	  assert (xcache_entry->cache_clones_capacity > xcache_entry->n_cache_clones);
 	  xcache_entry->cache_clones[xcache_entry->n_cache_clones++] = *xclone;
@@ -2482,10 +2559,7 @@ xcache_cleanup (THREAD_ENTRY * thread_p)
 		      XCACHE_LOG_XASL_ID_TEXT ("xasl id") XCACHE_LOG_TRAN_TEXT,
 		      XCACHE_LOG_XASL_ID_ARGS (&candidate.xid), XCACHE_LOG_TRAN_ARGS (thread_p));
 
-	  XCACHE_STAT_INC (deletes_at_cleanup);
-	  perfmon_inc_stat (thread_p, PSTAT_PC_NUM_DELETE);
-	  ATOMIC_INC_32 (&xcache_Entry_count, -1);
-	  ATOMIC_INC_32 (&xcache_Memory_usage_cache, -xcache_entry_get_entrysize (candidate.xcache));
+	  xcache_stat_entry_deleted (thread_p, XCACHE_DELETE_AT_CLEANUP);
 	  (void) pthread_mutex_lock (&candidate.xcache->cache_clones_mutex);
 	  while (candidate.xcache->n_cache_clones > 0)
 	    {
