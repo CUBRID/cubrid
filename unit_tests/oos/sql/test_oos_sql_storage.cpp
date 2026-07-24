@@ -135,7 +135,7 @@ namespace
     std::string error (message);
     EXPECT_TRUE (error.find ("STORAGE FORCE_OUTLINE") != std::string::npos
 		 || error.find ("only normal attributes can set storage options") != std::string::npos)
-      << message;
+	<< message;
   }
 }
 
