@@ -4307,6 +4307,15 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   cur_column = histogram_info->target_columns;
   with_fullscan = histogram_info->with_fullscan ? true : false;
 
+  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+
+  if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
+    {
+      fprintf (stdout, "TRACE   histogram: bucket target %d, %s%s\n", bucket_count,
+	       with_fullscan ? "fullscan" : "page sampling",
+	       histogram_info->random_seed ? ", random seed" : "");
+    }
+
   /* Update statistics for the class. For the all-columns histogram path (nnames == 0) this is
    * DEFERRED to after the histogram build so it can reuse that scan's NDV and skip its own NDV
    * full scan; see below. The named-columns path keeps the standalone update here. */
@@ -4347,6 +4356,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   if (nnames == 0)
     {
       SM_ATTRIBUTE *att;
+      int trace_n_histogrammable = 0, trace_n_skipped = 0, trace_n_dropped = 0;
 
       for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
 	{
@@ -4359,6 +4369,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 		{
 		  return error;
 		}
+	      if (error == NO_ERROR)
+		{
+		  trace_n_dropped++;
+		}
 	    }
 	  else if (do_histogram == DO_HISTOGRAM_CREATE)
 	    {
@@ -4366,10 +4380,12 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      attr_type = TP_DOMAIN_TYPE (att->domain);
 	      if (!is_histogrammable_type (attr_type))
 		{
+		  trace_n_skipped++;
 		  error = ER_OBJ_INVALID_ARGUMENTS;
 		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
 		  continue;
 		}
+	      trace_n_histogrammable++;
 
 	      /* create the histogram catalog entry; the actual histogram is built once, below,
 	       * in a single shared heap scan across all columns */
@@ -4383,10 +4399,26 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	}
 
+      if (trace_on && do_histogram == DO_HISTOGRAM_DROP)
+	{
+	  fprintf (stdout, "TRACE   histogram: dropped %d histogram(s)\n", trace_n_dropped);
+	}
+      else if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
+	{
+	  fprintf (stdout, "TRACE   histogram: %d histogrammable column(s), %d skipped\n",
+		   trace_n_histogrammable, trace_n_skipped);
+	}
+
       /* single heap scan builds the histograms for every histogrammable column at once
        * (instead of one full scan per column), then dump each result */
       if (do_histogram == DO_HISTOGRAM_CREATE)
 	{
+	  struct timeval trace_t0, trace_t1;
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_t0, NULL);
+	    }
 	  /* one heap scan yields all histogram blobs AND per-column NDV + row count. The blobs are
 	   * COLLECTED (not yet written to the catalog); UPDATE STATISTICS reuses the NDV/row count from
 	   * the same scan, and the histograms are written only after it succeeds -- so a failed stats
@@ -4416,7 +4448,15 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_UPDATE_HISTOGRAM);
 	      return error;
 	    }
-	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); !quiet && att != NULL;
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_t1, NULL);
+	      fprintf (stdout, "TRACE   histogram: single heap scan sampled %lld row(s); histograms built,"
+		       " class statistics refreshed and histograms stored in %.1f ms\n",
+		       (long long) hist_total_rows,
+		       (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 + (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+	    }
+	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
 	       att = db_attribute_next (att))
 	    {
 	      attr_type = TP_DOMAIN_TYPE (att->domain);

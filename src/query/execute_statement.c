@@ -4737,8 +4737,21 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       // update stats
       for (cls = statement->info.update_stats.class_list; cls != NULL && error == NO_ERROR; cls = cls->next)
 	{
+	  bool trace_on = prm_get_bool_value (PRM_ID_QUERY_TRACE);
+	  struct timeval trace_start, trace_end;
+
 	  class_mop = cls->info.name.db_object;
 	  class_type = ((SM_CLASS *) class_mop->object)->class_type;
+
+	  if (trace_on)
+	    {
+	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
+		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling",
+		       statement->info.update_stats.random_seed ? ", random seed" : "",
+		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
+		       statement->info.update_stats.drop_histogram ? ", drop histogram" : "");
+	      gettimeofday (&trace_start, NULL);
+	    }
 
 	  if (class_type == SM_CLASS_CT)
 	    {
@@ -4825,6 +4838,15 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  n_tables++;
 		  n_cols += ((SM_CLASS *) class_mop->object)->att_count;
 		}
+	    }
+
+	  if (trace_on)
+	    {
+	      gettimeofday (&trace_end, NULL);
+	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
+		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
+	      fflush (stdout);
 	    }
 	}
 
