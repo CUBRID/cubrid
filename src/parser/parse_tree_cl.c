@@ -19710,23 +19710,22 @@ pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
 
   /* The remote DML payload must be part of the printed text: this text also feeds the XASL cache's
    * SHA-1 key (CUSTOM_PRINT_4_SHA_COMPUTE), and different literal payloads to the same remote table
-   * must not collapse onto the same cache entry (CBRD-27114). Mirrors pt_print_dblink_table().
-   * Both rewritten and qstr are NULL for the sink INSERT-SELECT per-row bind case; skip the
-   * separator there since the local SELECT text already differentiates the cache key. */
-  if (p->info.dblink_table.rewritten || p->info.dblink_table.qstr)
+   * must not collapse onto the same cache entry. Mirrors the payload-printing logic of
+   * pt_print_dblink_table(); the separator-emission condition below is intentionally narrower (see
+   * comment above the if), since both rewritten and qstr are NULL for the sink INSERT-SELECT
+   * per-row bind case and the local SELECT text already differentiates the cache key there. */
+  if (pt->rewritten || pt->qstr)
     {
       q = pt_append_bytes (parser, q, ", ", 2);
-      if (p->info.dblink_table.rewritten)
+      if (pt->rewritten)
 	{
-	  q =
-	    pt_append_quoted_string (parser, q, (char *) p->info.dblink_table.rewritten->bytes,
-				     p->info.dblink_table.rewritten->length);
+	  q = pt_append_quoted_string (parser, q, (char *) pt->rewritten->bytes, pt->rewritten->length);
 	}
       else
 	{
 	  unsigned int alias_print_flag = (parser->custom_print & PT_CHARSET_COLLATE_FULL);
 	  parser->custom_print &= ~PT_CHARSET_COLLATE_FULL;
-	  r = pt_print_bytes (parser, p->info.dblink_table.qstr);
+	  r = pt_print_bytes (parser, pt->qstr);
 	  parser->custom_print |= alias_print_flag;
 
 	  q = pt_append_varchar (parser, q, r);
