@@ -290,7 +290,7 @@ class OosRealVacuum : public ::testing::Test
       COPY_OID (&scan_cache.node.class_oid, &class_oid);
       scan_cache.file_type = FILE_HEAP;
       scan_cache.mvcc_disabled_class = false;
-      scan_cache.page_latch = X_LOCK;
+      scan_cache.page_latch = PGBUF_LATCH_WRITE;
       /* Never keep pages fixed between operations — the vacuum worker needs
        * write latches on these pages while the test polls. */
       scan_cache.cache_last_fix_page = false;

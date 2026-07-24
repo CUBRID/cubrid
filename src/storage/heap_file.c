@@ -556,16 +556,18 @@ static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
   while (false)
 
 #if defined (NDEBUG)
-static PAGE_PTR heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
-					     LOCK lock, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
+static PAGE_PTR heap_scan_pb_latch_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
+					      PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE latch_mode,
+					      HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher);
 #else /* !NDEBUG */
-#define heap_scan_pb_lock_and_fetch(...) \
-  heap_scan_pb_lock_and_fetch_debug (__VA_ARGS__, ARG_FILE_LINE_FUNC)
+#define heap_scan_pb_latch_and_fetch(...) \
+  heap_scan_pb_latch_and_fetch_debug (__VA_ARGS__, ARG_FILE_LINE_FUNC)
 
-static PAGE_PTR heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
-						   PAGE_FETCH_MODE fetch_mode, LOCK lock, HEAP_SCANCACHE * scan_cache,
-						   PGBUF_WATCHER * pg_watcher, const char *caller_file,
-						   const int caller_line, const char *caller_func);
+static PAGE_PTR heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_ptr,
+						    PAGE_FETCH_MODE fetch_mode, PGBUF_LATCH_MODE latch_mode,
+						    HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher,
+						    const char *caller_file, const int caller_line,
+						    const char *caller_func);
 #endif /* !NDEBUG */
 
 static int heap_classrepr_initialize_cache (void);
@@ -934,11 +936,11 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
  */
 
 /*
- * heap_scan_pb_lock_and_fetch () -
+ * heap_scan_pb_latch_and_fetch () -
  *   return:
  *   vpid_ptr(in):
  *   fetch_mode(in):
- *   lock(in):
+ *   latch_mode(in):
  *   scan_cache(in):
  *
  * NOTE: Because this function is called in too many places and because it
@@ -947,44 +949,28 @@ static int heap_update_and_log_header (THREAD_ENTRY * thread_p, const HFID * hfi
  */
 #if defined (NDEBUG)
 static PAGE_PTR
-heap_scan_pb_lock_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode, LOCK lock,
-			     HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
+heap_scan_pb_latch_and_fetch (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
+			      PGBUF_LATCH_MODE latch_mode, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher)
 #else /* !NDEBUG */
 static PAGE_PTR
-heap_scan_pb_lock_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
-				   LOCK lock, HEAP_SCANCACHE * scan_cache, PGBUF_WATCHER * pg_watcher,
-				   const char *caller_file, const int caller_line, const char *caller_func)
+heap_scan_pb_latch_and_fetch_debug (THREAD_ENTRY * thread_p, const VPID * vpid_ptr, PAGE_FETCH_MODE fetch_mode,
+				    PGBUF_LATCH_MODE latch_mode, HEAP_SCANCACHE * scan_cache,
+				    PGBUF_WATCHER * pg_watcher, const char *caller_file, const int caller_line,
+				    const char *caller_func)
 #endif				/* !NDEBUG */
 {
   PAGE_PTR pgptr = NULL;
-  LOCK page_lock;
   PGBUF_LATCH_MODE page_latch_mode;
 
-  /* TODO: simply check if lock can be other LOCKs than X_LOCK or S_LOCK. */
-  assert (lock == S_LOCK || lock == X_LOCK);
+  assert (latch_mode == PGBUF_LATCH_READ || latch_mode == PGBUF_LATCH_WRITE);
+  /* A live scan cache always records a real per-page latch intent (READ or WRITE).
+   * PGBUF_LATCH_INVALID only appears before start / after end, and must not reach here. */
+  assert (scan_cache == NULL
+	  || scan_cache->page_latch == PGBUF_LATCH_READ || scan_cache->page_latch == PGBUF_LATCH_WRITE);
 
-  if (scan_cache != NULL)
-    {
-      if (scan_cache->page_latch == NULL_LOCK)
-	{
-	  page_lock = NULL_LOCK;
-	}
-      else
-	{
-	  assert (scan_cache->page_latch > NULL_LOCK);
-	  page_lock = lock_conv (scan_cache->page_latch, lock);
-	}
-    }
-  else
-    {
-      page_lock = lock;
-    }
-
-  if (page_lock == S_LOCK)
-    {
-      page_latch_mode = PGBUF_LATCH_READ;
-    }
-  else
+  /* A scan cache with a WRITE intent escalates every page latch to WRITE. */
+  page_latch_mode = latch_mode;
+  if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {
       page_latch_mode = PGBUF_LATCH_WRITE;
     }
@@ -2628,7 +2614,8 @@ heap_get_last_page (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS *
   assert (!VPID_ISNULL (&heap_hdr->last_vpid));
 
   *last_vpid = heap_hdr->last_vpid;
-  pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, last_vpid, OLD_PAGE, X_LOCK, scan_cache, pg_watcher);
+  pg_watcher->pgptr =
+    heap_scan_pb_latch_and_fetch (thread_p, last_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, pg_watcher);
   if (pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -2987,7 +2974,8 @@ heap_vpid_alloc (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR hdr_pgptr,
   log_sysop_commit (thread_p);
 
   /* fix new page */
-  new_pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, scan_cache, new_pg_watcher);
+  new_pg_watcher->pgptr =
+    heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, new_pg_watcher);
   if (new_pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -3050,7 +3038,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
     }
 
   /* Get the chain record */
-  rm_pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, rm_vpid, OLD_PAGE, X_LOCK, NULL, &rm_pg_watcher);
+  rm_pg_watcher.pgptr =
+    heap_scan_pb_latch_and_fetch (thread_p, rm_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, NULL, &rm_pg_watcher);
   if (rm_pg_watcher.pgptr == NULL)
     {
       /* Look like a system error. Unable to obtain chain header record */
@@ -3077,7 +3066,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
   addr.vfid = &hfid->vfid;
   addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-  prev_pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, NULL, &prev_pg_watcher);
+  prev_pg_watcher.pgptr =
+    heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, NULL, &prev_pg_watcher);
   if (prev_pg_watcher.pgptr == NULL)
     {
       /* something went wrong, return */
@@ -3178,7 +3168,8 @@ heap_vpid_remove (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * h
       vpid = rm_chain->next_vpid;
       addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
 
-      prev_pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, NULL, &prev_pg_watcher);
+      prev_pg_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, NULL, &prev_pg_watcher);
       if (prev_pg_watcher.pgptr == NULL)
 	{
 	  /* something went wrong, return */
@@ -5640,7 +5631,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
    */
   vpid.volid = oid->volid;
   vpid.pageid = oid->pageid;
-  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
+  pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, NULL);
   if (pgptr == NULL)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -5687,7 +5678,7 @@ heap_flush (THREAD_ENTRY * thread_p, const OID * oid)
       vpid.volid = forward_oid.volid;
       vpid.pageid = forward_oid.pageid;
 
-      pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
+      pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, NULL);
       if (pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -5865,7 +5856,7 @@ xheap_reclaim_addresses (THREAD_ENTRY * thread_p, const HFID * hfid)
     {
       vpid = prv_vpid;
       curr_page_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, NULL, &curr_page_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, NULL, &curr_page_watcher);
       if (curr_page_watcher.pgptr == NULL)
 	{
 	  goto exit_on_error;
@@ -6481,7 +6472,7 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
 	}
     }
 
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
   scan_cache->mvcc_disabled_class = mvcc_is_mvcc_disabled_class (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
   scan_cache->cache_last_fix_page = cache_last_fix_page;
@@ -6517,7 +6508,7 @@ exit_on_error:
   scan_cache->node.hfid.vfid.volid = NULL_VOLID;
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->node.classname = NULL;
-  scan_cache->page_latch = NULL_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_INVALID;
   scan_cache->cache_last_fix_page = false;
   PGBUF_INIT_WATCHER (&(scan_cache->page_watcher), PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
   scan_cache->num_btids = 0;
@@ -6604,7 +6595,7 @@ heap_scancache_start_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     }
   else
     {
-      scan_cache->page_latch = X_LOCK;
+      scan_cache->page_latch = PGBUF_LATCH_WRITE;
     }
 
   if (BTREE_IS_MULTI_ROW_OP (op_type) && class_oid != NULL && !OID_EQ (class_oid, oid_Root_class_oid))
@@ -6725,7 +6716,7 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 	    }
 	}
     }
-  scan_cache->page_latch = X_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_WRITE;
   scan_cache->node.classname = NULL;
 
   return ret;
@@ -6759,7 +6750,7 @@ heap_scancache_quick_start (HEAP_SCANCACHE * scan_cache)
 {
   heap_scancache_quick_start_internal (scan_cache, NULL);
 
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
 
   return NO_ERROR;
 }
@@ -6775,7 +6766,7 @@ heap_scancache_quick_start_modify (HEAP_SCANCACHE * scan_cache)
 {
   heap_scancache_quick_start_internal (scan_cache, NULL);
 
-  scan_cache->page_latch = X_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_WRITE;
 
   return NO_ERROR;
 }
@@ -6803,7 +6794,7 @@ heap_scancache_quick_start_internal (HEAP_SCANCACHE * scan_cache, const HFID * h
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->mvcc_disabled_class = true;
   scan_cache->node.classname = NULL;
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
   scan_cache->cache_last_fix_page = true;
   scan_cache->start_area ();
   scan_cache->num_btids = 0;
@@ -6879,7 +6870,7 @@ heap_scancache_quick_end (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache)
   scan_cache->node.classname = NULL;
   OID_SET_NULL (&scan_cache->node.class_oid);
   scan_cache->mvcc_disabled_class = true;
-  scan_cache->page_latch = NULL_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_INVALID;
   assert (PGBUF_IS_CLEAN_WATCHER (&(scan_cache->page_watcher)));
   scan_cache->end_area ();
   scan_cache->file_type = FILE_UNKNOWN_TYPE;
@@ -7630,8 +7621,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	  if (scan_cache->page_watcher.pgptr == NULL)
 	    {
 	      scan_cache->page_watcher.pgptr =
-		heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, scan_cache,
-					     &scan_cache->page_watcher);
+		heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, scan_cache,
+					      &scan_cache->page_watcher);
 	      if (old_page_watcher.pgptr != NULL)
 		{
 		  pgbuf_ordered_unfix (thread_p, &old_page_watcher);
@@ -7784,8 +7775,8 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 		      /* A prior visible-record return released the live page. Re-fix it before reading the current
 		       * live page chain; the links in the local copy may be stale. */
 		      scan_cache->page_watcher.pgptr =
-			heap_scan_pb_lock_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
-						     S_LOCK, scan_cache, &scan_cache->page_watcher);
+			heap_scan_pb_latch_and_fetch (thread_p, &scan_cache->local_cache_vpid, OLD_PAGE_PREVENT_DEALLOC,
+						      PGBUF_LATCH_READ, scan_cache, &scan_cache->page_watcher);
 		      if (scan_cache->page_watcher.pgptr == NULL)
 			{
 			  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -8007,7 +7998,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	  if (scan_cache->page_watcher.pgptr == NULL)
 	    {
 	      scan_cache->page_watcher.pgptr =
-		heap_scan_pb_lock_and_fetch (thread_p, vpid, OLD_PAGE, S_LOCK, scan_cache, &scan_cache->page_watcher);
+		heap_scan_pb_latch_and_fetch (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, scan_cache,
+					      &scan_cache->page_watcher);
 
 	      if (scan_cache->page_watcher.pgptr == NULL)
 		{
@@ -8842,7 +8834,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
 
       /* Fetch the page where the record is stored */
 
-      pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, &pg_watcher);
+      pg_watcher.pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (pg_watcher.pgptr == NULL)
 	{
 	  if (er_errid () == ER_PB_BAD_PAGEID)
@@ -9439,7 +9431,7 @@ heap_get_capacity (THREAD_ENTRY * thread_p, const HFID * hfid, INT64 * num_recs,
   while (!VPID_ISNULL (&vpid))
     {
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -12873,7 +12865,7 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  dbvalue->need_clear = true;
 	}
 
-      /* 
+      /*
        * user AUTO_INCREMENT NUMERIC(1~28) uses 4–12 bytes, while
        * _db_serial.current_val (NUMERIC(38)) always uses 16 bytes.
        * this byte-size mismatch corrupts values.
@@ -15021,7 +15013,7 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
   vpid.volid = oid->volid;
   vpid.pageid = oid->pageid;
 
-  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
+  pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, NULL);
   if (pgptr == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -15139,7 +15131,7 @@ heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid, HEAP_CH
 	}
 
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -15520,7 +15512,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
 
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
-  pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, &pg_watcher);
+  pg_watcher.pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, &pg_watcher);
   if (pg_watcher.pgptr == NULL)
     {
       /* Unable to fetch heap header page */
@@ -15553,7 +15545,7 @@ heap_dump (THREAD_ENTRY * thread_p, FILE * fp, HFID * hfid, bool dump_records)
   while (!VPID_ISNULL (&vpid))
     {
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -17964,67 +17956,97 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
   if (value->state == HEAP_UNINIT_ATTRVALUE)
     {
       OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-      if (OID_ISNULL (&serial_obj_oid) || prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG))
+      const char *cached_serial_name = att->auto_increment.serial_name.load ();
+
+      if (OID_ISNULL (&serial_obj_oid))
 	{
-	  if (serial_name[0] == '\0')
+	  if (cached_serial_name == NULL)
 	    {
-	      ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
-	      if (ret != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
+	      char *serial_name_local = NULL;
 
-	  if (OID_ISNULL (&serial_obj_oid))
-	    {
-	      if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, serial_name, (int) strlen (serial_name),
-				   LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	      if (serial_name[0] == '\0')
 		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
-	      if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
-	      if (classrep == NULL)
-		{
-		  ret = ER_FAILED;
-		  goto exit_on_error;
-		}
-
-	      if (classrep->indexes)
-		{
-		  BTREE_SEARCH search_result;
-		  OID serial_oid;
-
-		  BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
-		  search_result =
-		    xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid,
-					&serial_oid, false);
-		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
-		  if (search_result != BTREE_KEY_FOUND)
+		  ret = build_auto_increment_serial_name (thread_p, attr_info, scan_cache, att, serial_name);
+		  if (ret != NO_ERROR)
 		    {
-		      ret = ER_FAILED;
 		      goto exit_on_error;
 		    }
+		}
 
-		  assert (!OID_ISNULL (&serial_oid));
-		  or_aligned_oid null_aligned_oid = { oid_Null_oid };
-		  or_aligned_oid serial_aligned_oid = { serial_oid };
-		  att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+	      serial_name_local = strdup (serial_name);
+	      if (serial_name_local == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (serial_name) + 1);
+		  ret = ER_OUT_OF_VIRTUAL_MEMORY;
+		  goto exit_on_error;
+		}
+
+	      char *dummy_null_serial_name = NULL;
+	      auto serial_name_cache = &att->auto_increment.serial_name;
+	      if (!serial_name_cache->compare_exchange_strong (dummy_null_serial_name, serial_name_local))
+		{
+		  free_and_init (serial_name_local);
+		  cached_serial_name = dummy_null_serial_name;
 		}
 	      else
 		{
-		  heap_classrepr_free_and_init (classrep, &idx_in_cache);
+		  cached_serial_name = serial_name_local;
+		}
+	    }
+
+	  if (cached_serial_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (db_make_varchar (&key_val, DB_MAX_IDENTIFIER_LENGTH, cached_serial_name,
+			       (int) strlen (cached_serial_name), LANG_SYS_CODESET, LANG_SYS_COLLATION) != NO_ERROR)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  status = xlocator_find_class_oid (thread_p, CT_SERIAL_NAME, &serial_class_oid, NULL_LOCK);
+	  if (status == LC_CLASSNAME_ERROR || status == LC_CLASSNAME_DELETED)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  classrep = heap_classrepr_get (thread_p, &serial_class_oid, NULL, NULL_REPRID, &idx_in_cache);
+	  if (classrep == NULL)
+	    {
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
+
+	  if (classrep->indexes)
+	    {
+	      BTREE_SEARCH search_result;
+	      OID serial_oid;
+
+	      BTID_COPY (&serial_btid, &(classrep->indexes[0].btid));
+	      search_result =
+		xbtree_find_unique (thread_p, &serial_btid, S_SELECT, &key_val, &serial_class_oid, &serial_oid, false);
+	      heap_classrepr_free_and_init (classrep, &idx_in_cache);
+	      if (search_result != BTREE_KEY_FOUND)
+		{
 		  ret = ER_FAILED;
 		  goto exit_on_error;
 		}
+
+	      assert (!OID_ISNULL (&serial_oid));
+	      or_aligned_oid null_aligned_oid = { oid_Null_oid };
+	      or_aligned_oid serial_aligned_oid = { serial_oid };
+	      att->auto_increment.serial_obj.compare_exchange_strong (null_aligned_oid, serial_aligned_oid);
+	    }
+	  else
+	    {
+	      heap_classrepr_free_and_init (classrep, &idx_in_cache);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
 	    }
 	}
 
@@ -18065,10 +18087,18 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
+	  const char *cached_serial_name = att->auto_increment.serial_name.load ();
 
 	  LOG_TDES *tdes = LOG_FIND_CURRENT_TDES (thread_p);
 
 	  assert (tdes != NULL);
+	  assert (cached_serial_name != NULL);
+	  if (cached_serial_name == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	      ret = ER_FAILED;
+	      goto exit_on_error;
+	    }
 
 	  if (!tdes->has_supplemental_log)
 	    {
@@ -18077,7 +18107,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
 	      tdes->has_supplemental_log = true;
 	    }
 
-	  log_append_supplemental_serial (thread_p, serial_name, 1, &att->classoid, &serial_obj_oid);
+	  log_append_supplemental_serial (thread_p, cached_serial_name, 1, &att->classoid, &serial_obj_oid);
 	  thread_p->no_supplemental_log = false;
 	}
     }
@@ -18200,7 +18230,7 @@ heap_compact_pages (THREAD_ENTRY * thread_p, OID * class_oid)
     {
       vpid = next_vpid;
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, X_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_WRITE, NULL, &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -19232,7 +19262,7 @@ heap_header_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_valu
   vpid.volid = hfid_p->vfid.volid;
   vpid.pageid = hfid_p->hpgid;
 
-  pgptr = heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, S_LOCK, NULL, NULL);
+  pgptr = heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, NULL);
   if (pgptr == NULL)
     {
       ASSERT_ERROR ();
@@ -19625,7 +19655,8 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     }
   else
     {
-      pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE, S_LOCK, NULL, &pg_watcher);
+      pg_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, next_vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (pg_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
@@ -19645,7 +19676,8 @@ heap_page_next (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     {
       /* get page pointer to next page */
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, next_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, next_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
+				      &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -19722,7 +19754,8 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
     }
   else
     {
-      pg_watcher.pgptr = heap_scan_pb_lock_and_fetch (thread_p, prev_vpid, OLD_PAGE, S_LOCK, NULL, &pg_watcher);
+      pg_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, prev_vpid, OLD_PAGE, PGBUF_LATCH_READ, NULL, &pg_watcher);
       if (pg_watcher.pgptr == NULL)
 	{
 	  return S_ERROR;
@@ -19742,7 +19775,8 @@ heap_page_prev (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfi
   while (true)
     {
       pg_watcher.pgptr =
-	heap_scan_pb_lock_and_fetch (thread_p, prev_vpid, OLD_PAGE_PREVENT_DEALLOC, S_LOCK, NULL, &pg_watcher);
+	heap_scan_pb_latch_and_fetch (thread_p, prev_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, NULL,
+				      &pg_watcher);
       if (old_pg_watcher.pgptr != NULL)
 	{
 	  pgbuf_ordered_unfix (thread_p, &old_pg_watcher);
@@ -20373,7 +20407,7 @@ heap_try_fetch_header_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p, co
     }
 
   pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
-  *hdr_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, X_LOCK, scan_cache, NULL);
+  *hdr_pgptr_p = heap_scan_pb_latch_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, NULL);
   if (*hdr_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -20442,7 +20476,7 @@ heap_try_fetch_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * home_pgptr_p, c
     }
 
   pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
-  *fwd_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, fwd_vpid_p, OLD_PAGE, X_LOCK, scan_cache, NULL);
+  *fwd_pgptr_p = heap_scan_pb_latch_and_fetch (thread_p, fwd_vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, NULL);
   if (*fwd_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -20515,7 +20549,7 @@ heap_try_fetch_header_with_forward_page (THREAD_ENTRY * thread_p, PAGE_PTR * hom
 
   pgbuf_unfix_and_init (thread_p, *home_pgptr_p);
   pgbuf_unfix_and_init (thread_p, *fwd_pgptr_p);
-  *hdr_pgptr_p = heap_scan_pb_lock_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, X_LOCK, scan_cache, NULL);
+  *hdr_pgptr_p = heap_scan_pb_latch_and_fetch (thread_p, hdr_vpid_p, OLD_PAGE, PGBUF_LATCH_WRITE, scan_cache, NULL);
   if (*hdr_pgptr_p == NULL)
     {
       error_code = er_errid ();
@@ -20613,7 +20647,7 @@ heap_scancache_quick_start_root_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * 
 
   (void) boot_find_root_heap (&root_hfid);
   (void) heap_scancache_quick_start_internal (scan_cache, &root_hfid);
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
 
   return NO_ERROR;
 }
@@ -20640,7 +20674,7 @@ heap_scancache_quick_start_with_class_oid (THREAD_ENTRY * thread_p, HEAP_SCANCAC
 
   heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
   (void) heap_scancache_quick_start_with_class_hfid (thread_p, scan_cache, &class_hfid);
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
 
   return NO_ERROR;
 }
@@ -20663,7 +20697,7 @@ int
 heap_scancache_quick_start_with_class_hfid (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache, const HFID * hfid)
 {
   (void) heap_scancache_quick_start_internal (scan_cache, hfid);
-  scan_cache->page_latch = S_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_READ;
 
   return NO_ERROR;
 }
@@ -20689,7 +20723,7 @@ heap_scancache_quick_start_modify_with_class_oid (THREAD_ENTRY * thread_p, HEAP_
 
   heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
   (void) heap_scancache_quick_start_internal (scan_cache, &class_hfid);
-  scan_cache->page_latch = X_LOCK;
+  scan_cache->page_latch = PGBUF_LATCH_WRITE;
 
   return NO_ERROR;
 }
@@ -21948,8 +21982,8 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
   /* if scancache page was not suitable, fix desired page */
   if (context->home_page_watcher_p->pgptr == NULL)
     {
-      (void) heap_scan_pb_lock_and_fetch (thread_p, &vpid, OLD_PAGE, X_LOCK, context->scan_cache_p,
-					  context->home_page_watcher_p);
+      (void) heap_scan_pb_latch_and_fetch (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, context->scan_cache_p,
+					   context->home_page_watcher_p);
       if (context->home_page_watcher_p->pgptr == NULL)
 	{
 	  int rc;
@@ -22994,7 +23028,6 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      return error_code;
 	    }
 	}
-
       /* if reusable slot is deleted, then postponed log (RVHF_MARK_REUSABLE_SLOT) will appended last.
        * So, current log lsa after heap_log_delete_physical can points unexpected log, other than delete log. */
       heap_log_delete_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
@@ -23598,7 +23631,7 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
        *        3. relocation to relocation (new forward recdes doesn't fit in existing forward page) */
       if (context->do_supplemental_log)
 	{
-	  /* is_reusable is true when heap_log_delete_physical, so tdes->tail_lsa will points at postponed log 
+	  /* is_reusable is true when heap_log_delete_physical, so tdes->tail_lsa will points at postponed log
 	   * So, it copies prev_version_lsa to supp_undo_lsa which indicates delete log */
 	  LSA_COPY (&context->supp_undo_lsa, &prev_version_lsa);
 	}
@@ -23866,7 +23899,7 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
   heap_log_update_physical (thread_p, context->home_page_watcher_p->pgptr, &context->hfid.vfid, &context->oid,
 			    &context->home_recdes, home_page_updated_recdes_p, undo_rcvindex);
 
-  /* undo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION/BIGONE 
+  /* undo lsa for SUPPLEMENT_UPDATE : REC_HOME to REC_RELOCATION/BIGONE
    * if redo lsa is NULL , then append redo lsa :update REC_HOME to REC_HOME case */
   if (context->do_supplemental_log)
     {
@@ -25416,7 +25449,7 @@ heap_hfid_cache_get (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid
 
 /*
  * heap_get_hfid_if_cached () - get HFID and file type for class if cached.
- 
+ *
  *   return: error code
  *   thread_p  (in)     :
  *   class_oid (in)     : the class OID for which the entry will be returned
@@ -26747,7 +26780,7 @@ heap_init_get_context (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, cons
     scan_cache != NULL && recdes != NULL && scan_cache->is_recdes_assigned_to_area (*recdes);
   /* Caller-positioned buffers remain owned by the caller even after their writable area is exhausted. */
   context->keep_recdes_buffer = recdes != NULL && recdes->data != NULL && !data_is_scan_cache_area;
-  if (scan_cache != NULL && scan_cache->page_latch == X_LOCK)
+  if (scan_cache != NULL && scan_cache->page_latch == PGBUF_LATCH_WRITE)
     {
       context->latch_mode = PGBUF_LATCH_WRITE;
     }
@@ -27187,7 +27220,7 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   heap_hdr_watcher.pgptr = NULL;
 
   new_pg_watcher->pgptr =
-    heap_scan_pb_lock_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, X_LOCK, NULL, new_pg_watcher);
+    heap_scan_pb_latch_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, NULL, new_pg_watcher);
   if (new_pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
@@ -27476,7 +27509,7 @@ heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data)
 
   OR_GET_HFID (ptr, &hfid);
   ptr += OR_HFID_SIZE;
-  
+
   OR_GET_OID (ptr, &class_oid);
   ptr += OR_OID_SIZE;
 
@@ -27512,7 +27545,7 @@ heap_get_page_with_watcher (THREAD_ENTRY * thread_p, const VPID *page_vpid, PGBU
   assert (pg_watcher != NULL);
   assert (page_vpid != NULL);
 
-  pg_watcher->pgptr = heap_scan_pb_lock_and_fetch (thread_p, page_vpid, OLD_PAGE, X_LOCK, NULL, pg_watcher);
+  pg_watcher->pgptr = heap_scan_pb_latch_and_fetch (thread_p, page_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, NULL, pg_watcher);
   if (pg_watcher->pgptr == NULL)
     {
       ASSERT_ERROR_AND_SET (error_code);
