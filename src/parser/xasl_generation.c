@@ -66,6 +66,7 @@
 #include "db_json.hpp"
 #include "jsp_cl.h"
 #include "subquery_cache.h"
+#include "xasl_to_stream.h"
 #include "dbtype_def.h"
 #include "pl_signature.hpp"
 #include "sp_catalog.hpp"
@@ -26592,6 +26593,93 @@ outofmem:
   PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
 
   return NULL;
+}
+
+/*
+ * pt_to_default_expr_stream () - compiles a residual DEFAULT expression to a
+ *	serialized REGU form (a FUNC_PRED stream) for Server Evaluation
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   expr(in): the residual DEFAULT expression (no column references)
+ *   stream(out): malloc'ed serialized stream (caller frees)
+ *   stream_size(out): stream size in bytes
+ *
+ * Modeled on the function-index path (pt_to_func_pred +
+ * xts_map_func_pred_to_stream), but a DEFAULT expression is admissible only
+ * without column references, so no class spec or attribute cache binding is
+ * needed; the FUNC_PRED carries an empty HEAP_CACHE_ATTRINFO.
+ *
+ * Why FUNC_PRED and not a bare REGU_VARIABLE: the only public stream entry
+ * points are FUNC_PRED-granular (xts_map_func_pred_to_stream /
+ * stx_map_stream_to_func_pred, shared with function indexes and partition
+ * pruning); xts_save_regu_variable / stx_restore_regu_variable are internal
+ * to their files, so a regu-only stream would mean introducing and
+ * maintaining a new public serialization format.  The cache_attrinfo member
+ * exists for function-index expressions, which reference table columns and
+ * need their values bound from the heap record before evaluation
+ * (heap_attrinfo_start / heap_attrinfo_read_dbvalues).  A DEFAULT expression
+ * has no column references, so the empty attrinfo is never consulted at
+ * evaluation time and costs only a few bytes in the stream
+ * (see qexec_eval_default_expr_stream, which evaluates func_regu alone).
+ */
+int
+pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *stream_size)
+{
+  FUNC_PRED *func_pred = NULL;
+  SYMBOL_INFO *symbols = NULL;
+
+  assert (parser != NULL && expr != NULL && stream != NULL && stream_size != NULL);
+
+  int error = NO_ERROR;
+
+  *stream = NULL;
+  *stream_size = 0;
+
+  /* the compiled FUNC_PRED lives in the packing buffer only until it is
+   * serialized into the malloc'ed stream */
+  pt_enter_packing_buf ();
+
+  if ((parser->symbols = pt_symbol_info_alloc ()) == NULL)
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = ER_FAILED;
+      goto end;
+    }
+  symbols = parser->symbols;
+
+  regu_alloc (symbols->cache_attrinfo);
+  if (symbols->cache_attrinfo == NULL)
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = ER_FAILED;
+      goto end;
+    }
+
+  regu_alloc (func_pred);
+  if (func_pred == NULL)
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = ER_FAILED;
+      goto end;
+    }
+
+  func_pred->func_regu = pt_to_regu_variable (parser, expr, UNBOX_AS_VALUE);
+  func_pred->cache_attrinfo = symbols->cache_attrinfo;
+
+  if (pt_has_error (parser) || func_pred->func_regu == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+      goto end;
+    }
+
+  error = xts_map_func_pred_to_stream (func_pred, stream, stream_size);
+
+end:
+  parser->symbols = NULL;
+  pt_exit_packing_buf ();
+
+  return error;
 }
 
 /*

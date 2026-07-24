@@ -8118,6 +8118,53 @@ get_attr_name (PT_NODE * attribute)
 }
 
 /*
+ * do_compile_stable_default_streams () - derive the Stored DEFAULT Forms of a
+ *	STABLE residual DEFAULT: the serialized REGU form (once-per-statement
+ *	server evaluation) and the Compact DEFAULT Tree (local evaluation).
+ *	No-op unless data_default carries a STABLE residual.
+ *   return: Error code
+ *   parser(in): Parser context
+ *   data_default(in): PT_DATA_DEFAULT node of the attribute (may be NULL)
+ *   dest(in/out): DB_DEFAULT_EXPR receiving the stream pointers
+ *   regu_stream(out): malloc'd REGU stream -- caller frees
+ *   regu_stream_size(out): its size in bytes
+ *   tree_stream(out): malloc'd tree stream -- caller frees
+ *   tree_stream_size(out): its size in bytes
+ */
+static int
+do_compile_stable_default_streams (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest,
+				   char **regu_stream, int *regu_stream_size, char **tree_stream, int *tree_stream_size)
+{
+  PT_NODE *residual_expr;
+  int error;
+
+  if (!PT_IS_STABLE_RESIDUAL_DEFAULT (data_default))
+    {
+      return NO_ERROR;
+    }
+
+  residual_expr = data_default->info.data_default.default_value;
+
+  error = pt_to_default_expr_stream (parser, residual_expr, regu_stream, regu_stream_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  dest->default_expr_regu_stream = *regu_stream;
+  dest->default_expr_regu_stream_size = *regu_stream_size;
+
+  error = pt_compact_default_tree_to_stream (parser, residual_expr, tree_stream, tree_stream_size);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  dest->default_expr_tree_stream = *tree_stream;
+  dest->default_expr_tree_stream_size = *tree_stream_size;
+
+  return NO_ERROR;
+}
+
+/*
  * do_add_attribute() - Adds an attribute to a class object
  *   return: Error code
  *   parser(in): Parser context
@@ -8146,6 +8193,10 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   const char *add_after_attr = NULL;
   PT_NODE *cnstr, *pk_attr, *comment;
   DB_DEFAULT_EXPR default_expr;
+  char *default_expr_stream = NULL;
+  int default_expr_stream_size = 0;
+  char *default_expr_tree_stream = NULL;
+  int default_expr_tree_stream_size = 0;
   PARSER_VARCHAR *comment_str = NULL;
 
   db_make_null (&stack_value);
@@ -8249,8 +8300,27 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
 
+  /* residual DEFAULT: compile the surviving expression so the server keeps
+   * evaluating it once per INSERT statement */
+  error = do_compile_stable_default_streams (parser, attribute->info.attr_def.data_default, &default_expr,
+					     &default_expr_stream, &default_expr_stream_size,
+					     &default_expr_tree_stream, &default_expr_tree_stream_size);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
 					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
+
+  if (default_expr_stream != NULL)
+    {
+      free_and_init (default_expr_stream);
+    }
+  if (default_expr_tree_stream != NULL)
+    {
+      free_and_init (default_expr_tree_stream);
+    }
 
   db_value_clear (&stack_value);
 
@@ -11590,6 +11660,10 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   const char *attr_name = NULL;
   PARSER_VARCHAR *comment_str = NULL;
   DB_DEFAULT_EXPR new_default_expr;
+  char *default_expr_stream = NULL;
+  int default_expr_stream_size = 0;
+  char *default_expr_tree_stream = NULL;
+  int default_expr_tree_stream_size = 0;
   PT_NODE *comment = NULL;
 
   assert (attr_chg_prop != NULL);
@@ -11674,6 +11748,17 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &new_default_expr);
+
+  /* residual DEFAULT: derive the Stored DEFAULT Forms here too, so a
+   * MODIFY/CHANGE'd DEFAULT keeps re-evaluating per statement instead of
+   * silently freezing to the DDL-time snapshot */
+  error = do_compile_stable_default_streams (parser, attribute->info.attr_def.data_default, &new_default_expr,
+					     &default_expr_stream, &default_expr_stream_size,
+					     &default_expr_tree_stream, &default_expr_tree_stream_size);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
 
   attr_db_domain = pt_node_to_db_domain (parser, attribute, ctemplate->name);
   if (attr_db_domain == NULL)
@@ -11983,6 +12068,14 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
 exit:
+  if (default_expr_stream != NULL)
+    {
+      free_and_init (default_expr_stream);
+    }
+  if (default_expr_tree_stream != NULL)
+    {
+      free_and_init (default_expr_tree_stream);
+    }
   db_value_clear (&stack_value);
   return error;
 }
@@ -14034,6 +14127,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
   DB_DEFAULT_EXPR_TYPE def_expr_type;
   PT_TYPE_ENUM desired_type = attribute->type_enum;
   bool has_self_ref = false;
+  bool is_stable_residual;
   const char *data_type_print;
 
   assert (attribute->node_type == PT_ATTR_DEF);
@@ -14045,6 +14139,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
     }
 
   def_expr_type = attribute->info.attr_def.data_default->info.data_default.default_expr_type;
+  is_stable_residual = PT_IS_STABLE_RESIDUAL_DEFAULT (attribute->info.attr_def.data_default);
   def_val = attribute->info.attr_def.data_default->info.data_default.default_value;
   def_val = pt_semantic_check (parser, def_val);
   if (pt_has_error (parser) || def_val == NULL)
@@ -14128,7 +14223,7 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
   else
     {
       /* try to coerce the default value into the attribute type */
-      if (def_expr_type == DB_DEFAULT_NONE)
+      if (def_expr_type == DB_DEFAULT_NONE && !is_stable_residual)
 	{
 	  error = pt_coerce_value_for_default_value (parser, def_val, def_val, desired_type, attribute->data_type,
 						     def_expr_type, true);
@@ -14139,19 +14234,25 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	}
       else
 	{
+	  /* a legacy default expression, or a STABLE residual: evaluate it
+	   * exactly once at DDL time.  For a residual the frozen value seeds
+	   * value/original_value (what unbound pre-existing rows read back);
+	   * future INSERTs re-evaluate the stored residual per statement. */
 	  DB_VALUE src;
 	  PT_NODE *temp_val;
 
 	  db_make_null (&src);
 
-	  def_val = pt_semantic_type (parser, def_val, NULL);
-	  if (pt_has_error (parser) || def_val == NULL)
+	  if (!is_stable_residual)
 	    {
-	      pt_report_to_ersys (parser, PT_SEMANTIC);
-	      error = er_errid ();
-	      goto exit;
+	      def_val = pt_semantic_type (parser, def_val, NULL);
+	      if (pt_has_error (parser) || def_val == NULL)
+		{
+		  pt_report_to_ersys (parser, PT_SEMANTIC);
+		  error = er_errid ();
+		  goto exit;
+		}
 	    }
-
 
 	  pt_evaluate_tree_having_serial (parser, def_val, &src, 1);
 	  if (pt_has_error (parser))
@@ -14173,6 +14274,10 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	  error = pt_coerce_value_for_default_value (parser, temp_val, temp_val, desired_type, attribute->data_type,
 						     def_expr_type, true);
 	  db_value_clear (&src);
+	  if (error == NO_ERROR && is_stable_residual)
+	    {
+	      pt_evaluate_tree (parser, temp_val, *default_value, 1);
+	    }
 	  temp_val->info.value.db_value_is_in_workspace = 0;
 	  parser_free_node (parser, temp_val);
 
@@ -14182,11 +14287,11 @@ get_att_default_from_def (PARSER_CONTEXT * parser, PT_NODE * attribute, DB_VALUE
 	    }
 	}
 
-      if (def_expr_type == DB_DEFAULT_NONE)
+      if (def_expr_type == DB_DEFAULT_NONE && !is_stable_residual)
 	{
 	  pt_evaluate_tree (parser, def_val, *default_value, 1);
 	}
-      else
+      else if (def_expr_type != DB_DEFAULT_NONE)
 	{
 	  *default_value = NULL;
 	}
@@ -14702,7 +14807,11 @@ do_update_new_cols_with_default_expression (PARSER_CONTEXT * parser, PT_NODE * a
       pt_get_default_expression_from_data_default_node (parser, pt_data_default, &default_expr);
       if (default_expr.default_expr_type == DB_DEFAULT_NONE)
 	{
-	  /* don't have default expression */
+	  /* No legacy default expression.  This also covers the new DEFAULT
+	   * path (constant, Expression-Derived Literal, or STABLE residual):
+	   * effective volatility <= STABLE fills existing rows instantly via
+	   * the frozen original_value -- no table rewrite.  A VOLATILE
+	   * residual will require the eager rewrite here. */
 	  continue;
 	}
 
