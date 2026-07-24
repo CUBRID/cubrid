@@ -45,6 +45,7 @@
 #include "view_transform.h"
 #include "locator_cl.h"
 #include "optimizer.h"
+#include "histogram_cl.hpp"
 #include "parser_message.h"
 #include "virtual_object.h"
 #include "set_object.h"
@@ -18310,6 +18311,17 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   else
     {
       xasl = pt_to_buildlist_proc (parser, select_node, plan);
+    }
+
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, select_node))
+    {
+      /* the plan was chosen with unbound host-variable predicate markers (default
+       * selectivity), e.g. at PREPARE. The first EXECUTE detects this flag and replans
+       * once under the actual bind values; the value-bound regeneration runs with
+       * set_host_var on, so its plan does not carry the flag and later executions reuse
+       * the fixed plan. */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);

@@ -2417,6 +2417,49 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   return node;
 }
 
+struct hv_pred_ctx
+{
+  bool found;
+};
+
+/* structural check only (no value fetch): is there a (column op ?) predicate that the
+ * bind-sensitive planner could price? Used at plan generation, where host variables carry
+ * no execution values, to mark a plan as chosen under unbound markers. */
+static PT_NODE *
+hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return node;
+    }
+  PT_OP_TYPE op = node->info.expr.op;
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+    {
+      return node;
+    }
+  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
+  PT_NODE *a2 = node->info.expr.arg2;
+  if ((a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
+      || (a1 != NULL && a1->node_type == PT_HOST_VAR
+	  && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME))
+    {
+      ctx->found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+bool
+histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  hv_pred_ctx ctx;
+  ctx.found = false;
+  (void) parser_walk_tree (parser, statement, hv_pred_walk, &ctx, NULL, NULL);
+  return ctx.found;
+}
+
 bool
 histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp)
 {

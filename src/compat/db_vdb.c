@@ -2075,23 +2075,23 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  do_recompile = true;
 	}
 
-      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
-	  && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
+      if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
 	  && statement->info.execute.name != NULL)
 	{
-	  /* opt-in (plan_cache_bind_sensitivity): re-execute on the kept post-transform
-	   * tree of this prepared statement; the check inside
-	   * db_execute_and_keep_statement_local () replans there (plan selection + XASL
-	   * generation only) when the USING values land in a different histogram bucket
-	   * than the values the plan was chosen under. With the parameter off the whole
-	   * EXECUTE path is the legacy one: the PREPARE-time XASL is reused as-is, so
-	   * host-variable typing stays value-independent (an EXECUTE may bind different
-	   * types on every run) */
+	  /* A kept tree exists only for statements whose plan was fixed under the first
+	   * execution's bind values (they have a histogram-usable predicate; see the
+	   * registration in do_recompile_and_execute_prepared_statement). Re-execute on it:
+	   * only the USING values are re-bound, and the fixed plan is reused as-is. With
+	   * plan_cache_bind_sensitivity on, the check inside
+	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
+	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
 	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original);
 
 	  if (kept != NULL)
 	    {
-	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
+								    false /* no forced replan; reuse the fixed plan */
+								    );
 	      if (err >= 0)
 		{
 		  return err;
@@ -2101,12 +2101,6 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	      db_prepared_tree_remove (statement->info.execute.name->info.name.original);
 	      er_clear ();
 	      pt_reset_error (parser);
-	      do_recompile = true;
-	    }
-	  else
-	    {
-	      /* no tree kept yet: compile once from the stored text so the tree gets kept
-	       * and the plan is chosen under the current bind values */
 	      do_recompile = true;
 	    }
 	}
@@ -3052,6 +3046,16 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	    }
 	}
 
+      if (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED)
+	{
+	  /* the cached plan was chosen with unbound host-variable predicate markers (at
+	   * PREPARE). Null the XASL_ID so this first execution takes the recompile path and
+	   * fixes the plan under the actual bind values; the regenerated plan does not carry
+	   * the flag, and its post-transform tree is kept, so later executions reuse the
+	   * fixed plan (plan_cache_bind_sensitivity then controls only whether a later
+	   * bucket change replans again). */
+	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	}
     }
 
 cleanup:
@@ -3447,6 +3451,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   int err = NO_ERROR;
   int idx = 0;
   DB_SESSION *new_session = NULL;
+  bool is_bind_candidate = false;
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
@@ -3529,6 +3534,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	      return err;
 	    }
 	  new_session->statements[0]->info.query.bind_fp = fp;
+	  is_bind_candidate = true;
 	}
     }
 
@@ -3536,11 +3542,13 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
   err = db_execute_and_keep_statement_local (new_session, 1, result);
 
-  if (err >= 0 && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
-      && statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.name != NULL)
+  if (err >= 0 && is_bind_candidate && statement->info.execute.name != NULL)
     {
-      /* keep the compiled (post-transform) tree for the next EXECUTE of this name: the
-       * bind-sensitivity check can then replan from it without re-parsing the statement */
+      /* the plan was fixed under this first execution's bind values. Keep the compiled
+       * (post-transform) tree so the next EXECUTE of this name reuses that fixed plan
+       * without recompiling -- only statements with a histogram-usable predicate reach
+       * here, so a statement whose only host variables are select-list arguments keeps
+       * recompiling per execution with generic typing. */
       if (db_prepared_tree_register (statement->info.execute.name->info.name.original, new_session))
 	{
 	  DB_SESSION **sp;
