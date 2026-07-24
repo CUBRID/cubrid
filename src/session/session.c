@@ -3258,6 +3258,12 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
       return ER_FAILED;
     }
 
+  if (state_p->load_session_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INVALID_STATE, 0);
+      return ER_LDR_INVALID_STATE;
+    }
+
   load_session_ref_ptr = state_p->load_session_p;
 
   return NO_ERROR;
