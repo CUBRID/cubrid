@@ -65,7 +65,11 @@ public class ContextManager {
     public static Context getContextofCurrentThread() {
         Thread t = Thread.currentThread();
         if (t instanceof ExecuteThread) {
-            return ((ExecuteThread) t).getCurrentContext();
+            Context ret = ((ExecuteThread) t).getCurrentContext();
+            if (ret == null) {
+                throw new IllegalStateException("PL context of the current thread is null");
+            }
+            return ret;
         } else {
             throw new IllegalStateException(
                     "PL context was accessed from a non-managed thread "
