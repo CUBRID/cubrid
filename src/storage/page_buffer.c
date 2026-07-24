@@ -6266,6 +6266,21 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+#if defined (SERVER_MODE)
+  /* fail-closed safety net: an idle bcb (PGBUF_NO_LATCH) with an EMPTY wait queue must never carry
+   * waiter_exists == true; the idle-grant CAS below force-expects waiter_exists == false and the idle path never
+   * blocks, so a stale bit would spin this thread forever while it holds the bcb mutex. all waiter_exists
+   * transitions are bcb-mutex-protected and we hold the mutex here, so the check is race-free. heal and flag. */
+  PGBUF_ATOMIC_LATCH_IMPL impl_snapshot = get_impl (&bufptr->atomic_latch);
+  if (impl_snapshot.impl.latch_mode == PGBUF_NO_LATCH && impl_snapshot.impl.waiter_exists
+      && bufptr->next_wait_thrd == NULL)
+    {
+      assert (false);		/* diag builds: catch any future leak at its first victim */
+      er_log_debug (ARG_FILE_LINE, "pgbuf_latch_bcb_upon_fix: healed stranded waiter_exists on idle bcb %d|%d\n",
+		    VPID_AS_ARGS (&bufptr->vpid));
+      set_waiter_exists (&bufptr->atomic_latch, false);
+    }
+#endif /* SERVER_MODE */
 // *INDENT-OFF*
   do
     {
@@ -7057,6 +7072,12 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
+		  /* self-removed from the wait queue on interrupt: reconcile waiter_exists (see
+		   * pgbuf_wake_flush_waiters). */
+		  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+		    {
+		      set_waiter_exists (&bufptr->atomic_latch, false);
+		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
 		  return ER_FAILED;
 		}
@@ -10919,6 +10940,16 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	{
 	  prev_waiter = crt_waiter;
 	}
+    }
+  /* every PGBUF_LATCH_FLUSH waiter was dequeued above. reconcile the atomic-latch waiter_exists bit exactly as
+   * pgbuf_wakeup_reader_writer does on the unlatch path: if no blocked reader/writer remains queued, clear it.
+   * leaving it set on a bcb that is (or goes) idle poisons pgbuf_latch_bcb_upon_fix's idle-grant CAS, which
+   * force-expects waiter_exists == false and never enqueues when latch_mode == PGBUF_NO_LATCH -- the next fix
+   * then spins forever while holding the bcb mutex (bulk-build CREATE INDEX livelock). caller holds the bcb
+   * mutex at all callsites, and all waiter_exists transitions are bcb-mutex-protected, so this is race-free. */
+  if (!pgbuf_is_exist_blocked_reader_writer (bcb))
+    {
+      set_waiter_exists (&bcb->atomic_latch, false);
     }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
