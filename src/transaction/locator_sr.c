@@ -5794,9 +5794,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 	      else
 		{
+		  /* old record is read via the MVCC header and the attribute layer only (CBRD-26847) */
 		  scan =
 		    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
-					      HEAP_RECDES_CONSUME_RAW_BYTES);
+					      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 
 
@@ -5937,9 +5938,10 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
+	      /* old record is read via the MVCC header and the attribute layer only (CBRD-26847) */
 	      scan =
 		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
-					  HEAP_RECDES_CONSUME_RAW_BYTES);
+					  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6576,9 +6578,10 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	    }
 	  scan_cache_inited = true;
 
+	  /* LOB locators are resolved per attribute by heap_attrinfo_delete_lob (CBRD-26847) */
 	  scan =
 	    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN,
-				      HEAP_RECDES_CONSUME_RAW_BYTES);
+				      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -6940,9 +6943,10 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
     {
       assert (OID_ISNULL (&obj->oid) != true);
 
+      /* only the CHN is read from the old record (CBRD-26847) */
       scan =
 	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN,
-				  HEAP_RECDES_CONSUME_RAW_BYTES);
+				  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
       if (scan != S_SUCCESS)
 	{
@@ -13826,9 +13830,10 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
       scan_cache_inited = true;
+      /* record is consumed only through the attribute layer for MVCC reevaluation (CBRD-26847) */
       scan_code =
 	heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN,
-				  HEAP_RECDES_CONSUME_RAW_BYTES);
+				  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan_code != S_SUCCESS)
 	{
 	  ev_res = V_ERROR;

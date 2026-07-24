@@ -360,7 +360,8 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
-/* TODO (CBRD-26847): audit HEAP_RECDES_CONSUME_RAW_BYTES sites - several are conservative; see the census. */
+/* CBRD-26847: every call site of both policies was audited; CONSUME_RAW_BYTES remains only where the
+ * caller ships, re-inserts, byte-compares, or OR-parses the raw record outside the attribute layer. */
 typedef enum
 {
   HEAP_RECDES_CONSUMPTION_POLICY_INVALID = 0,

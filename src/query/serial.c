@@ -228,10 +228,10 @@ xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_n
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  /* get record into record desc */
+  /* get record into record desc; consumed only through the attribute layer (CBRD-26847) */
   scan =
     heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
-			      HEAP_RECDES_CONSUME_RAW_BYTES);
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -506,9 +506,10 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
+  /* record is consumed only through the attribute layer (CBRD-26847) */
   scan =
     heap_get_visible_version (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
-			      HEAP_RECDES_CONSUME_RAW_BYTES);
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)
@@ -643,9 +644,10 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
+  /* record is consumed only through the attribute layer (CBRD-26847) */
   scan =
     heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
-			      HEAP_RECDES_CONSUME_RAW_BYTES);
+			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (scan != S_SUCCESS)
     {
       if (er_errid () == ER_PB_BAD_PAGEID)

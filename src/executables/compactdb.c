@@ -561,9 +561,10 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
+	/* existence probe: recdes is NULL, so no record body is consumed (CBRD-26847) */
 	scan_code =
 	  heap_get_visible_version (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN,
-				    HEAP_RECDES_CONSUME_RAW_BYTES);
+				    HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	heap_scancache_end (thread_p, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
