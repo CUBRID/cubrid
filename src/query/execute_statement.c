@@ -14533,11 +14533,8 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (DB_VALUE_TYPE (&target_value) == DB_TYPE_NULL)
     {
-      /*
-       * Don't understand the rationale behind this case.  What's the
-       * point here?  MRS 4/30/96
-       */
-      error = NO_ERROR;
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+      return NO_ERROR;
     }
   else
     {
