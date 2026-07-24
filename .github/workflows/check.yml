@@ -26,10 +26,10 @@ jobs:
     name: license
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v2
-      - uses: jitterbit/get-changed-files@v1
-        id: files
+      - uses: actions/checkout@v5
+      - id: files
         continue-on-error: true
+        uses: ./.github/actions/changed-files
       - name: Check license
         run: |
           set +e # make this step proceed even if a command returns non-zero
@@ -68,9 +68,8 @@ jobs:
     name: pr-style
     runs-on: ubuntu-24.04
     steps:
-      - uses: deepakputhraya/action-pr-title@master
-        with:
-          regex: '^\[[A-Z]+-\d+\]\s.+' # Regex the title should match.
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/check-pr-title
   code-style:
     name: code-style
     runs-on: ubuntu-24.04
@@ -92,10 +91,10 @@ jobs:
           ./configure
           sudo make -j install
           cd ..
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v5
       - id: files
-        uses: jitterbit/get-changed-files@v1
         continue-on-error: true
+        uses: ./.github/actions/changed-files
       - name: Check code style
         id: stylecheck
         run: |
@@ -129,10 +128,10 @@ jobs:
           echo "CPPCHECK_PATH=`pwd`" >> $GITHUB_ENV
 
           cd $wd
-      - uses: actions/checkout@v2
-      - uses: jitterbit/get-changed-files@v1
-        id: files
+      - uses: actions/checkout@v5
+      - id: files
         continue-on-error: true
+        uses: ./.github/actions/changed-files
       - name: cppcheck
         run: |
           result_file="cppcheck.result"
@@ -169,11 +168,11 @@ jobs:
         id: get-comment-body
         if: ${{ failure() }}
         run: |
-          body=$(cat cppcheck.summary)
-          body="${body//'%'/'%25'}"
-          body="${body//$'\n'/'%0A'}"
-          body="${body//$'\r'/'%0D'}" 
-          echo ::set-output name=body::$body
+          {
+            echo 'body<<CPPCHECK_EOF'
+            cat cppcheck.summary
+            echo 'CPPCHECK_EOF'
+          } >> "$GITHUB_OUTPUT"
       - name: Report cppcheck.summary
         if: ${{ failure() }}
         uses: unsplash/comment-on-pr@master
