@@ -12222,7 +12222,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	  if (oos_create_file (thread_p, *hfid, heap_hdr->class_oid, *oos_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;

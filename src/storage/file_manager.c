@@ -1413,6 +1413,22 @@ file_header_dump (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead, FILE * fp)
 }
 
 /*
+ * file_oos_descriptor_is_legacy () - return true for ownerless OOS descriptors created before CBRD-27038
+ *
+ * return         : true if all owner fields have their historical byte-zeroed representation
+ * descriptor (in): OOS file descriptor
+ */
+STATIC_INLINE bool
+file_oos_descriptor_is_legacy (const FILE_DESCRIPTORS * descriptor)
+{
+  return (descriptor->heap_overflow.hfid.vfid.fileid == 0
+	  && descriptor->heap_overflow.hfid.vfid.volid == 0
+	  && descriptor->heap_overflow.hfid.hpgid == 0
+	  && descriptor->heap_overflow.class_oid.pageid == 0
+	  && descriptor->heap_overflow.class_oid.slotid == 0 && descriptor->heap_overflow.class_oid.volid == 0);
+}
+
+/*
  * file_header_dump_descriptor () - dump descriptor in file header
  *
  * return        : void
@@ -1429,9 +1445,15 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
-      /* TODO: When the OOS file descriptor stores its owner HFID/class back reference, print the table name and HFID
-       * here. Current FILE_OOS headers do not expose that information from the OOS file itself. */
-      fprintf (fp, "OOS file\n");
+      if (file_oos_descriptor_is_legacy (&fhead->descriptor))
+	{
+	  fprintf (fp, "OOS file (owner descriptor unavailable)\n");
+	}
+      else
+	{
+	  file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap_overflow.class_oid);
+	  fprintf (fp, ", OOS for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_overflow.hfid));
+	}
       break;
 
     case FILE_HEAP:
@@ -10867,14 +10889,14 @@ exit:
 #endif /* SA_MODE */
 
 /*
- * file_tracker_get_and_protect () - get a file from tracker. if we want to get b-tree or heap files, we must first
- *                                   protect them by locking class.
+ * file_tracker_get_and_protect () - get a file from tracker. table-owned mutable files must first be protected by
+ *                                   locking their class.
  *
  * return            : error code
  * thread_p (in)     : thread entry
  * desired_type (in) : desired file type. FILE_UNKNOWN_TYPE for any type.
  * item (in)         : tracker item
- * class_oid (out)   : output locked class OID (for b-tree and heap). NULL OID if no class is locked.
+ * class_oid (out)   : output locked class OID. NULL OID if no class is locked.
  * stop (out)        : output true when item is accepted
  */
 STATIC_INLINE int
@@ -10885,15 +10907,16 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   PAGE_PTR page_fhead = NULL;
   FILE_HEADER *fhead = NULL;
   int error_code = NO_ERROR;
+  bool skip_legacy_oos = false;
 
   assert (class_oid != NULL && OID_ISNULL (class_oid));
 
   /* how it works:
    * this is part of the tracker iterate without holding latch on tracker during the entire iteration. however, it can
    * only work if the files processed outside latch are protected from being destroyed. otherwise, resuming is
-   * impossible. most file types are not mutable, so they don't need protection. however, for b-tree and heap files we
-   * need to read class OID from descriptor and try to lock it (conditionally!). this is a best-effort approach, if the
-   * locking fails, we just skip the file. */
+   * impossible. most file types are not mutable, so they don't need protection. however, table-owned mutable files
+   * need their class OID from the descriptor and a conditional lock. this is a best-effort approach; if locking fails,
+   * we just skip the file. */
 
   /* check file type is right */
   switch (desired_type)
@@ -10901,11 +10924,6 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_UNKNOWN_TYPE:
       /* accept any type */
       break;
-    case FILE_OOS:
-      {
-	assert (false);
-	break;
-      }
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       /* accept heap or heap reuse slots */
@@ -10926,14 +10944,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
-   * run-time), but b-tree and heap files must be protected by lock. */
+   * run-time), but table-owned mutable files must be protected by lock. */
   switch ((FILE_TYPE) item->type)
     {
-    case FILE_OOS:
-      /* FILE_OOS is mutable but does not store owner class information yet. Do not return an unprotected VFID
-       * from interruptible tracker iteration. OOS file table checks can be added after owner metadata exists. */
-      return NO_ERROR;
-
     case FILE_HEAP:
       /* these files may be marked for delete. check this is not a deleted file */
       if (item->metadata.heap.is_marked_deleted)
@@ -10947,6 +10960,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_BTREE:
     case FILE_MULTIPAGE_OBJECT_HEAP:
     case FILE_BTREE_OVERFLOW_KEY:
+    case FILE_OOS:
       /* we need to protect with lock. fall through */
       break;
     default:
@@ -10974,10 +10988,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       *class_oid = fhead->descriptor.btree.class_oid;
       break;
     case FILE_OOS:
-      {
-	assert (false);
-	break;
-      }
+      skip_legacy_oos = file_oos_descriptor_is_legacy (&fhead->descriptor);
+      *class_oid = fhead->descriptor.heap_overflow.class_oid;
+      break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       *class_oid = fhead->descriptor.heap.class_oid;
@@ -10994,8 +11007,21 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
   pgbuf_unfix (thread_p, page_fhead);
 
+  if (skip_legacy_oos)
+    {
+      /* OOS file descriptors created before CBRD-27038 were byte-zeroed and cannot protect online scans. */
+      OID_SET_NULL (class_oid);
+      return NO_ERROR;
+    }
+
   if (OID_ISNULL (class_oid))
     {
+      if ((FILE_TYPE) item->type == FILE_OOS)
+	{
+	  /* OOS files created before owner descriptors were introduced cannot be protected against DROP TABLE.
+	   * Preserve the legacy behavior by skipping them during interruptible online scans. */
+	  return NO_ERROR;
+	}
       /* this must be boot_Db_parm file; cannot be deleted so we don't need lock. */
       *stop = true;
       return NO_ERROR;
@@ -11026,7 +11052,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
  * thread_p (in)      : thread entry
  * desired_ftype (in) : desired type
  * vfid (in)          : file identifier and iterator cursor. iterate must start with a NULL identifier
- * class_oid (in)     : locked class OID (used to protect b-tree and heap files)
+ * class_oid (in)     : locked class OID (used to protect table-owned mutable files)
  */
 int
 file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid, OID * class_oid)
@@ -11049,8 +11075,8 @@ file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
   assert (class_oid != NULL);
 
   /* how it works:
-   * start from given VFID and get a new file of desired type. for b-tree and heap files, we also need to lock their
-   * class OID in order to protect them from being removed. otherwise we could not resume in next iteration. */
+   * start from given VFID and get a new file of desired type. table-owned mutable files also require a class lock
+   * to protect them from being removed; otherwise iteration could not safely resume. */
 
   page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_track_head == NULL)
@@ -12234,9 +12260,8 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_OOS:
-      /* OOS is table-owned storage, but FILE_OOS currently has no separate SPACEDB category or owner descriptor. Fold
-       * it into heap totals to keep the spacedb wire/output format stable; a dedicated OOS line requires a separate
-       * output/protocol change. */
+      /* OOS is table-owned storage, but FILE_OOS has no separate SPACEDB category. Fold it into heap totals to keep
+       * the spacedb wire/output format stable; a dedicated OOS line requires a separate output/protocol change. */
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
     case FILE_HEAP:

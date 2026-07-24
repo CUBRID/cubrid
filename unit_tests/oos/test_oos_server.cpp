@@ -28,6 +28,7 @@
 #include "heap_oos.hpp"
 #include "locator_sr.h"
 #include "log_comm.h"
+#include "lock_manager.h"
 #include "scope_exit.hpp"
 #include "server_support.h"
 #include "xserver_interface.h"
@@ -238,6 +239,123 @@ class replication_tracking_guard
     HA_SERVER_STATE m_old_ha_state;
     int m_error;
 };
+
+// ============================================================================
+// TC: OOS owner descriptor and online file-tracker protection (CBRD-27038)
+// ============================================================================
+TEST (OosServerTest, OosOwnerDescriptorSupportsDiagnosticsAndProtectedIteration)
+{
+  const OID class_oid = find_db_user_class_oid ();
+  ASSERT_FALSE (OID_ISNULL (&class_oid));
+
+  HFID hfid;
+  HFID_SET_NULL (&hfid);
+  ASSERT_EQ (xheap_create (thread_p, &hfid, &class_oid, false), NO_ERROR);
+  scope_exit destroy_heap ([&] () noexcept
+  {
+    if (!HFID_IS_NULL (&hfid))
+      {
+	(void) xheap_destroy (thread_p, &hfid, &class_oid);
+	(void) xtran_server_commit (thread_p, false);
+      }
+  });
+
+  VFID oos_vfid;
+  VFID_SET_NULL (&oos_vfid);
+  ASSERT_TRUE (heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, true));
+  ASSERT_FALSE (VFID_ISNULL (&oos_vfid));
+
+  VFID legacy_oos_vfid;
+  ASSERT_EQ (oos_create_file (thread_p, legacy_oos_vfid), NO_ERROR);
+  scope_exit destroy_legacy_oos ([&] () noexcept
+  {
+    (void) oos_remove_file (thread_p, legacy_oos_vfid);
+  });
+
+  FILE_DESCRIPTORS descriptor;
+  ASSERT_EQ (file_descriptor_get (thread_p, &oos_vfid, &descriptor), NO_ERROR);
+  EXPECT_TRUE (HFID_EQ (&descriptor.heap_overflow.hfid, &hfid));
+  EXPECT_TRUE (OID_EQ (&descriptor.heap_overflow.class_oid, &class_oid));
+
+  FILE *dump_fp = tmpfile ();
+  ASSERT_NE (dump_fp, nullptr);
+  scope_exit close_dump ([&] () noexcept
+  {
+    fclose (dump_fp);
+  });
+  ASSERT_EQ (xfile_tracker_dump_file_list (thread_p, dump_fp, false), NO_ERROR);
+  rewind (dump_fp);
+
+  std::string dump_output;
+  char line[1024];
+  while (fgets (line, sizeof (line), dump_fp) != nullptr)
+    {
+      dump_output += line;
+    }
+
+  char expected_owner[256];
+  snprintf (expected_owner, sizeof (expected_owner),
+	    "CLASS_OID: %5d|%10d|%5d (_db_user), OOS for HFID: %10d|%5d|%10d", OID_AS_ARGS (&class_oid),
+	    HFID_AS_ARGS (&hfid));
+  EXPECT_NE (dump_output.find (expected_owner), std::string::npos);
+  EXPECT_NE (dump_output.find ("OOS file (owner descriptor unavailable)"), std::string::npos);
+
+  VFID iter_vfid;
+  VFID_SET_NULL (&iter_vfid);
+  OID locked_class_oid;
+  OID_SET_NULL (&locked_class_oid);
+  bool found_oos_vfid = false;
+  bool schema_modification_was_blocked = false;
+  const int checkdb_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  int ddl_tran_index = NULL_TRAN_INDEX;
+  scope_exit release_ddl_transaction ([&] () noexcept
+  {
+    if (ddl_tran_index != NULL_TRAN_INDEX)
+      {
+	LOG_SET_CURRENT_TRAN_INDEX (thread_p, ddl_tran_index);
+	(void) log_abort (thread_p, ddl_tran_index);
+	logtb_release_tran_index (thread_p, ddl_tran_index);
+	LOG_SET_CURRENT_TRAN_INDEX (thread_p, checkdb_tran_index);
+      }
+  });
+
+  while (true)
+    {
+      ASSERT_EQ (file_tracker_interruptable_iterate (thread_p, FILE_OOS, &iter_vfid, &locked_class_oid), NO_ERROR);
+      if (VFID_ISNULL (&iter_vfid))
+	{
+	  break;
+	}
+      EXPECT_FALSE (OID_ISNULL (&locked_class_oid));
+      if (VFID_EQ (&iter_vfid, &oos_vfid))
+	{
+	  EXPECT_TRUE (OID_EQ (&locked_class_oid, &class_oid));
+	  found_oos_vfid = true;
+
+	  TRAN_STATE ddl_tran_state;
+	  ddl_tran_index = logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, &ddl_tran_state,
+						   TRAN_LOCK_INFINITE_WAIT, TRAN_READ_COMMITTED);
+	  ASSERT_NE (ddl_tran_index, NULL_TRAN_INDEX);
+	  ASSERT_NE (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_M_LOCK, LK_COND_LOCK), LK_GRANTED);
+	  schema_modification_was_blocked = true;
+	  er_clear ();
+	  LOG_SET_CURRENT_TRAN_INDEX (thread_p, checkdb_tran_index);
+	}
+    }
+  EXPECT_TRUE (found_oos_vfid);
+  EXPECT_TRUE (schema_modification_was_blocked);
+  /* The ownerless file models a byte-zeroed legacy descriptor and is never returned without protection. */
+  EXPECT_TRUE (VFID_ISNULL (&iter_vfid));
+  EXPECT_TRUE (OID_ISNULL (&locked_class_oid));
+
+  ASSERT_NE (ddl_tran_index, NULL_TRAN_INDEX);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, ddl_tran_index);
+  ASSERT_EQ (lock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_M_LOCK, LK_COND_LOCK), LK_GRANTED);
+  lock_unlock_object (thread_p, &class_oid, oid_Root_class_oid, SCH_M_LOCK, true);
+  LOG_SET_CURRENT_TRAN_INDEX (thread_p, checkdb_tran_index);
+
+  EXPECT_EQ (file_tracker_check (thread_p), DISK_VALID);
+}
 
 // ============================================================================
 // TC: OOS insert publication-state lifetime (CBRD-27006)
