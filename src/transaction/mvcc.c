@@ -30,6 +30,8 @@
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 #include "vacuum.h"
+
+#include <algorithm>
 #if 0
 // This file contains `placement new` being used within it, and there are
 // no explicit cases of calling `new`. Since heap memory monitoring does not
@@ -104,7 +106,8 @@ mvcc_is_id_in_snapshot (THREAD_ENTRY * thread_p, MVCCID mvcc_id, MVCC_SNAPSHOT *
       return true;
     }
 
-  return snapshot->m_active_mvccs.is_active (mvcc_id);
+  // CBRD-26971 Phase 1: uncertain middle range -> binary search the sorted active list (xip).
+  return std::binary_search (snapshot->m_xip.begin (), snapshot->m_xip.end (), mvcc_id);
 }
 
 /*
@@ -658,8 +661,11 @@ mvcc_snapshot::mvcc_snapshot ()
   : lowest_active_mvccid (MVCCID_NULL)
   , highest_completed_mvccid (MVCCID_NULL)
   , m_active_mvccs ()
+  , m_xip ()
   , snapshot_fnc (NULL)
   , valid (false)
+  , cached_completion_count (0)
+  , cached_valid (false)
 {
 }
 
@@ -671,8 +677,11 @@ mvcc_snapshot::reset ()
   highest_completed_mvccid = MVCCID_NULL;
 
   m_active_mvccs.reset ();
+  m_xip.clear ();
 
   valid = false;
+  cached_completion_count = 0;
+  cached_valid = false;
 }
 
 void
@@ -680,11 +689,14 @@ mvcc_snapshot::copy_to (mvcc_snapshot & dest) const
 {
   dest.m_active_mvccs.initialize ();
   m_active_mvccs.copy_to (dest.m_active_mvccs, mvcc_active_tran::copy_safety::THREAD_SAFE);
+  dest.m_xip = m_xip;
 
   dest.lowest_active_mvccid = lowest_active_mvccid;
   dest.highest_completed_mvccid = highest_completed_mvccid;
   dest.snapshot_fnc = snapshot_fnc;
   dest.valid = valid;
+  dest.cached_completion_count = cached_completion_count;
+  dest.cached_valid = cached_valid;
 }
 
 mvcc_info::mvcc_info ()

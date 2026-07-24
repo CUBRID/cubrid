@@ -177,9 +177,28 @@ struct mvcc_snapshot
 
   mvcc_active_tran m_active_mvccs;
 
+  // *INDENT-OFF*
+  /* CBRD-26971 Phase 1: ProcArray active set as a sorted MVCCID list (xip). Built from a slot scan;
+   * mvcc_is_id_in_snapshot does a binary search on it for the uncertain middle range. Supersedes
+   * m_active_mvccs for visibility (m_active_mvccs kept until Stage 1.4 cleanup). */
+  std::vector<MVCCID> m_xip;
+  // *INDENT-ON*
+
   MVCC_SNAPSHOT_FUNC snapshot_fnc;	/* the snapshot function */
 
   bool valid;			/* true, if the snapshot is valid */
+
+  /* CBRD-26971 Phase 2: mvcctable::m_completion_count when m_xip was last built. If unchanged on
+   * the next build_mvcc_info, no completion happened and xmin/xmax/xip are still valid, so the
+   * slot scan is skipped (PG14 GetSnapshotDataReuse). */
+  UINT64 cached_completion_count;
+
+  /* CBRD-26971 Phase 2: true once m_xip/cached_completion_count hold a usable prior snapshot.
+   * Distinct from 'valid': READ-COMMITTED per-statement invalidation clears 'valid' (to force a
+   * rebuild) but keeps 'cached_valid' so build_mvcc_info can still reuse when no completion
+   * happened. Cleared only by reset() (transaction end). Guards the reuse path — 'valid' cannot,
+   * since build_mvcc_info is only ever called when 'valid' is already false. */
+  bool cached_valid;
 
   // *INDENT-OFF*
   mvcc_snapshot ();

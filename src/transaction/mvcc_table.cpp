@@ -28,9 +28,30 @@
 #include "perf_monitor.h"
 #include "thread_manager.hpp"
 
+#include <algorithm>
 #include <cassert>
+#include <ctime>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+namespace
+{
+  // ---- CBRD-26971: amortize the per-commit oldest-active slot scan to ~ms cadence ----
+  // The scan's only consumer chain (snapshot xmin quick-filter, vacuum threshold) tolerates a
+  // bounded lag (always a valid, monotonically-advanced lower bound). Gate: the first committer
+  // that lands in a new CLOCK_MONOTONIC_COARSE millisecond tick claims the scan via CAS; all
+  // other commits skip it. The idle-tail hole (commits stop right after a skipped scan) is closed
+  // by update_global_oldest_visible() doing an authoritative advance at the consumer's cadence.
+  std::atomic<unsigned long long> g_last_oldest_scan_tick { 0 };
+
+  inline unsigned long long
+  coarse_now_ms ()
+  {
+    struct timespec ts;
+    clock_gettime (CLOCK_MONOTONIC_COARSE, &ts);   // vDSO; ~jiffy(1-4ms) resolution
+    return (unsigned long long) ts.tv_sec * 1000ULL + (unsigned long long) ts.tv_nsec / 1000000ULL;
+  }
+}
 
 // help debugging oldest active by following all changes
 struct oldest_active_event
@@ -113,31 +134,6 @@ oldest_active_get (const mvcctable::lowest_active_mvccid_type &lowest, int tran_
   return mvccid;
 }
 
-mvcc_trans_status::mvcc_trans_status ()
-  : m_active_mvccs ()
-  , m_last_completed_mvccid (MVCCID_NULL)
-  , m_event_type (COMMIT)
-  , m_version (0)
-{
-}
-
-mvcc_trans_status::~mvcc_trans_status ()
-{
-}
-
-void
-mvcc_trans_status::initialize ()
-{
-  m_active_mvccs.initialize ();
-  m_version = 0;
-}
-
-void
-mvcc_trans_status::finalize ()
-{
-  m_active_mvccs.finalize ();
-}
-
 void
 mvcctable::advance_oldest_active (MVCCID next_oldest_active)
 {
@@ -165,33 +161,28 @@ mvcctable::mvcctable ()
   : m_transaction_lowest_visible_mvccids (NULL)
   , m_transaction_lowest_visible_mvccids_size (0)
   , m_current_status_lowest_active_mvccid (MVCCID_FIRST)
-  , m_current_trans_status ()
-  , m_trans_status_history_position (0)
-  , m_trans_status_history (NULL)
   , m_new_mvccid_lock ()
-  , m_active_trans_mutex ()
   , m_oldest_visible (MVCCID_NULL)
   , m_ov_lock_count (0)
+  , m_active_mvccids (NULL)
+  , m_active_mvccids_size (0)
+  , m_last_completed_mvccid (MVCCID_NULL)
+  , m_completion_count (0)
 {
 }
 
 mvcctable::~mvcctable ()
 {
   delete [] m_transaction_lowest_visible_mvccids;
-  delete [] m_trans_status_history;
+  delete [] m_active_mvccids;
 }
 
 void
 mvcctable::initialize ()
 {
-  m_current_trans_status.initialize ();
-  m_trans_status_history = new mvcc_trans_status[HISTORY_MAX_SIZE];
-  for (size_t idx = 0; idx < HISTORY_MAX_SIZE; idx++)
-    {
-      m_trans_status_history[idx].initialize ();
-    }
-  m_trans_status_history_position = 0;
   m_current_status_lowest_active_mvccid = MVCCID_FIRST;
+  m_last_completed_mvccid = MVCCID_NULL;
+  m_completion_count = 0;
 
   alloc_transaction_lowest_active ();
 }
@@ -206,20 +197,25 @@ mvcctable::alloc_transaction_lowest_active ()
       m_transaction_lowest_visible_mvccids_size = logtb_get_number_of_total_tran_indices ();
       m_transaction_lowest_visible_mvccids = new lowest_active_mvccid_type[m_transaction_lowest_visible_mvccids_size] ();
       // all are 0 = MVCCID_NULL
+
+      // ProcArray slot array shares lifecycle/size with the per-tran lowest-visible array.
+      delete [] m_active_mvccids;
+      m_active_mvccids_size = m_transaction_lowest_visible_mvccids_size;
+      m_active_mvccids = new mvcc_active_slot[m_active_mvccids_size] ();
+      // value-initialized: mvccid=0(MVCCID_NULL), n_subids=0, subid_overflow=false, subids=0
     }
 }
 
 void
 mvcctable::finalize ()
 {
-  m_current_trans_status.finalize ();
-
-  delete [] m_trans_status_history;
-  m_trans_status_history = NULL;
-
   delete [] m_transaction_lowest_visible_mvccids;
   m_transaction_lowest_visible_mvccids = NULL;
   m_transaction_lowest_visible_mvccids_size = 0;
+
+  delete [] m_active_mvccids;
+  m_active_mvccids = NULL;
+  m_active_mvccids_size = 0;
 }
 
 void
@@ -227,8 +223,6 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
 {
   MVCCID tx_lowest_active;
   MVCCID crt_status_lowest_active;
-  size_t index;
-  mvcc_trans_status::version_type trans_status_version;
 
   MVCCID highest_completed_mvccid;
 
@@ -251,79 +245,122 @@ mvcctable::build_mvcc_info (log_tdes &tdes)
   tx_lowest_active = oldest_active_get (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
 					oldest_active_event::BUILD_MVCC_INFO);
 
-  // repeat steps until a trans_status can be read successfully without a version change
-  while (true)
+  // vacuum coordinate: publish this snapshot's lowest-visible MVCCID. The MVCCID_ALL_VISIBLE
+  // sentinel protects the read-global-then-set-per-tran race (see scenario below). Preserved
+  // unchanged from the history-ring design; only the active-set construction changes (slot scan).
+  if (!MVCCID_IS_VALID (tx_lowest_active))
     {
-      snapshot_retry_count++;
+      /*
+       * First, by setting MVCCID_ALL_VISIBLE we will tell to VACUUM that transaction lowest MVCCID will be set
+       * soon.
+       * This is needed since setting p_transaction_lowest_active_mvccid is not an atomic operation (global
+       * lowest_active_mvccid must be obtained first). We want to avoid a possible scenario (even if the chances
+       * are minimal) like the following one:
+       *    - the snapshot thread reads the initial value of global lowest active MVCCID but the thread is
+       * suspended (due to thread switching) just before setting p_transaction_lowest_active_mvccid
+       *    - the transaction having global lowest active MVCCID commits, so the global value is updated (advanced)
+       *    - the VACCUM thread computes the MVCCID threshold as the updated global lowest active MVCCID
+       *    - the snapshot thread resumes and p_transaction_lowest_active_mvccid is set to initial value of global
+       * lowest active MVCCID
+       *    - the VACUUM thread computes the threshold again and found a value (initial global lowest active MVCCID)
+       * less than the previously threshold
+       */
+      oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
+			 MVCCID_ALL_VISIBLE, oldest_active_event::BUILD_MVCC_INFO);
 
-      if (!MVCCID_IS_VALID (tx_lowest_active))
-	{
-	  /*
-	   * First, by setting MVCCID_ALL_VISIBLE we will tell to VACUUM that transaction lowest MVCCID will be set
-	   * soon.
-	   * This is needed since setting p_transaction_lowest_active_mvccid is not an atomic operation (global
-	   * lowest_active_mvccid must be obtained first). We want to avoid a possible scenario (even if the chances
-	   * are minimal) like the following one:
-	   *    - the snapshot thread reads the initial value of global lowest active MVCCID but the thread is
-	   * suspended (due to thread switching) just before setting p_transaction_lowest_active_mvccid
-	   *    - the transaction having global lowest active MVCCID commits, so the global value is updated (advanced)
-	   *    - the VACCUM thread computes the MVCCID threshold as the updated global lowest active MVCCID
-	   *    - the snapshot thread resumes and p_transaction_lowest_active_mvccid is set to initial value of global
-	   * lowest active MVCCID
-	   *    - the VACUUM thread computes the threshold again and found a value (initial global lowest active MVCCID)
-	   * less than the previously threshold
-	   */
-	  oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
-			     MVCCID_ALL_VISIBLE, oldest_active_event::BUILD_MVCC_INFO);
-
-	  /*
-	   * Is important that between next two code lines to not have delays (to not execute any other code).
-	   * Otherwise, VACUUM may delay, waiting more in logtb_get_oldest_active_mvccid.
-	   */
-	  crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
-				     oldest_active_event::BUILD_MVCC_INFO);
-	  oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
-			     crt_status_lowest_active, oldest_active_event::BUILD_MVCC_INFO);
-	}
-      else
-	{
-	  crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
-				     oldest_active_event::BUILD_MVCC_INFO);
-	}
-
-      index = m_trans_status_history_position.load ();
-      assert (index < HISTORY_MAX_SIZE);
-
-      const mvcc_trans_status &trans_status = m_trans_status_history[index];
-
-      trans_status_version = trans_status.m_version.load ();
-      trans_status.m_active_mvccs.copy_to (tdes.mvccinfo.snapshot.m_active_mvccs,
-					   mvcc_active_tran::copy_safety::THREAD_UNSAFE);
-
-      if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info())!= NO_ERROR)
-	{
-	  /* just error setting without returning for further processing */
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
-	}
-
-      if (trans_status_version == trans_status.m_version.load ())
-	{
-	  // no version change; copying status was successful
-	  break;
-	}
-      else
-	{
-	  // a failed copy may break data validity; to make sure next copy is not affected, it is better to reset
-	  // bit area.
-	  tdes.mvccinfo.snapshot.m_active_mvccs.reset_active_transactions ();
-	}
+      /*
+       * Is important that between next two code lines to not have delays (to not execute any other code).
+       * Otherwise, VACUUM may delay, waiting more in logtb_get_oldest_active_mvccid.
+       */
+      crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
+				 oldest_active_event::BUILD_MVCC_INFO);
+      oldest_active_set (m_transaction_lowest_visible_mvccids[tdes.tran_index], tdes.tran_index,
+			 crt_status_lowest_active, oldest_active_event::BUILD_MVCC_INFO);
+    }
+  else
+    {
+      crt_status_lowest_active = oldest_active_get (m_current_status_lowest_active_mvccid, 0,
+				 oldest_active_event::BUILD_MVCC_INFO);
     }
 
-  // tdes.mvccinfo.snapshot.m_active_mvccs was not checked because it was not safe; now it is
-  tdes.mvccinfo.snapshot.m_active_mvccs.check_valid ();
+  if (logtb_load_global_statistics_to_tran (thread_get_thread_entry_info ()) != NO_ERROR)
+    {
+      /* just error setting without returning for further processing */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_CANT_GET_SNAPSHOT, 0);
+    }
 
-  highest_completed_mvccid = tdes.mvccinfo.snapshot.m_active_mvccs.compute_highest_completed_mvccid ();
-  MVCCID_FORWARD (highest_completed_mvccid);
+  // CBRD-26971 Phase 2 (PG14 GetSnapshotDataReuse): if no completion happened since this
+  // transaction last built a snapshot, the active set (xmin/xmax/xip) is unchanged -> reuse it
+  // and skip the slot scan entirely. m_completion_count is bumped (release) on every
+  // commit/rollback/sub completion (see apply_clear / retire_sub_mvccid) and is the cache
+  // invalidation key; no lock is held when it is bumped or read.
+  // Reuse guard must test cached_valid, NOT valid: build_mvcc_info is only ever reached when
+  // valid is already false (logtb_get_mvcc_snapshot rebuilds only on !valid), so a valid-gated
+  // reuse would never fire. cached_valid stays set across READ-COMMITTED per-statement invalidation
+  // (which clears only valid), so reuse fires when no completion happened since the last build.
+  if (tdes.mvccinfo.snapshot.cached_valid
+      && tdes.mvccinfo.snapshot.cached_completion_count == m_completion_count.load (std::memory_order_acquire))
+    {
+      // cache hit: keep snapshot.m_xip; reuse the cached xmax.
+      highest_completed_mvccid = tdes.mvccinfo.snapshot.highest_completed_mvccid;
+    }
+  else
+    {
+      // CBRD-26971 lock-free seqlock scan: read the completion counter (v1), build the active set,
+      // re-read the counter (v2); retry while they differ. Completion bumps the counter (release)
+      // AFTER clearing its slot and advancing last_completed, so a stable v1==v2 window yields a
+      // consistent cut without any lock.
+      UINT64 v1, v2;
+      std::vector<MVCCID> &xip = tdes.mvccinfo.snapshot.m_xip;
+      do
+	{
+	  v1 = m_completion_count.load (std::memory_order_acquire);
+
+	  highest_completed_mvccid = m_last_completed_mvccid.load (std::memory_order_acquire);
+	  MVCCID_FORWARD (highest_completed_mvccid);
+
+	  xip.clear ();
+	  for (size_t i = 0; i < m_active_mvccids_size; i++)
+	    {
+	      const mvcc_active_slot &slot = m_active_mvccids[i];
+	      MVCCID id = slot.mvccid.load (std::memory_order_acquire);
+	      if (MVCCID_IS_VALID (id))
+		{
+		  xip.push_back (id);
+		}
+	      // instant-lock sub depth is ~1; the fixed sub-cache is never expected to overflow.
+	      assert (!slot.subid_overflow.load (std::memory_order_acquire));
+	      // n_subids (acquire) is read BEFORE subids[] so the publish_sub release on n_subids
+	      // makes the subid stores visible (no torn read).
+	      int ns = slot.n_subids.load (std::memory_order_acquire);
+	      for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
+		{
+		  MVCCID sid = slot.subids[k].load (std::memory_order_acquire);
+		  if (MVCCID_IS_VALID (sid))
+		    {
+		      xip.push_back (sid);
+		    }
+		}
+	    }
+
+	  v2 = m_completion_count.load (std::memory_order_acquire);
+	  if (v1 != v2)
+	    {
+	      snapshot_retry_count++;
+	    }
+	}
+      while (v1 != v2);
+
+      std::sort (xip.begin (), xip.end ());
+      xip.erase (std::unique (xip.begin (), xip.end ()), xip.end ());
+      // Store v1 as the Phase-2 reuse key.  Note: logtb_complete_sub_mvcc may later adjust the
+      // live snapshot (highest_completed_mvccid, m_xip) in place without touching
+      // cached_completion_count.  That is safe: retire_sub_mvccid bumped m_completion_count, so
+      // the stored key is now stale, which forces a cache MISS (never a wrong reuse) on the
+      // next build_mvcc_info call.
+      tdes.mvccinfo.snapshot.cached_completion_count = v1;
+      tdes.mvccinfo.snapshot.cached_valid = true;   // cached xip/xmax now usable for reuse
+    }
 
   /* update lowest active mvccid computed for the most recent snapshot */
   tdes.mvccinfo.recent_snapshot_lowest_active_mvccid = crt_status_lowest_active;
@@ -422,43 +459,37 @@ mvcctable::compute_oldest_visible_mvccid () const
 bool
 mvcctable::is_active (MVCCID mvccid) const
 {
-  size_t index = 0;
-  mvcc_trans_status::version_type version;
-  bool ret_active = false;
-  // trans status must be same before and after computing is_active. if it is not, we need to repeat the computation.
+  // CBRD-26971 lock-free: active iff mvccid is published in some slot (parent or active sub).
+  // seqlock retry: re-scan if a completion bumped the version mid-scan, so the answer reflects
+  // a consistent cut. No lock.
+  UINT64 v1, v2;
+  bool found;
   do
     {
-      index = m_trans_status_history_position.load ();
-      version = m_trans_status_history[index].m_version.load ();
-      ret_active = m_trans_status_history[index].m_active_mvccs.is_active (mvccid);
+      v1 = m_completion_count.load (std::memory_order_acquire);
+      found = false;
+      for (size_t i = 0; i < m_active_mvccids_size && !found; i++)
+	{
+	  const mvcc_active_slot &slot = m_active_mvccids[i];
+	  if (slot.mvccid.load (std::memory_order_acquire) == mvccid)
+	    {
+	      found = true;
+	      break;
+	    }
+	  int ns = slot.n_subids.load (std::memory_order_acquire);
+	  for (int k = 0; k < ns && k < mvcc_active_slot::MAX_CACHED_SUBIDS; k++)
+	    {
+	      if (slot.subids[k].load (std::memory_order_acquire) == mvccid)
+		{
+		  found = true;
+		  break;
+		}
+	    }
+	}
+      v2 = m_completion_count.load (std::memory_order_acquire);
     }
-  while (version != m_trans_status_history[index].m_version.load ());
-
-  return ret_active;
-}
-
-mvcc_trans_status &
-mvcctable::next_trans_status_start (mvcc_trans_status::version_type &next_version, size_t &next_index)
-{
-  // new version, new status entry
-  next_index = (m_trans_status_history_position.load () + 1) & HISTORY_INDEX_MASK;
-  next_version = ++m_current_trans_status.m_version;
-
-  // invalidate next status entry
-  mvcc_trans_status &next_trans_status = m_trans_status_history[next_index];
-  next_trans_status.m_version.store (next_version);
-
-  return next_trans_status;
-}
-
-void
-mvcctable::next_tran_status_finish (mvcc_trans_status &next_trans_status, size_t next_index)
-{
-  m_current_trans_status.m_active_mvccs.copy_to (next_trans_status.m_active_mvccs,
-      mvcc_active_tran::copy_safety::THREAD_SAFE);
-  next_trans_status.m_last_completed_mvccid = m_current_trans_status.m_last_completed_mvccid;
-  next_trans_status.m_event_type = m_current_trans_status.m_event_type;
-  m_trans_status_history_position.store (next_index);
+  while (v1 != v2);
+  return found;
 }
 
 void
@@ -466,27 +497,13 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 {
   assert (MVCCID_IS_VALID (mvccid));
 
-  // only one can change status at a time
-  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
-
-  mvcc_trans_status::version_type next_version;
-  size_t next_index;
-  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
-
-  // todo - until we activate count optimization (if ever), should we move this outside mutex?
+  // CBRD-26971 Phase 1: no global mutex, no whole-bitmap copy. Unique stats update is now lock-free.
   if (committed && logtb_tran_update_all_global_unique_stats (thread_get_thread_entry_info ()) != NO_ERROR)
     {
       assert (false);
     }
 
-  // update current trans status
-  m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
-  m_current_trans_status.m_last_completed_mvccid = mvccid;
-  m_current_trans_status.m_event_type = committed ? mvcc_trans_status::COMMIT : mvcc_trans_status::ROLLBACK;
-
-  // finish next trans status
-  next_tran_status_finish (next_status, next_index);
-
+  // Per-tran vacuum coordinate (only this transaction writes its own index; atomic, no global lock).
   if (committed)
     {
       /* be sure that transaction modifications can't be vacuumed up to LOG_COMMIT. Otherwise, the following
@@ -511,55 +528,86 @@ mvcctable::complete_mvcc (int tran_index, MVCCID mvccid, bool committed)
 			 oldest_active_event::COMPLETE_MVCC);
     }
 
-  ulock.unlock ();
+  // CBRD-26971 lock-free: the slot is single-writer (this tran_index); apply_clear orders the
+  // slot clear + last_completed advance before the m_completion_count bump (seqlock version).
+  apply_clear (tran_index, mvccid);
 
-  // update lowest active in current transactions status. can be done outside lock
-  // this doesn't have to be 100% accurate; it is used as indicative by vacuum to clean up the database. however, it
-  // shouldn't be left too much behind, or vacuum can't advance
-  // so we try to limit recalculation when mvccid matches current global_lowest_active; since we are not locked, it is
-  // not guaranteed to be always updated; therefore we add the second condition to go below trans status
-  // bit area starting MVCCID; the recalculation will happen on each iteration if there are long transactions.
-  MVCCID global_lowest_active = m_current_status_lowest_active_mvccid;
-  if (global_lowest_active == mvccid
-      || MVCC_ID_PRECEDES (mvccid, next_status.m_active_mvccs.get_bit_area_start_mvccid ()))
+  // CBRD-26971: oldest-active advance amortized to ~ms cadence. Only the first committer landing in a
+  // new coarse-ms tick pays the O(#slots) scan; everyone else skips (bounded lag is safe: the
+  // value stays a valid monotone lower bound, and vacuum refreshes it at its own cadence too).
+  {
+    unsigned long long now = coarse_now_ms ();
+    unsigned long long last = g_last_oldest_scan_tick.load (std::memory_order_relaxed);
+    if (last != now && g_last_oldest_scan_tick.compare_exchange_strong (last, now, std::memory_order_relaxed))
+      {
+	advance_oldest_active (compute_lowest_active_from_slots ());
+      }
+  }
+}
+
+void
+mvcctable::apply_clear (int tran_index, MVCCID mvccid)
+{
+  // CBRD-26971 lock-free: the slot is single-writer (this tran_index), so no lock is needed.
+  // Ordering: clear the slot and advance last_completed BEFORE bumping m_completion_count
+  // (the trailing release fetch_add, LAST) so a seqlock reader that sees the new count also
+  // sees the slot clear and the advanced xmax.
+  //   n_subids and subid_overflow are cleared with relaxed ordering, which is safe because
+  // the trailing release m_completion_count.fetch_add is sequenced after them in this thread;
+  // a reader that observes the new count acquires that release edge and therefore observes
+  // these clears as well.
+  // Safety model: this is a *single-trailing-bump* seqlock (not classic two-phase); a reader
+  // can observe partial mutations and still see v1==v2.  This is safe because every
+  // partially-observable state is conservative: any value seen mid-mutation is a real,
+  // untearable MVCCID that is either active or completing, and the xmax boundary guarantees
+  // that a still-active id is always >= xmax and therefore classified active even if absent
+  // from xip.
+  mvcc_active_slot &slot = m_active_mvccids[tran_index];
+  slot.mvccid.store (MVCCID_NULL, std::memory_order_release);
+  slot.n_subids.store (0, std::memory_order_relaxed);
+  slot.subid_overflow.store (false, std::memory_order_relaxed);
+
+  MVCCID cur = m_last_completed_mvccid.load (std::memory_order_relaxed);
+  while (MVCC_ID_PRECEDES (cur, mvccid)
+	 && !m_last_completed_mvccid.compare_exchange_weak (cur, mvccid, std::memory_order_release,
+	     std::memory_order_relaxed))
     {
-      MVCCID new_lowest_active = next_status.m_active_mvccs.compute_lowest_active_mvccid ();
-#if !defined (NDEBUG)
-      oldest_active_add_event (new_lowest_active, (int) next_index, oldest_active_event::GET_LOWEST_ACTIVE,
-			       oldest_active_event::COMPLETE_MVCC);
-#endif // !NDEBUG
-      // we need to recheck version to validate result
-      if (next_status.m_version.load () == next_version)
+      /* cur reloaded by compare_exchange_weak; retry */
+    }
+
+  m_completion_count.fetch_add (1, std::memory_order_release);
+}
+
+MVCCID
+mvcctable::compute_lowest_active_from_slots () const
+{
+  // default = "no active transaction": oldest visible can advance to just past the last completed id.
+  MVCCID lowest = m_last_completed_mvccid.load (std::memory_order_acquire);
+  MVCCID_FORWARD (lowest);
+  for (size_t i = 0; i < m_active_mvccids_size; i++)
+    {
+      // parent ids are the candidates for the minimum; a sub id is always greater than its parent,
+      // and the parent stays published while any of its subs are active.
+      MVCCID id = m_active_mvccids[i].mvccid.load (std::memory_order_acquire);
+      if (MVCCID_IS_VALID (id) && MVCC_ID_PRECEDES (id, lowest))
 	{
-	  // advance
-	  advance_oldest_active (new_lowest_active);
+	  lowest = id;
 	}
     }
+  return lowest;
 }
 
 void
 mvcctable::complete_sub_mvcc (MVCCID mvccid)
 {
   assert (MVCCID_IS_VALID (mvccid));
-
-  // only one can change status at a time
-  std::unique_lock<std::mutex> ulock (m_active_trans_mutex);
-
-  mvcc_trans_status::version_type next_version;
-  size_t next_index;
-  mvcc_trans_status &next_status = next_trans_status_start (next_version, next_index);
-
-  // update current trans status
-  m_current_trans_status.m_active_mvccs.set_inactive_mvccid (mvccid);
-  m_current_trans_status.m_last_completed_mvccid = mvccid;
-  m_current_trans_status.m_last_completed_mvccid = mvcc_trans_status::SUBTRAN;
-
-  // finish next trans status
-  next_tran_status_finish (next_status, next_index);
-
-  ulock.unlock ();
-
-  // mvccid can't be lowest, so no need to update it here
+  // CBRD-26971: this entry point is intentionally a no-op stub.  All authoritative
+  // sub-completion work — dropping the sub from the slot cache, advancing
+  // last_completed, and bumping m_completion_count — is performed by retire_sub_mvccid(),
+  // which the caller (log_tran_table.c) invokes immediately after this function.  The
+  // stub is kept for caller-API symmetry (complete_mvcc / complete_sub_mvcc pairing).
+  // A sub id is never the global oldest active, so no vacuum-coordinate update is needed.
+  (void) mvccid;
 }
 
 MVCCID
@@ -589,6 +637,118 @@ mvcctable::get_two_new_mvccid (MVCCID &first, MVCCID &second)
   m_new_mvccid_lock.unlock ();
 }
 
+//
+// ProcArray slot publish / retire (CBRD-26971).
+// These slots are the SOLE source of truth for the active transaction set.  They are
+// published and cleared lock-free and scanned by snapshot readers under the seqlock
+// protocol (m_completion_count v1/v2 wrap in build_mvcc_info / is_active).
+//
+// Correctness of publish (no counter bump): a freshly published id is always
+// > m_last_completed_mvccid (MVCCIDs are allocated monotonically and last_completed only
+// advances when a transaction actually completes), so every concurrent snapshot sees
+// id >= xmax and classifies it active WITHOUT needing it in xip.  The dangerous direction
+// — a still-active id judged visible — cannot occur because that requires id < xmax, which
+// requires last_completed to have advanced past id, which only happens when id completes.
+//
+
+void
+mvcctable::publish_active_mvccid (int tran_index, MVCCID mvccid)
+{
+  assert (tran_index >= 0 && (size_t) tran_index < m_active_mvccids_size);
+  m_active_mvccids[tran_index].mvccid.store (mvccid, std::memory_order_release);
+}
+
+void
+mvcctable::publish_sub_mvccid (int tran_index, MVCCID sub_mvccid)
+{
+  assert (tran_index >= 0 && (size_t) tran_index < m_active_mvccids_size);
+  mvcc_active_slot &slot = m_active_mvccids[tran_index];
+  int n = slot.n_subids.load (std::memory_order_relaxed);
+  if (n < mvcc_active_slot::MAX_CACHED_SUBIDS)
+    {
+      slot.subids[n].store (sub_mvccid, std::memory_order_relaxed);
+      slot.n_subids.store (n + 1, std::memory_order_release);
+    }
+  else
+    {
+      // Cache full.  There is no runtime fallback: the snapshot scanner asserts (!overflow) in
+      // debug builds and silently omits the excess sub-ids in release.  This is
+      // correctness-safe: every overflowed sub-id is strictly greater than its already-published
+      // parent id, which is itself > m_last_completed_mvccid; therefore every omitted sub-id
+      // satisfies id >= xmax and is classified active by that boundary alone, without needing to
+      // appear in xip.  The assert is a debug guard for the expected shallow (~1) instant-lock
+      // sub depth; overflow is not expected in production.
+      slot.subid_overflow.store (true, std::memory_order_release);
+    }
+}
+
+void
+mvcctable::retire_sub_mvccid (int tran_index, MVCCID sub_mvccid)
+{
+  assert (tran_index >= 0 && (size_t) tran_index < m_active_mvccids_size);
+  // A completed sub becomes visible to others (its rows are no longer hidden by the sub id),
+  // so drop it from the active cache. sub_ids is a strict stack, so the completing sub is the
+  // most-recently published (top). The slot is single-writer (this tran_index); no lock needed.
+  mvcc_active_slot &slot = m_active_mvccids[tran_index];
+  int n = slot.n_subids.load (std::memory_order_relaxed);
+  if (n > 0 && slot.subids[n - 1].load (std::memory_order_relaxed) == sub_mvccid)
+    {
+      slot.n_subids.store (n - 1, std::memory_order_release);
+      if (n - 1 == 0)
+	{
+	  slot.subid_overflow.store (false, std::memory_order_relaxed);
+	}
+    }
+  else
+    {
+      // defensive: not at top (or overflowed) -> linear compact.
+      //
+      // Seqlock safety of this branch: a concurrent snapshot reader can observe the subids[]
+      // shifts mid-flight with v1==v2 (single-trailing-bump seqlock; counter not yet bumped).
+      // This is safe for three reasons:
+      //   1. Each array element is a full-width UINT64 atomic; every load is untearable.
+      //   2. Every value visible to a mid-shift reader is a real sub-MVCCID of THIS same
+      //      transaction — either the one being retired (still briefly in the array) or a
+      //      neighbour that has been shifted.  Reading a sub-id as "active" is conservative.
+      //   3. All such sub-ids are > m_last_completed_mvccid (a sub-id is always greater than
+      //      its already-published parent and greater than last_completed), so they are >= xmax
+      //      and classified active by that boundary even without appearing in xip.
+      //   std::sort + std::unique in build_mvcc_info deduplicates any value seen twice during
+      //   the shift, so no phantom duplicate can violate snapshot isolation.
+      bool found = false;
+      for (int i = 0; i < n; i++)
+	{
+	  if (!found && slot.subids[i].load (std::memory_order_relaxed) == sub_mvccid)
+	    {
+	      found = true;
+	    }
+	  if (found && i + 1 < n)
+	    {
+	      slot.subids[i].store (slot.subids[i + 1].load (std::memory_order_relaxed), std::memory_order_relaxed);
+	    }
+	}
+      if (found)
+	{
+	  slot.n_subids.store (n - 1, std::memory_order_release);
+	}
+      if (slot.n_subids.load (std::memory_order_relaxed) == 0)
+	{
+	  slot.subid_overflow.store (false, std::memory_order_relaxed);
+	}
+    }
+  // CBRD-26971: lock-free seqlock readers observe m_completion_count with acquire, so the version
+  // bump must be release (LAST) and last_completed must advance with release, otherwise a reader
+  // seeing the new count may not yet see this sub's n_subids decrement.
+  MVCCID cur = m_last_completed_mvccid.load (std::memory_order_relaxed);
+  while (MVCC_ID_PRECEDES (cur, sub_mvccid)
+	 && !m_last_completed_mvccid.compare_exchange_weak (cur, sub_mvccid, std::memory_order_release,
+	     std::memory_order_relaxed))
+    {
+      /* cur reloaded; retry */
+    }
+  m_completion_count.fetch_add (1, std::memory_order_release);
+}
+
 void
 mvcctable::reset_transaction_lowest_active (int tran_index)
 {
@@ -599,12 +759,11 @@ mvcctable::reset_transaction_lowest_active (int tran_index)
 void
 mvcctable::reset_start_mvccid ()
 {
-  m_current_trans_status.m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
-
-  assert (m_trans_status_history_position < HISTORY_MAX_SIZE);
-  m_trans_status_history[m_trans_status_history_position].m_active_mvccs.reset_start_mvccid (log_Gl.hdr.mvcc_next_id);
-
+  // Called at boot/recovery (single-threaded) after log_Gl.hdr.mvcc_next_id is set. In the slot
+  // model there is no active transaction yet, so just align the global trackers: oldest-active and
+  // xmax boundary point at the next id to be allocated (everything below is already completed).
   m_current_status_lowest_active_mvccid.store (log_Gl.hdr.mvcc_next_id);
+  m_last_completed_mvccid.store (log_Gl.hdr.mvcc_next_id - 1);
 }
 
 MVCCID
@@ -616,6 +775,10 @@ mvcctable::get_global_oldest_visible () const
 MVCCID
 mvcctable::update_global_oldest_visible ()
 {
+  // CBRD-26971: authoritative oldest-active refresh at the consumer's (vacuum's) cadence, so a commit
+  // burst whose last completion skipped the ms-gated scan cannot leave the bound stale forever.
+  advance_oldest_active (compute_lowest_active_from_slots ());
+
   if (m_ov_lock_count == 0)
     {
       MVCCID oldest_visible = compute_oldest_visible_mvccid ();
