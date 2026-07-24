@@ -12742,9 +12742,9 @@ exit_on_error:
  *
  * Note: A NULL anywhere in the local subquery result makes the comparison unknown for every remote row
  *   (ALL over a set containing NULL), so this leaves the remote table untouched -- no connection is
- *   opened. An empty local subquery result is also left untouched here; turning that into "delete every
- *   remote row" is a separate follow-up (empty set is vacuously true for ALL, the SQL builder needs a
- *   WHERE-less DELETE for it).
+ *   opened. An empty local subquery result is vacuously true for ALL, so every remote row is deleted
+ *   instead (dblink_dml_open/dblink_dml_build_delete_sql with a NULL key_col builds a WHERE-less
+ *   DELETE for this case).
  */
 static int
 qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12846,14 +12846,17 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 
   qexec_close_scan (thread_p, specp);
 
-  if (null_seen || row_count == 0)
+  if (null_seen)
     {
       pr_clear_value (&boundary);
       return NO_ERROR;
     }
 
+  /* row_count == 0: the local subquery is empty, so ALL is vacuously true -- delete every remote row.
+   * dblink_dml_build_delete_sql() builds a WHERE-less DELETE when key_col is NULL; bind_count 0 means
+   * dblink_dml_execute_row() skips binding (boundary is unset DB_NULL in this case, never read). */
   if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, sink->url, sink->user, sink->pwd, sink->table_name, NULL, 0, 0,
-		       key_col, op, &dblink_state) != NO_ERROR)
+		       (row_count == 0) ? NULL : key_col, (row_count == 0) ? NULL : op, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       pr_clear_value (&boundary);
@@ -12861,7 +12864,7 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
     }
 
   bindv[0] = &boundary;
-  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, 1, &row_affected) != NO_ERROR)
+  if (dblink_dml_execute_row (thread_p, &dblink_state, bindv, (row_count == 0) ? 0 : 1, &row_affected) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       dblink_dml_close (&dblink_state);
