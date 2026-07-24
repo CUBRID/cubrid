@@ -10675,15 +10675,45 @@ static void
 pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
 {
   // set external into labels in parser context
+  int i = 0;
+  int is_fail = 1;
   PT_NODE *into = qry->info.query.into_list;
 
   char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
-  for (int i = 0; i < into_cnt; i++)
+  if (external_into_label == NULL)
     {
-      external_into_label[i] = (char *) malloc (sizeof (char) * 255);
-      strncpy (external_into_label[i], into->info.name.original, 254);
+      goto error_exit;
+    }
+
+  for (i = 0; i < into_cnt; i++)
+    {
+      external_into_label[i] = strdup (into->info.name.original);
+      if (external_into_label[i] == NULL)
+	{
+	  goto error_exit;
+	}
       into = into->next;
     }
+  is_fail = 0;
+
+error_exit:
+  if (is_fail == 1)
+    {
+      // clear memory
+      if (external_into_label)
+	{
+	  for (--i; i >= 0; i--)
+	    {
+	      free (external_into_label[i]);
+	    }
+	  free (external_into_label);
+	  external_into_label = NULL;
+	}
+
+      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      into_cnt = 0;
+    }
+
   parser->external_into_label_cnt = into_cnt;
   parser->external_into_label = external_into_label;
 
