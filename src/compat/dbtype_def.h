@@ -1302,6 +1302,7 @@ extern "C"
     DB_DEFAULT_EXPR_TYPE default_expr_type;	/* default expression identifier */
     int default_expr_op;	/* default expression operator */
     const char *default_expr_format;	/* default expression format */
+    const char *default_expr_text;	/* original text of an Expression-Derived Literal DEFAULT; NULL otherwise */
   };
 
   typedef DB_DATETIME DB_C_DATETIME;

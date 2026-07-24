@@ -36,6 +36,7 @@ struct func_signature
   pt_arg_type ret; //return type
   pt_group_arg_type fix; //fixed arguments types
   pt_group_arg_type rep; //repetitive arguments types
+  PT_VOLATILITY volatility = PT_VOLATILITY_UNSET; //per-overload volatility; UNSET unless classified
 
   void to_string_buffer (string_buffer &sb) const;
 };
@@ -123,5 +124,7 @@ PT_TYPE_ENUM pt_get_equivalent_type (const PT_ARG_TYPE def_type, const PT_TYPE_E
 bool pt_is_function_unsupported (FUNC_CODE fcode);
 bool pt_is_function_no_arg (FUNC_CODE fcode);
 bool pt_is_function_new_type_checking (FUNC_CODE fcode);
+
+PT_VOLATILITY pt_get_func_volatility (FUNC_CODE fcode);
 
 #endif

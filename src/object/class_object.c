@@ -4972,6 +4972,12 @@ classobj_clear_attribute (SM_ATTRIBUTE * att)
       att->default_value.default_expr.default_expr_format = NULL;
     }
 
+  if (att->default_value.default_expr.default_expr_text)
+    {
+      ws_free_string (att->default_value.default_expr.default_expr_text);
+      att->default_value.default_expr.default_expr_text = NULL;
+    }
+
   att->header.name = NULL;
 
   /* Do this last in case we needed it for default value maintenance or something. This probably isn't necessary, the
@@ -8799,6 +8805,20 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
   else
     {
       dest->default_expr_format = NULL;
+    }
+
+  if (src->default_expr_text)
+    {
+      dest->default_expr_text = ws_copy_string (src->default_expr_text);
+      if (dest->default_expr_text == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (src->default_expr_text));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  else
+    {
+      dest->default_expr_text = NULL;
     }
 
   return NO_ERROR;

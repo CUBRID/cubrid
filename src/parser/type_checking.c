@@ -61,6 +61,7 @@
 #include "db.h"
 #include "tz_support.h"
 #include "func_type.hpp"
+#include "pt_volatility.h"
 
 #include "dbtype.h"
 
@@ -173,6 +174,7 @@ typedef struct expression_signature
   PT_ARG_TYPE arg1_type;
   PT_ARG_TYPE arg2_type;
   PT_ARG_TYPE arg3_type;
+  PT_VOLATILITY volatility;	/* per-overload volatility; PT_VOLATILITY_UNSET unless classified */
 } EXPRESSION_SIGNATURE;
 
 /* SQL expression definition */
@@ -292,6 +294,89 @@ static void pt_update_host_var_data_type (PARSER_CONTEXT * parser, PT_NODE * hv_
 static bool pt_cast_needs_wrap_for_collation (PT_NODE * node, const INTL_CODESET codeset);
 static bool pt_is_dblink_related (PT_NODE * p);
 
+static PT_VOLATILITY pt_get_op_volatility (PT_OP_TYPE op);
+
+/*
+ * pt_get_op_volatility () - volatility declared for an operator's signature
+ *   return: the operator's volatility, or PT_VOLATILITY_UNSET if unclassified
+ *   op(in): operator
+ *
+ * The type checker selects the matching overload from argument types; here we
+ * read a representative (overload 0), which is exact for operators whose
+ * volatility does not vary across overloads (the only ones classified so far).
+ */
+static PT_VOLATILITY
+pt_get_op_volatility (PT_OP_TYPE op)
+{
+  EXPRESSION_DEFINITION def;
+
+  if (!pt_get_expression_definition (op, &def) || def.overloads_count <= 0)
+    {
+      return PT_VOLATILITY_UNSET;
+    }
+  return def.overloads[0].volatility;
+}
+
+/*
+ * pt_get_expr_tree_volatility () - effective volatility of an expression tree
+ *   return: bottom-up MAX volatility over the tree
+ *   parser(in): parser context
+ *   node(in): expression tree (a single value, not a list)
+ *
+ * Literals are IMMUTABLE; an operator node is the MAX of its own volatility and
+ * its operands'.  Anything not yet classified (functions, names, sub-trees this
+ * walk does not understand) yields UNSET, which taints the whole result so the
+ * caller will not fold it.  Used to decide whether a column DEFAULT expression
+ * is an Immutable Expression-Derived Literal.
+ */
+PT_VOLATILITY
+pt_get_expr_tree_volatility (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_VOLATILITY v;
+
+  if (node == NULL)
+    {
+      /* a missing operand is the neutral element of MAX-propagation */
+      return PT_VOLATILITY_IMMUTABLE;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_VALUE:
+      return PT_VOLATILITY_IMMUTABLE;
+
+    case PT_EXPR:
+      if (node->info.expr.op == PT_FUNCTION_HOLDER)
+	{
+	  /* transparent wrapper: a function call is parsed as a PT_EXPR with a
+	   * PT_FUNCTION_HOLDER op holding the PT_FUNCTION in arg1 */
+	  return pt_get_expr_tree_volatility (parser, node->info.expr.arg1);
+	}
+      v = pt_get_op_volatility (node->info.expr.op);
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg1));
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg2));
+      v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, node->info.expr.arg3));
+      return v;
+
+    case PT_FUNCTION:
+      {
+	PT_NODE *arg;
+
+	v = pt_get_func_volatility (node->info.function.function_type);
+	for (arg = node->info.function.arg_list; arg != NULL; arg = arg->next)
+	  {
+	    v = pt_volatility_max (v, pt_get_expr_tree_volatility (parser, arg));
+	  }
+	return v;
+      }
+
+    default:
+      /* names (column refs), host vars, sub-queries: not classified for DEFAULT
+       * folding in this scope */
+      return PT_VOLATILITY_UNSET;
+    }
+}
+
 /*
  * pt_get_expression_definition () - get the expression definition for the
  *				     expression op.
@@ -320,6 +405,10 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
   sig.return_type.type = pt_arg_type::NORMAL;
   sig.return_type.val.type = PT_TYPE_NONE;
+
+  /* default: overload is not classified for volatility.  Cases that have been
+   * reviewed set sig.volatility explicitly before storing each overload. */
+  sig.volatility = PT_VOLATILITY_UNSET;
 
   switch (op)
     {
@@ -1539,6 +1628,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MOD:
       num = 0;
 
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+
       /* one overload */
 
       /* arg1 */
@@ -1559,6 +1650,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
     case PT_MODULUS:
       num = 0;
 
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
+
       /* one overload */
 
       /* arg1 */
@@ -1577,6 +1670,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_TIMES:
       num = 0;
+
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* two overloads */
 
@@ -1607,6 +1702,10 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_PLUS:
       num = 0;
+
+      /* arithmetic/string/collection addition is a pure function of its
+       * operands -- same inputs always yield the same output. */
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* number + number */
       sig.arg1_type.type = pt_arg_type::GENERIC;
@@ -1653,6 +1752,8 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
     case PT_MINUS:
       num = 0;
+
+      sig.volatility = PT_VOLATILITY_IMMUTABLE;
 
       /* 4 overloads */
 

@@ -561,7 +561,8 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	}
 
       if (!DB_IS_NULL (&attribute.default_value.value)
-	  || attribute.default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
+	  || attribute.default_value.default_expr.default_expr_type != DB_DEFAULT_NONE
+	  || attribute.default_value.default_expr.default_expr_text != NULL)
 	{
 	  const char *default_expr_type_str;
 
@@ -576,6 +577,12 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	  if (default_expr_type_str != NULL)
 	    {
 	      m_buf ("%s", default_expr_type_str);
+	    }
+	  else if (attribute.default_value.default_expr.default_expr_text != NULL)
+	    {
+	      /* Expression-Derived Literal: show the original expression.  The stored
+	       * text is already the parser's parenthesized normal form, e.g. "(1+1)". */
+	      m_buf ("%s", attribute.default_value.default_expr.default_expr_text);
 	    }
 	  else
 	    {

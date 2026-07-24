@@ -2659,6 +2659,32 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 	  pr_clear_value (&def_expr);
 
+	  /* Expression-Derived Literal: restore the original expression text. */
+	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr_literal", &def_expr) > 0)
+	    {
+	      const char *edl_text = db_get_string (&def_expr);
+
+	      if (edl_text != NULL)
+		{
+		  char *dv_text = strdup (edl_text);
+		  char *cdv_text = strdup (edl_text);
+		  if (dv_text == NULL || cdv_text == NULL)
+		    {
+		      free_and_init (dv_text);
+		      free_and_init (cdv_text);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      (size_t) (strlen (edl_text) + 1));
+		      pr_clear_value (&def_expr);
+		      pr_clear_value (&properties_val);
+		      goto error_cleanup;
+		    }
+		  att->default_value.default_expr.default_expr_text = dv_text;
+		  att->current_default_value.default_expr.default_expr_text = cdv_text;
+		}
+	    }
+
+	  pr_clear_value (&def_expr);
+
 	  if (att_props != NULL && classobj_get_prop (att_props, "update_default", &def_expr) > 0)
 	    {
 	      /* simple expressions like SYS_DATE */
@@ -2857,22 +2883,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 error_cleanup:
 
-  if (rep->attributes)
-    {
-      free_and_init (rep->attributes);
-    }
-
-  if (rep->shared_attrs)
-    {
-      free_and_init (rep->shared_attrs);
-    }
-
-  if (rep->class_attrs)
-    {
-      free_and_init (rep->class_attrs);
-    }
-
-  free_and_init (rep);
+  or_free_classrep (rep);
 
   return NULL;
 }
@@ -3637,6 +3648,11 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.default_expr.default_expr_format);
 	    }
 
+	  if (att->default_value.default_expr.default_expr_text != NULL)
+	    {
+	      free_and_init (att->default_value.default_expr.default_expr_text);
+	    }
+
 	  if (att->current_default_value.value != NULL)
 	    {
 	      free_and_init (att->current_default_value.value);
@@ -3645,6 +3661,11 @@ or_free_classrep (OR_CLASSREP * rep)
 	  if (att->current_default_value.default_expr.default_expr_format != NULL)
 	    {
 	      free_and_init (att->current_default_value.default_expr.default_expr_format);
+	    }
+
+	  if (att->current_default_value.default_expr.default_expr_text != NULL)
+	    {
+	      free_and_init (att->current_default_value.default_expr.default_expr_text);
 	    }
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)

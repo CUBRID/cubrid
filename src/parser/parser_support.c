@@ -10692,6 +10692,10 @@ pt_get_default_expression_from_data_default_node (PARSER_CONTEXT * parser, PT_NO
       assert (data_default_node->node_type == PT_DATA_DEFAULT);
       default_expr->default_expr_type = data_default_node->info.data_default.default_expr_type;
 
+      /* Expression-Derived Literal: carry the normalized source text so the
+       * folded literal is stored/displayed as its original expression. */
+      default_expr->default_expr_text = data_default_node->info.data_default.expr_text;
+
       pt_default_expr = data_default_node->info.data_default.default_value;
       if (pt_default_expr && pt_default_expr->node_type == PT_EXPR)
 	{
