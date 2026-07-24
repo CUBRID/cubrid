@@ -12610,13 +12610,13 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   assert (sink->is_remote);
 
-  /* comparison ALL (< ALL / <= ALL / > ALL / >= ALL) reduces to a single remote push instead of one
-   * per local subquery row -- handled by a dedicated path that scans the local subquery before opening
-   * the remote connection, since the bound value must be known before the DELETE can be prepared.
-   * EQ_ALL is not yet covered here (its "all rows share one value" check is a separate task) and falls
-   * through to the per-row loop below like PER_ROW. */
+  /* comparison ALL (< ALL / <= ALL / > ALL / >= ALL / = ALL) reduces to a single remote push instead
+   * of one per local subquery row -- handled by a dedicated path that scans the local subquery before
+   * opening the remote connection, since the bound value must be known before the DELETE can be
+   * prepared. */
   if (kind == DBLINK_DML_DELETE
-      && (sink_mode == DBLINK_SINK_MODE_REDUCE_MIN || sink_mode == DBLINK_SINK_MODE_REDUCE_MAX))
+      && (sink_mode == DBLINK_SINK_MODE_REDUCE_MIN || sink_mode == DBLINK_SINK_MODE_REDUCE_MAX
+	  || sink_mode == DBLINK_SINK_MODE_EQ_ALL))
     {
       return qexec_execute_remote_delete_reduce (thread_p, xasl, xasl_state, sink, key_col, op, sink_mode);
     }
@@ -12729,22 +12729,26 @@ exit_on_error:
 
 /*
  * qexec_execute_remote_delete_reduce () - Reduce-mode variant of the remote DELETE sink for comparison
- *   ALL: scan the local subquery fully first to find the single MIN/MAX bound, then push at most one
- *   remote DELETE using that bound, instead of one push per local subquery row.
+ *   ALL: scan the local subquery fully first to find the single value the remote DELETE needs, then
+ *   push at most one remote DELETE using it, instead of one push per local subquery row. REDUCE_MIN/
+ *   REDUCE_MAX reduce to the running MIN/MAX; EQ_ALL reduces to "the one value every row shares" (or
+ *   determines that no such value exists).
  *   return: NO_ERROR or ER_FAILED
  *   xasl(in)       : DELETE_PROC XASL with sink.is_remote set; specp scans the already-materialized
  *                    local subquery list file (see qexec_execute_remote_dml_sink's Note)
  *   xasl_state(in) : XASL state
  *   sink(in)       : remote connection info (url/user/pwd/table_name)
  *   key_col(in)    : remote WHERE column
- *   op(in)         : comparison operator SQL text ("<", "<=", ">", ">=")
- *   sink_mode(in)  : DBLINK_SINK_MODE_REDUCE_MIN or DBLINK_SINK_MODE_REDUCE_MAX
+ *   op(in)         : comparison operator SQL text ("<", "<=", ">", ">=", "=")
+ *   sink_mode(in)  : DBLINK_SINK_MODE_REDUCE_MIN, DBLINK_SINK_MODE_REDUCE_MAX, or
+ *                    DBLINK_SINK_MODE_EQ_ALL
  *
  * Note: A NULL anywhere in the local subquery result makes the comparison unknown for every remote row
  *   (ALL over a set containing NULL), so this leaves the remote table untouched -- no connection is
  *   opened. An empty local subquery result is vacuously true for ALL, so every remote row is deleted
  *   instead (dblink_dml_open/dblink_dml_build_delete_sql with a NULL key_col builds a WHERE-less
- *   DELETE for this case).
+ *   DELETE for this case). For EQ_ALL specifically, if the local subquery rows do not all share one
+ *   value, "col = ALL (...)" is always false, so the remote table is also left untouched.
  */
 static int
 qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12758,6 +12762,7 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   DB_VALUE boundary;
   bool has_boundary = false;
   bool null_seen = false;
+  bool all_equal = true;
   int row_count = 0;
   int row_affected;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
@@ -12795,6 +12800,12 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 	    {
 	      continue;
 	    }
+	  if (sink_mode == DBLINK_SINK_MODE_EQ_ALL && !all_equal)
+	    {
+	      /* a differing value already proved "col = ALL (...)" is always false; the outcome
+	       * is decided, so stop paying for tp_value_compare on the remaining rows. */
+	      continue;
+	    }
 
 	  row_count++;
 	  if (!has_boundary)
@@ -12815,6 +12826,17 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 		  /* not cleanly comparable (e.g. DB_UNK) -- ALL's boundary becomes undecidable,
 		   * the same conservative call as a NULL in the set. */
 		  null_seen = true;
+		  continue;
+		}
+
+	      if (sink_mode == DBLINK_SINK_MODE_EQ_ALL)
+		{
+		  if (cmp != DB_EQ)
+		    {
+		      /* a differing value proves "col = ALL (...)" is always false; boundary no
+		       * longer matters, but keep draining the scan like the NULL case above. */
+		      all_equal = false;
+		    }
 		  continue;
 		}
 
@@ -12848,6 +12870,13 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 
   if (null_seen)
     {
+      pr_clear_value (&boundary);
+      return NO_ERROR;
+    }
+
+  if (sink_mode == DBLINK_SINK_MODE_EQ_ALL && row_count > 0 && !all_equal)
+    {
+      /* local subquery rows do not all share one value: "col = ALL (...)" is always false */
       pr_clear_value (&boundary);
       return NO_ERROR;
     }
