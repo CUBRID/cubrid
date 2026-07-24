@@ -26,6 +26,213 @@
 #include "query_rewrite.h"
 
 
+
+/*
+ * qo_is_unnestable_exists_subquery () - conservative eligibility gate
+ *   return: true only if 'subq' is a correlated EXISTS/NOT EXISTS subquery that can
+ *           be safely flattened into a single semi/anti-joined base table.
+ *   parser(in):
+ *   node(in): the enclosing SELECT
+ *   subq(in): the EXISTS operand
+ */
+static bool
+qo_is_unnestable_exists_subquery (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subq)
+{
+  PT_NODE *inner_spec;
+
+  if (subq == NULL || subq->node_type != PT_SELECT)
+    {
+      return false;		/* only a single plain SELECT */
+    }
+
+  /* must correlate to exactly the immediate outer -- that outer reference becomes the join predicate */
+  if (subq->info.query.correlation_level != 1)
+    {
+      return false;
+    }
+
+  /* the predicate we move into ON lives in the subquery WHERE */
+  if (subq->info.query.q.select.where == NULL)
+    {
+      return false;
+    }
+
+  /* reject anything whose flattening would change cardinality or semantics */
+  if (subq->info.query.q.select.group_by != NULL
+      || subq->info.query.q.select.having != NULL
+      || subq->info.query.q.select.connect_by != NULL
+      || subq->info.query.q.select.start_with != NULL
+      || subq->info.query.q.select.with_increment != NULL
+      || subq->info.query.order_by != NULL
+      || subq->info.query.orderby_for != NULL
+      || subq->info.query.limit != NULL || pt_has_aggregate (parser, subq) || pt_has_analytic (parser, subq))
+    {
+      return false;
+    }
+
+  /* a single, simple base-table inner spec (no join / derived table / CTE) */
+  inner_spec = subq->info.query.q.select.from;
+  if (inner_spec == NULL || inner_spec->next != NULL || inner_spec->node_type != PT_SPEC)
+    {
+      return false;
+    }
+  if (inner_spec->info.spec.entity_name == NULL
+      || inner_spec->info.spec.derived_table != NULL
+      || inner_spec->info.spec.cte_name != NULL
+      || inner_spec->info.spec.on_cond != NULL || inner_spec->info.spec.join_type != PT_JOIN_NONE)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_rewrite_exists_semi_anti () - unnest correlated [NOT] EXISTS conjuncts in a
+ *   SELECT's WHERE into SEMI / ANTI JOINs (see the block comment above).
+ *   return: none
+ *   parser(in):
+ *   node(in/out): a PT_SELECT node
+ */
+void
+qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *prev, *cnf_node, *next;
+
+  if (node == NULL || node->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  /* SEMI/ANTI JOIN cannot appear in a hierarchical (CONNECT BY) query */
+  if (node->info.query.q.select.connect_by != NULL)
+    {
+      return;
+    }
+
+  prev = NULL;
+  cnf_node = node->info.query.q.select.where;
+
+  while (cnf_node != NULL)
+    {
+      PT_NODE *exists_expr = NULL;
+      PT_NODE *subq, *inner_spec, *on_cond, *spec;
+      short loc;
+      bool is_anti = false;
+
+      next = cnf_node->next;
+
+      /* only a plain top-level conjunct (no OR-ed alternatives) */
+      if (cnf_node->or_next != NULL || cnf_node->node_type != PT_EXPR)
+	{
+	  prev = cnf_node;
+	  cnf_node = next;
+	  continue;
+	}
+
+      if (cnf_node->info.expr.op == PT_EXISTS)
+	{
+	  exists_expr = cnf_node;	/* EXISTS -> SEMI */
+	}
+      else if (cnf_node->info.expr.op == PT_NOT && cnf_node->info.expr.arg1 != NULL
+	       && cnf_node->info.expr.arg1->node_type == PT_EXPR && cnf_node->info.expr.arg1->info.expr.op == PT_EXISTS)
+	{
+	  exists_expr = cnf_node->info.expr.arg1;	/* NOT EXISTS -> ANTI */
+	  is_anti = true;
+	}
+
+      if (exists_expr == NULL)
+	{
+	  prev = cnf_node;
+	  cnf_node = next;
+	  continue;
+	}
+
+      subq = exists_expr->info.expr.arg1;	/* the EXISTS operand is arg1 */
+
+      if (!qo_is_unnestable_exists_subquery (parser, node, subq))
+	{
+	  prev = cnf_node;
+	  cnf_node = next;
+	  continue;
+	}
+
+      inner_spec = subq->info.query.q.select.from;
+      on_cond = subq->info.query.q.select.where;
+
+      /* Require a direct inner<->single-outer join conjunct -- the shape the optimizer's semi/anti freeze
+       * models. Reuse the parse-time invariant so we never build a join a hand-written one would be rejected
+       * for. on_cond is a CNF list and the invariant inspects one conjunct at a time, so accept iff any qualifies. */
+      {
+	PT_NODE *on_cnf;
+	bool has_direct_join = false;
+
+	for (on_cnf = on_cond; on_cnf != NULL; on_cnf = on_cnf->next)
+	  {
+	    if (pt_semi_anti_has_direct_join_conjunct (parser, on_cnf, inner_spec->info.spec.id,
+						       node->info.query.q.select.from))
+	      {
+		has_direct_join = true;
+		break;
+	      }
+	  }
+
+	if (!has_direct_join)
+	  {
+	    prev = cnf_node;
+	    cnf_node = next;
+	    continue;
+	  }
+      }
+
+      /* ---- commit the transformation ---- */
+
+      /* detach inner spec and predicate from the (now discarded) subquery */
+      subq->info.query.q.select.from = NULL;
+      subq->info.query.q.select.where = NULL;
+
+      /* turn the inner spec into a semi/anti-joined spec carrying the predicate */
+      inner_spec->info.spec.join_type = (is_anti ? PT_JOIN_ANTI : PT_JOIN_SEMI);
+      inner_spec->info.spec.on_cond = on_cond;
+      inner_spec->info.spec.natural = false;
+
+      /* append at the outer FROM tail with the next location number. The correlation gate guarantees a
+       * non-empty outer FROM, so the walk always lands on the last spec. */
+      loc = 0;
+      for (spec = node->info.query.q.select.from; spec != NULL && spec->next != NULL; spec = spec->next)
+	{
+	  loc++;
+	}
+      assert (spec != NULL);
+      spec->next = inner_spec;
+      inner_spec->info.spec.location = (short) (loc + 1);
+
+      /* stamp the moved ON as pt_bind_names() would (reuse the same helpers): inner spec's location on every
+       * term, plus (for ANTI) PT_EXPR_INFO_ANTI_JOIN_ON so qo_reduce_equality_terms() keeps them as join preds */
+      (void) parser_walk_tree (parser, on_cond, pt_mark_location, &inner_spec->info.spec.location, NULL, NULL);
+      if (is_anti)
+	{
+	  (void) parser_walk_tree (parser, on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
+	}
+
+      /* remove the [NOT] EXISTS conjunct from the outer WHERE and free its now inner-less shell (inner_spec
+       * and on_cond were detached above, so this reclaims only the EXISTS / subquery scaffolding) */
+      if (prev == NULL)
+	{
+	  node->info.query.q.select.where = next;
+	}
+      else
+	{
+	  prev->next = next;
+	}
+      cnf_node->next = NULL;
+      parser_free_tree (parser, cnf_node);
+
+      /* prev stays where it is; continue after the removed conjunct */
+      cnf_node = next;
+    }
+}
+
 /*
  * qo_rewrite_subqueries () - Rewrite uncorrelated subquery to join query
  *   return: PT_NODE *

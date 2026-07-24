@@ -10860,12 +10860,14 @@ pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 }
 
 /*
- * pt_semi_anti_has_direct_join_conjunct () - true iff some top-level ON conjunct directly links the inner to a
- *      single local-outer table. Pre-CNF ON is a PT_AND expression tree (AND = expression nesting, not next
- *      links), so split conjuncts by recursive PT_AND descent, never by ->next. A qualifying conjunct
- *      references the inner and exactly one local-outer spec, with no nested query and no third table.
+ * pt_semi_anti_has_direct_join_conjunct () - true iff the given ON conjunct directly links the inner to a
+ *      single local-outer table. A pre-CNF ON is a PT_AND expression tree, split into conjuncts here by
+ *      recursive PT_AND descent (AND = expression nesting). The leaf walk isolates ->next, so a caller may
+ *      also pass a single element of a CNF ->next list (e.g. an already-CNF'd subquery WHERE reused as an ON
+ *      condition). A qualifying conjunct references the inner and exactly one local-outer spec, with no
+ *      nested query and no third table.
  */
-static bool
+bool
 pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id, PT_NODE * from_list)
 {
   PT_SEMI_ANTI_CONJUNCT_INFO info;
@@ -10888,7 +10890,14 @@ pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, 
   info.outer_id = 0;
   info.multi_outer = false;
 
-  (void) parser_walk_tree (parser, cond, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
+  /* inspect only THIS conjunct: detach ->next so the walk cannot spill into sibling conjuncts when a caller
+   * passes one element of a CNF list. or_next stays (OR alternatives still seen); no-op for a pre-CNF tree. */
+  {
+    PT_NODE *save_next = cond->next;
+    cond->next = NULL;
+    (void) parser_walk_tree (parser, cond, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
+    cond->next = save_next;
+  }
 
   return info.found_inner && !info.has_nested && info.outer_id != 0 && !info.multi_outer;
 }

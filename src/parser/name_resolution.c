@@ -126,8 +126,6 @@ static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
 static void pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
 static FUNC_CODE pt_find_function_type (const char *name);
-static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-static PT_NODE *pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_Oracle_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -1403,7 +1401,7 @@ pt_find_function_type (const char *name)
  *   arg(in):
  *   continue_walk(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   short *location = (short *) arg;
@@ -1435,7 +1433,7 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
  *   arg(in):
  *   continue_walk(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   if (node->node_type == PT_EXPR)

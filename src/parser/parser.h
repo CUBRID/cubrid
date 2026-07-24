@@ -380,6 +380,8 @@ extern "C"
   extern DB_OBJECT *pt_check_user_owns_class (PARSER_CONTEXT * parser, PT_NODE * cls_ref);
   extern PT_NODE *pt_domain_to_data_type (PARSER_CONTEXT * parser, DB_DOMAIN * domain);
   extern PT_NODE *pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * p, void *scope, int *continue_walk);
+  extern PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+  extern PT_NODE *pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
   extern DB_QUERY_RESULT *pt_new_query_result_descriptor (PARSER_CONTEXT * parser, PT_NODE * query);
   extern DB_QUERY_RESULT *pt_make_cache_hit_result_descriptor (void);
   extern PT_NODE *pt_remove_from_list (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * list);
