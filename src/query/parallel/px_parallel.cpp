@@ -61,7 +61,9 @@ namespace parallel_query
     UINT32 degree;
     const UINT32 start_degree = 2;
 
-    if (system_core_count <= start_degree)
+    /* CBRD-27071: INDEX_BUILD must still reach degree 2 on a two-core host, so it is excluded from
+     * this gate; its own case below disables itself when the derived degree falls below start_degree. */
+    if (type != parallel_type::INDEX_BUILD && system_core_count <= start_degree)
       {
 	return 0;	/* disable */
       }
