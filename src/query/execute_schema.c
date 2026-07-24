@@ -4312,8 +4312,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
   if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
     {
       fprintf (stdout, "TRACE   histogram: bucket target %d, %s%s\n", bucket_count,
-	       with_fullscan ? "fullscan" : "page sampling",
-	       histogram_info->random_seed ? ", random seed" : "");
+	       with_fullscan ? "fullscan" : "page sampling", histogram_info->random_seed ? ", random seed" : "");
     }
 
   /* Update statistics for the class. For the all-columns histogram path (nnames == 0) this is

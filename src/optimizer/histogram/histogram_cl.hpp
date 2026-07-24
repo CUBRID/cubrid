@@ -43,23 +43,23 @@ typedef struct db_value DB_VALUE;
 namespace hist
 {
 
-  enum class histogram_key_kind
-  {
-    invalid,
-    i64,
-    dbl,
-    str,
-    u64
-  };
+enum class histogram_key_kind
+{
+  invalid,
+  i64,
+  dbl,
+  str,
+  u64
+};
 
-  struct histogram_key
-  {
-    histogram_key_kind kind = histogram_key_kind::invalid;
-      std::int64_t i64 = 0;
-    double dbl = 0.0;
-      std::string str;
-      std::uint64_t u64 = 0;
-  };
+struct histogram_key
+{
+  histogram_key_kind kind = histogram_key_kind::invalid;
+  std::int64_t i64 = 0;
+  double dbl = 0.0;
+  std::string str;
+  std::uint64_t u64 = 0;
+};
 
 }				// namespace hist
 
@@ -78,10 +78,10 @@ typedef struct histogram_collect
 #define HISTOGRAM_COLLECT_INITIALIZER { 0, NULL, NULL, NULL, NULL }
 
 /* histogram analysis functions */
-int analyze_classes (THREAD_ENTRY * thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
+int analyze_classes (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name, int max_number_of_buckets,
 		     bool with_fullscan, MOP classop);
 /* server-side full-scan + reservoir sampling histogram collection (replaces the query-based path) */
-int analyze_classes_by_reservoir (THREAD_ENTRY * thread_p, const char *tbl_name, const char *attr_name,
+int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, const char *attr_name,
 				  int max_number_of_buckets, int with_fullscan, MOP classop);
 /* single-scan variant: build histograms for all histogrammable columns of the class in one heap scan.
  * Also surfaces the per-column NDV + exact row count derived from the same scan (out_ndv_info /
@@ -90,23 +90,23 @@ int analyze_classes_by_reservoir (THREAD_ENTRY * thread_p, const char *tbl_name,
  * the caller (transfer of ownership) so it can store them only after UPDATE STATISTICS succeeds --
  * store with store_collected_histograms () and release with histogram_collect_clear (). When
  * out_collect is NULL the blobs are stored immediately (legacy behavior). */
-int analyze_classes_multi_by_reservoir (THREAD_ENTRY * thread_p, const char *tbl_name, int max_number_of_buckets,
-					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV * out_ndv_info,
-					INT64 * out_total_rows, HISTOGRAM_COLLECT * out_collect);
+int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
+					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
+					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect);
 /* fingerprint of the host-variable predicate values as the plan would see them: for each
  * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
  * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.
  * Returns false when the statement has no such predicate (no bind sensitivity). */
-bool histogram_bind_fingerprint (PARSER_CONTEXT * parser, PT_NODE * statement, UINT64 * out_fp);
+bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, UINT64 *out_fp);
 /* structural (value-independent): true if the statement has a (column op ?) predicate the
  * bind-sensitive planner could price. Used at plan generation to flag a plan built with
  * unbound host-variable markers so the first execution replans under the real values. */
-bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT * parser, PT_NODE * statement);
+bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
-int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT * hc);
+int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
-void histogram_collect_clear (HISTOGRAM_COLLECT * hc);
+void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,
@@ -119,11 +119,11 @@ void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, doubl
 void histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
 				      double fallback_sel, double *selectivity, bool *success);
 /* histogram utility functions */
-int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT ** histogram_obj);
+int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 bool is_histogrammable_type (DB_TYPE type);
-int stats_get_histogram (MOP classop, HIST_STATS ** histogram);
-int stats_free_histogram_and_init (HIST_STATS * histogram);
-int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool detailed, int error, FILE * f);
+int stats_get_histogram (MOP classop, HIST_STATS **histogram);
+int stats_free_histogram_and_init (HIST_STATS *histogram);
+int dump_histogram (MOP classop, const char *attr_name, DB_TYPE attr_type, bool detailed, int error, FILE *f);
 int histogram_info_dump (const char *class_name, const char *attr_name, FILE *fpp);
 
 #endif // _HISTOGRAM_CL_HPP_

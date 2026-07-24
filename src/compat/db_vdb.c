@@ -2089,9 +2089,8 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 
 	  if (kept != NULL)
 	    {
-	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
-								    false /* no forced replan; reuse the fixed plan */
-								    );
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, false	/* no forced replan; reuse the fixed plan */
+		);
 	      if (err >= 0)
 		{
 		  return err;
