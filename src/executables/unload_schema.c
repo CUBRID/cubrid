@@ -3086,6 +3086,10 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
     {
       output_ctx (" STORAGE PREFER_INLINE");
     }
+  else if (db_attribute_is_oos_force_outline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_OUTLINE");
+    }
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {

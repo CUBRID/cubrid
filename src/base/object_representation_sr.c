@@ -2521,6 +2521,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
       att->is_invisible = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
       att->is_oos_prefer_inline = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_OOS_PREFER_INLINE) ? 1 : 0;
+      att->is_oos_force_outline = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_OOS_FORCE_OUTLINE) ? 1 : 0;
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
