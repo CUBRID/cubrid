@@ -639,45 +639,47 @@ multibyte_warning:
 
 
 static bool
-check_contents_has_noncomment ()
+check_contents_has_noncomment (void)
 {
   /* Check if csql_Edit_contents contains any actual content, 
    * ignoring whitespace and comments 
    */
   char *p = csql_edit_contents_get ();
-
-  while (*p)
+  if (p)
     {
-      if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+      while (*p)
 	{
-	  p++;
-	}
-      else if (p[0] == '-' && p[1] == '-')
-	{
-	  for (p += 2; *p && *p != '\n'; p++)
-	    /* blank */ ;
-	}
-      else if (p[0] == '/')
-	{
-	  if (p[1] == '/')
+	  if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+	    {
+	      p++;
+	    }
+	  else if (p[0] == '-' && p[1] == '-')
 	    {
 	      for (p += 2; *p && *p != '\n'; p++)
 		/* blank */ ;
 	    }
-	  else if (p[1] == '*')
+	  else if (p[0] == '/')
 	    {
-	      for (p += 2; *p && !(p[0] == '*' && p[1] == '/'); p++)
-		/* blank */ ;
-	      p += (*p ? 2 : 0);
+	      if (p[1] == '/')
+		{
+		  for (p += 2; *p && *p != '\n'; p++)
+		    /* blank */ ;
+		}
+	      else if (p[1] == '*')
+		{
+		  for (p += 2; *p && !(p[0] == '*' && p[1] == '/'); p++)
+		    /* blank */ ;
+		  p += (*p ? 2 : 0);
+		}
+	      else
+		{
+		  return true;
+		}
 	    }
 	  else
 	    {
 	      return true;
 	    }
-	}
-      else
-	{
-	  return true;
 	}
     }
 
