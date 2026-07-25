@@ -215,6 +215,13 @@ dblink_2pc_end_tran (THREAD_ENTRY * thread_p, int gtrid, int num_particps, bool 
 
   for (i = 0; i < num_particps; i++)
     {
+      if (dblink[i].xa_unsupported)
+	{
+	  /* Settled with a plain end-tran at prepare time; there is no XA branch to
+	   * deliver a decision to, and sending one would only reconnect and fail. */
+	  continue;
+	}
+
 #if defined(SERVER_MODE)
       /* SERVER_MODE: dblink_2pc_daemon_init() runs before log_recovery() and
        * dblink_2pc_daemon_recovery_with_thread() scans _db_global_tran right after
