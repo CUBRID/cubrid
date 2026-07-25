@@ -245,6 +245,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
   int err, bqual, conn_handle, len;
   XID xid;
   T_CCI_ERROR err_buf;
+  T_CCI_ERROR disconn_err_buf;
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
   char conn_url_gateway[MAX_LEN_CONNECTION_URL + 16];
 
@@ -293,7 +294,9 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
     }
 
   err = cci_xa_end_tran (conn_handle, &xid, type, &err_buf);
-  (void) cci_disconnect (conn_handle, &err_buf);
+  /* cci_disconnect resets the error buffer it is given, so give it its own: err_buf
+   * must keep the XA end-tran result inspected below. */
+  (void) cci_disconnect (conn_handle, &disconn_err_buf);
 
   if (err == CCI_ER_NO_ERROR)
     {
@@ -311,6 +314,23 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
    * the caller delete the row instead of retrying forever. */
   if (err_buf.err_code == ER_LOG_2PC_UNKNOWN_GTID)
     {
+      return NO_ERROR;
+    }
+
+  /* A participant that does not implement XA (e.g. a gateway to a third-party DBMS) can
+   * never acknowledge an XA decision, so retrying is futile.  Such a row can only be left
+   * over from a window where the participant's outcome was already settled outside XA:
+   * committed with a plain end-tran before a crash, or rolled back when its uncommitted
+   * connection dropped.  Log it and report success so every caller (daemon loop, daemon
+   * recovery, SA-mode inline delivery) deletes the row instead of retrying forever. */
+  if (err_buf.err_code == CAS_ER_NOT_IMPLEMENTED || err == CAS_ER_NOT_IMPLEMENTED)
+    {
+      char drop_log_msg[MAX_LEN_CONNECTION_URL + 96];
+
+      snprintf (drop_log_msg, sizeof (drop_log_msg),
+		"dropping XA %s decision for a participant without XA support: %s",
+		is_commit ? "commit" : "abort", conn_url);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, drop_log_msg);
       return NO_ERROR;
     }
 
