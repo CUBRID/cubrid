@@ -92,12 +92,32 @@ dblink_2pc_get_participants (THREAD_ENTRY * thread_p, int *partid_len, void **bl
 }
 
 #ifdef CCI_XA
+/*
+ * dblink_2pc_tran_err_msg - Normalize a CCI error into a printable reason.
+ *   The remote can answer with an error code only (e.g. a gateway replies to an XA
+ *   request without any message text), which would render the statement error as
+ *   "DBLINK Transaction ABORTED: " with nothing after it.  Fall back to the code.
+ *   buf is used only when a fallback text has to be built.
+ */
+static const char *
+dblink_2pc_tran_err_msg (const T_CCI_ERROR * err_buf, char *buf, size_t size)
+{
+  if (err_buf->err_msg[0] != '\0')
+    {
+      return err_buf->err_msg;
+    }
+
+  snprintf (buf, size, "remote error code %d", err_buf->err_code);
+  return buf;
+}
+
 bool
 dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, void *block_particps_ids)
 {
   int i;
   XID xid;
   T_CCI_ERROR err_buf;
+  char tran_err_msg[64];
   DBLINK_CONN_INFO *dblink;
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
@@ -129,7 +149,8 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	   * The daemon delivers the abort decision to already-prepared participants via fresh
 	   * connections using block_particps_ids, so ending existing handles here is safe. */
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+		  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
 	  return false;
 	}
 
@@ -159,7 +180,8 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
 	{
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+		  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
 	  return false;
 	}
 
