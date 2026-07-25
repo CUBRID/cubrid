@@ -112,8 +112,20 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 
       if (cci_xa_prepare (dblink[i].conn_handle, &xid, &err_buf) != NO_ERROR)
 	{
+	  if (err_buf.err_code == CAS_ER_NOT_IMPLEMENTED)
+	    {
+	      /* The participant cannot execute XA prepare (e.g. a gateway to a third-party
+	       * DBMS). Defer it instead of failing: it is committed with a plain end-tran
+	       * only after every XA-capable participant has prepared, so a genuine prepare
+	       * failure below still rolls back all deferred participants cleanly (their
+	       * connections remain in this transaction's dblink list with autocommit off). */
+	      dblink[i].xa_unsupported = true;
+	      continue;
+	    }
+
 	  /* XA prepare failed; abort and disconnect all remaining entries: this failed
-	   * participant, any not-yet-attempted participants, and SELECT-only non-participants.
+	   * participant, any not-yet-attempted participants, deferred XA-incapable
+	   * participants (not yet committed), and SELECT-only non-participants.
 	   * The daemon delivers the abort decision to already-prepared participants via fresh
 	   * connections using block_particps_ids, so ending existing handles here is safe. */
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
@@ -129,11 +141,43 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
-  /* All participants XA-prepared and removed from dblink_entry.  Commit and disconnect any
-   * remaining non-participant (SELECT-only) entries and reset is_dblink_autocommit.
+  /* Commit the deferred XA-incapable participants with a plain end-tran, now that every
+   * XA-capable participant has prepared.  Their durability is decided here (one-phase),
+   * before the local commit decision: crashing or failing past this point cannot undo
+   * them.  On failure force abort: this participant, any not-yet-committed deferred
+   * participants, and SELECT-only entries are still in the dblink list and roll back;
+   * the XA-prepared participants receive the abort decision via block_particps_ids. */
+  for (i = 0; i < num_particps; i++)
+    {
+      char commit_log_msg[MAX_LEN_CONNECTION_URL + 80];
+
+      if (!dblink[i].xa_unsupported)
+	{
+	  continue;
+	}
+
+      if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
+	{
+	  qmgr_dblink_clear_conn_entry (thread_p, false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, err_buf.err_msg);
+	  return false;
+	}
+
+      snprintf (commit_log_msg, sizeof (commit_log_msg),
+		"participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, commit_log_msg);
+
+      (void) cci_disconnect (dblink[i].conn_handle, &err_buf);
+      (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
+    }
+
+  /* All participants are finished: XA-prepared (decision delivered later via the daemon)
+   * or committed directly above.  Commit and disconnect any remaining non-participant
+   * (SELECT-only) entries and reset is_dblink_autocommit.
    * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point.
    * If SELECT-only remote commit fails, force abort: _db_global_tran has not yet been
-   * updated and participants can still be rolled back. */
+   * updated and XA-prepared participants can still be rolled back (directly committed
+   * XA-incapable participants cannot). */
   if (qmgr_dblink_clear_conn_entry (thread_p, true) != NO_ERROR)
     {
       return false;
