@@ -454,6 +454,42 @@ struct log_tran_update_stats
   MHT_TABLE *unique_stats_hash;	/* hash of unique statistics for indexes used during transaction. */
 };
 
+/* LOG_TRAN_LOCKLESS_INSERT
+ * A row inserted without its per-row X-lock (covered by the inserter's MVCCID self-lock, CBRD-26942).
+ * Tracked so a 2PC prepare can put the per-row X-locks into the prepare record, which cannot carry the
+ * self-lock. Remove together with CBRD-27079.
+ */
+typedef struct log_tran_lockless_insert LOG_TRAN_LOCKLESS_INSERT;
+struct log_tran_lockless_insert
+{
+  OID oid;			/* inserted instance */
+  OID class_oid;		/* class of the instance */
+};
+
+#define TRAN_LOCKLESS_INSERTS_CHUNK_SIZE 1024	/* rows per chunk (~16KB) */
+
+/* LOG_TRAN_LOCKLESS_INSERT_CHUNK
+ * Represents a chunk of memory for lockless-insert tracking
+ */
+typedef struct log_tran_lockless_insert_chunk LOG_TRAN_LOCKLESS_INSERT_CHUNK;
+struct log_tran_lockless_insert_chunk
+{
+  LOG_TRAN_LOCKLESS_INSERT_CHUNK *next_chunk;	/* address of next chunk of memory */
+  LOG_TRAN_LOCKLESS_INSERT buffer[1];	/* more than one */
+};
+
+/* LOG_TRAN_LOCKLESS_INSERTS
+ * Per-transaction list of lockless-insert rows; consumed by 2PC prepare, otherwise freed at completion.
+ */
+typedef struct log_tran_lockless_inserts LOG_TRAN_LOCKLESS_INSERTS;
+struct log_tran_lockless_inserts
+{
+  int count;			/* the number of tracked rows */
+  LOG_TRAN_LOCKLESS_INSERT_CHUNK *first_chunk;	/* address of first chunk in the chunks list */
+  LOG_TRAN_LOCKLESS_INSERT_CHUNK *current_chunk;	/* address of current chunk from which new elements are
+							 * assigned */
+};
+
 typedef struct log_rcv_tdes LOG_RCV_TDES;
 struct log_rcv_tdes
 {
@@ -550,6 +586,8 @@ struct log_tdes
 
   LOG_TRAN_UPDATE_STATS log_upd_stats;	/* Collects data about inserted/ deleted records during last
 					 * command/transaction */
+  LOG_TRAN_LOCKLESS_INSERTS lockless_inserts;	/* rows inserted without per-row X-locks; consumed by 2PC prepare
+						 * (CBRD-27079 fallback) */
   bool has_deadlock_priority;
 
   bool block_global_oldest_active_until_commit;
@@ -1176,6 +1214,9 @@ extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_I
 
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
+extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
+extern int logtb_track_lockless_insert (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
+extern int logtb_2pc_lock_lockless_inserts (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);
 extern int xlogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p);
 
