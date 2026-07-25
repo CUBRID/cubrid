@@ -152,7 +152,7 @@ namespace cubconn::connection
 	if (bytes > 0)
 	  {
 	    sent_size = static_cast<std::size_t> (bytes);
-	    ctx->m_atomic_stats.bytes_out_total.fetch_add (sent_size, std::memory_order_relaxed);
+	    ctx->m_guarded_stats.bytes_out_total += sent_size;
 	  }
 	else if (bytes < 0)
 	  {
@@ -896,6 +896,7 @@ retry:
   bool worker::statistics_metrics_to_coordinator ()
   {
     coordinator::message message;
+    int r;
 
     message.type = coordinator::message_type::STATISTICS;
 
@@ -906,9 +907,20 @@ retry:
     message.statistics.contexts.reserve (m_context.size ());
     for (context *ctx : m_context)
       {
-	/* integrate atomic stats to owned stats */
-	ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL,
-			  ctx->m_atomic_stats.bytes_out_total.exchange (0, std::memory_order_relaxed));
+	/* stats */
+	uint64_t bytes_out_total;
+
+	r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	bytes_out_total = ctx->m_guarded_stats.bytes_out_total;
+	ctx->m_guarded_stats.bytes_out_total = 0;
+
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	/* integrate direct send stats to owned stats */
+	ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL, bytes_out_total);
 
 	/* store */
 	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
@@ -1249,6 +1261,56 @@ retry:
     return true;
   }
 
+  bool worker::handle_message_queue_release_packet (message &item)
+  {
+    context *ctx;
+    css_conn_entry *conn;
+    int r;
+
+    assert (item.conn);
+    assert (item.packet);
+
+    r = rmutex_lock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    ctx = reinterpret_cast<context *> (item.conn->context);
+    if (ctx == nullptr)
+      {
+	r = rmutex_unlock (m_entry, &item.conn->cmutex);
+	assert (r == NO_ERROR);
+
+	er_log_conn (__FILE__, __LINE__,
+		     "connection::worker->handle_message_queue_release_packet: context is already cleared for conn = %p\n",
+		     static_cast<void *> (item.conn));
+	return true;
+      }
+
+    conn = item.conn;
+    if (!this->validate_message_generation (item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
+      {
+	r = rmutex_unlock (m_entry, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	return true;
+      }
+
+    ctx->m_recv.m_receiver.release (item.packet);
+    er_log_conn (__FILE__, __LINE__,
+		 "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.packet);
+
+    r = rmutex_unlock (m_entry, &item.conn->cmutex);
+    assert (r == NO_ERROR);
+
+    return true;
+  }
+
   bool worker::handle_message_queue_new_client (message &item)
   {
     context *ctx;
@@ -1572,7 +1634,8 @@ respond:
 	/* NEW_CLIENT	   */ { &worker::handle_message_queue_new_client,	statistics::worker::MQ_NEW_CLIENT },
 	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
 	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
-	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT }
+	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
+	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
       }
     };
     message request;
@@ -1580,7 +1643,7 @@ respond:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
-    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 8, "this must be modified");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 9, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -2335,6 +2398,7 @@ respond:
 	      case message_type::AWAKEN:
 	      case message_type::SHUTDOWN:
 	      case message_type::HANDOFF_CLIENT:
+	      case message_type::RELEASE_PACKET:
 	      case message_type::TYPE_COUNT:
 		break;
 	      }

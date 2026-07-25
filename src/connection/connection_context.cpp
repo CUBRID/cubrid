@@ -143,7 +143,7 @@ namespace cubconn::connection
     m_send.m_transmitter.clear ();
     m_send.m_blocker = nullptr;
 
-    m_atomic_stats.bytes_out_total.store (0, std::memory_order_relaxed);
+    m_guarded_stats.bytes_out_total = 0;
     m_stats.reset ();
   }
 }

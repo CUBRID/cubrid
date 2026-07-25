@@ -58,6 +58,7 @@ namespace cubconn
       void reset ();
 
       result drain (int fd, size_t limit = 0);
+      bool try_release (std::byte *ptr);
       void release (std::byte *ptr);
 
       std::vector<cubbase::span<std::byte>> *get_result ();
@@ -94,6 +95,8 @@ namespace cubconn
 
       result parse_size (size_t consumption, size_t limit);
       result receive (int fd, size_t &consumption, size_t limit);
+
+      void release_unlocked (std::byte *ptr);
   };
 }
 

@@ -506,9 +506,28 @@ namespace cubconn
     return result::Error;
   }
 
+  bool receiver::try_release (std::byte *ptr)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex, std::try_to_lock);
+
+    if (!lock.owns_lock ())
+      {
+	return false;
+      }
+
+    this->release_unlocked (ptr);
+    return true;
+  }
+
   void receiver::release (std::byte *ptr)
   {
     std::lock_guard<std::mutex> lock (m_mutex);
+
+    this->release_unlocked (ptr);
+  }
+
+  void receiver::release_unlocked (std::byte *ptr)
+  {
     cubbase::span<std::byte> source;
     int size;
 

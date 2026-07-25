@@ -31,7 +31,6 @@
 #include "buffer.hpp"
 #include "span.hpp"
 
-#include <atomic>
 #include <condition_variable>
 
 namespace cubconn
@@ -192,11 +191,11 @@ namespace cubconn::connection
     /* owned statistics */
     statistics::metrics<statistics::context> m_stats;
 
-    /* atomic statistics */
+    /* statistics updated by direct send, guarded by m_conn->cmutex */
     struct
     {
-      std::atomic<uint64_t> bytes_out_total { 0 };
-    } m_atomic_stats;
+      uint64_t bytes_out_total { 0 };
+    } m_guarded_stats;
 
     context (std::size_t capacity);
     context ();
