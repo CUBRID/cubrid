@@ -1477,20 +1477,27 @@ namespace cubthread
 
     std::size_t previous_progress_worker_count = m_progress_worker_count;
     ++m_progress_worker_count;
-    m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
+    std::size_t expanded_target_worker_count = m_max_concurrency + m_progress_worker_count;
+    worker_reservation_mode reservation_mode =
+	    get_active_regular_worker_count () >= expanded_target_worker_count
+	    ? worker_reservation_mode::stall_recovery : worker_reservation_mode::normal;
 
-    // async shrink may leave active regular workers above the new target
-    // this controller-issued dispatch may bypass that soft target once; the pool-wide regular-worker ceiling and absolute hard cap are still enforced
-    if (!try_dispatch_queued_task (ulock, worker_reservation_mode::stall_recovery))
+    // decide before adjust_concurrency (), which may release the core mutex. normal mode prevents another dispatch
+    // from consuming the new target and this controller dispatch from also reserving an extra worker
+    m_slots.adjust_concurrency (expanded_target_worker_count, ulock);
+
+    // adjust_concurrency () may have allowed a continuation to enter the queue while the core mutex was released
+    // do not let that continuation commit the raised regular target
+    if (m_blocking_continuation_queue.empty () && try_dispatch_queued_task (ulock, reservation_mode))
       {
-	// DO NOT accumulate slots while thread creation repeatedly fails or another core consumes the last reservation
-	m_progress_worker_count = previous_progress_worker_count;
-	m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
-	retire_available_excess_workers (ulock);
-	return false;
+	return true;
       }
 
-    return true;
+    // DO NOT accumulate slots while thread creation repeatedly fails or another core consumes the last reservation
+    m_progress_worker_count = previous_progress_worker_count;
+    m_slots.adjust_concurrency (m_max_concurrency + m_progress_worker_count, ulock);
+    retire_available_excess_workers (ulock);
+    return false;
   }
 
   template <stats_t Stats>
