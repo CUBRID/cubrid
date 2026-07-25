@@ -212,6 +212,7 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = NULL;
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
+    tran_entries[THREAD_TS_SERIAL_CACHE] = NULL;
 
     _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
     _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
@@ -245,6 +246,7 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+    tran_entries[THREAD_TS_SERIAL_CACHE] = lf_tran_request_entry (&serial_Cache_Ts);
   }
 
   void
