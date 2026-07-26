@@ -118,7 +118,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   XID xid;
   T_CCI_ERROR err_buf;
   char tran_err_msg[64];
-  bool one_phase_committed = false;
+  int one_phase_commits = 0;
   DBLINK_CONN_INFO *dblink;
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
@@ -180,13 +180,27 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 
       if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
 	{
+	  if (one_phase_commits > 0)
+	    {
+	      char partial_log_msg[144];
+
+	      /* Every participant committed before this one stays committed while the
+	       * transaction rolls back, so the gap is now real rather than potential.  Log it
+	       * before the rollback cleanup below so the diagnostic is emitted independently
+	       * of any error that cleanup raises. */
+	      snprintf (partial_log_msg, sizeof (partial_log_msg),
+			"%d participant(s) without XA prepare were already committed when this "
+			"transaction aborted; their changes cannot be rolled back", one_phase_commits);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, partial_log_msg);
+	    }
+
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
 		  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
 	  return false;
 	}
 
-      one_phase_committed = true;
+      one_phase_commits++;
 
       snprintf (commit_log_msg, sizeof (commit_log_msg),
 		"participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
@@ -196,13 +210,29 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
+  if (one_phase_commits > 1)
+    {
+      char multi_log_msg[144];
+
+      /* The risk of a partial commit among XA-incapable participants arises when there is
+       * more than one: an earlier one stays committed if a later one fails.  This
+       * transaction committed all of them, so none of them is inconsistent, but it ran
+       * outside that single-participant condition - record the count so such transactions
+       * stay identifiable in the server log.  (A gap that actually materialized is logged
+       * where the commit fails above.) */
+      snprintf (multi_log_msg, sizeof (multi_log_msg),
+		"%d participants without XA prepare were committed one-phase in this transaction; "
+		"atomicity across them is not guaranteed", one_phase_commits);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, multi_log_msg);
+    }
+
   /* All participants are finished: XA-prepared (decision delivered later via the daemon)
    * or committed directly above.  Commit and disconnect any remaining non-participant
    * (SELECT-only) entries and reset is_dblink_autocommit.
    * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point. */
   if (qmgr_dblink_clear_conn_entry (thread_p, true) != NO_ERROR)
     {
-      if (!one_phase_committed)
+      if (one_phase_commits == 0)
 	{
 	  /* Nothing is durable yet: _db_global_tran has not been updated and every
 	   * participant is XA-prepared, so force abort and roll all of them back. */
