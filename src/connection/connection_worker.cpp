@@ -805,7 +805,10 @@ namespace cubconn::connection
     m_entry->m_status = cubthread::entry::status::TS_CHECK;
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_stop_attached_threads (m_entry, ctx->m_conn->session_p);
+	/* Interrupt the load session here (before draining workers below), but defer
+	 * its destruction until the workers have drained; see the destroy call in the
+	 * "remove and close" section. */
+	ssession_interrupt_attached_threads (m_entry, ctx->m_conn->session_p);
       }
 
     if (!is_retry)
@@ -843,6 +846,13 @@ namespace cubconn::connection
 		   ctx->m_conn->stop_phase);
 
     /* remove and close */
+
+    /* Connection workers have drained; it is now safe to destroy the load session
+     * that was interrupted at the start of the close. */
+    if (ctx->m_conn->session_p != NULL)
+      {
+	ssession_destroy_load_session (m_entry, ctx->m_conn->session_p);
+      }
 
     m_events.remove_descriptor (ctx->m_conn->fd);
     if (tran_index != NULL_TRAN_INDEX)
