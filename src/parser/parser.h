@@ -63,6 +63,7 @@ extern "C"
   } VIEW_HANDLING;
 
   extern void csql_yyset_lineno (int line_number);
+  extern int csql_yyget_lineno (void);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
