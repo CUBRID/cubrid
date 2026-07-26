@@ -291,6 +291,7 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
   XID xid;
   T_CCI_ERROR err_buf;
   T_CCI_ERROR disconn_err_buf;
+  char tran_err_msg[64];
   char type = is_commit ? CCI_TRAN_COMMIT : CCI_TRAN_ROLLBACK;
   char conn_url_gateway[MAX_LEN_CONNECTION_URL + 16];
 
@@ -363,23 +364,33 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
     }
 
   /* A participant that does not implement XA (e.g. a gateway to a third-party DBMS) can
-   * never acknowledge an XA decision, so retrying is futile.  Such a row can only be left
-   * over from a window where the participant's outcome was already settled outside XA:
-   * committed with a plain end-tran before a crash, or rolled back when its uncommitted
-   * connection dropped.  Log it and report success so every caller (daemon loop, daemon
-   * recovery, SA-mode inline delivery) deletes the row instead of retrying forever. */
-  if (err_buf.err_code == CAS_ER_NOT_IMPLEMENTED || err == CAS_ER_NOT_IMPLEMENTED)
+   * never acknowledge an XA decision, so retrying an abort is futile.  An abort is also what
+   * a leftover 'P' row is turned into, and such a row can only survive a window where the
+   * participant's outcome was already settled outside XA: committed with a plain end-tran
+   * before a crash, or rolled back when its uncommitted connection dropped.  Log it and
+   * report success so every caller (daemon loop, daemon recovery, SA-mode inline delivery)
+   * deletes the row instead of retrying forever.
+   *
+   * A commit decision is deliberately excluded.  A _db_global_tran row only reaches the 'C'
+   * state after every participant has XA-prepared, so an endpoint answering "not implemented"
+   * to a commit is not an XA-incapable participant of this transaction but a prepared branch
+   * whose endpoint has changed.  Deleting its row would strand that branch in-doubt, holding
+   * locks forever, so keep reporting failure and let the caller retry. */
+  if (!is_commit && (err_buf.err_code == CAS_ER_NOT_IMPLEMENTED || err == CAS_ER_NOT_IMPLEMENTED))
     {
-      char drop_log_msg[MAX_LEN_CONNECTION_URL + 96];
+      char drop_log_msg[MAX_LEN_CONNECTION_URL + 128];
 
       snprintf (drop_log_msg, sizeof (drop_log_msg),
-		"dropping XA %s decision for a participant without XA support: %s",
-		is_commit ? "commit" : "abort", conn_url);
+		"dropping XA abort decision for a participant without XA support (its branch was "
+		"already settled outside XA): %s", conn_url);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, drop_log_msg);
       return NO_ERROR;
     }
 
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+  /* A gateway can answer an XA request with an error code and no message text, which would
+   * make this error read "DBLINK: " with nothing after it. */
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
 
   return ER_DBLINK;
 }
