@@ -118,6 +118,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   XID xid;
   T_CCI_ERROR err_buf;
   char tran_err_msg[64];
+  bool one_phase_committed = false;
   DBLINK_CONN_INFO *dblink;
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
@@ -185,6 +186,8 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	  return false;
 	}
 
+      one_phase_committed = true;
+
       snprintf (commit_log_msg, sizeof (commit_log_msg),
 		"participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, commit_log_msg);
@@ -196,14 +199,27 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   /* All participants are finished: XA-prepared (decision delivered later via the daemon)
    * or committed directly above.  Commit and disconnect any remaining non-participant
    * (SELECT-only) entries and reset is_dblink_autocommit.
-   * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point.
-   * If SELECT-only remote commit fails, force abort: _db_global_tran has not yet been
-   * updated and XA-prepared participants can still be rolled back (directly committed
-   * XA-incapable participants cannot). */
+   * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point. */
   if (qmgr_dblink_clear_conn_entry (thread_p, true) != NO_ERROR)
     {
-      return false;
+      if (!one_phase_committed)
+	{
+	  /* Nothing is durable yet: _db_global_tran has not been updated and every
+	   * participant is XA-prepared, so force abort and roll all of them back. */
+	  return false;
+	}
+
+      /* A participant has already been committed outside XA and cannot be rolled back, so
+       * this failure must not flip the decision to abort.  Nothing durable is lost by going
+       * on: the entries swept here are non-participants, and is_2pc_participant is set for
+       * DML only (qmgr_dblink_find_conn_handle), so they only ever ran SELECT.  Replace the
+       * error raised by dblink_end_tran with a notification and keep the commit decision. */
+      er_clear ();
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "SELECT-only remote cleanup failed after a participant was committed without XA "
+	      "prepare; keeping the commit decision");
     }
+
   return true;
 }
 
