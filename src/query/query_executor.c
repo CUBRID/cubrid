@@ -563,7 +563,7 @@ static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * x
 					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 					       REMOTE_DML_SINK * sink, const char *key_col, const char *op,
-					       DBLINK_REMOTE_SINK_MODE sink_mode);
+					       const char *extra_where, DBLINK_REMOTE_SINK_MODE sink_mode);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
@@ -12568,7 +12568,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   int val_no = 0, row_affected;
   char **attr_names = NULL;
   int num_attrs = 0;
-  const char *key_col = NULL, *op = NULL;
+  const char *key_col = NULL, *op = NULL, *extra_where = NULL;
   DBLINK_DML_STATE dblink_state = { -1, -1 };
   DBLINK_REMOTE_SINK_MODE sink_mode = DBLINK_SINK_MODE_PER_ROW;
 
@@ -12599,6 +12599,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &del->sink;
 	key_col = del->remote_key_col;
 	op = del->remote_op;
+	extra_where = del->remote_extra_where;
 	sink_mode = del->remote_sink_mode;
 	break;
       }
@@ -12618,12 +12619,12 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
       && (sink_mode == DBLINK_SINK_MODE_REDUCE_MIN || sink_mode == DBLINK_SINK_MODE_REDUCE_MAX
 	  || sink_mode == DBLINK_SINK_MODE_EQ_ALL))
     {
-      return qexec_execute_remote_delete_reduce (thread_p, xasl, xasl_state, sink, key_col, op, sink_mode);
+      return qexec_execute_remote_delete_reduce (thread_p, xasl, xasl_state, sink, key_col, op, extra_where, sink_mode);
     }
 
   /* open remote connection and prepare the INSERT/DELETE statement */
   if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, &dblink_state) != NO_ERROR)
+		       val_no, key_col, op, extra_where, &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
@@ -12740,20 +12741,24 @@ exit_on_error:
  *   sink(in)       : remote connection info (url/user/pwd/table_name)
  *   key_col(in)    : remote WHERE column
  *   op(in)         : comparison operator SQL text ("<", "<=", ">", ">=", "=")
+ *   extra_where(in): deparsed remote-only AND arm(s), or NULL/empty if there are none -- folded in
+ *                    regardless of whether the reduce boundary ends up bound (see
+ *                    dblink_dml_build_delete_sql), since it's a real WHERE condition either way
  *   sink_mode(in)  : DBLINK_SINK_MODE_REDUCE_MIN, DBLINK_SINK_MODE_REDUCE_MAX, or
  *                    DBLINK_SINK_MODE_EQ_ALL
  *
  * Note: A NULL anywhere in the local subquery result makes the comparison unknown for every remote row
  *   (ALL over a set containing NULL), so this leaves the remote table untouched -- no connection is
  *   opened. An empty local subquery result is vacuously true for ALL, so every remote row is deleted
- *   instead (dblink_dml_open/dblink_dml_build_delete_sql with a NULL key_col builds a WHERE-less
- *   DELETE for this case). For EQ_ALL specifically, if the local subquery rows do not all share one
- *   value, "col = ALL (...)" is always false, so the remote table is also left untouched.
+ *   instead, or every row matching extra_where if a remote-only AND arm is present (dblink_dml_open/
+ *   dblink_dml_build_delete_sql with a NULL key_col builds a WHERE-less, or extra_where-only, DELETE
+ *   for this case). For EQ_ALL specifically, if the local subquery rows do not all share one value,
+ *   "col = ALL (...)" is always false, so the remote table is also left untouched.
  */
 static int
 qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				    REMOTE_DML_SINK * sink, const char *key_col, const char *op,
-				    DBLINK_REMOTE_SINK_MODE sink_mode)
+				    const char *extra_where, DBLINK_REMOTE_SINK_MODE sink_mode)
 {
   ACCESS_SPEC_TYPE *specp = xasl->spec_list;
   SCAN_CODE xb_scan, ls_scan;
@@ -12881,11 +12886,15 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
       return NO_ERROR;
     }
 
-  /* row_count == 0: the local subquery is empty, so ALL is vacuously true -- delete every remote row.
-   * dblink_dml_build_delete_sql() builds a WHERE-less DELETE when key_col is NULL; bind_count 0 means
-   * dblink_dml_execute_row() skips binding (boundary is unset DB_NULL in this case, never read). */
+  /* row_count == 0: the local subquery is empty, so ALL is vacuously true -- delete every remote row
+   * (or every row matching extra_where, if a remote-only AND arm is present: TRUE AND extra_where is
+   * just extra_where). dblink_dml_build_delete_sql() builds a WHERE-less (or extra_where-only) DELETE
+   * when key_col is NULL; bind_count 0 means dblink_dml_execute_row() skips binding (boundary is unset
+   * DB_NULL in this case, never read). extra_where itself never needs a placeholder (gate-enforced
+   * literal-only shape), so it is passed through unconditionally either way. */
   if (dblink_dml_open (thread_p, DBLINK_DML_DELETE, sink->url, sink->user, sink->pwd, sink->table_name, NULL, 0, 0,
-		       (row_count == 0) ? NULL : key_col, (row_count == 0) ? NULL : op, &dblink_state) != NO_ERROR)
+		       (row_count == 0) ? NULL : key_col, (row_count == 0) ? NULL : op, extra_where,
+		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       pr_clear_value (&boundary);

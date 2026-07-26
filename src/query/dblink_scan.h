@@ -120,14 +120,14 @@ struct dblink_dml_state
 /* which statement dblink_dml_open() prepares; each kind reads only its own params below */
 typedef enum dblink_dml_kind
 {
-  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind; ignores key_col/op */
-  DBLINK_DML_DELETE		/* uses key_col/op; ignores attr_names/num_attrs/num_bind */
+  DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind; ignores key_col/op/extra_where */
+  DBLINK_DML_DELETE		/* uses key_col/op/extra_where; ignores attr_names/num_attrs/num_bind */
     /* DBLINK_DML_UPDATE to follow */
 } DBLINK_DML_KIND;
 
 extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user,
 			    const char *pwd, const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			    const char *key_col, const char *op, DBLINK_DML_STATE * state);
+			    const char *key_col, const char *op, const char *extra_where, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
 extern void dblink_dml_rollback (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);

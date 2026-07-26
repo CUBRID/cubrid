@@ -1469,26 +1469,34 @@ sql_build_error:
 }
 
 /*
- * dblink_dml_build_delete_sql () - Build "DELETE FROM <table> WHERE <key_col> <op> ?" (one placeholder),
- *   or "DELETE FROM <table>" with no WHERE at all when key_col is NULL (comparison ALL over an empty
- *   local subquery result is vacuously true, so every remote row is deleted -- DELETE rather than
- *   TRUNCATE, to preserve 2PC/trigger/rollback semantics).
+ * dblink_dml_build_delete_sql () - Build the remote DELETE SQL text. key_col NULL builds a WHERE-less
+ *   DELETE (comparison ALL over an empty local subquery result is vacuously true, so every remote row
+ *   is deleted -- DELETE rather than TRUNCATE, to preserve 2PC/trigger/rollback semantics); extra_where
+ *   (a remote-only AND arm deparsed at XASL generation, e.g. "name <> 'x'") is folded in as an
+ *   additional AND'd condition in either case, since it stands for a real WHERE condition regardless of
+ *   whether the driving predicate contributed a placeholder:
+ *     key_col set,   extra_where set   -> "... WHERE <key_col> <op> ? AND (<extra_where>)"
+ *     key_col set,   extra_where NULL  -> "... WHERE <key_col> <op> ?"
+ *     key_col NULL,  extra_where set   -> "... WHERE (<extra_where>)"
+ *     key_col NULL,  extra_where NULL  -> "..." (no WHERE at all)
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
- *   thread_p(in)   : thread entry
- *   table_name(in) : remote table name
- *   key_col(in)    : remote WHERE column (left-hand side, e.g. rc1); NULL builds a WHERE-less DELETE
- *   op(in)         : comparison operator SQL text ("=", "<", ">", "<=", ">="); ignored when key_col
- *                    is NULL
- *   sql_out(out)   : set to the built SQL text on success
+ *   thread_p(in)     : thread entry
+ *   table_name(in)   : remote table name
+ *   key_col(in)      : remote WHERE column (left-hand side, e.g. rc1); NULL builds a WHERE-less DELETE
+ *   op(in)           : comparison operator SQL text ("=", "<", ">", "<=", ">="); ignored when key_col
+ *                      is NULL
+ *   extra_where(in)  : deparsed remote-only AND arm(s), or NULL/empty if there are none
+ *   sql_out(out)     : set to the built SQL text on success
  */
 static int
 dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, const char *key_col, const char *op,
-			     char **sql_out)
+			     const char *extra_where, char **sql_out)
 {
   int ret, remaining;
   char *sql;
   size_t sql_len;
+  bool has_extra;
 
   *sql_out = NULL;
 
@@ -1498,9 +1506,11 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
       return ER_DBLINK;
     }
 
+  has_extra = (extra_where != NULL && extra_where[0] != '\0');
+
   if (key_col == NULL)
     {
-      sql_len = strlen (table_name) + 48;
+      sql_len = strlen (table_name) + (has_extra ? strlen (extra_where) : 0) + 64;
       sql = (char *) db_private_alloc (thread_p, sql_len);
       if (sql == NULL)
 	{
@@ -1509,7 +1519,14 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 	}
 
       remaining = (int) sql_len;
-      ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s", table_name);
+      if (has_extra)
+	{
+	  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE (%s)", table_name, extra_where);
+	}
+      else
+	{
+	  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s", table_name);
+	}
       if (ret < 0 || ret >= remaining)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -1527,7 +1544,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + 64;
+  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + (has_extra ? strlen (extra_where) : 0) + 80;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1536,7 +1553,15 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+  if (has_extra)
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ? AND (%s)", table_name,
+		      key_col, op, extra_where);
+    }
+  else
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+    }
   if (ret < 0 || ret >= remaining)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
@@ -1561,10 +1586,12 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   attr_names(in)  : INSERT only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
- *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1); NULL builds a
- *                     WHERE-less DELETE (deletes every remote row)
+ *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1); NULL omits the
+ *                     placeholder condition (deletes every remote row, unless extra_where narrows it)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">="); ignored
  *                     when key_col is NULL
+ *   extra_where(in) : DELETE only -- deparsed remote-only AND arm(s), or NULL/empty if there are none;
+ *                     see dblink_dml_build_delete_sql for the four key_col/extra_where combinations
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -1580,7 +1607,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user, const char *pwd,
 		 const char *table_name, char **attr_names, int num_attrs, int num_bind, const char *key_col,
-		 const char *op, DBLINK_DML_STATE * state)
+		 const char *op, const char *extra_where, DBLINK_DML_STATE * state)
 {
   int ret;
   T_CCI_ERROR err_buf;
@@ -1632,7 +1659,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url,
       ret = dblink_dml_build_insert_sql (thread_p, table_name, attr_names, num_attrs, num_bind, &sql);
       break;
     case DBLINK_DML_DELETE:
-      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, &sql);
+      ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, extra_where, &sql);
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
