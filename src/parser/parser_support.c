@@ -11891,52 +11891,40 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
   return;
 }
 
-/* true iff the DELETE WHERE clause is a single positive predicate over a subquery whose shape is a
- * sink candidate: col IN (subquery), col {= | <> | < | > | <= | >=} ANY (subquery), a scalar comparison
- * col {= | <> | < | > | <= | >=} (subquery), or col {= | < | > | <= | >=} ALL (subquery). This only
- * gates the predicate *shape*; how each shape is executed (per-row push vs. a reduced single value) is
- * decided downstream in XASL generation. Forms excluded here fall through to the existing "local mixed
- * remote DML is not allowed" rejection: OR / multiple predicates (op PT_OR/PT_AND or a CNF list, caught
- * by op or cond->next), col <> ALL (PT_NE_ALL is excluded: whole-set semantics equivalent to NOT IN, not
- * value-push), negation of IN (PT_IS_NOT_IN), EXISTS, and a value-list IN (arg2 is not a query).
- *
- * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
- * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
- * point. A correlated or row subquery that passes this shape gate is routed to the sink and rejected later, where
- * the reference to the outer target (or the multi-column shape) is resolvable: pt_dblink_delete_corr_ref()
- * (semantic_check.c) rejects correlated subqueries, and pt_to_delete_xasl_remote_subquery() (xasl_generation.c)
- * rejects row/multi-column subqueries. */
+/* true iff cond is a driving predicate over a subquery: col IN (subquery), col {= | <> | < | > | <= |
+ * >=} ANY (subquery), a scalar comparison, or col {= | < | > | <= | >=} ALL (subquery). PT_NE_ALL is
+ * excluded: whole-set (NOT IN) semantics, not value-push. This only gates predicate *shape*; how each
+ * shape executes is decided in XASL generation. */
 static bool
-pt_dblink_delete_where_is_inscope (PT_NODE * node)
+pt_dblink_delete_is_driving_pred (PT_NODE * cond)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
   PT_NODE *arg2;
 
-  if (cond == NULL || cond->next != NULL || cond->node_type != PT_EXPR)
+  if (cond == NULL || cond->node_type != PT_EXPR)
     {
       return false;
     }
 
   switch (cond->info.expr.op)
     {
-    case PT_IS_IN:		/* col IN (subquery) */
-    case PT_EQ_SOME:		/* col = ANY (subquery) */
-    case PT_NE_SOME:		/* col <> ANY (subquery) */
-    case PT_LT_SOME:		/* col < ANY (subquery) */
-    case PT_GT_SOME:		/* col > ANY (subquery) */
-    case PT_LE_SOME:		/* col <= ANY (subquery) */
-    case PT_GE_SOME:		/* col >= ANY (subquery) */
-    case PT_EQ:		/* scalar: col {= | <> | < | > | <= | >=} (subquery) */
+    case PT_IS_IN:
+    case PT_EQ_SOME:
+    case PT_NE_SOME:
+    case PT_LT_SOME:
+    case PT_GT_SOME:
+    case PT_LE_SOME:
+    case PT_GE_SOME:
+    case PT_EQ:
     case PT_NE:
     case PT_LT:
     case PT_GT:
     case PT_LE:
     case PT_GE:
-    case PT_EQ_ALL:		/* col = ALL (subquery) */
-    case PT_LT_ALL:		/* col < ALL (subquery) */
-    case PT_GT_ALL:		/* col > ALL (subquery) */
-    case PT_LE_ALL:		/* col <= ALL (subquery) */
-    case PT_GE_ALL:		/* col >= ALL (subquery) */
+    case PT_EQ_ALL:
+    case PT_LT_ALL:
+    case PT_GT_ALL:
+    case PT_LE_ALL:
+    case PT_GE_ALL:
       break;
     default:
       return false;
@@ -11945,7 +11933,7 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
   arg2 = cond->info.expr.arg2;
   if (arg2 == NULL || !PT_IS_QUERY (arg2))
     {
-      return false;		/* RHS must be a subquery, not a value list or column */
+      return false;
     }
 
   return true;
@@ -12049,6 +12037,92 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
     }
 
   return false;
+}
+
+/* true iff conjunct is a "remote-only" AND arm: col {= | <> | < | > | <= | >=} literal, nothing else
+ * (no subquery/dblink()/function/cast on either side). Single-target scope means a bare column can
+ * only resolve to the remote target, so this shape doubles as the local-reference guard. */
+static bool
+pt_dblink_delete_is_remote_only_conjunct (PT_NODE * conjunct)
+{
+  PT_NODE *arg1, *arg2;
+
+  if (conjunct == NULL || conjunct->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  switch (conjunct->info.expr.op)
+    {
+    case PT_EQ:
+    case PT_NE:
+    case PT_LT:
+    case PT_GT:
+    case PT_LE:
+    case PT_GE:
+      break;
+    default:
+      return false;
+    }
+
+  arg1 = conjunct->info.expr.arg1;
+  arg2 = conjunct->info.expr.arg2;
+
+  return arg1 != NULL && arg1->node_type == PT_NAME && arg2 != NULL && arg2->node_type == PT_VALUE;
+}
+
+/* Walks the pre-CNF PT_AND tree rooted at node (carve-out runs before CNF, so multiple conjuncts are
+ * still one PT_AND tree, not a cond->next list): every leaf must be the one driving predicate or a
+ * remote-only conjunct. *driving_seen counts driving leaves found so far; a second one, an OR, or any
+ * other shape fails the gate. Recursion is manual, not parser_walk_tree(), so the driving predicate's
+ * own subquery arm is never descended into. */
+static bool
+pt_dblink_delete_and_tree_is_inscope (PT_NODE * node, int *driving_seen)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  if (node->info.expr.op == PT_AND)
+    {
+      return (pt_dblink_delete_and_tree_is_inscope (node->info.expr.arg1, driving_seen)
+	      && pt_dblink_delete_and_tree_is_inscope (node->info.expr.arg2, driving_seen));
+    }
+
+  if (pt_dblink_delete_is_driving_pred (node))
+    {
+      (*driving_seen)++;
+      return *driving_seen == 1;
+    }
+
+  return pt_dblink_delete_is_remote_only_conjunct (node);
+}
+
+/* true iff the DELETE WHERE clause is in scope for the remote-sink-with-local-subquery carve-out:
+ * exactly one driving predicate (see pt_dblink_delete_is_driving_pred) plus zero or more remote-only AND
+ * arms (see pt_dblink_delete_is_remote_only_conjunct). A WHERE with no AND is just the driving predicate
+ * by itself, so this subsumes the single-predicate case.
+ *
+ * Correlation and row/multi-column subqueries are NOT decided here. query.correlation_level is 0 for a DELETE
+ * WHERE subquery (a DELETE target is not a query scope), so it cannot flag a target-correlated subquery at this
+ * point. A correlated or row subquery that passes this shape gate is routed to the sink and rejected later, where
+ * the reference to the outer target (or the multi-column shape) is resolvable: pt_dblink_delete_corr_ref()
+ * (semantic_check.c) rejects correlated subqueries, and pt_to_delete_xasl_remote_subquery() (xasl_generation.c)
+ * rejects row/multi-column subqueries. (semantic_check.c's PT_DELETE branch notes a gap this AND-tree widening
+ * creates in that correlation check.) */
+static bool
+pt_dblink_delete_where_is_inscope (PT_NODE * node)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+  int driving_seen = 0;
+
+  if (cond == NULL || cond->next != NULL)
+    {
+      return false;		/* defensive: carve-out runs pre-CNF, so a cond->next list is unexpected here */
+    }
+
+  return pt_dblink_delete_and_tree_is_inscope (cond, &driving_seen) && driving_seen == 1;
 }
 
 static void
