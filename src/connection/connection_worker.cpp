@@ -72,6 +72,306 @@ namespace cubconn::connection
     return prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   });
 
+  unsigned int
+  worker::send_packet (css_conn_entry *conn, const cubbase::span<std::byte> *packet, std::size_t packet_count,
+		       const bool *retain_packet, std::function<void ()> &&deleter, int wait_time)
+  {
+    std::array<uint32_t, MAX_DIRECT_PACKET_COUNT> record_size;
+    std::array<struct iovec, MAX_DIRECT_PACKET_COUNT * 2> wire;
+    std::array<bool, MAX_DIRECT_PACKET_COUNT * 2> wire_owned {};
+    std::array<cubbase::span<std::byte>, MAX_DIRECT_PACKET_COUNT * 2> pending;
+    std::array<std::byte *, MAX_DIRECT_PACKET_COUNT * 2> allocated {};
+    std::shared_ptr<message_blocker> failed_waiter;
+    std::shared_ptr<message_blocker> waiter;
+    struct msghdr msg = {};
+    worker *owner;
+    context *ctx;
+    std::size_t allocated_count = 0;
+    std::size_t pending_count = 0;
+    std::size_t wire_count = 0;
+    std::size_t total_size = 0;
+    std::size_t sent_size = 0;
+    std::size_t pending_size = 0;
+    ssize_t bytes = -1;
+    bool retain_deleter = false;
+    int send_errno = 0;
+    int r;
+    auto release_allocated = [&allocated, &allocated_count] ()
+    {
+      for (std::size_t allocation = 0; allocation < allocated_count; allocation++)
+	{
+	  delete [] allocated[allocation];
+	}
+      allocated_count = 0;
+    };
+
+    assert (conn != nullptr);
+    assert (packet != nullptr);
+    assert (packet_count > 0 && packet_count <= MAX_DIRECT_PACKET_COUNT);
+
+    for (std::size_t index = 0; index < packet_count; index++)
+      {
+	assert (packet[index].size () <= static_cast<std::size_t> (INT_MAX));
+	record_size[index] = htonl (static_cast<uint32_t> (packet[index].size ()));
+	wire[wire_count++] = { &record_size[index], sizeof (record_size[index]) };
+	total_size += sizeof (record_size[index]);
+	if (packet[index].size () > 0)
+	  {
+	    wire[wire_count] = { packet[index].data (), packet[index].size () };
+	    wire_owned[wire_count++] = retain_packet != nullptr && retain_packet[index] && deleter;
+	    total_size += packet[index].size ();
+	  }
+      }
+
+    r = rmutex_lock (NULL, &conn->cmutex);
+    assert (r == NO_ERROR);
+
+    owner = conn->worker;
+    ctx = reinterpret_cast<context *> (conn->context);
+    if (owner == nullptr || ctx == nullptr || IS_INVALID_SOCKET (conn->fd))
+      {
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+	if (deleter)
+	  {
+	    deleter ();
+	  }
+	return NO_ERROR;
+      }
+
+    if (ctx->m_send.m_transmitter.empty ())
+      {
+	msg.msg_iov = wire.data ();
+	msg.msg_iovlen = wire_count;
+	do
+	  {
+	    bytes = ::sendmsg (conn->fd, &msg, MSG_NOSIGNAL | MSG_DONTWAIT);
+	  }
+	while (bytes < 0 && errno == EINTR);
+
+	if (bytes > 0)
+	  {
+	    sent_size = static_cast<std::size_t> (bytes);
+	    ctx->m_guarded_stats.bytes_out_total += sent_size;
+	  }
+	else if (bytes < 0)
+	  {
+	    send_errno = errno;
+	  }
+      }
+    else
+      {
+	/* Preserve the bytes already queued for this connection. */
+	send_errno = EAGAIN;
+      }
+
+    if (sent_size == total_size)
+      {
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+	if (deleter)
+	  {
+	    deleter ();
+	  }
+	return NO_ERROR;
+      }
+
+    assert (sent_size < total_size);
+
+    if (bytes == 0 || (bytes < 0 && send_errno != EAGAIN
+#if defined (EWOULDBLOCK) && EWOULDBLOCK != EAGAIN
+		       && send_errno != EWOULDBLOCK
+#endif
+		      ))
+      {
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+	if (deleter)
+	  {
+	    deleter ();
+	  }
+	css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	return ERROR_ON_WRITE;
+      }
+
+    {
+      std::size_t skip = sent_size;
+
+      for (std::size_t index = 0; index < wire_count; index++)
+	{
+	  std::size_t available = wire[index].iov_len;
+	  std::byte *source = static_cast<std::byte *> (wire[index].iov_base);
+	  std::byte *copy;
+
+	  if (skip >= available)
+	    {
+	      skip -= available;
+	      continue;
+	    }
+	  source += skip;
+	  available -= skip;
+	  skip = 0;
+	  pending_size += available;
+
+	  if (wire_owned[index])
+	    {
+	      pending[pending_count++] = { source, available };
+	      retain_deleter = true;
+	      continue;
+	    }
+
+	  copy = new std::byte[available];
+	  if (copy == nullptr)
+	    {
+	      release_allocated ();
+	      r = rmutex_unlock (NULL, &conn->cmutex);
+	      assert (r == NO_ERROR);
+	      if (deleter)
+		{
+		  deleter ();
+		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, available);
+	      css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	      return CANT_ALLOC_BUFFER;
+	    }
+	  std::memcpy (copy, source, available);
+	  allocated[allocated_count++] = copy;
+	  pending[pending_count++] = { copy, available };
+	}
+      assert (skip == 0);
+      assert (pending_size == total_size - sent_size);
+    }
+
+    if (!ctx->m_send.m_transmitter.prepare_append (pending_count))
+      {
+	std::byte *coalesced;
+
+	if (!ctx->m_send.m_transmitter.prepare_append (1))
+	  {
+	    release_allocated ();
+	    r = rmutex_unlock (NULL, &conn->cmutex);
+	    assert (r == NO_ERROR);
+	    if (deleter)
+	      {
+		deleter ();
+	      }
+	    er_log_debug (ARG_FILE_LINE, "pending transmission reached IOV_MAX for connection %d\n", conn->idx);
+	    css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	    return INTERNAL_CSS_ERROR;
+	  }
+
+	release_allocated ();
+	pending_count = 0;
+	retain_deleter = false;
+
+	coalesced = new std::byte[pending_size];
+	if (coalesced == nullptr)
+	  {
+	    r = rmutex_unlock (NULL, &conn->cmutex);
+	    assert (r == NO_ERROR);
+	    if (deleter)
+	      {
+		deleter ();
+	      }
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, pending_size);
+	    css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	    return CANT_ALLOC_BUFFER;
+	  }
+
+	std::size_t skip = sent_size;
+	std::size_t copied = 0;
+	for (std::size_t index = 0; index < wire_count; index++)
+	  {
+	    std::size_t available = wire[index].iov_len;
+	    std::byte *source = static_cast<std::byte *> (wire[index].iov_base);
+
+	    if (skip >= available)
+	      {
+		skip -= available;
+		continue;
+	      }
+	    source += skip;
+	    available -= skip;
+	    skip = 0;
+	    std::memcpy (coalesced + copied, source, available);
+	    copied += available;
+	  }
+	assert (skip == 0 && copied == pending_size);
+	allocated[allocated_count++] = coalesced;
+	pending[pending_count++] = { coalesced, pending_size };
+      }
+
+    for (std::size_t index = 0; index < pending_count; index++)
+      {
+	ctx->m_send.m_transmitter.push (pending[index]);
+      }
+    for (std::size_t index = 0; index < allocated_count; index++)
+      {
+	std::byte *copy = allocated[index];
+	ctx->m_send.m_transmitter.push_for_deleter ([copy] ()
+	{
+	  delete [] copy;
+	});
+      }
+    if (retain_deleter)
+      {
+	ctx->m_send.m_transmitter.push_for_deleter (std::move (deleter));
+      }
+    ctx->m_send.m_transmitter.stamp ();
+
+    /* A context between handoff and takeover is not registered yet. Takeover
+     * observes the queued transmitter and registers EPOLLOUT. */
+    if (ctx->m_epoll_registered
+	&& !owner->m_events.modify_descriptor (conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
+      {
+	ctx->m_send.m_transmitter.clear ();
+	failed_waiter = std::move (ctx->m_send.m_blocker);
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+	if (!retain_deleter && deleter)
+	  {
+	    deleter ();
+	  }
+	owner->wakeup_blocked_worker (failed_waiter);
+	css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
+	return INTERNAL_CSS_ERROR;
+      }
+
+    if (wait_time != 0)
+      {
+	waiter = ctx->m_send.m_blocker;
+	if (waiter == nullptr)
+	  {
+	    waiter = std::make_shared<message_blocker> ();
+	    waiter->done = false;
+	    ctx->m_send.m_blocker = waiter;
+	  }
+      }
+
+    r = rmutex_unlock (NULL, &conn->cmutex);
+    assert (r == NO_ERROR);
+
+    if (!retain_deleter && deleter)
+      {
+	deleter ();
+      }
+
+    if (waiter != nullptr)
+      {
+	std::unique_lock<std::mutex> lock (waiter->m);
+	if (wait_time < 0)
+	  {
+	    waiter->cv.wait (lock, [&waiter] { return waiter->done; });
+	  }
+	else
+	  {
+	    waiter->cv.wait_for (lock, std::chrono::seconds (wait_time), [&waiter] { return waiter->done; });
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
   worker::worker (pool *pool, std::shared_ptr<coordinator> coord, std::shared_ptr<thread_watcher> watcher,
 		  std::size_t core, std::size_t index) :
     m_parent (pool),
@@ -82,6 +382,7 @@ namespace cubconn::connection
     m_stop (false),
     m_entry (nullptr),
     m_index (index),
+    m_notified (false),
     m_has_retry (false)
   {
     std::size_t i;
@@ -184,6 +485,11 @@ namespace cubconn::connection
     std::uint64_t u;
     ssize_t bytes;
 
+    if (m_notified.exchange (true, std::memory_order_acq_rel))
+      {
+	return true;
+      }
+
     u = 1;
     while (true)
       {
@@ -195,6 +501,7 @@ namespace cubconn::connection
 
 	if (bytes == 0 || (bytes > 0 && static_cast<unsigned long> (bytes) < sizeof (u)))
 	  {
+	    m_notified.store (false, std::memory_order_release);
 	    return false;
 	  }
 
@@ -208,6 +515,7 @@ namespace cubconn::connection
 	  {
 	    break;
 	  }
+	m_notified.store (false, std::memory_order_release);
 	return false;
       }
 
@@ -221,13 +529,11 @@ namespace cubconn::connection
     /* wait_time is implemented only for  */
     /*	START				  */
     /*	SHUTDOWN_CLIENT			  */
-    /*	SEND_PACKET			  */
     /* you must implement a logic to use a waiter whose message type is not in above */
 
     assert (!wait_time ||
 	    (item.type == message_type::START ||
-	     item.type == message_type::SHUTDOWN_CLIENT ||
-	     item.type == message_type::SEND_PACKET));
+	     item.type == message_type::SHUTDOWN_CLIENT));
 
     std::shared_ptr<message_blocker> handle;
     std::unique_lock<std::mutex> lock;
@@ -323,7 +629,8 @@ namespace cubconn::connection
       {
 	std::lock_guard<std::mutex> lock (handle->m);
 	handle->done = true;
-	handle->cv.notify_one ();
+	/* blocker may be shared by every sender blocked on the same transmitter */
+	handle->cv.notify_all ();
       }
   }
 
@@ -344,10 +651,19 @@ namespace cubconn::connection
 
   bool worker::has_remaining_tasks (context *ctx)
   {
+    bool has_pending_transmission;
+    int r;
+
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
 
-    if (ctx->m_ignore < ignore_level::IGNORE_ALL && !ctx->m_send.m_transmitter.empty ())
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+    has_pending_transmission = (ctx->m_ignore < ignore_level::IGNORE_ALL && !ctx->m_send.m_transmitter.empty ());
+    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
+    if (has_pending_transmission)
       {
 	er_log_conn (ARG_FILE_LINE,
 		     "connection::worker->handle_connection_close: retry shutdown (conn %p): send buffer not empty\n", ctx->m_conn);
@@ -419,6 +735,7 @@ namespace cubconn::connection
   bool worker::handle_connection_close (context *ctx, bool is_retry, std::shared_ptr<message_blocker> handle)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
+    std::shared_ptr<message_blocker> transmission_blocker;
     int tran_index, client_id;
     int status;
 
@@ -535,14 +852,19 @@ namespace cubconn::connection
 
     this->end_connection_close ();
 
-    /* clear resource */
-
     start = std::chrono::steady_clock::now ();
 
     rmutex_lock (m_entry, &ctx->m_conn->cmutex);
 
+    ctx->m_epoll_registered = false;
+    ctx->m_send.m_transmitter.clear ();
+    transmission_blocker = std::move (ctx->m_send.m_blocker);
     ctx->m_conn->worker = nullptr;
     ctx->m_conn->context = nullptr;
+
+    /* Serialize descriptor invalidation with direct send and control paths. */
+    css_shutdown_socket (ctx->m_conn->fd);
+    ctx->m_conn->fd = INVALID_SOCKET;
 
     rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 
@@ -550,15 +872,9 @@ namespace cubconn::connection
     m_stats.add (statistics::worker::BLOCKED_RMUTEX,
 		 std::chrono::duration_cast<std::chrono::microseconds> (end - start).count ());
 
-    ctx->m_send.m_transmitter.clear ();
-
-    /* close the socket */
-    css_shutdown_socket (ctx->m_conn->fd);
-    ctx->m_conn->fd = INVALID_SOCKET;
-
     /* wake up the thread blocked until this request is complete */
     this->wakeup_blocked_worker (handle);
-    this->wakeup_blocked_worker (ctx->m_send.m_blocker);
+    this->wakeup_blocked_worker (transmission_blocker);
 
     /* any sessions that are nat cleared (e.g. cdc, flashback) should be handled here */
     css_prepare_shutdown_conn (ctx->m_conn);
@@ -580,6 +896,7 @@ retry:
   bool worker::statistics_metrics_to_coordinator ()
   {
     coordinator::message message;
+    int r;
 
     message.type = coordinator::message_type::STATISTICS;
 
@@ -590,6 +907,22 @@ retry:
     message.statistics.contexts.reserve (m_context.size ());
     for (context *ctx : m_context)
       {
+	/* stats */
+	uint64_t bytes_out_total;
+
+	r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	bytes_out_total = ctx->m_guarded_stats.bytes_out_total;
+	ctx->m_guarded_stats.bytes_out_total = 0;
+
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	/* integrate direct send stats to owned stats */
+	ctx->m_stats.add (statistics::context::BYTES_OUT_TOTAL, bytes_out_total);
+
+	/* store */
 	message.statistics.contexts.emplace_back (ctx->m_id, ctx->m_stats);
       }
 
@@ -849,6 +1182,8 @@ retry:
 	    return false;
 	  }
 
+	/* RMW closes the StoreLoad window */
+	m_notified.exchange (false, std::memory_order_acq_rel);
 	if (!this->handle_message_queue ())
 	  {
 	    return false;
@@ -926,125 +1261,6 @@ retry:
     return true;
   }
 
-  bool worker::handle_message_queue_send_packet (message &item)
-  {
-    context *ctx;
-    css_conn_entry *conn;
-    result status;
-    int r;
-
-    assert (item.conn);
-
-    r = rmutex_lock (m_entry, &item.conn->cmutex);
-    assert (r == NO_ERROR);
-
-    ctx = reinterpret_cast<context *> (item.conn->context);
-    if (ctx == nullptr)
-      {
-	if (item.deleter)
-	  {
-	    item.deleter ();
-	  }
-
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
-#if !defined (NDEBUG)
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_send_packet: message_id = %lld, context is already cleared for conn = %p\n",
-		     item.message_id, static_cast<void *> (item.conn));
-#endif
-	this->wakeup_blocked_worker (item.waiter_handle);
-
-	return true;
-      }
-
-    conn = item.conn;
-    if (!this->validate_message_generation (item, ctx))
-      {
-	r = rmutex_unlock (m_entry, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	this->wakeup_blocked_worker (item.waiter_handle);
-
-	return true;
-      }
-    if (this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
-      {
-	r = rmutex_unlock (m_entry, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	return true;
-      }
-
-#if !defined (NDEBUG)
-    er_log_conn (__FILE__, __LINE__, "new packet to send. message_id = %lld, fd = %d in the worker = %d\n", item.message_id,
-		 item.conn->fd, m_index);
-#endif
-
-    for (auto &packet : item.packet)
-      {
-	ctx->m_send.m_transmitter.push_for_send ({ packet.data (), packet.size () });
-      }
-    ctx->m_send.m_transmitter.stamp ();
-    ctx->m_send.m_transmitter.push_for_deleter (std::move (item.deleter));
-
-    /* first, try to send the packets */
-    status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd);
-    if (status == result::PeerReset || status == result::Error)
-      {
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
-	this->wakeup_blocked_worker (item.waiter_handle);
-
-	/* ctx will be forcibly removed */
-	ctx->m_ignore = ignore_level::IGNORE_ALL;
-
-	/* this connection will be removed by main loop */
-	return true;
-      }
-
-    assert (status == result::Ok || status == result::Pending);
-
-    if (status == result::Ok)
-      {
-	ctx->m_send.m_transmitter.clear ();
-#if !defined (NDEBUG)
-	er_log_conn (__FILE__, __LINE__, "fully sent. message_id = %lld, fd = %d in the worker = %d\n", item.message_id,
-		     ctx->m_conn->fd, m_index);
-#else
-	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
-#endif
-
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
-	this->wakeup_blocked_worker (item.waiter_handle);
-
-	return true;
-      }
-
-    /* if buffer is full, register the fd to epoll loop and wait to send the others */
-    if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLOUT | EPOLLRDHUP, ctx))
-      {
-	r = rmutex_unlock (m_entry, &item.conn->cmutex);
-	assert (r == NO_ERROR);
-
-	this->wakeup_blocked_worker (item.waiter_handle);
-
-	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_send_packet: modify_descriptor failed\n");
-	return false;
-      }
-
-    r = rmutex_unlock (m_entry, &item.conn->cmutex);
-    assert (r == NO_ERROR);
-
-    ctx->m_send.m_blocker = std::move (item.waiter_handle);
-
-    return true;
-  }
-
   bool worker::handle_message_queue_release_packet (message &item)
   {
     context *ctx;
@@ -1052,7 +1268,7 @@ retry:
     int r;
 
     assert (item.conn);
-    assert (item.packet.size () > 0);
+    assert (item.packet);
 
     r = rmutex_lock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
@@ -1085,12 +1301,9 @@ retry:
 	return true;
       }
 
-    for (cubbase::span<std::byte> &packet : item.packet)
-      {
-	ctx->m_recv.m_receiver.release (packet.data ());
-	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", packet.data ());
-      }
+    ctx->m_recv.m_receiver.release (item.packet);
+    er_log_conn (__FILE__, __LINE__,
+		 "connection::worker->handle_message_queue_release_packet: release packet pointer = %p\n", item.packet);
 
     r = rmutex_unlock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
@@ -1115,16 +1328,19 @@ retry:
       {
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
 	m_removed_context.push_back (ctx);
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
+    ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
       {
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
 	m_events.remove_descriptor (ctx->m_conn->fd);
@@ -1206,6 +1422,7 @@ retry:
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: add_descriptor failed\n");
 	assert_release (false);
       }
+    ctx->m_epoll_registered = false;
     if (m_context.erase (ctx) == 0)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_handoff_client: context not found\n");
@@ -1264,16 +1481,19 @@ respond:
       {
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
 	m_removed_context.push_back (ctx);
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_message_queue_new_client: add_descriptor failed\n");
 	return false;
       }
+    ctx->m_epoll_registered = true;
     if (!m_context.insert (ctx).second)
       {
 	ctx->m_conn->worker = nullptr;
 	ctx->m_conn->context = nullptr;
+	ctx->m_epoll_registered = false;
 	rmutex_unlock (NULL, &ctx->m_conn->cmutex);
 
 	m_events.remove_descriptor (ctx->m_conn->fd);
@@ -1415,7 +1635,6 @@ respond:
 	/* HANDOFF_CLIENT  */ { &worker::handle_message_queue_handoff_client,	statistics::worker::MQ_HANDOFF_CLIENT },
 	/* TAKEOVER_CLIENT */ { &worker::handle_message_queue_takeover_client,	statistics::worker::MQ_TAKEOVER_CLIENT },
 	/* SHUTDOWN_CLIENT */ { &worker::handle_message_queue_shutdown_client,	statistics::worker::MQ_SHUTDOWN_CLIENT },
-	/* SEND_PACKET	   */ { &worker::handle_message_queue_send_packet,	statistics::worker::MQ_SEND_PACKET },
 	/* RELEASE_PACKET  */ { &worker::handle_message_queue_release_packet,	statistics::worker::MQ_RELEASE_PACKET }
       }
     };
@@ -1424,7 +1643,7 @@ respond:
 
     static_assert (static_cast<int> (message_type::START) == 0, "message_type must start at 0");
     static_assert (static_cast<int> (message_type::TYPE_COUNT) == handler.size (), "handler table size must match");
-    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 10, "this must be modified");
+    static_assert (static_cast<int> (message_type::TYPE_COUNT) == 9, "this must be modified");
 
     i = 0;
     size = m_queue_size[static_cast<std::size_t> (type)].exchange (0, std::memory_order_acquire);
@@ -1800,6 +2019,7 @@ respond:
   result worker::handle_reception (context *ctx, bool in_exhausted)
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
+    std::shared_ptr<message_blocker> transmission_blocker;
     std::vector<cubbase::span<std::byte>> *packets;
     result status, io_status;
     int mtx;
@@ -1817,9 +2037,13 @@ respond:
     if (io_status == result::PeerReset || io_status == result::Error)
       {
 	er_log_conn (__FILE__, __LINE__, "connection::worker->handle_reception: status = %d\n", io_status);
-	ctx->m_send.m_transmitter.empty ();
+	rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+	ctx->m_send.m_transmitter.clear ();
+	transmission_blocker = std::move (ctx->m_send.m_blocker);
+	rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	this->wakeup_blocked_worker (transmission_blocker);
 	this->handle_connection_close (ctx);
-	return io_status;
+	return io_status == result::PeerReset ? result::PeerReset : result::ClosedConnection;
       }
 
     assert (io_status == result::Pending || io_status == result::BudgetExhausted);
@@ -1887,7 +2111,19 @@ respond:
 
   result worker::handle_transmission (context *ctx, bool in_exhausted)
   {
+    std::shared_ptr<message_blocker> blocker;
     result status;
+    int r;
+
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
+    if (ctx->m_conn->worker != this || ctx->m_conn->context != ctx)
+      {
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+	return result::Pending;
+      }
 
     status = ctx->m_send.m_transmitter.fill (ctx->m_conn->fd, m_send_budget);
     if (status == result::PeerReset || status == result::Error)
@@ -1896,17 +2132,40 @@ respond:
 
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
+	blocker = std::move (ctx->m_send.m_blocker);
 
-	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	this->wakeup_blocked_worker (blocker);
 	this->handle_connection_close (ctx);
-	return status;
+	return status == result::PeerReset ? result::PeerReset : result::ClosedConnection;
       }
 
     assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
     if (status == result::Ok)
       {
-	this->wakeup_blocked_worker (ctx->m_send.m_blocker);
+	ctx->m_send.m_transmitter.clear ();
+	blocker = std::move (ctx->m_send.m_blocker);
+
+	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
+	  {
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_transmission: modify_descriptor failed\n");
+
+	    ctx->m_ignore = ignore_level::IGNORE_ALL;
+	    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	    assert (r == NO_ERROR);
+
+	    this->wakeup_blocked_worker (blocker);
+	    this->handle_connection_close (ctx);
+	    return result::ClosedConnection;
+	  }
+
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+
+	this->wakeup_blocked_worker (blocker);
 
 	rmutex_lock (m_entry, &ctx->m_conn->rmutex);
 	if (ctx->m_conn->status == CONN_CLOSING)
@@ -1920,22 +2179,16 @@ respond:
 	  }
 	rmutex_unlock (m_entry, &ctx->m_conn->rmutex);
 
-	if (!m_events.modify_descriptor (ctx->m_conn->fd, EPOLLET | EPOLLIN | EPOLLRDHUP, ctx))
-	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->handle_transmission: modify_descriptor failed\n");
-
-	    /* ctx will be forcibly removed */
-	    ctx->m_ignore = ignore_level::IGNORE_ALL;
-
-	    this->handle_connection_close (ctx);
-	    return result::Error;
-	  }
-	ctx->m_send.m_transmitter.clear ();
 	er_log_conn (__FILE__, __LINE__, "fully sent. fd = %d in the worker = %d\n", ctx->m_conn->fd, m_index);
       }
-    else if (!in_exhausted && status == result::BudgetExhausted)
+    else
       {
-	handle_exhausted_add_context (ctx, EPOLLOUT);
+	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+	assert (r == NO_ERROR);
+	if (!in_exhausted && status == result::BudgetExhausted)
+	  {
+	    handle_exhausted_add_context (ctx, EPOLLOUT);
+	  }
       }
     return status;
   }
@@ -2124,13 +2377,6 @@ respond:
 	  {
 	    switch (request.type)
 	      {
-	      case message_type::SEND_PACKET:
-		if (request.deleter)
-		  {
-		    request.deleter ();
-		  }
-		[[fallthrough]];
-
 	      case message_type::SHUTDOWN_CLIENT:
 		this->wakeup_blocked_worker (request.waiter_handle);
 		break;
@@ -2141,6 +2387,8 @@ respond:
 		break;
 
 	      case message_type::TAKEOVER_CLIENT:
+		/* sender may be blocked on a transmission queued while this context was in handoff */
+		this->wakeup_blocked_worker (std::move (request.ctx->m_send.m_blocker));
 		css_free_conn (request.ctx->m_conn);
 		m_parent->retire_context (request.ctx);
 		break;
