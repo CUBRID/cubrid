@@ -521,6 +521,7 @@ namespace cubthread
       wrapped_task &operator= (wrapped_task &&other) = delete;
 
       cubperf::time_point &get_time (void);
+      std::chrono::steady_clock::time_point get_submission_time (void) const;
       task_admission get_admission (void) const;
 
       // helper
@@ -530,6 +531,7 @@ namespace cubthread
     private:
       inner_type m_inner;
       task_submission_options m_options;
+      std::chrono::steady_clock::time_point m_submission_time;
   };
 
   //////////////////////////////////////////////////////////////////////////
@@ -2033,6 +2035,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (task_type *task_p, task_submission_options options)
     : m_options (options)
+    , m_submission_time (std::chrono::steady_clock::now ())
   {
     assert (task_p != nullptr);
 
@@ -2052,6 +2055,7 @@ namespace cubthread
   template <stats_t Stats>
   worker_pool_impl<Stats>::wrapped_task::wrapped_task (wrapped_task &&other)
     : m_options (other.m_options)
+    , m_submission_time (other.m_submission_time)
   {
     m_inner.task = other.m_inner.task;
     other.m_inner.task = nullptr;
@@ -2060,6 +2064,13 @@ namespace cubthread
       {
 	m_inner.time = other.m_inner.time;
       }
+  }
+
+  template <stats_t Stats>
+  std::chrono::steady_clock::time_point
+  worker_pool_impl<Stats>::wrapped_task::get_submission_time (void) const
+  {
+    return m_submission_time;
   }
 
   template <stats_t Stats>
