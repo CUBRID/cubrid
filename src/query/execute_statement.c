@@ -14533,7 +14533,17 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (DB_VALUE_TYPE (&target_value) == DB_TYPE_NULL)
     {
-      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+      //PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+      /*
+       * Don't understand the rationale behind this case.  What's the
+       * point here?  MRS 4/30/96
+       */
+
+      if (target->node_type == PT_NAME && target->info.name.meta_class == PT_PARAMETER)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+	}
+
       return NO_ERROR;
     }
   else

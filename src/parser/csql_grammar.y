@@ -17270,6 +17270,10 @@ opt_on_target
 		}}
 	| ON_ primary
 		{{
+                        if( $2 == NULL ||  ($2->node_type == PT_VALUE && PT_IS_NULL_NODE($2)))
+                        {
+                            PT_ERRORm (this_parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+                        }
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
