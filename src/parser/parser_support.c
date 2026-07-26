@@ -11894,8 +11894,9 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
 /* true iff cond is a driving predicate over a subquery: col IN (subquery), col {= | <> | < | > | <= |
  * >=} ANY (subquery), a scalar comparison, or col {= | < | > | <= | >=} ALL (subquery). PT_NE_ALL is
  * excluded: whole-set (NOT IN) semantics, not value-push. This only gates predicate *shape*; how each
- * shape executes is decided in XASL generation. */
-static bool
+ * shape executes is decided in XASL generation. Shared (non-static) with semantic_check.c and
+ * xasl_generation.c via pt_dblink_delete_and_tree_find_driving() below and parser.h. */
+bool
 pt_dblink_delete_is_driving_pred (PT_NODE * cond)
 {
   PT_NODE *arg2;
@@ -12109,8 +12110,9 @@ pt_dblink_delete_and_tree_is_inscope (PT_NODE * node, int *driving_seen)
  * point. A correlated or row subquery that passes this shape gate is routed to the sink and rejected later, where
  * the reference to the outer target (or the multi-column shape) is resolvable: pt_dblink_delete_corr_ref()
  * (semantic_check.c) rejects correlated subqueries, and pt_to_delete_xasl_remote_subquery() (xasl_generation.c)
- * rejects row/multi-column subqueries. (semantic_check.c's PT_DELETE branch notes a gap this AND-tree widening
- * creates in that correlation check.) */
+ * rejects row/multi-column subqueries. Both locate the driving predicate via
+ * pt_dblink_delete_and_tree_find_driving() below, so they see the same node regardless of whether it's
+ * combined with remote-only AND arms. */
 static bool
 pt_dblink_delete_where_is_inscope (PT_NODE * node)
 {
@@ -12123,6 +12125,31 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
     }
 
   return pt_dblink_delete_and_tree_is_inscope (cond, &driving_seen) && driving_seen == 1;
+}
+
+/* Returns the sole driving predicate node within node's pre-CNF WHERE tree (node itself, if node isn't
+ * PT_AND), or NULL if none is found. Callers rely on pt_dblink_delete_where_is_inscope() having already
+ * validated the shape (exactly one driving predicate); this just locates it, e.g. so semantic_check.c
+ * can bind/correlation-check its subquery and xasl_generation.c can read its op/columns -- both must
+ * locate the *same* node the gate validated, which is why this traversal lives here and is shared
+ * rather than reimplemented per caller. */
+PT_NODE *
+pt_dblink_delete_and_tree_find_driving (PT_NODE * node)
+{
+  PT_NODE *found;
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return NULL;
+    }
+
+  if (node->info.expr.op == PT_AND)
+    {
+      found = pt_dblink_delete_and_tree_find_driving (node->info.expr.arg1);
+      return (found != NULL) ? found : pt_dblink_delete_and_tree_find_driving (node->info.expr.arg2);
+    }
+
+  return pt_dblink_delete_is_driving_pred (node) ? node : NULL;
 }
 
 static void

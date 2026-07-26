@@ -728,6 +728,9 @@ extern "C"
   extern int pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink);
   extern int pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name);
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+
+  extern bool pt_dblink_delete_is_driving_pred (PT_NODE * cond);
+  extern PT_NODE *pt_dblink_delete_and_tree_find_driving (PT_NODE * node);
 #ifdef __cplusplus
 }
 #endif

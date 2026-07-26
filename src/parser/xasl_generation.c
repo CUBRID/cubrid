@@ -19727,12 +19727,82 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   return xasl;
 }
 
+/* Deparses every remote-only AND arm in node's WHERE tree into a single "arm1 AND arm2 ..." SQL
+ * fragment (NULL if there are none); the driving predicate (pt_dblink_delete_is_driving_pred) is
+ * skipped since it's handled separately via remote_key_col/remote_op. custom_print flags match the
+ * existing same-server qstr pushdown (pt_convert_dblink_dml_query) since this text also ships to a
+ * remote server as-is.
+ *
+ * *error distinguishes "no extra arms" (return value NULL, *error untouched) from a print or
+ * allocation failure (*error set true) -- a NULL return alone would be ambiguous between the two,
+ * and silently dropping/misassembling an arm on failure is worse than the caller aborting
+ * explicitly. Once *error is set, the recursion stops doing further print work and just unwinds. */
+static char *
+pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, char *extra_where, bool * error)
+{
+  unsigned int save_custom_print;
+  char *piece;
+
+  if (*error || node == NULL || node->node_type != PT_EXPR)
+    {
+      return extra_where;
+    }
+
+  if (node->info.expr.op == PT_AND)
+    {
+      extra_where = pt_dblink_delete_deparse_extra_where (parser, node->info.expr.arg1, extra_where, error);
+      return pt_dblink_delete_deparse_extra_where (parser, node->info.expr.arg2, extra_where, error);
+    }
+
+  if (pt_dblink_delete_is_driving_pred (node))
+    {
+      return extra_where;
+    }
+
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK;
+  piece = parser_print_tree (parser, node);
+  parser->custom_print = save_custom_print;
+
+  if (piece == NULL)
+    {
+      *error = true;
+      return extra_where;
+    }
+
+  if (extra_where != NULL)
+    {
+      char *joined = pt_append_string (parser, extra_where, " AND ");
+
+      if (joined == NULL)
+	{
+	  *error = true;
+	  return extra_where;
+	}
+      extra_where = joined;
+    }
+
+  {
+    char *result = pt_append_string (parser, extra_where, piece);
+
+    if (result == NULL)
+      {
+	*error = true;
+	return extra_where;
+      }
+    return result;
+  }
+}
+
 /*
  * pt_to_delete_xasl_remote_subquery () - Builds DELETE_PROC XASL for a remote DELETE whose WHERE references a
- *   pure-local subquery. Mirrors pt_to_insert_xasl_remote_select: the local subquery is compiled as the aptr
- *   (produces a single-column list-file), and the DELETE_PROC carries the remote connection, target table,
- *   WHERE key column, and comparison operator. The runtime reads each list-file value and pushes
- *   "DELETE FROM <table> WHERE <key> <op> ?" via CCI bind.
+ *   pure-local subquery, optionally combined with remote-only AND arms. The local subquery is compiled as the
+ *   aptr (produces a single-column list-file, as in pt_to_insert_xasl_remote_select), and the DELETE_PROC
+ *   carries the remote connection, target table, WHERE key column, comparison operator, and -- if any
+ *   remote-only AND arms are present -- their deparsed SQL text in remote_extra_where, for the runtime SQL
+ *   builder (dblink_dml_build_delete_sql) to fold into the pushed WHERE clause.
  *
  * return        : XASL node, or NULL on error.
  * parser (in)   : Parser context.
@@ -19746,7 +19816,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *aptr_statement = NULL;
   PT_NODE *from = NULL, *server_node = NULL, *entity_name = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
-  PT_NODE *cond, *arg1, *arg2;
+  PT_NODE *cond, *driving, *arg1, *arg2;
   const char *op_sql = NULL;
   const char *key_col = NULL;
   DBLINK_REMOTE_SINK_MODE sink_mode = DBLINK_SINK_MODE_PER_ROW;
@@ -19758,9 +19828,9 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   assert (cond != NULL && cond->node_type == PT_EXPR);
 
-  /* Only the first predicate is translated below, so a second one would be dropped without a diagnostic. The
-   * parser gate admits a single predicate, but rewrites between there and here can append to the list -- LIMIT
-   * becomes inst_num() <= n during semantic check, for one. Those forms are excluded at the gate; reject here
+  /* A second top-level predicate (cond->next) is a different hazard than the AND arms below: the parser gate
+   * admits a single predicate/AND-tree, but a rewrite between there and here could still append to the list --
+   * LIMIT becomes inst_num() <= n during semantic check, for one. That form is excluded at the gate; reject here
    * too so any future appender surfaces as an error instead of a silently unenforced condition. */
   if (cond->next != NULL)
     {
@@ -19769,12 +19839,22 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+  /* locate the driving predicate within cond (which may be that predicate alone, or combined with
+   * remote-only AND arms) -- pt_dblink_delete_where_is_inscope (parser_support.c) already validated
+   * this shape, so a miss here would mean that gate and this builder have drifted apart. */
+  driving = pt_dblink_delete_and_tree_find_driving (cond);
+  if (driving == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE subquery: unexpected operator");
+      return NULL;
+    }
+
   /* operator -> remote WHERE SQL text (fixed safe set) + sink mode. IN/=ANY/scalar-=/comparison ANY
    * push one remote predicate per list-file value (PER_ROW, ANY semantics fall out of the per-row
    * OR-union the runtime already does); comparison ALL instead reduces the whole local subquery result
    * to a single value pushed once (REDUCE_MIN/REDUCE_MAX/EQ_ALL) -- the reduction itself is done at
    * runtime, not here (see qexec_execute_remote_dml_sink). */
-  switch (cond->info.expr.op)
+  switch (driving->info.expr.op)
     {
     case PT_IS_IN:
     case PT_EQ_SOME:
@@ -19827,7 +19907,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* single-column WHERE left-hand side (reject row / multi-column predicates) */
-  arg1 = cond->info.expr.arg1;
+  arg1 = driving->info.expr.arg1;
   if (arg1 != NULL && arg1->node_type == PT_NAME)
     {
       key_col = arg1->info.name.original;
@@ -19849,7 +19929,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* the local subquery feeds the value list */
-  arg2 = cond->info.expr.arg2;
+  arg2 = driving->info.expr.arg2;
   if (arg2 == NULL || !PT_IS_QUERY (arg2))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
@@ -19906,6 +19986,19 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
   del->remote_sink_mode = sink_mode;
+
+  {
+    bool extra_where_error = false;
+
+    del->remote_extra_where = pt_dblink_delete_deparse_extra_where (parser, cond, NULL, &extra_where_error);
+    if (extra_where_error)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		"remote DELETE: failed to deparse a remote-only AND arm");
+	return NULL;
+      }
+  }
+
   if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {
       return NULL;

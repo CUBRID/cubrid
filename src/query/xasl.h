@@ -467,6 +467,7 @@ struct delete_proc_node
   char *remote_key_col;		/* remote target column on the WHERE left-hand side (e.g. rc1) */
   char *remote_op;		/* comparison operator pushed to the remote WHERE: "=", "<>", "<", ">", "<=", ">=" */
   DBLINK_REMOTE_SINK_MODE remote_sink_mode;	/* per-row push vs. locally-reduced single push */
+  char *remote_extra_where;	/* deparsed remote-only AND arm(s), e.g. "name <> 'x'" (NULL if none) */
 };
 
 typedef struct connectby_proc_node CONNECTBY_PROC_NODE;

@@ -12345,24 +12345,24 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  /* mirrors the remote INSERT SELECT handling above (same reason -- see that comment): the WHERE
 		   * subquery's specs would lack range_var / spec id and XASL generation would crash without this.
 		   * qstr == NULL confirms pt_rewrite_for_dblink (db_vdb.c) chose the value-push sink over a full
-		   * qstr pushdown; requiring cond to be a single EXPR (no AND) below further narrows this to the
-		   * single-predicate shape.
-		   *
-		   * KNOWN GAP: pt_dblink_delete_where_is_inscope (parser_support.c) also accepts the driving
-		   * predicate combined with remote-only AND arms, which the single-EXPR check below does not cover
-		   * -- subq stays NULL and that subquery is neither correlation-checked nor bound. Harmless only
-		   * because pt_to_delete_xasl_remote_subquery() (xasl_generation.c) doesn't walk an AND tree either
-		   * and rejects it first; extend both together if that changes. */
+		   * qstr pushdown. The WHERE may now be the driving predicate alone or that predicate combined
+		   * with remote-only AND arms (pt_dblink_delete_where_is_inscope, parser_support.c);
+		   * pt_dblink_delete_and_tree_find_driving() locates the same driving node that gate validated,
+		   * in either shape, so the AND arms (if any) are left untouched here and only the driving
+		   * predicate's own subquery is bound below. */
 		  PT_NODE *remote = node->info.delete_.spec->info.spec.remote_server_name;
 		  PT_NODE *cond = node->info.delete_.search_cond;
+		  PT_NODE *driving = NULL;
 		  PT_NODE *subq = NULL;
 
 		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
-		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
-		      && cond->node_type == PT_EXPR && cond->info.expr.arg2 != NULL
-		      && PT_IS_QUERY (cond->info.expr.arg2))
+		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL)
 		    {
-		      subq = cond->info.expr.arg2;
+		      driving = pt_dblink_delete_and_tree_find_driving (cond);
+		    }
+		  if (driving != NULL)
+		    {
+		      subq = driving->info.expr.arg2;
 		    }
 		  if (subq != NULL)
 		    {
@@ -12397,7 +12397,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 						      "remote DELETE: failed to translate the WHERE subquery");
 		      if (subq != NULL)
 			{
-			  cond->info.expr.arg2 = subq;
+			  driving->info.expr.arg2 = subq;
 			}
 		    }
 		}

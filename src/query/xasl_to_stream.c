@@ -4261,6 +4261,13 @@ xts_process_delete_proc (char *ptr, const DELETE_PROC_NODE * delete_info)
 
   ptr = or_pack_int (ptr, (int) delete_info->remote_sink_mode);
 
+  offset = xts_save_string (delete_info->remote_extra_where);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -6598,7 +6605,8 @@ xts_sizeof_delete_proc (const DELETE_PROC_NODE * delete_info)
 	   + xts_sizeof_remote_dml_sink ()	/* remote DELETE + local subquery sink fields */
 	   + PTR_SIZE		/* remote_key_col */
 	   + PTR_SIZE		/* remote_op */
-	   + OR_INT_SIZE);	/* remote_sink_mode */
+	   + OR_INT_SIZE	/* remote_sink_mode */
+	   + PTR_SIZE);		/* remote_extra_where */
 
   return size;
 }
