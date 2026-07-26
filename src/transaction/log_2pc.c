@@ -1468,6 +1468,14 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       /* Now proceed as participant of the distributed transaction */
     }
 
+  /* CBRD-27079 fallback: materialize per-row X-locks for lockless inserts so the prepare record carries them
+   * and restart recovery restores the in-doubt serialization. Vote no if a lock cannot be acquired. Remove
+   * together with CBRD-27079. */
+  if (logtb_2pc_lock_lockless_inserts (thread_p, tdes) != NO_ERROR)
+    {
+      return tdes->state;
+    }
+
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
   /*
