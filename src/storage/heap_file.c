@@ -21076,6 +21076,127 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	}
       assert (mvcc_header_size_lookup[overflow_header.mvcc_flag] == OR_MVCC_MAX_HEADER_SIZE);
 
+#if defined (SERVER_MODE)
+      /* Two-page write-write seal for an MVCC DELETE of a big (overflow) row -- the overflow analog of the
+       * relocation seal in heap_delete_relocation. The DELID lands on the overflow header, so the home-page seal in
+       * heap_delete_home does not cover it: with no per-row X-lock two deleters can both get here. Re-classify the
+       * overflow header and only stamp when it carries no foreign owner; the home and overflow latches are held
+       * continuously from here through the stamp below.
+       *
+       * The verdict rule matches heap_home_find_write_owner: an owner named by the classification is an owner, full
+       * stop. Liveness only chooses how to get a fresh look -- wait it out (releasing both pages) when it is still
+       * running, or re-fetch under the latches we hold when it has just finished. Falling through to a stamp because
+       * the owner "is no longer active" is what let a second deleter in.
+       *
+       * A no-op when the caller did take the per-row X-lock (single owner -> always clean). */
+      if (!mvcc_is_mvcc_disabled_class (&context->class_oid))
+	{
+	  while (true)
+	    {
+	      MVCC_SATISFIES_DELETE_RESULT ww_satisfies;
+	      MVCCID ww_owner = MVCCID_NULL;
+	      VPID ww_home_vpid;
+	      INT16 ww_rectype;
+	      int ww_peek;
+
+	      ww_satisfies = mvcc_satisfies_delete (thread_p, &overflow_header);
+	      if (ww_satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
+		{
+		  ww_owner = MVCC_GET_DELID (&overflow_header);
+		}
+	      else if (ww_satisfies == DELETE_RECORD_INSERT_IN_PROGRESS)
+		{
+		  ww_owner = MVCC_GET_INSID (&overflow_header);
+		}
+	      else if (ww_satisfies == DELETE_RECORD_DELETED)
+		{
+		  /* another transaction committed a delete of this row -- raced vanish, routed to 0 rows */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			  context->oid.pageid, context->oid.slotid);
+		  return ER_HEAP_UNKNOWN_OBJECT;
+		}
+
+	      if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
+		{
+		  /* clean or ours: stamp atomically under the latches we still hold */
+		  break;
+		}
+
+	      if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+		{
+		  /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
+		  VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
+		  pgbuf_ordered_unfix (thread_p, context->overflow_page_watcher_p);
+		  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+		  if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		    {
+		      ASSERT_ERROR_AND_SET (rc);
+		      return rc;
+		    }
+		  lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+
+		  /* re-fix home in pgbuf_ordered order, re-read it, re-derive overflow_oid (the home record may
+		   * have changed meanwhile), then re-fix the overflow page. */
+		  if (pgbuf_ordered_fix (thread_p, &ww_home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+					 context->home_page_watcher_p) != NO_ERROR)
+		    {
+		      ASSERT_ERROR_AND_SET (rc);
+		      return rc;
+		    }
+		  ww_rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+		  if (ww_rectype != REC_BIGONE)
+		    {
+		      if (ww_rectype == REC_HOME || ww_rectype == REC_RELOCATION)
+			{
+			  /* the record left the overflow shape while we waited (e.g. a committed update shrank
+			   * it): its data is no longer an overflow pointer -- re-dispatch on the new type */
+			  context->record_type = ww_rectype;
+			  context->ww_record_transformed = true;
+			  return NO_ERROR;
+			}
+		      /* dead slot: the row vanished while we waited -- raced vanish, routed to 0 rows */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			      context->oid.pageid, context->oid.slotid);
+		      return ER_HEAP_UNKNOWN_OBJECT;
+		    }
+		  ww_peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+		  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+					&context->home_recdes, ww_peek) != S_SUCCESS)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			      context->oid.pageid, context->oid.slotid);
+		      return ER_HEAP_UNKNOWN_OBJECT;
+		    }
+		  overflow_oid = *((OID *) context->home_recdes.data);
+		  overflow_vpid.pageid = overflow_oid.pageid;
+		  overflow_vpid.volid = overflow_oid.volid;
+		  PGBUF_WATCHER_COPY_GROUP (context->overflow_page_watcher_p, context->home_page_watcher_p);
+		  rc = pgbuf_ordered_fix (thread_p, &overflow_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+					  context->overflow_page_watcher_p);
+		  if (rc != NO_ERROR)
+		    {
+		      if (rc == ER_LK_PAGE_TIMEOUT && er_errid () == NO_ERROR)
+			{
+			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PAGE_LATCH_ABORTED, 2, overflow_vpid.volid,
+				  overflow_vpid.pageid);
+			}
+		      return rc;
+		    }
+		}
+
+	      /* Either the owner just finished (latches still held) or we re-fixed after waiting: re-fetch the
+	       * overflow header and re-classify. */
+	      if (heap_get_mvcc_rec_header_from_overflow (context->overflow_page_watcher_p->pgptr, &overflow_header,
+							  NULL) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	      assert (mvcc_header_size_lookup[overflow_header.mvcc_flag] == OR_MVCC_MAX_HEADER_SIZE);
+	    }
+	}
+#endif /* SERVER_MODE */
+
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
       /* log operation */
