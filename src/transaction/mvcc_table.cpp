@@ -610,24 +610,17 @@ mvcctable::reset_start_mvccid ()
 void
 mvcctable::rv_reactivate_mvccid (MVCCID mvccid)
 {
-  /* Restart-only, single-threaded (boot time) -- same non-thread-safe contract as reset_start_mvccid. After the final
-   * post-redo reset_start_mvccid anchored the active set above every MVCCID seen during redo, an in-doubt 2PC
-   * transaction's MVCCID would read as committed; re-mark it active so is_active (mvccid) is true again and self-lock
-   * waiters keep blocking until the 2PC decision. Both the current status and the current history entry (the one
-   * is_active reads) must carry it, mirroring reset_start_mvccid. */
+  /* Restart-only, single-threaded -- same non-thread-safe contract as reset_start_mvccid, and like it, both the
+   * current status and the current history entry (the one is_active reads) must carry the id. */
   m_current_trans_status.m_active_mvccs.rv_reactivate_mvccid (mvccid);
 
   assert (m_trans_status_history_position < HISTORY_MAX_SIZE);
   m_trans_status_history[m_trans_status_history_position].m_active_mvccs.rv_reactivate_mvccid (mvccid);
 
-  /* The active set alone is not enough for readers: mvcc_is_id_in_snapshot short-circuits on
-   * snapshot.lowest_active_mvccid (fed by this watermark in build_mvcc_info) and never consults the active set for an
-   * id below it. Left at the post-redo anchor, the in-doubt row would read as committed -- writers would block on the
-   * self-lock while readers saw prepared-but-undecided data. Pull the watermark down to the reactivated id; lowering
-   * is the conservative direction for vacuum, and it is temporary: when the 2PC decision completes the transaction,
-   * complete_mvcc recomputes the lowest active id (its below-bit-area-start branch, the long-transaction case) and
-   * advances the watermark again. Callers re-mark in ascending order, so the first one installs the minimum.
-   * advance_oldest_active cannot be used here -- it only ever moves the watermark forward. */
+  /* The active set alone is not enough for readers: mvcc_is_id_in_snapshot short-circuits on this watermark and never
+   * consults the active set below it, so the in-doubt row would still read as committed. Lowering is conservative for
+   * vacuum and temporary -- complete_mvcc raises it again at the 2PC decision. advance_oldest_active only moves the
+   * watermark forward, so store directly. */
   if (MVCC_ID_PRECEDES (mvccid, m_current_status_lowest_active_mvccid.load ()))
     {
       m_current_status_lowest_active_mvccid.store (mvccid);

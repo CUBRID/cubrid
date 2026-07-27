@@ -100,21 +100,6 @@ struct lk_entry
 #endif				/* not SERVER_MODE */
 };
 
-typedef struct lk_acqobj_lock LK_ACQOBJ_LOCK;
-struct lk_acqobj_lock
-{
-  OID oid;			/* lock resource object identifier */
-  OID class_oid;		/* only needed in case of instance lock */
-  LOCK lock;			/* lock mode */
-};
-
-typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
-struct lk_acquired_locks
-{
-  LK_ACQOBJ_LOCK *obj;		/* The list of acquired object locks */
-  unsigned int nobj_locks;	/* Number of actual object locks */
-};
-
 /* During delete and update operation,
  * if the number of objects to be deleted or updated is larger than
  * lock escalation threshold, we should acquire a lock on the class
@@ -187,6 +172,22 @@ struct lk_res_key
 static_assert (sizeof (OID) * 2 == 16, "LK_RES_KEY: OID pair must be 16 bytes");
 static_assert (sizeof (MVCCID) + sizeof (UINT64) == 16, "LK_RES_KEY: mvccid + reserved must be 16 bytes");
 
+/* One held lock, gathered for the 2PC prepare record and re-acquired at restart. Carries the whole key rather than an
+ * OID pair, so object locks and the MVCCID-keyed transaction self-lock share one path; key.type discriminates. */
+typedef struct lk_acq_lock LK_ACQ_LOCK;
+struct lk_acq_lock
+{
+  LK_RES_KEY key;		/* lock resource key; key.type selects the payload */
+  LOCK lock;			/* lock mode */
+};
+
+typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
+struct lk_acquired_locks
+{
+  LK_ACQ_LOCK *locks;		/* The list of acquired locks */
+  unsigned int nlocks;		/* Number of actual locks */
+};
+
 /*
  * Lock Resource Entry Structure
  */
@@ -243,7 +244,6 @@ extern LK_ENTRY *lock_get_class_lock (THREAD_ENTRY * thread_p, const OID * class
 extern void lock_notify_isolation_incons (THREAD_ENTRY * thread_p,
 					  bool (*fun) (const OID * class_oid, const OID * oid, void *args), void *args);
 extern int lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks, int tran_index);
-extern int lock_reacquire_crash_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCCID mvccid, int tran_index);
 extern void lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks);
 extern void lock_start_instant_lock_mode (int tran_index);

@@ -3262,12 +3262,9 @@ REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo
  *
  * return: nothing
  *
- * Note: Called once at the end of the redo phase, right after the final reset_start_mvccid. Each in-doubt transaction's
- *       MVCCID was restored into tdes->mvccinfo.id when its prepare record was read (log_2pc_read_prepare); the reset
- *       then anchored the active set above every seen MVCCID, so those ids read as committed. Re-mark them active via
- *       the long-transaction representation so is_active is true and self-lock waiters keep blocking until the 2PC
- *       decision. mvcctable::rv_reactivate_mvccid keeps the long-tran list sorted, so re-mark in ascending order;
- *       selection over the (small) set of prepared transactions avoids a temporary container.
+ * Note: Called once after the final reset_start_mvccid, which anchored the active set above every MVCCID seen during
+ *       redo -- leaving in-doubt ids reading as committed. Re-mark them so checkers keep waiting on the self-lock.
+ *       rv_reactivate_mvccid keeps the long-tran list sorted, hence the ascending selection sort.
  */
 static void
 log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
@@ -3974,11 +3971,8 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
 
   log_Gl.mvcc_table.reset_start_mvccid ();
 
-  /* The reset above anchored the active set above every MVCCID seen during redo, so an in-doubt 2PC-prepared
-   * transaction's MVCCID now reads as committed. Re-mark those MVCCIDs active (they were restored into
-   * tdes->mvccinfo.id when the prepare records were read by log_2pc_read_prepare during analysis/redo). Otherwise a
-   * unique/FK/DML checker would treat rows such a prepared-but-undecided transaction appended as visible and skip the
-   * self-lock wait. Must run after the last reset_start_mvccid; no later reset follows. */
+  /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
+   * skip the self-lock wait. */
   log_recovery_2pc_reactivate_mvccids (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
@@ -5513,7 +5507,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
-  unsigned int nobj_locks;
+  unsigned int nlocks;
   int repl_log_length;
   size_t size;
 
@@ -5767,7 +5761,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       /* Get the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
       prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
-      nobj_locks = prepared->num_object_locks;
+      nlocks = prepared->num_locks;
       /* ignore npage_locks */
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
@@ -5777,9 +5771,9 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 	  LOG_READ_ADD_ALIGN (thread_p, prepared->gtrinfo_length, &log_lsa, log_pgptr);
 	}
 
-      if (nobj_locks > 0)
+      if (nlocks > 0)
 	{
-	  size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+	  size = nlocks * sizeof (LK_ACQ_LOCK);
 	  LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
 	}
       break;

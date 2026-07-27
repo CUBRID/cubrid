@@ -477,7 +477,7 @@ static const int SIZEOF_LK_TRAN_LOCK = sizeof (LK_TRAN_LOCK);
 static const int SIZEOF_LK_RES = sizeof (LK_RES);
 static const int SIZEOF_LK_ENTRY_BLOCK = sizeof (LK_ENTRY_BLOCK);
 static const int SIZEOF_LK_RES_BLOCK = sizeof (LK_RES_BLOCK);
-static const int SIZEOF_LK_ACQOBJ_LOCK = sizeof (LK_ACQOBJ_LOCK);
+static const int SIZEOF_LK_ACQ_LOCK = sizeof (LK_ACQ_LOCK);
 
 /* miscellaneous constants */
 static const int LK_SLEEP_MAX_COUNT = 3;
@@ -8759,16 +8759,15 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
     }
 
   /* reacquire given exclusive locks on behalf of the transaction */
-  for (i = 0; i < acqlocks->nobj_locks; i++)
+  for (i = 0; i < acqlocks->nlocks; i++)
     {
       /*
        * lock wait duration       : LK_INFINITE_WAIT
        * conditional lock request : false
        */
-      const OID *class_oidp = OID_IS_ROOTOID (&acqlocks->obj[i].oid) ? NULL : &acqlocks->obj[i].class_oid;
-      LK_RES_KEY obj_key = lock_create_search_key (&acqlocks->obj[i].oid, class_oidp);
-      r = lock_internal_perform_lock_object (thread_p, tran_index, obj_key, acqlocks->obj[i].lock, LK_INFINITE_WAIT,
-					     &dummy_ptr, NULL);
+      /* The stored key carries its type, so object locks and self-locks re-acquire through the same call. */
+      r = lock_internal_perform_lock_object (thread_p, tran_index, acqlocks->locks[i].key, acqlocks->locks[i].lock,
+					     LK_INFINITE_WAIT, &dummy_ptr, NULL);
       if (r != LK_GRANTED)
 	{
 	  er_log_debug (ARG_FILE_LINE, "lk_reacquire_crash_locks: The lock cannot be reacquired...");
@@ -8777,40 +8776,6 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
 	}
     }
   return granted;
-#endif /* !SERVER_MODE */
-}
-
-/*
- * lock_reacquire_crash_mvccid_self_lock - Reacquire the X self-lock keyed on an in-doubt transaction's (inserter)
- *                                         MVCCID on behalf of that transaction, during recovery restart
- *
- * return: LK_GRANTED, LK_NOTGRANTED_DUE_TIMEOUT, or LK_NOTGRANTED_DUE_ERROR
- *
- *   mvccid(in): the transaction's MVCCID, read back from the 2PC prepare log record
- *   tran_index(in): transaction index that must hold the self-lock
- *
- * Note: Recovery-only companion of lock_reacquire_crash_locks. Unlike lock_transaction_mvccid (which keys on the
- *       running thread's transaction), this acquires directly on behalf of tran_index so the entry lands on the
- *       in-doubt transaction's hold list and is released by its eventual lock_unlock_all. Must not route through
- *       logtb_acquire_mvccid_self_lock, whose boot/recovery guard (correctly) no-ops before restart. A held self-lock
- *       is what makes a checker wait out this in-doubt inserter (btree_wait_for_inserter_end) until the 2PC decision.
- */
-int
-lock_reacquire_crash_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCCID mvccid, int tran_index)
-{
-#if !defined (SERVER_MODE)
-  return LK_GRANTED;
-#else /* !SERVER_MODE */
-  LK_ENTRY *dummy_ptr = NULL;
-
-  if (!MVCCID_IS_NORMAL (mvccid))
-    {
-      /* special MVCCIDs (NULL/ALL_VISIBLE) have no inserter to serialize on */
-      return LK_GRANTED;
-    }
-
-  return lock_internal_perform_lock_object (thread_p, tran_index, lock_create_mvccid_search_key (mvccid), X_LOCK,
-					    LK_INFINITE_WAIT, &dummy_ptr, NULL);
 #endif /* !SERVER_MODE */
 }
 
@@ -8836,8 +8801,8 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
   /* No locks in standalone */
   if (acqlocks != NULL)
     {
-      acqlocks->nobj_locks = 0;
-      acqlocks->obj = NULL;
+      acqlocks->nlocks = 0;
+      acqlocks->locks = NULL;
     }
 #else /* !SERVER_MODE */
   int tran_index;
@@ -8867,25 +8832,25 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
       /* hold transction lock hold mutex */
       rv = pthread_mutex_lock (&tran_lock->hold_mutex);
 
-      /* get nobj_locks */
-      acqlocks->nobj_locks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
+      /* get nlocks */
+      acqlocks->nlocks = (unsigned int) (tran_lock->class_hold_count + tran_lock->inst_hold_count);
       if (tran_lock->root_class_hold != NULL)
 	{
-	  acqlocks->nobj_locks += 1;
+	  acqlocks->nlocks += 1;
 	}
 
       /* allocate momory space for saving exclusive lock information */
-      acqlocks->obj = (LK_ACQOBJ_LOCK *) malloc (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks);
-      if (acqlocks->obj == NULL)
+      acqlocks->locks = (LK_ACQ_LOCK *) malloc (SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
+      if (acqlocks->locks == NULL)
 	{
 	  pthread_mutex_unlock (&tran_lock->hold_mutex);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		  (size_t) (SIZEOF_LK_ACQOBJ_LOCK * acqlocks->nobj_locks));
-	  acqlocks->nobj_locks = 0;
+		  (size_t) (SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks));
+	  acqlocks->nlocks = 0;
 	  return;
 	}
 
-      /* initialize idx in acqlocks->obj array */
+      /* initialize idx in acqlocks->locks array */
       idx = 0;
 
       /* collect root class lock information */
@@ -8894,9 +8859,8 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  COPY_OID (&acqlocks->obj[idx].oid, oid_Root_class_oid);
-	  OID_SET_NULL (&acqlocks->obj[idx].class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
@@ -8905,33 +8869,23 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
-	  COPY_OID (&acqlocks->obj[idx].class_oid, oid_Root_class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
-      /* collect instance lock information */
+      /* collect instance lock information. Transaction self-locks share inst_hold_list, keyed by MVCCID instead of
+       * OID; they are carried too so an in-doubt inserter's self-lock is re-acquired at restart. */
       for (entry_ptr = tran_lock->inst_hold_list; entry_ptr != NULL; entry_ptr = entry_ptr->tran_next)
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  /* Transaction self-locks share inst_hold_list but are keyed by MVCCID, not OID; never serialize them as
-	   * object locks for 2PC. They are inert after restart (recovery de-activates the MVCCID), so there is
-	   * nothing to reacquire -- saving one would only restore a bogus OID lock from the key's union overlay. */
-	  if (entry_ptr->res_head->key.type != LOCK_RESOURCE_INSTANCE)
-	    {
-	      continue;
-	    }
-
-	  COPY_OID (&acqlocks->obj[idx].oid, &entry_ptr->res_head->key.oid);
-	  COPY_OID (&acqlocks->obj[idx].class_oid, &entry_ptr->res_head->key.class_oid);
-	  acqlocks->obj[idx].lock = entry_ptr->granted_mode;
+	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
 
-      /* skipped transaction self-locks mean idx may be < the precomputed count; store the actual count. */
-      acqlocks->nobj_locks = idx;
+      acqlocks->nlocks = idx;
 
       /* release transaction lock hold mutex */
       pthread_mutex_unlock (&tran_lock->hold_mutex);
@@ -8956,14 +8910,22 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
 #else /* !SERVER_MODE */
   unsigned int i;
 
-  /* Dump object locks */
-  if (acqlocks->obj != NULL && acqlocks->nobj_locks > 0)
+  if (acqlocks->locks != NULL && acqlocks->nlocks > 0)
     {
-      fprintf (fp, "Object_locks: count = %d\n", acqlocks->nobj_locks);
-      for (i = 0; i < acqlocks->nobj_locks; i++)
+      fprintf (fp, "Acquired_locks: count = %d\n", acqlocks->nlocks);
+      for (i = 0; i < acqlocks->nlocks; i++)
 	{
-	  fprintf (fp, "   |%d|%d|%d| %s\n", acqlocks->obj[i].oid.volid, acqlocks->obj[i].oid.pageid,
-		   acqlocks->obj[i].oid.slotid, lock_to_lockmode_string (acqlocks->obj[i].lock));
+	  const LK_RES_KEY *key = &acqlocks->locks[i].key;
+	  const char *mode = lock_to_lockmode_string (acqlocks->locks[i].lock);
+
+	  if (key->type == LOCK_RESOURCE_TRANSACTION)
+	    {
+	      fprintf (fp, "   tran_mvccid|%llu| %s\n", (unsigned long long) key->mvccid, mode);
+	    }
+	  else
+	    {
+	      fprintf (fp, "   |%d|%d|%d| %s\n", key->oid.volid, key->oid.pageid, key->oid.slotid, mode);
+	    }
 	}
     }
 #endif /* !SERVER_MODE */

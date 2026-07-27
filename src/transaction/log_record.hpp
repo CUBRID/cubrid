@@ -390,13 +390,9 @@ struct log_rec_2pc_prepcommit
   char user_name[DB_MAX_USER_LENGTH + 1];	/* Name of the client */
   int gtrid;			/* Identifier of the global transaction */
   int gtrinfo_length;		/* length of the global transaction info */
-  unsigned int num_object_locks;	/* Total number of update-type locks acquired by this transaction on the
-                                         * objects. */
-  unsigned int num_mvccids;	/* Number of the transaction's MVCCIDs recorded after the object-lock array (0 or 1),
-                                 * so an in-doubt transaction's inserter-MVCCID self-lock can be re-acquired during crash
-                                 * recovery. Reuses the dead num_page_locks field (always written 0); old logs therefore
-                                 * read as 0 -> no MVCCID array, and old readers skip a trailing array via the log record
-                                 * chain. */
+  unsigned int num_locks;	/* Total number of update-type locks acquired by this transaction. Covers every lock
+                                 * resource type, including the inserter-MVCCID self-lock. */
+  unsigned int num_page_locks;	/* Total number of update-type locks acquired by this transaction on the pages. */
 };
 
 /* Start 2PC protocol. Record information about identifiers of participants. */

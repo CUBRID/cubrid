@@ -90,6 +90,7 @@ struct log_2pc_global_data log_2pc_Userfun =
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL };
 #endif
 
+static void log_2pc_restore_mvccid_from_locks (log_tdes * tdes, const LK_ACQUIRED_LOCKS * acq_locks);
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
@@ -1324,9 +1325,6 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   int tran_index;
   LOG_PRIOR_NODE *node;
   LOG_LSA start_lsa;
-  unsigned int num_mvccids;	/* Number of MVCCIDs appended after the object-lock array (0 or 1) */
-  int redo_length;		/* Combined length of the object-lock array followed by the MVCCID array */
-  char *redo_data;		/* Combined object-lock + MVCCID buffer written as the redo portion */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -1433,55 +1431,23 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    */
 
   size = 0;
-  if (acq_locks.obj != NULL)
+  if (acq_locks.locks != NULL)
     {
-      size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+      size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
     }
 
-  /* Record the transaction's MVCCID (if it has one) after the object-lock array, so that after a crash the X self-lock
-   * keyed on the inserter MVCCID can be re-acquired for this in-doubt transaction. Rows it MVCC-appended carry that
-   * MVCCID and stay INSERT_IN_PROGRESS to unique/FK/DML checkers until the 2PC decision is applied; the self-lock is
-   * the only thing serializing them. Sub-transactions all complete by prepare time (logtb_complete_sub_mvcc at
-   * statement end), so only the main id is live -- assert that, but keep a count field so more ids could be carried. */
+  /* The gathered list already carries the self-lock that keeps this transaction's appended rows serialized until the
+   * 2PC decision. Sub-transactions complete by prepare time, so no sub-id self-lock can still be held. */
   assert (tdes->mvccinfo.sub_ids.empty ());
-  num_mvccids = MVCCID_IS_VALID (tdes->mvccinfo.id) ? 1 : 0;
-
-  redo_length = size + (int) (num_mvccids * sizeof (MVCCID));
-  redo_data = NULL;
-  if (redo_length > 0)
-    {
-      redo_data = (char *) malloc (redo_length);
-      if (redo_data == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) redo_length);
-	  if (acq_locks.obj != NULL)
-	    {
-	      free_and_init (acq_locks.obj);
-	    }
-	  return TRAN_UNACTIVE_UNKNOWN;
-	}
-      if (size > 0)
-	{
-	  memcpy (redo_data, acq_locks.obj, size);
-	}
-      if (num_mvccids > 0)
-	{
-	  memcpy (redo_data + size, &tdes->mvccinfo.id, sizeof (MVCCID));
-	}
-    }
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_PREPARE, RV_NOT_DEFINED, NULL, tdes->gtrinfo.info_length,
-				   (char *) tdes->gtrinfo.info_data, redo_length, redo_data);
+				   (char *) tdes->gtrinfo.info_data, size, (char *) acq_locks.locks);
   if (node == NULL)
     {
-      if (acq_locks.obj != NULL)
+      if (acq_locks.locks != NULL)
 	{
-	  free_and_init (acq_locks.obj);
-	}
-      if (redo_data != NULL)
-	{
-	  free_and_init (redo_data);
+	  free_and_init (acq_locks.locks);
 	}
 
       return TRAN_UNACTIVE_UNKNOWN;
@@ -1492,18 +1458,13 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
-  prepared->num_object_locks = acq_locks.nobj_locks;
-  prepared->num_mvccids = num_mvccids;
+  prepared->num_locks = acq_locks.nlocks;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (acq_locks.obj != NULL)
+  if (acq_locks.locks != NULL)
     {
-      free_and_init (acq_locks.obj);
-    }
-  if (redo_data != NULL)
-    {
-      free_and_init (redo_data);
+      free_and_init (acq_locks.locks);
     }
 
   /*
@@ -1515,6 +1476,32 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   logpb_flush_pages (thread_p, &start_lsa);
 
   return tdes->state;
+}
+
+/*
+ * log_2pc_restore_mvccid_from_locks - Restore an in-doubt transaction's MVCCID from its re-read lock list
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): Transaction descriptor of the in-doubt transaction
+ *   acq_locks(in): Locks read back from the 2PC prepare log record
+ *
+ * Note: Recovery rebuilds a prepared tdes without MVCC info, so take the id back from the self-lock's key;
+ *       log_recovery_2pc_reactivate_mvccids re-marks it active afterwards. At most one such entry exists.
+ */
+static void
+log_2pc_restore_mvccid_from_locks (log_tdes * tdes, const LK_ACQUIRED_LOCKS * acq_locks)
+{
+  unsigned int i;
+
+  for (i = 0; i < acq_locks->nlocks; i++)
+    {
+      if (acq_locks->locks[i].key.type == LOCK_RESOURCE_TRANSACTION)
+	{
+	  assert (!MVCCID_IS_VALID (tdes->mvccinfo.id));
+	  tdes->mvccinfo.id = acq_locks->locks[i].key.mvccid;
+	}
+    }
 }
 
 /*
@@ -1583,44 +1570,24 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
 
-      acq_locks.nobj_locks = prepared->num_object_locks;
-      acq_locks.obj = NULL;
+      acq_locks.nlocks = prepared->num_locks;
+      acq_locks.locks = NULL;
 
-      if (acq_locks.nobj_locks > 0)
+      if (acq_locks.nlocks > 0)
 	{
-	  /* obtain the list of locks to acquire on objects */
-	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
-	  if (acq_locks.obj == NULL)
+	  /* obtain the list of locks to acquire */
+	  size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
+	  acq_locks.locks = (LK_ACQ_LOCK *) malloc (size);
+	  if (acq_locks.locks == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
-	  logpb_copy_from_log (thread_p, (char *) acq_locks.obj, size, log_lsa, log_page_p);
-	  /* The MVCCID array follows the object-lock array contiguously; do not realign in between. */
-	}
+	  logpb_copy_from_log (thread_p, (char *) acq_locks.locks, size, log_lsa, log_page_p);
 
-      /* Restore the transaction's MVCCID and re-acquire the X self-lock keyed on it, so a row this in-doubt transaction
-       * MVCC-appended is still seen as INSERT_IN_PROGRESS by unique/FK/DML checkers until the 2PC decision is applied
-       * (btree_is_active_other_inserter -> lock_transaction_mvccid). Acquire on behalf of tdes->tran_index like the
-       * object locks above, so the entry lands on that transaction's hold list and its lock_unlock_all releases it. */
-      if (prepared->num_mvccids > 0)
-	{
-	  MVCCID rv_mvccid = MVCCID_NULL;
+	  log_2pc_restore_mvccid_from_locks (tdes, &acq_locks);
 
-	  logpb_copy_from_log (thread_p, (char *) &rv_mvccid, sizeof (MVCCID), log_lsa, log_page_p);
-	  tdes->mvccinfo.id = rv_mvccid;
-
-	  if (lock_reacquire_crash_mvccid_self_lock (thread_p, rv_mvccid, tdes->tran_index) != LK_GRANTED)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
-	    }
-	}
-
-      if (acq_locks.nobj_locks > 0)
-	{
 	  /* Acquire the locks */
 	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
 	    {
@@ -1628,7 +1595,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	      return;
 	    }
 
-	  free_and_init (acq_locks.obj);
+	  free_and_init (acq_locks.locks);
 	}
     }
 }
@@ -1678,44 +1645,24 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       log_pgptr_reader.align ();
 
-      acq_locks.nobj_locks = prepared->num_object_locks;
-      acq_locks.obj = NULL;
+      acq_locks.nlocks = prepared->num_locks;
+      acq_locks.locks = NULL;
 
-      if (acq_locks.nobj_locks > 0)
+      if (acq_locks.nlocks > 0)
 	{
-	  /* obtain the list of locks to acquire on objects */
-	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
-	  if (acq_locks.obj == NULL)
+	  /* obtain the list of locks to acquire */
+	  size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
+	  acq_locks.locks = (LK_ACQ_LOCK *) malloc (size);
+	  if (acq_locks.locks == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
-	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
-	  /* The MVCCID array follows the object-lock array contiguously; do not realign in between. */
-	}
+	  log_pgptr_reader.copy_from_log ((char *) acq_locks.locks, size);
 
-      /* Restore the transaction's MVCCID and re-acquire the X self-lock keyed on it, so a row this in-doubt transaction
-       * MVCC-appended is still seen as INSERT_IN_PROGRESS by unique/FK/DML checkers until the 2PC decision is applied
-       * (btree_is_active_other_inserter -> lock_transaction_mvccid). Acquire on behalf of tdes->tran_index like the
-       * object locks above, so the entry lands on that transaction's hold list and its lock_unlock_all releases it. */
-      if (prepared->num_mvccids > 0)
-	{
-	  MVCCID rv_mvccid = MVCCID_NULL;
+	  log_2pc_restore_mvccid_from_locks (tdes, &acq_locks);
 
-	  log_pgptr_reader.copy_from_log ((char *) &rv_mvccid, sizeof (MVCCID));
-	  tdes->mvccinfo.id = rv_mvccid;
-
-	  if (lock_reacquire_crash_mvccid_self_lock (thread_p, rv_mvccid, tdes->tran_index) != LK_GRANTED)
-	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
-	    }
-	}
-
-      if (acq_locks.nobj_locks > 0)
-	{
 	  /* Acquire the locks */
 	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
 	    {
@@ -1723,7 +1670,7 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 	      return;
 	    }
 
-	  free_and_init (acq_locks.obj);
+	  free_and_init (acq_locks.locks);
 	}
     }
 }
@@ -1758,8 +1705,8 @@ log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
 {
   LK_ACQUIRED_LOCKS acq_locks;
 
-  acq_locks.nobj_locks = length / sizeof (LK_ACQOBJ_LOCK);
-  acq_locks.obj = (LK_ACQOBJ_LOCK *) data;
+  acq_locks.nlocks = length / sizeof (LK_ACQ_LOCK);
+  acq_locks.locks = (LK_ACQ_LOCK *) data;
   lock_dump_acquired (fp, &acq_locks);
 }
 

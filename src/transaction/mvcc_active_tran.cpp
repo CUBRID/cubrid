@@ -517,11 +517,8 @@ mvcc_active_tran::reset_start_mvccid (MVCCID mvccid)
 void
 mvcc_active_tran::rv_reactivate_mvccid (MVCCID mvccid)
 {
-  /* Restart-only: re-mark an MVCCID below the (post-redo) bit-area anchor as active, using the long-transaction
-   * representation. An in-doubt 2PC transaction that owned this MVCCID must look active again so unique/FK/DML
-   * checkers keep waiting on its self-lock until the recovery decision is applied. Callers must add in ascending
-   * order (the long-tran list is kept sorted). Symmetry is restored by set_inactive_mvccid, which removes a
-   * below-anchor id from the long-tran list at commit/abort. */
+  /* Restart-only: re-mark an id below the post-redo bit-area anchor as active, via the long-transaction
+   * representation. Callers must add in ascending order; set_inactive_mvccid removes it again at commit/abort. */
   assert (MVCC_ID_PRECEDES (mvccid, m_bit_area_start_mvccid));
   add_long_transaction (mvccid);
   check_valid ();
