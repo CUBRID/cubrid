@@ -2257,6 +2257,11 @@ pt_node_to_db_domain (PARSER_CONTEXT * parser, PT_NODE * node, const char *class
 		    }
 		  else
 		    {
+		      if (TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain))
+			  && domain->collation_flag == TP_DOMAIN_COLL_LEAVE)
+			{
+			  domain->collation_flag = TP_DOMAIN_COLL_NORMAL;
+			}
 		      error = tp_domain_add (&setdomain, domain);
 		    }
 		}
