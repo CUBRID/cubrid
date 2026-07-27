@@ -2049,10 +2049,6 @@ qo_analyze_term (QO_TERM * term, int term_type)
       /* keep real selectivity for index-access cost; flag so row-count skips it */
       QO_TERM_SET_FLAG (term, QO_TERM_LIKE_DERIVED_RANGE);
     }
-  if (PT_EXPR_INFO_IS_FLAGED (pt_expr, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE))
-    {
-      QO_TERM_SET_FLAG (term, QO_TERM_LIKE_HAS_DERIVED_RANGE);
-    }
 
   /* only interesting in one predicate term; if 'term' has 'or_next', it was derived from OR term */
   /* also cases that are too complicated and unusual to consider here: (cond and/or cond) is true/false (cond and/or

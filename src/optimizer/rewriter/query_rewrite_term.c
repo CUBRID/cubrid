@@ -2355,10 +2355,9 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
   between->next = like->next;
   like->next = between;
 
-  /* Mark the pair (LIKE is a subset of the range) so row-count aggregation does
-   * not multiply both. Set before the copy so it is preserved. */
+  /* Mark the derived range so row-count aggregation excludes it (subset of the
+   * retained LIKE). Set before the copy so it is preserved. */
   PT_EXPR_INFO_SET_FLAG (between, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
-  PT_EXPR_INFO_SET_FLAG (like, PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE);
 
   /* fold range bounds : this will allow auto-parametrization */
   like_save = parser_copy_tree_list (parser, like);
@@ -4180,6 +4179,15 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	  /* combine each range specs of two RANGE nodes */
 	  qo_apply_range_intersection_helper (parser, node, sibling);
+
+	  /* Once a LIKE-derived range is merged with another range on the same
+	   * column it is no longer a pure derived range, so drop the flag on both:
+	   * the merged range is then counted normally. This is order-independent -
+	   * any condition order collapses to one unflagged merged range - so the
+	   * pure-LIKE case (no sibling to merge) still keeps the flag and is fixed,
+	   * while LIKE + same-column range coexistence is left as-is (CBRD-27036). */
+	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+	  PT_EXPR_INFO_CLEAR_FLAG (sibling, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
 
 	  /* remove the sibling node if its range is empty */
 	  if (sibling->info.expr.arg2 == NULL)

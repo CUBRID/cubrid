@@ -184,7 +184,6 @@ struct qo_plan
       QO_NODE *node;
       BITSET terms;
       BITSET kf_terms;
-      BITSET row_sel_excl_terms;	/* LIKE-derived ranges excluded from output-row selectivity */
       bool index_equi;
       bool index_cover;		/* covered index scan flag */
       bool index_iss;		/* index skip scan flag */

@@ -1620,7 +1620,6 @@ qo_scan_new (QO_INFO * info, QO_NODE * node, QO_SCANMETHOD scan_method)
   bitset_assign (&(plan->subqueries), &(QO_NODE_SUBQUERIES (node)));
   bitset_init (&(plan->plan_un.scan.terms), info->env);
   bitset_init (&(plan->plan_un.scan.kf_terms), info->env);
-  bitset_init (&(plan->plan_un.scan.row_sel_excl_terms), info->env);
   bitset_init (&(plan->plan_un.scan.hash_terms), info->env);
   plan->plan_un.scan.index_equi = false;
   plan->plan_un.scan.index_cover = false;
@@ -1645,7 +1644,6 @@ qo_scan_free (QO_PLAN * plan)
 {
   bitset_delset (&(plan->plan_un.scan.terms));
   bitset_delset (&(plan->plan_un.scan.kf_terms));
-  bitset_delset (&(plan->plan_un.scan.row_sel_excl_terms));
   bitset_delset (&(plan->plan_un.scan.hash_terms));
   bitset_delset (&(plan->plan_un.scan.multi_col_range_segs));
 }
@@ -1924,35 +1922,6 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       bitset_difference (&remaining_terms, &(plan->plan_un.scan.kf_terms));
     }
 
-  /* Decide once per plan which LIKE-derived ranges qo_iscan_cost may drop from
-   * output-row selectivity: only those whose residual LIKE became a key-filter
-   * on the same segment (its selectivity then lives in filter_sel). Else keep
-   * the range as the row-count upper bound. */
-  for (t = bitset_iterate (&(plan->plan_un.scan.terms), &iter); t != -1; t = bitset_next_member (&iter))
-    {
-      term = QO_ENV_TERM (env, t);
-
-      if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
-	{
-	  continue;
-	}
-
-      int kt;
-      BITSET_ITERATOR kf_iter;
-
-      for (kt = bitset_iterate (&(plan->plan_un.scan.kf_terms), &kf_iter); kt != -1; kt = bitset_next_member (&kf_iter))
-	{
-	  QO_TERM *kf_term = QO_ENV_TERM (env, kt);
-
-	  if (QO_TERM_IS_FLAGED (kf_term, QO_TERM_LIKE_HAS_DERIVED_RANGE)
-	      && bitset_intersects (&(QO_TERM_SEGS (kf_term)), &(QO_TERM_SEGS (term))))
-	    {
-	      bitset_add (&(plan->plan_un.scan.row_sel_excl_terms), t);
-	      break;
-	    }
-	}
-    }
-
   /* check for index cover scan */
   plan->plan_un.scan.index_cover = false;	/* init */
   if (index_entryp->cover_segments)
@@ -2160,9 +2129,13 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
-      /* row_sel_excl_terms: LIKE-derived ranges whose residual LIKE is a
-       * key-filter, decided in qo_index_scan_new */
-      if (!BITSET_MEMBER (planp->plan_un.scan.row_sel_excl_terms, t))
+      /* Exclude a LIKE-derived range from row-count only when the residual LIKE
+       * can be a key-filter (its selectivity then lives in filter_sel). A
+       * non-covering function index disables key-filters, so the residual LIKE
+       * falls through to a data filter - there keep the range as the row-count
+       * upper bound. */
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE)
+	  || (index_entryp->constraints->func_index_info && index_entryp->cover_segments == false))
 	{
 	  sel_excl_derived_range *= QO_TERM_SELECTIVITY (termp);
 	}

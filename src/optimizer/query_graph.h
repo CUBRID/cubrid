@@ -754,7 +754,6 @@ struct qo_term
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
 #define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
 #define QO_TERM_LIKE_DERIVED_RANGE 1024	/* range term derived from a prefix LIKE; skip in row-count selectivity */
-#define QO_TERM_LIKE_HAS_DERIVED_RANGE 2048	/* residual LIKE whose prefix produced a derived range term */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
