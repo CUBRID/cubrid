@@ -1114,8 +1114,8 @@ serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val
 /*
  * serial_initialize_cache_pool () -
  *   return: NO_ERROR, or ER_status
- *   load_attr_info(in): load the _db_serial attribute layout now. Pass false only on the
- *                       restoredb path, which restarts the server without a client workspace.
+ *   load_attr_info(in): load the _db_serial attribute layout now. Pass false only when restarting
+ *                       from a backup, which has no client workspace.
  */
 int
 serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
@@ -1140,11 +1140,9 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
 
   if (!load_attr_info)
     {
-      /* restoredb (xboot_restart_from_backup) restarts the server without initializing the client
-       * workspace, so loading the _db_serial attribute layout here would swizzle the object-domain
-       * owner OID and divide by the empty MOP table in ws_mop (SIGFPE). restoredb never generates
-       * serial values, so the layout is not needed; a later normal boot loads it with the workspace
-       * ready. */
+      /* Without a client workspace the load swizzles the object-domain owner OID and divides by
+       * the empty MOP table in ws_mop (SIGFPE). restoredb/restoreslave generate no serial values,
+       * and a later normal boot loads the layout. */
       return NO_ERROR;
     }
 
