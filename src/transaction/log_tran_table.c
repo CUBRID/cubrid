@@ -103,6 +103,10 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
 
+/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
+ * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
+bool logtb_Reuse_boot_managers = false;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -477,23 +481,27 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  log_Gl.mvcc_table.initialize ();
+  /* Reusing the boot-time pool: skip re-initialization. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.initialize ();
 
-  /* Initialize the lock manager and the page buffer pool */
-  error_code = lock_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = file_manager_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
+      /* Initialize the lock manager and the page buffer pool */
+      error_code = lock_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = file_manager_init ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   return error_code;
 
@@ -576,10 +584,22 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  log_Gl.mvcc_table.finalize ();
-  lock_finalize ();
-  pgbuf_finalize ();
-  file_manager_final ();
+  /* Reusing the boot-time pool: keep the managers alive; only free the array below. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.finalize ();
+      lock_finalize ();
+      pgbuf_finalize ();
+      file_manager_final ();
+    }
+#if !defined (NDEBUG)
+  else
+    {
+      /* Carried into recovery while pristine: pre-recovery logs nothing (WAL),
+       * so no lock is held (hence no MVCCID assigned). */
+      assert (lock_get_number_object_locks () == 0);
+    }
+#endif /* !NDEBUG */
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -1244,10 +1264,9 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
-
-      TR_TABLE_CS_ENTER (thread_p);
       logtb_decrement_number_of_assigned_tran_indices ();
       if (log_Gl.trantable.hint_free_index > tran_index)
 	{
