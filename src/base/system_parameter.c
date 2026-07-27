@@ -733,7 +733,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_RECOVERY_PROGRESS_LOGGING_INTERVAL "recovery_progress_logging_interval"
 #define PRM_NAME_FIRST_LOG_PAGEID "first_log_pageid"
 
-#define PRM_NAME_TASK_GROUP "task_group"
+#define PRM_NAME_THREAD_CORE_COUNT "thread_core_count"
 
 #define PRM_NAME_FLASHBACK_TIMEOUT "flashback_timeout"
 #define PRM_NAME_FLASHBACK_MAX_TRANSACTION "flashback_max_transaction"
@@ -4743,8 +4743,8 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_TASK_GROUP,
-   PRM_NAME_TASK_GROUP,
+  {PRM_ID_THREAD_CORE_COUNT,
+   PRM_NAME_THREAD_CORE_COUNT,
    (PRM_FOR_SERVER | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,

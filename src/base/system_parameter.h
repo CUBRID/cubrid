@@ -463,7 +463,7 @@ enum param_id
   PRM_ID_CDC_LOGGING_DEBUG,
   PRM_ID_RECOVERY_PROGRESS_LOGGING_INTERVAL,
   PRM_ID_FIRST_LOG_PAGEID,	/* Except for QA or TEST purposes, never use it. */
-  PRM_ID_TASK_GROUP,
+  PRM_ID_THREAD_CORE_COUNT,	/* Deprecated, kept for compatibility. */
   PRM_ID_FLASHBACK_TIMEOUT,
   PRM_ID_FLASHBACK_MAX_TRANSACTION,	/* Hidden parameter For QA test */
   PRM_ID_FLASHBACK_WIN_SIZE,	/* Hidden parameter For QA test */
