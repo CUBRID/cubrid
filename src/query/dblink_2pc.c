@@ -118,7 +118,8 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   XID xid;
   T_CCI_ERROR err_buf;
   char tran_err_msg[64];
-  int one_phase_commits = 0;
+  int one_phase_candidates = 0;
+  bool one_phase_committed = false;
   DBLINK_CONN_INFO *dblink;
 
   xid.formatID = MAJOR_VERSION * 100 + MINOR_VERSION;
@@ -141,6 +142,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	       * failure below still rolls back all deferred participants cleanly (their
 	       * connections remain in this transaction's dblink list with autocommit off). */
 	      dblink[i].xa_unsupported = true;
+	      one_phase_candidates++;
 	      continue;
 	    }
 
@@ -163,12 +165,29 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
-  /* Commit the deferred XA-incapable participants with a plain end-tran, now that every
-   * XA-capable participant has prepared.  Their durability is decided here (one-phase),
-   * before the local commit decision: crashing or failing past this point cannot undo
-   * them.  On failure force abort: this participant, any not-yet-committed deferred
-   * participants, and SELECT-only entries are still in the dblink list and roll back;
-   * the XA-prepared participants receive the abort decision via block_particps_ids. */
+  /* A deferred participant is committed outside XA, so it cannot be rolled back once a
+   * later participant fails.  With a single one there is nothing to diverge from it, but
+   * with two or more an earlier commit would stay while the rest abort, which no path can
+   * repair.  Refuse the transaction instead: nothing has been committed yet at this point
+   * (the loop below has not run), so the rollback leaves no durable effect behind. */
+  if (one_phase_candidates > 1)
+    {
+      char multi_err_msg[144];
+
+      snprintf (multi_err_msg, sizeof (multi_err_msg),
+		"%d remote participants do not support XA prepare; only one such participant is "
+		"allowed in a transaction", one_phase_candidates);
+      qmgr_dblink_clear_conn_entry (thread_p, false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, multi_err_msg);
+      return false;
+    }
+
+  /* Commit the deferred XA-incapable participant with a plain end-tran, now that every
+   * XA-capable participant has prepared.  Its durability is decided here (one-phase),
+   * before the local commit decision: crashing or failing past this point cannot undo it.
+   * On failure force abort: this participant and the SELECT-only entries are still in the
+   * dblink list and roll back; the XA-prepared participants receive the abort decision via
+   * block_particps_ids. */
   for (i = 0; i < num_particps; i++)
     {
       char commit_log_msg[MAX_LEN_CONNECTION_URL + 80];
@@ -180,27 +199,13 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 
       if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
 	{
-	  if (one_phase_commits > 0)
-	    {
-	      char partial_log_msg[144];
-
-	      /* Every participant committed before this one stays committed while the
-	       * transaction rolls back, so the gap is now real rather than potential.  Log it
-	       * before the rollback cleanup below so the diagnostic is emitted independently
-	       * of any error that cleanup raises. */
-	      snprintf (partial_log_msg, sizeof (partial_log_msg),
-			"%d participant(s) without XA prepare were already committed when this "
-			"transaction aborted; their changes cannot be rolled back", one_phase_commits);
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, partial_log_msg);
-	    }
-
 	  qmgr_dblink_clear_conn_entry (thread_p, false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
 		  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
 	  return false;
 	}
 
-      one_phase_commits++;
+      one_phase_committed = true;
 
       snprintf (commit_log_msg, sizeof (commit_log_msg),
 		"participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
@@ -210,29 +215,13 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
       (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
-  if (one_phase_commits > 1)
-    {
-      char multi_log_msg[144];
-
-      /* The risk of a partial commit among XA-incapable participants arises when there is
-       * more than one: an earlier one stays committed if a later one fails.  This
-       * transaction committed all of them, so none of them is inconsistent, but it ran
-       * outside that single-participant condition - record the count so such transactions
-       * stay identifiable in the server log.  (A gap that actually materialized is logged
-       * where the commit fails above.) */
-      snprintf (multi_log_msg, sizeof (multi_log_msg),
-		"%d participants without XA prepare were committed one-phase in this transaction; "
-		"atomicity across them is not guaranteed", one_phase_commits);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, multi_log_msg);
-    }
-
   /* All participants are finished: XA-prepared (decision delivered later via the daemon)
    * or committed directly above.  Commit and disconnect any remaining non-participant
    * (SELECT-only) entries and reset is_dblink_autocommit.
    * The CCI_XA FULL/PREPARE commit path skips phase 2, so this is the only cleanup point. */
   if (qmgr_dblink_clear_conn_entry (thread_p, true) != NO_ERROR)
     {
-      if (one_phase_commits == 0)
+      if (!one_phase_committed)
 	{
 	  /* Nothing is durable yet: _db_global_tran has not been updated and every
 	   * participant is XA-prepared, so force abort and roll all of them back. */
