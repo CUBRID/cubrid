@@ -37,6 +37,7 @@ import com.cubrid.plcsql.compiler.SymbolStack;
 import com.cubrid.plcsql.compiler.ast.*;
 import com.cubrid.plcsql.compiler.ast.loopOpt.*;
 import com.cubrid.plcsql.compiler.type.Type;
+import com.cubrid.plcsql.compiler.type.TypeNumeric;
 import com.cubrid.plcsql.compiler.type.TypeRecord;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -105,8 +106,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
     // Unit
     //
-    private static final String tmplGetConn =
-            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
+    private static final String strGetConn =
+            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 
     private static final String[] tmplMainUserCode =
             new String[] {
@@ -116,6 +117,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "    ) throws Exception {",
                 "    Long[] sql_rowcount = new Long[] { null };",
                 "    %'+NULLIFY-OUT-PARAMETERS'%",
+                "    %'+CHECK-INOUT-PARAMETERS'%",
                 "    %'+DECL-CLASS'%",
                 "    %'+BODY'%",
                 "  }",
@@ -171,12 +173,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             javaTypesUsed.add("java.sql.*");
         }
 
-        // get connection, if necessary
-        String strGetConn =
-                node.connectionRequired
-                        ? String.format(tmplGetConn, node.autonomousTransaction)
-                        : "";
-
         // declarations
         Object codeDeclClass =
                 node.routine.decls == null
@@ -204,6 +200,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         // nullify OUT parameters
         String[] strNullifyOutParam = getNullifyOutParamCode(node.routine.paramList);
+        // range-check incoming IN OUT NUMERIC parameters
+        String[] strCheckInoutParam = getCheckInoutParamCode(node.routine.paramList);
 
         // body
         CodeToResolve bodyCode = visit(node.routine.body);
@@ -220,6 +218,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         objParamArr,
                         "%'+NULLIFY-OUT-PARAMETERS'%",
                         strNullifyOutParam,
+                        "%'+CHECK-INOUT-PARAMETERS'%",
+                        strCheckInoutParam,
                         "%'+DECL-CLASS'%",
                         codeDeclClass,
                         "%'+BODY'%",
@@ -292,7 +292,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+PARAMETERS'%",
                 objParamArr,
                 "%'GET-CONNECTION'%",
-                strGetConn,
+                node.connectionRequired ? strGetConn : "",
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
@@ -445,7 +445,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         String code =
                 String.format(
-                        "final Query %s = new Query(\"%s\"); // param-ref-counts: %s, param-num-of-host-expr: %s",
+                        "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
                         node.name,
                         StringEscapeUtils.escapeJava(node.staticSql.rewritten),
                         Arrays.toString(node.paramRefCounts),
@@ -2471,37 +2471,44 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     private static String[] tmplStmtOpenForWithHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
-                "  %'REF-CURSOR'%.open(conn, null,",
-                "    %'+HOST-EXPRS'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
+                "  %'REF-CURSOR'%.open(conn, null, new Object[] {",
+                "    %'+HOST-EXPRS'% });",
                 "}"
             };
 
     private static String[] tmplStmtOpenForWithoutHV =
             new String[] {
-                "{ // open-for statement",
-                "  %'REF-CURSOR'% = new Query(%'QUERY'%);",
+                "{ // %'KIND'% open-for statement",
+                "  %'REF-CURSOR'% = new Query(",
+                "    %'+QUERY'%,",
+                "    %'DYNAMIC'%);",
                 "  %'REF-CURSOR'%.open(conn, null);",
                 "}"
             };
 
-    @Override
-    public CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
+    private CodeToResolve visitStmtOpenFor(StmtOpenFor node) {
 
-        if (node.staticSql.hostExprs.size() == 0) {
+        if (node.usedExprList == null || node.usedExprList.size() == 0) {
             return new CodeTemplate(
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithoutHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"');
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false");
         } else {
 
             CodeTemplateList hostExprs = new CodeTemplateList();
-            for (Expr e : node.staticSql.hostExprs.keySet()) {
+            for (Expr e : node.usedExprList) {
                 hostExprs.addElement((CodeTemplate) visit(e));
             }
 
@@ -2509,14 +2516,32 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     "StmtOpenFor",
                     Misc.getLineColumnOf(node.ctx),
                     tmplStmtOpenForWithHV,
+                    "%'KIND'%",
+                    node.dynamic ? "dynamic" : "static",
                     "%'REF-CURSOR'%",
                     node.id.javaCode(),
-                    "%'QUERY'%",
-                    '"' + StringEscapeUtils.escapeJava(node.staticSql.rewritten) + '"',
+                    "%'+QUERY'%",
+                    visit(node.sql),
+                    "%'DYNAMIC'%",
+                    node.dynamic ? "true" : "false",
                     "%'+HOST-EXPRS'%",
                     hostExprs.setDelimiter(","));
         }
     }
+
+    @Override
+    public CodeToResolve visitStmtOpenForStatic(StmtOpenForStatic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    @Override
+    public CodeToResolve visitStmtOpenForDynamic(StmtOpenForDynamic node) {
+        return visitStmtOpenFor(node);
+    }
+
+    // -------------------------------------------------------------------------
+    // StmtRaise
+    //
 
     @Override
     public CodeToResolve visitStmtRaise(StmtRaise node) {
@@ -2973,6 +2998,26 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 } else {
                     ret.add(String.format("%s[0] = null;", ((DeclParamOut) dp).name));
                 }
+            }
+        }
+
+        return ret.toArray(DUMMY_STRING_ARRAY);
+    }
+
+    private static String[] getCheckInoutParamCode(NodeList<DeclParam> paramList) {
+
+        List<String> ret = new LinkedList<>();
+
+        for (DeclParam dp : paramList.nodes) {
+            if (dp instanceof DeclParamOut
+                    && ((DeclParamOut) dp).alsoIn
+                    && dp.typeSpec.type instanceof TypeNumeric) {
+                String name = ((DeclParamOut) dp).name;
+                TypeNumeric tn = (TypeNumeric) dp.typeSpec.type;
+                ret.add(
+                        String.format(
+                                "%s[0] = checkPrecision(%d, (short) %d, %s[0]);",
+                                name, tn.precision, tn.scale, name));
             }
         }
 
