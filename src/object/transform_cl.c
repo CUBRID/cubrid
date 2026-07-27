@@ -3026,7 +3026,10 @@ tf_attribute_restore_stream_prop (SM_ATTRIBUTE * att, const char *prop_name, con
 
       if (stream_copy == NULL)
 	{
-	  assert (er_errid () != NO_ERROR);
+	  /* db_ws_alloc does not er_set on every path (utility threads use a
+	   * bare malloc); set the error here so the post-load consistency
+	   * check in tf_disk_to_class fails the load with it */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) src_size);
 	}
       else
 	{
@@ -3216,6 +3219,12 @@ disk_to_attribute (OR_BUF * buf, SM_ATTRIBUTE * att)
 	      if (edl_text != NULL)
 		{
 		  att->default_value.default_expr.default_expr_text = ws_copy_string (edl_text);
+		  if (att->default_value.default_expr.default_expr_text == NULL)
+		    {
+		      /* see tf_attribute_restore_stream_prop: the post-load
+		       * consistency check fails the load with this error */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (edl_text) + 1);
+		    }
 		}
 	      pr_clear_value (&value);
 	    }
@@ -4420,6 +4429,71 @@ disk_to_root (OR_BUF * buf)
 
 
 /*
+ * tf_attribute_lost_default_expr_prop - Checks whether an attribute carries
+ * a stored-DEFAULT property whose workspace restore is missing.
+ *    return: true when the property holds data but restored is NULL
+ *    att(in): attribute
+ *    prop_name(in): property name
+ *    restored(in): the in-memory pointer the property restores into
+ */
+static bool
+tf_attribute_lost_default_expr_prop (SM_ATTRIBUTE * att, const char *prop_name, const void *restored)
+{
+  DB_VALUE value;
+  bool lost = false;
+
+  if (restored != NULL || att->properties == NULL)
+    {
+      return false;
+    }
+
+  if (classobj_get_prop (att->properties, prop_name, &value) > 0)
+    {
+      lost = (db_get_string (&value) != NULL && db_get_string_size (&value) > 0);
+      pr_clear_value (&value);
+    }
+
+  return lost;
+}
+
+/*
+ * tf_class_lost_default_expr_props - Checks whether any attribute of a
+ * freshly loaded class lost a stored-DEFAULT form to an allocation failure
+ * in disk_to_attribute.
+ *    return: true when some stored form could not be restored
+ *    class(in): loaded class structure
+ */
+static bool
+tf_class_lost_default_expr_props (SM_CLASS * class_)
+{
+  SM_ATTRIBUTE *lists[3];
+  SM_ATTRIBUTE *att;
+  DB_DEFAULT_EXPR *default_expr;
+  int i;
+
+  lists[0] = class_->attributes;
+  lists[1] = class_->shared;
+  lists[2] = class_->class_attributes;
+
+  for (i = 0; i < 3; i++)
+    {
+      for (att = lists[i]; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
+	{
+	  default_expr = &att->default_value.default_expr;
+
+	  if (tf_attribute_lost_default_expr_prop (att, "default_expr_literal", default_expr->default_expr_text)
+	      || tf_attribute_lost_default_expr_prop (att, "default_expr_regu", default_expr->default_expr_regu_stream)
+	      || tf_attribute_lost_default_expr_prop (att, "default_expr_tree", default_expr->default_expr_tree_stream))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * tf_disk_to_class - transforming the disk representation of a class.
  *    return: class structure
  *    oid(in):
@@ -4493,6 +4567,19 @@ tf_disk_to_class (OID * oid, RECDES * record)
        * make sure to clear the class that was being created,
        * an appropriate error will have been set
        */
+      classobj_free_class ((SM_CLASS *) class_);
+      class_ = NULL;
+    }
+
+  if (class_ != NULL && !oid_is_root (oid) && tf_class_lost_default_expr_props ((SM_CLASS *) class_))
+    {
+      /* a stored-DEFAULT property could not be restored into the workspace
+       * (allocation failure in disk_to_attribute).  Continuing would
+       * silently freeze the DEFAULT to its stored snapshot, and the next
+       * flush would drop the property for good, so fail the load instead --
+       * mirroring the server-side policy in or_get_current_representation.
+       * The error was set at the point of failure. */
+      assert (er_errid () != NO_ERROR);
       classobj_free_class ((SM_CLASS *) class_);
       class_ = NULL;
     }

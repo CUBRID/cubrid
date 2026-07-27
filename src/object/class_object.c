@@ -4668,7 +4668,10 @@ classobj_init_attribute (SM_ATTRIBUTE * src, SM_ATTRIBUTE * dest, int copy)
   dest->domain = NULL;
   dest->properties = NULL;
   dest->auto_increment = src->auto_increment;
-  classobj_copy_default_expr (&dest->default_value.default_expr, &src->default_value.default_expr);
+  if (classobj_copy_default_expr (&dest->default_value.default_expr, &src->default_value.default_expr) != NO_ERROR)
+    {
+      goto memory_error;
+    }
   dest->on_update_default_expr = src->on_update_default_expr;
   dest->comment = NULL;
 
@@ -8849,6 +8852,8 @@ classobj_copy_default_expr_stream (const char *src, int src_size, const char **d
 int
 classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 {
+  int error = NO_ERROR;
+
   assert (dest != NULL && src != NULL);
 
   dest->default_expr_type = src->default_expr_type;
@@ -8859,7 +8864,8 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
       if (dest->default_expr_format == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (src->default_expr_format));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_rollback;
 	}
     }
   else
@@ -8873,7 +8879,8 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
       if (dest->default_expr_text == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, strlen (src->default_expr_text));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto error_rollback;
 	}
     }
   else
@@ -8881,16 +8888,28 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
       dest->default_expr_text = NULL;
     }
 
-  int error = classobj_copy_default_expr_stream (src->default_expr_regu_stream, src->default_expr_regu_stream_size,
-						 &dest->default_expr_regu_stream,
-						 &dest->default_expr_regu_stream_size);
+  error = classobj_copy_default_expr_stream (src->default_expr_regu_stream, src->default_expr_regu_stream_size,
+					     &dest->default_expr_regu_stream, &dest->default_expr_regu_stream_size);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error_rollback;
     }
 
-  return classobj_copy_default_expr_stream (src->default_expr_tree_stream, src->default_expr_tree_stream_size,
-					    &dest->default_expr_tree_stream, &dest->default_expr_tree_stream_size);
+  error = classobj_copy_default_expr_stream (src->default_expr_tree_stream, src->default_expr_tree_stream_size,
+					     &dest->default_expr_tree_stream, &dest->default_expr_tree_stream_size);
+  if (error != NO_ERROR)
+    {
+      goto error_rollback;
+    }
+
+  return NO_ERROR;
+
+error_rollback:
+  /* roll back the partial copy: a caller must never see (or flush) a DEFAULT
+   * carrying only some of its stored forms */
+  classobj_clear_default_expr (dest);
+
+  return error;
 }
 
 /*

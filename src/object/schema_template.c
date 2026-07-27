@@ -1383,7 +1383,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	      classobj_clear_default_expr (&att->default_value.default_expr);
 	      if (default_expr != NULL)
 		{
-		  classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+		  error = classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
@@ -1391,7 +1391,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * default value to the attribute. This should be handled by using candidates in the template and storing
 	       * an extra bit field in the candidate structure. See the comment above sm_attribute for more information
 	       * about "original_value". */
-	      if (att->flags & SM_ATTFLAG_NEW)
+	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
 		{
 		  error = smt_set_attribute_orig_default_value (att, value, default_expr);
 		}
