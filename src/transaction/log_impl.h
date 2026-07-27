@@ -934,6 +934,8 @@ extern LOG_GLOBAL log_Gl;
 
 extern LOG_LOGGING_STAT log_Stat;
 
+extern bool logtb_Reuse_boot_managers;
+
 /* Name of the database and logs */
 extern char log_Path[];
 extern char log_Archive_path[];
