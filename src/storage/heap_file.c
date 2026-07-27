@@ -21712,10 +21712,42 @@ heap_home_find_write_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * co
       return ER_HEAP_UNKNOWN_OBJECT;
     }
 
-  /* only an active transaction other than us is a real write-write conflict */
-  if (logtb_is_active_other_mvccid (thread_p, candidate))
+  /* Report the owner the classification found. Do NOT re-derive liveness here: mvcc_satisfies_delete and
+   * logtb_is_active_other_mvccid both end up reading log_Gl.mvcc_table.is_active (), and an owner that
+   * finishes between the two reads would be mistaken for "no owner" -- letting a second writer stamp a row
+   * the first one already owns. Whether the owner is still running only decides how the caller gets a fresh
+   * header (wait, or just re-read); it never decides that stamping is safe. */
+  if (MVCCID_IS_NORMAL (candidate) && !logtb_is_current_mvccid (thread_p, candidate))
     {
       *owner = candidate;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_home_reread () - re-read the home record into the operation context so the caller can re-classify
+ *   thread_p(in): thread entry
+ *   context(in): delete/update operation context; the home page must be latched
+ *   returns: NO_ERROR, ER_HEAP_UNKNOWN_OBJECT when the slot is gone, or an error code on failure
+ */
+static int
+heap_home_reread (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  int peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+  int error_code = NO_ERROR;
+
+  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+			&context->home_recdes, peek) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      if (error_code == NO_ERROR)
+	{
+	  /* the slot vanished under us -- the row is gone, which the locator turns into 0 rows affected */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		  context->oid.pageid, context->oid.slotid);
+	  error_code = ER_HEAP_UNKNOWN_OBJECT;
+	}
+      return error_code;
     }
   return NO_ERROR;
 }
@@ -21735,7 +21767,6 @@ static int
 heap_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCCID owner)
 {
   VPID home_vpid;
-  int peek;
   int error_code = NO_ERROR;
 
   VPID_GET_FROM_OID (&home_vpid, &context->oid);
@@ -21763,14 +21794,7 @@ heap_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
-			&context->home_recdes, peek) != S_SUCCESS)
-    {
-      ASSERT_ERROR_AND_SET (error_code);
-      return error_code;
-    }
-  return NO_ERROR;
+  return heap_home_reread (thread_p, context);
 }
 
 /*
@@ -21812,8 +21836,17 @@ heap_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT *
 	  return NO_ERROR;
 	}
 
-      /* a concurrent writer owns the row; wait for it, then loop to re-read and re-classify */
-      error_code = heap_home_wait_for_owner (thread_p, context, owner);
+      /* A foreign owner holds this row. If it is still running, wait it out (releasing the latch); if it
+       * has just finished, its outcome is already on the page, so re-read under the latch we still hold.
+       * Either way we loop and re-classify -- we never fall through to stamping. */
+      if (logtb_is_active_other_mvccid (thread_p, owner))
+	{
+	  error_code = heap_home_wait_for_owner (thread_p, context, owner);
+	}
+      else
+	{
+	  error_code = heap_home_reread (thread_p, context);
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
