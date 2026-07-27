@@ -5202,6 +5202,12 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
   old_check_intr = logtb_set_check_interrupt (thread_p, false);
 
+  /* The retry loop below consumes and clears its own errors (interrupted waits,
+   * shutdown-forced timeouts). Preserve the error that belongs to `ret` (set by
+   * the online build above) so that `ret` and er_errid () stay consistent for
+   * the check after the loop. */
+  er_stack_push ();
+
   for (cur_class = 0; cur_class < n_classes; cur_class++)
     {
       /* Promote the lock to SCH_M_LOCK */
@@ -5238,6 +5244,8 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
 	  assert (0);
 	}
     }
+
+  er_stack_pop ();
 
   // reset back
   (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
