@@ -169,6 +169,7 @@ static void qo_plan_compute_cost (QO_PLAN *);
 static void qo_plan_compute_subquery_cost (PT_NODE *, double *, double *);
 static void qo_sscan_cost (QO_PLAN *);
 static void qo_iscan_cost (QO_PLAN *);
+static bool qo_index_forbids_key_filter (QO_INDEX_ENTRY *);
 static void qo_sort_cost (QO_PLAN *);
 static void qo_mjoin_cost (QO_PLAN *);
 static void qo_nljoin_cost (QO_PLAN *);
@@ -1752,6 +1753,24 @@ qo_index_has_bit_attr (QO_INDEX_ENTRY * index_entryp)
 }
 
 /*
+ * qo_index_forbids_key_filter () - true when the index cannot host key-filter
+ *   terms, so a residual LIKE stays a data filter and its derived range must
+ *   remain the row-count upper bound.
+ *   return: true if key-filters are disabled for this index
+ *   index_entryp(in):
+ *
+ * note: A non-covering function index is the only such case. This predicate is
+ *   shared by qo_index_scan_new() (which then skips kf_terms population) and
+ *   qo_iscan_cost() (which then keeps a LIKE-derived range in the row-count) so
+ *   the two sites never drift apart.
+ */
+static bool
+qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
+{
+  return index_entryp->constraints->func_index_info != NULL && index_entryp->cover_segments == false;
+}
+
+/*
  * qo_index_scan_new () -
  *   return:
  *   info(in):
@@ -1852,7 +1871,7 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
       plan->plan_un.scan.index_equi = false;
     }
 
-  if (index_entryp->constraints->func_index_info && index_entryp->cover_segments == false)
+  if (qo_index_forbids_key_filter (index_entryp))
     {
       /* do not permit key-filter */
       assert (bitset_is_empty (&(plan->plan_un.scan.kf_terms)));
@@ -2134,8 +2153,7 @@ qo_iscan_cost (QO_PLAN * planp)
        * non-covering function index disables key-filters, so the residual LIKE
        * falls through to a data filter - there keep the range as the row-count
        * upper bound. */
-      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE)
-	  || (index_entryp->constraints->func_index_info && index_entryp->cover_segments == false))
+      if (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE) || qo_index_forbids_key_filter (index_entryp))
 	{
 	  sel_excl_derived_range *= QO_TERM_SELECTIVITY (termp);
 	}
@@ -2199,6 +2217,16 @@ qo_iscan_cost (QO_PLAN * planp)
   for (t = bitset_iterate (&(planp->plan_un.scan.kf_terms), &iter); t != -1; t = bitset_next_member (&iter))
     {
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
+
+      /* A LIKE-derived range that landed in the key-filter is redundant with
+       * the residual LIKE it came from; skip it here just as the key-range loop
+       * skips it from sel_excl_derived_range, so the node-level and iscan-level
+       * estimates stay in agreement. */
+      if (QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE))
+	{
+	  continue;
+	}
+
       filter_sel *= QO_TERM_SELECTIVITY (termp);
     }
 
