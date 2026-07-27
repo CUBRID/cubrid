@@ -3293,8 +3293,7 @@ log_recovery_refuse_bulk_build_replay (THREAD_ENTRY * thread_p, const LOG_LSA * 
 
   if (lsa != NULL && !LSA_ISNULL (lsa))
     {
-      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s (barrier record LSA = %lld|%d)", catmsg,
-			 LSA_AS_ARGS (lsa));
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "%s (barrier record LSA = %lld|%d)", catmsg, LSA_AS_ARGS (lsa));
     }
   else
     {
