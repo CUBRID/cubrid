@@ -8850,6 +8850,11 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	  return;
 	}
 
+      /* This buffer is written verbatim into the 2PC prepare record, and the entry has interior padding that field
+       * assignment leaves indeterminate (lock_create_search_key does not value-initialize its key either). Zero it so
+       * no uninitialized heap bytes reach the log. */
+      memset (acqlocks->locks, 0, SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
+
       /* initialize idx in acqlocks->locks array */
       idx = 0;
 
