@@ -5774,7 +5774,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       if (nlocks > 0)
 	{
 	  size = nlocks * sizeof (LK_ACQ_LOCK);
-	  LOG_READ_ADD_ALIGN (thread_p, size, &log_lsa, log_pgptr);
+	  LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
 	}
       break;
 
