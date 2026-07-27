@@ -22575,6 +22575,118 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* read OID of overflow record */
   context->ovf_oid = *((OID *) context->home_recdes.data);
 
+#if defined (SERVER_MODE)
+  /* Write-write re-check against a lockless MVCC DELETE -- the overflow analog of the re-check in
+   * heap_update_home. The row's MVCC header, and any foreign in-progress DELID, lives on the first overflow
+   * page, and heap_ovf_update below rewrites it: overwriting an in-progress stamp makes the deleter's undo
+   * find no DELID (its rollback, and recovery redo of its compensate, then report or die). Classify here,
+   * before the header page gets fixed; once the record is clean, the home WRITE latch held to the end of the
+   * function keeps any deleter out (every delete path classifies and stamps under the home latch). */
+  if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
+    {
+      while (true)
+	{
+	  MVCC_REC_HEADER ww_header;
+	  MVCC_SATISFIES_DELETE_RESULT ww_satisfies;
+	  MVCCID ww_owner = MVCCID_NULL;
+	  VPID ww_ovf_vpid;
+	  VPID ww_home_vpid;
+	  PAGE_PTR ww_ovf_page;
+	  INT16 ww_rectype;
+	  int ww_peek;
+
+	  VPID_GET_FROM_OID (&ww_ovf_vpid, &context->ovf_oid);
+	  ww_ovf_page = pgbuf_fix (thread_p, &ww_ovf_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+	  if (ww_ovf_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      goto exit;
+	    }
+	  if (heap_get_mvcc_rec_header_from_overflow (ww_ovf_page, &ww_header, NULL) != NO_ERROR)
+	    {
+	      pgbuf_unfix (thread_p, ww_ovf_page);
+	      error_code = ER_FAILED;
+	      goto exit;
+	    }
+
+	  ww_satisfies = mvcc_satisfies_delete (thread_p, &ww_header);
+	  if (ww_satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_DELID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_INSID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_DELETED)
+	    {
+	      /* another transaction committed a delete of this row -- raced vanish, routed to 0 rows */
+	      pgbuf_unfix (thread_p, ww_ovf_page);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		      context->oid.pageid, context->oid.slotid);
+	      error_code = ER_HEAP_UNKNOWN_OBJECT;
+	      goto exit;
+	    }
+
+	  if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
+	    {
+	      /* clean or ours: from here the held home WRITE latch keeps any deleter out */
+	      pgbuf_unfix (thread_p, ww_ovf_page);
+	      break;
+	    }
+
+	  pgbuf_unfix (thread_p, ww_ovf_page);
+	  if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+	    {
+	      /* still running: never wait while holding a latch -- drop the home page too, wait, re-fix */
+	      VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
+	      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+	      if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto exit;
+		}
+	      lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+
+	      if (pgbuf_ordered_fix (thread_p, &ww_home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				     context->home_page_watcher_p) != NO_ERROR)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto exit;
+		}
+	      ww_rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+	      if (ww_rectype != REC_BIGONE)
+		{
+		  if (ww_rectype == REC_HOME || ww_rectype == REC_RELOCATION)
+		    {
+		      /* cannot happen under our instance X-lock -- only an update changes a record's shape,
+		       * and the only lockless writer (a decoupled DELETE) never does */
+		      assert (false);
+		      error_code = ER_FAILED;
+		      goto exit;
+		    }
+		  /* dead slot: the row vanished while we waited -- raced vanish, routed to 0 rows */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			  context->oid.pageid, context->oid.slotid);
+		  error_code = ER_HEAP_UNKNOWN_OBJECT;
+		  goto exit;
+		}
+	      ww_peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				    &context->home_recdes, ww_peek) != S_SUCCESS)
+		{
+		  ASSERT_ERROR_AND_SET (error_code);
+		  goto exit;
+		}
+	      context->ovf_oid = *((OID *) context->home_recdes.data);
+	    }
+	  /* Either the owner just finished or we re-fixed after waiting: loop re-fixes the overflow page and
+	   * re-classifies. */
+	}
+    }
+#endif /* SERVER_MODE */
+
   /* fix header page */
   error_code = heap_fix_header_page (thread_p, context);
   if (error_code != NO_ERROR)
@@ -22810,6 +22922,123 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       ASSERT_ERROR ();
       goto exit;
     }
+
+#if defined (SERVER_MODE)
+  /* Write-write re-check against a lockless MVCC DELETE -- the relocation analog of the re-check in
+   * heap_update_home. The row's MVCC header, and any foreign in-progress DELID, lives on the forward record,
+   * and the rewrite below replaces or physically removes that record: overwriting an in-progress stamp makes
+   * the deleter's undo target vanish, and its rollback -- and recovery redo of its compensate -- then dies on
+   * a missing DELID or a missing slot. Classify here, before the header page gets fixed; once the record is
+   * clean, the home WRITE latch held to the end of the function keeps any deleter out (every delete path
+   * classifies and stamps under the home latch). */
+  if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
+    {
+      while (true)
+	{
+	  RECDES ww_recdes;
+	  MVCC_REC_HEADER ww_header;
+	  MVCC_SATISFIES_DELETE_RESULT ww_satisfies;
+	  MVCCID ww_owner = MVCCID_NULL;
+	  VPID ww_home_vpid;
+	  INT16 ww_rectype;
+	  int ww_peek;
+
+	  if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, &ww_recdes,
+				PEEK) != S_SUCCESS)
+	    {
+	      /* the forward record vanished while we waited -- raced vanish, routed to 0 rows */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		      context->oid.pageid, context->oid.slotid);
+	      rc = ER_HEAP_UNKNOWN_OBJECT;
+	      goto exit;
+	    }
+	  if (or_mvcc_get_header (&ww_recdes, &ww_header) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      goto exit;
+	    }
+
+	  ww_satisfies = mvcc_satisfies_delete (thread_p, &ww_header);
+	  if (ww_satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_DELID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_INSID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_DELETED)
+	    {
+	      /* another transaction committed a delete of this row -- raced vanish, routed to 0 rows */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		      context->oid.pageid, context->oid.slotid);
+	      rc = ER_HEAP_UNKNOWN_OBJECT;
+	      goto exit;
+	    }
+
+	  if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
+	    {
+	      /* clean or ours: rewrite under the latches we hold */
+	      break;
+	    }
+
+	  if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+	    {
+	      /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
+	      VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
+	      pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
+	      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+	      if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  goto exit;
+		}
+	      lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+
+	      if (pgbuf_ordered_fix (thread_p, &ww_home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				     context->home_page_watcher_p) != NO_ERROR)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  goto exit;
+		}
+	      ww_rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+	      if (ww_rectype != REC_RELOCATION)
+		{
+		  if (ww_rectype == REC_HOME || ww_rectype == REC_BIGONE)
+		    {
+		      /* cannot happen under our instance X-lock -- only an update changes a record's shape,
+		       * and the only lockless writer (a decoupled DELETE) never does */
+		      assert (false);
+		      rc = ER_FAILED;
+		      goto exit;
+		    }
+		  /* dead slot: the row vanished while we waited -- raced vanish, routed to 0 rows */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			  context->oid.pageid, context->oid.slotid);
+		  rc = ER_HEAP_UNKNOWN_OBJECT;
+		  goto exit;
+		}
+	      ww_peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				    &context->home_recdes, ww_peek) != S_SUCCESS)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  goto exit;
+		}
+	      forward_oid = *((OID *) context->home_recdes.data);
+	      rc = heap_fix_forward_page (thread_p, context, &forward_oid);
+	      if (rc != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  goto exit;
+		}
+	    }
+	  /* Either the owner just finished (latches still held) or we re-fixed after waiting: loop re-peeks
+	   * the forward record and re-classifies. */
+	}
+    }
+#endif /* SERVER_MODE */
 
   /* fix header if necessary */
   fits_in_home =
