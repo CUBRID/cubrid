@@ -1023,6 +1023,11 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
     }
   assert (buf <= buf_p + size);
 
+  /* xts_sizeof_arith_type reserves space for next, but xts_process_arith_type
+   * does not write it, leaving an unwritten tail. Zero only that tail to avoid
+   * copying uninitialized bytes. */
+  memset (buf, 0, size - (buf - buf_p));
+
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
 end:
@@ -4599,8 +4604,7 @@ xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec)
   ptr = or_pack_int (ptr, access_spec->access);
 
   if (access_spec->access == ACCESS_METHOD_SEQUENTIAL || access_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE
-      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN)
+      || access_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN || access_spec->access == ACCESS_METHOD_JSON_TABLE)
     {
       ptr = or_pack_int (ptr, 0);
     }
