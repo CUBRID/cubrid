@@ -14537,6 +14537,10 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
        * Don't understand the rationale behind this case.  What's the
        * point here?  MRS 4/30/96
        */
+      if (target->node_type == PT_NAME && target->info.name.meta_class == PT_PARAMETER)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+	}
       error = NO_ERROR;
     }
   else
