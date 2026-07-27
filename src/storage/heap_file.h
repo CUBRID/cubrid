@@ -287,6 +287,9 @@ struct heap_operation_context
   RECDES home_recdes;
   char home_recdes_buffer[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   INT16 record_type;		/* record type of original record */
+  bool ww_record_transformed;	/* the record changed type while a write-write seal waited on its owner
+				 * (e.g. a committed update relocated the row); record_type holds the new type
+				 * and the operation must be re-dispatched on it */
   FILE_TYPE file_type;		/* the file type of hfid */
 
   /* physical page watchers - these should not be referenced directly */

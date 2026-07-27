@@ -19840,6 +19840,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->home_recdes.type = REC_UNKNOWN;
 
   context->record_type = REC_UNKNOWN;
+  context->ww_record_transformed = false;
   context->file_type = FILE_UNKNOWN_TYPE;
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
@@ -21236,6 +21237,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  MVCC_SATISFIES_DELETE_RESULT ww_satisfies;
 	  MVCCID ww_owner = MVCCID_NULL;
 	  VPID ww_home_vpid;
+	  INT16 ww_rectype;
 	  int ww_peek;
 
 	  if (or_mvcc_get_header (&forward_recdes, &ww_header) != NO_ERROR)
@@ -21288,6 +21290,22 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		{
 		  ASSERT_ERROR_AND_SET (rc);
 		  return rc;
+		}
+	      ww_rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+	      if (ww_rectype != REC_RELOCATION)
+		{
+		  if (ww_rectype == REC_HOME || ww_rectype == REC_BIGONE)
+		    {
+		      /* the record left the relocated shape while we waited (e.g. a committed update pulled it
+		       * back home): its data is no longer a forward pointer -- re-dispatch on the new type */
+		      context->record_type = ww_rectype;
+		      context->ww_record_transformed = true;
+		      return NO_ERROR;
+		    }
+		  /* dead slot: the row vanished while we waited -- raced vanish, routed to 0 rows */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+			  context->oid.pageid, context->oid.slotid);
+		  return ER_HEAP_UNKNOWN_OBJECT;
 		}
 	      ww_peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
 	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
@@ -21835,6 +21853,18 @@ heap_home_reread (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 {
   int peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
   int error_code = NO_ERROR;
+  INT16 rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+
+  if (rectype != context->record_type
+      && (rectype == REC_HOME || rectype == REC_RELOCATION || rectype == REC_BIGONE))
+    {
+      /* The record changed shape while the latch was down (e.g. a committed update relocated the row):
+       * parsing it as a home record would read a forward pointer as an MVCC header. Report the new type
+       * so the operation is re-dispatched on it; a dead slot falls through to the vanish path below. */
+      context->record_type = rectype;
+      context->ww_record_transformed = true;
+      return NO_ERROR;
+    }
 
   if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
 			&context->home_recdes, peek) != S_SUCCESS)
@@ -21951,6 +21981,11 @@ heap_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT *
 	{
 	  return error_code;
 	}
+      if (context->ww_record_transformed)
+	{
+	  /* the record is no longer a home record -- the caller must re-dispatch, not stamp */
+	  return NO_ERROR;
+	}
     }
 }
 #endif /* SERVER_MODE */
@@ -22020,6 +22055,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
+	}
+      if (context->ww_record_transformed)
+	{
+	  /* the record left the home shape while the re-check waited: heap_delete_logical re-dispatches */
+	  return NO_ERROR;
 	}
 #endif /* SERVER_MODE */
 
@@ -22997,6 +23037,14 @@ heap_update_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	{
 	  goto exit;
 	}
+      if (context->ww_record_transformed)
+	{
+	  /* cannot happen under our instance X-lock -- only an update changes a record's shape, and the
+	   * only lockless writer (a decoupled DELETE) never does */
+	  assert (false);
+	  error_code = ER_FAILED;
+	  goto exit;
+	}
 
       undo_rcvindex = RVHF_UPDATE_NOTIFY_VACUUM;
     }
@@ -23737,26 +23785,49 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   /*
    * Physical deletion and logging
    */
-  switch (context->record_type)
+  while (true)
     {
-    case REC_BIGONE:
-      rc = heap_delete_bigone (thread_p, context, is_mvcc_op);
-      break;
+      context->ww_record_transformed = false;
 
-    case REC_RELOCATION:
-      rc = heap_delete_relocation (thread_p, context, is_mvcc_op);
-      break;
+      switch (context->record_type)
+	{
+	case REC_BIGONE:
+	  rc = heap_delete_bigone (thread_p, context, is_mvcc_op);
+	  break;
 
-    case REC_HOME:
-    case REC_ASSIGN_ADDRESS:
-      rc = heap_delete_home (thread_p, context, is_mvcc_op);
-      break;
+	case REC_RELOCATION:
+	  rc = heap_delete_relocation (thread_p, context, is_mvcc_op);
+	  break;
 
-    default:
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid.volid, context->oid.pageid,
-	      context->oid.slotid);
-      rc = ER_FAILED;
-      goto error;
+	case REC_HOME:
+	case REC_ASSIGN_ADDRESS:
+	  rc = heap_delete_home (thread_p, context, is_mvcc_op);
+	  break;
+
+	default:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_BAD_OBJECT_TYPE, 3, context->oid.volid,
+		  context->oid.pageid, context->oid.slotid);
+	  rc = ER_FAILED;
+	  goto error;
+	}
+
+      if (rc != NO_ERROR || !context->ww_record_transformed)
+	{
+	  break;
+	}
+
+      /* A write-write seal saw the record change type while it waited on the write-owner (e.g. a committed
+       * update relocated the row). context->record_type already holds the new type and the home page is still
+       * latched: re-read the record and re-dispatch on its current shape. */
+      assert (context->home_page_watcher_p->pgptr != NULL);
+      context->home_recdes.area_size = DB_PAGESIZE;
+      context->home_recdes.data = PTR_ALIGN (context->home_recdes_buffer, MAX_ALIGNMENT);
+      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+			    &context->home_recdes, COPY) != S_SUCCESS)
+	{
+	  rc = ER_FAILED;
+	  goto error;
+	}
     }
 
   if (rc == NO_ERROR && context->do_supplemental_log == true)
