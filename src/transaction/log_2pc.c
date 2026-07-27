@@ -69,6 +69,10 @@
 #define	CSS_ENABLE_INTERRUPTS
 #endif /* !SERVER_MODE */
 
+/* Entries replayed per batch from the prepare record's lock array, bounding the working buffer no matter how many
+ * locks the transaction held. */
+#define LOG_2PC_LOCK_CHUNK 512
+
 /* Variables */
 struct log_2pc_global_data
 {
@@ -93,10 +97,6 @@ struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NUL
 static void log_2pc_restore_mvccid_from_locks (log_tdes * tdes, const LK_ACQUIRED_LOCKS * acq_locks);
 static int log_2pc_reacquire_lock_chunk (THREAD_ENTRY * thread_p, log_tdes * tdes, LK_ACQ_LOCK * locks,
 					 unsigned int nlocks);
-
-/* Entries replayed per batch from the prepare record's lock array. Bounds the working buffer regardless of how many
- * locks the transaction held, so no count can outgrow one allocation. */
-#define LOG_2PC_LOCK_CHUNK 512
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
