@@ -445,7 +445,7 @@ struct insert_proc_node
  * over the whole subquery result (comparison ALL). */
 typedef enum dblink_remote_sink_mode
 {
-  DBLINK_SINK_MODE_PER_ROW = 0,	/* col {= | <> | < | > | <= | >=} (subquery|ANY): one push per row */
+  DBLINK_SINK_MODE_PER_ROW = 0,	/* col {IN | = | <> | < | > | <= | >=} (subquery|ANY): one push per row */
   DBLINK_SINK_MODE_REDUCE_MIN,	/* col {< | <=} ALL (subquery): push once using the local MIN */
   DBLINK_SINK_MODE_REDUCE_MAX,	/* col {> | >=} ALL (subquery): push once using the local MAX */
   DBLINK_SINK_MODE_EQ_ALL	/* col = ALL (subquery): push once if all rows share one value */

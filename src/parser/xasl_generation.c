@@ -19729,14 +19729,17 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 /* Deparses every remote-only AND arm in node's WHERE tree into a single "arm1 AND arm2 ..." SQL
  * fragment (NULL if there are none); the driving predicate (pt_dblink_delete_is_driving_pred) is
- * skipped since it's handled separately via remote_key_col/remote_op. custom_print flags match the
- * existing same-server qstr pushdown (pt_convert_dblink_dml_query) since this text also ships to a
- * remote server as-is.
+ * skipped since it's handled separately via remote_key_col/remote_op. Every other leaf is
+ * re-validated against pt_dblink_delete_is_remote_only_conjunct() before printing -- if this walk
+ * and the parser gate (pt_dblink_delete_where_is_inscope) ever drift apart, a leaf the gate would
+ * not have accepted is rejected here instead of being shipped to the remote server as-is.
+ * custom_print flags match the existing same-server qstr pushdown (pt_convert_dblink_dml_query)
+ * since this text also ships to a remote server as-is.
  *
- * *error distinguishes "no extra arms" (return value NULL, *error untouched) from a print or
- * allocation failure (*error set true) -- a NULL return alone would be ambiguous between the two,
- * and silently dropping/misassembling an arm on failure is worse than the caller aborting
- * explicitly. Once *error is set, the recursion stops doing further print work and just unwinds. */
+ * *error distinguishes "no extra arms" (return value NULL, *error untouched) from a shape mismatch,
+ * print, or allocation failure (*error set true) -- a NULL return alone would be ambiguous between
+ * the two, and silently dropping/misassembling an arm on failure is worse than the caller aborting
+ * explicitly. Once *error is set, the recursion stops doing further work and just unwinds. */
 static char *
 pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, char *extra_where, bool * error)
 {
@@ -19759,10 +19762,19 @@ pt_dblink_delete_deparse_extra_where (PARSER_CONTEXT * parser, PT_NODE * node, c
       return extra_where;
     }
 
+  /* re-validate the remote-only shape rather than trusting the gate blindly -- if
+   * pt_dblink_delete_where_is_inscope() (parser_support.c) and this walk ever drift apart, a leaf the
+   * gate would not have accepted must not be shipped to the remote server as-is. */
+  if (!pt_dblink_delete_is_remote_only_conjunct (node))
+    {
+      *error = true;
+      return extra_where;
+    }
+
   save_custom_print = parser->custom_print;
   parser->custom_print |=
     PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
-    PT_PRINT_SUPPRESS_FOR_DBLINK;
+    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
   piece = parser_print_tree (parser, node);
   parser->custom_print = save_custom_print;
 

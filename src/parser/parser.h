@@ -730,6 +730,7 @@ extern "C"
   extern PT_NODE *pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern bool pt_dblink_delete_is_driving_pred (PT_NODE * cond);
+  extern bool pt_dblink_delete_is_remote_only_conjunct (PT_NODE * conjunct);
   extern PT_NODE *pt_dblink_delete_and_tree_find_driving (PT_NODE * node);
 #ifdef __cplusplus
 }

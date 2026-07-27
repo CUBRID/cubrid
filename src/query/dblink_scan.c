@@ -1484,7 +1484,7 @@ sql_build_error:
  *   thread_p(in)     : thread entry
  *   table_name(in)   : remote table name
  *   key_col(in)      : remote WHERE column (left-hand side, e.g. rc1); NULL builds a WHERE-less DELETE
- *   op(in)           : comparison operator SQL text ("=", "<", ">", "<=", ">="); ignored when key_col
+ *   op(in)           : comparison operator SQL text ("=", "<>", "<", ">", "<=", ">="); ignored when key_col
  *                      is NULL
  *   extra_where(in)  : deparsed remote-only AND arm(s), or NULL/empty if there are none
  *   sql_out(out)     : set to the built SQL text on success
@@ -1588,7 +1588,7 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
  *   num_bind(in)    : INSERT only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1); NULL omits the
  *                     placeholder condition (deletes every remote row, unless extra_where narrows it)
- *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<", ">", "<=", ">="); ignored
+ *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">="); ignored
  *                     when key_col is NULL
  *   extra_where(in) : DELETE only -- deparsed remote-only AND arm(s), or NULL/empty if there are none;
  *                     see dblink_dml_build_delete_sql for the four key_col/extra_where combinations

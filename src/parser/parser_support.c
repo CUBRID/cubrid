@@ -12042,8 +12042,10 @@ pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualif
 
 /* true iff conjunct is a "remote-only" AND arm: col {= | <> | < | > | <= | >=} literal, nothing else
  * (no subquery/dblink()/function/cast on either side). Single-target scope means a bare column can
- * only resolve to the remote target, so this shape doubles as the local-reference guard. */
-static bool
+ * only resolve to the remote target, so this shape doubles as the local-reference guard. Shared
+ * (non-static) with xasl_generation.c, which re-checks this shape before deparsing a non-driving leaf
+ * -- if the gate and the deparse walk ever drift apart, the leaf is rejected instead of shipped as-is. */
+bool
 pt_dblink_delete_is_remote_only_conjunct (PT_NODE * conjunct)
 {
   PT_NODE *arg1, *arg2;

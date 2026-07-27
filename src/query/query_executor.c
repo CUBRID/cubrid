@@ -12897,6 +12897,8 @@ qexec_execute_remote_delete_reduce (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
 		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
+      dblink_dml_close (&dblink_state);
+      dblink_dml_rollback (thread_p, &dblink_state);
       pr_clear_value (&boundary);
       return ER_FAILED;
     }
