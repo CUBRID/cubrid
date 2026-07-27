@@ -13042,6 +13042,15 @@ locator_resolve_implicit_ww_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       return LOCATOR_WW_ERROR;
     }
   lock_unlock_transaction_mvccid (thread_p, owner_mvccid, S_LOCK);
+  if (logtb_is_active_other_mvccid (thread_p, owner_mvccid))
+    {
+      /* Invariant breach (CBRD-26942 hardening): a grant while the write-owner is still active means the wait
+       * was a no-op, and the caller's re-classify loop would spin. Fail the statement, as btree does. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      *scan = S_ERROR;
+      return LOCATOR_WW_ERROR;
+    }
   *scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
   return (*scan == S_SUCCESS) ? LOCATOR_WW_REFETCHED : LOCATOR_WW_ERROR;
 }
@@ -13195,6 +13204,15 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 		  goto error;
 		}
 	      lock_unlock_transaction_mvccid (thread_p, delete_mvccid, S_LOCK);
+	      if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
+		{
+		  /* Invariant breach (CBRD-26942 hardening): a grant while the deleter is still active means
+		   * the wait was a no-op; re-reading would loop. Fail the statement, as btree does. */
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+		  assert (false);
+		  scan = S_ERROR;
+		  goto error;
+		}
 	      scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
 	      if (scan != S_SUCCESS)
 		{

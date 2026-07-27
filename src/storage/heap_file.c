@@ -21748,6 +21748,16 @@ heap_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
     }
   lock_unlock_transaction_mvccid (thread_p, owner, S_LOCK);
 
+  if (logtb_is_active_other_mvccid (thread_p, owner))
+    {
+      /* Invariant breach (CBRD-26942 hardening): a grant while the write-owner is still active means the
+       * wait was a no-op, and waiting again cannot recover it -- the re-check loop would spin. Fail the
+       * statement instead, the same way btree_wait_for_inserter_end does. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+
   if (pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, context->home_page_watcher_p) != NO_ERROR)
     {
       ASSERT_ERROR_AND_SET (error_code);
