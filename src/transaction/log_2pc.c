@@ -533,32 +533,32 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
        * (committed on success, rolled back on abort).  No XA-prepared branch exists on
        * them, so a leftover row would only make recovery deliver an undeliverable XA
        * decision.  A system operation makes the removal permanent regardless of the local
-       * commit/abort outcome, mirroring the sysop used for the 'P' inserts above. */
+       * commit/abort outcome, mirroring the sysop used for the 'P' inserts above; it is
+       * opened on the first such participant so transactions without one pay nothing.
+       * Several participants can be marked even though only one may be committed without
+       * XA: send_prepare marks every one it finds and then refuses the transaction, so
+       * this loop must clear all of them, not just the first. */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
-	  if (participants[i].xa_unsupported)
+	  if (!participants[i].xa_unsupported)
 	    {
+	      continue;
+	    }
+	  if (!has_xa_unsupported)
+	    {
+	      log_sysop_start (thread_p);
 	      has_xa_unsupported = true;
-	      break;
+	    }
+	  error = dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
+	  if (error != NO_ERROR)
+	    {
+	      log_sysop_abort (thread_p);
+	      *state = log_abort_local (thread_p, tdes, false);
+	      return error;
 	    }
 	}
       if (has_xa_unsupported)
 	{
-	  log_sysop_start (thread_p);
-	  for (i = 0; i < tdes->coord->num_particps; i++)
-	    {
-	      if (!participants[i].xa_unsupported)
-		{
-		  continue;
-		}
-	      error = dblink_global_tran_delete_row (thread_p, tdes->gtrid, participants[i].conn_handle);
-	      if (error != NO_ERROR)
-		{
-		  log_sysop_abort (thread_p);
-		  *state = log_abort_local (thread_p, tdes, false);
-		  return error;
-		}
-	    }
 	  log_sysop_commit (thread_p);
 	}
 

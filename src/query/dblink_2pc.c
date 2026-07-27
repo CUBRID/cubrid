@@ -118,7 +118,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
   XID xid;
   T_CCI_ERROR err_buf;
   char tran_err_msg[64];
-  int one_phase_candidates = 0;
+  int xa_unsupported_cnt = 0;
   bool one_phase_committed = false;
   DBLINK_CONN_INFO *dblink;
 
@@ -142,7 +142,7 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
 	       * failure below still rolls back all deferred participants cleanly (their
 	       * connections remain in this transaction's dblink list with autocommit off). */
 	      dblink[i].xa_unsupported = true;
-	      one_phase_candidates++;
+	      xa_unsupported_cnt++;
 	      continue;
 	    }
 
@@ -170,13 +170,13 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
    * with two or more an earlier commit would stay while the rest abort, which no path can
    * repair.  Refuse the transaction instead: nothing has been committed yet at this point
    * (the loop below has not run), so the rollback leaves no durable effect behind. */
-  if (one_phase_candidates > 1)
+  if (xa_unsupported_cnt > 1)
     {
       char multi_err_msg[144];
 
       snprintf (multi_err_msg, sizeof (multi_err_msg),
 		"%d remote participants do not support XA prepare; only one such participant is "
-		"allowed in a transaction", one_phase_candidates);
+		"allowed in a transaction", xa_unsupported_cnt);
       qmgr_dblink_clear_conn_entry (thread_p, false);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1, multi_err_msg);
       return false;
@@ -394,7 +394,11 @@ dblink_2pc_send_decision_one_participant (int gtrid, DBLINK_CONN_INFO * particip
    * state after every participant has XA-prepared, so an endpoint answering "not implemented"
    * to a commit is not an XA-incapable participant of this transaction but a prepared branch
    * whose endpoint has changed.  Deleting its row would strand that branch in-doubt, holding
-   * locks forever, so keep reporting failure and let the caller retry. */
+   * locks forever, so keep reporting failure and let the caller retry.
+   *
+   * Both the return value and the error buffer are checked: the server error normally
+   * arrives in err_buf while cci_xa_end_tran returns a generic CCI failure, but the code is
+   * also passed straight back as the return value on some paths. */
   if (!is_commit && (err_buf.err_code == CAS_ER_NOT_IMPLEMENTED || err == CAS_ER_NOT_IMPLEMENTED))
     {
       char drop_log_msg[MAX_LEN_CONNECTION_URL + 128];
