@@ -1025,6 +1025,13 @@ boot_initialize_client (BOOT_CLIENT_CREDENTIAL * client_credential, BOOT_DB_PATH
       goto error_exit;
     }
 
+  /*
+   * createdb applies the DB charset before tp_init(), so tp_apply_sys_charset()
+   * was a no-op at that point. Re-apply it here so built-in string domains
+   * match the DB charset before the system catalog is created.
+   */
+  tp_apply_sys_charset ();
+
   if (tran_lock_wait_msecs > 0)
     {
       tran_lock_wait_msecs = tran_lock_wait_msecs * 1000;
