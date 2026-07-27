@@ -1575,6 +1575,14 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       if (acq_locks.nlocks > 0)
 	{
+	  /* The count comes from the log and drives the re-acquire loop, while the byte size below caps the buffer; a
+	   * count that does not fit an int would truncate the size and let the loop walk past it. */
+	  if (acq_locks.nlocks > INT_MAX / sizeof (LK_ACQ_LOCK))
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
+
 	  /* obtain the list of locks to acquire */
 	  size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
 	  acq_locks.locks = (LK_ACQ_LOCK *) malloc (size);
@@ -1650,6 +1658,14 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       if (acq_locks.nlocks > 0)
 	{
+	  /* The count comes from the log and drives the re-acquire loop, while the byte size below caps the buffer; a
+	   * count that does not fit an int would truncate the size and let the loop walk past it. */
+	  if (acq_locks.nlocks > INT_MAX / sizeof (LK_ACQ_LOCK))
+	    {
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+	      return;
+	    }
+
 	  /* obtain the list of locks to acquire */
 	  size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
 	  acq_locks.locks = (LK_ACQ_LOCK *) malloc (size);

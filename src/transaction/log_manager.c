@@ -28,6 +28,7 @@
 #include <string.h>
 #include <stddef.h>
 #include <stdlib.h>
+#include <limits.h>
 #include <time.h>
 #if defined(SOLARIS)
 #include <netdb.h>
@@ -6891,7 +6892,12 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
     }
 
   /* Dump acquired locks */
-  if (nlocks > 0)
+  if (nlocks > INT_MAX / sizeof (LK_ACQ_LOCK))
+    {
+      /* Corrupt count: dumping it would truncate the size and misalign the rest of the dump. */
+      fprintf (out_fp, "     Num locks = %u is out of range; skipping the lock dump\n", nlocks);
+    }
+  else if (nlocks > 0)
     {
       size = nlocks * sizeof (LK_ACQ_LOCK);
       log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acqobj_locks, NULL);
