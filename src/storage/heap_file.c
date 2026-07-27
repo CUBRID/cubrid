@@ -21216,6 +21216,106 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       return ER_FAILED;
     }
 
+#if defined (SERVER_MODE)
+  /* Two-page write-write seal for an MVCC DELETE of a relocated row. The DELID lands on the forward record, so
+   * the home-page seal in heap_delete_home does not cover it: with no per-row X-lock two deleters can both get
+   * here. Re-classify the forward record and only stamp when it carries no foreign owner; the home and forward
+   * latches are held continuously from here through the stamp below.
+   *
+   * The verdict rule matches heap_home_find_write_owner: an owner named by the classification is an owner, full
+   * stop. Liveness only chooses how to get a fresh look -- wait it out (releasing both pages) when it is still
+   * running, or re-peek under the latches we hold when it has just finished. Falling through to a stamp because
+   * the owner "is no longer active" is what let a second deleter in.
+   *
+   * A no-op when the caller did take the per-row X-lock (single owner -> always clean). */
+  if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
+    {
+      while (true)
+	{
+	  MVCC_REC_HEADER ww_header;
+	  MVCC_SATISFIES_DELETE_RESULT ww_satisfies;
+	  MVCCID ww_owner = MVCCID_NULL;
+	  VPID ww_home_vpid;
+	  int ww_peek;
+
+	  if (or_mvcc_get_header (&forward_recdes, &ww_header) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (rc);
+	      return rc;
+	    }
+
+	  ww_satisfies = mvcc_satisfies_delete (thread_p, &ww_header);
+	  if (ww_satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_DELID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      ww_owner = MVCC_GET_INSID (&ww_header);
+	    }
+	  else if (ww_satisfies == DELETE_RECORD_DELETED)
+	    {
+	      /* another transaction committed a delete of this row -- raced vanish, routed to 0 rows */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		      context->oid.pageid, context->oid.slotid);
+	      return ER_HEAP_UNKNOWN_OBJECT;
+	    }
+
+	  if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
+	    {
+	      /* clean or ours: stamp atomically under the latches we still hold */
+	      break;
+	    }
+
+	  if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+	    {
+	      /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
+	      VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
+	      pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
+	      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+	      if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  return rc;
+		}
+	      lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+
+	      /* re-fix home in pgbuf_ordered order, re-read it, re-derive forward_oid (the home record may have
+	       * been re-relocated meanwhile), then re-fix and re-peek the forward record. */
+	      if (pgbuf_ordered_fix (thread_p, &ww_home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE,
+				     context->home_page_watcher_p) != NO_ERROR)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  return rc;
+		}
+	      ww_peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+	      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid,
+				    &context->home_recdes, ww_peek) != S_SUCCESS)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  return rc;
+		}
+	      forward_oid = *((OID *) context->home_recdes.data);
+	      if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR)
+		{
+		  return ER_FAILED;
+		}
+	    }
+
+	  /* Either the owner just finished (latches still held) or we re-fixed after waiting: re-peek the forward
+	   * record and re-classify. */
+	  if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid.slotid, &forward_recdes,
+				PEEK) != S_SUCCESS)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid,
+		      context->oid.pageid, context->oid.slotid);
+	      return ER_HEAP_UNKNOWN_OBJECT;
+	    }
+	}
+    }
+#endif /* SERVER_MODE */
+
   HEAP_PERF_TRACK_PREPARE (thread_p, context);
 
   if (is_mvcc_op)
