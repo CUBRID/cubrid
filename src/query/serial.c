@@ -1129,6 +1129,14 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
       serial_finalize_cache_pool ();
     }
 
+  if (!load_attr_info)
+    {
+      /* Without a client workspace the load swizzles the object-domain owner OID and divides by
+       * the empty MOP table in ws_mop (SIGFPE). restoredb/restoreslave generate no serial values,
+       * so the cache pool is not built either; a later normal boot initializes everything. */
+      return NO_ERROR;
+    }
+
   serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE, freelist_block_size,
 			     freelist_block_count, serial_Cache_entry_descriptor);
   serial_Cache_initialized = true;
@@ -1136,14 +1144,6 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
   for (i = 0; i < sizeof (serial_Attrs_id) / sizeof (ATTR_ID); i++)
     {
       serial_Attrs_id[i] = -1;
-    }
-
-  if (!load_attr_info)
-    {
-      /* Without a client workspace the load swizzles the object-domain owner OID and divides by
-       * the empty MOP table in ws_mop (SIGFPE). restoredb/restoreslave generate no serial values,
-       * and a later normal boot loads the layout. */
-      return NO_ERROR;
     }
 
   /* Load the _db_serial attribute layout once, now that the catalog is available. */
