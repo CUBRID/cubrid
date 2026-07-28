@@ -100,6 +100,15 @@ namespace parallel_scan
       /* pass-through ROWNUM (instnum_val) support: main renumbers these tuple columns to 1..N at merge. */
       bool renumber_instnum = false;
       std::vector<int> rownum_col_indices;
+      /* atomic-draw ROWNUM (single-term "inst_num() <= ?" instnum_pred): each worker draws a global row
+       * number from instnum_counter per emitted row, evaluates the limit locally, and raises
+       * INST_NUM_SATISFIED once the quota is exhausted. Mutually exclusive with renumber_instnum. */
+      bool atomic_instnum_mode = false;
+      bool instnum_limit_is_lt = false;
+      bool instnum_limit_resolved = false;
+      INT64 instnum_limit = 0;
+      REGU_VARIABLE *instnum_limit_rhs = nullptr;
+      std::atomic<INT64> instnum_counter {0};
   };
 
   class xasl_snapshot_variables

@@ -2017,6 +2017,10 @@ namespace parallel_scan
 	    return S_END;
 	  }
 	  break;
+	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
+	    /* benign early-stop: the "inst_num() <= ?" quota was met; the merged list already holds
+	     * exactly the first N rows, so pass the read result through unchanged. */
+	    break;
 	  default:
 	    break;
 	  }

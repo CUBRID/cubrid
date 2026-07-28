@@ -155,17 +155,13 @@ namespace parallel_scan
       }
   }
 
-  /* true only when inst_num() is a plain pass-through output column that main can renumber at merge.
-   * inst_num() used in WHERE is represented as instnum_pred (required NULL here), so no separate
-   * predicate walk is needed. */
+  /* shared shape conditions for both instnum fast-path modes (merge-time renumbering and atomic draw):
+   * plain BUILDLIST without sort/group interactions, and instnum_val referenced in the output only as a
+   * top-level pass-through column (never inside an expression). Sets *passthrough_cnt_out (may be 0). */
   static bool
-  is_renumberable_instnum (XASL_NODE *x)
+  instnum_xasl_shape_ok (XASL_NODE *x, int *passthrough_cnt_out)
   {
-    if (x == nullptr || x->instnum_val == nullptr)
-      {
-	return false;
-      }
-    if (x->instnum_pred != nullptr || x->save_instnum_val != nullptr)
+    if (x == nullptr || x->instnum_val == nullptr || x->save_instnum_val != nullptr)
       {
 	return false;
       }
@@ -180,7 +176,7 @@ namespace parallel_scan
     if (x->proc.buildlist.groupby_list != nullptr || x->proc.buildlist.g_agg_list != nullptr
 	|| x->proc.buildlist.a_eval_list != nullptr)
       {
-	return false;		/* GROUP BY / aggregate / analytic: out of MVP scope. */
+	return false;		/* GROUP BY / aggregate / analytic: out of scope. */
       }
     if (x->outptr_list == nullptr)
       {
@@ -200,7 +196,37 @@ namespace parallel_scan
 	    return false;	/* nested use, e.g. ROWNUM + 1. */
 	  }
       }
-    return passthrough >= 1;
+    if (passthrough_cnt_out != nullptr)
+      {
+	*passthrough_cnt_out = passthrough;
+      }
+    return true;
+  }
+
+  /* true only when inst_num() is a plain pass-through output column that main can renumber at merge.
+   * inst_num() used in WHERE is represented as instnum_pred (required NULL here), so no separate
+   * predicate walk is needed. */
+  static bool
+  is_renumberable_instnum (XASL_NODE *x)
+  {
+    int passthrough = 0;
+    if (x == nullptr || x->instnum_pred != nullptr)
+      {
+	return false;
+      }
+    return instnum_xasl_shape_ok (x, &passthrough) && passthrough >= 1;
+  }
+
+  /* true when the instnum_pred is a single-term "inst_num() <= ?" upper limit: workers can then draw
+   * global row numbers from a shared atomic counter, evaluate the limit locally, and stop early. */
+  static bool
+  is_atomic_instnum_eligible (XASL_NODE *x)
+  {
+    if (get_instnum_upper_limit_rhs (x, nullptr) == nullptr)
+      {
+	return false;
+      }
+    return instnum_xasl_shape_ok (x, nullptr);
   }
 
   using rv_list_node = struct regu_variable_list_node;
@@ -631,7 +657,8 @@ namespace parallel_scan
 	  }
       }
 
-    if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling))
+    if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
+	&& !is_atomic_instnum_eligible (sibling))
       {
 	set_flag (result, CANNOT_LIST_MERGE);
       }
@@ -815,7 +842,7 @@ namespace parallel_scan
     if (arg->instnum_pred || arg->instnum_val)
       {
 	buildvalue_opt = false;
-	if (!is_renumberable_instnum (arg))
+	if (!is_renumberable_instnum (arg) && !is_atomic_instnum_eligible (arg))
 	  {
 	    set_flag (result, CANNOT_LIST_MERGE);
 	  }

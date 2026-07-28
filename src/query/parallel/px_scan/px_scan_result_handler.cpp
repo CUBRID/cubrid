@@ -38,6 +38,7 @@
 #include "xasl_aggregate.hpp"
 #include "object_domain.h"
 #include "query_executor.h"
+#include "px_scan_checker.hpp"
 #include "px_scan_trace_handler.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -118,6 +119,19 @@ namespace parallel_scan
 	      {
 		m_.renumber_instnum = true;
 	      }
+	  }
+
+	/* atomic-draw mode: single-term "inst_num() <= ?" filter. The checker only lets such an
+	 * instnum_pred reach MERGEABLE_LIST when the same shape test passes, so rhs != null here
+	 * mirrors the checker's decision. The limit value is resolved lazily in write_initialize
+	 * (needs a VAL_DESCR). Note renumber_instnum requires instnum_pred == NULL above, so the
+	 * two modes are mutually exclusive by construction. */
+	m_.atomic_instnum_mode = false;
+	m_.instnum_limit_rhs = parallel_scan::get_instnum_upper_limit_rhs (ox, &m_.instnum_limit_is_lt);
+	if (m_.instnum_limit_rhs != nullptr)
+	  {
+	    assert (!m_.renumber_instnum);
+	    m_.atomic_instnum_mode = true;
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -275,6 +289,39 @@ namespace parallel_scan
 	    {
 	      db_private_free_and_init (thread_p, type_list.domp);
 	    }
+	  if (m_.atomic_instnum_mode && !m_.instnum_limit_resolved)
+	    {
+	      /* resolve the "inst_num() <= ?" rhs once, under the same mutex; every worker carries the
+	       * same host-variable values so the first arrival's resolution is authoritative. */
+	      DB_VALUE *limit_val = nullptr;
+	      m_.instnum_limit = 0;
+	      if (fetch_peek_dbval (thread_p, m_.instnum_limit_rhs, tl.vd, NULL, NULL, NULL, &limit_val) != NO_ERROR)
+		{
+		  m_err_messages_p->move_top_error_message_to_this();
+		  m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		  return;
+		}
+	      if (limit_val != nullptr && !DB_IS_NULL (limit_val))
+		{
+		  DB_VALUE coerced;
+		  db_make_null (&coerced);
+		  if (tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain) == DOMAIN_COMPATIBLE)
+		    {
+		      m_.instnum_limit = db_get_bigint (&coerced);
+		    }
+		  pr_clear_value (&coerced);
+		}
+	      /* NULL rhs keeps limit 0: "inst_num() <= NULL" is unknown for every row -> no rows, like serial. */
+	      if (m_.instnum_limit_is_lt)
+		{
+		  m_.instnum_limit--;	/* draw < N  <=>  draw <= N-1 */
+		}
+	      if (m_.instnum_limit < 0)
+		{
+		  m_.instnum_limit = 0;
+		}
+	      m_.instnum_limit_resolved = true;
+	    }
 	}
 	size = tl.writer_result_p->type_list.type_cnt * DB_SIZEOF (DB_VALUE *);
 	tl.writer_result_p->tpl_descr.f_valp = (DB_VALUE **) malloc (size);
@@ -306,10 +353,10 @@ namespace parallel_scan
 	  }
 	tl.val_list_domain_resolved = false;
 	tl.xasl = curr_xasl;
-	if (m_.renumber_instnum && tl.xasl->instnum_val != nullptr)
+	if ((m_.renumber_instnum || m_.atomic_instnum_mode) && tl.xasl->instnum_val != nullptr)
 	  {
-	    /* guarantee a V_BOUND fixed 8-byte BIGINT slot so main can overwrite ROWNUM in place at merge.
-	     * value is a placeholder (0); the real 1..N is assigned in renumber_instnum_writer_lists(). */
+	    /* guarantee a V_BOUND fixed 8-byte BIGINT slot. Renumber mode: placeholder 0, main overwrites
+	     * 1..N in place at merge. Atomic mode: write() stores the drawn number before each emit. */
 	    db_make_bigint (tl.xasl->instnum_val, 0);
 	  }
 	tl.agg_hash_state = HS_NONE;
@@ -685,7 +732,10 @@ namespace parallel_scan
 	      while (m_.active_results != 0)
 		{
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-		  if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
+		  /* INST_NUM_SATISFIED is a benign early-stop: keep waiting for workers to finalize. */
+		  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+		      && code != parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
 		    {
 		      return S_ERROR;
 		    }
@@ -693,10 +743,14 @@ namespace parallel_scan
 	    }
 	}
 
-	if (m_interrupt_p->get_code() != parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-	  {
-	    return S_ERROR;
-	  }
+	{
+	  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
+	  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+	      && code != parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
+	    {
+	      return S_ERROR;
+	    }
+	}
 
 	if (m_.renumber_instnum)
 	  {
@@ -866,6 +920,27 @@ namespace parallel_scan
 	QPROC_TPLDESCR_STATUS status;
 
 	OUTPTR_LIST *input = (OUTPTR_LIST *)src;
+
+	if (m_.atomic_instnum_mode)
+	  {
+	    INT64 draw = m_.instnum_counter.fetch_add (1, std::memory_order_relaxed) + 1;
+	    if (draw > m_.instnum_limit)
+	      {
+		/* quota exhausted: skip this row; every worker stops at its next page boundary via the
+		 * interrupt poll in task::loop. CAS from NO_INTERRUPT only, so a concurrent error code
+		 * (or JOB_ENDED) is never overwritten. Not an error -> return true. */
+		parallel_query::interrupt::interrupt_code expected =
+			parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
+		m_interrupt_p->m_code.compare_exchange_strong (expected,
+		    parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED);
+		return true;
+	      }
+	    if (tl.xasl->instnum_val != nullptr)
+	      {
+		/* worker-private clone; the projection below reads this DB_VALUE for output ROWNUM. */
+		db_make_bigint (tl.xasl->instnum_val, draw);
+	      }
+	  }
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
