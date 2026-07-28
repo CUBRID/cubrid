@@ -411,7 +411,6 @@ namespace parallel_query_execute
       case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       case ACCESS_METHOD_INDEX_KEY_INFO:
       case ACCESS_METHOD_INDEX_NODE_INFO:
-      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
       default:
 	m_is_parallel_executable = false;
 	break;

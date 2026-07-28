@@ -1271,12 +1271,12 @@ log_rv_analysis_commit_with_postpone (THREAD_ENTRY * thread_p, int tran_id, LOG_
 #if !defined(NDEBUG)
 	  if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	    {
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 	      (void) ctime_r (&last_at_time, time_val);
 	      fprintf (stdout,
 		       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
 		       record_header_lsa.pageid, record_header_lsa.offset, time_val);
-	      fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	      fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 	      fflush (stdout);
 	    }
 #endif /* !NDEBUG */
@@ -1551,12 +1551,12 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 	{
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 	  (void) ctime_r (&last_at_time, time_val);
 	  fprintf (stdout,
 		   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY),
 		   record_header_lsa.pageid, record_header_lsa.offset, time_val);
-	  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+	  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 	  fflush (stdout);
 	}
 #endif /* !NDEBUG */
@@ -2674,13 +2674,13 @@ log_recovery_analysis (THREAD_ENTRY * thread_p, LOG_LSA * start_lsa, LOG_LSA * s
 #if !defined(NDEBUG)
 	      if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
 		{
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 		  (void) ctime_r (&last_at_time, time_val);
 		  fprintf (stdout,
 			   msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG,
 					   MSGCAT_LOG_INCOMPLTE_MEDIA_RECOVERY), end_redo_lsa->pageid,
 			   end_redo_lsa->offset, ((last_at_time == -1) ? "???...\n" : time_val));
-		  fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
+		  fprintf (stdout, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOG, MSGCAT_LOG_STARTS));
 		  fflush (stdout);
 		}
 #endif /* !NDEBUG */
@@ -4050,7 +4050,15 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      if (!LSA_EQ (&iter_lsa, postpone_start_lsa))
+	{
+	  assert (LSA_LT (&iter_lsa, postpone_start_lsa));
+	  _er_log_debug (ARG_FILE_LINE,
+			 "log_recovery_abort_interrupted_sysop: trid=%d walk overshot start-postpone: "
+			 "iter_lsa=%lld|%d, postpone_start_lsa=%lld|%d, undo_nxlsa=%lld|%d\n",
+			 tdes->trid, LSA_AS_ARGS (&iter_lsa), LSA_AS_ARGS (postpone_start_lsa),
+			 LSA_AS_ARGS (&tdes->undo_nxlsa));
+	}
       last_parent_lsa = *postpone_start_lsa;
     }
 
