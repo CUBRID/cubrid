@@ -24957,8 +24957,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
     }
 
 #if defined (SERVER_MODE)
-  /* Safe guard: if op is S_SELECT, nothing should be locked. */
-  assert (scan_op_type != S_SELECT || OID_ISNULL (&find_unique_helper.locked_oid));
+  /* Safe guard: the ops that take no lock must leave nothing locked. */
+  assert ((scan_op_type != S_SELECT && scan_op_type != S_SELECT_FK_EXISTS)
+	  || OID_ISNULL (&find_unique_helper.locked_oid));
 #endif /* SERVER_MODE */
 
   if (find_unique_helper.found_object)
@@ -24969,8 +24970,10 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
       COPY_OID (oid, &find_unique_helper.oid);
 
 #if defined (SERVER_MODE)
-      /* Safe guard: object is supposed to be locked. */
-      assert (scan_op_type == S_SELECT || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
+      /* Safe guard: object is supposed to be locked, except on the ops that take no lock. Those must be named
+       * rather than left to lock_has_lock_on_object (), which NULL_LOCK satisfies while holding nothing. */
+      assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_FK_EXISTS
+	      || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
       return BTREE_KEY_FOUND;
