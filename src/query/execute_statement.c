@@ -4857,12 +4857,16 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error == NO_ERROR && n_tables > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
-		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
 	  if (n_hist_skipped > 0)
 	    {
-	      fprintf (stdout, "Histogram skipped on %d column%s of unsupported types"
-		       " (SET TRACE ON lists them).\n", n_hist_skipped, (n_hist_skipped == 1) ? "" : "s");
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+		       " (%d skipped: histogram type not supported).\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	    }
+	  else
+	    {
+	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
 	    }
 	  fflush (stdout);
 	}
