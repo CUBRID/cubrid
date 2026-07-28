@@ -115,6 +115,6 @@ extern int init_update_data (PARSER_CONTEXT * parser, PT_NODE * statement, CLIEN
 			     DB_VALUE ** values, int *values_cnt, bool has_delete);
 extern int update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj, bool quiet,
 					    PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram,
-					     int *out_histogram_skipped);
+					    int *out_histogram_skipped);
 
 #endif /* _EXECUTE_SCHEMA_H_ */
