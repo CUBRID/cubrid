@@ -813,6 +813,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLE "cost_cpu_tuple"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 #define PRM_NAME_COST_INDEX_PAGE_HIT_RATIO "cost_index_page_hit_ratio"
+#define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
+#define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
 
 #define PRM_NAME_STATISTICS_SAMPLING_THRESHOLD_PAGES "statistics_sampling_threshold_pages"
 
@@ -5553,6 +5555,30 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.f = 0.5f}},
    {false, {.f = 0.5f}},
    {false, {.f = 1.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_SEQ_PAGE,
+   PRM_NAME_COST_SEQ_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_RANDOM_PAGE,
+   PRM_NAME_COST_RANDOM_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
    {false, {.f = 0.0f}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

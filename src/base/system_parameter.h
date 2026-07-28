@@ -553,9 +553,11 @@ enum param_id
   PRM_ID_COST_CPU_TUPLE,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
   PRM_ID_COST_INDEX_PAGE_HIT_RATIO,
+  PRM_ID_COST_SEQ_PAGE,
+  PRM_ID_COST_RANDOM_PAGE,
 
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_COST_INDEX_PAGE_HIT_RATIO
+  PRM_LAST_ID = PRM_ID_COST_RANDOM_PAGE
 };
 typedef enum param_id PARAM_ID;
 

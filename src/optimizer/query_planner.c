@@ -86,6 +86,8 @@
 static double qo_Cost_cpu_tuple = 0.0025;
 static double qo_Cost_heap_fetch_per_oid = 5.0;
 static double qo_Cost_index_page_hit_ratio = 0.5;
+static double qo_Cost_seq_page = 1.0;	/* PG seq_page_cost; per sequential heap/temp page */
+static double qo_Cost_random_page = 1.0;	/* PG random_page_cost; per index/heap-fetch page */
 
 #define QO_CPU_WEIGHT qo_Cost_cpu_tuple
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
@@ -1763,7 +1765,7 @@ qo_sscan_cost (QO_PLAN * planp)
     {
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
-  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep) * qo_Cost_seq_page;
   planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -2417,9 +2419,9 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = 0.0;
   /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
    * buffer-resident) plus the single leaf page the descent lands on. */
-  planp->fixed_io_cost = index_IO + first_leaf;
+  planp->fixed_io_cost = (index_IO + first_leaf) * qo_Cost_random_page;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
-  planp->variable_io_cost = object_IO;
+  planp->variable_io_cost = object_IO * qo_Cost_random_page;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -2933,7 +2935,7 @@ qo_sort_cost (QO_PLAN * planp)
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
       planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
-      planp->variable_io_cost = pages;
+      planp->variable_io_cost = pages * qo_Cost_seq_page;
 
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
@@ -8595,6 +8597,8 @@ qo_load_cost_params (void)
   qo_Cost_cpu_tuple = (double) prm_get_float_value (PRM_ID_COST_CPU_TUPLE);
   qo_Cost_heap_fetch_per_oid = (double) prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID);
   qo_Cost_index_page_hit_ratio = (double) prm_get_float_value (PRM_ID_COST_INDEX_PAGE_HIT_RATIO);
+  qo_Cost_seq_page = (double) prm_get_float_value (PRM_ID_COST_SEQ_PAGE);
+  qo_Cost_random_page = (double) prm_get_float_value (PRM_ID_COST_RANDOM_PAGE);
 }
 
 /*
