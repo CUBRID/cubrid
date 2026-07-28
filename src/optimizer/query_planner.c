@@ -77,10 +77,20 @@
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
 #define TEMP_SETUP_COST 5.0
-#define QO_CPU_WEIGHT 0.0025
+/* Optimizer cost constants, cached once per query optimization from system parameters
+ * (qo_load_cost_params); see the PRM_ID_COST_* group. The macros alias the cached values
+ * so call sites are untouched. Defaults equal the historical literals -> unchanged plans
+ * for an unmodified parameter set. PostgreSQL exposes the same knobs (cpu_tuple_cost, the
+ * heap-fetch penalty, and the random/seq page-cost ratio); the optimizer runs client-side
+ * so each is PRM_FOR_CLIENT. */
+static double qo_Cost_cpu_tuple = 0.0025;
+static double qo_Cost_heap_fetch_per_oid = 5.0;
+static double qo_Cost_index_page_hit_ratio = 0.5;
+
+#define QO_CPU_WEIGHT qo_Cost_cpu_tuple
 /* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
  * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
-#define ISCAN_OID_ACCESS_OVERHEAD 5
+#define ISCAN_OID_ACCESS_OVERHEAD qo_Cost_heap_fetch_per_oid
 /* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
  * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
  * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
@@ -100,7 +110,7 @@
 					   added to sizeof (MHT_HLS_ENTRY) for the spill threshold. The struct is
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
-#define ISCAN_IO_HIT_RATIO 0.5
+#define ISCAN_IO_HIT_RATIO qo_Cost_index_page_hit_ratio
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -8574,6 +8584,20 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 }
 
 /*
+ * qo_load_cost_params () - cache the optimizer cost system parameters once per query
+ *   optimization so the per-tuple cost functions do not call prm_get_*_value () on every
+ *   invocation. A SET SYSTEM PARAMETERS between queries takes effect from the next
+ *   optimization; a value cannot change mid-plan.
+ */
+static void
+qo_load_cost_params (void)
+{
+  qo_Cost_cpu_tuple = (double) prm_get_float_value (PRM_ID_COST_CPU_TUPLE);
+  qo_Cost_heap_fetch_per_oid = (double) prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID);
+  qo_Cost_index_page_hit_ratio = (double) prm_get_float_value (PRM_ID_COST_INDEX_PAGE_HIT_RATIO);
+}
+
+/*
  * qo_planner_search () -
  *   return:
  *   env(in):
@@ -8586,6 +8610,8 @@ qo_planner_search (QO_ENV * env)
 
   planner = NULL;
   plan = NULL;
+
+  qo_load_cost_params ();
 
   planner = qo_alloc_planner (env);
   if (planner == NULL)
