@@ -475,6 +475,7 @@ if(WITH_CCI)
     ${BROKER_DIR}/broker_filename.c
     ${BROKER_DIR}/shard_metadata.c
     ${BROKER_DIR}/shard_shm.c
+    ${BROKER_DIR}/log_top_string.c
     )
   if(WIN32)
     list(APPEND BROKER_TESTER_SOURCES ${BASE_DIR}/porting.c)
