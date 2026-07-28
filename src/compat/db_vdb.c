@@ -96,9 +96,9 @@ static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE 
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
 							   bool force_replan);
-static DB_SESSION *db_prepared_tree_lookup (const char *name);
-static bool db_prepared_tree_register (const char *name, DB_SESSION * subsession);
-static void db_prepared_tree_remove (const char *name);
+static DB_SESSION *db_prepared_tree_lookup (const DB_SESSION * owner, const char *name);
+static bool db_prepared_tree_register (const DB_SESSION * owner, const char *name, DB_SESSION * subsession);
+static void db_prepared_tree_remove (const DB_SESSION * owner, const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
@@ -126,6 +126,9 @@ typedef struct prepared_tree_entry PREPARED_TREE_ENTRY;
 struct prepared_tree_entry
 {
   char *name;
+  DB_SESSION *owner;		/* client session that owns the prepared name: names are
+				 * per-connection, so a process with several sessions must
+				 * not resolve another session's statement of the same name */
   DB_SESSION *session;
   PREPARED_TREE_ENTRY *next;
 };
@@ -147,14 +150,14 @@ static pthread_mutex_t db_Prepared_tree_lock = PTHREAD_MUTEX_INITIALIZER;
  * name (in) : prepared statement name
  */
 static PREPARED_TREE_ENTRY *
-db_prepared_tree_unlink_nolock (const char *name)
+db_prepared_tree_unlink_nolock (const DB_SESSION * owner, const char *name)
 {
   PREPARED_TREE_ENTRY **prev = &db_Prepared_tree_registry;
   PREPARED_TREE_ENTRY *e;
 
   for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
     {
-      if (strcmp (e->name, name) == 0)
+      if (e->owner == owner && strcmp (e->name, name) == 0)
 	{
 	  *prev = e->next;
 	  e->next = NULL;
@@ -192,7 +195,7 @@ db_prepared_tree_entry_free (PREPARED_TREE_ENTRY * e)
  *       through the same statement flow).
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const char *name)
+db_prepared_tree_lookup (const DB_SESSION * owner, const char *name)
 {
   PREPARED_TREE_ENTRY *e;
   DB_SESSION *found = NULL;
@@ -200,7 +203,7 @@ db_prepared_tree_lookup (const char *name)
   pthread_mutex_lock (&db_Prepared_tree_lock);
   for (e = db_Prepared_tree_registry; e != NULL; e = e->next)
     {
-      if (strcmp (e->name, name) == 0)
+      if (e->owner == owner && strcmp (e->name, name) == 0)
 	{
 	  found = e->session;
 	  break;
@@ -215,12 +218,12 @@ db_prepared_tree_lookup (const char *name)
  * name (in) : prepared statement name
  */
 static void
-db_prepared_tree_remove (const char *name)
+db_prepared_tree_remove (const DB_SESSION * owner, const char *name)
 {
   PREPARED_TREE_ENTRY *e;
 
   pthread_mutex_lock (&db_Prepared_tree_lock);
-  e = db_prepared_tree_unlink_nolock (name);
+  e = db_prepared_tree_unlink_nolock (owner, name);
   pthread_mutex_unlock (&db_Prepared_tree_lock);
 
   db_prepared_tree_entry_free (e);
@@ -235,7 +238,7 @@ db_prepared_tree_remove (const char *name)
  * subsession (in) : compiled subsession holding the post-transform tree
  */
 static bool
-db_prepared_tree_register (const char *name, DB_SESSION * subsession)
+db_prepared_tree_register (const DB_SESSION * owner, const char *name, DB_SESSION * subsession)
 {
   PREPARED_TREE_ENTRY *e;
   PREPARED_TREE_ENTRY *old;
@@ -251,16 +254,58 @@ db_prepared_tree_register (const char *name, DB_SESSION * subsession)
       free_and_init (e);
       return false;
     }
+  e->owner = (DB_SESSION *) owner;
   e->session = subsession;
 
   pthread_mutex_lock (&db_Prepared_tree_lock);
-  old = db_prepared_tree_unlink_nolock (name);
+  old = db_prepared_tree_unlink_nolock (owner, name);
   e->next = db_Prepared_tree_registry;
   db_Prepared_tree_registry = e;
   pthread_mutex_unlock (&db_Prepared_tree_lock);
 
   db_prepared_tree_entry_free (old);
   return true;
+}
+
+/*
+ * db_prepared_tree_purge_owner() - drop every tree kept for a closing session. Without
+ *   this, an entry would keep a dangling owner pointer that a future session allocated
+ *   at the same address could falsely match.
+ * owner (in) : session being closed
+ */
+static void
+db_prepared_tree_purge_owner (const DB_SESSION * owner)
+{
+  PREPARED_TREE_ENTRY **prev;
+  PREPARED_TREE_ENTRY *e, *purged = NULL;
+
+  pthread_mutex_lock (&db_Prepared_tree_lock);
+  prev = &db_Prepared_tree_registry;
+  for (e = db_Prepared_tree_registry; e != NULL;)
+    {
+      PREPARED_TREE_ENTRY *next = e->next;
+
+      if (e->owner == owner)
+	{
+	  *prev = next;
+	  e->next = purged;
+	  purged = e;
+	}
+      else
+	{
+	  prev = &e->next;
+	}
+      e = next;
+    }
+  pthread_mutex_unlock (&db_Prepared_tree_lock);
+
+  while (purged != NULL)
+    {
+      e = purged;
+      purged = purged->next;
+      e->next = NULL;
+      db_prepared_tree_entry_free (e);
+    }
 }
 
 /*
@@ -2085,7 +2130,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * plan_cache_bind_sensitivity on, the check inside
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
 	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
-	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original);
+	  DB_SESSION *kept = db_prepared_tree_lookup (session, statement->info.execute.name->info.name.original);
 
 	  if (kept != NULL)
 	    {
@@ -2097,7 +2142,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		}
 	      /* the kept tree could not be re-executed (e.g. a schema change); discard it
 	       * and fall back to a fresh compilation of the stored statement text */
-	      db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+	      db_prepared_tree_remove (session, statement->info.execute.name->info.name.original);
 	      er_clear ();
 	      pt_reset_error (parser);
 	      do_recompile = true;
@@ -2785,7 +2830,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   db_init_prepare_info (&prepare_info);
 
   /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
-  db_prepared_tree_remove (name);
+  db_prepared_tree_remove (session, name);
 
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
@@ -3584,7 +3629,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        * without recompiling -- only statements with a histogram-usable predicate reach
        * here, so a statement whose only host variables are select-list arguments keeps
        * recompiling per execution with generic typing. */
-      if (db_prepared_tree_register (statement->info.execute.name->info.name.original, new_session))
+      if (db_prepared_tree_register (session, statement->info.execute.name->info.name.original, new_session))
 	{
 	  DB_SESSION **sp;
 	  bool detached = false;
@@ -3610,7 +3655,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 
 	      assert (false);
 	      pthread_mutex_lock (&db_Prepared_tree_lock);
-	      e = db_prepared_tree_unlink_nolock (statement->info.execute.name->info.name.original);
+	      e = db_prepared_tree_unlink_nolock (session, statement->info.execute.name->info.name.original);
 	      pthread_mutex_unlock (&db_Prepared_tree_lock);
 	      if (e != NULL)
 		{
@@ -3635,7 +3680,7 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
 {
   const char *const name = statement->info.prepare.name->info.name.original;
 
-  db_prepared_tree_remove (name);
+  db_prepared_tree_remove (session, name);
   return csession_delete_prepared_statement (name);
 }
 
@@ -4088,6 +4133,11 @@ db_close_session_local (DB_SESSION * session)
   if (!session)
     {
       return;
+    }
+  if (!session->is_subsession_for_prepared)
+    {
+      /* a kept subsession is owned by the registry itself and is never an owner */
+      db_prepared_tree_purge_owner (session);
     }
   prepared = session->next;
   while (prepared)
