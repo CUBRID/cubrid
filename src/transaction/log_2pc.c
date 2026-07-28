@@ -1570,6 +1570,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  remaining = prepared->num_locks;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
@@ -1597,8 +1599,6 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
       /* Read in the list of locks to acquire */
 
       LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
-
-      remaining = prepared->num_locks;
 
       if (remaining > 0)
 	{
@@ -1648,6 +1648,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  remaining = prepared->num_locks;
 
   log_pgptr_reader.add_align (sizeof (*prepared));
 
@@ -1675,8 +1677,6 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
       /* Read in the list of locks to acquire */
 
       log_pgptr_reader.align ();
-
-      remaining = prepared->num_locks;
 
       if (remaining > 0)
 	{

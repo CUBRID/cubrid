@@ -6871,6 +6871,7 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;
   unsigned int nlocks;
+  int gtrinfo_length;
   int size;
 
   /* Get the DATA HEADER */
@@ -6880,14 +6881,16 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
   fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num locks = %u\n", prepared->user_name, prepared->gtrid,
 	   prepared->num_locks);
 
+  /* Read before the first advance: it may refetch the page prepared points into. */
   nlocks = prepared->num_locks;
+  gtrinfo_length = prepared->gtrinfo_length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
   /* Dump global transaction user information */
-  if (prepared->gtrinfo_length > 0)
+  if (gtrinfo_length > 0)
     {
-      log_dump_data (thread_p, out_fp, prepared->gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
+      log_dump_data (thread_p, out_fp, gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
     }
 
   /* Dump acquired locks */

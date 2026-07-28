@@ -5508,6 +5508,7 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
   unsigned int nlocks;
+  int gtrinfo_length;
   int repl_log_length;
   size_t size;
 
@@ -5761,14 +5762,16 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       /* Get the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
       prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
+      /* Read before the first advance: it may refetch the page prepared points into. */
       nlocks = prepared->num_locks;
+      gtrinfo_length = prepared->gtrinfo_length;
       /* ignore npage_locks */
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
 
-      if (prepared->gtrinfo_length > 0)
+      if (gtrinfo_length > 0)
 	{
-	  LOG_READ_ADD_ALIGN (thread_p, prepared->gtrinfo_length, &log_lsa, log_pgptr);
+	  LOG_READ_ADD_ALIGN (thread_p, gtrinfo_length, &log_lsa, log_pgptr);
 	}
 
       if (nlocks > 0)
