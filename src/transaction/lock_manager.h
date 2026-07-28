@@ -181,6 +181,9 @@ struct lk_acq_lock
   LOCK lock;			/* lock mode */
 };
 
+/* The entry goes into the 2PC prepare record verbatim, so its layout is a log format. */
+static_assert (sizeof (LK_ACQ_LOCK) == 32, "LK_ACQ_LOCK: size is the 2PC prepare record's lock array stride");
+
 typedef struct lk_acquired_locks LK_ACQUIRED_LOCKS;
 struct lk_acquired_locks
 {
