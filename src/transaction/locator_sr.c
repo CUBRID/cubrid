@@ -6380,6 +6380,32 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		}
 
 	      deleted = true;
+
+	      /* Take the index keys from the version the delete actually stamped. copy_recdes was fetched before
+	       * the heap seal settled on a version: with no per-row X-lock a committed update may have moved an
+	       * indexed key in between, and deleting the old key corrupts the index -- the moved key's entry
+	       * stays alive for a dead row, or the lookup dies on NOT_FOUND (btree.c:29667 / ER_BTREE_UNKNOWN_KEY).
+	       * After our DELID stamp every writer waits on our transaction self-lock (the write-write re-checks
+	       * cover all record shapes), so the last version is stable from here on. This also resolves the
+	       * IMPORTANT TODO above about fetching the last version for the btree keys. */
+	      {
+		HEAP_GET_CONTEXT last_get_context;
+		SCAN_CODE last_scan;
+
+		heap_init_get_context (thread_p, &last_get_context, oid, &class_oid, &copy_recdes, scan_cache, COPY,
+				       NULL_CHN);
+		last_scan = heap_get_last_version (thread_p, &last_get_context);
+		heap_clean_get_context (thread_p, &last_get_context);
+		if (last_scan != S_SUCCESS)
+		  {
+		    error_code = er_errid ();
+		    if (error_code == NO_ERROR)
+		      {
+			error_code = ER_FAILED;
+		      }
+		    goto error;
+		  }
+	      }
 	    }
 
 	  if (idx_action_flag == FOR_INSERT_OR_DELETE)
