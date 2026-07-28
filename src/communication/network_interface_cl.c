@@ -6201,7 +6201,7 @@ update_histogram_for_all_classes (int random_seed)
       return ER_FAILED;
     }
 
-  int n_tables = 0, n_cols = 0;
+  int n_tables = 0, n_cols = 0, n_hist_skipped = 0;
 
   for (int i = 0; i < lmops->num; i++)
     {
@@ -6219,7 +6219,11 @@ update_histogram_for_all_classes (int random_seed)
       histogram_info.bucket_count = -1;
       histogram_info.with_fullscan = false;
       histogram_info.random_seed = random_seed;
-      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE);
+      int hist_skipped = 0;
+
+      error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
+					       &hist_skipped);
+      n_hist_skipped += hist_skipped;
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
 	  AU_RESTORE (save);
@@ -6238,6 +6242,11 @@ update_histogram_for_all_classes (int random_seed)
     {
       fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
 	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+      if (n_hist_skipped > 0)
+	{
+	  fprintf (stdout, "Histogram skipped on %d column%s of unsupported types (SET TRACE ON lists them).\n",
+		   n_hist_skipped, (n_hist_skipped == 1) ? "" : "s");
+	}
       fflush (stdout);
     }
 

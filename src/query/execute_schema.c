@@ -4274,7 +4274,8 @@ do_alter_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
 */
 int
 update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj, bool quiet,
-				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram)
+				 PT_HISTOGRAM_INFO * const histogram_info, DO_HISTOGRAM do_histogram,
+				 int *out_histogram_skipped)
 {
   int error = NO_ERROR;
   int bucket_count, nnames = 0, bucket_count_min, bucket_count_max;
@@ -4379,9 +4380,13 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	      attr_type = TP_DOMAIN_TYPE (att->domain);
 	      if (!is_histogrammable_type (attr_type))
 		{
+		  /* not an error: the column simply gets no histogram. The per-column notice
+		   * is trace-only; the statement prints one aggregated count in its summary */
 		  trace_n_skipped++;
-		  error = ER_OBJ_INVALID_ARGUMENTS;
-		  error = dump_histogram (obj, attname, attr_type, false, error, stdout);
+		  if (trace_on)
+		    {
+		      fprintf (stdout, "TRACE   histogram: column %s skipped (type not supported)\n", attname);
+		    }
 		  continue;
 		}
 	      trace_n_histogrammable++;
@@ -4398,6 +4403,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	}
 
+      if (out_histogram_skipped != NULL)
+	{
+	  *out_histogram_skipped = trace_n_skipped;
+	}
       if (trace_on && do_histogram == DO_HISTOGRAM_DROP)
 	{
 	  fprintf (stdout, "TRACE   histogram: dropped %d histogram(s)\n", trace_n_dropped);
