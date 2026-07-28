@@ -12423,15 +12423,19 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 static void
 heap_attrinfo_free_oos_payloads (std::vector < RECDES > *payloads)
 {
-for (RECDES & payload:*payloads)
+  // *INDENT-OFF*
+  for (RECDES &payload : *payloads)
     {
       free_and_init (payload.data);
     }
+  // *INDENT-ON*
   payloads->clear ();
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
+// *INDENT-OFF*
 static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
+// *INDENT-ON*
 #endif
 
 /*
@@ -27918,7 +27922,9 @@ SCAN_CODE
 bridge_heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   HEAP_CACHE_ATTRINFO attr_info = { };
+  // *INDENT-OFF*
   std::vector<heap_oos_column_plan> oos_plan;
+  // *INDENT-ON*
 
   COPY_OID (&attr_info.class_oid, class_oid);
   attr_info.num_values = 0;

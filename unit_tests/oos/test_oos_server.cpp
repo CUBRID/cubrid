@@ -47,7 +47,7 @@ int bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY *thread_p, const OID *
 static std::string make_filled_payload (int size, char ch);
 static void clear_oos_insert_publication_state_for_test ();
 static void build_insert_requests (std::vector<std::string> &payloads, std::vector<OID> &oids,
-			   std::vector<oos_insert_request> &requests);
+				   std::vector<oos_insert_request> &requests);
 
 static LOG_TDES *
 get_current_tdes ()
@@ -359,7 +359,7 @@ TEST (OosServerTest, OosInsertManyPartialPublicationFailureClearsBothSides)
   });
 
   EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), ER_GENERIC_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), ER_GENERIC_ERROR);
   assert_oos_insert_publication_state_empty ();
   er_clear ();
 }
@@ -389,7 +389,7 @@ TEST (OosServerTest, OosInsertManyPublicationAllocationFailureIsConvertedAndClea
   });
 
   EXPECT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())),
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())),
 	     ER_OUT_OF_VIRTUAL_MEMORY);
   EXPECT_EQ (er_errid (), ER_OUT_OF_VIRTUAL_MEMORY);
   assert_oos_insert_publication_state_empty ();
@@ -406,7 +406,7 @@ TEST (OosServerTest, OosInsertManyValidationFailureDoesNotClaimPublicationStart)
   VFID invalid_vfid = VFID_INITIALIZER;
   oos_insert_request invalid_request = { oos_buffer (nullptr, 0), &output_oid };
   EXPECT_EQ (oos_insert_many (thread_p, invalid_vfid,
-	      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
+			      cubbase::span<oos_insert_request> (&invalid_request, 1)), ER_GENERIC_ERROR);
   assert_oos_insert_publication_state (stale_oid, stale_lsa);
   er_clear ();
 }
@@ -428,7 +428,7 @@ TEST (OosServerTest, OosSuccessfulPublicationWithoutReplicationTrackingKeepsOidO
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
@@ -456,7 +456,7 @@ TEST (OosServerTest, OosTrackedSingleChunkBatchKeepsPairedPublication)
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 2U);
@@ -487,7 +487,7 @@ TEST (OosServerTest, OosTrackedMixedBatchPreservesDummyAndHeadPairing)
   clear_oos_insert_publication_state_for_test ();
 
   ASSERT_EQ (oos_insert_many (thread_p, oos_vfid,
-	      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
+			      cubbase::span<oos_insert_request> (requests.data (), requests.size ())), NO_ERROR);
   LOG_TDES *tdes = get_current_tdes ();
   ASSERT_NE (tdes, nullptr);
   ASSERT_EQ (thread_p->oos_oids.size (), 4U);
