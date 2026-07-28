@@ -12111,14 +12111,13 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
 
-  /* FORCE_OUTLINE is a placement policy, not a size optimization. Select every non-NULL variable value before
-   * applying the normal record-size gate and profitability rule, even when replacing the value with an OOS stub
-   * grows the inline record. */
+  /* FORCE_OUTLINE bypasses the normal record-size gate, but values must still be larger than the OOS stub so that
+   * moving them out of row shrinks the inline record. */
   for (i = 0; i < attr_info->num_values; i++)
     {
       if (!attr_info->values[i].last_attrepr->is_fixed
-	  && attr_info->values[i].last_attrepr->is_oos_force_outline
-	  && !db_value_is_null (&attr_info->values[i].dbvalue))
+	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
 	{
 	  (*oos_plan)[i].selected = true;
 	  payload_size -= column_size[i];
@@ -12127,7 +12126,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	}
     }
 
-  /* A forced short value may enlarge the payload enough to change the variable-offset width. */
+  /* A forced value changes the payload and may change the variable-offset width. */
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
 
   /* TODO: change the statistics */
@@ -12148,7 +12147,8 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	    {
 	      // *INDENT-OFF*
 	      heap_oos_demote_priority priority =
-		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->is_oos_prefer_inline);
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_storage
+					      == OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE);
 	      oos_candidates.push_back ({ priority, column_size[i], i });
 	      // *INDENT-ON*
 	    }

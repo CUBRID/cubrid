@@ -1384,20 +1384,14 @@ db_attribute_is_oos_prefer_inline (DB_ATTRIBUTE * attribute)
 
 /*
  * db_attribute_is_oos_force_outline() - This function tests if attribute forces
- *     non-NULL variable values to OOS.
+ *     profitable variable values to OOS regardless of record size.
  * return : non-zero if the STORAGE FORCE_OUTLINE option is set.
  * attribute(in): attribute descriptor
  */
 int
 db_attribute_is_oos_force_outline (DB_ATTRIBUTE * attribute)
 {
-  int status = 0;
-  if (attribute != NULL)
-    {
-      status = (attribute->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) ? 1 : 0;
-    }
-
-  return (status);
+  return attribute != NULL && (attribute->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0;
 }
 
 

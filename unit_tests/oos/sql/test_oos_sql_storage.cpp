@@ -20,15 +20,17 @@
  * test_oos_sql_storage.cpp - STORAGE column option SQL tests (CBRD-26912, CBRD-26067)
  *
  * STORAGE PREFER_INLINE lowers a column's OOS demotion priority so the column stays
- * inline when possible. STORAGE FORCE_OUTLINE sends every non-NULL variable value to
- * OOS regardless of record and value size. STORAGE PREFER_OUTLINE is equivalent to
+ * inline when possible. STORAGE FORCE_OUTLINE sends variable values larger than the
+ * 16-byte OOS stub to OOS regardless of record size. STORAGE PREFER_OUTLINE is
+ * equivalent to
  * STORAGE DEFAULT in this implementation. These tests assert the options' persistence:
  *   - SHOW CREATE TABLE          -> object_printer::describe_attribute emit
  *   - CREATE TABLE ... LIKE      -> classobj_copy_attribute_like flag copy
  *   - ALTER TABLE ... MODIFY     -> build_attr_change_map GAINED/LOST state machine
  *
  * FORCE_OUTLINE placement is observable through SHOW HEAP OOS because even a small
- * record creates an OOS file and value record. PREFER_INLINE ordering is not observable
+ * record with a value larger than the OOS stub creates an OOS file and value record.
+ * PREFER_INLINE ordering is not observable
  * from SQL (see test_oos_sql_boundary.cpp). The unloaddb emit path (a separate utility
  * binary) is not reachable from this in-process harness and is left to a shell-level test.
  */
@@ -423,14 +425,41 @@ TEST_F (OosSqlStorage, AlterModifyPreservesAndTransitionsForceOutline)
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
 }
 
-TEST_F (OosSqlStorage, ForceOutlineExternalizesValuesBelowNormalGates)
+TEST_F (OosSqlStorage, AlterModifyDropsForceOutlineForFixedType)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1234)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_force_outline (ddl)) << "after MODIFY to fixed type, DDL was:\n" << ddl;
+
+  int value = 0;
+  rc = fetch_single_int ("SELECT c FROM t_oos_stg", &value);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value, 1234);
+}
+
+TEST_F (OosSqlStorage, ForceOutlineBypassesRecordGateOnlyAboveInlineStubSize)
 {
   int rc = exec_sql ("CREATE TABLE t_oos_stg ("
 		     "  id INT PRIMARY KEY,"
 		     "  payload VARCHAR(4096) STORAGE FORCE_OUTLINE)");
   ASSERT_GE (rc, 0);
 
-  rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1, REPEAT('x', 3000)), (2, 'y'), (3, NULL)");
+  /* Packed VARCHAR includes its length prefix, terminator, and alignment: 14 characters occupy 16 bytes on disk,
+   * while 15 characters occupy 20 bytes. */
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES "
+		 "(1, REPEAT('x', 3000)), (2, 'y'), (3, REPEAT('z', 14)), (4, REPEAT('w', 15)), (5, NULL)");
   ASSERT_GE (rc, 0);
   db_commit_transaction ();
 
@@ -449,8 +478,24 @@ TEST_F (OosSqlStorage, ForceOutlineExternalizesValuesBelowNormalGates)
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (length, 1);
 
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 3", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 14);
+
+  rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 3", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 16);
+
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 4", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 15);
+
+  rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 4", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_GT (length, 16);
+
   int null_count = 0;
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg WHERE id = 3 AND payload IS NULL", &null_count);
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg WHERE id = 5 AND payload IS NULL", &null_count);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (null_count, 1);
 }

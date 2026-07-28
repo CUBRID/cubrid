@@ -176,7 +176,7 @@ enum
   P_IS_PARTITION_COL,		/* class has partitions */
   P_COMMENT,			/* has comment */
   P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
-  P_OOS_FORCE_OUTLINE,		/* STORAGE FORCE_OUTLINE (always OOS for non-NULL variable values) */
+  P_OOS_FORCE_OUTLINE,		/* STORAGE FORCE_OUTLINE (bypass record gate for values larger than OOS stub) */
   NUM_ATT_CHG_PROP
 };
 
@@ -12564,6 +12564,15 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		  MSGCAT_SEMANTIC_FORCE_OUTLINE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attr_def));
       tp_domain_free (attr_db_domain);
       return ER_PT_SEMANTIC;
+    }
+
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      && (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+      && (attr_chg_properties->new_name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
+	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+    {
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
     }
 
   attr_chg_properties->p[P_TYPE] = 0;
