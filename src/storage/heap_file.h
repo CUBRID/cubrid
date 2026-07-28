@@ -290,6 +290,10 @@ struct heap_operation_context
   bool ww_record_transformed;	/* the record changed type while a write-write seal waited on its owner
 				 * (e.g. a committed update relocated the row); record_type holds the new type
 				 * and the operation must be re-dispatched on it */
+  bool ww_oid_slock_held;	/* a seal waited out a per-row X-lock writer and still holds the transient
+				 * S lock on the OID: kept through the stamp so the next X writer queues
+				 * behind us (fairness) and cannot start its index maintenance before our
+				 * stamp lands; released at heap_delete_logical's exit */
   FILE_TYPE file_type;		/* the file type of hfid */
 
   /* physical page watchers - these should not be referenced directly */

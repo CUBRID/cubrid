@@ -19841,6 +19841,7 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
 
   context->record_type = REC_UNKNOWN;
   context->ww_record_transformed = false;
+  context->ww_oid_slock_held = false;
   context->file_type = FILE_UNKNOWN_TYPE;
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
@@ -21145,7 +21146,9 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 			  ASSERT_ERROR_AND_SET (rc);
 			  return rc;
 			}
-		      lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+		      /* keep the S lock through the stamp (fairness + no index-maintenance slip);
+		       * heap_delete_logical releases it at exit */
+		      context->ww_oid_slock_held = true;
 		    }
 		  else
 		    {
@@ -21433,7 +21436,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		      ASSERT_ERROR_AND_SET (rc);
 		      return rc;
 		    }
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+		  /* keep the S lock through the stamp (fairness + no index-maintenance slip);
+		   * heap_delete_logical releases it at exit */
+		  context->ww_oid_slock_held = true;
 		}
 	      else
 		{
@@ -22115,7 +22120,10 @@ heap_home_wait_for_xlocker (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * co
       ASSERT_ERROR_AND_SET (error_code);
       return error_code;
     }
-  lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+  /* Keep the S lock through the stamp: the next X writer queues behind us instead of starving the seal
+   * out of its re-classification, and cannot begin its index maintenance before our stamp lands.
+   * heap_delete_logical releases it at exit. */
+  context->ww_oid_slock_held = true;
 
   if (pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, context->home_page_watcher_p) != NO_ERROR)
     {
@@ -24282,6 +24290,15 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
 
 error:
+
+#if defined (SERVER_MODE)
+  /* release the transient S lock a seal kept through the stamp after waiting out an X-lock writer */
+  if (context->ww_oid_slock_held)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+      context->ww_oid_slock_held = false;
+    }
+#endif /* SERVER_MODE */
 
   /* unfix or keep home page */
   if (context->home_page_watcher_p->pgptr != NULL)
