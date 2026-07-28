@@ -184,8 +184,7 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
 static int locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-					     RECDES * recdes, HEAP_SCANCACHE * scan_cache,
-					     SCAN_CODE * scan_code);
+					     RECDES * recdes, HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4252,7 +4251,7 @@ locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID 
       /* That transaction ended; the row is now either committed or gone. */
       recdes->data = NULL;
       *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY,
-					       NULL_CHN, LOG_WARNING_IF_DELETED);
+						NULL_CHN, LOG_WARNING_IF_DELETED);
     }
 
   return NO_ERROR;
