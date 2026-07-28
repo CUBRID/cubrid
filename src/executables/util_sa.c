@@ -5832,6 +5832,13 @@ upgradedb_load_script_list (UPGRADEDB_SCRIPT_LIST * script_list)
 			     script_list->path);
       error = ER_FAILED;
     }
+  else if (script_list->count == 0)
+    {
+      PRINT_AND_LOG_ERR_MSG (msgcat_message
+			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_UPGRADEDB, UPGRADEDB_MSG_NO_SCRIPT_LISTED),
+			     script_list->path);
+      error = ER_FAILED;
+    }
 
 exit:
   fclose (fp);
