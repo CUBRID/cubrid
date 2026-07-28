@@ -5420,7 +5420,7 @@ SYSPRM_PARAM prm_Def[] = {
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 40}},
    {false, {.i = 40}},
-   {false, {.i = 1000}},
+   {false, {.i = 128}},
    {false, {.i = 10}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,

@@ -25,6 +25,7 @@
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "error_manager.h"
+#include "system_parameter.h"
 
 #include <mutex>
 #include <utility>
@@ -1632,6 +1633,7 @@ namespace cubstorage
 
   bestspace_registry::bestspace_registry ()
     : m_head (nullptr)
+    , m_cache_count (0)
     , m_mutex ()
     , m_generation (1)
   {
@@ -1667,6 +1669,12 @@ namespace cubstorage
     node->entry->push_candidates (candidates, num_candidates);
 
     std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (m_cache_count == 0)
+      {
+	m_cache_count = MAX (static_cast<std::size_t> (prm_get_integer_value (PRM_ID_BESTSPACE_CACHE_COUNT)),
+			     static_cast<std::size_t> (1));
+      }
 
     assert (!find_entry (m_head, hfid));
     insert_entry (m_head, node);
@@ -1775,6 +1783,7 @@ namespace cubstorage
   {
     registry_entry *cache;
     bestspace *entry;
+    std::size_t cache_count;
 
     std::unique_lock<std::mutex> ulock (m_mutex);
 
@@ -1785,11 +1794,14 @@ namespace cubstorage
 	return nullptr;
       }
     entry = (pair->second)->entry;
+    cache_count = m_cache_count;
 
     ulock.unlock ();
 
-    // register in TLS list
-    if (TLS_cache.size < TLS_MAX_SIZE)
+    // register in TLS list.
+    // the entries are recycled, never freed, so TLS_cache.size always matches the number of nodes in the list. once
+    // the size reaches the count the list cannot be empty, hence get_tail_from_list () cannot return null here.
+    if (TLS_cache.size < cache_count)
       {
 	cache = new registry_entry;
 	TLS_cache.size++;
@@ -1798,6 +1810,7 @@ namespace cubstorage
       {
 	cache = get_tail_from_list (TLS_cache.head);
       }
+    assert (cache != nullptr);
     cache->hfid = *hfid;
     cache->entry = entry;
 
