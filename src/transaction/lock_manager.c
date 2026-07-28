@@ -3509,6 +3509,9 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
   assert (is_transaction_lock || !OID_ISNULL (oid));
   assert (class_oid == NULL || !OID_ISNULL (class_oid));
 
+  /* WS_LOCK/WX_LOCK are instance-level only: they must never be requested on a non-instance resource. */
+  assert (search_key.type == LOCK_RESOURCE_INSTANCE || (lock != WS_LOCK && lock != WX_LOCK));
+
 #if defined(ENABLE_SYSTEMTAP)
   if (class_oid == NULL)
     {
