@@ -7571,15 +7571,55 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	}
       else if (HEAP_IS_UPDATE_INPLACE (force_update_inplace) || need_locking == false)
 	{
-	  HEAP_GET_CONTEXT context;
+	  /* Get the last version of the object -- and settle it against a lockless MVCC DELETE before any
+	   * index maintenance runs. The update rewrites the indexes FIRST and stamps the heap last, so its
+	   * heap-level write-write re-check fires too late to keep its old-key removal from crossing an
+	   * in-flight deleter's index stamping. Classify here: an in-progress foreign DELID is waited out on
+	   * its transaction self-lock (our instance X-lock keeps new writers off the row meanwhile, and a
+	   * lockless deleter that comes later sees this X-lock in its seal and waits); a committed one means
+	   * the row is gone -- 0 rows, before any index was touched. */
+	  while (true)
+	    {
+	      HEAP_GET_CONTEXT context;
 
-	  /* don't consider visiblity, just get the last version of the object */
-	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
-	  scan = heap_get_last_version (thread_p, &context);
-	  heap_clean_get_context (thread_p, &context);
+	      /* don't consider visiblity, just get the last version of the object */
+	      heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	      scan = heap_get_last_version (thread_p, &context);
+	      heap_clean_get_context (thread_p, &context);
+
+#if defined (SERVER_MODE)
+	      if (scan == S_SUCCESS && !mvcc_is_mvcc_disabled_class (&class_oid))
+		{
+		  MVCC_REC_HEADER ww_header;
+
+		  if (or_mvcc_get_header (&copy_recdes, &ww_header) == NO_ERROR
+		      && MVCC_IS_HEADER_DELID_VALID (&ww_header)
+		      && !logtb_is_current_mvccid (thread_p, MVCC_GET_DELID (&ww_header)))
+		    {
+		      MVCCID ww_delid = MVCC_GET_DELID (&ww_header);
+
+		      if (logtb_is_active_other_mvccid (thread_p, ww_delid))
+			{
+			  /* in-flight lockless deleter: wait it out, then re-fetch and re-classify */
+			  if (lock_transaction_mvccid (thread_p, ww_delid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			    {
+			      return ER_FAILED;
+			    }
+			  lock_unlock_transaction_mvccid (thread_p, ww_delid, S_LOCK);
+			  continue;
+			}
+		      /* committed delete: the row is gone -- routed to 0 rows via S_DOESNT_EXIST below */
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, oid->volid, oid->pageid,
+			      oid->slotid);
+		      scan = S_DOESNT_EXIST;
+		    }
+		}
+#endif /* SERVER_MODE */
+	      break;
+	    }
 
 	  /* an in-place update requires the object to be exclusively held by the current transaction. */
-	  assert (lock_has_xlock_or_self_lock (thread_p, oid, &class_oid));
+	  assert (scan != S_SUCCESS || lock_has_xlock_or_self_lock (thread_p, oid, &class_oid));
 	}
       else
 	{
