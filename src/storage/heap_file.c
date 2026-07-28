@@ -21098,6 +21098,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	      VPID ww_home_vpid;
 	      INT16 ww_rectype;
 	      int ww_peek;
+	      bool ww_xlock_wait = false;
 
 	      ww_satisfies = mvcc_satisfies_delete (thread_p, &overflow_header);
 	      if (ww_satisfies == DELETE_RECORD_DELETE_IN_PROGRESS)
@@ -21118,23 +21119,43 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
 	      if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
 		{
-		  /* clean or ours: stamp atomically under the latches we still hold */
-		  break;
+		  if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
+		    {
+		      /* clean or ours: stamp atomically under the latches we still hold */
+		      break;
+		    }
+		  /* An in-flight per-row X-lock writer (an index-column UPDATE between its index maintenance
+		   * and its heap stamp) is invisible to the classification -- only the lock table shows it.
+		   * Wait on the object lock instead of an MVCCID, then re-derive and re-classify. */
+		  ww_xlock_wait = true;
 		}
 
-	      if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+	      if (ww_xlock_wait || logtb_is_active_other_mvccid (thread_p, ww_owner))
 		{
 		  /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
 		  VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
 		  pgbuf_ordered_unfix (thread_p, context->overflow_page_watcher_p);
 		  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
 
-		  if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		  if (ww_xlock_wait)
 		    {
-		      ASSERT_ERROR_AND_SET (rc);
-		      return rc;
+		      if (lock_object (thread_p, &context->oid, &context->class_oid, S_LOCK, LK_UNCOND_LOCK)
+			  != LK_GRANTED)
+			{
+			  ASSERT_ERROR_AND_SET (rc);
+			  return rc;
+			}
+		      lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
 		    }
-		  lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+		  else
+		    {
+		      if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+			{
+			  ASSERT_ERROR_AND_SET (rc);
+			  return rc;
+			}
+		      lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+		    }
 
 		  /* re-fix home in pgbuf_ordered order, re-read it, re-derive overflow_oid (the home record may
 		   * have changed meanwhile), then re-fix the overflow page. */
@@ -21360,6 +21381,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  VPID ww_home_vpid;
 	  INT16 ww_rectype;
 	  int ww_peek;
+	  bool ww_xlock_wait = false;
 
 	  if (or_mvcc_get_header (&forward_recdes, &ww_header) != NO_ERROR)
 	    {
@@ -21386,23 +21408,42 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
 	    {
-	      /* clean or ours: stamp atomically under the latches we still hold */
-	      break;
+	      if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
+		{
+		  /* clean or ours: stamp atomically under the latches we still hold */
+		  break;
+		}
+	      /* An in-flight per-row X-lock writer (an index-column UPDATE between its index maintenance
+	       * and its heap stamp) is invisible to the classification -- only the lock table shows it.
+	       * Wait on the object lock instead of an MVCCID, then re-derive and re-classify. */
+	      ww_xlock_wait = true;
 	    }
 
-	  if (logtb_is_active_other_mvccid (thread_p, ww_owner))
+	  if (ww_xlock_wait || logtb_is_active_other_mvccid (thread_p, ww_owner))
 	    {
 	      /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
 	      VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
 	      pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
 	      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
 
-	      if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+	      if (ww_xlock_wait)
 		{
-		  ASSERT_ERROR_AND_SET (rc);
-		  return rc;
+		  if (lock_object (thread_p, &context->oid, &context->class_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		    {
+		      ASSERT_ERROR_AND_SET (rc);
+		      return rc;
+		    }
+		  lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
 		}
-	      lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+	      else
+		{
+		  if (lock_transaction_mvccid (thread_p, ww_owner, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		    {
+		      ASSERT_ERROR_AND_SET (rc);
+		      return rc;
+		    }
+		  lock_unlock_transaction_mvccid (thread_p, ww_owner, S_LOCK);
+		}
 
 	      /* re-fix home in pgbuf_ordered order, re-read it, re-derive forward_oid (the home record may have
 	       * been re-relocated meanwhile), then re-fix and re-peek the forward record. */
@@ -22049,6 +22090,42 @@ heap_home_wait_for_owner (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
 }
 
 /*
+ * heap_home_wait_for_xlocker () - wait for an in-flight per-row X-lock writer to finish, then re-read the
+ *   home record so the caller can re-classify
+ *   thread_p(in): thread entry
+ *   context(in): delete operation context; the home page latch is released and re-acquired here
+ *   returns: NO_ERROR or an error code on failure
+ *
+ * Note: an X-lock writer that has not stamped the record yet (an index-column UPDATE between its index
+ *       maintenance and its heap stamp) is invisible to the MVCC classification -- only the lock table
+ *       shows it. Wait on the object lock itself: a transient S request queues behind the X holder and
+ *       is released immediately once granted.
+ */
+static int
+heap_home_wait_for_xlocker (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
+{
+  VPID home_vpid;
+  int error_code = NO_ERROR;
+
+  VPID_GET_FROM_OID (&home_vpid, &context->oid);
+  pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+
+  if (lock_object (thread_p, &context->oid, &context->class_oid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+
+  if (pgbuf_ordered_fix (thread_p, &home_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, context->home_page_watcher_p) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+  return heap_home_reread (thread_p, context);
+}
+
+/*
  * heap_home_recheck_write_write () - authoritative write-write re-check for an MVCC home-record delete or update
  *   thread_p(in): thread entry
  *   context(in): delete/update operation context; the home page must be latched
@@ -22083,8 +22160,24 @@ heap_home_recheck_write_write (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT *
 	}
       if (!MVCCID_IS_VALID (owner))
 	{
-	  /* clean / ours / settled: the caller stamps under the still-held latch */
-	  return NO_ERROR;
+	  if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
+	    {
+	      /* clean / ours / settled: the caller stamps under the still-held latch */
+	      return NO_ERROR;
+	    }
+	  /* An in-flight per-row X-lock writer (an index-column UPDATE between its index maintenance and
+	   * its heap stamp) is invisible to the classification -- only the lock table shows it. Wait it
+	   * out and re-classify; settling now would cross its index maintenance. */
+	  error_code = heap_home_wait_for_xlocker (thread_p, context);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	  if (context->ww_record_transformed)
+	    {
+	      return NO_ERROR;
+	    }
+	  continue;
 	}
 
       /* A foreign owner holds this row. If it is still running, wait it out (releasing the latch); if it

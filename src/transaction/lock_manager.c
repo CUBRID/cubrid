@@ -6638,6 +6638,58 @@ lock_has_xlock_or_self_lock (THREAD_ENTRY * thread_p, const OID * oid, const OID
 }
 
 /*
+ * lock_is_xlocked_by_other () - is the object X-locked (>= X_LOCK) by a transaction other than the caller?
+ *   return: true iff some OTHER transaction holds an X (or stronger) granted lock on the object
+ *   oid(in)       : object identifier
+ *   class_oid(in) : class of the object (for the resource key)
+ *
+ * A decoupled (lockless) MVCC DELETE calls this from the write-write seals to detect an in-flight per-row
+ * X-lock writer -- e.g. an index-column UPDATE that is between its index maintenance and its heap stamp,
+ * whose ownership is not yet visible in the record header. The decoupled writer waits for it instead of
+ * settling on a version the X-lock writer is about to replace (a slip corrupts the index: the update's
+ * old-key removal and the delete's key derivation cross). Read-only and non-blocking: it only takes the
+ * resource mutex briefly, and the lock manager never fixes a page while holding res_mutex, so this is safe
+ * to call while holding a page latch.
+ */
+bool
+lock_is_xlocked_by_other (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+{
+#if !defined (SERVER_MODE)
+  return false;
+#else /* !SERVER_MODE */
+  LK_RES_KEY search_key;
+  LK_RES *res_ptr;
+  LK_ENTRY *holder;
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  bool found = false;
+
+  if (oid == NULL)
+    {
+      return false;
+    }
+
+  search_key = lock_create_search_key ((OID *) oid, (OID *) class_oid);
+  res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
+  if (res_ptr == NULL)
+    {
+      /* no resource exists -> nobody holds a lock on this object */
+      return false;
+    }
+  /* find() leaves the resource mutex locked. */
+  for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
+    {
+      if (holder->tran_index != tran_index && holder->granted_mode >= X_LOCK)
+	{
+	  found = true;
+	  break;
+	}
+    }
+  pthread_mutex_unlock (&res_ptr->res_mutex);
+  return found;
+#endif /* !SERVER_MODE */
+}
+
+/*
  * lock_subclass () - Lock a class in a class hierarchy
  *
  * return: one of following values)
