@@ -452,7 +452,10 @@ typedef enum
   S_SELECT_WITH_LOCK,		/* Read operation that doesn't plan to modify the object, but has to know the exact
 				 * fate of last version. Can be used for foreign key and unique constraint checks. */
   S_DELETE,			/* Delete object operation. */
-  S_UPDATE			/* Update object operation. */
+  S_UPDATE,			/* Update object operation. */
+  S_SELECT_FK_EXISTS		/* Referential integrity check. Reads dirty and takes no lock: a conflicting
+				 * transaction is waited out on its MVCCID and the key is then re-read. Appended
+				 * last so the values above keep their encoding. */
 } SCAN_OPERATION_TYPE;
 
 #define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == SCH_M_LOCK)

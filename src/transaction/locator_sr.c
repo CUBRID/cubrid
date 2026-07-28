@@ -183,6 +183,9 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 bool skip_checking_fk);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
+static int locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+					     RECDES * recdes, HEAP_SCANCACHE * scan_cache,
+					     SCAN_CODE * scan_code);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4143,7 +4146,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 		}
 	    }
 	  ret =
-	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, key_dbvalue, &part_oid, &unique_oid, true);
+	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_FK_EXISTS, key_dbvalue, &part_oid, &unique_oid, true);
 	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
@@ -4198,6 +4201,64 @@ error:
 }
 
 /*
+ * locator_wait_for_uncommitted_row () - Wait out the transaction that inserted this row, if it is still active,
+ *					 then re-fetch it.
+ *
+ * return	     : NO_ERROR, or an error code if the wait or the re-fetch failed.
+ * thread_p (in)     : Thread entry.
+ * oid (in)	     : Instance OID being modified.
+ * class_oid (in)    : Class OID of the instance.
+ * recdes (in/out)   : Fetched record; replaced by the re-fetched one after a wait.
+ * scan_cache (in)   : Scan cache used for the re-fetch.
+ * scan_code (in/out): Fetch result; S_DOESNT_EXIST once the inserter rolled back.
+ *
+ * Note: the CASCADE/SET NULL scan reads dirty, so it can hand back a row whose inserter is still active.
+ *	 An insert into an MVCC class takes no per-row lock, so the X_LOCK the caller already holds does not
+ *	 serialize against that inserter -- writing now would modify a row that may still roll back. Block on
+ *	 the inserter's MVCCID instead and re-read the row's fate.
+ */
+static int
+locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				  HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code)
+{
+  MVCC_REC_HEADER mvcc_header;
+  MVCCID insert_mvccid;
+  int error_code;
+
+  while (*scan_code == S_SUCCESS)
+    {
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      if (!MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID))
+	{
+	  break;
+	}
+
+      insert_mvccid = MVCC_GET_INSID (&mvcc_header);
+      if (!logtb_is_active_other_mvccid (thread_p, insert_mvccid))
+	{
+	  break;
+	}
+
+      error_code = logtb_wait_for_mvccid_end (thread_p, insert_mvccid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      /* That transaction ended; the row is now either committed or gone. */
+      recdes->data = NULL;
+      *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY,
+					       NULL_CHN, LOG_WARNING_IF_DELETED);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * locator_check_primary_key_delete () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4225,6 +4286,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT dirty_snapshot;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4232,12 +4294,11 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      error_code = er_errid ();
-      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-    }
+  /* CASCADE/SET NULL collects referencing (child) rows dirty. The referenced (parent) row already carries this
+   * transaction's DELID, so any child inserted after that point blocks on it in its own check and cannot be
+   * missed here; a visible-only scan would instead skip children that are merely uncommitted and orphan them. */
+  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+  mvcc_snapshot = &dirty_snapshot;
 
   db_make_null (&null_value);
   db_make_null (&key_val_range.key1);
@@ -4261,8 +4322,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1, fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
-		  /* Unlock child object. */
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &found_oid, &fkref->self_oid, S_LOCK);
 		  goto error3;
 		}
 	    }
@@ -4433,6 +4492,13 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+		  error_code =
+		    locator_wait_for_uncommitted_row (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						      &scan_code);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4604,6 +4670,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT dirty_snapshot;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4611,12 +4678,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      error_code = er_errid ();
-      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-    }
+  /* CASCADE/SET NULL collects referencing (child) rows dirty. The referenced (parent) row already carries this
+   * transaction's DELID, so any child inserted after that point blocks on it in its own check and cannot be
+   * missed here; a visible-only scan would instead skip children that are merely uncommitted and orphan them. */
+  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+  mvcc_snapshot = &dirty_snapshot;
 
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
@@ -4639,8 +4705,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1, fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
-		  /* Unlock child object. */
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &found_oid, &fkref->self_oid, S_LOCK);
 		  goto error3;
 		}
 	    }
@@ -4788,6 +4852,13 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+		  error_code =
+		    locator_wait_for_uncommitted_row (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						      &scan_code);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)

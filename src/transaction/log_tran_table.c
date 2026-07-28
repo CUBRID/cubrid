@@ -4188,6 +4188,60 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * logtb_is_active_other_mvccid () - Is mvccid a normal MVCCID belonging to another still-active transaction?
+ *
+ * return	 : true when some other transaction is still working under mvccid.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : MVCCID to test.
+ */
+bool
+logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && log_Gl.mvcc_table.is_active (mvccid);
+}
+
+/*
+ * logtb_wait_for_mvccid_end () - Block until the transaction working under mvccid ends: S_LOCK on its MVCCID
+ *				  self-lock, then release.
+ *
+ * return	 : NO_ERROR once that transaction has ended. An error if the lock failed, or if the
+ *		   self-lock invariant is breached (grant while the transaction is still active) --
+ *		   the wait was a no-op and waiting again cannot recover it, so fail the
+ *		   statement rather than spin.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+int
+logtb_wait_for_mvccid_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (mvccid))
+    {
+      /* Invariant breach: no-op grant while that transaction is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
+}
+
+/*
  * logtb_track_lockless_insert () - Remember a row inserted without its per-row X-lock for 2PC prepare
  *				    (CBRD-27079 fallback).
  *
