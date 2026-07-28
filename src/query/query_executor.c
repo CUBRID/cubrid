@@ -8539,7 +8539,7 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	    {
 	      qexec_clear_head_lists (thread_p, xasl->bptr_list);
 	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type : S_SELECT;
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 	    }
 	  /* evaluate bptr list */
 	  for (xptr = xasl->bptr_list; qualified && xptr != NULL; xptr = xptr->next)
@@ -9455,7 +9455,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (xasl->bptr_list)
 	    {
 	      scan_operation_type =
-		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type : S_SELECT;
+		(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 	    }
 
 	  /* evaluate bptr list */
@@ -9523,8 +9523,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		  if (xasl->fptr_list)
 		    {
 		      scan_operation_type =
-			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? xasl->scan_op_type
-			: S_SELECT;
+			(ACCESS_SPEC_IS_FLAGED (xasl->curr_spec, ACCESS_SPEC_FLAG_FOR_UPDATE)) ? S_UPDATE : S_SELECT;
 		    }
 
 		  for (xptr = xasl->fptr_list; qualified && xptr != NULL; xptr = xptr->next)

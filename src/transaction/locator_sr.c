@@ -5436,6 +5436,13 @@ locator_decide_update_lock (THREAD_ENTRY * thread_p, OID * class_oid, ATTR_ID * 
       return X_LOCK;
     }
 
+  if (class_oid == NULL || OID_ISNULL (class_oid) || OID_IS_ROOTOID (class_oid))
+    {
+      /* WX_LOCK is instance-level only. A root class_oid means the object being updated is a class
+       * (schema object), not an instance, so it must keep X_LOCK. */
+      return X_LOCK;
+    }
+
   classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
   if (classrepr == NULL)
     {
