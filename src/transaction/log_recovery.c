@@ -5470,6 +5470,10 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
   return;
 }
 
+/* Largest addend for one LOG_READ_ADD_ALIGN: log_lsa::offset is a 16-bit field and the call adds to it before unwinding
+ * the excess into page advances. A multiple of DOUBLE_ALIGNMENT, so each call's realign stays a no-op. */
+#define LOG_LSA_OFFSET_SAFE_STEP 8192
+
 /*
  * log_startof_nxrec - FIND START OF NEXT RECORD (USED FOR PARTIAL RECOVERY)
  *
@@ -5777,7 +5781,13 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       if (nlocks > 0)
 	{
 	  size = nlocks * sizeof (LK_ACQ_LOCK);
-	  LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
+	  while (size > 0)
+	    {
+	      size_t step = (size < LOG_LSA_OFFSET_SAFE_STEP) ? size : LOG_LSA_OFFSET_SAFE_STEP;
+
+	      LOG_READ_ADD_ALIGN (thread_p, step, &log_lsa, log_pgptr);
+	      size -= step;
+	    }
 	}
       break;
 
