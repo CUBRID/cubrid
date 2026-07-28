@@ -24853,7 +24853,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
   /* Assert expected arguments. */
   assert (btid != NULL);
   assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_DELETE
-	  || scan_op_type == S_UPDATE);
+	  || scan_op_type == S_UPDATE || scan_op_type == S_SELECT_FK_EXISTS);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
 
