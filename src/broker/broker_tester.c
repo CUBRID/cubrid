@@ -1181,8 +1181,7 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       int *tmp_nbind;
 
       tmp_sets = (T_BR_BIND ***) REALLOC (st->sets, sizeof (T_BR_BIND **) * (st->num_sets + 1));
-      tmp_nbind = (int *) REALLOC (st->set_nbind, sizeof (int) * (st->num_sets + 1));
-      if (tmp_sets == NULL || tmp_nbind == NULL)
+      if (tmp_sets == NULL)
 	{
 	  fprintf (stderr, "malloc error\n");
 	  FREE_MEM (b->type_tok);
@@ -1190,7 +1189,17 @@ parse_bind_line (const char *line, T_BR_STMT * st)
 	  FREE_MEM (b);
 	  return -1;
 	}
-      st->sets = tmp_sets;
+      st->sets = tmp_sets;	/* commit now so st->sets never holds a freed block */
+
+      tmp_nbind = (int *) REALLOC (st->set_nbind, sizeof (int) * (st->num_sets + 1));
+      if (tmp_nbind == NULL)
+	{
+	  fprintf (stderr, "malloc error\n");
+	  FREE_MEM (b->type_tok);
+	  FREE_MEM (b->value);
+	  FREE_MEM (b);
+	  return -1;
+	}
       st->set_nbind = tmp_nbind;
       st->sets[st->num_sets] = NULL;
       st->set_nbind[st->num_sets] = 0;
