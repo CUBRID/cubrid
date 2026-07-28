@@ -388,6 +388,7 @@ namespace cubstorage
       candidate_queue m_candidates;
 
       // parameter
+      const bool m_distributed_insert;
       std::uint16_t m_unfill_space;
 
       // statistics

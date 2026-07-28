@@ -1276,6 +1276,7 @@ namespace cubstorage
   bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			std::uint16_t unfill_space)
     : m_shards ()
+    , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
@@ -1409,8 +1410,16 @@ namespace cubstorage
       {
 	needed_size = consume_size;
       }
-    shard = 0;
-    bias = 0;
+    if (m_distributed_insert)
+      {
+	shard = static_cast<std::size_t> (thread_ref.index) % m_shards.size ();
+	bias = static_cast<std::size_t> (thread_ref.tran_index) % BITS_PER_BYTE;
+      }
+    else
+      {
+	shard = 0;
+	bias = 0;
+      }
 
     num_checked_candidates = 0;
     while (num_checked_candidates < MAX_CANDIDATES_QUEUE_SIZE && m_candidates.pop (candidate, needed_size))
