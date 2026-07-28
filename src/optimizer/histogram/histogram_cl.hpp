@@ -43,23 +43,23 @@ typedef struct db_value DB_VALUE;
 namespace hist
 {
 
-enum class histogram_key_kind
-{
-  invalid,
-  i64,
-  dbl,
-  str,
-  u64
-};
+  enum class histogram_key_kind
+  {
+    invalid,
+    i64,
+    dbl,
+    str,
+    u64
+  };
 
-struct histogram_key
-{
-  histogram_key_kind kind = histogram_key_kind::invalid;
-  std::int64_t i64 = 0;
-  double dbl = 0.0;
-  std::string str;
-  std::uint64_t u64 = 0;
-};
+  struct histogram_key
+  {
+    histogram_key_kind kind = histogram_key_kind::invalid;
+    std::int64_t i64 = 0;
+    double dbl = 0.0;
+    std::string str;
+    std::uint64_t u64 = 0;
+  };
 
 }				// namespace hist
 
