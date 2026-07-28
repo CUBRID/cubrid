@@ -5730,7 +5730,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     case LOCK_RESOURCE_TRANSACTION:
-      fprintf (outfp, "  Transaction self-lock (inserter MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      fprintf (outfp, "  Transaction self-lock (MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
       break;
     default:
       fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
