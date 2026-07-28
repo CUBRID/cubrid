@@ -1729,17 +1729,17 @@ log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
 }
 
 /*
- * log_2pc_dump_acqobj_locks - DUMP THE ACQUIRED OBJECT LOCKS
+ * log_2pc_dump_acq_locks - DUMP THE ACQUIRED LOCKS
  *
  * return: nothing
  *
  *   length(in): Length to dump in bytes
  *   data(in): The data being logged
  *
- * NOTE: Dump the acquired object lock structure.
+ * NOTE: Dump the acquired lock structure. Covers every resource type the key can carry, not just objects.
  */
 void
-log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
+log_2pc_dump_acq_locks (FILE * fp, int length, void *data)
 {
   LK_ACQUIRED_LOCKS acq_locks;
 

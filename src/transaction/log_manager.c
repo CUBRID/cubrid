@@ -6897,7 +6897,7 @@ log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_
   if (nlocks > 0)
     {
       size = nlocks * sizeof (LK_ACQ_LOCK);
-      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acqobj_locks, NULL);
+      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acq_locks, NULL);
     }
 
   return log_page_p;
