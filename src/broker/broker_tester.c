@@ -1108,8 +1108,10 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       fprintf (stderr, "out/inout parameter requires @call\n");
       return -1;
     }
-  if (mode != BR_PM_OUT && *val_start == '\0')
+  if (mode != BR_PM_OUT && type != CCI_U_TYPE_NULL && *val_start == '\0')
     {
+      /* NULL (and BLOB/CLOB mapped to NULL) carries no value by design; every
+       * other IN/INOUT type must have one. */
       fprintf (stderr, "in/inout parameter requires a value (use '' for an empty string)\n");
       return -1;
     }
@@ -1634,6 +1636,16 @@ flush_call (int conn_handle, T_BR_STMT * st)
 	}
 
       if (cci_execute (req, 0, 0, &err_buf) < 0)
+	{
+	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
+	  err_num++;
+	  break;
+	}
+
+      /* CALL returns a single tuple carrying the OUT/return values; position the
+       * cursor on it before print_out_params reads them via cci_get_data
+       * (cci_get_data fails with CCI_ER_INVALID_CURSOR_POS without a fetch). */
+      if (cci_cursor (req, 1, CCI_CURSOR_CURRENT, &err_buf) < 0 || cci_fetch (req, &err_buf) < 0)
 	{
 	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
 	  err_num++;
