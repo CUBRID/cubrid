@@ -1496,55 +1496,26 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
   int ret, remaining;
   char *sql;
   size_t sql_len;
+  bool has_key = key_col != NULL;
   bool has_extra;
 
   *sql_out = NULL;
 
-  if (key_col != NULL && key_col[0] == '\0')
+  if (has_key && key_col[0] == '\0')
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: key_col is empty");
       return ER_DBLINK;
     }
-
-  has_extra = (extra_where != NULL && extra_where[0] != '\0');
-
-  if (key_col == NULL)
-    {
-      sql_len = strlen (table_name) + (has_extra ? strlen (extra_where) : 0) + 64;
-      sql = (char *) db_private_alloc (thread_p, sql_len);
-      if (sql == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-
-      remaining = (int) sql_len;
-      if (has_extra)
-	{
-	  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE (%s)", table_name, extra_where);
-	}
-      else
-	{
-	  ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s", table_name);
-	}
-      if (ret < 0 || ret >= remaining)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: SQL assembly truncated");
-	  db_private_free (thread_p, sql);
-	  return ER_DBLINK;
-	}
-
-      *sql_out = sql;
-      return NO_ERROR;
-    }
-
-  if (op == NULL || op[0] == '\0')
+  if (has_key && (op == NULL || op[0] == '\0'))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DELETE: op is NULL or empty");
       return ER_DBLINK;
     }
 
-  sql_len = strlen (table_name) + strlen (key_col) + strlen (op) + (has_extra ? strlen (extra_where) : 0) + 80;
+  has_extra = (extra_where != NULL && extra_where[0] != '\0');
+
+  sql_len = strlen (table_name) + (has_key ? strlen (key_col) + strlen (op) : 0)
+    + (has_extra ? strlen (extra_where) : 0) + 80;
   sql = (char *) db_private_alloc (thread_p, sql_len);
   if (sql == NULL)
     {
@@ -1553,14 +1524,22 @@ dblink_dml_build_delete_sql (THREAD_ENTRY * thread_p, const char *table_name, co
     }
 
   remaining = (int) sql_len;
-  if (has_extra)
+  if (has_key && has_extra)
     {
       ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ? AND (%s)", table_name,
 		      key_col, op, extra_where);
     }
-  else
+  else if (has_key)
     {
       ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE %s %s ?", table_name, key_col, op);
+    }
+  else if (has_extra)
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s WHERE (%s)", table_name, extra_where);
+    }
+  else
+    {
+      ret = snprintf (sql, remaining, "/* DBLINK DELETE */ DELETE FROM %s", table_name);
     }
   if (ret < 0 || ret >= remaining)
     {
