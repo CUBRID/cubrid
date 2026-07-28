@@ -120,21 +120,47 @@ commands:
       - collect-build-logs
 
   resolve-testcases:
-    description: "Resolve testcases branch/SHA; export BRANCH_TESTCASES and materialize cache-key inputs"
+    description: "Resolve testcases branch/SHA for a TC repo; export BRANCH_TESTCASES and materialize cache-key inputs"
+    parameters:
+      tc-repo:
+        # Resolve against the repo the suite actually checks out: public
+        # cubrid-testcases for sql/medium, private cubrid-testcases-private-ex
+        # for shell. Their tc/pr-<N> branches are created independently and
+        # often diverge, so each suite must resolve against its own repo.
+        type: string
+        default: cubrid-testcases
     steps:
       - run:
-          name: Resolve testcases branch and SHA
+          name: Resolve testcases branch and SHA (<< parameters.tc-repo >>)
           command: |
+            TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/<< parameters.tc-repo >>.git"
+
+            # ls-remote the testcases repo with retries. A transient network error
+            # (e.g. "Empty reply from server") must not fail the job: on persistent
+            # failure we return empty and fall back to develop.
+            resolve_sha() {
+              local i out
+              for i in 1 2 3 4 5; do
+                if out=$(git ls-remote "$TC_REPO" "$1" 2>/dev/null); then
+                  echo "$out" | cut -f1
+                  return 0
+                fi
+                echo "[warn] ls-remote '$1' failed (attempt $i); retrying" >&2
+                sleep $((i * 3))
+              done
+              echo "[warn] ls-remote '$1' failed after retries; continuing without SHA" >&2
+            }
+
             if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
               TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
             else
               TC_BRANCH="develop"
             fi
 
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
+            TC_SHA=$(resolve_sha "$TC_BRANCH")
             if [ -z "$TC_SHA" ]; then
               TC_BRANCH="develop"
-              TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+              TC_SHA=$(resolve_sha develop)
             fi
 
             CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
@@ -187,10 +213,28 @@ commands:
 
             if [ "$TEST_SUITE" = "shell" ]; then
               echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
-                | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+              # The split can fail transiently (e.g. the circleci-tests-plugin-cli
+              # download timing out under 50-way fan-out). Retry it, and if it still
+              # fails, fail this node instead of falling through to the "no tests"
+              # halt below, which would silently skip this node's share of the tests.
+              split_tests() {
+                : > tc.list
+                circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
+                  | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+              }
+              n=0
+              until split_tests; do
+                n=$((n + 1))
+                if [ "$n" -ge 4 ]; then
+                  echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
+                  exit 1
+                fi
+                echo "[warn] test split failed; retry $n after backoff"
+                sleep $((n * 10))
+              done
 
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              # Split succeeded. An empty tc.list here is a genuine empty assignment
+              # (normal during "rerun failed tests only") -> halt this node as success.
               if [ ! -s tc.list ]; then
                 echo "[debug] No tests assigned to this node"
                 circleci-agent step halt
@@ -202,10 +246,27 @@ commands:
               find $base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
             else
               echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" \
-                | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+              # Same resilience as the shell branch: retry a transient split failure
+              # and fail the node rather than silently skipping its tests. tc.list is
+              # reset each attempt because the split command appends (>>).
+              split_tests() {
+                : > tc.list
+                circleci tests glob "$glob_path" \
+                  | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+              }
+              n=0
+              until split_tests; do
+                n=$((n + 1))
+                if [ "$n" -ge 4 ]; then
+                  echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
+                  exit 1
+                fi
+                echo "[warn] test split failed; retry $n after backoff"
+                sleep $((n * 10))
+              done
 
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
+              # Split succeeded. An empty tc.list here is a genuine empty assignment
+              # (normal during "rerun failed tests only") -> halt this node as success.
               if [ ! -s tc.list ]; then
                 echo "[debug] No tests assigned to this node"
                 circleci-agent step halt
@@ -407,15 +468,35 @@ jobs:
       TEST_SUITE: "shell"
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
-      - resolve-testcases
+      # Testcases branch is resolved once in download-build and shared via the
+      # workspace, so the 50 shell pods never hit cubrid-testcases themselves.
+      - attach_workspace:
+          at: /tmp/tcws
+      - run:
+          name: Load shared testcases branch
+          command: |
+            echo "export BRANCH_TESTCASES=$(cat /tmp/tcws/BRANCH_TESTCASES)" >> "$BASH_ENV"
       - run-tests
 
   download-build:
-    description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
+    description: "Download CUBRID build to GlusterFS and resolve the testcases branch once for all shell pods"
     executor: cubrid-test-shell
     parallelism: 1
     steps:
       - download-build-to-glusterfs
+      # Resolve the testcases branch a single time (reuses resolve-testcases,
+      # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell runs
+      # the private repo, so resolve against cubrid-testcases-private-ex.
+      - resolve-testcases:
+          tc-repo: cubrid-testcases-private-ex
+      - run:
+          name: Persist testcases branch for shell pods
+          command: |
+            mkdir -p /tmp/tcws
+            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+      - persist_to_workspace:
+          root: /tmp/tcws
+          paths: [ BRANCH_TESTCASES ]
 
 # --------------------------------------------------
 # 4. Workflow (conditional test jobs via expression-based filters)
@@ -429,16 +510,16 @@ workflows:
           name: test_medium
           suite: medium
           parallelism: 1
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_medium_test
       - artifact-test:
           name: test_sql
           suite: sql
           parallelism: 10
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_sql_test
       - download-build:
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_shell_test
       - test_shell:
           requires: [download-build]
