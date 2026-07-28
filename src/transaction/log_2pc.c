@@ -1462,9 +1462,13 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
   memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
+  /* The copy stops one byte short of the field; a max-length name would be left unterminated. */
+  prepared->user_name[DB_MAX_USER_LENGTH] = '\0';
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
   prepared->num_locks = acq_locks.nlocks;
+  /* Dead field, but the header is malloc'd: unassigned means indeterminate bytes in the log. */
+  prepared->num_page_locks = 0;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
