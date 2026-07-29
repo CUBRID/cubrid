@@ -10625,6 +10625,129 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 }
 
 /*
+ * qo_between_range_arg_value () - the DB_VALUE a between-range bound carries, or NULL when
+ *   the bound is not a constant the histogram can be probed with
+ * return       : the bound's value, or NULL
+ * env (in)     : optimizer environment (host variables live here)
+ * arg (in)     : bound node of a between-range expression
+ */
+static DB_VALUE *
+qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
+{
+  if (arg == NULL)
+    {
+      return NULL;
+    }
+
+  switch (qo_classify (arg))
+    {
+    case PC_HOST_VAR:
+      return &env->parser->host_variables[arg->info.host_var.index];
+    case PC_CONST:
+      return &arg->info.value.db_value;
+    default:
+      return NULL;
+    }
+}
+
+/*
+ * qo_between_range_histogram_selectivity () - selectivity of one between-range operator from
+ *   the column histogram. Shared by the RANGE path (attr RANGE {...}) and the BETWEEN path
+ *   (attr BETWEEN a AND b), which price the same operators and must stay in step.
+ *
+ *   Each two-sided operator is a difference of two one-sided probes; the boundary handling
+ *   follows the operator's own inclusiveness:
+ *     GE_LE: sel_le(b) - sel_lt(a)   GE_LT: sel_lt(b) - sel_lt(a)
+ *     GT_LE: sel_le(b) - sel_le(a)   GT_LT: sel_lt(b) - sel_le(a)
+ *   One-sided operators (INF_LT/INF_LE/GE_INF/GT_INF) are a single probe. PT_BETWEEN_AND is
+ *   the pre-rewrite spelling of an inclusive range and is priced like GE_LE -- a plain
+ *   'x BETWEEN a AND b' that never became a PT_RANGE arrives with this operator.
+ *
+ * return          : true when the histogram produced an estimate (out_sel is then set)
+ * lhs (in)        : the column being ranged
+ * op_type (in)    : between-range operator
+ * arg1_val (in)   : lower bound value (the only bound for one-sided operators)
+ * arg2_val (in)   : upper bound value, NULL for one-sided operators
+ * out_sel (out)   : selectivity in [0,1]
+ */
+static bool
+qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
+					DB_VALUE * arg2_val, double *out_sel)
+{
+  double sel_a = 0.0, sel_b = 0.0, sel;
+  bool ok_a = false, ok_b = false;
+
+  switch (op_type)
+    {
+    case PT_BETWEEN_AND:
+    case PT_BETWEEN_GE_LE:
+      /* sel_le (b) - sel_lt (a) */
+      histogram_get_comp_selectivity (lhs, arg1_val, false, false, &sel_a, &ok_a);
+      histogram_get_comp_selectivity (lhs, arg2_val, false, true, &sel_b, &ok_b);
+      sel = sel_b - sel_a;
+      break;
+
+    case PT_BETWEEN_GE_LT:
+      /* sel_lt (b) - sel_lt (a) */
+      histogram_get_comp_selectivity (lhs, arg1_val, false, false, &sel_a, &ok_a);
+      histogram_get_comp_selectivity (lhs, arg2_val, false, false, &sel_b, &ok_b);
+      sel = sel_b - sel_a;
+      break;
+
+    case PT_BETWEEN_GT_LE:
+      /* sel_le (b) - sel_le (a) */
+      histogram_get_comp_selectivity (lhs, arg1_val, false, true, &sel_a, &ok_a);
+      histogram_get_comp_selectivity (lhs, arg2_val, false, true, &sel_b, &ok_b);
+      sel = sel_b - sel_a;
+      break;
+
+    case PT_BETWEEN_GT_LT:
+      /* sel_lt (b) - sel_le (a) */
+      histogram_get_comp_selectivity (lhs, arg1_val, false, true, &sel_a, &ok_a);
+      histogram_get_comp_selectivity (lhs, arg2_val, false, false, &sel_b, &ok_b);
+      sel = sel_b - sel_a;
+      break;
+
+    case PT_BETWEEN_INF_LT:
+      histogram_get_comp_selectivity (lhs, arg1_val, false, false, &sel_a, &ok_a);
+      ok_b = true;
+      sel = sel_a;
+      break;
+
+    case PT_BETWEEN_INF_LE:
+      histogram_get_comp_selectivity (lhs, arg1_val, false, true, &sel_a, &ok_a);
+      ok_b = true;
+      sel = sel_a;
+      break;
+
+    case PT_BETWEEN_GT_INF:
+      histogram_get_comp_selectivity (lhs, arg1_val, true, false, &sel_a, &ok_a);
+      ok_b = true;
+      sel = sel_a;
+      break;
+
+    case PT_BETWEEN_GE_INF:
+      histogram_get_comp_selectivity (lhs, arg1_val, true, true, &sel_a, &ok_a);
+      ok_b = true;
+      sel = sel_a;
+      break;
+
+    default:
+      return false;
+    }
+
+  if (!(ok_a && ok_b))
+    {
+      return false;
+    }
+
+  /* the two probes are independent estimates, so their difference can leave the unit
+   * interval on skewed data; the caller's default is not a better answer than a clamp */
+  *out_sel = MAX (0.0, MIN (1.0, sel));
+  return true;
+}
+
+/*
  * qo_between_selectivity () - Compute the selectivity of a between predicate
  *   return: double
  *   env(in): Pointer to an environment structure
@@ -10635,12 +10758,31 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 static double
 qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
-  PT_NODE *and_node;
+  PT_NODE *and_node, *lhs;
+  DB_VALUE *arg1_val, *arg2_val;
+  double selectivity;
 
   and_node = pt_expr->info.expr.arg2;
 
   QO_ASSERT (env, and_node->node_type == PT_EXPR);
   QO_ASSERT (env, pt_is_between_range_op (and_node->info.expr.op));
+
+  /* A BETWEEN that the rewriter turned into a PT_RANGE is priced by qo_range_selectivity ();
+   * what reaches here is the form that was not rewritten -- notably NOT BETWEEN, whose
+   * complement is not a single range. Estimating it from the histogram is what keeps
+   * 'attr NOT BETWEEN a AND b' from being a flat 1 - DEFAULT_BETWEEN_SELECTIVITY (0.99)
+   * regardless of the data (the caller inverts this result for PT_NOT_BETWEEN). */
+  lhs = pt_expr->info.expr.arg1;
+  if (qo_classify (lhs) == PC_ATTR)
+    {
+      arg1_val = qo_between_range_arg_value (env, and_node->info.expr.arg1);
+      arg2_val = qo_between_range_arg_value (env, and_node->info.expr.arg2);
+
+      if (qo_between_range_histogram_selectivity (lhs, and_node->info.expr.op, arg1_val, arg2_val, &selectivity))
+	{
+	  return selectivity;
+	}
+    }
 
   return DEFAULT_BETWEEN_SELECTIVITY;
 }
@@ -10724,114 +10866,14 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       pc_arg1 = qo_classify (arg1);
       pc1 = pc_arg1;
 
-      if (pc_arg1 == PC_HOST_VAR)
-	{
-	  arg1_db_value = &env->parser->host_variables[arg1->info.host_var.index];
-	}
-      else if (pc_arg1 == PC_CONST)
-	{
-	  arg1_db_value = &arg1->info.value.db_value;
-	}
-      else
-	{
-	  arg1_db_value = NULL;
-	}
-
-      if (arg2 != NULL)
-	{
-	  pc_arg2 = qo_classify (arg2);
-
-	  if (pc_arg2 == PC_HOST_VAR)
-	    {
-	      arg2_db_value = &env->parser->host_variables[arg2->info.host_var.index];
-	    }
-	  else if (pc_arg2 == PC_CONST)
-	    {
-	      arg2_db_value = &arg2->info.value.db_value;
-	    }
-	  else
-	    {
-	      arg2_db_value = NULL;
-	    }
-	}
-      else
-	{
-	  arg2_db_value = NULL;
-	}
+      arg1_db_value = qo_between_range_arg_value (env, arg1);
+      arg2_db_value = qo_between_range_arg_value (env, arg2);
 
       if (op_type == PT_BETWEEN_GE_LE || op_type == PT_BETWEEN_GE_LT || op_type == PT_BETWEEN_GT_LE
 	  || op_type == PT_BETWEEN_GT_LT || op_type == PT_BETWEEN_INF_LT || op_type == PT_BETWEEN_INF_LE
 	  || op_type == PT_BETWEEN_GE_INF || op_type == PT_BETWEEN_GT_INF)
 	{
-	  double selectivity_a = 0.0, selectivity_b = 0.0, selectivity_backup = selectivity;
-	  bool success1 = false;
-	  bool success2 = false;
-	  switch (op_type)
-	    {
-	    case PT_BETWEEN_GE_LE:
-	      {
-		/* selectivity = sel_le(b) - sel_lt(a) */
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, false, &selectivity_a, &success1);
-		histogram_get_comp_selectivity (lhs, arg2_db_value, false, true, &selectivity_b, &success2);
-		selectivity = selectivity_b - selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_GE_LT:
-	      {
-		/* selectivity = sel_lt(b) - sel_lt(a) */
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, false, &selectivity_a, &success1);
-		histogram_get_comp_selectivity (lhs, arg2_db_value, false, false, &selectivity_b, &success2);
-		selectivity = selectivity_b - selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_GT_LE:
-	      {
-		/* selectivity = sel_le(b) - sel_le(a) */
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, true, &selectivity_a, &success1);
-		histogram_get_comp_selectivity (lhs, arg2_db_value, false, true, &selectivity_b, &success2);
-		selectivity = selectivity_b - selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_GT_LT:
-	      {
-		/* selectivity = sel_lt(b) - sel_le(a) */
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, true, &selectivity_a, &success1);
-		histogram_get_comp_selectivity (lhs, arg2_db_value, false, false, &selectivity_b, &success2);
-		selectivity = selectivity_b - selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_INF_LT:
-	      {
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, false, &selectivity_a, &success1);
-		success2 = true;
-		selectivity = selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_INF_LE:
-	      {
-		histogram_get_comp_selectivity (lhs, arg1_db_value, false, true, &selectivity_a, &success1);
-		success2 = true;
-		selectivity = selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_GT_INF:
-	      {
-		histogram_get_comp_selectivity (lhs, arg1_db_value, true, false, &selectivity_a, &success1);
-		success2 = true;
-		selectivity = selectivity_a;
-		break;
-	      }
-	    case PT_BETWEEN_GE_INF:
-	      {
-		histogram_get_comp_selectivity (lhs, arg1_db_value, true, true, &selectivity_a, &success1);
-		success2 = true;
-		selectivity = selectivity_a;
-		break;
-	      }
-	    default:
-	      break;
-	    }
-	  if (!(success1 && success2))
+	  if (!qo_between_range_histogram_selectivity (lhs, op_type, arg1_db_value, arg2_db_value, &selectivity))
 	    {
 	      if (op_type == PT_BETWEEN_INF_LT || op_type == PT_BETWEEN_INF_LE || op_type == PT_BETWEEN_GE_INF
 		  || op_type == PT_BETWEEN_GT_INF)
