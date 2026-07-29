@@ -21317,6 +21317,62 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * heap_delete_reloc_rederive () - Write-write dance re-verdict: after a page dance during a relocation
+ *   delete, re-derive the forward chain under the re-held home latch so the seal can re-classify. Unfixes
+ *   the (possibly stale) forward page, re-reads the home record, re-derives forward_oid and re-fixes +
+ *   re-peeks the forward record.
+ *   returns: NO_ERROR (also with context->ww_record_transformed set -- the caller must re-dispatch),
+ *            ER_HEAP_UNKNOWN_OBJECT when the row vanished, or an error code
+ */
+static int
+heap_delete_reloc_rederive (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, OID * forward_oid_p,
+			 RECDES * forward_recdes_p)
+{
+  INT16 rectype;
+  int peek, rc = NO_ERROR;
+
+  pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
+
+  rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+  if (rectype != REC_RELOCATION)
+    {
+      if (rectype == REC_HOME || rectype == REC_BIGONE)
+	{
+	  /* the record left the relocated shape during the dance -- re-dispatch on the new type */
+	  context->record_type = rectype;
+	  context->ww_record_transformed = true;
+	  return NO_ERROR;
+	}
+      /* dead slot: the row vanished during the dance -- raced vanish, routed to 0 rows */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid, context->oid.pageid,
+	      context->oid.slotid);
+      return ER_HEAP_UNKNOWN_OBJECT;
+    }
+  peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
+			peek) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (rc);
+      return rc;
+    }
+  *forward_oid_p = *((OID *) context->home_recdes.data);
+  if (heap_fix_forward_page (thread_p, context, forward_oid_p) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid_p->slotid, forward_recdes_p,
+			PEEK) != S_SUCCESS)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid, context->oid.pageid,
+	      context->oid.slotid);
+      return ER_HEAP_UNKNOWN_OBJECT;
+    }
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * heap_delete_relocation () - delete a REC_RELOCATION record
  *   thread_p(in): thread entry
@@ -21376,6 +21432,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    * A no-op when the caller did take the per-row X-lock (single owner -> always clean). */
   if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
+      /* Write-write dance re-verdict: a post-verdict insertion further down may unfix these pages; when
+       * that is detected, the fresh insertion is compensated and control returns here for a new verdict. */
+    ww_reverdict:
       while (true)
 	{
 	  MVCC_REC_HEADER ww_header;
@@ -21413,6 +21472,56 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
 		{
+		  /* Write-write dance re-verdict: if the +DELID growth will need the heap header page
+		   * for the new-space hunt below, fix it under THIS verdict. If the ordered fix had to
+		   * unfix home/forward, the verdict is stale: re-derive the chain and re-classify instead
+		   * of falling through to the stamp. heap_fix_header_page is idempotent, so the stock call
+		   * below the seal becomes a no-op once it succeeded here. */
+		  int ww_repid_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
+		  int ww_adjusted = forward_recdes.length;
+		  bool ww_big = false;
+
+		  if (!(((ww_repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK)
+			& OR_MVCC_FLAG_VALID_DELID))
+		    {
+		      ww_adjusted += OR_MVCCID_SIZE;
+		      ww_big = heap_is_big_length (ww_adjusted);
+		    }
+		  if (ww_big
+		      || (!spage_is_updatable (thread_p, context->forward_page_watcher_p->pgptr,
+					       forward_oid.slotid, ww_adjusted)
+			  && !spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr,
+						  context->oid.slotid, ww_adjusted)))
+		    {
+		      bool ww_h_saved = context->home_page_watcher_p->page_was_unfixed;
+		      bool ww_f_saved = context->forward_page_watcher_p->page_was_unfixed;
+		      bool ww_danced;
+
+		      context->home_page_watcher_p->page_was_unfixed = false;
+		      context->forward_page_watcher_p->page_was_unfixed = false;
+		      rc = heap_fix_header_page (thread_p, context);
+		      if (rc != NO_ERROR)
+			{
+			  return rc;
+			}
+		      ww_danced = (context->home_page_watcher_p->page_was_unfixed
+				    || context->forward_page_watcher_p->page_was_unfixed);
+		      context->home_page_watcher_p->page_was_unfixed |= ww_h_saved;
+		      context->forward_page_watcher_p->page_was_unfixed |= ww_f_saved;
+		      if (ww_danced)
+			{
+			  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
+			  if (rc != NO_ERROR)
+			    {
+			      return rc;
+			    }
+			  if (context->ww_record_transformed)
+			    {
+			      return NO_ERROR;
+			    }
+			  continue;
+			}
+		    }
 		  /* clean or ours: stamp atomically under the latches we still hold */
 		  break;
 		}
@@ -21512,6 +21621,11 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       OID new_forward_oid;
       int adjusted_size;
       bool fits_in_home, fits_in_forward;
+      int ww_placed = 0;
+      PGBUF_WATCHER ww_nh_watcher;
+#if defined (SERVER_MODE)
+      bool ww_h_saved2, ww_f_saved2, ww_danced_rel;
+#endif /* SERVER_MODE */
       bool update_old_home = false;
       bool update_old_forward = false;
       bool remove_old_forward = false;
@@ -21661,6 +21775,17 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  assert (new_forward_recdes.length == adjusted_size);
 	}
 
+      PGBUF_INIT_WATCHER (&ww_nh_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+#if defined (SERVER_MODE)
+      /* Write-write dance re-verdict: watch the sticky page_was_unfixed flags through a private window
+       * around the placement dispatch, so a dance during an insertion below is told apart from unfixes of
+       * earlier phases. Restored (OR-ed) right after the dispatch. */
+      ww_h_saved2 = context->home_page_watcher_p->page_was_unfixed;
+      ww_f_saved2 = context->forward_page_watcher_p->page_was_unfixed;
+      context->home_page_watcher_p->page_was_unfixed = false;
+      context->forward_page_watcher_p->page_was_unfixed = false;
+#endif /* SERVER_MODE */
+
       /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
       if (is_adjusted_size_big)
 	{
@@ -21669,6 +21794,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      return ER_FAILED;
 	    }
+	  ww_placed = 1;
 
 	  /* home record descriptor will be an overflow OID and will be placed in original home page */
 	  heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
@@ -21710,13 +21836,14 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       else
 	{
 	  /* doesn't fit in either home or forward page */
-	  /* insert a new forward record */
+	  /* insert a new forward record; keep its page fixed so a dance can be compensated without a re-fix */
 	  new_forward_recdes.type = REC_NEWHOME;
-	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid, NULL);
+	  rc = heap_insert_newhome (thread_p, context, &new_forward_recdes, &new_forward_oid, &ww_nh_watcher);
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
 	    }
+	  ww_placed = 2;
 
 	  /* new home record will be a REC_RELOCATION and will be placed in the original home page */
 	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
@@ -21729,6 +21856,58 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
+
+#if defined (SERVER_MODE)
+      ww_danced_rel = (context->home_page_watcher_p->page_was_unfixed
+			|| context->forward_page_watcher_p->page_was_unfixed);
+      context->home_page_watcher_p->page_was_unfixed = (context->home_page_watcher_p->page_was_unfixed
+							|| ww_h_saved2);
+      context->forward_page_watcher_p->page_was_unfixed = (context->forward_page_watcher_p->page_was_unfixed
+							   || ww_f_saved2);
+      if (ww_danced_rel)
+	{
+	  /* Write-write dance re-verdict: a page was unfixed during the placement dispatch -- the seal
+	   * verdict is stale. Compensate whichever fresh record was inserted (ours only, never referenced
+	   * yet), re-derive the chain and go back to the verdict. */
+	  if (ww_placed == 1)
+	    {
+	      if (heap_ovf_delete (thread_p, &context->hfid, &new_forward_oid, NULL) == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (rc);
+		  return rc;
+		}
+	    }
+	  else if (ww_placed == 2)
+	    {
+	      assert (ww_nh_watcher.pgptr != NULL);
+	      heap_log_delete_physical (thread_p, ww_nh_watcher.pgptr, &context->hfid.vfid, &new_forward_oid,
+					&new_forward_recdes, heap_is_reusable_oid (context->file_type), NULL);
+	      rc = heap_delete_physical (thread_p, &context->hfid, ww_nh_watcher.pgptr, &new_forward_oid);
+	      pgbuf_ordered_unfix (thread_p, &ww_nh_watcher);
+	      if (rc != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return rc;
+		}
+	    }
+	  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
+	  if (rc != NO_ERROR)
+	    {
+	      /* includes the raced-vanish route (ER_HEAP_UNKNOWN_OBJECT -> 0 rows at the locator) */
+	      return rc;
+	    }
+	  if (context->ww_record_transformed)
+	    {
+	      /* the record left the relocated shape during the dance: heap_delete_logical re-dispatches */
+	      return NO_ERROR;
+	    }
+	  goto ww_reverdict;
+	}
+#endif /* SERVER_MODE */
+      if (ww_nh_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &ww_nh_watcher);
+	}
 
       /*
        * Update old home record (if necessary)
@@ -22270,8 +22449,17 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       int delid_offset, repid_and_flag_bits, mvcc_flags;
       char *build_recdes_data;
       bool use_optimization;
+      PGBUF_WATCHER ww_newhome_watcher;
+
+      PGBUF_INIT_WATCHER (&ww_newhome_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
 #if defined (SERVER_MODE)
+      /* Write-write dance re-verdict: the verdict below and the physical write at the end must not be
+       * separated by a page dance -- when the built record leaves the home page, the insertion may unfix the
+       * home page (pgbuf ordered fix) and a concurrent lockless writer can stamp or transform the record in
+       * that window. On a detected dance the fresh insertion is compensated and control returns here for a
+       * new verdict + rebuild on the re-read record. */
+    ww_reverdict:
       /* Authoritative write-write re-check under the held home-page latch (see the helper). */
       error_code = heap_home_recheck_write_write (thread_p, context);
       if (error_code != NO_ERROR)
@@ -22407,6 +22595,15 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	   * Relocation necessary
 	   */
 	  LOG_DATA_ADDR rec_address;
+#if defined (SERVER_MODE)
+	  bool ww_flag_saved, ww_danced;
+
+	  /* Write-write dance re-verdict: watch the sticky page_was_unfixed flag through a private
+	   * window around the insertion, so a dance during THIS insertion is told apart from unfixes of
+	   * earlier phases. The flag is restored (OR-ed) for the downstream re-get logic. */
+	  ww_flag_saved = context->home_page_watcher_p->page_was_unfixed;
+	  context->home_page_watcher_p->page_was_unfixed = false;
+#endif /* SERVER_MODE */
 
 	  /* insertion of built record */
 	  if (built_recdes.type == REC_BIGONE)
@@ -22418,24 +22615,73 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  ASSERT_ERROR_AND_SET (error_code);
 		  return error_code;
 		}
-
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_BIG_DELETES);
 	    }
 	  else
 	    {
 	      /* new record is relocated - REC_NEWHOME case */
 	      forwarding_recdes.type = REC_RELOCATION;
 
-	      /* insert NEWHOME record */
-	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid, NULL);
+	      /* insert NEWHOME record; keep its page fixed so a dance can be compensated without a re-fix */
+	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid,
+						&ww_newhome_watcher);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
 		  return error_code;
 		}
-
-	      perfmon_inc_stat (thread_p, PSTAT_HEAP_HOME_TO_REL_DELETES);
 	    }
+
+#if defined (SERVER_MODE)
+	  ww_danced = context->home_page_watcher_p->page_was_unfixed;
+	  context->home_page_watcher_p->page_was_unfixed = (ww_danced || ww_flag_saved);
+	  if (ww_danced)
+	    {
+	      /* The home page was unfixed during the insertion: the verdict is stale. Compensate the fresh
+	       * record (ours only, never referenced yet) and re-run the seal on the re-read record. */
+	      if (built_recdes.type == REC_BIGONE)
+		{
+		  if (heap_ovf_delete (thread_p, &context->hfid, &forward_oid, NULL) == NULL)
+		    {
+		      ASSERT_ERROR_AND_SET (error_code);
+		      return error_code;
+		    }
+		}
+	      else
+		{
+		  assert (ww_newhome_watcher.pgptr != NULL);
+		  heap_log_delete_physical (thread_p, ww_newhome_watcher.pgptr, &context->hfid.vfid,
+					    &forward_oid, &built_recdes,
+					    heap_is_reusable_oid (context->file_type), NULL);
+		  error_code = heap_delete_physical (thread_p, &context->hfid, ww_newhome_watcher.pgptr,
+						     &forward_oid);
+		  pgbuf_ordered_unfix (thread_p, &ww_newhome_watcher);
+		  if (error_code != NO_ERROR)
+		    {
+		      ASSERT_ERROR ();
+		      return error_code;
+		    }
+		}
+	      error_code = heap_home_reread (thread_p, context);
+	      if (error_code != NO_ERROR)
+		{
+		  /* includes the raced-vanish route (ER_HEAP_UNKNOWN_OBJECT -> 0 rows at the locator) */
+		  return error_code;
+		}
+	      if (context->ww_record_transformed)
+		{
+		  /* the record left the home shape during the dance: heap_delete_logical re-dispatches */
+		  return NO_ERROR;
+		}
+	      goto ww_reverdict;
+	    }
+#endif /* SERVER_MODE */
+
+	  if (ww_newhome_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &ww_newhome_watcher);
+	    }
+	  perfmon_inc_stat (thread_p, built_recdes.type == REC_BIGONE ? PSTAT_HEAP_HOME_TO_BIG_DELETES
+			    : PSTAT_HEAP_HOME_TO_REL_DELETES);
 
 	  /* build forwarding rebuild_record */
 	  heap_build_forwarding_recdes (&forwarding_recdes, forwarding_recdes.type, &forward_oid);
