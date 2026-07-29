@@ -42,6 +42,9 @@
 #include "object_accessor.h"
 #include "authenticate.h"
 #include "query_planner.h"
+#include "string_regex.hpp"
+#include "language_support.h"
+#include "error_manager.h"
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
@@ -1523,6 +1526,168 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   else
     {
       total_non_mcv_sel = pattern_sel;
+    }
+
+  /* don't believe extremely small or large estimates for the histogram part. */
+  if (total_non_mcv_sel < 0.0001)
+    {
+      total_non_mcv_sel = 0.0001;
+    }
+  else if (total_non_mcv_sel > 0.9999)
+    {
+      total_non_mcv_sel = 0.9999;
+    }
+
+  /* total = Σ matching-MCV freq + (non-null non-MCV mass) * non-MCV match fraction. */
+  double nonmcv_mass = 1.0 - nullfrac - mcvsum;
+  if (nonmcv_mass < 0.0)
+    {
+      nonmcv_mass = 0.0;
+    }
+
+  *selectivity = matched_mcv_freq + nonmcv_mass * total_non_mcv_sel;
+
+  /* return a non-null-conditional selectivity; the caller multiplies by (1 - nullfrac).
+   * (see histogram_get_equal_selectivity for the rationale) */
+  const double nonnull_frac = 1.0 - nullfrac;
+  if (nonnull_frac > 1e-9)
+    {
+      *selectivity /= nonnull_frac;
+    }
+
+  *selectivity = std::max (1.0 / total_rows, *selectivity);
+
+  *success = true;
+  return;
+}
+
+static bool
+rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value)
+{
+  int res = V_FALSE;
+
+  /* value is a string_view into the histogram blob: NOT NUL-terminated, so copy by length */
+  if (cubregex::search (res, reg, std::string (value)) != NO_ERROR)
+    {
+      return false;
+    }
+
+  return res == V_TRUE;
+}
+
+void
+histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case_sensitive,
+				 double fallback_sel, double *selectivity, bool *success)
+{
+  assert (selectivity != NULL);
+
+  *success = false;
+
+  if (rhs_db_value == NULL || DB_IS_NULL (rhs_db_value))
+    {
+      return;
+    }
+
+  hist::HistogramReader histogram_reader;
+  if (!histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return;
+    }
+
+  const double total_rows = histogram_reader.total_rows ();
+  if (total_rows <= 0.0)
+    {
+      *success = true;
+      *selectivity = 0.0;
+      return;
+    }
+
+  if (DB_VALUE_TYPE (rhs_db_value) != DB_TYPE_STRING
+      && DB_VALUE_TYPE (rhs_db_value) != DB_TYPE_CHAR)
+    {
+      return;
+    }
+
+  if (histogram_key_kind_for_type (histogram_reader.value_type ()) != hist::histogram_key_kind::str)
+    {
+      /* the probes below decode the value slots as strings; a non-string blob (stale after
+       * ALTER) would yield out-of-range string reads */
+      return;
+    }
+
+  const char *pattern_p = db_get_string (rhs_db_value);
+  const int pattern_size = db_get_string_size (rhs_db_value);
+  if (pattern_p == NULL || pattern_size <= 0)
+    {
+      return;
+    }
+  const std::string pattern (pattern_p, pattern_size);
+
+  LANG_COLLATION *collation = lang_get_collation (db_get_string_collation (rhs_db_value));
+  if (collation == NULL)
+    {
+      return;
+    }
+
+  /* An invalid pattern must keep raising its error at execution time, not at planning time:
+   * shield the global error state and fall back to the caller's guess on compile failure. */
+  cubregex::compiled_regex *compiled = NULL;
+  er_stack_push ();
+  const int comp_err = cubregex::compile (compiled, pattern, case_sensitive ? "c" : "i", collation);
+  er_stack_pop ();
+  if (comp_err != NO_ERROR || compiled == NULL)
+    {
+      delete compiled;
+      return;
+    }
+
+  /* MCVs: exact regex test against each MCV value, weighted by its population frequency. */
+  double matched_mcv_freq = 0.0;
+  const double mcvsum = histogram_reader.mcv_total_frequency ();
+  const double nullfrac = histogram_reader.null_frequency ();
+
+  for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
+    {
+      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i)))
+	{
+	  matched_mcv_freq += histogram_reader.mcv_freq (i);
+	}
+    }
+
+  /* Non-MCV buckets: fraction of bucket boundary values matching the regex, treating the
+   * boundaries as a sample of the column population. */
+  double matched_non_mcv_buckets = 0.0;
+  double non_mcv_buckets = 0.0;
+
+  for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
+    {
+      non_mcv_buckets += 1.0;
+      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i)))
+	{
+	  matched_non_mcv_buckets += 1.0;
+	}
+    }
+
+  delete compiled;
+
+  /* Unlike LIKE there is no per-character heuristic for a regex, so the caller's fallback
+   * guess takes that role: trust the boundary-match fraction fully once the histogram is
+   * large enough (>=100 entries); blend for 10..99 entries; below 10 keep the fallback. */
+  double total_non_mcv_sel;
+  const int hist_size = static_cast<int> (non_mcv_buckets);
+  if (hist_size >= 100)
+    {
+      total_non_mcv_sel = matched_non_mcv_buckets / non_mcv_buckets;
+    }
+  else if (hist_size >= 10)
+    {
+      const double matched_buckets_sel = matched_non_mcv_buckets / non_mcv_buckets;
+      const double w = static_cast<double> (hist_size) / 100.0;
+      total_non_mcv_sel = matched_buckets_sel * w + fallback_sel * (1.0 - w);
+    }
+  else
+    {
+      total_non_mcv_sel = fallback_sel;
     }
 
   /* don't believe extremely small or large estimates for the histogram part. */
