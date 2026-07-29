@@ -4040,6 +4040,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    }
 	}
       regu_var->value.attr_descr.cache_dbvalp = *peek_dbval;	/* cache */
+      regu_var->value.attr_descr.cache_slot = NULL;	/* eager fetch: no deferred slot for this regu */
       break;
 
     case TYPE_OID:		/* fetch object identifier value */
@@ -4941,6 +4942,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
     {
       regu_var = &regu_p->value;
       regu_var->value.attr_descr.cache_dbvalp = NULL;
+      regu_var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
     }
 }
 

@@ -1514,6 +1514,7 @@ qexec_clear_regu_var (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, REGU_VARIABLE
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
       regu_var->value.attr_descr.cache_dbvalp = NULL;
+      regu_var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
       break;
     case TYPE_CONSTANT:
 #if 0				/* TODO - */
@@ -8782,6 +8783,7 @@ qexec_reset_regu_variable (REGU_VARIABLE * var)
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
       var->value.attr_descr.cache_dbvalp = NULL;
+      var->value.attr_descr.cache_slot = NULL;	/* keep lazy slot in lock-step with cache_dbvalp */
       break;
     case TYPE_INARITH:
     case TYPE_OUTARITH:

@@ -465,6 +465,8 @@ namespace cubxasl
     /* TODO: unsupported */
     assert_release_error (src->cache_dbvalp == nullptr);
     dest->cache_dbvalp = nullptr;
+    assert_release_error (src->cache_slot == nullptr);
+    dest->cache_slot = nullptr;
 
     return er_errid ();
   }
