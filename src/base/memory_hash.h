@@ -130,19 +130,28 @@ extern int mht_dump (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_TABLE * h
  * It has the following features.
  * 1. lru, act is not used. (remove variable related to lru, act)
  * 2. key comparison is performed in executor. (remove key of hash entry)
- * 3. put data orderly. (add tail pointer for it)
- * 4. Since hash size is fixed, rehashing the hash table is not necessary.
+ * 3. Since hash size is fixed, rehashing the hash table is not necessary.
+ * 4. Open addressing (linear probing) gives each distinct hash one slot;
+ *    same-hash rows chain through their entries (MHT_HLS_ENTRY), so duplicates take no extra slots.
  */
 
-/* Hash Table Entry for HASH LIST SCAN - linked list, keyless hash entry */
-typedef struct hentry_hls HENTRY_HLS;
-typedef struct hentry_hls *HENTRY_HLS_PTR;
-struct hentry_hls
+/* An entry precedes its payload; same-hash entries form a chain. */
+typedef struct mht_hls_entry MHT_HLS_ENTRY;
+struct mht_hls_entry
 {
-  HENTRY_HLS_PTR tail;		/* tail node on hash table entry */
-  HENTRY_HLS_PTR next;		/* Next hash table entry for colisions */
-  void *data;			/* Data associated with key entry */
-  unsigned int key;		/* hash key */
+  MHT_HLS_ENTRY *next;		/* next entry in the same-hash chain */
+  /* the payload (tuple copy / tuple position) is stored right after this entry */
+};
+
+/* The payload of an entry; the result is not an entry anymore, hence void. */
+#define MHT_HLS_ENTRY_PAYLOAD(e) ((void *) ((e) + 1))
+
+/* Open-addressing slot for HASH LIST SCAN. entry == NULL means an empty slot. */
+typedef struct mht_hls_slot MHT_HLS_SLOT;
+struct mht_hls_slot
+{
+  MHT_HLS_ENTRY *entry;		/* head of the same-hash entry chain; NULL means empty slot */
+  unsigned int hash;		/* full 32-bit hash key */
 };
 
 /* Memory Hash Table for HASH LIST SCAN*/
@@ -152,30 +161,27 @@ struct mht_hls_table
   unsigned int (*hash_func) (const void *key, unsigned int htsize);
   int (*cmp_func) (const void *key1, const void *key2);
   const char *name;
-  HENTRY_HLS_PTR *table;	/* The hash table (entries) */
-  HENTRY_HLS_PTR prealloc_entries;	/* Free entries allocated for locality reasons */
-  unsigned int size;		/* Better if prime number */
+  MHT_HLS_SLOT *table;		/* The hash table (open-addressing slots) */
+  unsigned int size;		/* power of two */
   unsigned int nentries;	/* Actual number of entries */
-  unsigned int nprealloc_entries;	/* Number of preallocated entries for future insertions */
   unsigned int ncollisions;	/* Number of collisions in HT */
-  HL_HEAPID heap_id;		/* Id of heap allocator */
+  HL_HEAPID heap_id;		/* obstack (arena) for the entry payloads (tuple copy / position) */
   bool build_lru_list;		/* true if LRU list must be built */
 };
 
-extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, void *data);
-extern void *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
-extern void *mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, void **last);
+extern const void *mht_put_hls (MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY * entry);
+extern MHT_HLS_ENTRY *mht_get_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last);
+extern MHT_HLS_ENTRY *mht_get_next_hls (const MHT_HLS_TABLE * ht, const void *key, MHT_HLS_ENTRY ** last);
 extern MHT_HLS_TABLE *mht_create_hls (const char *name, int est_size,
 				      unsigned int (*hash_func) (const void *key, unsigned int ht_size),
 				      int (*cmp_func) (const void *key1, const void *key2));
-extern int mht_clear_hls (MHT_HLS_TABLE * ht, int (*rem_func) (const void *key, void *data, void *args),
-			  void *func_args);
 extern void mht_destroy_hls (MHT_HLS_TABLE * ht);
 extern int mht_dump_hls (THREAD_ENTRY * thread_p, FILE * out_fp, const MHT_HLS_TABLE * ht, const int print_id_opt,
 			 int (*print_func) (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 					    void *args), const void *type_list, void *func_args);
 extern unsigned int mht_calculate_htsize (unsigned int ht_size);
 extern unsigned int mht_calculate_htsize_for_pow2 (unsigned int ht_size);
+extern unsigned int mht_hls_slot_count (int est_size);
 /* for HASH LIST SCAN (end) */
 
 #endif /* _MEMORY_HASH_H_ */

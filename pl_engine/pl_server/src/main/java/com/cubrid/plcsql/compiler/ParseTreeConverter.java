@@ -1490,22 +1490,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitPragma_decl(Pragma_declContext ctx) {
-        assert ctx.AUTONOMOUS_TRANSACTION() != null; // by syntax
-
-        // currently, only the Autonomous Transaction is
-        // allowed only in the top-level declarations
-        if (symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s013
-                    "AUTONOMOUS_TRANSACTION can only be declared at the top level");
-        }
-
-        throw new SemanticError(
-                Misc.getLineColumnOf(ctx), "AUTONOMOUS_TRANSACTION is not supported yet");
-    }
-
-    @Override
     public AstNode visitConstant_decl(Constant_declContext ctx) {
 
         if (ctx.COMMENT() != null) {

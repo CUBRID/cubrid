@@ -6266,6 +6266,21 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
 
   *is_latch_wait = false;
   holder = pgbuf_find_thrd_holder (thread_p, bufptr);
+#if defined (SERVER_MODE)
+  /* fail-closed safety net: an idle bcb (PGBUF_NO_LATCH) with an EMPTY wait queue must never carry
+   * waiter_exists == true; the idle-grant CAS below force-expects waiter_exists == false and the idle path never
+   * blocks, so a stale bit would spin this thread forever while it holds the bcb mutex. all waiter_exists
+   * transitions are bcb-mutex-protected and we hold the mutex here, so the check is race-free. heal and flag. */
+  PGBUF_ATOMIC_LATCH_IMPL impl_snapshot = get_impl (&bufptr->atomic_latch);
+  if (impl_snapshot.impl.latch_mode == PGBUF_NO_LATCH && impl_snapshot.impl.waiter_exists
+      && bufptr->next_wait_thrd == NULL)
+    {
+      assert (false);		/* diag builds: catch any future leak at its first victim */
+      er_log_debug (ARG_FILE_LINE, "pgbuf_latch_bcb_upon_fix: healed stranded waiter_exists on idle bcb %d|%d\n",
+		    VPID_AS_ARGS (&bufptr->vpid));
+      set_waiter_exists (&bufptr->atomic_latch, false);
+    }
+#endif /* SERVER_MODE */
 // *INDENT-OFF*
   do
     {
@@ -7057,6 +7072,12 @@ pgbuf_block_bcb (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LATCH_MODE r
 		    }
 
 		  thrd_entry->next_wait_thrd = NULL;
+		  /* self-removed from the wait queue on interrupt: reconcile waiter_exists (see
+		   * pgbuf_wake_flush_waiters). */
+		  if (!pgbuf_is_exist_blocked_reader_writer (bufptr))
+		    {
+		      set_waiter_exists (&bufptr->atomic_latch, false);
+		    }
 		  PGBUF_BCB_UNLOCK (bufptr);
 		  return ER_FAILED;
 		}
@@ -10920,6 +10941,16 @@ pgbuf_wake_flush_waiters (THREAD_ENTRY * thread_p, PGBUF_BCB * bcb)
 	  prev_waiter = crt_waiter;
 	}
     }
+  /* every PGBUF_LATCH_FLUSH waiter was dequeued above. reconcile the atomic-latch waiter_exists bit exactly as
+   * pgbuf_wakeup_reader_writer does on the unlatch path: if no blocked reader/writer remains queued, clear it.
+   * leaving it set on a bcb that is (or goes) idle poisons pgbuf_latch_bcb_upon_fix's idle-grant CAS, which
+   * force-expects waiter_exists == false and never enqueues when latch_mode == PGBUF_NO_LATCH -- the next fix
+   * then spins forever while holding the bcb mutex (bulk-build CREATE INDEX livelock). caller holds the bcb
+   * mutex at all callsites, and all waiter_exists transitions are bcb-mutex-protected, so this is race-free. */
+  if (!pgbuf_is_exist_blocked_reader_writer (bcb))
+    {
+      set_waiter_exists (&bcb->atomic_latch, false);
+    }
 
   PERF_UTIME_TRACKER_TIME (thread_p, &timetr, PSTAT_PB_WAKE_FLUSH_WAITER);
 #endif /* SERVER_MODE */
@@ -12332,7 +12363,7 @@ pgbuf_ordered_fix_release (THREAD_ENTRY * thread_p, const VPID * req_vpid, PAGE_
 	   * cannot be fixed */
 	  if (er_status == NO_ERROR)
 	    {
-	      /* LK_FORCE_ZERO_WAIT is used in some page scan functions (e.g. heap_stats_find_page_in_bestspace) to
+	      /* LK_FORCE_ZERO_WAIT is used in some page scan functions (e.g. heap_find_bestpage) to
 	       * skip busy pages; here we return an error code (which means the page was not fixed), however no error
 	       * is set : this allows scan of pages to continue */
 	      assert (wait_msecs == LK_FORCE_ZERO_WAIT);
@@ -12954,6 +12985,335 @@ exit:
 	  if (!pgbuf_bcb_should_avoid_deallocation (bufptr))
 	    {
 	      /* oops... deallocate not prevented */
+	      assert (false);
+	    }
+	  else
+	    {
+	      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+	    }
+	  PGBUF_BCB_UNLOCK (bufptr);
+	}
+    }
+
+  return er_status;
+}
+
+/*
+ * pgbuf_ordered_callback () - Temporarily unfix all ordered pages while executing a callback.
+ *   return: error code
+ *   thread_p (in): thread entry
+ *   callback_func (in): callback executed without any fixed pages
+ *   callback_args (in): callback arguments
+ *
+ * Note: All pages fixed by the current thread must be ordered pages and every fix must have a watcher. The callback
+ *       must not leave any page fixed. Previously fixed pages are re-fixed in page order even when the callback
+ *       returns an error. If re-fixing fails, some watchers may remain without a fixed page and callers must check
+ *       watcher page pointers before using them.
+ */
+#if !defined(NDEBUG)
+int
+pgbuf_ordered_callback_debug (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func,
+			      void *callback_args, const char *caller_file, int caller_line, const char *caller_func)
+#else /* NDEBUG */
+int
+pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_FUNC callback_func, void *callback_args)
+#endif				/* NDEBUG */
+{
+  PGBUF_HOLDER_INFO ordered_holders_info[PGBUF_MAX_PAGE_FIXED_BY_TRAN];
+  PGBUF_HOLDER_INFO *holder_info;
+  PGBUF_BUFFER_HASH *hash_anchor;
+  PGBUF_HOLDER *holder;
+  PGBUF_WATCHER *watcher;
+  PGBUF_BCB *bufptr;
+  PAGE_PTR pgptr;
+  PAGE_PTR refixed_pgptr;
+  PGBUF_ORDERED_GROUP group_id;
+  PGBUF_ORDERED_RANK rank;
+  int callback_status = NO_ERROR;
+  int er_status = NO_ERROR;
+  int previous_er_status;
+  int saved_pages_cnt = 0;
+  int holder_fix_cnt;
+  int fixed_count;
+  int thrd_idx;
+  int i, j;
+
+  assert (thread_p != NULL);
+  assert (callback_func != NULL);
+
+  if (!thread_p || !callback_func)
+    {
+      return ER_FAILED_ASSERTION;
+    }
+
+  thrd_idx = thread_get_entry_index (thread_p);
+
+  /* validate and save all holders before unfixing anything. */
+  for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+    {
+      if (saved_pages_cnt >= PGBUF_MAX_PAGE_FIXED_BY_TRAN)
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      if (holder->watch_count <= 0 || holder->fix_count != holder->watch_count
+	  || holder->watch_count > PGBUF_MAX_PAGE_WATCHERS)
+	{
+	  /* raw fix cannot be restored because there is no watcher whose page pointer can be updated. */
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      holder_info = &ordered_holders_info[saved_pages_cnt];
+      holder_info->watch_count = 0;
+      holder_info->latch_mode = PGBUF_LATCH_READ;
+      holder_info->ptype = (PAGE_TYPE) holder->bufptr->iopage_buffer->iopage.prv.ptype;
+      holder_info->prevent_dealloc = false;
+      VPID_COPY (&holder_info->vpid, &holder->bufptr->vpid);
+      VPID_SET_NULL (&group_id);
+      rank = PGBUF_ORDERED_RANK_UNDEFINED;
+
+      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+      for (watcher = holder->first_watcher, j = 0; watcher != NULL; watcher = watcher->next, j++)
+	{
+	  if (j >= PGBUF_MAX_PAGE_WATCHERS)
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+#if !defined(NDEBUG)
+	  assert (watcher->magic == PGBUF_WATCHER_MAGIC_NUMBER);
+#endif
+
+	  if (watcher->pgptr != pgptr || watcher->curr_rank >= PGBUF_ORDERED_RANK_UNDEFINED
+	      || (watcher->latch_mode != PGBUF_LATCH_READ && watcher->latch_mode != PGBUF_LATCH_WRITE))
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+	  if (j == 0)
+	    {
+	      VPID_COPY (&group_id, &watcher->group_id);
+	      rank = (PGBUF_ORDERED_RANK) watcher->curr_rank;
+	    }
+	  else if (!VPID_EQ (&group_id, &watcher->group_id) || rank != watcher->curr_rank)
+	    {
+	      assert_release (false);
+	      er_status = ER_FAILED_ASSERTION;
+	      goto exit;
+	    }
+
+	  holder_info->watcher[j] = watcher;
+	  if (watcher->latch_mode == PGBUF_LATCH_WRITE)
+	    {
+	      holder_info->latch_mode = PGBUF_LATCH_WRITE;
+	    }
+	}
+
+      if (j != holder->watch_count)
+	{
+	  assert_release (false);
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      holder_info->watch_count = j;
+      VPID_COPY (&holder_info->group_id, &group_id);
+      holder_info->rank = rank;
+      saved_pages_cnt++;
+    }
+
+  if (saved_pages_cnt > 1)
+    {
+      qsort (ordered_holders_info, saved_pages_cnt, sizeof (ordered_holders_info[0]), pgbuf_compare_hold_vpid_for_sort);
+    }
+
+  /* unfix all saved pages. deallocation is prevented until each page is restored. */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      holder_info = &ordered_holders_info[i];
+      for (holder = pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list; holder != NULL; holder = holder->thrd_link)
+	{
+	  if (VPID_EQ (&holder_info->vpid, &holder->bufptr->vpid))
+	    {
+	      break;
+	    }
+	}
+
+      assert (holder != NULL);
+      assert (holder->fix_count == holder_info->watch_count);
+      assert (holder->watch_count == holder_info->watch_count);
+
+      holder_fix_cnt = holder->fix_count;
+      holder->watch_count = 0;
+      holder->first_watcher = NULL;
+      holder->last_watcher = NULL;
+
+      CAST_BFPTR_TO_PGPTR (pgptr, holder->bufptr);
+      /* this must be called */
+      pgbuf_bcb_register_avoid_deallocation (holder->bufptr);
+      holder_info->prevent_dealloc = true;
+
+      while (holder_fix_cnt-- > 0)
+	{
+#if !defined(NDEBUG)
+	  pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	  pgbuf_unfix (thread_p, pgptr);
+#endif
+	}
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+	  watcher = holder_info->watcher[j];
+	  assert (watcher->pgptr == pgptr);
+	  PGBUF_CLEAR_WATCHER (watcher);
+	  watcher->page_was_unfixed = true;
+#if !defined(NDEBUG)
+	  pgbuf_watcher_init_debug (watcher, caller_file, caller_line, true);
+#endif
+	}
+    }
+
+  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
+
+  callback_status = callback_func (thread_p, callback_args);
+
+  /* only callback functions that do not fix any pages are allowed. */
+  /* it must not leave a page fixed. */
+  assert (pgbuf_Pool.thrd_holder_info[thrd_idx].thrd_hold_list == NULL);
+
+  /* restore every page in the same global order used by ordered fix. */
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      holder_info = &ordered_holders_info[i];
+      pgptr = NULL;
+      fixed_count = 0;
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+#if !defined(NDEBUG)
+	  refixed_pgptr = pgbuf_fix_debug (thread_p, &holder_info->vpid, OLD_PAGE, holder_info->latch_mode,
+					   PGBUF_UNCONDITIONAL_LATCH, caller_file, caller_line, caller_func);
+#else
+	  refixed_pgptr = pgbuf_fix_release (thread_p, &holder_info->vpid, OLD_PAGE, holder_info->latch_mode,
+					     PGBUF_UNCONDITIONAL_LATCH);
+#endif
+	  if (refixed_pgptr == NULL)
+	    {
+	      break;
+	    }
+	  if (pgptr == NULL)
+	    {
+	      pgptr = refixed_pgptr;
+	    }
+	  else
+	    {
+	      assert (pgptr == refixed_pgptr);
+	    }
+	  fixed_count++;
+	}
+
+      if (fixed_count != holder_info->watch_count)
+	{
+	  previous_er_status = er_errid ();
+	  if (previous_er_status == NO_ERROR)
+	    {
+	      previous_er_status = ER_FAILED;
+	    }
+
+	  while (fixed_count-- > 0)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	      pgbuf_unfix (thread_p, pgptr);
+#endif
+	    }
+
+	  if (previous_er_status == ER_INTERRUPTED)
+	    {
+	      er_status = ER_INTERRUPTED;
+	    }
+	  else
+	    {
+	      er_status = ER_PB_ORDERED_REFIX_FAILED;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, er_status, 3, holder_info->vpid.volid,
+		      holder_info->vpid.pageid, previous_er_status);
+	    }
+	  goto exit;
+	}
+
+      holder = pgbuf_get_holder (thread_p, pgptr);
+      if (holder == NULL)
+	{
+	  assert_release (false);
+	  while (fixed_count-- > 0)
+	    {
+#if !defined(NDEBUG)
+	      pgbuf_unfix_debug (thread_p, pgptr, caller_file, caller_line, caller_func);
+#else
+	      pgbuf_unfix (thread_p, pgptr);
+#endif
+	    }
+	  er_status = ER_FAILED_ASSERTION;
+	  goto exit;
+	}
+
+      assert (holder_info->prevent_dealloc);
+      holder_info->prevent_dealloc = false;
+      CAST_PGPTR_TO_BFPTR (bufptr, pgptr);
+      pgbuf_bcb_unregister_avoid_deallocation (bufptr);
+
+#if !defined(NDEBUG)
+      (void) pgbuf_check_page_ptype (thread_p, pgptr, holder_info->ptype);
+#endif
+
+      for (j = 0; j < holder_info->watch_count; j++)
+	{
+#if !defined(NDEBUG)
+	  pgbuf_add_watch_instance_internal (holder, pgptr, holder_info->watcher[j],
+					     (PGBUF_LATCH_MODE) holder_info->watcher[j]->latch_mode, false,
+					     caller_file, caller_line);
+#else
+	  pgbuf_add_watch_instance_internal (holder, pgptr, holder_info->watcher[j],
+					     (PGBUF_LATCH_MODE) holder_info->watcher[j]->latch_mode, false);
+#endif
+	}
+    }
+
+  er_status = callback_status;
+
+exit:
+  for (i = 0; i < saved_pages_cnt; i++)
+    {
+      if (ordered_holders_info[i].prevent_dealloc)
+	{
+	  hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&ordered_holders_info[i].vpid)];
+	  bufptr = pgbuf_search_hash_chain (thread_p, hash_anchor, &ordered_holders_info[i].vpid);
+	  if (bufptr == NULL)
+	    {
+	      assert (false);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      continue;
+	    }
+
+	  if (!pgbuf_bcb_should_avoid_deallocation (bufptr))
+	    {
 	      assert (false);
 	    }
 	  else

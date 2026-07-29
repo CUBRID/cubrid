@@ -246,6 +246,7 @@ static int mq_copypush_sargable_terms_dblink (PARSER_CONTEXT * parser, PT_NODE *
 static int mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 					      PT_NODE * subquery, FIND_ID_INFO * infop);
 static bool mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di);
+static void mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec);
 static PT_NODE *mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * spec,
 						   PT_NODE * query_spec, bool remove_sel_list);
 static PT_NODE *mq_translate_select (PARSER_CONTEXT * parser, PT_NODE * select_statement);
@@ -4659,14 +4660,17 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
     {
       return MQ_DBLINK_CORR_SIDE_ERR;
     }
+
   if (expr->node_type == PT_HOST_VAR)
     {
       return MQ_DBLINK_CORR_SIDE_ERR;
     }
+
   if (pt_is_const (expr))
     {
       return MQ_DBLINK_CORR_SIDE_CONST;
     }
+
   if (expr->node_type == PT_NAME)
     {
       if (PT_IS_OID_NAME (expr))
@@ -4689,6 +4693,7 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
 	}
       return MQ_DBLINK_CORR_SIDE_LOCAL;
     }
+
   if (expr->node_type == PT_DOT_)
     {
       leaf = mq_dblink_corr_dot_to_leaf_name (expr);
@@ -4710,9 +4715,63 @@ mq_dblink_corr_classify_side (PT_NODE * expr, UINTPTR dblink_sid, PT_NODE * subq
 	  return MQ_DBLINK_CORR_SIDE_LOCAL;
 	}
     }
+
   return MQ_DBLINK_CORR_SIDE_OTHER;
 }
 
+/*
+ * mq_dblink_is_corr_eq () - single predicate for "is this term a pushable correlated
+ *   equality": a PT_EQ whose two sides classify as the inner DBLink column and an outer
+ *   reference.  Shared by the detection loop and the post-push flagging so the two can
+ *   never judge a term differently.  A term with or_next or an on_cond location is not a
+ *   candidate (detection additionally treats those as reasons to abandon the whole push —
+ *   that control-flow decision stays with the caller).
+ *   remote_out/outer_out (optional) receive the DBLink-side and outer-side expressions.
+ */
+static bool
+mq_dblink_is_corr_eq (PT_NODE * term, UINTPTR dblink_sid, PT_NODE * subquery_from, PT_NODE ** remote_out,
+		      PT_NODE ** outer_out)
+{
+  int c1, c2;
+
+  assert (term != NULL);
+
+  if (term->node_type != PT_EXPR || term->info.expr.op != PT_EQ || term->info.expr.location != 0
+      || term->or_next != NULL || term->info.expr.arg1 == NULL || term->info.expr.arg2 == NULL)
+    {
+      return false;
+    }
+
+  c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
+  c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
+
+  if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
+    {
+      if (remote_out != NULL)
+	{
+	  *remote_out = term->info.expr.arg1;
+	}
+      if (outer_out != NULL)
+	{
+	  *outer_out = term->info.expr.arg2;
+	}
+      return true;
+    }
+
+  if (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE)
+    {
+      if (remote_out != NULL)
+	{
+	  *remote_out = term->info.expr.arg2;
+	}
+      if (outer_out != NULL)
+	{
+	  *outer_out = term->info.expr.arg1;
+	}
+      return true;
+    }
+  return false;
+}
 
 /*
  * mq_dblink_corr_forbidden_pre () - forbid OR, NOT, host var, method, query block in predicate
@@ -4883,32 +4942,9 @@ mq_detect_dblink_corr_eq (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE *
 
       if (!forbidden)
 	{
-	  int c1 = MQ_DBLINK_CORR_SIDE_OTHER;
-	  int c2 = MQ_DBLINK_CORR_SIDE_OTHER;
-	  bool is_corr_eq = false;
-
-	  if (term->node_type == PT_EXPR && term->info.expr.op == PT_EQ
-	      && term->info.expr.arg1 != NULL && term->info.expr.arg2 != NULL)
-	    {
-	      c1 = mq_dblink_corr_classify_side (term->info.expr.arg1, dblink_sid, subquery_from);
-	      c2 = mq_dblink_corr_classify_side (term->info.expr.arg2, dblink_sid, subquery_from);
-	      is_corr_eq = ((c1 == MQ_DBLINK_CORR_SIDE_REMOTE && c2 == MQ_DBLINK_CORR_SIDE_OUTER)
-			    || (c1 == MQ_DBLINK_CORR_SIDE_OUTER && c2 == MQ_DBLINK_CORR_SIDE_REMOTE));
-	    }
-
-	  if (is_corr_eq)
+	  if (mq_dblink_is_corr_eq (term, dblink_sid, subquery_from, remote_out, outer_out))
 	    {
 	      corr_eq_count++;
-	      if (c1 == MQ_DBLINK_CORR_SIDE_REMOTE)
-		{
-		  *remote_out = term->info.expr.arg1;
-		  *outer_out = term->info.expr.arg2;
-		}
-	      else
-		{
-		  *remote_out = term->info.expr.arg2;
-		  *outer_out = term->info.expr.arg1;
-		}
 	    }
 	  else if (mq_dblink_corr_term_has_outer_ref (parser, term, subquery_from))
 	    {
@@ -5101,6 +5137,35 @@ mq_dblink_append_corr_pred_sql (PARSER_CONTEXT * parser, PT_DBLINK_INFO * di)
 }
 
 /*
+ * mq_dblink_mark_pushed_corr_eq () - flag the correlated equality term(s) already shipped
+ *   into conn_sql ("WHERE col = ?") in the enclosing SELECT's WHERE list.  The remote server
+ *   filters the rows, so the term never runs locally: XASL generation excludes flagged terms
+ *   from access_pred and the plan-dump printers hide them.  The term itself must STAY in the
+ *   tree — the planner re-derives correlation by scanning the tree for outer references
+ *   (get_local_subqueries), so a subquery whose only outer reference is unlinked is reset to
+ *   uncorrelated, executes only once, and returns the first row's value for every outer row.
+ *   Flags only the terms
+ *   mq_dblink_is_corr_eq() accepts — the same predicate mq_detect_dblink_corr_eq() used to
+ *   select the push — so constant filters, inner-only equalities, and or_next/on_cond terms
+ *   are left untouched.
+ */
+static void
+mq_dblink_mark_pushed_corr_eq (PT_NODE * statement, PT_NODE * spec)
+{
+  PT_NODE *term;
+  PT_NODE *from = statement->info.query.q.select.from;
+  UINTPTR dblink_sid = spec->info.spec.id;
+
+  for (term = statement->info.query.q.select.where; term != NULL; term = term->next)
+    {
+      if (mq_dblink_is_corr_eq (term, dblink_sid, from, NULL, NULL))
+	{
+	  PT_EXPR_INFO_SET_FLAG (term, PT_EXPR_INFO_DBLINK_PUSHED);
+	}
+    }
+}
+
+/*
  * mq_copypush_sargable_terms_helper() -
  *   return:
  *   parser(in):
@@ -5273,6 +5338,16 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
 	{
 	  mq_dblink_clear_corr_keys (parser, &subquery->info.dblink_table);
 	}
+    }
+
+  /* Corr push-down finalized on either path (mixed via pt_copypush_terms, pure-corr above):
+   * the corr equality now runs on the remote side only.  Flag it so access_pred generation
+   * and the plan-dump printers can exclude it.  When the push failed (corr_sql_built ==
+   * false), the term is left unflagged for the local-evaluation fallback. */
+  if (spec->info.spec.derived_table_type == PT_DERIVED_DBLINK_TABLE && subquery != NULL
+      && subquery->node_type == PT_DBLINK_TABLE && subquery->info.dblink_table.corr_sql_built)
+    {
+      mq_dblink_mark_pushed_corr_eq (statement, spec);
     }
 
   return push_cnt;
@@ -7181,26 +7256,29 @@ mq_rewrite_dblink_as_subquery (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 		{
 		  const char *corr_col = mq_dblink_extract_col_name (parser, remote_expr);
 
-		  /* Remote column's physical codeset, from the CCI column metadata.  This is
-		   * authoritative and unaffected by how the attr_def later declares the
-		   * column's codeset (e.g. redeclared with the local codeset for union/compat).
-		   * Fall back to the declared codeset, then to -1 (non-character / no type). */
-		  int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
-		  if (remote_cs < 0)
-		    {
-		      remote_cs = (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
-		    }
-
 		  /* Cross-codeset guard: a character key whose remote physical codeset differs
 		   * from the local outer codeset must not be pushed.  The outer value is bound as
 		   * a host variable in the local codeset, so a remote comparison against a
 		   * different-codeset column does a wrong raw-byte comparison and silently drops
 		   * rows.  Local evaluation is correct instead: the dblink fetch transcodes the
 		   * remote value into the local codeset, so the IN/EXISTS/JOIN comparison runs on
-		   * matching codesets. */
-		  int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
-		  bool cross_codeset = (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum)
-					&& remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		   * matching codesets.  Only a character key needs the codeset lookup below. */
+		  bool cross_codeset = false;
+		  if (PT_IS_CHAR_STRING_TYPE (outer_expr->type_enum))
+		    {
+		      /* Remote column's physical codeset, from the CCI column metadata.  This is
+		       * authoritative and unaffected by how the attr_def later declares the
+		       * column's codeset (e.g. redeclared with the local codeset for union/compat).
+		       * Fall back to the declared codeset, then to -1 (non-character / no type). */
+		      int remote_cs = pt_dblink_get_remote_col_charset (dinfo->remote_col_list, corr_col);
+		      if (remote_cs < 0)
+			{
+			  remote_cs =
+			    (remote_expr->data_type != NULL) ? remote_expr->data_type->info.data_type.units : -1;
+			}
+		      int outer_cs = (outer_expr->data_type != NULL) ? outer_expr->data_type->info.data_type.units : -1;
+		      cross_codeset = (remote_cs >= 0 && outer_cs >= 0 && remote_cs != outer_cs);
+		    }
 
 		  if (corr_col != NULL && !cross_codeset)
 		    {

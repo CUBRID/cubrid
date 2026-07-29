@@ -117,6 +117,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
     // UnitSp
     //
+
     private static final String strGetConn =
             "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 

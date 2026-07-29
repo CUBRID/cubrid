@@ -63,6 +63,7 @@ extern "C"
   } VIEW_HANDLING;
 
   extern void csql_yyset_lineno (int line_number);
+  extern int csql_yyget_lineno (void);
   extern size_t json_table_column_count;
 
   extern PT_NODE **parser_main (PARSER_CONTEXT * p);
@@ -412,6 +413,8 @@ extern "C"
   extern PT_NODE *pt_make_prim_data_type (PARSER_CONTEXT * parser, PT_TYPE_ENUM e);
 
   extern int pt_find_attribute (PARSER_CONTEXT * parser, const PT_NODE * name, const PT_NODE * attributes);
+  extern int pt_find_attribute_with_func_index_expr (PARSER_CONTEXT * parser, const PT_NODE * name,
+						     const PT_NODE * attributes, bool check_func_index_exprs);
 
   extern PT_NODE *pt_make_string_value (PARSER_CONTEXT * parser, const char *value_string);
 
