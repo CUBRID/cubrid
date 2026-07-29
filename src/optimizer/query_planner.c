@@ -103,6 +103,11 @@
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
 
+/* Cost tie detection for the plan comparison steps: exact floating-point equality
+ * virtually never fires after any nontrivial cost arithmetic, so ties fell through
+ * to an ordering decided by the argument order instead of the tie-break rules. */
+#define QO_COST_EQ(x, y) (fabs ((x) - (y)) <= 1e-6 * MAX (1.0, MAX (fabs (x), fabs (y))))
+
 #define	qo_scan_walk	qo_generic_walk
 #define	qo_worst_walk	qo_generic_walk
 
@@ -4805,7 +4810,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	return PLAN_COMP_GT;
       }
 
-    if (af == bf && aa == ba)
+    if (QO_COST_EQ (af, bf) && QO_COST_EQ (aa, ba))
       {
 	if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi && qo_is_index_covering_scan (a)
 	    && qo_is_index_covering_scan (b))
@@ -4876,11 +4881,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
 cost_cmp:
 
-  if (a == b || (af == bf && aa == ba))
+  /* Compare by TOTAL cost with an epsilon tie: the old test demanded exact equality of both
+   * the fixed and variable components, so two plans with the same total but a different
+   * fixed/variable split satisfied "af + aa <= bf + ba" from BOTH argument orders -- the
+   * comparison was asymmetric and the winner depended on which plan was visited first. */
+  if (a == b || QO_COST_EQ (af + aa, bf + ba))
     {
       return PLAN_COMP_EQ;
     }
-  if (af + aa <= bf + ba)
+  if (af + aa < bf + ba)
     {
       QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
