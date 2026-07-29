@@ -5235,8 +5235,10 @@ mq_copypush_sargable_terms_helper (PARSER_CONTEXT * parser, PT_NODE * statement,
       return 0;
     }
 
-  /* do NOT copy-push for a cached query */
-  if (subquery->info.query.q.select.hint & PT_HINT_QUERY_CACHE)
+  /* do NOT copy-push for a cached query. The hint field belongs to the q.select union member:
+   * reading it on a set-operation subquery (UNION/DIFFERENCE/INTERSECTION) overlays the
+   * q.union_.arg1 pointer bits, so whether pushdown was blocked depended on an address value. */
+  if (PT_IS_SELECT (subquery) && (subquery->info.query.q.select.hint & PT_HINT_QUERY_CACHE))
     {
       return 0;
     }
