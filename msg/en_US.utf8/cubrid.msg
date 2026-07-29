@@ -2280,7 +2280,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
-31 This backup and log chain contains a no-logging bulk index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger

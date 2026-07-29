@@ -79,7 +79,7 @@ struct load_args
 {				/* This structure is never written to disk; thus logical ordering of fields is ok. */
   BTID_INT *btid;
   const char *bt_name;		/* index name */
-  bool no_redo;			/* Bulk-build pages skip content redo logging only; all disk writes take the ordinary flush path (including DWB when enabled).  Durability is enforced by the pre-commit flush+sync gate. */
+  bool no_redo;			/* No-logging index build: its pages skip content redo logging only; all disk writes take the ordinary flush path (including DWB when enabled).  Durability is enforced by the pre-commit flush+sync gate. */
 
   RECDES *out_recdes;		/* Pointer to current record descriptor collecting objects. */
   RECDES leaf_nleaf_recdes;	/* Record descriptor used for leaf and non-leaf records. */
@@ -1004,7 +1004,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   BTID btid_global_stats = BTID_INITIALIZER;
   OID *notification_class_oid;
   bool is_sysop_started = false;
-  bool built_bulk_tree = false;
+  bool built_nonempty_tree = false;
 
   /* Check for robustness */
   if (!btid || !hfids || !class_oids || !attr_ids || !key_type)
@@ -1285,7 +1285,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   /* Just to make sure that there were entries to put into the tree */
   if (load_args->px_outcome == BT_PX_TREE_DONE)
     {
-      built_bulk_tree = true;
+      built_nonempty_tree = true;
       if (has_fk && btree_load_check_fk (thread_p, load_args, sort_args) != NO_ERROR)
 	{
 	  goto error;
@@ -1299,7 +1299,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
     }
   else if (load_args->leaf.pgptr != NULL)
     {
-      built_bulk_tree = true;
+      built_nonempty_tree = true;
       /* Save the last leaf record */
 
       if (btree_save_last_leafrec (thread_p, load_args) != NO_ERROR)
@@ -1391,15 +1391,15 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   if (load_args->no_redo)
     {
       /*
-       * Durability barrier.  Bulk pages are only marked dirty during the build (their
-       * content is never WAL-logged), so before the barrier record (RVBT_BULK_BUILD_DURABLE)
-       * and the eventual commit can become durable, every bulk page must actually be ON DISK.
+       * Durability barrier.  Index pages are only marked dirty during the build (their
+       * content is never WAL-logged), so before the barrier record (RVBT_NO_LOGGING_INDEX_DURABLE)
+       * and the eventual commit can become durable, every one of them must actually be ON DISK.
        *
        * Flush the whole buffer pool, then synchronize every permanent volume (which also
        * drains the DWB when enabled).  A loaddb-only build has no concurrent traffic to
-       * shield, so the global gate is the simplest correct form; most bulk pages were
+       * shield, so the global gate is the simplest correct form; most of those pages were
        * already written through right after their unfix, so the residue here is small.
-       * The empty-index path (built_bulk_tree == false: the bulk file was destroyed by
+       * The empty-index path (built_nonempty_tree == false: the index file was destroyed by
        * sysop abort and the replacement empty index is fully WAL-logged) takes the same
        * gate.  The order is: pool flush first, DWB drain + fsync second, barrier record
        * append only after success.
@@ -1418,11 +1418,11 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	  goto error;
 	}
     }
-  if (load_args->no_redo && built_bulk_tree)
+  if (load_args->no_redo && built_nonempty_tree)
     {
       LOG_DATA_ADDR addr = { NULL, NULL, 0 };
 
-      log_append_postpone (thread_p, RVBT_BULK_BUILD_DURABLE, &addr, 0, NULL);
+      log_append_postpone (thread_p, RVBT_NO_LOGGING_INDEX_DURABLE, &addr, 0, NULL);
     }
 
   bt_load_clear_pred_and_unpack (thread_p, sort_args, func_unpack_info);
@@ -2307,8 +2307,8 @@ end:
  *   vfid(in):
  *   page_ptr(in): pointer to the page buffer to be saved; consumed and
  *                 unfixed on both success and failure
- *   no_redo(in): when true (bulk build), skip the full-page content redo
- *   flush_after_unfix(in): when true (parallel bulk builds only), write the
+ *   no_redo(in): when true (no-logging index build), skip the full-page content redo
+ *   flush_after_unfix(in): when true (parallel no-logging index builds only), write the
  *                          finished no-redo page through to disk before the
  *                          unfix (best effort; never fails the build)
  *
@@ -2329,7 +2329,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
       log_append_redo_data (thread_p, RVBT_COPYPAGE, &addr, DB_PAGESIZE, page_ptr);
     }
   /*
-   * no_redo == true: bulk-build pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
+   * no_redo == true: no-logging index pages skip ONLY the full-page content redo (RVBT_COPYPAGE).
    * The page reaches disk through the ordinary flush path (background flusher, eviction,
    * checkpoint, the write-through below, and the pre-commit durability barrier in
    * xbtree_load_index), including DWB staging when enabled.  Content changes are never
@@ -2342,7 +2342,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
   if (no_redo && flush_after_unfix)
     {
       /*
-       * Write-through: submit the finished bulk page to the ordinary flush path now (write
+       * Write-through: submit the finished index page to the ordinary flush path now (write
        * only; the single per-build DWB drain + fsync stays in the pre-commit gate), restoring
        * the parallel write overlap the defer-to-gate scheme would lose.  The worker still
        * holds this page fixed, which is exactly what pgbuf_flush_with_wal() expects; the
@@ -2358,7 +2358,7 @@ btree_log_page (THREAD_ENTRY * thread_p, VFID * vfid, PAGE_PTR page_ptr, bool no
 
 	  pgbuf_get_vpid (page_ptr, &vpid);
 	  _er_log_debug (ARG_FILE_LINE,
-			 "DEBUG_BTREE: bulk write-through flush failed for vpid(%d, %d) (error = %d); "
+			 "DEBUG_BTREE: no-logging index write-through flush failed for vpid(%d, %d) (error = %d); "
 			 "the page stays dirty for the pre-commit gate.", vpid.volid, vpid.pageid, er_errid ());
 	}
       er_stack_pop ();
@@ -3190,7 +3190,7 @@ bt_load_parallel_enabled (const LOAD_ARGS * load_args)
 }
 
 /*
- * bt_load_demote_to_logged () - drop a bulk-eligible build onto the fully logged path.  Called by the sort
+ * bt_load_demote_to_logged () - drop a no-logging-eligible build onto the fully logged path.  Called by the sort
  *   layer at the moment a build finalizes as serial (single-process shape or n_shards < 2), strictly before
  *   any content page is written: the rest of the build then logs normally and no replay barrier record
  *   is appended for it.
