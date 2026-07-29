@@ -83,6 +83,7 @@ union or_aligned_oid
 struct or_auto_increment
 {
   std::atomic<or_aligned_oid> serial_obj;
+  std::atomic<char *> serial_name;
 };
 // *INDENT-ON*
 

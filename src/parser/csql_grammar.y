@@ -108,7 +108,6 @@ void csql_yyerror (const char *s);
 
 extern int g_msg[1024];
 extern int msg_ptr;
-extern int yybuffer_pos;
 extern int is_dblink_query_string;
 extern int expecting_pl_lang_spec;
 extern int yylex(void);
@@ -227,7 +226,6 @@ static bool is_analytic_function = false;
 
 static bool is_in_sp_func_type = false;
 
-
 #define PT_EMPTY INT_MAX
 
 
@@ -280,6 +278,18 @@ static bool is_in_sp_func_type = false;
     { \
      (node)->buffer_pos = context; \
     }
+
+/* Correct a node's reported line/column to the source location of a parsed token (e.g. @1).
+ * parser_new_node() stamps line_number/column_number from the YYLTYPE info (first_line/first_column) at the scanner's current position.
+ *  A reduce action runs only after bison has fetched the look-ahead token,
+ * so that position has already moved past the token (and across any blank lines).
+ */
+#define PARSER_SET_LINE_COL(node, loc) \
+    { \
+      assert (node);                            \
+      (node)->line_number   = (loc).first_line; \
+      (node)->column_number = (loc).first_column; \
+    }    
 
 typedef enum
 {
@@ -440,7 +450,7 @@ static PT_NODE *pt_set_collation_modifier (PARSER_CONTEXT *parser,
 static PT_NODE * pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 
 #define CHECK_DEDUPLICATE_KEY_ATTR_NAME(nm)  do {  \
-   if((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
+   if ((nm) && IS_DEDUPLICATE_KEY_ATTR_NAME((nm)->info.name.original))   \
    {                                     \
       PT_ERRORf2 (this_parser, (nm), "Attribute name [%s] is not allowed." \
                                      "Names starting with \"%s\" are reserved by CUBRID.", \
@@ -498,11 +508,12 @@ static int g_plcsql_text_pos;
 	     (Loc).first_line, (Loc).first_column,	\
 	     (Loc).last_line,  (Loc).last_column)
 
-#define SET_CPTR_2_PTNAME(rv, iv, b_p) do {             \
+#define SET_CPTR_2_PTNAME(rv, iv, iloc, b_p) do {       \
    (rv) = parser_new_node (this_parser, PT_NAME);       \
    if ((rv))                                            \
      {                                                  \
              (rv)->info.name.original = (iv);           \
+             PARSER_SET_LINE_COL ((rv), (iloc))          \
      }                                                  \
    PARSER_SAVE_ERR_CONTEXT ((rv), (b_p))                \
 } while (0)
@@ -1405,6 +1416,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token SYS_CONNECT_BY_PATH
 %token SYS_DATE
 %token SYS_DATETIME
+%token SYS_REFCURSOR
 %token SYS_TIME_
 %token SYS_TIMESTAMP
 %token SYSTEM_USER
@@ -1495,6 +1507,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token COMP_GE
 %token COMP_LE
 %token PARAM_HEADER
+
+/* The UNEXPECTED_EOF token should not appear in the grammar rules. 
+ * It signifies that the lexer reached the EOF before completing a valid token, 
+ * and its purpose is to intentionally induce a parsing error */
+%token UNEXPECTED_EOF
 
 %token <cptr> ACTIVE
 %token <cptr> ADDDATE
@@ -1721,9 +1738,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NCHAR_STRING
 %token <cptr> BIT_STRING
 %token <cptr> HEX_STRING
-%token <cptr> CPP_STYLE_HINT
-%token <cptr> C_STYLE_HINT
-%token <cptr> SQL_STYLE_HINT
+%token <cptr> SQL_HINT
 %token <cptr> BINARY_STRING
 %token <cptr> EUCKR_STRING
 %token <cptr> ISO_STRING
@@ -2297,6 +2312,7 @@ set_stmt
 			    charset_node->info.value.string_type = ' ';
 			    charset_node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $4, strlen ($4));
+                            PARSER_SET_LINE_COL (charset_node, @4)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, charset_node);
 			  }
 
@@ -2783,7 +2799,7 @@ create_stmt
                                         PT_FUNCTION_INFO *function_ptr = &col->info.sort_spec.expr->info.function;                                        
 
                                         ptr = (char*)fcode_get_lowercase_name (function_ptr->function_type);
-                                        if(function_ptr->function_type == PT_GENERIC)
+                                        if (function_ptr->function_type == PT_GENERIC)
                                         {
                                            snprintf(buf, sizeof(buf)-1, "%s(%s)", ptr, function_ptr->generic_name);
                                            ptr = buf;
@@ -3018,6 +3034,7 @@ create_stmt
 			PT_NODE *node = parser_pop_hint_node ();
 			if (node)
 			  {
+                            int ret_type;
                             PT_NODE* body = $11;
                             if (body->info.sp_body.lang == SP_LANG_PLCSQL && body->info.sp_body.impl == NULL)
                               {
@@ -3052,7 +3069,31 @@ create_stmt
                                 node->info.sp.dtrm_type = PT_NOT_DETERMINISTIC;
                               }
 			    node->info.sp.param_list = $6;
-			    node->info.sp.ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+
+                            ret_type = (int) TO_NUMBER(CONTAINER_AT_0($8));
+                            if (ret_type == PT_TYPE_SYS_REFCURSOR) {
+
+                                // the return type is SYS_REFCURSOR
+
+                                if (body->info.sp_body.lang != SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "SYS_REFCURSOR return type can be used only in PL/CSQL functions");
+                                }
+                                // In PL/CSQL, CURSOR is not a type name, and hence one cannot use it as the return type of a function.
+                                // But, the return type CURSOR of JSP and the return type SYS_REFCURSOR of PL/CSQL
+                                // indicate the same kind of function results, the result of a SELECT query done in the SP.
+                                // So, unify them as PT_TYPE_RESULTSET to simplify later processes of semantic check and execution.
+                                // PT_TYPE_SYS_REFCURSOR will not appear in any later processing logics of statements.
+                                ret_type = PT_TYPE_RESULTSET;
+                            } else if (ret_type == PT_TYPE_RESULTSET) {
+
+                                // the return type is CURSOR
+
+                                if (body->info.sp_body.lang == SP_LANG_PLCSQL) {
+                                    PT_ERROR (this_parser, node, "CURSOR return type cannot be used in PL/CSQL functions");
+                                }
+                            }
+			    node->info.sp.ret_type = ret_type;
+
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
@@ -3065,6 +3106,7 @@ create_stmt
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_CREATE);
 			csql_yyerror_explicit (@2.first_line, @2.first_column);
+                        YYABORT;
 		}}
 	| CREATE					/* 1 */
 		{					/* 2 */
@@ -3145,7 +3187,7 @@ create_stmt
                                 si->dbname = CONTAINER_AT_2($5);
                                 si->user = CONTAINER_AT_3($5);
                                 si->pwd = CONTAINER_AT_4($5);
-                                if(si->pwd == NULL)
+                                if (si->pwd == NULL)
                                 {
                                    PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
                                    if (val)                    
@@ -3170,7 +3212,7 @@ create_stmt
                                      }
                                 }
 
-                                if( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
+                                if ( !si->host || !si->port || !si->dbname || !si->user || !si->pwd)
                                   { 
                                       PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
@@ -4116,7 +4158,7 @@ alter_stmt
                                     is_not_allowed |= (!str || str[0] == '\0');
                                 }
 
-                                if(is_not_allowed)
+                                if (is_not_allowed)
                                   {                                       
                                         PT_ERRORm (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_SERVER_MISSING_REQUIRED);
@@ -6450,83 +6492,8 @@ alter_column_clause_mysql_specific
 
 			if (alter_node)
 			  {
-			    PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			    if (node)
-			      {
-				PT_NODE *def;
-				node->info.data_default.default_value = $4;
-				node->info.data_default.shared = PT_DEFAULT;
-				PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
-
-				def = node->info.data_default.default_value;
-				if (def && def->node_type == PT_EXPR)
-				  {
-					if (def->info.expr.op == PT_TO_CHAR)
-					  {
-						if (def->info.expr.arg3)
-						  {
-						    bool dummy;
-						    bool has_user_lang = false;
-						    assert (def->info.expr.arg3->node_type == PT_VALUE);
-							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
-							if (has_user_lang)
-							  {
-								PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-							  }
-						  }
-
-						if (def->info.expr.arg1 && def->info.expr.arg1->node_type == PT_EXPR)
-						  {
-						    def = def->info.expr.arg1;
-						  }
-					  }
-
-				    switch (def->info.expr.op)
-				      {
-				      case PT_SYS_TIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-					break;
-				      case PT_SYS_DATE:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-					break;
-				      case PT_SYS_DATETIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-					break;
-				      case PT_SYS_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-					break;
-				      case PT_CURRENT_TIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-					break;
-				      case PT_CURRENT_DATE:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-					break;
-				      case PT_CURRENT_DATETIME:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-					break;
-				      case PT_CURRENT_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-					break;
-				      case PT_USER:
-					node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-					break;
-				      case PT_CURRENT_USER:
-					node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-					break;
-				      case PT_UNIX_TIMESTAMP:
-					node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-					break;
-				      default:
-					node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-					break;
-				      }
-				  }
-				else
-				  {
-				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-				  }
-			      }
+			    PT_NODE *node = pt_make_data_default_expr_node (this_parser, $4);
+			    PARSER_SAVE_ERR_CONTEXT (node, @4.buffer_pos)
 
 			    alter_node->info.alter.code = PT_ALTER_DEFAULT;
 			    alter_node->info.alter.alter_clause.ch_attr_def.attr_name_list = $1;
@@ -6685,7 +6652,7 @@ insert_set_stmt_header
                         PT_NODE *nls = pt_node_list (this_parser, PT_IS_VALUE, CONTAINER_AT_1 ($5));
 
 			/* for DBLink DML */
-                        if($3 && $3->node_type == PT_SPEC)
+                        if ($3 && $3->node_type == PT_SPEC)
                         {
                            ocs = $3;
                         }
@@ -6823,7 +6790,7 @@ insert_name_clause_header
 			PT_NODE *ocs = NULL;
 
 			/* for DBLink DML */
-                        if($3 && $3->node_type == PT_SPEC)
+                        if ($3 && $3->node_type == PT_SPEC)
                         {
                            ocs = $3;
                         }
@@ -8694,7 +8661,7 @@ opt_password
 	: /* empty */
 		{{
 			$$ = NULL;                        
-                        if(pwd_info.parser_add_user_check)
+                        if (pwd_info.parser_add_user_check)
                         {
                            pwd_info.pwd_start_offset = (@$.buffer_pos);
                            pwd_info.pwd_end_offset = (@$.buffer_pos);
@@ -9388,6 +9355,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_CASCADE);
@@ -9400,6 +9368,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9412,6 +9381,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9424,6 +9394,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c1 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -9436,6 +9407,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_NO_ACTION);
@@ -9448,6 +9420,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_RESTRICT);
@@ -9460,6 +9433,7 @@ ref_rule_list
 			  {
 			    push_msg (MSGCAT_SYNTAX_DUPLICATED_REF_RULE);
 			    csql_yyerror_explicit (@2.first_line, @2.first_column);
+                            YYABORT;
 			  }
 
 			ctn.c2 = FROM_NUMBER (PT_RULE_SET_NULL);
@@ -10509,84 +10483,8 @@ column_default_constraint_def
 	: DEFAULT expression_
 		{{
 			PT_NODE *attr_node;
-			PT_NODE *node = parser_new_node (this_parser, PT_DATA_DEFAULT);
-
-			if (node)
-			  {
-			    PT_NODE *def;
-			    node->info.data_default.default_value = $2;
-			    node->info.data_default.shared = PT_DEFAULT;
-			    PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
-
-			    def = node->info.data_default.default_value;
-			    if (def && def->node_type == PT_EXPR)
-			      {
-					if (def->info.expr.op == PT_TO_CHAR)
-					  {
-						if (def->info.expr.arg3)
-						  {
-							bool has_user_lang = false;
-							bool dummy;
-
-							assert (def->info.expr.arg3->node_type == PT_VALUE);
-							(void) lang_get_lang_id_from_flag (def->info.expr.arg3->info.value.data_value.i, &dummy, &has_user_lang);
-							 if (has_user_lang)
-							   {
-								 PT_ERROR (this_parser, def->info.expr.arg3, "do not allow lang format in default to_char");
-							   }
-							}
-
-						if (def->info.expr.arg1  && def->info.expr.arg1->node_type == PT_EXPR)
-						  {
-							def = def->info.expr.arg1;
-						  }
-					  }
-
-				switch (def->info.expr.op)
-				  {
-				  case PT_SYS_TIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIME;
-				    break;
-				  case PT_SYS_DATE:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATE;
-				    break;
-				  case PT_SYS_DATETIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSDATETIME;
-				    break;
-				  case PT_SYS_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_SYSTIMESTAMP;
-				    break;
-				  case PT_CURRENT_TIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIME;
-				    break;
-				  case PT_CURRENT_DATE:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATE;
-				    break;
-				  case PT_CURRENT_DATETIME:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTDATETIME;
-				    break;
-				  case PT_CURRENT_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURRENTTIMESTAMP;
-				    break;
-				  case PT_USER:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_USER;
-				    break;
-				  case PT_CURRENT_USER:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_CURR_USER;
-				    break;
-				  case PT_UNIX_TIMESTAMP:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_UNIX_TIMESTAMP;
-				    break;
-				  default:
-				    node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-				    break;
-				  }
-			      }
-			    else
-			      {
-				node->info.data_default.default_expr_type = DB_DEFAULT_NONE;
-			      }
-			  }
+			PT_NODE *node = pt_make_data_default_expr_node (this_parser, $2);
+			PARSER_SAVE_ERR_CONTEXT (node, @2.buffer_pos)
 
 			attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.data_default = node;
@@ -11076,7 +10974,7 @@ opt_using
 			PT_NODE *node = $3;
                         (void) parser_walk_tree (this_parser, node, pt_find_node_type_pre, arg, NULL, NULL);
 
-                        if(arg[1] == 1)
+                        if (arg[1] == 1)
                         {
                                 PT_ERRORf (this_parser, node,
 				"check syntax at '%s', subqueries are not allowed in using clause.",
@@ -11671,6 +11569,12 @@ sp_return_type
                 {{
 			container_2 ctn;
 			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_RESULTSET), NULL);
+			$$ = ctn;
+                }}
+        | SYS_REFCURSOR
+                {{
+			container_2 ctn;
+			SET_CONTAINER_2(ctn, FROM_NUMBER(PT_TYPE_SYS_REFCURSOR), NULL);
 			$$ = ctn;
                 }}
         | table_column MOD TYPE
@@ -13313,37 +13217,13 @@ opt_hint_list
 	;
 
 hint_list
-	: hint_list CPP_STYLE_HINT
+	: hint_list SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $2;
 			(void) pt_get_hint (hint_comment, parser_hint_table, node);
 		}}
-	| hint_list SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| hint_list C_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $2;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| CPP_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| SQL_STYLE_HINT
-		{{
-			PT_NODE *node = parser_top_hint_node ();
-			char *hint_comment = $1;
-			(void) pt_get_hint (hint_comment, parser_hint_table, node);
-		}}
-	| C_STYLE_HINT
+	| SQL_HINT
 		{{
 			PT_NODE *node = parser_top_hint_node ();
 			char *hint_comment = $1;
@@ -13539,9 +13419,9 @@ expression_list_for_call
 expression_queue_for_call
 	: expression_queue_for_call  ','
             {{
-                if(pwd_info.parser_call_check)
+                if (pwd_info.parser_call_check)
                   {                           
-                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                     if (++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
                          pwd_info.pwd_start_offset = (@$.buffer_pos);
                        }
@@ -13551,7 +13431,7 @@ expression_queue_for_call
 		{{
 			container_2 new_q;
 
-                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                        if (pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
                            {
                               pwd_info.pwd_end_offset = (@$.buffer_pos);
                            }
@@ -13566,9 +13446,9 @@ expression_queue_for_call
 		}}
 	| 
            {{ 
-                if(pwd_info.parser_call_check)
+                if (pwd_info.parser_call_check)
                   {     
-                     if(++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
+                     if (++pwd_info.method_arg_idx == pwd_info.method_password_arg_idx)
                        {
                           pwd_info.pwd_start_offset = (@$.buffer_pos);
                        }
@@ -13578,7 +13458,7 @@ expression_queue_for_call
 		{{
 			container_2 new_q;
 
-                        if(pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
+                        if (pwd_info.parser_call_check && (pwd_info.method_arg_idx == pwd_info.method_password_arg_idx))
                            {
                               pwd_info.pwd_end_offset = (@$.buffer_pos);
                            }
@@ -17430,13 +17310,13 @@ generic_function
 generic_function_for_call        
 	: procedure_or_function_name 
         {
-            if(pwd_info.parser_call_check)
+            if (pwd_info.parser_call_check)
             {
-                if(strcasecmp($1->info.name.original, "set_password")==0)
+                if (strcasecmp($1->info.name.original, "set_password")==0)
                     pwd_info.method_password_arg_idx = 1;
-                else if(strcasecmp($1->info.name.original, "add_user")==0)    
+                else if (strcasecmp($1->info.name.original, "add_user")==0)    
                    pwd_info.method_password_arg_idx = 2;
-                else if(strcasecmp($1->info.name.original, "login")==0)    
+                else if (strcasecmp($1->info.name.original, "login")==0)    
                     pwd_info.method_password_arg_idx = 2;
                 else
                     pwd_info.method_password_arg_idx = 0;
@@ -17546,7 +17426,7 @@ opt_expression_list_for_call
 	| expression_list_for_call
 		{{
                         
-                         if((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
+                         if ((pwd_info.method_password_arg_idx == 2) && (pwd_info.pwd_start_offset == -1 && pwd_info.pwd_end_offset == -1))
                          {
                             pwd_info.pwd_start_offset = @$.buffer_pos;
                             pwd_info.pwd_end_offset = pwd_info.pwd_start_offset;
@@ -18342,11 +18222,13 @@ comp_op
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_EQUAL_OP);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| '!''=' opt_of_all_some_any
 		{{
 			push_msg (MSGCAT_SYNTAX_INVALID_NOT_EQUAL);
 			csql_yyerror_explicit (@1.first_line, @1.first_column);
+                        YYABORT;
 		}}
 	| COMP_NULLSAFE_EQ opt_of_all_some_any
 		{{
@@ -19367,7 +19249,7 @@ primitive_type
                         charset_node = $3;
                         coll_node = $4;
 
-                        if(is_in_sp_func_type && len)
+                        if (is_in_sp_func_type && len)
                           {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                           }
@@ -19526,8 +19408,8 @@ primitive_type
 			    dt->info.data_type.dec_precision =
 			      scale ? scale->info.value.data_value.i : DB_DEFAULT_NUMERIC_SCALE;
 
-                            if(is_in_sp_func_type && prec)
-                              {                                
+                            if (is_in_sp_func_type && prec)
+                            {                                
                                 PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                               }
                             else
@@ -19570,7 +19452,7 @@ primitive_type
 			PT_NODE *prec, *dt = NULL;
 			prec = $2;
 
-                        if(is_in_sp_func_type && prec)
+                        if (is_in_sp_func_type && prec)
                           {                                
                             PT_ERRORm (this_parser, dt, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_NO_PRECISION_IN_SP_FUNCTION);
                           }
@@ -19837,10 +19719,11 @@ collation_spec
 
 			if (node)
 			  {
-			    node->type_enum = PT_TYPE_CHAR;
+                            node->type_enum = PT_TYPE_CHAR;
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
@@ -20017,7 +19900,7 @@ deduplicate_key_mod_level
         : DEDUPLICATE_ '=' unsigned_integer
                {
                   int int_val = $3->info.value.data_value.i;
-                  if(int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
+                  if (int_val < DEDUPLICATE_KEY_LEVEL_OFF || int_val > DEDUPLICATE_KEY_LEVEL_MAX)
                       {                          
                         PT_ERRORmf2 (this_parser, $3, MSGCAT_SET_PARSER_SYNTAX, MSGCAT_SYNTAX_INVALID_LEVEL, 
                                      DEDUPLICATE_KEY_LEVEL_OFF, DEDUPLICATE_KEY_LEVEL_MAX);
@@ -20104,6 +19987,7 @@ charset_spec
 			    node->info.value.string_type = ' ';
 			    node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, node);
 			  }
 
@@ -20167,23 +20051,21 @@ opt_using_charset
 			    temp_node->info.value.string_type = ' ';
 			    temp_node->info.value.data_value.str =
 			      pt_append_bytes (this_parser, NULL, $2, strlen ($2));
+                            PARSER_SET_LINE_COL (temp_node, @2)
 			    PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, temp_node);
-			  }
-
-			if (temp_node)
-			{
-			  if (pt_check_grammar_charset_collation
+			    if (pt_check_grammar_charset_collation
 				(this_parser, temp_node, NULL, &charset, &dummy) == 0)
-			    {
+			      {
 				parser_free_node (this_parser, temp_node);
-			    }
-			}
+			      }
+			  }
 
 			node = parser_new_node (this_parser, PT_VALUE);
 			if (node)
 			  {
 			    node->type_enum = PT_TYPE_INTEGER;
 			    node->info.value.data_value.i = charset;
+                            PARSER_SET_LINE_COL (node, @2)
 			  }
 
 			$$ = node;
@@ -20604,6 +20486,7 @@ identifier
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                            PARSER_SET_LINE_COL (p, @1)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
@@ -20621,6 +20504,7 @@ identifier
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                            PARSER_SET_LINE_COL (p, @1)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
@@ -20638,6 +20522,7 @@ identifier
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                            PARSER_SET_LINE_COL (p, @1)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
@@ -20655,6 +20540,7 @@ identifier
 			    size_in = strlen(str_name);
 
 			    PARSER_SAVE_ERR_CONTEXT (p, @$.buffer_pos)
+                            PARSER_SET_LINE_COL (p, @1)
 			    str_name = pt_check_identifier (this_parser, p,
 							    str_name, size_in);
 			    p->info.name.original = str_name;
@@ -20662,215 +20548,215 @@ identifier
 			$$ = p;
 		}}
 /*{{{*/
-	| ACTIVE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| AUTO_INCREMENT         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | BENCHMARK              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_AND                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHARACTER_SET_         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHARSET                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CHR                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CLOB_TO_CHAR           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CLOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COLLATION              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DB_TIMEZONE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DBLINK                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
-       	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 	
-        | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-        | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DISK_SIZE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| DONT_REUSE_OID         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ELT                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| GT_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HASH                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HEADER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| HEAP                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
-	| HOST                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| IFNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INACTIVE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INCREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INVALIDATE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| INVISIBLE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ISNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JAVA                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JOB                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAYAGG          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_APPEND      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_INSERT      {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_ARRAY_LEX         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_CONTAINS          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_CONTAINS_PATH     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_DEPTH             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_EXTRACT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_GET_ALL_PATHS     {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_INSERT            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_KEYS              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_LENGTH            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE_PATCH       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_MERGE_PRESERVE    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_OBJECTAGG         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_OBJECT_LEX        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_PRETTY            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_QUOTE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_REMOVE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_REPLACE           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_SEARCH            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_SET               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_TABLE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_UNQUOTE           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| JSON_VALID             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LAST_VALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}        
-	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MEDIAN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}	
-	| MEMBERS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| MINVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NAME                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NTILE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PATH                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENTILE_CONT        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENTILE_DISC        {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PROMOTE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PROPERTIES             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_COUNT           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_INSTR           {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_LIKE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SESSION_TIMEZONE       {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STATUS                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| SYSTEM                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TABLES                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TEXT                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| THAN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| THREADS                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEOUT                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEZONE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TIMEZONES              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRACE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRAN                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TRIGGERS               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| TYPE                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| UCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| UNCOMMITTED            {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VARIANCE               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VAR_POP                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VAR_SAMP               {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VISIBLE                {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| VOLUME                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WEEK                   {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WITHIN                 {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }}
-	| WORKSPACE              {{ SET_CPTR_2_PTNAME($$, $1, @$.buffer_pos);  }} 
+	| ACTIVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ADDDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AES                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ANALYZE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ARCHIVE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ARIA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AUTHID                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| AUTO_INCREMENT         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+        | BENCHMARK              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_AND                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_OR                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BIT_XOR                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| BUFFER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CALLER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CACHE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CAPACITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHARACTER_SET_         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHARSET                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CHR                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CLOB_TO_CHAR           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CLOSE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COLLATION              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COLUMNS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMMENT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMMITTED              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COMPILE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| COST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CRITICAL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| CUME_DIST              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DATE_ADD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DATE_SUB               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DB_TIMEZONE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DBLINK                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DBNAME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DECREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+	| DEFINER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
+       	| DEDUPLICATE_           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 	
+        | DENSE_RANK             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+        | DETERMINISTIC          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DISK_SIZE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| DONT_REUSE_OID         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ELT                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EMPTY                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ENCRYPT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GE_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GRANTS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GROUPS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GROUP_CONCAT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| GT_LT_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HASH                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HEADER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| HEAP                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| HOST                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| IFNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INACTIVE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INCREMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INDEXES                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INDEX_PREFIX           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INFINITE_              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INF_LE_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INF_LT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INSTANCES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INVALIDATE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| INVISIBLE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ISNULL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JAVA                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JOB                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAYAGG          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_APPEND      {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_INSERT      {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_ARRAY_LEX         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_CONTAINS          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_CONTAINS_PATH     {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_DEPTH             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_EXTRACT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_GET_ALL_PATHS     {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_INSERT            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_KEYS              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_LENGTH            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE_PATCH       {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_MERGE_PRESERVE    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_OBJECTAGG         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_OBJECT_LEX        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_PRETTY            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_QUOTE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_REMOVE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_REPLACE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_SEARCH            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_SET               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_TABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_TYPE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_UNQUOTE           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| JSON_VALID             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KEYLIMIT               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KEYS                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| KILL                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LAG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LAST_VALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LEAD                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LOCK_                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| LOG                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}        
+	| MATCHED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MAXIMUM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MAXVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MEDIAN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}	
+	| MEMBERS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| MINVALUE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NAME                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NESTED                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOCACHE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOCYCLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOMAXVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NOMINVALUE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NTH_VALUE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NTILE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OWNER                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PAGE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARALLEL               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARTITIONING           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PARTITIONS             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PASSWORD               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PATH                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENTILE_CONT        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENTILE_DISC        {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PROMOTE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PROPERTIES             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PUBLIC                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUARTER                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| QUEUES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANGE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RANK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REBUILD                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_COUNT           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_INSTR           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_LIKE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_REPLACE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REGEXP_SUBSTR          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REJECT_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REMOVE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REORGANIZE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REPEATABLE             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RESPECT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| RETAIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REUSE_OID              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| REVERSE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| ROW_NUMBER             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SECTIONS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SEPARATOR              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SERIAL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SERVER                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SESSION_TIMEZONE       {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SHOW                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SLOTS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SLOTTED                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STABILITY              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| START_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STATEMENT              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STATUS                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| SYSTEM                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TABLES                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TEXT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| THAN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| THREADS                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEOUT                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEZONE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TIMEZONES              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRACE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRAN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TRIGGERS               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| TYPE                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| UCASE                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| UNCOMMITTED            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VARIANCE               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VAR_POP                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VAR_SAMP               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VISIBLE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| VOLUME                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WEEK                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WITHIN                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| WORKSPACE              {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }} 
 /*}}}*/
 	;
 
@@ -22180,7 +22066,7 @@ connect_item
                   {
                         val->info.value.data_value.i = atoi($3);
                         val->type_enum = PT_TYPE_INTEGER;
-                        if( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
+                        if ( val->info.value.data_value.i < 0 || val->info.value.data_value.i > 65535 )
                           {                                
                             PT_ERROR (this_parser, val, "Invalid PORT number.");
                           }
@@ -22298,7 +22184,7 @@ connect_item
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
 		  {
-                        if( $3 && $3[0] &&  $3[0] != '?' )
+                        if ( $3 && $3[0] &&  $3[0] != '?' )
                         {                           
                            PT_ERROR (this_parser, val, "Invalid properties of connection information for dblink");
                         }
@@ -22369,11 +22255,11 @@ alter_server_item
 dblink_server_name
 	: identifier DOT server_identifier
           {{
-             if($3)
+             if ($3)
                {
                   $3->next = $1;                  
                }
-             else if($1)
+             else if ($1)
                {
                   parser_free_node (this_parser, $1);
                }  
@@ -22409,7 +22295,7 @@ dblink_expr
             {{
              is_dblink_query_string = 0;
              PT_NODE *ct = parser_new_node(this_parser, PT_DBLINK_TABLE) ;           
-             if(ct)
+             if (ct)
              {
                 PT_NODE *val = parser_new_node (this_parser, PT_VALUE);
 	        if (val)                    
@@ -22429,9 +22315,9 @@ dblink_expr
                         PT_NODE_PRINT_VALUE_TO_TEXT (this_parser, val);
 		   }
 
-                if( $1 )
+                if ( $1 )
                 {
-                        if( $1->node_type == PT_NAME )
+                        if ( $1->node_type == PT_NAME )
                         {
                                 ct->info.dblink_table.is_name = true;
                                 ct->info.dblink_table.conn = $1;
@@ -22504,7 +22390,7 @@ dblink_conn_str:
                         for( i = DBLINK_CONN_PARAM_CNT - 2; i >= 2; i--)
                         {                       
                                 node = parser_new_node (this_parser, PT_VALUE);
-                                if( node == NULL )
+                                if ( node == NULL )
                                 {
                                         while (node_list)
                                         {
@@ -22569,7 +22455,7 @@ dblink_column_definition
                         node->data_type = dt = CONTAINER_AT_1 ($2);
                         node->info.attr_def.attr_name = $1;
 
-                        if(typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
+                        if (typ == PT_TYPE_BLOB || typ == PT_TYPE_CLOB || typ == PT_TYPE_OBJECT || typ == PT_TYPE_ENUMERATION)
                           {
                                 PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
 					     MSGCAT_SEMANTIC_DBLINK_NOT_SUPPORTED_TYPE, pt_show_type_enum (typ));
@@ -22679,9 +22565,6 @@ pop_msg ()
   msg_ptr--;
 }
 
-int yycolumn = 0;
-int yycolumn_end = 0;
-
 int parser_function_code = PT_EMPTY;
 size_t json_table_column_count = 0;
 
@@ -22785,8 +22668,11 @@ parser_make_expression (PARSER_CONTEXT * parser, PT_OP_TYPE OP, PT_NODE * arg1, 
 	  || OP == PT_CURRENT_DATETIME || OP == PT_SYS_TIMESTAMP
 	  || OP == PT_CURRENT_TIMESTAMP || OP == PT_UTC_TIME
 	  || OP == PT_UTC_DATE || OP == PT_UNIX_TIMESTAMP
-	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP)
+	  || OP == PT_TZ_OFFSET || OP == PT_UTC_TIMESTAMP
+	  || OP == PT_UUID)
 	{
+	  /* UUID(4) does not need si_datetime. 
+	   * but we cant evaluate argument now, so UUID(4) has unnecessary overhead */
 	  parser_si_datetime = true;
 	  parser_cannot_cache = true;
 	}
@@ -23759,12 +23645,12 @@ parser_make_date_lang (int arg_cnt, PT_NODE * arg3)
 	{
 	  date_lang = arg3;
 	} 
-      else if(this_parser->flag.is_parsing_static_sql)
+      else if (this_parser->flag.is_parsing_static_sql)
         {
            if (arg3->node_type == PT_EXPR && arg3->info.expr.op == PT_CAST)
              {
                 PT_NODE * node = arg3->info.expr.cast_type; 
-                if(node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
+                if (node->node_type == PT_DATA_TYPE && PT_IS_SIMPLE_CHAR_STRING_TYPE(node->type_enum))
                   {  
                     date_lang = arg3;
                   }
@@ -23846,7 +23732,9 @@ parser_main (PARSER_CONTEXT * parser)
 {
   long desc_index = 0;
   long i, top;
-  int rv, yybuffer_pos_save;
+  int rv, yybuffer_pos_save, yyline_start_pos_save, yylineno_prev_save, yylineno_save; 
+  int yytoken_start_line_save, yytoken_start_column_save;
+  YYLTYPE yylloc_save;
 
   PARSER_CONTEXT *this_parser_saved;
 
@@ -23860,10 +23748,16 @@ parser_main (PARSER_CONTEXT * parser)
   this_parser = parser;
 
   dbcs_start_input ();
-
-  yycolumn = yycolumn_end = 1;
+   
   yybuffer_pos_save = yybuffer_pos;
+  yyline_start_pos_save = yyline_start_pos; 
+  yylineno_prev_save = yylineno_prev;
+  yylineno_save = csql_yyget_lineno();
   yybuffer_pos=0;
+  yylloc_save = csql_yylloc; 
+  yytoken_start_line_save = yytoken_start_line;
+  yytoken_start_column_save = yytoken_start_column;
+
   is_dblink_query_string = 0;
   expecting_pl_lang_spec = 0;
   csql_yylloc.buffer_pos=0;
@@ -23882,6 +23776,12 @@ parser_main (PARSER_CONTEXT * parser)
   // parser_main can be reentered while executing statements loaded by loaddb -s.
   // During the loaddb -s, the yybuffer_pos must not be currupted.
   yybuffer_pos = yybuffer_pos_save;
+  yyline_start_pos = yyline_start_pos_save;
+  yylineno_prev = yylineno_prev_save;
+  csql_yyset_lineno(yylineno_save);
+  csql_yylloc = yylloc_save;
+  yytoken_start_line = yytoken_start_line_save;
+  yytoken_start_column = yytoken_start_column_save;
 
   pt_cleanup_hint (parser, parser_hint_table);
 
@@ -23964,8 +23864,7 @@ parse_one_statement (int state)
     {
       // a new session starts. reset line and column number.
       csql_yyset_lineno (1);
-      yycolumn = yycolumn_end = 1;
-
+      
       // init only for the first time in order to make csql_yylloc.buffer_pos identical to the file pos
       yybuffer_pos=0;
 
@@ -24038,13 +23937,12 @@ PT_HINT parser_hint_table[] = {
   INIT_PT_HINT("NO_PARALLEL_SUBQUERY", PT_HINT_NO_PARALLEL_SUBQUERY),
   INIT_PT_HINT("NO_PARALLEL_HASH_JOIN", PT_HINT_NO_PARALLEL_HASH_JOIN),
   INIT_PT_HINT("PARALLEL", PT_HINT_PARALLEL),
-  INIT_PT_HINT("NLJ_KEEP_HEAP_PAGE_PINNED", PT_HINT_NLJ_KEEP_HEAP_PAGE_PINNED),
+  INIT_PT_HINT("DBLINK_NO_PUSH_DOWN_SUBQ", PT_HINT_DBLINK_NO_PUSH_DOWN_SUBQ),
   INIT_PT_HINT("NO_ELIMINATE_JOIN", PT_HINT_NO_ELIMINATE_JOIN),
   INIT_PT_HINT("SKIP_UPDATE_NULL", PT_HINT_SKIP_UPDATE_NULL),
   INIT_PT_HINT("NO_INDEX_LS", PT_HINT_NO_INDEX_LS),
   INIT_PT_HINT("INDEX_LS", PT_HINT_INDEX_LS),
   INIT_PT_HINT("SELECT_RECORD_INFO", PT_HINT_SELECT_RECORD_INFO),
-  INIT_PT_HINT("SAMPLING_SCAN", PT_HINT_SAMPLING_SCAN),
   INIT_PT_HINT("SELECT_PAGE_INFO", PT_HINT_SELECT_PAGE_INFO),
   INIT_PT_HINT("SELECT_KEY_INFO", PT_HINT_SELECT_KEY_INFO),
   INIT_PT_HINT("SELECT_BTREE_NODE_INFO", PT_HINT_SELECT_BTREE_NODE_INFO),
@@ -24132,6 +24030,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_RANDOM:
     case PT_DRAND:
     case PT_DRANDOM:
+    case PT_UUID:
       {
 	PT_NODE *expr;
 	parser_cannot_cache = true;
@@ -24196,6 +24095,7 @@ parser_keyword_func (const char *name, PT_NODE * args)
     case PT_CRC32:
     case PT_SCHEMA_DEF:
     case PT_DISK_SIZE:
+    case PT_UUID_FORMAT:
     case PT_ESTIMATED_TABLE_ROWS:
     case PT_ESTIMATED_AVG_ROW_LENGTH:
     case PT_ESTIMATED_DATA_LENGTH:
@@ -24385,14 +24285,14 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (a2)
         {
           /* default fmt value */
-          if(a1->node_type == PT_VALUE
+          if (a1->node_type == PT_VALUE
              && PT_IS_DATE_TIME_TYPE(a1->type_enum))
             {
               a2->type_enum = PT_TYPE_CHAR;
               a2->info.value.data_value.str =
                 pt_append_bytes(this_parser, NULL, "dd", 2);
             }
-          else if(a1->node_type == PT_VALUE
+          else if (a1->node_type == PT_VALUE
                   && PT_IS_NUMERIC_TYPE(a1->type_enum))
             {
               a2->type_enum = PT_TYPE_INTEGER;
@@ -24527,7 +24427,9 @@ parser_keyword_func (const char *name, PT_NODE * args)
       if (c < 1 || c > 2)
 	{
 	  push_msg (MSGCAT_SYNTAX_INVALID_TO_NUMBER);
-	  csql_yyerror_explicit (10, 10);
+	  /* no parse-tree location available here; keep the scanner's current position 
+           * (the previous behavior when the arguments were ignored). */
+	  csql_yyerror_explicit (csql_yyget_lineno (), (c < 1) ? csql_yylloc.first_column : args->next->next->column_number);
 	  return NULL;
 	}
 
@@ -25730,7 +25632,7 @@ pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
    //
    if ( pt_check_ipv4(pInfo[0]) == false )
    {
-          if( pt_check_hostname(pInfo[0]) == false )
+          if ( pt_check_hostname(pInfo[0]) == false )
           {
                 sprintf(perr_msg, "Incorrect host(IP) format of connection information for dblink");
                 return false;
@@ -25738,13 +25640,13 @@ pt_ct_check_fill_connection_info (char* p, char *pInfo[], char *perr_msg)
    }
 
    int port = atoi(pInfo[1]);
-   if( port < 0 || port > 65535 )
+   if ( port < 0 || port > 65535 )
    {
            sprintf(perr_msg, "Invalid PORT of connection information for dblink");
            return false;
    }
 
-   if( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
+   if ( pInfo[DBLINK_CONN_PARAM_CNT-1][0] &&  pInfo[DBLINK_CONN_PARAM_CNT-1][0] != '?' )
      {
            sprintf(perr_msg, "Invalid properties of connection information for dblink");
            return false;
@@ -25792,7 +25694,7 @@ pt_create_paren_expr_list (PT_NODE * exp)
 static PT_NODE *
 pt_check_non_logical_expr (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-   if(node)
+   if (node)
      {
         if (node->type_enum != PT_TYPE_LOGICAL)
           {
@@ -25828,42 +25730,42 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 ctn->c1 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_PORT:
-                if( ctn->c2 != NULL )
+                if ( ctn->c2 != NULL )
                 {
                     PT_ERROR (parser, node, "PORT information was duplicated.");
                 }
                 ctn->c2 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_DBNAME:
-                if( ctn->c3 != NULL )
+                if ( ctn->c3 != NULL )
                 {
                     PT_ERROR (parser, node, "DBNAME information was duplicated.");
                 }
                 ctn->c3 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_USER:
-                if( ctn->c4 != NULL )
+                if ( ctn->c4 != NULL )
                 {
                     PT_ERROR (parser, node, "USER information was duplicated.");
                 }
                 ctn->c4 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_PASSWORD:
-                if( ctn->c5 != NULL )
+                if ( ctn->c5 != NULL )
                 {
                     PT_ERROR (parser, node, "PASSWORD information was duplicated.");
                 }
                 ctn->c5 = CONTAINER_AT_1(info);
                 break;
         case CONN_INFO_PROPERTIES:
-                if( ctn->c6 != NULL )
+                if ( ctn->c6 != NULL )
                 {
                     PT_ERROR (parser, node, "PROPERTIES information was duplicated.");
                 }
                 ctn->c6 = CONTAINER_AT_1(info);
                 break;                
         case CONN_INFO_COMMENT:
-                if( ctn->c7 != NULL )
+                if ( ctn->c7 != NULL )
                 {
                     PT_ERROR (parser, node, "COMMENT information was duplicated.");
                 }
@@ -25871,7 +25773,7 @@ pt_fill_conn_info_container(PARSER_CONTEXT *parser,  int buffer_pos, container_1
                 break;
 
         case CONN_INFO_OWNER:
-                if( ctn->c8 != NULL )
+                if ( ctn->c8 != NULL )
                 {
                     PT_ERROR (parser, node, "OWNER information was duplicated.");
                 }
@@ -25893,7 +25795,7 @@ pt_check_one_stmt(char* p)
 {
     char end;
     char* t = strchr(p, ';');
-    if(!t)
+    if (!t)
      {
         return true;
      }
@@ -25903,12 +25805,12 @@ pt_check_one_stmt(char* p)
      {
         t++;
      }
-    if(*t == '\0')
+    if (*t == '\0')
        return true;
 
     while(*p)
     {
-        if( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
+        if ( *p == '[' || *p == '"' || *p == '`' || *p == '\'')
           {
                 end = (*p == '[') ? ']' : *p;
                 for(p++; *p ; p++)
@@ -25920,7 +25822,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
           }
-        else if((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
+        else if ((p[0] == '-' && p[1] == '-') || (p[0] == '/' && p[1] == '/'))
         {
                 for(p += 2; *p ; p++)
                 {
@@ -25931,7 +25833,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
         }
-        else if(p[0] == '/' && p[1] == '*')
+        else if (p[0] == '/' && p[1] == '*')
         {
                 for(p += 2; *p ; p++)
                 {
@@ -25942,7 +25844,7 @@ pt_check_one_stmt(char* p)
                     }
                 }
         }
-        else if(*p == ';')
+        else if (*p == ';')
           {
              p++;
 
@@ -25980,11 +25882,11 @@ pt_ct_check_select (char* p, char *perr_msg)
         p++;
      }
 
-   if(*p)
+   if (*p)
    {
-        if( strncasecmp(p, "SELECT", 6) == 0 )
+        if ( strncasecmp(p, "SELECT", 6) == 0 )
         {
-            if( char_isspace2(p[6]))
+            if ( char_isspace2(p[6]))
               {    
                  if (pt_check_one_stmt(p + 6))
                    {

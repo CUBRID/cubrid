@@ -38,6 +38,7 @@
 #include "log_impl.h"
 #include "log_volids.hpp"
 #include "boot_sr.h"
+#include "page_buffer.h"
 #include "perf_monitor.h"
 #include "porting_inline.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -3334,6 +3335,14 @@ dwb_load_and_recover_pages (THREAD_ENTRY *thread_p, const char *dwb_path_p, cons
 
 	  if (0 < num_recoverable_pages)
 	    {
+	      /* pgbuf may still hold pre-recovery copies of these boot-read pages;
+	       * drop them so recovery re-reads the pages DWB rewrites on disk below. */
+	      error_code = pgbuf_invalidate_all (thread_p, NULL_VOLID);
+	      if (error_code != NO_ERROR)
+		{
+		  goto end;
+		}
+
 	      /* Replace the corrupted pages in data volume with the DWB content. */
 	      error_code =
 		      dwb_write_block (thread_p, rcv_block, p_dwb_ordered_slots, ordered_slots_length, false, false);

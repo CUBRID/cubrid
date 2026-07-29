@@ -1894,6 +1894,22 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
   ptr = or_unpack_int (ptr, &xasl->is_single_tuple);
 
+  /* owning predicate-operand regu of an uncorrelated scalar subquery (offset 0 = none);
+   * offset-dedup aliasing restores the exact predicate regu. */
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      xasl->precomp_owner_regu = NULL;
+    }
+  else
+    {
+      xasl->precomp_owner_regu = stx_restore_regu_variable (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (xasl->precomp_owner_regu == NULL)
+	{
+	  goto error;
+	}
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   xasl->option = (QUERY_OPTIONS) tmp;
 
@@ -4013,6 +4029,38 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
       assert (insert_info->obj_oid->need_clear == false);
     }
 
+  /* remote INSERT SELECT fields */
+  {
+    int is_remote;
+    ptr = or_unpack_int (ptr, &is_remote);
+    insert_info->is_remote_insert = (bool) is_remote;
+  }
+
+  insert_info->remote_url = stx_restore_string (thread_p, ptr);
+  insert_info->remote_user = stx_restore_string (thread_p, ptr);
+  insert_info->remote_pwd = stx_restore_string (thread_p, ptr);
+  insert_info->remote_table_name = stx_restore_string (thread_p, ptr);
+
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_attrs);
+  if (insert_info->remote_num_attrs == 0)
+    {
+      insert_info->remote_attr_names = NULL;
+    }
+  else
+    {
+      insert_info->remote_attr_names =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_attrs);
+      if (insert_info->remote_attr_names == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_attrs; i++)
+	{
+	  insert_info->remote_attr_names[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
   return ptr;
 
 error:
@@ -4675,6 +4723,7 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 
   access_spec->grouped_scan = false;
   access_spec->fixed_scan = false;
+  access_spec->cached_scan = false;	/* runtime-only; recomputed at every open */
 
   ptr = or_unpack_int (ptr, &tmp);
   access_spec->single_fetch = (QPROC_SINGLE_FETCH) tmp;
@@ -5386,6 +5435,23 @@ stx_build_dblink_spec_type (THREAD_ENTRY * thread_p, char *ptr, DBLINK_SPEC_TYPE
       dblink_spec->dblink_regu_list_rest =
 	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
       if (dblink_spec->dblink_regu_list_rest == NULL)
+	{
+	  goto error;
+	}
+    }
+
+  ptr = or_unpack_int (ptr, &dblink_spec->corr_key_count);
+
+  ptr = or_unpack_int (ptr, &offset);
+  if (offset == 0)
+    {
+      dblink_spec->corr_key_regu_list = NULL;
+    }
+  else
+    {
+      dblink_spec->corr_key_regu_list =
+	stx_restore_regu_variable_list (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+      if (dblink_spec->corr_key_regu_list == NULL)
 	{
 	  goto error;
 	}

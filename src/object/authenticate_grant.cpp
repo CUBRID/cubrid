@@ -158,7 +158,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 	}
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if ((error = au_fetch_class_force (class_mop, &classobj, AU_FETCH_READ)) == NO_ERROR)
     {
       if (ws_is_same_object (user, Au_user))
@@ -232,7 +232,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
 			{
 			  free_and_init (sub_partitions);
 			}
-		      AU_ENABLE (save);
+		      AU_RESTORE (save);
 		      return (error);
 		    }
 		  current = db_get_int (&value);
@@ -307,7 +307,7 @@ fail_end:
     {
       free_and_init (sub_partitions);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -323,7 +323,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 
   assert (type == AU_EXECUTE);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   MOP sp_owner = jsp_get_owner (obj_mop);
 
   /*
@@ -386,7 +386,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		  if (error != NO_ERROR)
 		    {
 		      set_free (grants);
-		      AU_ENABLE (save);
+		      AU_RESTORE (save);
 		      return (error);
 		    }
 		  current = db_get_int (&value);
@@ -462,7 +462,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -566,7 +566,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 	}
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
@@ -622,7 +622,7 @@ au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user)
 		    {
 		      free_and_init (sub_partitions);
 		    }
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 		  return (error);
 		}
 	      current = db_get_int (&cache_element);
@@ -718,7 +718,7 @@ fail_end:
     {
       free_and_init (sub_partitions);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -734,7 +734,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
   MOP sp_owner;
   MOP grantor = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
     {
       error = ER_AU_CANT_REVOKE_SELF;
@@ -813,7 +813,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 	      if (error != NO_ERROR)
 		{
 		  set_free (grants);
-		  AU_ENABLE (save);
+		  AU_RESTORE (save);
 		  return (error);
 		}
 	      current = db_get_int (&cache_element);
@@ -905,7 +905,7 @@ fail_end:
     {
       (void) tran_abort_upto_system_savepoint (UNIQUE_PARTITION_SAVEPOINT_REVOKE);
     }
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (error);
 }
 
@@ -2039,7 +2039,7 @@ au_print_grants (MOP auth, FILE *fp)
     }
   else
     {
-      fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
+      fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_UNDEFINED_USER));
     }
 
   get_grants (auth, &grants, 1);
@@ -2125,7 +2125,7 @@ au_force_write_new_auth (void)
 
   list = NULL;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = accessor.delete_all_auth ();
   if (error != NO_ERROR)
@@ -2214,7 +2214,7 @@ end:
       ml_ext_free (list);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }

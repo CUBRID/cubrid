@@ -33,7 +33,8 @@ namespace cubconn::master
   context::context () :
     m_conn (nullptr),
     m_sendbuf (32),
-    m_has_error (false)
+    m_has_error (false),
+    m_pending_client_type (DB_CLIENT_TYPE_UNKNOWN)
   {
   }
 
@@ -50,6 +51,7 @@ namespace cubconn::master
 
     m_state = state::SendInHandshake;
     m_has_error = false;
+    m_pending_client_type = DB_CLIENT_TYPE_UNKNOWN;
   }
 
   bool context::has_data_to_send ()
@@ -74,6 +76,7 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -96,6 +99,7 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
@@ -128,6 +132,7 @@ namespace cubconn::connection
     m_id = 0;
     m_ignore = ignore_level::DONT_IGNORE;
     m_removed = false;
+    m_epoll_registered = false;
 
     m_recv.m_state = state::HEADER;
     m_recv.m_receiver.reset ();
@@ -138,6 +143,7 @@ namespace cubconn::connection
     m_send.m_transmitter.clear ();
     m_send.m_blocker = nullptr;
 
+    m_guarded_stats.bytes_out_total = 0;
     m_stats.reset ();
   }
 }

@@ -102,6 +102,9 @@ namespace cubconn::connection
     /* acquire the lock or kill itself */
     this->try_to_lock_resource ();
 
+    /* drain all resources from the coordinator and workers */
+    this->drain_contexts ();
+
     m_workers.clear ();
     this->finalize_freelist ();
 
@@ -198,6 +201,22 @@ namespace cubconn::connection
     return m_workers;
   }
 
+  void pool::drain_contexts ()
+  {
+    if (m_coordinator)
+      {
+	m_coordinator->finalize_resources ();
+      }
+
+    if (!m_workers.empty ())
+      {
+	for (std::unique_ptr<worker> &worker : m_workers)
+	  {
+	    worker->finalize_resources ();
+	  }
+      }
+  }
+
   void pool::try_to_lock_resource ()
   {
     int i;
@@ -279,7 +298,12 @@ namespace cubconn::connection
 		std::next (ctx.adjusted_effective->begin (),
 			   std::min (ctx.adjusted_effective->size (), static_cast<std::size_t> (max_connection_workers)))
 	);
-	os::resources::net::map_nic_to_index (cores);
+
+	if (prm_get_bool_value (PRM_ID_HARDWARE_AFFINITY))
+	  {
+	    /* align the irq and RX/TX */
+	    os::resources::net::map_nic_to_index (cores);
+	  }
       }
     return std::min (ctx.adjusted_max, static_cast<std::size_t> (max_connection_workers));
   }

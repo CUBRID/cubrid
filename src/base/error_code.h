@@ -1765,10 +1765,14 @@
 
 #define ER_PARTITION_TABLE_NAME_OVERFLOW            -1374
 
-#define ER_SYSMETA_UPGRADE_REQUIRED                 -1375
-#define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1376
+#define ER_QSTR_INVALID_UUID_FORMAT                 -1375
 
-#define ER_LAST_ERROR                               -1377
+#define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
+
+#define ER_SYSMETA_UPGRADE_REQUIRED                 -1377
+#define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1378
+
+#define ER_LAST_ERROR                               -1379
 
 
 

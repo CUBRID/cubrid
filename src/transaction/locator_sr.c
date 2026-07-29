@@ -7507,8 +7507,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
-	  assert ((lock_get_object_lock (oid, &class_oid) >= X_LOCK)
-		  || (lock_get_object_lock (&class_oid, oid_Root_class_oid) >= X_LOCK));
+	  /* an in-place update requires the object to be exclusively held by the current transaction. */
+	  assert (lock_has_xlock_or_self_lock (thread_p, oid, &class_oid));
 	}
       else
 	{
@@ -12795,6 +12795,25 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 		{
 		  goto exit;
 		}
+	    }
+
+	  if (heap_page_is_bestspace (thread_p, scan_cache.page_watcher.pgptr))
+	    {
+	      error = heap_vpid_next (thread_p, &hfid, scan_cache.page_watcher.pgptr, &vpid);
+	      if (error != NO_ERROR)
+		{
+		  goto exit;
+		}
+
+	      /* keep latch on current page until the next page is fixed */
+	      pgbuf_replace_watcher (thread_p, &scan_cache.page_watcher, &old_page_watcher);
+
+	      if (VPID_ISNULL (&vpid))
+		{
+		  /* no more pages in the current heap file */
+		  is_scan_end = true;
+		}
+	      continue;
 	    }
 
 	  slotid = 0;

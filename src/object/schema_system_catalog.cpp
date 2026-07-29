@@ -162,7 +162,7 @@ sm_mark_system_classes (void)
   const std::vector<std::string> *name_lists[] =
   { &cubschema::sm_system_class_names, &cubschema::sm_system_vclass_names };
 
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   for (const std::vector<std::string> *names : name_lists)
     {
@@ -184,7 +184,7 @@ sm_mark_system_classes (void)
     }
 
 end:
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 #endif
