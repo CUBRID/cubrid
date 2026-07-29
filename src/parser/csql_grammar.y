@@ -2180,6 +2180,28 @@ set_stmt
 			$$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
+	| SET OPTIMIZATION
+		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_OPT_COST); }
+	  COST DEFAULT
+		{ pop_msg(); }
+		{{
+			/* SET OPTIMIZATION COST DEFAULT — reset every optimizer cost system
+			 * parameter to its built-in default. Reuses the PT_OPT_COST node with a
+			 * single "default" plan string and no cost value; do_set_optimization_level ()
+			 * recognizes that shape. */
+			PT_NODE *node = parser_new_node (this_parser, PT_SET_OPT_LVL);
+			PT_NODE *val = pt_create_char_string_literal (this_parser, PT_TYPE_CHAR, "default", -1,
+								      lang_charset ());
+
+			if (node && val)
+			  {
+			    node->info.set_opt_lvl.option = PT_OPT_COST;
+			    node->info.set_opt_lvl.val = val;
+			  }
+
+			$$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+		}}
 	| SET
 		{ push_msg(MSGCAT_SYNTAX_INVALID_SET_SYS_PARAM); }
 	  SYSTEM PARAMETERS char_string_literal_list
