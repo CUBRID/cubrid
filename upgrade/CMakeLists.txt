@@ -71,3 +71,17 @@ if(ENC_FILES)
     PERMISSIONS OWNER_READ GROUP_READ WORLD_READ
     )
 endif()
+
+# Debug-only: per-PR scripts staged in internal/, later merged into the versioned scripts.
+if(BUILD_TYPE MATCHES "debug")
+  file(GLOB INTERNAL_SQL_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/internal/*.sql"
+    )
+
+  if(INTERNAL_SQL_FILES)
+    install(FILES ${INTERNAL_SQL_FILES}
+      DESTINATION ${CUBRID_DATADIR}/upgrade/internal
+      PERMISSIONS OWNER_READ GROUP_READ WORLD_READ
+      )
+  endif()
+endif()

@@ -1388,6 +1388,7 @@ $set 61 MSGCAT_UTIL_SET_UPGRADEDB
 5 System metadata upgrade script decoding failed: %1$s\n
 6 System metadata upgrade script validation failed: %1$s\n
 7 Failed to read system metadata upgrade script: %1$s\n
+8 No system metadata upgrade script is listed in %1$s\n
 60 \
 upgradedb: upgrade system metadata to match the current CUBRID version.\n\
 usage: %1$s upgradedb [OPTION] database-name\n\

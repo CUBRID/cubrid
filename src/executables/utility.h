@@ -783,6 +783,7 @@ typedef enum
   UPGRADEDB_MSG_DECODE_FAILED = 5,
   UPGRADEDB_MSG_VALIDATION_FAILED = 6,
   UPGRADEDB_MSG_SCRIPT_READ_FAILED = 7,
+  UPGRADEDB_MSG_NO_SCRIPT_LISTED = 8,
   UPGRADEDB_MSG_USAGE = 60
 } MSGCAT_UPGRADEDB_MSG;
 
@@ -1814,6 +1815,11 @@ typedef struct _ha_config
 #define UPGRADE_FORCE_L                         "force"
 #define UPGRADE_VERBOSE_S                       'v'
 #define UPGRADE_VERBOSE_L                       "verbose"
+#if !defined(NDEBUG)
+/* long-only option: _S is not a short flag but the getopt val/arg_map key; > 255 so no short form is generated */
+#define UPGRADE_APPLY_SCRIPT_LIST_S             14201
+#define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
+#endif
 
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"

@@ -968,6 +968,9 @@ static UTIL_ARG_MAP ua_Upgradedb_Option_Map[] = {
   {UPGRADE_CHECK_S, {ARG_BOOLEAN}, {0}},
   {UPGRADE_FORCE_S, {ARG_BOOLEAN}, {0}},
   {UPGRADE_VERBOSE_S, {ARG_BOOLEAN}, {0}},
+#if !defined(NDEBUG)
+  {UPGRADE_APPLY_SCRIPT_LIST_S, {ARG_STRING}, {0}},
+#endif
   {0, {0}, {0}}
 };
 
@@ -975,6 +978,9 @@ static GETOPT_LONG ua_Upgradedb_Option[] = {
   {UPGRADE_CHECK_L, 0, 0, UPGRADE_CHECK_S},
   {UPGRADE_FORCE_L, 0, 0, UPGRADE_FORCE_S},
   {UPGRADE_VERBOSE_L, 0, 0, UPGRADE_VERBOSE_S},
+#if !defined(NDEBUG)
+  {UPGRADE_APPLY_SCRIPT_LIST_L, 1, 0, UPGRADE_APPLY_SCRIPT_LIST_S},
+#endif
   {0, 0, 0, 0}
 };
 
