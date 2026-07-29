@@ -21399,6 +21399,81 @@ heap_delete_reloc_rederive (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * co
     }
   return NO_ERROR;
 }
+
+/*
+ * heap_ww_compensate_insertion () - back out the record a delete's placement dispatch just inserted
+ *   (ours only, never referenced yet) so the seal verdict can be re-run
+ *   placed_type(in): REC_BIGONE (overflow chain) or REC_NEWHOME (its page kept fixed in
+ *                    newhome_watcher_p); anything else is a no-op
+ */
+static int
+heap_ww_compensate_insertion (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, INT16 placed_type,
+			      OID * placed_oid_p, RECDES * placed_recdes_p, PGBUF_WATCHER * newhome_watcher_p)
+{
+  int rc = NO_ERROR;
+
+  if (placed_type == REC_BIGONE)
+    {
+      if (heap_ovf_delete (thread_p, &context->hfid, placed_oid_p, NULL) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
+	}
+    }
+  else if (placed_type == REC_NEWHOME)
+    {
+      assert (newhome_watcher_p->pgptr != NULL);
+      heap_log_delete_physical (thread_p, newhome_watcher_p->pgptr, &context->hfid.vfid, placed_oid_p,
+				placed_recdes_p, heap_is_reusable_oid (context->file_type), NULL);
+      rc = heap_delete_physical (thread_p, &context->hfid, newhome_watcher_p->pgptr, placed_oid_p);
+      pgbuf_ordered_unfix (thread_p, newhome_watcher_p);
+      if (rc != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * heap_ww_fix_header_under_verdict () - fix the heap header page under the current seal verdict when the
+ *   +DELID growth will need it for the new-space hunt (idempotent for the later stock call)
+ *   danced_p(out): true when the ordered fix unfixed home/forward -- the verdict is stale and the caller
+ *                  must re-derive and re-classify
+ */
+static int
+heap_ww_fix_header_under_verdict (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
+				  const OID * forward_oid_p, const RECDES * forward_recdes_p, bool * danced_p)
+{
+  int mvcc_flags = (OR_GET_MVCC_REPID_AND_FLAG (forward_recdes_p->data) >> OR_MVCC_FLAG_SHIFT_BITS)
+    & OR_MVCC_FLAG_MASK;
+  int adjusted_size = forward_recdes_p->length;
+  bool is_big = false;
+  bool home_saved, fwd_saved;
+  int rc;
+
+  *danced_p = false;
+  if (!(mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
+    {
+      adjusted_size += OR_MVCCID_SIZE;
+      is_big = heap_is_big_length (adjusted_size);
+    }
+  if (!is_big
+      && (spage_is_updatable (thread_p, context->forward_page_watcher_p->pgptr, forward_oid_p->slotid, adjusted_size)
+	  || spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, adjusted_size)))
+    {
+      /* fits in place -- no header page needed */
+      return NO_ERROR;
+    }
+
+  home_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
+  fwd_saved = heap_ww_unfixed_watch_begin (context->forward_page_watcher_p);
+  rc = heap_fix_header_page (thread_p, context);
+  *danced_p = heap_ww_unfixed_watch_end (context->home_page_watcher_p, home_saved);
+  *danced_p = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, fwd_saved) || *danced_p;
+  return rc;
+}
 #endif /* SERVER_MODE */
 
 /*
@@ -21500,48 +21575,27 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
 		{
-		  /* The +DELID growth may need the heap header page below: take it under this verdict
-		   * (idempotent for the later stock call), and re-classify if that unfixed home/forward. */
-		  int ww_mvcc_flags = (OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data)
-				       >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
-		  int ww_adjusted = forward_recdes.length;
-		  bool ww_big = false;
+		  bool ww_danced;
 
-		  if (!(ww_mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
+		  /* the +DELID growth may need the heap header page: take it under this verdict */
+		  rc = heap_ww_fix_header_under_verdict (thread_p, context, &forward_oid, &forward_recdes,
+							 &ww_danced);
+		  if (rc != NO_ERROR)
 		    {
-		      ww_adjusted += OR_MVCCID_SIZE;
-		      ww_big = heap_is_big_length (ww_adjusted);
+		      return rc;
 		    }
-		  if (ww_big
-		      || (!spage_is_updatable (thread_p, context->forward_page_watcher_p->pgptr,
-					       forward_oid.slotid, ww_adjusted)
-			  && !spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr,
-						  context->oid.slotid, ww_adjusted)))
+		  if (ww_danced)
 		    {
-		      bool ww_h_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
-		      bool ww_f_saved = heap_ww_unfixed_watch_begin (context->forward_page_watcher_p);
-		      bool ww_danced;
-
-		      rc = heap_fix_header_page (thread_p, context);
+		      rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
 		      if (rc != NO_ERROR)
 			{
 			  return rc;
 			}
-		      ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_h_saved);
-		      ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_f_saved) || ww_danced;
-		      if (ww_danced)
+		      if (context->ww_record_transformed)
 			{
-			  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
-			  if (rc != NO_ERROR)
-			    {
-			      return rc;
-			    }
-			  if (context->ww_record_transformed)
-			    {
-			      return NO_ERROR;
-			    }
-			  continue;
+			  return NO_ERROR;
 			}
+		      continue;
 		    }
 		  /* clean or ours: stamp atomically under the latches we still hold */
 		  break;
@@ -21879,28 +21933,12 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_fwd_flag_saved) || ww_danced;
       if (ww_danced)
 	{
-	  /* the verdict is stale: compensate the fresh record (ours only, never referenced yet),
-	   * re-derive the chain and go back to the verdict */
-	  if (ww_placed_type == REC_BIGONE)
+	  /* the verdict is stale: compensate the fresh record, re-derive the chain, go back to the verdict */
+	  rc = heap_ww_compensate_insertion (thread_p, context, ww_placed_type, &new_forward_oid,
+					     &new_forward_recdes, &ww_nh_watcher);
+	  if (rc != NO_ERROR)
 	    {
-	      if (heap_ovf_delete (thread_p, &context->hfid, &new_forward_oid, NULL) == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (rc);
-		  return rc;
-		}
-	    }
-	  else if (ww_placed_type == REC_NEWHOME)
-	    {
-	      assert (ww_nh_watcher.pgptr != NULL);
-	      heap_log_delete_physical (thread_p, ww_nh_watcher.pgptr, &context->hfid.vfid, &new_forward_oid,
-					&new_forward_recdes, heap_is_reusable_oid (context->file_type), NULL);
-	      rc = heap_delete_physical (thread_p, &context->hfid, ww_nh_watcher.pgptr, &new_forward_oid);
-	      pgbuf_ordered_unfix (thread_p, &ww_nh_watcher);
-	      if (rc != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return rc;
-		}
+	      return rc;
 	    }
 	  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
 	  if (rc != NO_ERROR)
@@ -22639,29 +22677,12 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	  ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_flag_saved);
 	  if (ww_danced)
 	    {
-	      /* the verdict is stale: compensate the fresh record (ours only, never referenced yet)
-	       * and re-run the seal on the re-read record */
-	      if (built_recdes.type == REC_BIGONE)
+	      /* the verdict is stale: compensate the fresh record and re-run the seal on the re-read record */
+	      error_code = heap_ww_compensate_insertion (thread_p, context, built_recdes.type, &forward_oid,
+							 &built_recdes, &ww_newhome_watcher);
+	      if (error_code != NO_ERROR)
 		{
-		  if (heap_ovf_delete (thread_p, &context->hfid, &forward_oid, NULL) == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error_code);
-		      return error_code;
-		    }
-		}
-	      else
-		{
-		  assert (ww_newhome_watcher.pgptr != NULL);
-		  heap_log_delete_physical (thread_p, ww_newhome_watcher.pgptr, &context->hfid.vfid,
-					    &forward_oid, &built_recdes,
-					    heap_is_reusable_oid (context->file_type), NULL);
-		  error_code = heap_delete_physical (thread_p, &context->hfid, ww_newhome_watcher.pgptr, &forward_oid);
-		  pgbuf_ordered_unfix (thread_p, &ww_newhome_watcher);
-		  if (error_code != NO_ERROR)
-		    {
-		      ASSERT_ERROR ();
-		      return error_code;
-		    }
+		  return error_code;
 		}
 	      error_code = heap_home_reread (thread_p, context);
 	      if (error_code != NO_ERROR)
