@@ -21028,7 +21028,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   /* reset overflow watcher rank */
   PGBUF_WATCHER_RESET_RANK (context->overflow_page_watcher_p, PGBUF_ORDERED_HEAP_OVERFLOW);
 
-  if (context->do_supplemental_log)
+  if (context->do_supplemental_log && !is_mvcc_op)
     {
       /* whether it is mvcc or not, undo image does not recorded in the log */
       if ((rc =
@@ -21038,15 +21038,15 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	  return rc;
 	}
 
-      if (!is_mvcc_op)
-	{
-	  /* no write-write seal on this path -- append right away, as before */
-	  log_append_supplemental_undo_record (thread_p, &ovf_supp_recdes);
-	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
-	}
-      /* the MVCC path appends after the seal: a raced vanish must not leave an undo for a row this
-       * statement did not delete, and a re-dispatch must not append twice (its new path appends its own) */
+      /* no write-write seal on this path -- read and append right away, as before */
+      log_append_supplemental_undo_record (thread_p, &ovf_supp_recdes);
+      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
     }
+  /* The MVCC path both reads the image and appends it after the seal. Appending late keeps a raced vanish from
+   * leaving an undo for a row this statement did not delete, and keeps a re-dispatch from appending twice (its
+   * new path appends its own). Reading late matters for the same reason the seal exists: with no per-row X-lock
+   * the content read before the seal can belong to a version a committed update replaced while the seal waited,
+   * and overflow_oid itself is re-derived after a wait. */
 
   if (is_mvcc_op)
     {
@@ -21229,7 +21229,15 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
       if (context->do_supplemental_log)
 	{
-	  /* the seal settled on this version: only now is the supplemental undo this statement's to append */
+	  /* the seal settled on this version: only now do the image and the undo belong to this statement --
+	   * overflow_oid has been re-derived if the seal waited, and the content behind it is the version the
+	   * stamp below deletes */
+	  if ((rc =
+	       heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &overflow_oid,
+					&ovf_supp_recdes)) != S_SUCCESS)
+	    {
+	      return rc;
+	    }
 	  log_append_supplemental_undo_record (thread_p, &ovf_supp_recdes);
 	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
 	}
