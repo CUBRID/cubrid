@@ -22966,8 +22966,9 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
    * heap_update_home. The row's MVCC header, and any foreign in-progress DELID, lives on the first overflow
    * page, and heap_ovf_update below rewrites it: overwriting an in-progress stamp makes the deleter's undo
    * find no DELID (its rollback, and recovery redo of its compensate, then report or die). Classify here,
-   * before the header page gets fixed; once the record is clean, the home WRITE latch held to the end of the
-   * function keeps any deleter out (every delete path classifies and stamps under the home latch). */
+   * before the header page gets fixed. One classification is enough -- not because the home latch is
+   * continuous (the ordered fix below can drop it) but because our instance X-lock is: a later lockless
+   * deleter's own seal probes lock_is_xlocked_by_other and waits on it before stamping. */
   if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
       while (true)
@@ -23016,7 +23017,7 @@ heap_update_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
 	  if (!MVCCID_IS_NORMAL (ww_owner) || logtb_is_current_mvccid (thread_p, ww_owner))
 	    {
-	      /* clean or ours: from here the held home WRITE latch keeps any deleter out */
+	      /* clean or ours: from here our per-row instance X-lock keeps any later deleter out */
 	      pgbuf_unfix (thread_p, ww_ovf_page);
 	      break;
 	    }
@@ -23314,9 +23315,10 @@ heap_update_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
    * heap_update_home. The row's MVCC header, and any foreign in-progress DELID, lives on the forward record,
    * and the rewrite below replaces or physically removes that record: overwriting an in-progress stamp makes
    * the deleter's undo target vanish, and its rollback -- and recovery redo of its compensate -- then dies on
-   * a missing DELID or a missing slot. Classify here, before the header page gets fixed; once the record is
-   * clean, the home WRITE latch held to the end of the function keeps any deleter out (every delete path
-   * classifies and stamps under the home latch). */
+   * a missing DELID or a missing slot. Classify here, before the header page gets fixed. One classification
+   * is enough -- not because the home latch is continuous (the ordered fix below can drop it) but because
+   * our instance X-lock is: a later lockless deleter's own seal probes lock_is_xlocked_by_other and waits
+   * on it before stamping. */
   if (is_mvcc_op && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
       while (true)
