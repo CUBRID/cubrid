@@ -132,8 +132,6 @@ public class ExecuteThread extends Thread {
             while (!Thread.interrupted()) {
                 try {
                     header = listenCommand();
-                    ContextManager.registerThread(
-                            Thread.currentThread().getId(), ctx.getSessionId());
                     switch (header.code) {
                             /*
                              * the following two request codes are for processing java stored procedure
@@ -253,7 +251,6 @@ public class ExecuteThread extends Thread {
                         }
                     }
                 } finally {
-                    ContextManager.deregisterThread(Thread.currentThread().getId());
                     ctx = null;
                 }
             }

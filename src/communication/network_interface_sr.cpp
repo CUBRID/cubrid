@@ -11130,6 +11130,18 @@ ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
   session_stop_attached_threads (thread_p, session);
 }
 
+void
+ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
+{
+  session_interrupt_attached_threads (thread_p, session);
+}
+
+void
+ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+{
+  session_destroy_load_session (thread_p, session);
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 static bool
 cdc_check_client_connection ()

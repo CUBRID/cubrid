@@ -641,6 +641,7 @@ csql_display_session_err (DB_SESSION * session, int line_no)
 
   do
     {
+      csql_Scratch_text[0] = '\0';
       err = db_get_next_error (err, &line_no, &col_no);
       if (line_no > 0)
 	{
@@ -1048,10 +1049,10 @@ csql_edit_contents_append (const char *str, bool flag_append_new_line)
 
 /*
  * csql_walk_statement () - parse str and change the state
- * return : NULL
+ * return : True if contains a non-whitespace/non-comment token, false otherwise.
  * str (in) : the new statement chunk received from input
  */
-void
+bool
 csql_walk_statement (const char *str)
 {
   /* using flags but not adding many states in here may be not good choice, but it will not change the state machine
@@ -1060,10 +1061,11 @@ csql_walk_statement (const char *str)
   bool is_last_stmt_valid = true;
   const char *p;
   int str_length;
+  bool found_noncomment = false;
 
   if (str == NULL)
     {
-      return;
+      return false;
     }
 
   CSQL_STATEMENT_STATE state = csql_Edit_contents.state;
@@ -1106,6 +1108,15 @@ csql_walk_statement (const char *str)
 	    }
 
 	  // here, *p is a non-white-space
+
+	  if ((*p == '/' && (*(p + 1) == '/' || *(p + 1) == '*')) || (*p == '-' && *(p + 1) == '-'))
+	    {
+	      /* blank code */ ;
+	    }
+	  else
+	    {
+	      found_noncomment = true;
+	    }
 
 	substate_transition:
 	  switch (substate)
@@ -1509,6 +1520,8 @@ csql_walk_statement (const char *str)
   csql_Edit_contents.substate = substate;
   csql_Edit_contents.plcsql_begin_end_balance = plcsql_begin_end_balance;
   csql_Edit_contents.plcsql_nest_level = plcsql_nest_level;
+
+  return found_noncomment;
 }
 
 /*

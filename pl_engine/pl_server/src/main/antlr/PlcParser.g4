@@ -112,8 +112,7 @@ seq_of_declare_specs
 
 /* sp: stored procedure, ps: package spec, pb: package body */
 declare_spec
-    : pragma_decl
-    | constant_decl
+    : constant_decl
     | exception_decl
     | variable_decl
     | cursor_decl
@@ -145,10 +144,6 @@ cursor_parameter
 
 exception_decl
     : identifier EXCEPTION (COMMENT CHAR_STRING)? SEMICOLON
-    ;
-
-pragma_decl
-    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
     ;
 
 seq_of_statements

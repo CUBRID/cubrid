@@ -48,19 +48,34 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.PrintStream;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.tree.*;
 
 public class PlcsqlCompilerMain {
 
-    // temporary code - the owner and revision strings will come from the server
-    private static int revision = 1;
+    public static class CodeAndPosition {
+
+        public String code;
+        public int row;
+        public int col;
+
+        CodeAndPosition(String code, int row, int col) {
+            this.code = code;
+            this.row = row;
+            this.col = col;
+        }
+
+        @Override
+        public String toString() {
+            return String.format("(%d, %d) '%s'", row, col, code);
+        }
+    }
 
     public static CompileResponse compilePLCSQL(CompileRequest request) {
         return compilePLCSQL(request, Integer.toString(revision++));
     }
-    // end of temporary code
 
     public static CompileResponse compilePLCSQL(CompileRequest request, String revision) {
 
@@ -79,11 +94,36 @@ public class PlcsqlCompilerMain {
         }
     }
 
+    public static List<CodeAndPosition> checkSyntaxAndGetStaticSqls(String code) {
+
+        CharStream input = CharStreams.fromString(code);
+        PlcLexer lexer = new PlcLexer(input);
+
+        SyntaxErrorIndicator lei = new SyntaxErrorIndicator(false);
+        lexer.removeErrorListeners(); // This removes unwanted console output
+        lexer.addErrorListener(lei);
+
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        PlcParser parser = new PlcParser(tokens);
+
+        SyntaxErrorIndicator sei = new SyntaxErrorIndicator(false);
+        parser.removeErrorListeners(); // This removes unwanted console output
+        parser.addErrorListener(sei);
+
+        ParseTree ptree = parser.sql_script();
+
+        StaticSqlCollector ssCollector = new StaticSqlCollector();
+        ParseTreeWalker.DEFAULT.walk(ssCollector, ptree);
+
+        return ssCollector.staticSqls;
+    }
+
     // ------------------------------------------------------------------
     // Private
     // ------------------------------------------------------------------
 
-    private static final int OPT_PRINT_PARSE_TREE = 1 << 1;
+    // temporary code - the owner and revision strings will come from the server
+    private static int revision = 1;
 
     private static final String STR_EXPECTING = " expecting ";
     private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
@@ -365,11 +405,11 @@ public class PlcsqlCompilerMain {
 
     private static class SyntaxErrorIndicator extends BaseErrorListener {
 
-        final boolean forParser;
+        final boolean cutVariablePart;
 
-        public SyntaxErrorIndicator(boolean forParser) {
+        public SyntaxErrorIndicator(boolean cutVariablePart) {
             super();
-            this.forParser = forParser;
+            this.cutVariablePart = cutVariablePart;
         }
 
         @Override
@@ -382,7 +422,7 @@ public class PlcsqlCompilerMain {
                 RecognitionException e) {
 
             // throw SyntaxError at the first syntax error
-            String errMsg = forParser ? cutExpectingClause(msg) : msg;
+            String errMsg = cutVariablePart ? cutExpectingClause(msg) : msg;
             throw new SyntaxError(line, charPositionInLine + 1, errMsg);
         }
     }

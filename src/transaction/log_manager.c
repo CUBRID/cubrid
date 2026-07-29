@@ -341,7 +341,8 @@ static int cdc_find_user (THREAD_ENTRY * thread_p, LOG_LSA lsa, int trid, char *
 static int cdc_compare_undoredo_dbvalue (const db_value * new_value, const db_value * old_value);
 static int cdc_put_value_to_loginfo (db_value * new_value, char **ptr);
 
-static int cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time);
+static int cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time,
+					  bool * is_found);
 static int cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * start_lsa);
 
 static bool cdc_is_filtered_class (OID classoid);
@@ -1119,8 +1120,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_ENTER (thread_p);
 
+  /* Boot-only flag, cleared at every exit; must not leak in from a prior call. */
+  assert (logtb_Reuse_boot_managers == false);
+
   if (log_Gl.trantable.area != NULL)
     {
+      /* Boot defined this trantable (and its pgbuf/lock/file/mvcc) early; reuse
+       * that pool across the redefine below instead of rebuilding it. Not on
+       * emergency restart (recovery is skipped). */
+      logtb_Reuse_boot_managers = !init_emergency;
       log_final (thread_p);
     }
 
@@ -1225,6 +1233,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Pagesize is incorrect. We need to undefine anything that has been
        * created with old pagesize and start again
        */
+      if (logtb_Reuse_boot_managers)
+	{
+	  logtb_Reuse_boot_managers = false;
+	  logtb_undefine_trantable (thread_p);
+	}
       if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
 	{
 	  /* Pagesize is incompatible */
@@ -1343,6 +1356,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       goto error;
     }
+  /* redefine reused the pool successfully; leave the reuse window */
+  logtb_Reuse_boot_managers = false;
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -1506,6 +1521,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
 error:
   /* ***** */
+
+  /* reuse window aborted: finalize the boot-time managers log_final kept alive */
+  if (logtb_Reuse_boot_managers)
+    {
+      logtb_Reuse_boot_managers = false;
+      logtb_undefine_trantable (thread_p);
+    }
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -1780,6 +1802,14 @@ log_final (THREAD_ENTRY * thread_p)
 	    }
 	  else
 	    {
+	      /* Loose-end transactions (e.g. 2PC prepared) are intentionally left un-aborted here
+	       * since their outcome is still undecided. But their locks must still be dropped from
+	       * the in-memory lock table before it is torn down below; anyloose_ends forces a
+	       * checkpoint instead of a clean-shutdown mark, so recovery will reacquire these same
+	       * locks via lock_reacquire_crash_locks on the next restart. Releasing them here only
+	       * affects this process' in-memory bookkeeping, the same as what a crash would do. */
+	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
+	      lock_unlock_all (thread_p);
 	      anyloose_ends = true;
 	    }
 	}
@@ -11040,6 +11070,11 @@ end:
   return error;
 
 error:
+  if (supp_recdes.data != NULL)
+    {
+      free_and_init (supp_recdes.data);
+    }
+
   if (supplement_data != NULL)
     {
       free_and_init (supplement_data);
@@ -11194,6 +11229,9 @@ cdc_loginfo_producer_execute (cubthread::entry & thread_ref)
 		 LSA_AS_ARGS (&process_lsa));
 
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (CDC_LOGINFO_ENTRY));
+	      free_and_init (log_info_entry.log_info);
+	      LSA_COPY (&process_lsa, &cur_log_rec_lsa);
+	      thread_sleep (50);
 	      error = ER_OUT_OF_VIRTUAL_MEMORY;
 	      continue;
 	    }
@@ -11267,8 +11305,16 @@ cdc_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA lsa
     {
       if (scan_code == S_DOESNT_FIT)
 	{
-	  undo_recdes->data = (char *) realloc (undo_recdes->data, (size_t) (-undo_recdes->length));	//realloc error 처리
-	  undo_recdes->area_size = (size_t) (-undo_recdes->length);
+	  size_t required_size = (size_t) (-undo_recdes->length);
+	  char *new_data = (char *) realloc (undo_recdes->data, required_size);
+	  if (new_data == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, required_size);
+	      return S_ERROR;
+	    }
+
+	  undo_recdes->data = new_data;
+	  undo_recdes->area_size = required_size;
 
 	  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
 	    {
@@ -11335,8 +11381,8 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
   LOG_RECORD_HEADER *log_rec_hdr = NULL;
   int tmpbuf_index;
 
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  char *preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char preserved_log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   LOG_PAGE *log_page_p = NULL;	// log_page for process_lsa : when process_lsa is advanced, then next log_page can be fetched into this buffer
   LOG_PAGE *preserved_log_page_p = NULL;	// log_page for redo/undo lsa
 
@@ -11367,6 +11413,7 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 
   log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   preserved_log_page_p = (LOG_PAGE *) PTR_ALIGN (preserved_log_pgbuf, MAX_ALIGNMENT);
+  preserved_log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   /* Get UNDO RECDES from undo lsa */
 
@@ -11723,8 +11770,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -11932,8 +11982,6 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	      }
 	    else if (rcvindex == RVHF_UPDATE)
 	      {
-		RECDES tmp_undo_recdes = RECDES_INITIALIZER;
-
 		if (ZIP_CHECK (undo_length))
 		  {
 		    undo_length = (int) GET_ZIP_LEN (undo_length);
@@ -11942,8 +11990,11 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 		/*if LOG_MVCC_UNDOREDO_DATA_DIFF , get undo data first and get diff */
 		if (is_diff)
 		  {
-		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT] = "\0";
+		    char temp_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 		    LOG_PAGE *temp_pgptr = (LOG_PAGE *) PTR_ALIGN (temp_buf, MAX_ALIGNMENT);
+
+		    /* page id 0 is a valid data page; an empty buffer must not match any requested page */
+		    temp_pgptr->hdr.logical_pageid = NULL_LOG_PAGEID;
 
 		    scan_code = cdc_get_undo_record (thread_p, temp_pgptr, *redo_lsa, &tmp_undo_recdes);
 		    if (scan_code != S_SUCCESS)
@@ -12137,6 +12188,15 @@ cdc_get_recdes (THREAD_ENTRY * thread_p, LOG_LSA * undo_lsa, RECDES * undo_recde
 	}
     }
 
+  /* A supplemental DML LSA must always reconstruct the requested row image. */
+  if ((undo_lsa != NULL && (undo_recdes == NULL || undo_recdes->data == NULL))
+      || (redo_lsa != NULL && (redo_recdes == NULL || redo_recdes->data == NULL)))
+    {
+      cdc_log ("cdc_get_recdes : failed to reconstruct record descriptor from supplemental log LSA");
+      error_code = ER_FAILED;
+      goto error;
+    }
+
   if (redo_data != NULL && is_redo_alloced)
     {
       free_and_init (redo_data);
@@ -12202,6 +12262,14 @@ cdc_get_ovfdata_from_log (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p,
 
   cdc_log ("cdc_get_ovfdata_from_log : process_lsa:(%lld | %d), recovery index:%d, is_redo:%d",
 	   LSA_AS_ARGS (process_lsa), rcvindex, is_redo);
+
+  /* log_page_p may not hold process_lsa's page; e.g. the LOG_DUMMY_OVF_RECORD branch of cdc_get_overflow_recdes ()
+   * passes prev_tranlsa, which can point to a record on another log page. */
+  if (cdc_check_log_page (thread_p, log_page_p, process_lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+
   LOG_READ_ADD_ALIGN (thread_p, DB_SIZEOF (LOG_RECORD_HEADER), process_lsa, log_page_p);
 
   if (is_redo)
@@ -12323,6 +12391,12 @@ cdc_get_overflow_recdes (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, RECDES 
   int area_offset;
   int error_code = NO_ERROR;
   int length = 0;
+
+  /* log_page_p may not hold lsa's page after parsing advanced across a log page boundary. */
+  if (cdc_check_log_page (thread_p, log_page_p, &lsa) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   LSA_COPY (&current_lsa, &lsa);
   current_log_page = log_page_p;
@@ -14205,6 +14279,9 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 
   LOG_LSA ret_lsa = LSA_INITIALIZER;
   bool is_found = false;
+  bool active_start_point_found = false;
+  bool archive_start_point_found = false;
+  bool current_start_point_found = false;
 
   char input_time_buf[CTIME_MAX];
   char output_time_buf[CTIME_MAX];
@@ -14231,15 +14308,15 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
    */
 
   /* At first, compare the time in active log volume. */
-  error = cdc_get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time);
-  if (error == ER_FAILED || error == ER_LOG_READ)
+  error = cdc_get_start_point_from_file (thread_p, -1, &ret_lsa, &active_start_time, &active_start_point_found);
+  if (error != NO_ERROR)
     {
       goto end;
     }
   else
     {
       /* NO ERROR */
-      if (active_start_time != 0 && active_start_time <= *extraction_time)
+      if (active_start_point_found && active_start_time <= *extraction_time)
 	{
 	  // active
 	  error = cdc_get_lsa_with_start_point (thread_p, extraction_time, &ret_lsa);
@@ -14271,11 +14348,18 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	      /* travers from the latest */
 	      for (int i = end; i > begin; i--)
 		{
-		  error = cdc_get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time);
+		  error = cdc_get_start_point_from_file (thread_p, i, &ret_lsa, &archive_start_time,
+							 &current_start_point_found);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;
 		    }
+		  if (!current_start_point_found)
+		    {
+		      continue;
+		    }
+
+		  archive_start_point_found = true;
 
 		  if (archive_start_time <= *extraction_time)
 		    {
@@ -14286,9 +14370,24 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 
 	      if (target_arv_num == -1)
 		{
-		  /* returns oldest LSA */
-		  LSA_COPY (start_lsa, &ret_lsa);
-		  *extraction_time = archive_start_time;
+		  if (archive_start_point_found)
+		    {
+		      /* returns oldest LSA found in the archives */
+		      LSA_COPY (start_lsa, &ret_lsa);
+		      *extraction_time = archive_start_time;
+		    }
+		  else if (active_start_point_found)
+		    {
+		      /* no archive contains time information; returns the oldest LSA in the active log */
+		      LSA_COPY (start_lsa, &ret_lsa);
+		      *extraction_time = active_start_time;
+		    }
+		  else
+		    {
+		      /* no time information has been found in any log volume; returns the latest log */
+		      LSA_COPY (start_lsa, &log_Gl.append.prev_lsa);
+		      *extraction_time = time (NULL);
+		    }
 		  is_found = true;
 
 		  ctime_r (&input_time, input_time_buf);
@@ -14321,7 +14420,7 @@ cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start
 	    {
 	      /* num_arvs == 0, and active_start_time > input time 
 	       * returns oldest LSA in active log volume */
-	      if (active_start_time != 0)
+	      if (active_start_point_found)
 		{
 		  *extraction_time = active_start_time;
 		  LSA_COPY (start_lsa, &ret_lsa);
@@ -14473,7 +14572,7 @@ cdc_validate_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   LOG_RECORD_HEADER *log_rec_header;
   LOG_PAGE *log_page_p = NULL;
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   LOG_LSA process_lsa;
 
@@ -14576,8 +14675,11 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
 
+      LSA_COPY (&cdc_Gl.first_loginfo_queue_lsa, &next_consume_lsa);
       cdc_Gl.producer.produced_queue_size -= cdc_Gl.consumer.consumed_queue_size;
       cdc_Gl.consumer.consumed_queue_size = 0;
     }
@@ -14593,6 +14695,8 @@ cdc_reinitialize_queue (LOG_LSA * start_lsa)
 	    {
 	      free_and_init (consume->log_info);
 	    }
+
+	  free_and_init (consume);
 	}
       cdc_Gl.producer.produced_queue_size = 0;
       cdc_Gl.consumer.consumed_queue_size = 0;
@@ -14612,11 +14716,13 @@ end:
 /*
  * arv_num (in) : archive log volume number to traverse. If it is -1, then traverse active log volume. 
  * ret_lsa (out) : lsa of the first log which contains time info 
- * time (out) : time of the first log which contains time info  
+ * time (out) : time of the first log which contains time info
+ * is_found (out) : true if the specified log volume contains a log with time info
+ * return : error code; a volume without time info returns NO_ERROR with is_found set to false
  */
 
 static int
-cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time)
+cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * ret_lsa, time_t * time, bool * is_found)
 {
   char arv_name[PATH_MAX];
   LOG_ARV_HEADER *arv_hdr;
@@ -14634,6 +14740,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
   LOG_LSA process_lsa = LSA_INITIALIZER;
   LOG_LSA forw_lsa = LSA_INITIALIZER;
   LOG_LSA cur_log_lsa = LSA_INITIALIZER;
+  LOG_PAGEID archive_end_pageid = NULL_PAGEID;
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_RECTYPE log_type;
@@ -14642,6 +14749,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   aligned_log_pgbuf = PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   log_pgptr = (LOG_PAGE *) aligned_log_pgbuf;
+  *is_found = false;
   LOG_CS_ENTER_READ_MODE (thread_p);
 
   if (arv_num == -1)
@@ -14658,6 +14766,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	  /* if target archive log volume is currenty mounted, then use that */
 	  process_lsa.pageid = log_Gl.archive.hdr.fpageid;
 	  process_lsa.offset = 0;
+	  archive_end_pageid = log_Gl.archive.hdr.fpageid + log_Gl.archive.hdr.npages;
 	}
       else
 	{
@@ -14699,6 +14808,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 		  process_lsa.pageid = arv_hdr->fpageid;
 		  process_lsa.offset = 0;
+		  archive_end_pageid = arv_hdr->fpageid + arv_hdr->npages;
 
 		  fileio_dismount (thread_p, vdes);
 		}
@@ -14721,6 +14831,8 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
       return ER_CDC_LSA_NOT_FOUND;
     }
 
+  assert (arv_num == -1 || archive_end_pageid != NULL_PAGEID);
+
   if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
     {
       return error_code;
@@ -14728,6 +14840,32 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
   process_lsa.pageid = log_pgptr->hdr.logical_pageid;
   process_lsa.offset = log_pgptr->hdr.offset;
+
+  /*
+   * The first page of an active or archive log volume may contain only the continuation data of a log record
+   * that started in the previous volume. In that case, the page has no log record header and hdr.offset is
+   * NULL_OFFSET. Skip such pages before interpreting page data as LOG_RECORD_HEADER.
+   */
+  while (process_lsa.offset == NULL_OFFSET)
+    {
+      LOG_PAGEID end_pageid = (arv_num == -1) ? log_Gl.append.get_nxio_lsa ().pageid : archive_end_pageid;
+
+      cdc_log ("%s : skip continuation-only log page %lld", __func__, (long long int) process_lsa.pageid);
+      process_lsa.pageid++;
+      if (process_lsa.pageid >= end_pageid)
+	{
+	  /* Reaching the end of one volume is not an error. The caller continues with an older archive. */
+	  return NO_ERROR;
+	}
+
+      if ((error_code = logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_pgptr)) != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      process_lsa.pageid = log_pgptr->hdr.logical_pageid;
+      process_lsa.offset = log_pgptr->hdr.offset;
+    }
 
   while (!LSA_ISNULL (&process_lsa))
     {
@@ -14746,6 +14884,7 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = donetime->at_time;
+	  *is_found = true;
 
 	  return NO_ERROR;
 	}
@@ -14757,7 +14896,14 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 
 	  LSA_COPY (ret_lsa, &cur_log_lsa);
 	  *time = dummy->at_time;
+	  *is_found = true;
 
+	  return NO_ERROR;
+	}
+
+      if (arv_num != -1 && !LSA_ISNULL (&forw_lsa) && forw_lsa.pageid >= archive_end_pageid)
+	{
+	  /* The next log record starts in a newer archive. The caller continues with an older archive. */
 	  return NO_ERROR;
 	}
 
@@ -14765,6 +14911,11 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
 	{
 	  if (LSA_ISNULL (&forw_lsa))
 	    {
+	      if (arv_num != -1)
+		{
+		  return NO_ERROR;
+		}
+
 	      ctime_r (time, ctime_buf);
 	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
 
@@ -14780,9 +14931,13 @@ cdc_get_start_point_from_file (THREAD_ENTRY * thread_p, int arv_num, LOG_LSA * r
       LSA_COPY (&process_lsa, &forw_lsa);
     }
 
+  if (arv_num != -1)
+    {
+      return NO_ERROR;
+    }
+
   ctime_r (time, ctime_buf);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_LSA_NOT_FOUND, 1, ctime_buf);
-
   return ER_CDC_LSA_NOT_FOUND;
 }
 
@@ -14798,7 +14953,7 @@ cdc_get_lsa_with_start_point (THREAD_ENTRY * thread_p, time_t * time, LOG_LSA * 
   LOG_LSA current_lsa;
 
   LOG_PAGE *log_page_p = NULL;
-  char *log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
 
   LOG_RECORD_HEADER *log_rec_header;
   LOG_RECTYPE log_type;
@@ -15052,6 +15207,10 @@ cdc_initialize ()
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[0].log_page, MAX_ALIGNMENT);
   cdc_Gl.producer.temp_logbuf[1].log_page_p =
     (LOG_PAGE *) PTR_ALIGN (cdc_Gl.producer.temp_logbuf[1].log_page, MAX_ALIGNMENT);
+
+  /* page id 0 is a valid data page; invalidate the temp log buffers so the first access always fetches */
+  cdc_Gl.producer.temp_logbuf[0].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
+  cdc_Gl.producer.temp_logbuf[1].log_page_p->hdr.logical_pageid = NULL_LOG_PAGEID;
 
   /*communication buffer from server to client initialization */
   cdc_Gl.consumer.log_info = NULL;
