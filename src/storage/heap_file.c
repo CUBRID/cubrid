@@ -21356,7 +21356,7 @@ heap_ww_unfixed_watch_end (PGBUF_WATCHER * watcher, bool saved)
  */
 static int
 heap_delete_reloc_rederive (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, OID * forward_oid_p,
-			 RECDES * forward_recdes_p)
+			    RECDES * forward_recdes_p)
 {
   INT16 rectype;
   int peek, rc = NO_ERROR;
@@ -21528,8 +21528,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 			  return rc;
 			}
 		      ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_h_saved);
-		      ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_f_saved)
-			|| ww_danced;
+		      ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_f_saved) || ww_danced;
 		      if (ww_danced)
 			{
 			  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
@@ -22214,8 +22213,7 @@ heap_home_reread (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int error_code = NO_ERROR;
   INT16 rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
 
-  if (rectype != context->record_type
-      && (rectype == REC_HOME || rectype == REC_RELOCATION || rectype == REC_BIGONE))
+  if (rectype != context->record_type && (rectype == REC_HOME || rectype == REC_RELOCATION || rectype == REC_BIGONE))
     {
       /* The record changed shape while the latch was down (e.g. a committed update relocated the row):
        * parsing it as a home record would read a forward pointer as an MVCC header. Report the new type
@@ -22629,8 +22627,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	      forwarding_recdes.type = REC_RELOCATION;
 
 	      /* insert NEWHOME record; keep its page fixed so a dance can be compensated without a re-fix */
-	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid,
-						&ww_newhome_watcher);
+	      error_code = heap_insert_newhome (thread_p, context, &built_recdes, &forward_oid, &ww_newhome_watcher);
 	      if (error_code != NO_ERROR)
 		{
 		  ASSERT_ERROR ();
@@ -22658,8 +22655,7 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 		  heap_log_delete_physical (thread_p, ww_newhome_watcher.pgptr, &context->hfid.vfid,
 					    &forward_oid, &built_recdes,
 					    heap_is_reusable_oid (context->file_type), NULL);
-		  error_code = heap_delete_physical (thread_p, &context->hfid, ww_newhome_watcher.pgptr,
-						     &forward_oid);
+		  error_code = heap_delete_physical (thread_p, &context->hfid, ww_newhome_watcher.pgptr, &forward_oid);
 		  pgbuf_ordered_unfix (thread_p, &ww_newhome_watcher);
 		  if (error_code != NO_ERROR)
 		    {
