@@ -1565,14 +1565,17 @@ static bool
 rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value)
 {
   int res = V_FALSE;
+  int err;
 
-  /* value is a string_view into the histogram blob: NOT NUL-terminated, so copy by length */
-  if (cubregex::search (res, reg, std::string (value)) != NO_ERROR)
-    {
-      return false;
-    }
+  /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
+   * compile above, a planning probe must not leave that in the global error state -- shield it
+   * and treat the value as unmatched. value is a string_view into the histogram blob: NOT
+   * NUL-terminated, so copy by length. */
+  er_stack_push ();
+  err = cubregex::search (res, reg, std::string (value));
+  er_stack_pop ();
 
-  return res == V_TRUE;
+  return (err == NO_ERROR && res == V_TRUE);
 }
 
 void
