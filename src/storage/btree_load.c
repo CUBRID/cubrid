@@ -4603,97 +4603,45 @@ end:
   return error;
 }
 
-static void
-bt_load_leaf_set_flag (RECDES * rec, short flag)
+/*
+ * bt_load_store_overflow_key_hook () - BTREE_STORE_OVF_KEY_FUNC adapter over bt_load_store_overflow_key ()
+ *   return: error code
+ *   arg(in): the LOAD_ARGS of the shard being built
+ */
+static int
+bt_load_store_overflow_key_hook (THREAD_ENTRY * thread_p, void *arg, DB_VALUE * key, int key_len,
+				 BTREE_NODE_TYPE node_type, VPID * first_vpid)
 {
-  short slotid = OR_GET_SHORT (rec->data + OR_OID_SLOTID);
-  OR_PUT_SHORT (rec->data + OR_OID_SLOTID, slotid | flag);
+  LOAD_ARGS *load_args = (LOAD_ARGS *) arg;
+  int error = bt_load_store_overflow_key (thread_p, load_args, key, key_len, node_type, first_vpid);
+
+  if (error == NO_ERROR)
+    {
+      load_args->report_overflow_key_count++;
+    }
+  return error;
 }
 
-static void
-bt_load_object_set_mvcc_flags (char *data, short flags)
-{
-  short volid = OR_GET_SHORT (data + OR_OID_VOLID);
-  OR_PUT_SHORT (data + OR_OID_VOLID, volid | flags);
-}
-
+/*
+ * bt_load_write_record () - btree_write_record () for the index load, taking overflow-key pages from the provider
+ *   return: error code
+ *
+ * Note: Only overflow keys of a parallel shard build need the provider's page pool; every other record goes through
+ * btree_write_record () unchanged.
+ */
 static int
 bt_load_write_record (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, void *node_rec, DB_VALUE * key,
 		      BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
 		      BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
-  OR_BUF buf;
-  VPID key_vpid = VPID_INITIALIZER;
-  int error;
-
   if (key_type != BTREE_OVERFLOW_KEY || load_args->provider == NULL)
     {
       return btree_write_record (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len, true,
 				 class_oid, oid, mvcc_info, rec);
     }
 
-  or_init (&buf, rec->data, rec->area_size);
-  if (node_type == BTREE_LEAF_NODE)
-    {
-      error = or_put_oid (&buf, oid);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      if (BTREE_IS_UNIQUE (load_args->btid->unique_pk) && !OID_EQ (&load_args->btid->topclass_oid, class_oid))
-	{
-	  error = or_put_oid (&buf, class_oid);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  bt_load_leaf_set_flag (rec, (short) 0x8000);
-	}
-      if (mvcc_info != NULL)
-	{
-	  if ((mvcc_info->flags & (short) 0x4000) != 0)
-	    {
-	      if ((error = or_put_mvccid (&buf, mvcc_info->insert_mvccid)) != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
-	  if ((mvcc_info->flags & (short) 0x8000) != 0)
-	    {
-	      if ((error = or_put_mvccid (&buf, mvcc_info->delete_mvccid)) != NO_ERROR)
-		{
-		  return error;
-		}
-	    }
-	  bt_load_object_set_mvcc_flags (rec->data, mvcc_info->flags);
-	}
-      bt_load_leaf_set_flag (rec, (short) 0x4000);
-    }
-  else
-    {
-      NON_LEAF_REC *non_leaf = (NON_LEAF_REC *) node_rec;
-      if ((error = or_put_int (&buf, non_leaf->pnt.pageid)) != NO_ERROR
-	  || (error = or_put_short (&buf, non_leaf->pnt.volid)) != NO_ERROR
-	  || (error = or_put_short (&buf, non_leaf->key_len)) != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
-  error = bt_load_store_overflow_key (thread_p, load_args, key, key_len, node_type, &key_vpid);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  if ((error = or_put_int (&buf, key_vpid.pageid)) != NO_ERROR
-      || (error = or_put_short (&buf, key_vpid.volid)) != NO_ERROR || (error = or_put_align32 (&buf)) != NO_ERROR)
-    {
-      return error;
-    }
-  rec->length = CAST_BUFLEN (buf.ptr - buf.buffer);
-  rec->type = REC_HOME;
-  load_args->report_overflow_key_count++;
-  return NO_ERROR;
+  return btree_write_record_ex (thread_p, load_args->btid, node_rec, key, node_type, key_type, key_len, true,
+				class_oid, oid, mvcc_info, rec, bt_load_store_overflow_key_hook, load_args);
 }
 
 int

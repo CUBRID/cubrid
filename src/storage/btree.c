@@ -4102,6 +4102,26 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
 		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
+  return btree_write_record_ex (thread_p, btid, node_rec, key, node_type, key_type, key_len, during_loading, class_oid,
+				oid, mvcc_info, rec, NULL, NULL);
+}
+
+/*
+ * btree_write_record_ex () - btree_write_record () with a replaceable overflow-key writer
+ *   return: NO_ERROR
+ *   store_ovf_key_fn(in): stores the overflow key and returns its first VPID; NULL selects
+ *                         btree_store_overflow_key ()
+ *   store_ovf_key_arg(in): opaque argument handed back to store_ovf_key_fn
+ *
+ * Note: See btree_write_record ().  The hook exists so the parallel bulk index build can take overflow-key pages
+ * from its own provider pool while sharing every other byte of the record format.
+ */
+int
+btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
+		       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading, OID * class_oid,
+		       OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
+		       BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg)
+{
   VPID key_vpid;
   OR_BUF buf;
   int error_code = NO_ERROR;
@@ -4192,7 +4212,14 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
-      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+      if (store_ovf_key_fn != NULL)
+	{
+	  error_code = (*store_ovf_key_fn) (thread_p, store_ovf_key_arg, key, key_len, node_type, &key_vpid);
+	}
+      else
+	{
+	  error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+	}
       if (error_code != NO_ERROR)
 	{
 	  return error_code;
