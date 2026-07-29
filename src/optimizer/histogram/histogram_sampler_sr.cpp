@@ -636,6 +636,13 @@ namespace
       {
 	target_pages = fallback_target_pages;
       }
+    if (target_pages <= 0)
+      {
+	/* no usable page target (parameter 0 and no reservoir-derived fallback): collect
+	 * everything rather than sample zero pages -- a 0.0 fraction would keep no page at
+	 * all and store an empty histogram with total_rows = 0 over the real statistics. */
+	return 1.0;
+      }
     if (!with_fullscan && sampling_threshold > 0 && npages > sampling_threshold && npages > target_pages)
       {
 	return (double) target_pages / (double) npages;
