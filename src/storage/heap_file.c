@@ -26265,7 +26265,8 @@ heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv)
 
   // Early out
   if (array_size == 0)
-    { /* nothing to append. heap_log_postpone_heap_append_pages () never logs an empty array, so this cannot happen. */
+    {
+      /* nothing to append. heap_log_postpone_heap_append_pages () never logs an empty array, so this cannot happen. */
       /* returning here also skips log_sysop_end_logical_run_postpone (), which would leave the postpone action */
       /* unrecorded. */
       assert (false);
