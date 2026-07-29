@@ -106,8 +106,7 @@ static bool log_recovery_needs_skip_logical_redo (THREAD_ENTRY * thread_p, TRANI
 static int log_recovery_get_redo_parallel_count ();
 #endif
 
-static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-			       bool is_media_crash);
+static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -878,7 +877,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_REDO_STARTED, 2,
 	  log_cnt_pages_containing_lsa (&start_redolsa, &end_redo_lsa), num_redo_log_records);
 
-  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa, ismedia_crash);
+  log_recovery_redo (thread_p, &start_redolsa, &end_redo_lsa);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "REDO");
 
@@ -3347,8 +3346,7 @@ log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 static void
-log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa,
-		   bool is_media_crash)
+log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa)
 {
   LOG_LSA lsa;			/* LSA of log record to redo */
 

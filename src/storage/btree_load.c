@@ -114,17 +114,32 @@ struct load_args
 
   VPID vpid_first_leaf;
 
+  /*
+   * The fields below exist for the no-logging index build (loaddb --no-logging-index, i.e. no_redo == true with a
+   * parallel shard build); an ordinary CREATE INDEX only carries their inert defaults.  On the ordinary path
+   * provider stays NULL, worker_idx stays -1, new_page_fn is bt_load_new_page_serial, px_outcome stays
+   * BT_PX_NOT_ATTEMPTED, and neither the vacuum_* queue nor the report_* fields are ever read.
+   */
+
+  /* Build transaction's MVCCID, captured by the leader before the sort.  Shard workers put records under the
+   * leader's transaction descriptor, so this only backs a debug invariant on that path. */
   MVCCID build_mvccid;
+
+  /* MVCC vacuum notifications collected by a shard worker (worker_idx >= 0), which shares the leader's transaction
+   * descriptor and therefore cannot append to its log stream itself; the leader drains them after the join. */
   BT_LOAD_VACUUM_ITEM *vacuum_items;
   size_t vacuum_count;
   size_t vacuum_capacity;
   size_t vacuum_payload_size;
 
-  SORT_ARGS *sort_args;
-  BT_LOAD_PROVIDER *provider;
-  int worker_idx;
-  BT_LOAD_NEW_PAGE_FUNC new_page_fn;
-  BT_LOAD_PX_OUTCOME px_outcome;
+  SORT_ARGS *sort_args;		/* Leader's sort arguments; read by the parallel join to build the non-leaf levels. */
+  BT_LOAD_PROVIDER *provider;	/* Shared page provider of the parallel build; NULL on the ordinary path. */
+  int worker_idx;		/* Shard index of this worker; -1 for the transaction thread (serial or px leader). */
+  BT_LOAD_NEW_PAGE_FUNC new_page_fn;	/* Page source: serial allocation, provider pool, or the leader's inline pool. */
+  BT_LOAD_PX_OUTCOME px_outcome;	/* Why the parallel build was skipped, or that it ran. */
+
+  /* Per-shard results published to the leader at the shard's close, and consumed by the join to patch the leaf-level
+   * seams and to build the non-leaf levels. */
   VPID report_first_leaf_vpid;
   VPID report_last_leaf_vpid;
   int report_local_max_key_len;
@@ -990,8 +1005,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   LOG_TDES *tdes = NULL;
   SORT_ARGS sort_args_info, *sort_args;
   LOAD_ARGS load_args_info, *load_args;
-  int n_ovf_keys = 0;
-  INT64 sum_ovf_pages = 0;
   BTID_INT btid_int;
   PRED_EXPR_WITH_CONTEXT *filter_pred = NULL;
 #if defined (SERVER_MODE)
@@ -1119,8 +1132,8 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   sort_args->scancache_inited = false;
   sort_args->attrinfo_inited = false;
   sort_args->btid = &btid_int;
-  sort_args->n_ovf_keys = n_ovf_keys;
-  sort_args->sum_ovf_pages = sum_ovf_pages;
+  sort_args->n_ovf_keys = 0;
+  sort_args->sum_ovf_pages = 0;
   sort_args->fk_refcls_oid = fk_refcls_oid;
   sort_args->fk_refcls_pk_btid = fk_refcls_pk_btid;
   sort_args->fk_name = fk_name;
@@ -6072,7 +6085,7 @@ exit_on_error:
 
 /*
  * list_remove_first () -
- *   return: error code
+ *   return: nothing
  *   list(in):
  *
  * Note: This function removes the first node of the given list (if it has one).
@@ -6092,7 +6105,7 @@ list_remove_first (BTREE_NODE ** list)
 
 /*
  * list_clear () -
- *   return: error code
+ *   return: nothing
  *   list(in):
  */
 static void
