@@ -21606,10 +21606,15 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
 	  if (ww_xlock_wait || logtb_is_active_other_mvccid (thread_p, ww_owner))
 	    {
-	      /* still running: never wait while holding a latch -- drop both pages, wait, then re-fix */
+	      /* still running: never wait while holding a latch -- drop every page, wait, then re-fix. The header
+	       * page counts: a dance sends us back here still holding it, and the final verdict re-takes it. */
 	      VPID_GET_FROM_OID (&ww_home_vpid, &context->oid);
 	      pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
 	      pgbuf_ordered_unfix (thread_p, context->home_page_watcher_p);
+	      if (context->header_page_watcher_p->pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, context->header_page_watcher_p);
+		}
 
 	      if (ww_xlock_wait)
 		{
