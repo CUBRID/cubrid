@@ -4619,8 +4619,19 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   int freespace;
   VPID *vpid;
 
-  /* prev_freespace is not used but leave this for future feature */
-  (void) prev_freespace;
+  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
+  if (freespace == 0)
+    {
+      return;
+    }
+
+  /* physical removal paths pass zero to force a candidate update. MVCC header-only cleanup is ignored unless it */
+  /* promotes the page to a higher free-space tier. */
+  if (prev_freespace != 0
+      && cubstorage::bestspace::size_to_tier (freespace) <= cubstorage::bestspace::size_to_tier (prev_freespace))
+    {
+      return;
+    }
 
   bestspace = heap_find_bestspace (thread_p, NULL, hfid, header_watcher);
   if (!bestspace)
@@ -4628,17 +4639,13 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
       return;
     }
 
-  freespace = spage_get_free_space_without_saving (thread_p, pgptr);
-  if (cubstorage::bestspace::size_to_tier (freespace) >= cubstorage::bestspace::tier::FS3)
-    {
-      vpid = pgbuf_get_vpid_ptr (pgptr);
-      assert_release (vpid != NULL);
+  vpid = pgbuf_get_vpid_ptr (pgptr);
+  assert_release (vpid != NULL);
 
-      candidate.freespace = freespace;
-      candidate.volid = vpid->volid;
-      candidate.pageid = vpid->pageid;
-      bestspace->try_push_candidates (&candidate, 1);
-    }
+  candidate.freespace = freespace;
+  candidate.volid = vpid->volid;
+  candidate.pageid = vpid->pageid;
+  bestspace->push_candidates (&candidate, 1);
 }
 
 /*
@@ -16123,12 +16130,6 @@ int
 heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 {
   INT16 slotid;
-  int freespace = 0;
-
-  if (LOG_ISRESTARTED ())
-    {
-      freespace = spage_get_free_space_without_saving (thread_p, rcv->pgptr);
-    }
 
   slotid = rcv->offset;
   /* Clear HEAP_RV_FLAG_VACUUM_STATUS_CHANGE */
@@ -16155,7 +16156,7 @@ heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
       assert (heap_hfid_isvalid (&hfid) == DISK_VALID);
 #endif
 
-      heap_add_bestpage (thread_p, &hfid, rcv->pgptr, freespace);
+      heap_add_bestpage (thread_p, &hfid, rcv->pgptr);
     }
 
 end:
@@ -21999,16 +22000,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 static int
 heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, OID * oid_p)
 {
-  int freespace;
-
   /* check input */
   assert (hfid_p != NULL);
   assert (page_p != NULL);
   assert (oid_p != NULL);
   assert (oid_p->slotid != NULL_SLOTID);
-
-  /* save old freespace */
-  freespace = spage_get_free_space_without_saving (thread_p, page_p);
 
   /* physical deletion */
   if (spage_delete (thread_p, page_p, oid_p->slotid) == NULL_SLOTID)
@@ -22017,7 +22013,7 @@ heap_delete_physical (THREAD_ENTRY * thread_p, HFID * hfid_p, PAGE_PTR page_p, O
     }
 
   /* insert into bestspace cadidates */
-  heap_add_bestpage (thread_p, hfid_p, page_p, freespace);
+  heap_add_bestpage (thread_p, hfid_p, page_p);
 
   /* mark page as dirty */
   pgbuf_set_dirty (thread_p, page_p, DONT_FREE);
