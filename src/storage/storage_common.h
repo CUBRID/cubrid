@@ -454,8 +454,9 @@ typedef enum
   S_DELETE,			/* Delete object operation. */
   S_UPDATE,			/* Update object operation. */
   S_SELECT_FK_EXISTS		/* Referential integrity check. Reads dirty and takes no lock: a conflicting
-				 * transaction is waited out on its MVCCID and the key is then re-read. Appended
-				 * last so the values above keep their encoding. */
+				 * transaction is waited out on its MVCCID and the key is then re-read. Falls back
+				 * to S_SELECT_WITH_LOCK on a non-MVCC class, which has no MVCCID to wait on.
+				 * Appended last so the values above keep their encoding. */
 } SCAN_OPERATION_TYPE;
 
 #define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == SCH_M_LOCK)

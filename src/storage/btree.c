@@ -6400,8 +6400,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
 
 #if defined (SERVER_MODE)
   /* No lock on the referencing (child) row: a conflicting transaction is waited out on its MVCCID and the key is
-   * re-read, so nothing has to be held across the verdict. */
-  find_fk_object.lock_mode = NULL_LOCK;
+   * re-read, so nothing has to be held across the verdict. A non-MVCC row carries no MVCCID to wait on, so there the
+   * found object is still blocked with S_LOCK. */
+  find_fk_object.lock_mode = mvcc_is_mvcc_disabled_class (class_oid) ? S_LOCK : NULL_LOCK;
 #endif /* SERVER_MODE */
   /* Prepare scan. */
   BTREE_INIT_SCAN (&btree_scan);
@@ -6428,7 +6429,19 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   COPY_OID (found_oid, &find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
-  assert (OID_ISNULL (&find_fk_object.locked_object));
+  if (find_fk_object.lock_mode == NULL_LOCK)
+    {
+      assert (OID_ISNULL (&find_fk_object.locked_object));
+    }
+  else if (error_code != NO_ERROR || OID_ISNULL (&find_fk_object.found_oid))
+    {
+      /* Release lock on object if any. */
+      if (!OID_ISNULL (&find_fk_object.locked_object))
+	{
+	  lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_object.locked_object,
+						   &btree_scan.btid_int.topclass_oid, S_LOCK);
+	}
+    }
 #endif /* SERVER_MODE */
 
   if (is_newly)
@@ -24886,12 +24899,22 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
     }
   else if (scan_op_type == S_SELECT_FK_EXISTS)
     {
-      /* Referential integrity check. The referenced row is not reserved: a conflicting transaction is waited out
-       * on its MVCCID and the key is re-read, so no lock has to outlive the check. */
-      dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
-      find_unique_helper.snapshot = &dirty_snapshot;
-      find_unique_helper.lock_mode = NULL_LOCK;
-      key_function = btree_key_find_and_lock_unique;
+      if (mvcc_is_mvcc_disabled_class (class_oid))
+	{
+	  /* A non-MVCC row carries no MVCCID to wait on, so reserve the referenced row as before. */
+	  scan_op_type = S_SELECT_WITH_LOCK;
+	  find_unique_helper.lock_mode = S_LOCK;
+	  key_function = btree_key_find_and_lock_unique;
+	}
+      else
+	{
+	  /* Referential integrity check. The referenced row is not reserved: a conflicting transaction is waited out
+	   * on its MVCCID and the key is re-read, so no lock has to outlive the check. */
+	  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+	  find_unique_helper.snapshot = &dirty_snapshot;
+	  find_unique_helper.lock_mode = NULL_LOCK;
+	  key_function = btree_key_find_and_lock_unique;
+	}
     }
   else
     {

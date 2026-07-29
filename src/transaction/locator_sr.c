@@ -8043,8 +8043,11 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk && mvcc_is_mvcc_disabled_class (class_oid))
 		{
+		  /* Reserve the inserted row so that the check coming from the referenced (parent) side has something
+		   * to block on. Needed only where there is no MVCCID to wait on instead: an MVCC row carries the
+		   * inserter's MVCCID, and that side waits it out. */
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
 		      goto error;
