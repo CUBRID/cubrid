@@ -2324,6 +2324,81 @@ bind_fp_hash_value (const DB_VALUE *val)
   return bind_fp_mix (5, (std::uint64_t) DB_VALUE_TYPE (val));
 }
 
+/*
+ * histogram_split_hv_predicate () - recognize a histogram-priceable host-variable predicate
+ *   (column op ?) in either argument order, and hand back its column and host-variable nodes.
+ *   Both the fingerprint walk and the predicate-candidate walk must agree on what counts as
+ *   such a predicate; keeping the test here prevents the two from drifting apart.
+ * return         : true when node is (column op host-variable) with op in {=, >, >=, <, <=}
+ * node (in)      : expression node to test
+ * out_name (out) : the column node (end of a path expression), NULL if not matched
+ * out_hv (out)   : the host-variable node, NULL if not matched
+ * out_reversed (out) : true when the host variable is on the left ('? op col')
+ */
+static bool
+histogram_split_hv_predicate (PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv, bool *out_reversed)
+{
+  if (out_name != NULL)
+    {
+      *out_name = NULL;
+    }
+  if (out_hv != NULL)
+    {
+      *out_hv = NULL;
+    }
+  if (out_reversed != NULL)
+    {
+      *out_reversed = false;
+    }
+
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  PT_OP_TYPE op = node->info.expr.op;
+  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
+    {
+      return false;
+    }
+
+  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
+  PT_NODE *a2 = node->info.expr.arg2;
+
+  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
+    {
+      if (out_name != NULL)
+	{
+	  *out_name = a1;
+	}
+      if (out_hv != NULL)
+	{
+	  *out_hv = a2;
+	}
+      return true;
+    }
+
+  if (a1 != NULL && a1->node_type == PT_HOST_VAR
+      && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
+    {
+      if (out_name != NULL)
+	{
+	  *out_name = a2;
+	}
+      if (out_hv != NULL)
+	{
+	  *out_hv = a1;
+	}
+      if (out_reversed != NULL)
+	{
+	  *out_reversed = true;	/* ? op col  ==  col op' ? */
+	}
+      return true;
+    }
+
+  return false;
+}
+
 struct bind_fp_walk_ctx
 {
   PARSER_CONTEXT *parser;
@@ -2336,38 +2411,15 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 {
   bind_fp_walk_ctx *ctx = (bind_fp_walk_ctx *) arg;
 
-  if (node == NULL || node->node_type != PT_EXPR)
+  PT_NODE *name, *hv;
+  bool reversed = false;
+
+  if (!histogram_split_hv_predicate (node, &name, &hv, &reversed))
     {
       return node;
     }
 
   PT_OP_TYPE op = node->info.expr.op;
-  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
-    {
-      return node;
-    }
-
-  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
-  PT_NODE *a2 = node->info.expr.arg2;
-  PT_NODE *name, *hv;
-  bool reversed = false;
-
-  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
-    {
-      name = a1;
-      hv = a2;
-    }
-  else if (a1 != NULL && a1->node_type == PT_HOST_VAR
-	   && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
-    {
-      name = a2;
-      hv = a1;
-      reversed = true;		/* ? op col  ==  col op' ? */
-    }
-  else
-    {
-      return node;
-    }
 
   int idx = hv->info.host_var.index;
   if (idx < 0 || idx >= parser->host_var_count + parser->auto_param_count || parser->host_variables == NULL)
@@ -2430,20 +2482,7 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 {
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
 
-  if (node == NULL || node->node_type != PT_EXPR)
-    {
-      return node;
-    }
-  PT_OP_TYPE op = node->info.expr.op;
-  if (op != PT_EQ && op != PT_GT && op != PT_GE && op != PT_LT && op != PT_LE)
-    {
-      return node;
-    }
-  PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
-  PT_NODE *a2 = node->info.expr.arg2;
-  if ((a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
-      || (a1 != NULL && a1->node_type == PT_HOST_VAR
-	  && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME))
+  if (histogram_split_hv_predicate (node, NULL, NULL, NULL))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;
