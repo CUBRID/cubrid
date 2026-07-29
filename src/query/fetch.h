@@ -74,18 +74,20 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	case TYPE_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
 	case TYPE_CLASS_ATTR_ID:
-	  if (regu_var->value.attr_descr.cache_dbvalp != NULL)
+	  if (regu_var->value.attr_descr.cache_slot != NULL)
 	    {
-	      /* cache_slot is set only for deferred (lazy) attrs: reuse the cached pointer only while its slot
-	       * was already read this row (HEAP_READ_ATTRVALUE); a slot reset to HEAP_LAZY_ATTRVALUE (first
-	       * reference in a new row) falls to fetch_peek_dbval_slow () to be read on demand. */
-	      if (regu_var->value.attr_descr.cache_slot != NULL
-		  && regu_var->value.attr_descr.cache_slot->state == HEAP_LAZY_ATTRVALUE
-		  && heap_attrvalue_access (regu_var->value.attr_descr.cache_slot,
-					    regu_var->value.attr_descr.cache_attrinfo) != NO_ERROR)
+	      /* deferred (lazy) predicate column: read it now if this row has not been read yet
+	       * (HEAP_LAZY_ATTRVALUE), otherwise heap_attrvalue_peek_lazy () just returns the value. */
+	      *peek_dbval = heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
+						      regu_var->value.attr_descr.cache_attrinfo);
+	      if (*peek_dbval == NULL)
 		{
 		  break;	/* deferred slot read failed; slow path reports the error */
 		}
+	      return NO_ERROR;
+	    }
+	  if (regu_var->value.attr_descr.cache_dbvalp != NULL)
+	    {
 	      *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
 	      return NO_ERROR;
 	    }

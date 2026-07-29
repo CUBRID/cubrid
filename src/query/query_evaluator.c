@@ -2874,7 +2874,7 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
   if (scan_attrsp != NULL && scan_attrsp->attr_cache != NULL && scan_predp->regu_list != NULL)
     {
       /* Defer reading the predicate values: mark them and stash the record, so columns skipped by
-       * short-circuit evaluation in eval_pred () below are never read. heap_attrvalue_access () reads
+       * short-circuit evaluation in eval_pred () below are never read. heap_attrvalue_peek_lazy () reads
        * each one on demand. The first-evaluated term's column(s) were flagged lazy_always_eager at scan
        * setup (eval_mark_first_term_attrs () in scan_start_scan ()) so they stay on the eager path. For
        * class attribute scans (recdesp == NULL) this reads everything now. */

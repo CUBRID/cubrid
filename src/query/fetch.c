@@ -4010,11 +4010,17 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	{
 	  HEAP_ATTRVALUE *slot =
 	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
-	  if (slot == NULL || heap_attrvalue_access (slot, regu_var->value.attr_descr.cache_attrinfo) != NO_ERROR)
+	  if (slot == NULL)
 	    {
 	      goto exit_on_error;
 	    }
-	  *peek_dbval = &slot->dbvalue;
+	  *peek_dbval = heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo);
+	  if (*peek_dbval == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  /* cache_dbvalp enables the REGU_VARIABLE_FAST_PEEK flag below; cache_slot lets the inline
+	   * fetch_peek_dbval () read this deferred column on later rows without re-locating it. */
 	  regu_var->value.attr_descr.cache_dbvalp = &slot->dbvalue;
 	  regu_var->value.attr_descr.cache_slot = slot;
 	  break;

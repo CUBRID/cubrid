@@ -10808,7 +10808,7 @@ exit_on_error:
  *   attr_info(in/out): The attribute information structure
  *
  * Note: Same purpose as heap_attrinfo_read_dbvalues (), but instead of reading every attribute value now,
- *   it stashes the record descriptor and marks the deferred values HEAP_LAZY_ATTRVALUE so heap_attrvalue_access ()
+ *   it stashes the record descriptor and marks the deferred values HEAP_LAZY_ATTRVALUE so heap_attrvalue_peek_lazy ()
  *   reads each on first access. Used by eval_data_filter () so the dbvalues of predicate columns skipped by
  *   short-circuit evaluation are never read. Slots flagged lazy_always_eager (the first-evaluated predicate
  *   term's column(s); see eval_mark_first_term_attrs ()) are read now instead of deferred, since they are
@@ -10855,7 +10855,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
 
   /* Read now the slots flagged lazy_always_eager (first-evaluated predicate term's column(s), touched on
    * nearly every row) so their per-row first reference stays on the inline fast path; mark every other value
-   * HEAP_LAZY_ATTRVALUE (clearing any previously read value first to avoid leaks) so heap_attrvalue_access ()
+   * HEAP_LAZY_ATTRVALUE (clearing any previously read value first to avoid leaks) so heap_attrvalue_peek_lazy ()
    * reads it on demand using lazy_recdes. */
   for (i = 0; i < attr_info->num_values; i++)
     {
@@ -11150,33 +11150,24 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
 }
 
 /*
- * heap_attrvalue_access () - read a value slot on demand if it is deferred (HEAP_LAZY_ATTRVALUE)
- *   return: NO_ERROR or ER_code
- *   value(in/out): the value slot the caller already holds (located by heap_attrvalue_locate () in
- *                  fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
+ * heap_attrvalue_peek_lazy () - peek a deferred predicate column, reading it on demand
+ *   return: pointer to the slot's DB_VALUE, or NULL on read error
+ *   slot(in/out): the value slot the caller already holds (located by heap_attrvalue_locate () in
+ *                 fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
  *   attr_info(in): the attribute cache holding the stashed record (lazy_recdes)
  *
- * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here.
+ * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here. When the slot
+ *   is HEAP_LAZY_ATTRVALUE (not yet read this row) it is read now from attr_info->lazy_recdes;
+ *   heap_attrvalue_read () flips it to HEAP_READ_ATTRVALUE so later references in the same row reuse it.
  */
-int
-heap_attrvalue_access (HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
+DB_VALUE *
+heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  if (value->state == HEAP_LAZY_ATTRVALUE)
+  if (slot->state == HEAP_LAZY_ATTRVALUE && heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
     {
-      /* deferred predicate column referenced for the first time in this row: read it now from the
-       * stashed record (see heap_attrinfo_read_dbvalues_lazy ()). heap_attrvalue_read () sets state
-       * to HEAP_READ_ATTRVALUE, so later references in the same row reuse the value. */
-      return heap_attrvalue_read (attr_info->lazy_recdes, value, attr_info);
+      return NULL;
     }
-  else if (value->state == HEAP_UNINIT_ATTRVALUE)
-    {
-      /* genuinely uninitialized (not lazy): this is a bug, keep the original fatal behavior. */
-      er_log_debug (ARG_FILE_LINE, "heap_attrvalue_access: uninitialized value");
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
-    }
-
-  return NO_ERROR;
+  return &slot->dbvalue;
 }
 
 /*
