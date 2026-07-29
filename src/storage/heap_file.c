@@ -21369,9 +21369,10 @@ heap_ww_unfixed_watch_end (PGBUF_WATCHER * watcher, bool saved)
 
 /*
  * heap_delete_reloc_rederive () - Write-write dance re-verdict: after a page dance during a relocation
- *   delete, re-derive the forward chain under the re-held home latch so the seal can re-classify. Unfixes
- *   the (possibly stale) forward page, re-reads the home record, re-derives forward_oid and re-fixes +
- *   re-peeks the forward record.
+ *   delete, re-derive the forward chain under the re-held home latch so the seal can re-classify. Re-reads
+ *   the home record, re-derives forward_oid, re-fixes the forward page when the home record no longer names
+ *   the one already held, and re-peeks the forward record. Repeats while its own ordered fix drops the home
+ *   latch again.
  *   returns: NO_ERROR (also with context->ww_record_transformed set -- the caller must re-dispatch),
  *            ER_HEAP_UNKNOWN_OBJECT when the row vanished, or an error code
  */
@@ -21381,35 +21382,75 @@ heap_delete_reloc_rederive (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * co
 {
   INT16 rectype;
   int peek, rc = NO_ERROR;
+  /* the forward page under the watcher, if any, is the page of the OID the caller last fixed from */
+  OID fixed_oid = *forward_oid_p;
+  bool forward_fixed = (context->forward_page_watcher_p->pgptr != NULL);
 
-  pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
-
-  rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
-  if (rectype != REC_RELOCATION)
+  while (true)
     {
-      if (rectype == REC_HOME || rectype == REC_BIGONE)
+      OID derived_oid;
+      bool home_saved;
+
+      rectype = spage_get_record_type (context->home_page_watcher_p->pgptr, context->oid.slotid);
+      if (rectype != REC_RELOCATION)
 	{
-	  /* the record left the relocated shape during the dance -- re-dispatch on the new type */
-	  context->record_type = rectype;
-	  context->ww_record_transformed = true;
-	  return NO_ERROR;
+	  if (forward_fixed)
+	    {
+	      pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
+	    }
+	  if (rectype == REC_HOME || rectype == REC_BIGONE)
+	    {
+	      /* the record left the relocated shape during the dance -- re-dispatch on the new type */
+	      context->record_type = rectype;
+	      context->ww_record_transformed = true;
+	      return NO_ERROR;
+	    }
+	  /* dead slot: the row vanished during the dance -- raced vanish, routed to 0 rows */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid, context->oid.pageid,
+		  context->oid.slotid);
+	  return ER_HEAP_UNKNOWN_OBJECT;
 	}
-      /* dead slot: the row vanished during the dance -- raced vanish, routed to 0 rows */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, context->oid.volid, context->oid.pageid,
-	      context->oid.slotid);
-      return ER_HEAP_UNKNOWN_OBJECT;
-    }
-  peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
-  if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
-			peek) != S_SUCCESS)
-    {
-      ASSERT_ERROR_AND_SET (rc);
-      return rc;
-    }
-  *forward_oid_p = *((OID *) context->home_recdes.data);
-  if (heap_fix_forward_page (thread_p, context, forward_oid_p) != NO_ERROR)
-    {
-      return ER_FAILED;
+      peek = (context->home_recdes.area_size >= context->home_recdes.length) ? COPY : PEEK;
+      if (spage_get_record (thread_p, context->home_page_watcher_p->pgptr, context->oid.slotid, &context->home_recdes,
+			    peek) != S_SUCCESS)
+	{
+	  ASSERT_ERROR_AND_SET (rc);
+	  return rc;
+	}
+      derived_oid = *((OID *) context->home_recdes.data);
+
+      if (forward_fixed && derived_oid.volid == fixed_oid.volid && derived_oid.pageid == fixed_oid.pageid)
+	{
+	  /* the home record still names the forward page we hold: nothing to re-fix */
+	  *forward_oid_p = derived_oid;
+	  break;
+	}
+      if (forward_fixed)
+	{
+	  pgbuf_ordered_unfix (thread_p, context->forward_page_watcher_p);
+	  forward_fixed = false;
+	}
+
+      /* Fixing the forward page is itself a pgbuf_ordered_fix: when that page is contended the ordered fix
+       * drops the pages that sort after it -- the home page among them -- and re-takes them in order. The home
+       * record can name a different forward record by the time it returns, so re-derive instead of peeking a
+       * pair that is no longer linked. */
+      home_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
+      rc = heap_fix_forward_page (thread_p, context, &derived_oid);
+      if (rc != NO_ERROR)
+	{
+	  (void) heap_ww_unfixed_watch_end (context->home_page_watcher_p, home_saved);
+	  return ER_FAILED;
+	}
+      forward_fixed = true;
+      fixed_oid = derived_oid;
+      *forward_oid_p = derived_oid;
+      if (!heap_ww_unfixed_watch_end (context->home_page_watcher_p, home_saved))
+	{
+	  break;
+	}
+      /* the home latch was dropped: loop and re-derive -- the common outcome is that the home record still
+       * names this page, and the check above then keeps it without another fix */
     }
   if (spage_get_record (thread_p, context->forward_page_watcher_p->pgptr, forward_oid_p->slotid, forward_recdes_p,
 			PEEK) != S_SUCCESS)
@@ -21567,6 +21608,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	  INT16 ww_rectype;
 	  int ww_peek;
 	  bool ww_xlock_wait = false;
+	  bool ww_fwd_refix_saved;
 
 	  if (or_mvcc_get_header (&forward_recdes, &ww_header) != NO_ERROR)
 	    {
@@ -21690,7 +21732,26 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  return rc;
 		}
 	      forward_oid = *((OID *) context->home_recdes.data);
-	      if (heap_fix_forward_page (thread_p, context, &forward_oid) != NO_ERROR)
+
+	      /* Fixing the forward page is a pgbuf_ordered_fix: when that page is contended it drops the home
+	       * page and re-takes both in order, so the home record we just read may no longer name this
+	       * forward record. Re-derive when that happens. */
+	      ww_fwd_refix_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
+	      rc = heap_fix_forward_page (thread_p, context, &forward_oid);
+	      if (heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_fwd_refix_saved) && rc == NO_ERROR)
+		{
+		  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
+		  if (rc != NO_ERROR)
+		    {
+		      return rc;
+		    }
+		  if (context->ww_record_transformed)
+		    {
+		      return NO_ERROR;
+		    }
+		  continue;
+		}
+	      if (rc != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
