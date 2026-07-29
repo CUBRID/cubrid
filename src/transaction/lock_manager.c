@@ -720,10 +720,11 @@ lock_create_search_key (const OID * oid, const OID * class_oid)
 /*
  * lock_create_mvccid_search_key - Build a TRANSACTION-typed lock resource key from an MVCCID.
  *
- *   mvccid(in): the inserter's MVCCID, stored natively (full 64-bit, no OID packing)
+ *   mvccid(in): the conflicting transaction's MVCCID, stored natively (full 64-bit, no OID packing)
  *
- * Note: the transaction self-lock lets unique-key/FK checks wait for an in-progress inserter that takes
- *	 no per-row X-lock. lock_res_key_{hash,compare,copy} treat the MVCCID as the active key member.
+ * Note: the transaction self-lock lets unique-key/FK checks wait for an in-progress inserter or deleter
+ *	 that takes no per-row X-lock. lock_res_key_{hash,compare,copy} treat the MVCCID as the active
+ *	 key member.
  */
 static LK_RES_KEY
 lock_create_mvccid_search_key (MVCCID mvccid)
@@ -5727,7 +5728,7 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	}
       break;
     case LOCK_RESOURCE_TRANSACTION:
-      fprintf (outfp, "  Transaction self-lock (inserter MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
+      fprintf (outfp, "  Transaction self-lock (MVCCID = %llu)\n", (unsigned long long) res_ptr->key.mvccid);
       break;
     default:
       fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_UNKNOWN_TYPE));
