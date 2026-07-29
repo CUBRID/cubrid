@@ -21004,6 +21004,7 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 {
   OID overflow_oid;
   int rc;
+  RECDES ovf_supp_recdes = RECDES_INITIALIZER;
 
   LOG_TDES *tdes = NULL;
 
@@ -21030,16 +21031,21 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
   if (context->do_supplemental_log)
     {
       /* whether it is mvcc or not, undo image does not recorded in the log */
-      RECDES ovf_recdes = RECDES_INITIALIZER;
       if ((rc =
-	   heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &overflow_oid, &ovf_recdes)) != S_SUCCESS)
+	   heap_get_bigone_content (thread_p, context->scan_cache_p, PEEK, &overflow_oid,
+				    &ovf_supp_recdes)) != S_SUCCESS)
 	{
 	  return rc;
 	}
 
-      log_append_supplemental_undo_record (thread_p, &ovf_recdes);
-
-      LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+      if (!is_mvcc_op)
+	{
+	  /* no write-write seal on this path -- append right away, as before */
+	  log_append_supplemental_undo_record (thread_p, &ovf_supp_recdes);
+	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	}
+      /* the MVCC path appends after the seal: a raced vanish must not leave an undo for a row this
+       * statement did not delete, and a re-dispatch must not append twice (its new path appends its own) */
     }
 
   if (is_mvcc_op)
@@ -21220,6 +21226,13 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 	    }
 	}
 #endif /* SERVER_MODE */
+
+      if (context->do_supplemental_log)
+	{
+	  /* the seal settled on this version: only now is the supplemental undo this statement's to append */
+	  log_append_supplemental_undo_record (thread_p, &ovf_supp_recdes);
+	  LSA_COPY (&context->supp_undo_lsa, &tdes->tail_lsa);
+	}
 
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
