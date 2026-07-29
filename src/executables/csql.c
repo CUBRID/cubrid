@@ -882,7 +882,8 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      continue;
 	    }
 
-	  if (!csql_Is_interactive && feof (csql_Input_fp) && check_contents_has_noncomment ())
+	  if (!csql_Is_interactive && csql_arg->single_line_execution
+	      && feof (csql_Input_fp) && check_contents_has_noncomment ())
 	    {
 	      /* single-line-oriented execution */
 	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
