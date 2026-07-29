@@ -1626,7 +1626,21 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
     }
   const std::string pattern (pattern_p, pattern_size);
 
-  LANG_COLLATION *collation = lang_get_collation (db_get_string_collation (rhs_db_value));
+  /* Runtime matching (db_string_rlike) compiles under the COMMON collation of the column and
+   * the pattern (LANG_RT_COMMON_COLL); mirror it so locale-driven case folding in the estimate
+   * cannot diverge from execution. Fall back to the pattern's collation when the column node
+   * carries no data_type. */
+  PT_NODE *lhs_name = pt_get_end_path_node (lhs);
+  int lhs_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
+		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
+  int common_coll_id = -1;
+  LANG_RT_COMMON_COLL (lhs_coll_id, db_get_string_collation (rhs_db_value), common_coll_id);
+  if (common_coll_id == -1)
+    {
+      return;
+    }
+
+  LANG_COLLATION *collation = lang_get_collation (common_coll_id);
   if (collation == NULL)
     {
       return;
