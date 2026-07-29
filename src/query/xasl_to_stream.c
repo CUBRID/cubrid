@@ -1025,6 +1025,11 @@ xts_save_arith_type (const ARITH_TYPE * arithmetic)
     }
   assert (buf <= buf_p + size);
 
+  /* xts_sizeof_arith_type reserves space for next, but xts_process_arith_type
+   * does not write it, leaving an unwritten tail. Zero only that tail to avoid
+   * copying uninitialized bytes. */
+  memset (buf, 0, size - (buf - buf_p));
+
   memcpy (&xts_Stream_buffer[offset], buf_p, size);
 
 end:

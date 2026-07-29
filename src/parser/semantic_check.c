@@ -10675,15 +10675,45 @@ static void
 pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
 {
   // set external into labels in parser context
+  int i = 0;
+  int is_fail = 1;
   PT_NODE *into = qry->info.query.into_list;
 
   char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
-  for (int i = 0; i < into_cnt; i++)
+  if (external_into_label == NULL)
     {
-      external_into_label[i] = (char *) malloc (sizeof (char) * 255);
-      strncpy (external_into_label[i], into->info.name.original, 254);
+      goto error_exit;
+    }
+
+  for (i = 0; i < into_cnt; i++)
+    {
+      external_into_label[i] = strdup (into->info.name.original);
+      if (external_into_label[i] == NULL)
+	{
+	  goto error_exit;
+	}
       into = into->next;
     }
+  is_fail = 0;
+
+error_exit:
+  if (is_fail == 1)
+    {
+      // clear memory
+      if (external_into_label)
+	{
+	  for (--i; i >= 0; i--)
+	    {
+	      free (external_into_label[i]);
+	    }
+	  free (external_into_label);
+	  external_into_label = NULL;
+	}
+
+      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      into_cnt = 0;
+    }
+
   parser->external_into_label_cnt = into_cnt;
   parser->external_into_label = external_into_label;
 
@@ -12335,13 +12365,21 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
-	      /* For a remote INSERT SELECT the SELECT subquery runs locally, but the remote DML path
+	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
+	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
 	       * breaks out of the normal query semantic check below, so the subquery is never processed
 	       * as a stand-alone query. Run the same steps a top-level SELECT receives
 	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
 	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
 	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
-	      if (node->node_type == PT_INSERT)
+	      /* Sink form only (DML text not serialized, qstr == NULL): the SELECT subquery runs
+	       * locally, so it needs the local semantic pass below. The full-pushdown form
+	       * (qstr set) ships the whole statement to the remote server, where it is parsed
+	       * and type-checked; the local pass would fail on remote columns whose types are
+	       * unknown locally. */
+	      if (node->node_type == PT_INSERT
+		  && node->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
 		  if (subq != NULL)
