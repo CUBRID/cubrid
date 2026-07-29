@@ -4784,6 +4784,10 @@ bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   int error;
   if (load_args->leaf.pgptr == NULL)
     {
+      /* Unreachable: every splitter is a key that exists in some run and the cut is key >= splitter
+       * (sort_px_run_lower_bound ()), so no shard can be empty.  Kept as a backstop, with an error set so that a
+       * future splitter change does not surface as a silent ER_FAILED. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       return ER_FAILED;
     }
   error = btree_save_last_leafrec (thread_p, load_args);
@@ -4898,6 +4902,10 @@ bt_load_patch_seam (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, LOAD_AR
   compare = btree_compare_key (&key_left, &key_right, main_load_args->btid->key_type, 0, 1, NULL);
   if (compare != DB_LT)
     {
+      /* Unreachable: shards are cut on a total order over the same splitter set, so the last key of the left shard
+       * always precedes the first key of the right one.  Set an error so this is not mistaken for a unique violation
+       * if a future partitioning change breaks the invariant. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       error = ER_FAILED;
       goto end;
     }
