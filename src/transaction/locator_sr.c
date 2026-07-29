@@ -5372,17 +5372,28 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 /*
  * locator_mvcc_reset_vanished_row () - absorb a lockless MVCC UPDATE/DELETE that lost the write-write race
  *   force_count(out): reset to 0 (no row was modified)
- *   return: NO_ERROR
+ *   return: NO_ERROR under READ COMMITTED, ER_MVCC_SERIALIZABLE_CONFLICT above it
  *
  * Note: ER_HEAP_UNKNOWN_OBJECT from the heap stamp means another transaction committed a delete of the row
- *       between our lockless scan and the stamp. The row is already gone, so the statement affects 0 rows --
- *       benign, not an error. Clears the pending error and reports success.
+ *       between our lockless scan and the stamp. Under READ COMMITTED that is benign -- the row is gone, the
+ *       statement affects 0 rows. Above it the same event is an isolation conflict: the row was visible in
+ *       our snapshot, and answering 0 rows would let a concurrent commit through that REPEATABLE READ and
+ *       SERIALIZABLE must not. The fetch-time check already reports it that way
+ *       (locator_lock_and_get_object_internal); the heap seal must not answer differently just because it
+ *       noticed the same commit later.
  */
 static int
-locator_mvcc_reset_vanished_row (int *force_count)
+locator_mvcc_reset_vanished_row (THREAD_ENTRY * thread_p, int *force_count)
 {
   er_clear ();
   *force_count = 0;
+
+  if (logtb_find_current_isolation (thread_p) > TRAN_READ_COMMITTED)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MVCC_SERIALIZABLE_CONFLICT, 0);
+      return ER_MVCC_SERIALIZABLE_CONFLICT;
+    }
+
   return NO_ERROR;
 }
 
@@ -6057,7 +6068,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
-	      error_code = locator_mvcc_reset_vanished_row (force_count);
+	      error_code = locator_mvcc_reset_vanished_row (thread_p, force_count);
 	      goto error;
 	    }
 	  /*
@@ -6367,7 +6378,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 		    {
 		      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
-		      error_code = locator_mvcc_reset_vanished_row (force_count);
+		      error_code = locator_mvcc_reset_vanished_row (thread_p, force_count);
 		      goto error;
 		    }
 		  er_log_debug (ARG_FILE_LINE, "locator_delete_force: hf_delete failed for tran %d\n",
@@ -6488,7 +6499,7 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	  if (error_code == ER_HEAP_UNKNOWN_OBJECT)
 	    {
 	      /* not a failure: row concurrently committed-deleted -> 0 rows affected */
-	      error_code = locator_mvcc_reset_vanished_row (force_count);
+	      error_code = locator_mvcc_reset_vanished_row (thread_p, force_count);
 	      goto error;
 	    }
 	  if (error_code == NO_ERROR)
