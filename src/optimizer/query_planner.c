@@ -10743,7 +10743,26 @@ qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VA
 
   /* the two probes are independent estimates, so their difference can leave the unit
    * interval on skewed data; the caller's default is not a better answer than a clamp */
-  *out_sel = MAX (0.0, MIN (1.0, sel));
+  sel = MAX (0.0, MIN (1.0, sel));
+
+  /* Floor the combined result the same way the one-sided probes floor themselves
+   * (histogram_get_comp_selectivity: 1/total_rows). A range whose bounds both sit past the
+   * histogram's recorded maximum -- the normal case for an append-only key or date column
+   * whose statistics have gone stale -- probes 1.0 on both sides and cancels to exactly 0,
+   * so a genuinely populated range would be planned as zero rows. Without the floor the
+   * two paths disagree on the same data: 'a > 1100' keeps 1/total_rows while
+   * 'a BETWEEN 1100 AND 1400' collapses to 0. */
+  if (sel <= 0.0)
+    {
+      double total_rows = 0.0;
+
+      if (histogram_get_total_rows (lhs, &total_rows))
+	{
+	  sel = 1.0 / total_rows;
+	}
+    }
+
+  *out_sel = sel;
   return true;
 }
 

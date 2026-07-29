@@ -99,6 +99,7 @@ void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 /* histogram selectivity evaluation functions */
 void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity,
 				      bool *success);
+bool histogram_get_total_rows (PT_NODE *lhs, double *out_total_rows);
 void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				     double *selectivity,
 				     bool *success);

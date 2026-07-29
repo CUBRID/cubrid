@@ -957,6 +957,35 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
   return;
 }
 
+/*
+ * histogram_get_total_rows () - population row count the column's histogram was built from.
+ *   Selectivity floors are expressed as 1/total_rows, so a caller that combines two probes
+ *   (a RANGE is the difference of two one-sided probes) needs the same denominator the
+ *   one-sided paths already use.
+ * return              : true when the column has a readable histogram
+ * lhs (in)            : column node
+ * out_total_rows (out): population row count (> 0 whenever true is returned)
+ */
+bool
+histogram_get_total_rows (PT_NODE *lhs, double *out_total_rows)
+{
+  hist::HistogramReader histogram_reader;
+
+  if (out_total_rows == NULL || !histogram_init_reader_from_lhs (lhs, histogram_reader))
+    {
+      return false;
+    }
+
+  const double total_rows = static_cast<double> (histogram_reader.total_rows ());
+  if (total_rows <= 0.0)
+    {
+      return false;
+    }
+
+  *out_total_rows = total_rows;
+  return true;
+}
+
 void
 histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				double *selectivity,
