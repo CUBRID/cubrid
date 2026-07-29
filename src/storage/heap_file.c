@@ -24909,6 +24909,18 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 
 exit:
 
+#if defined (SERVER_MODE)
+  /* Symmetric to heap_delete_logical: heap_home_recheck_write_write is shared with the update side, so the
+   * transient S lock its X-locker wait keeps through the stamp must be released here too. An updater holds the
+   * instance X-lock, so lock_is_xlocked_by_other never names it and this is expected to be a no-op -- but the
+   * flag is on the shared context and nothing else would ever clear it. */
+  if (context->ww_oid_slock_held)
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &context->oid, &context->class_oid, S_LOCK);
+      context->ww_oid_slock_held = false;
+    }
+#endif /* SERVER_MODE */
+
   /* unfix or cache home page */
   if (context->home_page_watcher_p->pgptr != NULL && context->home_page_watcher_p == &context->home_page_watcher)
     {
