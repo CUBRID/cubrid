@@ -841,7 +841,7 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
       logddl_set_load_filename (args.index_file.c_str ());
       /* The flag is only a request; the server ignores it unless the client is a loaddb type.
        * In SA mode the option is ignored and the ordinary logging build is used. */
-      btree_set_no_logging_index (utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S));
+      btree_set_no_logging_index (args.no_logging_index);
       if (ldr_exec_query_from_file (args.index_file.c_str (), index_file, &index_file_start_line, &args) != NO_ERROR)
 	{
 	  print_log_msg (1, "\nError occurred during index loading." "\nAborting current transaction...");
@@ -1328,6 +1328,7 @@ get_loaddb_args (UTIL_ARG_MAP * arg_map, load_args * args)
   args->ignore_class_file = ignore_class_file ? ignore_class_file : empty;
   args->no_user_specified_name = utility_get_option_bool_value (arg_map, LOAD_NO_USER_SPECIFIED_NAME_S);
   args->schema_file_list = schema_file_list ? schema_file_list : empty;
+  args->no_logging_index = utility_get_option_bool_value (arg_map, LOAD_NO_LOGGING_INDEX_S);
 }
 
 static void
