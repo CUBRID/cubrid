@@ -1,5 +1,24 @@
 version: 2.1
 
+# comment trigger(/run …)가 보내는 파라미터를 수용하기 위한 선언 —
+# 값은 canary에서 사용하지 않음 (미선언 시 API가 파이프라인 생성을 400으로 거부)
+parameters:
+  baseline:
+    type: string
+    default: "none"
+  run_shell_test:
+    type: boolean
+    default: false
+  run_sql_test:
+    type: boolean
+    default: false
+  run_medium_test:
+    type: boolean
+    default: false
+  run_all_test:
+    type: boolean
+    default: false
+
 # ============================================================================
 # CUBRIDQA-1474 canary — postStart v2 검증 전용 브랜치 (머지 금지)
 #
