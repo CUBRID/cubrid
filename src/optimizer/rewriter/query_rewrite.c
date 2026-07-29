@@ -291,7 +291,6 @@ qo_rewrite_queries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 	  /* rewrite uncorrelated subquery to join query */
 	  qo_rewrite_subqueries (parser, node, &idx, &continue_walk);
 
-	  /* CBRD-24043: unnest correlated [NOT] EXISTS into SEMI / ANTI JOIN */
 	  qo_rewrite_exists_semi_anti (parser, node);
 	}
 
