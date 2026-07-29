@@ -21319,6 +21319,34 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 
 #if defined (SERVER_MODE)
 /*
+ * heap_ww_unfixed_watch_begin () - open a private observation window on the sticky page_was_unfixed
+ *   flag; pair with heap_ww_unfixed_watch_end
+ *   returns: the saved flag
+ */
+static bool
+heap_ww_unfixed_watch_begin (PGBUF_WATCHER * watcher)
+{
+  bool saved = watcher->page_was_unfixed;
+
+  watcher->page_was_unfixed = false;
+  return saved;
+}
+
+/*
+ * heap_ww_unfixed_watch_end () - close the window: report whether the page was unfixed inside it,
+ *   restoring the sticky flag for the downstream re-get logic
+ *   returns: true when the page was unfixed within the window
+ */
+static bool
+heap_ww_unfixed_watch_end (PGBUF_WATCHER * watcher, bool saved)
+{
+  bool unfixed_in_window = watcher->page_was_unfixed;
+
+  watcher->page_was_unfixed = (unfixed_in_window || saved);
+  return unfixed_in_window;
+}
+
+/*
  * heap_delete_reloc_rederive () - Write-write dance re-verdict: after a page dance during a relocation
  *   delete, re-derive the forward chain under the re-held home latch so the seal can re-classify. Unfixes
  *   the (possibly stale) forward page, re-reads the home record, re-derives forward_oid and re-fixes +
@@ -21472,17 +21500,14 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
 		{
-		  /* Write-write dance re-verdict: if the +DELID growth will need the heap header page
-		   * for the new-space hunt below, fix it under THIS verdict. If the ordered fix had to
-		   * unfix home/forward, the verdict is stale: re-derive the chain and re-classify instead
-		   * of falling through to the stamp. heap_fix_header_page is idempotent, so the stock call
-		   * below the seal becomes a no-op once it succeeded here. */
-		  int ww_repid_bits = OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data);
+		  /* The +DELID growth may need the heap header page below: take it under this verdict
+		   * (idempotent for the later stock call), and re-classify if that unfixed home/forward. */
+		  int ww_mvcc_flags = (OR_GET_MVCC_REPID_AND_FLAG (forward_recdes.data)
+				       >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
 		  int ww_adjusted = forward_recdes.length;
 		  bool ww_big = false;
 
-		  if (!(((ww_repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK)
-			& OR_MVCC_FLAG_VALID_DELID))
+		  if (!(ww_mvcc_flags & OR_MVCC_FLAG_VALID_DELID))
 		    {
 		      ww_adjusted += OR_MVCCID_SIZE;
 		      ww_big = heap_is_big_length (ww_adjusted);
@@ -21493,21 +21518,18 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 			  && !spage_is_updatable (thread_p, context->home_page_watcher_p->pgptr,
 						  context->oid.slotid, ww_adjusted)))
 		    {
-		      bool ww_h_saved = context->home_page_watcher_p->page_was_unfixed;
-		      bool ww_f_saved = context->forward_page_watcher_p->page_was_unfixed;
+		      bool ww_h_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
+		      bool ww_f_saved = heap_ww_unfixed_watch_begin (context->forward_page_watcher_p);
 		      bool ww_danced;
 
-		      context->home_page_watcher_p->page_was_unfixed = false;
-		      context->forward_page_watcher_p->page_was_unfixed = false;
 		      rc = heap_fix_header_page (thread_p, context);
 		      if (rc != NO_ERROR)
 			{
 			  return rc;
 			}
-		      ww_danced = (context->home_page_watcher_p->page_was_unfixed
-				    || context->forward_page_watcher_p->page_was_unfixed);
-		      context->home_page_watcher_p->page_was_unfixed |= ww_h_saved;
-		      context->forward_page_watcher_p->page_was_unfixed |= ww_f_saved;
+		      ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_h_saved);
+		      ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_f_saved)
+			|| ww_danced;
 		      if (ww_danced)
 			{
 			  rc = heap_delete_reloc_rederive (thread_p, context, &forward_oid, &forward_recdes);
@@ -21621,10 +21643,10 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       OID new_forward_oid;
       int adjusted_size;
       bool fits_in_home, fits_in_forward;
-      int ww_placed = 0;
+      INT16 ww_placed_type = REC_UNKNOWN;
       PGBUF_WATCHER ww_nh_watcher;
 #if defined (SERVER_MODE)
-      bool ww_h_saved2, ww_f_saved2, ww_danced_rel;
+      bool ww_home_flag_saved, ww_fwd_flag_saved, ww_danced;
 #endif /* SERVER_MODE */
       bool update_old_home = false;
       bool update_old_forward = false;
@@ -21777,13 +21799,9 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 
       PGBUF_INIT_WATCHER (&ww_nh_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 #if defined (SERVER_MODE)
-      /* Write-write dance re-verdict: watch the sticky page_was_unfixed flags through a private window
-       * around the placement dispatch, so a dance during an insertion below is told apart from unfixes of
-       * earlier phases. Restored (OR-ed) right after the dispatch. */
-      ww_h_saved2 = context->home_page_watcher_p->page_was_unfixed;
-      ww_f_saved2 = context->forward_page_watcher_p->page_was_unfixed;
-      context->home_page_watcher_p->page_was_unfixed = false;
-      context->forward_page_watcher_p->page_was_unfixed = false;
+      /* only a dance during the placement dispatch below must trigger the re-verdict */
+      ww_home_flag_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
+      ww_fwd_flag_saved = heap_ww_unfixed_watch_begin (context->forward_page_watcher_p);
 #endif /* SERVER_MODE */
 
       /* determine what operations on home/forward pages are necessary and execute extra operations for each case */
@@ -21794,7 +21812,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      return ER_FAILED;
 	    }
-	  ww_placed = 1;
+	  ww_placed_type = REC_BIGONE;
 
 	  /* home record descriptor will be an overflow OID and will be placed in original home page */
 	  heap_build_forwarding_recdes (&new_home_recdes, REC_BIGONE, &new_forward_oid);
@@ -21843,7 +21861,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 	    {
 	      return rc;
 	    }
-	  ww_placed = 2;
+	  ww_placed_type = REC_NEWHOME;
 
 	  /* new home record will be a REC_RELOCATION and will be placed in the original home page */
 	  heap_build_forwarding_recdes (&new_home_recdes, REC_RELOCATION, &new_forward_oid);
@@ -21858,18 +21876,13 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
       HEAP_PERF_TRACK_EXECUTE (thread_p, context);
 
 #if defined (SERVER_MODE)
-      ww_danced_rel = (context->home_page_watcher_p->page_was_unfixed
-			|| context->forward_page_watcher_p->page_was_unfixed);
-      context->home_page_watcher_p->page_was_unfixed = (context->home_page_watcher_p->page_was_unfixed
-							|| ww_h_saved2);
-      context->forward_page_watcher_p->page_was_unfixed = (context->forward_page_watcher_p->page_was_unfixed
-							   || ww_f_saved2);
-      if (ww_danced_rel)
+      ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_home_flag_saved);
+      ww_danced = heap_ww_unfixed_watch_end (context->forward_page_watcher_p, ww_fwd_flag_saved) || ww_danced;
+      if (ww_danced)
 	{
-	  /* Write-write dance re-verdict: a page was unfixed during the placement dispatch -- the seal
-	   * verdict is stale. Compensate whichever fresh record was inserted (ours only, never referenced
-	   * yet), re-derive the chain and go back to the verdict. */
-	  if (ww_placed == 1)
+	  /* the verdict is stale: compensate the fresh record (ours only, never referenced yet),
+	   * re-derive the chain and go back to the verdict */
+	  if (ww_placed_type == REC_BIGONE)
 	    {
 	      if (heap_ovf_delete (thread_p, &context->hfid, &new_forward_oid, NULL) == NULL)
 		{
@@ -21877,7 +21890,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  return rc;
 		}
 	    }
-	  else if (ww_placed == 2)
+	  else if (ww_placed_type == REC_NEWHOME)
 	    {
 	      assert (ww_nh_watcher.pgptr != NULL);
 	      heap_log_delete_physical (thread_p, ww_nh_watcher.pgptr, &context->hfid.vfid, &new_forward_oid,
@@ -22454,11 +22467,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
       PGBUF_INIT_WATCHER (&ww_newhome_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
 #if defined (SERVER_MODE)
-      /* Write-write dance re-verdict: the verdict below and the physical write at the end must not be
-       * separated by a page dance -- when the built record leaves the home page, the insertion may unfix the
-       * home page (pgbuf ordered fix) and a concurrent lockless writer can stamp or transform the record in
-       * that window. On a detected dance the fresh insertion is compensated and control returns here for a
-       * new verdict + rebuild on the re-read record. */
+      /* Write-write dance re-verdict: when the relocation insert below unfixes the home page, the fresh
+       * insertion is compensated and control returns here for a new verdict + rebuild. */
     ww_reverdict:
       /* Authoritative write-write re-check under the held home-page latch (see the helper). */
       error_code = heap_home_recheck_write_write (thread_p, context);
@@ -22598,11 +22608,8 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 #if defined (SERVER_MODE)
 	  bool ww_flag_saved, ww_danced;
 
-	  /* Write-write dance re-verdict: watch the sticky page_was_unfixed flag through a private
-	   * window around the insertion, so a dance during THIS insertion is told apart from unfixes of
-	   * earlier phases. The flag is restored (OR-ed) for the downstream re-get logic. */
-	  ww_flag_saved = context->home_page_watcher_p->page_was_unfixed;
-	  context->home_page_watcher_p->page_was_unfixed = false;
+	  /* only a dance during the insertion below must trigger the re-verdict */
+	  ww_flag_saved = heap_ww_unfixed_watch_begin (context->home_page_watcher_p);
 #endif /* SERVER_MODE */
 
 	  /* insertion of built record */
@@ -22632,12 +22639,11 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	    }
 
 #if defined (SERVER_MODE)
-	  ww_danced = context->home_page_watcher_p->page_was_unfixed;
-	  context->home_page_watcher_p->page_was_unfixed = (ww_danced || ww_flag_saved);
+	  ww_danced = heap_ww_unfixed_watch_end (context->home_page_watcher_p, ww_flag_saved);
 	  if (ww_danced)
 	    {
-	      /* The home page was unfixed during the insertion: the verdict is stale. Compensate the fresh
-	       * record (ours only, never referenced yet) and re-run the seal on the re-read record. */
+	      /* the verdict is stale: compensate the fresh record (ours only, never referenced yet)
+	       * and re-run the seal on the re-read record */
 	      if (built_recdes.type == REC_BIGONE)
 		{
 		  if (heap_ovf_delete (thread_p, &context->hfid, &forward_oid, NULL) == NULL)
