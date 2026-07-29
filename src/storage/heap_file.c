@@ -21446,8 +21446,7 @@ static int
 heap_ww_fix_header_under_verdict (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context,
 				  const OID * forward_oid_p, const RECDES * forward_recdes_p, bool * danced_p)
 {
-  int mvcc_flags = (OR_GET_MVCC_REPID_AND_FLAG (forward_recdes_p->data) >> OR_MVCC_FLAG_SHIFT_BITS)
-    & OR_MVCC_FLAG_MASK;
+  int mvcc_flags = (OR_GET_MVCC_REPID_AND_FLAG (forward_recdes_p->data) >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
   int adjusted_size = forward_recdes_p->length;
   bool is_big = false;
   bool home_saved, fwd_saved;
@@ -21578,8 +21577,7 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 		  bool ww_danced;
 
 		  /* the +DELID growth may need the heap header page: take it under this verdict */
-		  rc = heap_ww_fix_header_under_verdict (thread_p, context, &forward_oid, &forward_recdes,
-							 &ww_danced);
+		  rc = heap_ww_fix_header_under_verdict (thread_p, context, &forward_oid, &forward_recdes, &ww_danced);
 		  if (rc != NO_ERROR)
 		    {
 		      return rc;
