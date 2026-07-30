@@ -2183,6 +2183,15 @@ qo_iscan_cost (QO_PLAN * planp)
       termp = QO_ENV_TERM (QO_NODE_ENV (nodep), t);
       sel *= QO_TERM_SELECTIVITY (termp);
 
+      /* Invariant: a LIKE-derived range that reached the key-range terms cannot
+       * carry a non-indexable collation. NON_IDX_SARG_COLL is column-driven, so
+       * it would flag the retained LIKE and its derived range alike and keep the
+       * derived range out of the key-range terms. Hence whenever a derived range
+       * is here, the residual LIKE is index-usable and becomes a key-filter -
+       * which is what the exclusion below relies on. */
+      assert (!QO_TERM_IS_FLAGED (termp, QO_TERM_LIKE_DERIVED_RANGE)
+	      || !QO_TERM_IS_FLAGED (termp, QO_TERM_NON_IDX_SARG_COLL));
+
       /* Exclude a LIKE-derived range from row-count only when the residual LIKE
        * can be a key-filter (its selectivity then lives in filter_sel). A
        * non-covering function index disables key-filters, so the residual LIKE
