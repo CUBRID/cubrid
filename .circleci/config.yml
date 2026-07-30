@@ -78,17 +78,15 @@ commands:
   collect-build-logs:
     description: "Collect build logs and store them"
     steps:
+      # when: always — a failed build is exactly when build.log is worth having;
+      # without it this step is skipped and the upload below finds nothing.
       - run:
-          name: Store Build Logs
+          name: Store build logs and commits
+          when: always
           command: |
             mkdir -p /tmp/build_logs
             mv -f build.log /tmp/build_logs || true
-      - run:
-          name: Store Commits
-          command: |
-            mkdir -p /tmp/build_logs
-            git log | head -n 1000 > commits.log || true
-            mv -f commits.log /tmp/build_logs
+            git log | head -n 1000 > /tmp/build_logs/commits.log || true
       - store_artifacts:
           path: /tmp/build_logs
           when: always
@@ -220,8 +218,8 @@ commands:
   run-tests:
     description: "Run test scripts (CUBRID must be at /home/CUBRID)"
     steps:
-      # NOTE: every step keeps `shell: /bin/bash` (i.e. no -e/-o pipefail) because
-      # the prune pipelines below exit non-zero when there is nothing to prune.
+      # The test steps set `shell: /bin/bash` (i.e. no -e/-o pipefail): the prune
+      # pipelines exit non-zero when there is nothing left to prune.
       - run:
           name: Check out testcases and testtools
           shell: /bin/bash
@@ -549,7 +547,6 @@ jobs:
     environment:
       BASELINE: << pipeline.parameters.baseline >>
       TEST_SUITE: "shell"
-      GITHUB_TOKEN: $GHI_TOKEN
     steps:
       # Testcases branch is resolved once in download-build and shared via the
       # workspace, so the 50 shell pods never hit cubrid-testcases themselves.
