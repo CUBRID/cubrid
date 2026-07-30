@@ -59,13 +59,10 @@
 #define TIME_BUF_SIZE                  50
 #define	MAX_DISPLAY_LENGTH             20
 
-/* Appended to every prepared/batched statement so the queries issued by this
- * tool can be told apart from application traffic in sql.log. */
+/* Marks the tool's own queries in sql.log. */
 #define BR_TESTER_HINT                 " /* broker_tester */"
 
-/* execute_test_with_query () returns this positive sentinel when the query
- * contains bind parameters, which it cannot run. The caller reports the
- * context-specific usage message (-c command vs -i file). */
+/* Positive sentinel: callers must map it to their own failure value. */
 #define BR_TESTER_BIND_REJECTED        1
 
 /* Upper bound for the repeat count N of @execute(N)/@array(N)/@call(N). */
@@ -165,28 +162,27 @@ typedef enum
 typedef struct
 {
   int idx;			/* 1-based marker index */
-  T_CCI_U_TYPE u_type;		/* CCI type mapped from the TYPE token */
-  char *type_tok;		/* original TYPE token, upper-cased (used for CALL out display) */
-  char *value;			/* value string; server converts. NULL is bound as "" */
-  int size;			/* byte length for BIT/VARBIT, 0 otherwise */
+  T_CCI_U_TYPE u_type;
+  char *type_tok;
+  char *value;			/* a NULL bind is sent as "" */
+  int size;
   bool is_null;
-  T_BR_PARAM_MODE param_mode;	/* OUT/INOUT only allowed under @call */
-  T_CCI_BIT bit;		/* filled at bind time for BIT/VARBIT; must outlive cci_execute */
+  T_BR_PARAM_MODE param_mode;
+  T_CCI_BIT bit;		/* must outlive cci_execute */
 } T_BR_BIND;
 
-/* One statement pending flush. A directive plus its query and bind sets, or a
- * collected @batch block. */
+/* One statement pending flush. */
 typedef struct
 {
   char *query;
   T_BR_EXEC_MODE mode;
-  int exec_count;		/* directive repeat count N; defaults to 1 */
+  int exec_count;
   T_BR_BIND ***sets;		/* sets[set][col]; one set is one array row */
-  int *set_nbind;		/* bind count of each set */
-  int num_sets;			/* number of sets M */
-  char **batch_sql;		/* BATCH only: array of plain SQL (no binds) */
-  int batch_count;		/* number of batch statements K */
-  int batch_capacity;		/* allocated slots in batch_sql */
+  int *set_nbind;
+  int num_sets;
+  char **batch_sql;
+  int batch_count;
+  int batch_capacity;
 } T_BR_STMT;
 
 static int init_tester_info (char *broker_name);
@@ -202,7 +198,7 @@ static int execute_test (int conn_handle, int shard_flag);
 
 static int get_bind_type (const char *tok);
 static char *strip_caslog_prefix (char *line);
-static char *find_line_comment (char *line);
+static char *find_line_comment (char *line, bool bind_line);
 static int tester_get_line (FILE * fp, T_STRING * t_str);
 static int classify_line (const char *line);
 static bool is_batch_begin (const char *line);
@@ -215,11 +211,15 @@ static void stmt_reset (T_BR_STMT * st);
 static int stmt_add_batch_sql (T_BR_STMT * st, const char *sql);
 static void bind_free_set (T_BR_BIND ** set, int nbind);
 
+static int bind_one_param (int req, T_BR_BIND * b);
 static int bind_one_set (int req, T_BR_BIND ** set, int nbind);
+static char *build_hinted_query (const char *query, int shard_id);
 static int flush_current (int conn_handle, T_BR_STMT * st, int shard_flag);
 static int flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag);
-static int flush_call (int conn_handle, T_BR_STMT * st);
-static int flush_batch (int conn_handle, T_BR_STMT * st);
+static int flush_stmt_one (int conn_handle, T_BR_STMT * st, int shard_flag, int shard_id, bool add_shard_hint);
+static int flush_call (int conn_handle, T_BR_STMT * st, int shard_flag);
+static int flush_call_one (int conn_handle, T_BR_STMT * st, int shard_flag, int shard_id, bool add_shard_hint);
+static int flush_batch (int conn_handle, T_BR_STMT * st, int shard_flag);
 static void print_out_params (T_BR_STMT * st, int req, int call_seq);
 static void print_batch_result (T_CCI_QUERY_RESULT * qr, int k);
 
@@ -422,11 +422,8 @@ get_time (struct timeval *start_time, char *time, int buf_len)
   return;
 }
 
-/* Classifies the first positional argument. Returns 0 for a broker name (no
- * colon), 1 for a strict host:port (direct mode; host non-empty, port 1..65535),
- * and -1 for a malformed target. Broker names never contain a colon, so there is
- * no fallback: a colon means host:port must parse. Multiple colons (IPv6) are
- * rejected. On direct mode *host_out is a freshly allocated copy. */
+/* Returns 0 for a broker name, 1 for host:port (direct mode), -1 if malformed.
+ * On 1, *host_out is a freshly allocated copy the caller must free. */
 static int
 parse_conn_target (const char *arg, char **host_out, int *port_out)
 {
@@ -472,12 +469,8 @@ parse_conn_target (const char *arg, char **host_out, int *port_out)
   return 1;
 }
 
-/* Executes a single query with no bind parameters. Used for the -c command and
- * for the plain (directive-less, bind-less) statements of the -i file, so the
- * legacy result table output and shard iteration stay unchanged. A query that
- * carries bind markers cannot be run here: it returns BR_TESTER_BIND_REJECTED
- * and the caller reports the context-specific usage message. The caller also
- * prints the result header (print_title) before calling. */
+/* Runs one query that has no bind parameters. Returns BR_TESTER_BIND_REJECTED if
+ * the query carries markers. The caller prints print_title () beforehand. */
 static int
 execute_test_with_query (int conn_handle, char *query, int shard_flag)
 {
@@ -519,7 +512,6 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 
       if (cci_get_bind_num (req) > 0)
 	{
-	  /* cannot run a bind query here; the caller reports the usage message */
 	  cci_close_req_handle (req);
 	  cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
 	  return BR_TESTER_BIND_REJECTED;
@@ -588,9 +580,8 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
   return (-1 * err_num);
 }
 
-/* Maps a sql.log TYPE token to a CCI u_type; returns -1 for an unknown token.
- * BLOB/CLOB are not bindable here and resolve to CCI_U_TYPE_NULL. Kept in sync
- * with get_cci_type () in broker_log_replay.c. */
+/* Returns -1 for an unknown token. BLOB/CLOB resolve to CCI_U_TYPE_NULL.
+ * Keep in sync with get_cci_type () in broker_log_replay.c. */
 static int
 get_bind_type (const char *tok)
 {
@@ -600,91 +591,148 @@ get_bind_type (const char *tok)
     {
     case 'B':
       if (strcmp (tok, "BIGINT") == 0)
-	type = CCI_U_TYPE_BIGINT;
+	{
+	  type = CCI_U_TYPE_BIGINT;
+	}
       else if (strcmp (tok, "BIT") == 0)
-	type = CCI_U_TYPE_BIT;
+	{
+	  type = CCI_U_TYPE_BIT;
+	}
       else if (strcmp (tok, "BLOB") == 0)
-	type = CCI_U_TYPE_NULL;
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
       break;
 
     case 'C':
       if (strcmp (tok, "CHAR") == 0)
-	type = CCI_U_TYPE_CHAR;
+	{
+	  type = CCI_U_TYPE_CHAR;
+	}
       else if (strcmp (tok, "CLOB") == 0)
-	type = CCI_U_TYPE_NULL;
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
       break;
 
     case 'D':
       if (strcmp (tok, "DOUBLE") == 0)
-	type = CCI_U_TYPE_DOUBLE;
+	{
+	  type = CCI_U_TYPE_DOUBLE;
+	}
       else if (strcmp (tok, "DATE") == 0)
-	type = CCI_U_TYPE_DATE;
+	{
+	  type = CCI_U_TYPE_DATE;
+	}
       else if (strcmp (tok, "DATETIME") == 0)
-	type = CCI_U_TYPE_DATETIME;
+	{
+	  type = CCI_U_TYPE_DATETIME;
+	}
       else if (strcmp (tok, "DATETIMETZ") == 0)
-	type = CCI_U_TYPE_DATETIMETZ;
+	{
+	  type = CCI_U_TYPE_DATETIMETZ;
+	}
       break;
 
     case 'E':
       if (strcmp (tok, "ENUM") == 0)
-	type = CCI_U_TYPE_ENUM;
+	{
+	  type = CCI_U_TYPE_ENUM;
+	}
       break;
 
     case 'F':
       if (strcmp (tok, "FLOAT") == 0)
-	type = CCI_U_TYPE_FLOAT;
+	{
+	  type = CCI_U_TYPE_FLOAT;
+	}
       break;
 
     case 'I':
       if (strcmp (tok, "INT") == 0)
-	type = CCI_U_TYPE_INT;
+	{
+	  type = CCI_U_TYPE_INT;
+	}
       break;
 
     case 'J':
       if (strcmp (tok, "JSON") == 0)
-	type = CCI_U_TYPE_JSON;
+	{
+	  type = CCI_U_TYPE_JSON;
+	}
       break;
 
     case 'M':
       if (strcmp (tok, "MONETARY") == 0)
-	type = CCI_U_TYPE_MONETARY;
+	{
+	  type = CCI_U_TYPE_MONETARY;
+	}
       break;
 
     case 'N':
       if (strcmp (tok, "NUMERIC") == 0)
-	type = CCI_U_TYPE_NUMERIC;
+	{
+	  type = CCI_U_TYPE_NUMERIC;
+	}
       else if (strcmp (tok, "NULL") == 0)
-	type = CCI_U_TYPE_NULL;
+	{
+	  type = CCI_U_TYPE_NULL;
+	}
+      break;
+
+    case 'O':
+      if (strcmp (tok, "OBJECT") == 0)
+	{
+	  type = CCI_U_TYPE_OBJECT;
+	}
       break;
 
     case 'S':
       if (strcmp (tok, "SHORT") == 0)
-	type = CCI_U_TYPE_SHORT;
+	{
+	  type = CCI_U_TYPE_SHORT;
+	}
       break;
 
     case 'T':
       if (strcmp (tok, "TIME") == 0)
-	type = CCI_U_TYPE_TIME;
+	{
+	  type = CCI_U_TYPE_TIME;
+	}
       else if (strcmp (tok, "TIMESTAMP") == 0)
-	type = CCI_U_TYPE_TIMESTAMP;
+	{
+	  type = CCI_U_TYPE_TIMESTAMP;
+	}
       else if (strcmp (tok, "TIMESTAMPTZ") == 0)
-	type = CCI_U_TYPE_TIMESTAMPTZ;
+	{
+	  type = CCI_U_TYPE_TIMESTAMPTZ;
+	}
       break;
 
     case 'U':
       if (strcmp (tok, "UINT") == 0)
-	type = CCI_U_TYPE_UINT;
+	{
+	  type = CCI_U_TYPE_UINT;
+	}
       else if (strcmp (tok, "UBIGINT") == 0)
-	type = CCI_U_TYPE_UBIGINT;
+	{
+	  type = CCI_U_TYPE_UBIGINT;
+	}
       else if (strcmp (tok, "USHORT") == 0)
-	type = CCI_U_TYPE_USHORT;
+	{
+	  type = CCI_U_TYPE_USHORT;
+	}
       break;
 
     case 'V':
       if (strcmp (tok, "VARCHAR") == 0)
-	type = CCI_U_TYPE_STRING;
+	{
+	  type = CCI_U_TYPE_STRING;
+	}
       else if (strcmp (tok, "VARBIT") == 0)
-	type = CCI_U_TYPE_VARBIT;
+	{
+	  type = CCI_U_TYPE_VARBIT;
+	}
       break;
 
     default:
@@ -694,10 +742,8 @@ get_bind_type (const char *tok)
   return type;
 }
 
-/* Skips a sql.log line prefix ("YY-MM-DD HH:MM:SS.mmm (seq) " or the month-first
- * form) so a copy-pasted log line and a hand-written line classify the same way.
- * A line without a recognizable prefix is returned unchanged - the tester's main
- * input is plain SQL, which must never be truncated. */
+/* A line without a recognizable sql.log prefix is returned unchanged: plain SQL
+ * must never be truncated. */
 static char *
 strip_caslog_prefix (char *line)
 {
@@ -731,16 +777,14 @@ strip_caslog_prefix (char *line)
   return p;
 }
 
-/* Returns a pointer to the first '#' that begins a line comment: one that lies
- * outside any quoted string literal ('...') or quoted identifier ("...", `...`,
- * [...]). Returns NULL when the line has no such '#'. A doubled quote character
- * ('' "" `` ]]) is treated as an escaped quote, and inside '...'/"..." a
- * backslash escapes the next character, matching SQL literal rules. */
+/* Returns the first '#' that starts a comment, or NULL. A '#' inside '...', "...",
+ * `...` or [...] is not one. bind_line restricts it to a '#' after whitespace so a
+ * value like "a#b" survives; quote the value to keep a '#' that follows a space. */
 static char *
-find_line_comment (char *line)
+find_line_comment (char *line, bool bind_line)
 {
   char *p = line;
-  char quote = '\0';		/* opening quote char of the region we are in, else '\0' */
+  char quote = '\0';
 
   while (*p != '\0')
     {
@@ -750,17 +794,17 @@ find_line_comment (char *line)
 
 	  if ((quote == '\'' || quote == '"') && *p == '\\' && p[1] != '\0')
 	    {
-	      p += 2;		/* backslash-escaped char, still inside */
+	      p += 2;
 	      continue;
 	    }
 	  if (*p == close)
 	    {
 	      if (p[1] == close)
 		{
-		  p += 2;	/* doubled quote: escaped, still inside */
+		  p += 2;
 		  continue;
 		}
-	      quote = '\0';	/* region closed */
+	      quote = '\0';
 	    }
 	  p++;
 	  continue;
@@ -768,11 +812,14 @@ find_line_comment (char *line)
 
       if (*p == '\'' || *p == '"' || *p == '`' || *p == '[')
 	{
-	  quote = *p;		/* region opened */
+	  quote = *p;
 	}
       else if (*p == '#')
 	{
-	  return p;		/* unquoted '#' -> comment start */
+	  if (!bind_line || p == line || p[-1] == ' ' || p[-1] == '\t')
+	    {
+	      return p;
+	    }
 	}
       p++;
     }
@@ -780,9 +827,8 @@ find_line_comment (char *line)
   return NULL;
 }
 
-/* Reads one logical line (of any length) into t_str. Returns 0 on success, -1 at
- * end of file. Only the T_STRING container is reused from the log tools; the
- * sql.log prefix handling of ut_get_line () does not fit plain SQL lines. */
+/* Reads one logical line of any length. Returns 0, -1 at end of file, -2 on
+ * allocation failure - a partial read must not be taken for a clean end of file. */
 static int
 tester_get_line (FILE * fp, T_STRING * t_str)
 {
@@ -801,7 +847,8 @@ tester_get_line (FILE * fp, T_STRING * t_str)
 
       if (t_string_add (t_str, buf, len) < 0)
 	{
-	  return -1;
+	  fprintf (stderr, "malloc error\n");
+	  return -2;
 	}
 
       if (len == 0 || buf[len - 1] == '\n')
@@ -882,8 +929,7 @@ is_batch_end (const char *line)
   return (strcasecmp (p, "end") == 0);
 }
 
-/* Parses a prefix directive (@execute/@array/@call, optional "(N)") into st.
- * @batch is handled separately by the caller. */
+/* @batch is handled by the caller, not here. */
 static int
 parse_directive (const char *line, T_BR_STMT * st)
 {
@@ -963,8 +1009,7 @@ parse_directive (const char *line, T_BR_STMT * st)
   return 0;
 }
 
-/* Appends one bind parameter to the current set. A "bind 1" line starts a new
- * set (array row); other indices extend the last set and must increase by one. */
+/* Index 1 starts a new set; other indices must increase by one within a set. */
 static int
 parse_bind_line (const char *line, T_BR_STMT * st)
 {
@@ -1000,15 +1045,39 @@ parse_bind_line (const char *line, T_BR_STMT * st)
 
   if (*p == '(')
     {
-      if (strncasecmp (p + 1, "INOUT", 5) == 0)
+      const char *close = strchr (p, ')');
+      const char *mode_start;
+      const char *mode_end;
+      int mode_len;
+
+      if (close == NULL)
+	{
+	  fprintf (stderr, "malformed bind mode: %s\n", line);
+	  return -1;
+	}
+
+      /* match the whole token so that (INVALID) is not taken for (IN) */
+      mode_start = p + 1;
+      while (mode_start < close && (*mode_start == ' ' || *mode_start == '\t'))
+	{
+	  mode_start++;
+	}
+      mode_end = close;
+      while (mode_end > mode_start && (mode_end[-1] == ' ' || mode_end[-1] == '\t'))
+	{
+	  mode_end--;
+	}
+      mode_len = (int) (mode_end - mode_start);
+
+      if (mode_len == 5 && strncasecmp (mode_start, "INOUT", 5) == 0)
 	{
 	  mode = BR_PM_INOUT;
 	}
-      else if (strncasecmp (p + 1, "OUT", 3) == 0)
+      else if (mode_len == 3 && strncasecmp (mode_start, "OUT", 3) == 0)
 	{
 	  mode = BR_PM_OUT;
 	}
-      else if (strncasecmp (p + 1, "IN", 2) == 0)
+      else if (mode_len == 2 && strncasecmp (mode_start, "IN", 2) == 0)
 	{
 	  mode = BR_PM_IN;
 	}
@@ -1018,13 +1087,7 @@ parse_bind_line (const char *line, T_BR_STMT * st)
 	  return -1;
 	}
 
-      p = strchr (p, ')');
-      if (p == NULL)
-	{
-	  fprintf (stderr, "malformed bind mode: %s\n", line);
-	  return -1;
-	}
-      p++;
+      p = close + 1;
       while (*p == ' ' || *p == '\t')
 	{
 	  p++;
@@ -1080,16 +1143,15 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       p++;
     }
 
-  /* optional size: character count for strings, byte count for BIT/VARBIT */
-  if (*p == '(')
+  /* optional size: character count for strings, byte count for BIT/VARBIT.
+   * A '(' that does not start with digits belongs to the value itself. */
+  if (*p == '(' && str_to_int32 (&size, &endp, p + 1, 10) == 0)
     {
-      if (str_to_int32 (&size, &endp, p + 1, 10) < 0)
+      while (*endp == ' ' || *endp == '\t')
 	{
-	  fprintf (stderr, "malformed bind size: %s\n", line);
-	  return -1;
+	  endp++;
 	}
-      endp = strchr (endp, ')');
-      if (endp == NULL)
+      if (*endp != ')')
 	{
 	  fprintf (stderr, "malformed bind size: %s\n", line);
 	  return -1;
@@ -1099,6 +1161,15 @@ parse_bind_line (const char *line, T_BR_STMT * st)
 	{
 	  p++;
 	}
+    }
+  else
+    {
+      size = 0;
+    }
+
+  if ((type == CCI_U_TYPE_BIT || type == CCI_U_TYPE_VARBIT) && size <= 0)
+    {
+      fprintf (stderr, "warning: no size given for %s; using the value length\n", type_tok);
     }
 
   val_start = p;
@@ -1158,6 +1229,17 @@ parse_bind_line (const char *line, T_BR_STMT * st)
 		}
 	    }
 	  *w = '\0';
+
+	  if (*q != '\'')
+	    {
+	      fprintf (stderr, "unterminated quoted value: %s\n", line);
+	      goto bind_error;
+	    }
+	  if (q[1] != '\0')
+	    {
+	      fprintf (stderr, "unexpected text after quoted value: %s\n", line);
+	      goto bind_error;
+	    }
 	}
     }
   else
@@ -1168,15 +1250,11 @@ parse_bind_line (const char *line, T_BR_STMT * st)
   if (b->type_tok == NULL || b->value == NULL)
     {
       fprintf (stderr, "malloc error\n");
-      FREE_MEM (b->type_tok);
-      FREE_MEM (b->value);
-      FREE_MEM (b);
-      return -1;
+      goto bind_error;
     }
 
   if (idx == 1)
     {
-      /* start a new bind set (array row) */
       T_BR_BIND ***tmp_sets;
       int *tmp_nbind;
 
@@ -1184,10 +1262,7 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       if (tmp_sets == NULL)
 	{
 	  fprintf (stderr, "malloc error\n");
-	  FREE_MEM (b->type_tok);
-	  FREE_MEM (b->value);
-	  FREE_MEM (b);
-	  return -1;
+	  goto bind_error;
 	}
       st->sets = tmp_sets;	/* commit now so st->sets never holds a freed block */
 
@@ -1195,10 +1270,7 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       if (tmp_nbind == NULL)
 	{
 	  fprintf (stderr, "malloc error\n");
-	  FREE_MEM (b->type_tok);
-	  FREE_MEM (b->value);
-	  FREE_MEM (b);
-	  return -1;
+	  goto bind_error;
 	}
       st->set_nbind = tmp_nbind;
       st->sets[st->num_sets] = NULL;
@@ -1210,18 +1282,12 @@ parse_bind_line (const char *line, T_BR_STMT * st)
       if (st->num_sets == 0)
 	{
 	  fprintf (stderr, "bind set must start at index 1: %s\n", line);
-	  FREE_MEM (b->type_tok);
-	  FREE_MEM (b->value);
-	  FREE_MEM (b);
-	  return -1;
+	  goto bind_error;
 	}
       if (idx != st->set_nbind[st->num_sets - 1] + 1)
 	{
 	  fprintf (stderr, "bind index must increase by one: %s\n", line);
-	  FREE_MEM (b->type_tok);
-	  FREE_MEM (b->value);
-	  FREE_MEM (b);
-	  return -1;
+	  goto bind_error;
 	}
     }
 
@@ -1230,16 +1296,20 @@ parse_bind_line (const char *line, T_BR_STMT * st)
   if (new_set == NULL)
     {
       fprintf (stderr, "malloc error\n");
-      FREE_MEM (b->type_tok);
-      FREE_MEM (b->value);
-      FREE_MEM (b);
-      return -1;
+      goto bind_error;
     }
   st->sets[s] = new_set;
   st->sets[s][st->set_nbind[s]] = b;
   st->set_nbind[s]++;
 
   return 0;
+
+bind_error:
+  FREE_MEM (b->type_tok);
+  FREE_MEM (b->value);
+  FREE_MEM (b);
+
+  return -1;
 }
 
 static void
@@ -1324,30 +1394,33 @@ stmt_add_batch_sql (T_BR_STMT * st, const char *sql)
 }
 
 static int
+bind_one_param (int req, T_BR_BIND * b)
+{
+  if (b->u_type == CCI_U_TYPE_BIT || b->u_type == CCI_U_TYPE_VARBIT)
+    {
+      /* CCI_BIND_PTR keeps the pointer, so the T_CCI_BIT and its buffer live in the
+       * bind and outlive cci_execute. Without "(n)" the value length is used. */
+      b->bit.size = (b->size > 0) ? b->size : (int) strlen (b->value);
+      b->bit.buf = b->value;
+
+      return cci_bind_param (req, b->idx, CCI_A_TYPE_BIT, (void *) &b->bit, b->u_type, CCI_BIND_PTR);
+    }
+
+  return cci_bind_param (req, b->idx, CCI_A_TYPE_STR, b->value, b->u_type, 0);
+}
+
+static int
 bind_one_set (int req, T_BR_BIND ** set, int nbind)
 {
   int i;
 
   for (i = 0; i < nbind; i++)
     {
-      T_BR_BIND *b = set[i];
-      int res;
-
-      if (b->u_type == CCI_U_TYPE_BIT || b->u_type == CCI_U_TYPE_VARBIT)
-	{
-	  /* the T_CCI_BIT lives in the bind and outlives cci_execute, as CCI_BIND_PTR requires */
-	  b->bit.size = b->size;
-	  b->bit.buf = b->value;
-	  res = cci_bind_param (req, b->idx, CCI_A_TYPE_BIT, (void *) &b->bit, b->u_type, CCI_BIND_PTR);
-	}
-      else
-	{
-	  res = cci_bind_param (req, b->idx, CCI_A_TYPE_STR, b->value, b->u_type, 0);
-	}
+      int res = bind_one_param (req, set[i]);
 
       if (res < 0)
 	{
-	  fprintf (stderr, "cci_bind_param failed at index %d\n", b->idx);
+	  fprintf (stderr, "cci_bind_param failed at index %d (error %d)\n", set[i]->idx, res);
 	  return -1;
 	}
     }
@@ -1355,40 +1428,39 @@ bind_one_set (int req, T_BR_BIND ** set, int nbind)
   return 0;
 }
 
-/* Builds "<query>" followed by BR_TESTER_HINT in a freshly allocated buffer. */
+/* shard_id < 0 omits the shard hint. The caller frees the returned buffer. */
 static char *
-build_hinted_query (const char *query)
+build_hinted_query (const char *query, int shard_id)
 {
-  size_t len = strlen (query) + strlen (BR_TESTER_HINT) + 1;
-  char *hinted = (char *) MALLOC (len);
+  char shard_hint[64];
+  size_t len;
+  char *hinted;
 
+  shard_hint[0] = '\0';
+  if (shard_id >= 0)
+    {
+      snprintf (shard_hint, sizeof (shard_hint), " /*+ shard_id(%d) */", shard_id);
+    }
+
+  len = strlen (query) + strlen (shard_hint) + strlen (BR_TESTER_HINT) + 1;
+  hinted = (char *) MALLOC (len);
   if (hinted == NULL)
     {
       fprintf (stderr, "malloc error\n");
       return NULL;
     }
-  snprintf (hinted, len, "%s%s", query, BR_TESTER_HINT);
+  snprintf (hinted, len, "%s%s%s", query, shard_hint, BR_TESTER_HINT);
 
   return hinted;
 }
 
-/* Single / @execute(N) / @array(N). A plain single execute with no binds is
- * delegated to execute_test_with_query so the legacy result table and shard
- * iteration are preserved; the bind-aware paths run on the routed CAS only
- * (no per-shard iteration). */
+/* One prepare per shard: the shard hint is part of the SQL text. */
 static int
 flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 {
-  T_CCI_ERROR err_buf;
-  char *hinted;
-  char **col_vals = NULL;
-  int *col_nulls = NULL;
-  int req = -1;
-  int expected;
-  int ret = 0;
+  bool iterate_shards;
+  int shard_id = 0;
   int err_num = 0;
-  int i;
-  int s;
 
   if (st->mode == BR_EXEC_SINGLE && st->num_sets == 0)
     {
@@ -1402,31 +1474,82 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
       return r;
     }
 
+  iterate_shards = (br_tester_info.shard_flag == ON && !br_tester_info.single_shard);
+
+  do
+    {
+      int r = flush_stmt_one (conn_handle, st, shard_flag, shard_id, iterate_shards);
+
+      if (r < 0)
+	{
+	  err_num++;
+	}
+
+      /* -2 means the statement itself is wrong, so it would fail the same way on
+       * every shard; report it once */
+      if (r == -2 || !iterate_shards)
+	{
+	  break;
+	}
+    }
+  while (++shard_id < br_tester_info.num_shard);
+
+  return (err_num > 0) ? -1 : 0;
+}
+
+static int
+flush_stmt_one (int conn_handle, T_BR_STMT * st, int shard_flag, int shard_id, bool add_shard_hint)
+{
+  T_CCI_ERROR err_buf;
+  char *hinted;
+  char **col_vals = NULL;
+  int *col_nulls = NULL;
+  T_CCI_BIT *col_bits = NULL;
+  struct timeval start_time;
+  char time[TIME_BUF_SIZE];
+  int req = -1;
+  int expected;
+  int ret = 0;
+  int err_num = 0;
+  int fatal = 0;
+  int i;
+  int s;
+
   if (st->mode == BR_EXEC_ARRAY)
     {
       if (st->num_sets < 1)
 	{
 	  fprintf (stderr, "@array requires at least one bind set\n");
-	  return -1;
+	  return -2;
 	}
     }
   else if (st->num_sets > 1)
     {
       fprintf (stderr, "multiple bind sets are only allowed with @array\n");
-      return -1;
+      return -2;
     }
 
-  hinted = build_hinted_query (st->query);
+  hinted = build_hinted_query (st->query, add_shard_hint ? shard_id : -1);
   if (hinted == NULL)
     {
-      return -1;
+      return -2;
     }
+
+  memset (tester_err_msg, 0, sizeof (tester_err_msg));
+  gettimeofday (&start_time, NULL);
 
   req = cci_prepare (conn_handle, hinted, 0, &err_buf);
   if (req < 0)
     {
-      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
+      /* report the failing shard in the result table */
+      snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+			      err_buf.err_code, err_buf.err_msg);
+      get_time (&start_time, time, sizeof (time));
+      print_result (-1, err_buf.err_code, shard_flag, shard_id, time, st->query);
+
+      cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
       FREE_MEM (hinted);
+
       return -1;
     }
 
@@ -1436,7 +1559,7 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
       if (st->set_nbind[s] != expected)
 	{
 	  fprintf (stderr, "bind count mismatch: prepared expects %d, got %d\n", expected, st->set_nbind[s]);
-	  err_num++;
+	  fatal = 1;
 	  goto close;
 	}
     }
@@ -1446,13 +1569,20 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
       int j;
       int m = st->num_sets;
 
-      cci_bind_param_array_size (req, m);
+      if (cci_bind_param_array_size (req, m) < 0)
+	{
+	  fprintf (stderr, "cci_bind_param_array_size failed for %d row(s)\n", m);
+	  err_num++;
+	  goto close;
+	}
 
-      /* one column of values/null-indicators is bound at a time; the arrays must
-       * stay alive until cci_execute_array, so they are freed after the loop */
+      /* one column of values/null-indicators is bound at a time; CCI keeps only
+       * the pointers (BIND_PTR_STATIC), so the arrays must stay alive until
+       * cci_execute_array and are freed after the loop */
       col_vals = (char **) MALLOC (sizeof (char *) * m * expected);
       col_nulls = (int *) MALLOC (sizeof (int) * m * expected);
-      if (col_vals == NULL || col_nulls == NULL)
+      col_bits = (T_CCI_BIT *) MALLOC (sizeof (T_CCI_BIT) * m * expected);
+      if (col_vals == NULL || col_nulls == NULL || col_bits == NULL)
 	{
 	  fprintf (stderr, "malloc error\n");
 	  err_num++;
@@ -1463,13 +1593,64 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 	{
 	  char **vals = col_vals + (j * m);
 	  int *nulls = col_nulls + (j * m);
+	  T_CCI_U_TYPE col_type = CCI_U_TYPE_NULL;
+	  int res;
+
+	  /* the array is bound one column at a time, so the column carries a single
+	   * type; a NULL element has no type of its own and must not decide it */
+	  for (s = 0; s < m; s++)
+	    {
+	      T_BR_BIND *b = st->sets[s][j];
+
+	      if (b->u_type == CCI_U_TYPE_NULL)
+		{
+		  continue;
+		}
+	      if (col_type == CCI_U_TYPE_NULL)
+		{
+		  col_type = b->u_type;
+		}
+	      else if (col_type != b->u_type)
+		{
+		  fprintf (stderr, "bind type mismatch in @array column %d\n", j + 1);
+		  fatal = 1;
+		  goto close;
+		}
+	    }
 
 	  for (s = 0; s < m; s++)
 	    {
-	      vals[s] = st->sets[s][j]->value;
 	      nulls[s] = st->sets[s][j]->is_null ? 1 : 0;
 	    }
-	  cci_bind_param_array (req, j + 1, CCI_A_TYPE_STR, vals, nulls, st->sets[0][j]->u_type);
+
+	  if (col_type == CCI_U_TYPE_BIT || col_type == CCI_U_TYPE_VARBIT)
+	    {
+	      T_CCI_BIT *bits = col_bits + (j * m);
+
+	      for (s = 0; s < m; s++)
+		{
+		  T_BR_BIND *b = st->sets[s][j];
+
+		  bits[s].size = (b->size > 0) ? b->size : (int) strlen (b->value);
+		  bits[s].buf = b->value;
+		}
+	      res = cci_bind_param_array (req, j + 1, CCI_A_TYPE_BIT, bits, nulls, col_type);
+	    }
+	  else
+	    {
+	      for (s = 0; s < m; s++)
+		{
+		  vals[s] = st->sets[s][j]->value;
+		}
+	      res = cci_bind_param_array (req, j + 1, CCI_A_TYPE_STR, vals, nulls, col_type);
+	    }
+
+	  if (res < 0)
+	    {
+	      fprintf (stderr, "cci_bind_param_array failed at index %d (error %d)\n", j + 1, res);
+	      err_num++;
+	      goto close;
+	    }
 	}
 
       for (i = 0; i < st->exec_count; i++)
@@ -1478,29 +1659,42 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 	  int n;
 	  int r;
 
+	  gettimeofday (&start_time, NULL);
+
+	  /* the return value is the number of results and qr stays NULL when the
+	   * server reported none, so never walk qr by the array row count */
 	  n = cci_execute_array (req, &qr, &err_buf);
 	  if (n < 0)
 	    {
 	      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
 	      err_num++;
 	    }
-	  else if (qr != NULL)
+	  else if (qr == NULL)
 	    {
-	      char rtime[TIME_BUF_SIZE];
+	      fprintf (stderr, "no query result returned for %d array row(s)\n", m);
+	      err_num++;
+	    }
+	  else
+	    {
+	      get_time (&start_time, time, sizeof (time));
 
-	      rtime[0] = '\0';
-	      for (r = 1; r <= m; r++)
+	      if (n != m)
+		{
+		  fprintf (stderr, "warning: %d result(s) for %d array row(s)\n", n, m);
+		}
+
+	      for (r = 1; r <= n; r++)
 		{
 		  int err_no = CCI_QUERY_RESULT_ERR_NO (qr, r);
 
-		  print_result ((err_no == 0) ? CCI_QUERY_RESULT_RESULT (qr, r) : -1, err_no, shard_flag, 0, rtime,
-				st->query);
+		  print_result ((err_no == 0) ? CCI_QUERY_RESULT_RESULT (qr, r) : -1, err_no, shard_flag, shard_id,
+				time, st->query);
 		}
 	    }
 
 	  if (qr != NULL)
 	    {
-	      cci_query_result_free (qr, m);
+	      cci_query_result_free (qr, n);
 	    }
 	}
     }
@@ -1508,8 +1702,6 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
     {
       for (i = 0; i < st->exec_count; i++)
 	{
-	  struct timeval start_time;
-	  char time[TIME_BUF_SIZE];
 	  T_CCI_SQLX_CMD cmd_type = CUBRID_STMT_NONE;
 	  T_CCI_COL_INFO *col_info = NULL;
 	  int col_count = 0;
@@ -1530,6 +1722,11 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 				      err_buf.err_code, err_buf.err_msg);
 	      err_num++;
 	    }
+	  else if (br_tester_info.shard_flag == ON && br_tester_info.single_shard)
+	    {
+	      /* without the hint the proxy picks the shard; report where it went */
+	      cci_get_shard_id_with_req_handle (req, &shard_id, &err_buf);
+	    }
 
 	  if (ret >= 0 && br_tester_info.verbose_mode)
 	    {
@@ -1544,7 +1741,7 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 	    }
 
 	  get_time (&start_time, time, sizeof (time));
-	  print_result (ret, err_buf.err_code, shard_flag, 0, time, st->query);
+	  print_result (ret, err_buf.err_code, shard_flag, shard_id, time, st->query);
 
 	  if (ret >= 0 && br_tester_info.verbose_mode && cmd_type == CUBRID_STMT_SELECT)
 	    {
@@ -1559,28 +1756,26 @@ flush_stmt (int conn_handle, T_BR_STMT * st, int shard_flag)
 close:
   FREE_MEM (col_vals);
   FREE_MEM (col_nulls);
+  FREE_MEM (col_bits);
   cci_close_req_handle (req);
   cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
   FREE_MEM (hinted);
 
+  if (fatal)
+    {
+      return -2;
+    }
+
   return (err_num > 0) ? -1 : 0;
 }
 
-/* @call / @call(N). Prepares with CCI_PREPARE_CALL and repeats bind/execute/fetch
- * N times. CALL surfaces no SELECT-style result set (fetch returns a single OUT
- * tuple), so only OUT/INOUT/return values are collected via print_out_params. */
+/* CALL exposes no SELECT-style result set; fetch yields a single OUT tuple. */
 static int
-flush_call (int conn_handle, T_BR_STMT * st)
+flush_call (int conn_handle, T_BR_STMT * st, int shard_flag)
 {
-  T_CCI_ERROR err_buf;
-  char *hinted;
-  int req = -1;
-  int expected;
-  int nbind;
+  bool iterate_shards;
+  int shard_id = 0;
   int err_num = 0;
-  int c;
-  int i;
-  T_BR_BIND **set;
 
   if (st->num_sets > 1)
     {
@@ -1588,17 +1783,64 @@ flush_call (int conn_handle, T_BR_STMT * st)
       return -1;
     }
 
-  hinted = build_hinted_query (st->query);
+  iterate_shards = (br_tester_info.shard_flag == ON && !br_tester_info.single_shard);
+
+  do
+    {
+      int r = flush_call_one (conn_handle, st, shard_flag, shard_id, iterate_shards);
+
+      if (r < 0)
+	{
+	  err_num++;
+	}
+
+      if (r == -2 || !iterate_shards)
+	{
+	  break;
+	}
+    }
+  while (++shard_id < br_tester_info.num_shard);
+
+  return (err_num > 0) ? -1 : 0;
+}
+
+static int
+flush_call_one (int conn_handle, T_BR_STMT * st, int shard_flag, int shard_id, bool add_shard_hint)
+{
+  T_CCI_ERROR err_buf;
+  char *hinted;
+  struct timeval start_time;
+  char time[TIME_BUF_SIZE];
+  int req = -1;
+  int expected;
+  int nbind;
+  int ret;
+  int err_num = 0;
+  int fatal = 0;
+  int c;
+  int i;
+  T_BR_BIND **set;
+
+  hinted = build_hinted_query (st->query, add_shard_hint ? shard_id : -1);
   if (hinted == NULL)
     {
-      return -1;
+      return -2;
     }
+
+  memset (tester_err_msg, 0, sizeof (tester_err_msg));
+  gettimeofday (&start_time, NULL);
 
   req = cci_prepare (conn_handle, hinted, CCI_PREPARE_CALL, &err_buf);
   if (req < 0)
     {
-      PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
+      snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+			      err_buf.err_code, err_buf.err_msg);
+      get_time (&start_time, time, sizeof (time));
+      print_result (-1, err_buf.err_code, shard_flag, shard_id, time, st->query);
+
+      cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
       FREE_MEM (hinted);
+
       return -1;
     }
 
@@ -1609,45 +1851,60 @@ flush_call (int conn_handle, T_BR_STMT * st)
   if (nbind != expected)
     {
       fprintf (stderr, "bind count mismatch: prepared expects %d, got %d\n", expected, nbind);
-      err_num++;
+      fatal = 1;
       goto close;
-    }
-
-  if (br_tester_info.verbose_mode)
-    {
-      PRINT_RESULT ("<Result of CALL Command>\n");
     }
 
   for (c = 1; c <= st->exec_count; c++)
     {
+      memset (tester_err_msg, 0, sizeof (tester_err_msg));
+      gettimeofday (&start_time, NULL);
+
       for (i = 0; i < nbind; i++)
 	{
 	  T_BR_BIND *b = set[i];
+	  int res;
 
 	  if (b->param_mode == BR_PM_IN || b->param_mode == BR_PM_INOUT)
 	    {
-	      if (b->u_type == CCI_U_TYPE_BIT || b->u_type == CCI_U_TYPE_VARBIT)
+	      res = bind_one_param (req, b);
+	      if (res < 0)
 		{
-		  b->bit.size = b->size;
-		  b->bit.buf = b->value;
-		  cci_bind_param (req, b->idx, CCI_A_TYPE_BIT, (void *) &b->bit, b->u_type, CCI_BIND_PTR);
-		}
-	      else
-		{
-		  cci_bind_param (req, b->idx, CCI_A_TYPE_STR, b->value, b->u_type, 0);
+		  fprintf (stderr, "cci_bind_param failed at index %d (error %d)\n", b->idx, res);
+		  err_num++;
+		  goto close;
 		}
 	    }
 
 	  if (b->param_mode == BR_PM_OUT || b->param_mode == BR_PM_INOUT)
 	    {
-	      cci_register_out_param_ex (req, b->idx, b->u_type);
+	      res = cci_register_out_param_ex (req, b->idx, b->u_type);
+	      if (res < 0)
+		{
+		  fprintf (stderr, "cci_register_out_param_ex failed at index %d (error %d)\n", b->idx, res);
+		  err_num++;
+		  goto close;
+		}
 	    }
 	}
 
-      if (cci_execute (req, 0, 0, &err_buf) < 0)
+      ret = cci_execute (req, 0, 0, &err_buf);
+      if (ret < 0)
 	{
-	  PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
+	  snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
+				  err_buf.err_code, err_buf.err_msg);
 	  err_num++;
+	}
+      else if (br_tester_info.shard_flag == ON && br_tester_info.single_shard)
+	{
+	  cci_get_shard_id_with_req_handle (req, &shard_id, &err_buf);
+	}
+
+      get_time (&start_time, time, sizeof (time));
+      print_result (ret, err_buf.err_code, shard_flag, shard_id, time, st->query);
+
+      if (ret < 0)
+	{
 	  break;
 	}
 
@@ -1669,18 +1926,26 @@ close:
   cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
   FREE_MEM (hinted);
 
+  if (fatal)
+    {
+      return -2;
+    }
+
   return (err_num > 0) ? -1 : 0;
 }
 
-/* @batch begin/end. Runs the collected plain SQL statements as one
- * cci_execute_batch; no prepare handle and no bind parameters. */
+/* No prepared handle here, so no shard hint can be attached. */
 static int
-flush_batch (int conn_handle, T_BR_STMT * st)
+flush_batch (int conn_handle, T_BR_STMT * st, int shard_flag)
 {
   T_CCI_ERROR err_buf;
   T_CCI_QUERY_RESULT *qr = NULL;
   char **hinted = NULL;
+  struct timeval start_time;
+  char time[TIME_BUF_SIZE];
+  int shard_id = 0;
   int err_num = 0;
+  int n = 0;
   int i;
 
   if (st->batch_count <= 0)
@@ -1699,7 +1964,7 @@ flush_batch (int conn_handle, T_BR_STMT * st)
 
   for (i = 0; i < st->batch_count; i++)
     {
-      hinted[i] = build_hinted_query (st->batch_sql[i]);
+      hinted[i] = build_hinted_query (st->batch_sql[i], -1);
       if (hinted[i] == NULL)
 	{
 	  err_num++;
@@ -1707,20 +1972,52 @@ flush_batch (int conn_handle, T_BR_STMT * st)
 	}
     }
 
-  if (cci_execute_batch (conn_handle, st->batch_count, hinted, &qr, &err_buf) < 0)
+  memset (tester_err_msg, 0, sizeof (tester_err_msg));
+  gettimeofday (&start_time, NULL);
+
+  /* the return value is the number of results and qr stays NULL when the server
+   * reported none, so never walk qr by the statement count */
+  n = cci_execute_batch (conn_handle, st->batch_count, hinted, &qr, &err_buf);
+  if (n < 0)
     {
       PRINT_CCI_ERROR ("ERROR CODE : %d\n%s\n\n", err_buf.err_code, err_buf.err_msg);
       err_num++;
     }
+  else if (qr == NULL)
+    {
+      fprintf (stderr, "no query result returned for %d batched statement(s)\n", st->batch_count);
+      err_num++;
+    }
   else
     {
-      print_batch_result (qr, st->batch_count);
+      get_time (&start_time, time, sizeof (time));
+
+      if (n != st->batch_count)
+	{
+	  fprintf (stderr, "warning: %d result(s) for %d batched statement(s)\n", n, st->batch_count);
+	}
+
+      if (br_tester_info.shard_flag == ON)
+	{
+	  cci_get_shard_id_with_con_handle (conn_handle, &shard_id, &err_buf);
+	}
+
+      /* the batch is a single round trip, so every statement shares the time */
+      for (i = 1; i <= n; i++)
+	{
+	  int err_no = CCI_QUERY_RESULT_ERR_NO (qr, i);
+
+	  print_result ((err_no == 0) ? CCI_QUERY_RESULT_RESULT (qr, i) : -1, err_no, shard_flag, shard_id, time,
+			st->batch_sql[i - 1]);
+	}
+
+      print_batch_result (qr, n);
     }
 
 done:
   if (qr != NULL)
     {
-      cci_query_result_free (qr, st->batch_count);
+      cci_query_result_free (qr, n);
     }
   cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
 
@@ -1733,11 +2030,13 @@ done:
   return (err_num > 0) ? -1 : 0;
 }
 
+/* Header and values are emitted per execution, and only when an OUT exists. */
 static void
 print_out_params (T_BR_STMT * st, int req, int call_seq)
 {
   T_BR_BIND **set;
   int nbind;
+  int num_out = 0;
   int i;
 
   if (!br_tester_info.verbose_mode || st->num_sets < 1)
@@ -1747,6 +2046,21 @@ print_out_params (T_BR_STMT * st, int req, int call_seq)
 
   set = st->sets[0];
   nbind = st->set_nbind[0];
+
+  for (i = 0; i < nbind; i++)
+    {
+      if (set[i]->param_mode == BR_PM_OUT || set[i]->param_mode == BR_PM_INOUT)
+	{
+	  num_out++;
+	}
+    }
+
+  if (num_out == 0)
+    {
+      return;
+    }
+
+  PRINT_RESULT ("<Result of CALL Command>\n");
 
   for (i = 0; i < nbind; i++)
     {
@@ -1779,12 +2093,27 @@ print_out_params (T_BR_STMT * st, int req, int call_seq)
     }
 }
 
+/* result and err_no are already in the result table; only the message is added. */
 static void
 print_batch_result (T_CCI_QUERY_RESULT * qr, int k)
 {
+  int num_err = 0;
   int i;
 
   if (!br_tester_info.verbose_mode)
+    {
+      return;
+    }
+
+  for (i = 1; i <= k; i++)
+    {
+      if (CCI_QUERY_RESULT_ERR_NO (qr, i) != 0)
+	{
+	  num_err++;
+	}
+    }
+
+  if (num_err == 0)
     {
       return;
     }
@@ -1793,12 +2122,9 @@ print_batch_result (T_CCI_QUERY_RESULT * qr, int k)
 
   for (i = 1; i <= k; i++)
     {
-      int err_no = CCI_QUERY_RESULT_ERR_NO (qr, i);
-
-      PRINT_RESULT ("  [stmt %d] result=%d err=%d\n", i, CCI_QUERY_RESULT_RESULT (qr, i), err_no);
-      if (err_no != 0)
+      if (CCI_QUERY_RESULT_ERR_NO (qr, i) != 0)
 	{
-	  PRINT_RESULT ("    %s\n", CCI_QUERY_RESULT_ERR_MSG (qr, i));
+	  PRINT_RESULT ("  [stmt %d] %s\n", i, CCI_QUERY_RESULT_ERR_MSG (qr, i));
 	}
     }
 }
@@ -1809,10 +2135,10 @@ flush_current (int conn_handle, T_BR_STMT * st, int shard_flag)
   switch (st->mode)
     {
     case BR_EXEC_CALL:
-      return flush_call (conn_handle, st);
+      return flush_call (conn_handle, st, shard_flag);
 
     case BR_EXEC_BATCH:
-      return flush_batch (conn_handle, st);
+      return flush_batch (conn_handle, st, shard_flag);
 
     default:
       return flush_stmt (conn_handle, st, shard_flag);
@@ -1827,7 +2153,10 @@ execute_test (int conn_handle, int shard_flag)
   T_BR_STMT st;
   bool in_batch = false;
   bool pending_directive = false;
+  bool skip_next_query = false;
+  bool skip_binds = false;
   int err_num = 0;
+  int rc;
 
   file = fopen (br_tester_info.input_file_name, "r");
   if (file == NULL)
@@ -1847,17 +2176,13 @@ execute_test (int conn_handle, int shard_flag)
   stmt_init (&st);
   print_title (shard_flag);
 
-  while (tester_get_line (file, linebuf) == 0)
+  while ((rc = tester_get_line (file, linebuf)) == 0)
     {
       char *line = strip_caslog_prefix (t_string_str (linebuf));
       char *hash;
       int kind;
 
-      hash = find_line_comment (line);
-      if (hash != NULL)
-	{
-	  *hash = '\0';
-	}
+      /* classify first: a bind line keeps a '#' that is glued to the value */
       trim (line);
       if (line[0] == '\0')
 	{
@@ -1866,12 +2191,23 @@ execute_test (int conn_handle, int shard_flag)
 
       kind = classify_line (line);
 
-      /* inside a @batch block only plain SQL (and @batch end) is accepted */
+      hash = find_line_comment (line, (kind == BR_LINE_BIND));
+      if (hash != NULL)
+	{
+	  *hash = '\0';
+	  trim (line);
+	  if (line[0] == '\0')
+	    {
+	      continue;
+	    }
+	  kind = classify_line (line);
+	}
+
       if (in_batch)
 	{
 	  if (is_batch_end (line))
 	    {
-	      if (flush_batch (conn_handle, &st) < 0)
+	      if (flush_batch (conn_handle, &st, shard_flag) < 0)
 		{
 		  err_num++;
 		}
@@ -1897,6 +2233,8 @@ execute_test (int conn_handle, int shard_flag)
 
       if (kind == BR_LINE_DIRECTIVE)
 	{
+	  skip_binds = false;
+
 	  if (is_batch_end (line))
 	    {
 	      fprintf (stderr, "@batch end without @batch begin\n");
@@ -1904,8 +2242,7 @@ execute_test (int conn_handle, int shard_flag)
 	      continue;
 	    }
 
-	  /* a completed statement is flushed before the new directive, exactly as
-	   * for a new query line */
+	  /* flush the completed statement before the new directive */
 	  if (st.query != NULL)
 	    {
 	      if (flush_current (conn_handle, &st, shard_flag) < 0)
@@ -1932,16 +2269,21 @@ execute_test (int conn_handle, int shard_flag)
 
 	  if (pending_directive)
 	    {
+	      /* the query it belongs to is skipped, so a reported statement is
+	       * never executed */
 	      fprintf (stderr, "only one prefix directive is allowed per query\n");
 	      err_num++;
 	      stmt_reset (&st);
 	      pending_directive = false;
+	      skip_next_query = true;
+	      continue;
 	    }
 
 	  if (parse_directive (line, &st) < 0)
 	    {
 	      err_num++;
 	      stmt_reset (&st);
+	      skip_next_query = true;
 	    }
 	  else
 	    {
@@ -1952,6 +2294,10 @@ execute_test (int conn_handle, int shard_flag)
 
       if (kind == BR_LINE_BIND)
 	{
+	  if (skip_binds)
+	    {
+	      continue;
+	    }
 	  if (st.query == NULL)
 	    {
 	      fprintf (stderr, "bind line has no preceding query: %s\n", line);
@@ -1959,13 +2305,16 @@ execute_test (int conn_handle, int shard_flag)
 	    }
 	  else if (parse_bind_line (line, &st) < 0)
 	    {
+	      /* drop the statement: flushing it without the rejected bind would
+	       * report a second, misleading error */
 	      err_num++;
+	      stmt_reset (&st);
+	      skip_binds = true;
 	    }
 	  continue;
 	}
 
-      /* BR_LINE_QUERY: flush the previous statement, then start a new one. A
-       * pending directive (if any) applies to this query. */
+      /* a pending directive, if any, applies to this query */
       if (st.query != NULL)
 	{
 	  if (flush_current (conn_handle, &st, shard_flag) < 0)
@@ -1974,6 +2323,18 @@ execute_test (int conn_handle, int shard_flag)
 	    }
 	  stmt_reset (&st);
 	}
+
+      if (skip_next_query)
+	{
+	  /* the bind lines of the skipped query must go with it, otherwise they
+	   * are reported as having no preceding query */
+	  skip_next_query = false;
+	  skip_binds = true;
+	  pending_directive = false;
+	  continue;
+	}
+      skip_binds = false;
+
       st.query = strdup (line);
       if (st.query == NULL)
 	{
@@ -1981,6 +2342,12 @@ execute_test (int conn_handle, int shard_flag)
 	  err_num++;
 	}
       pending_directive = false;
+    }
+
+  if (rc == -2)
+    {
+      fprintf (stderr, "failed to read input file %s\n", br_tester_info.input_file_name);
+      err_num++;
     }
 
   if (in_batch)
@@ -2311,6 +2678,10 @@ main (int argc, char *argv[])
   char conn_url[LINE_MAX];
   T_CCI_ERROR err_buf;
 
+  /* keep stdout line buffered even when redirected, so the result rows stay
+   * interleaved with the error messages stderr writes unbuffered */
+  setvbuf (stdout, NULL, _IOLBF, 0);
+
   if (argc < 2)
     {
       print_usage ();
@@ -2364,9 +2735,8 @@ main (int argc, char *argv[])
 
   if (conn_mode == 1)
     {
-      /* host:port direct mode: skip the master shm lookup. -D is required (no shm
-       * default) and shard is unavailable, so -s is rejected. An empty user is
-       * resolved to PUBLIC by the server. */
+      /* direct mode skips the master shm lookup, so there is no default db name and
+       * no shard info. An empty user is resolved to PUBLIC by the server. */
       if (br_tester_info.db_name == NULL)
 	{
 	  fprintf (stderr, "-D <database_name> is required for host:port connection\n");
@@ -2469,5 +2839,7 @@ end:
   FREE_MEM (direct_host);
   free_br_tester_info ();
 
-  return ret;
+  /* the error count must not become the exit status: it is truncated to 8 bits,
+   * so a multiple of 256 would be reported as success */
+  return (ret < 0) ? 1 : 0;
 }
