@@ -10866,8 +10866,10 @@ exit:
 #endif /* SA_MODE */
 
 /*
- * file_tracker_get_and_protect () - get a file from tracker. table-owned mutable files must first be protected by
- *                                   locking their class.
+ * file_tracker_get_and_protect () - get a file from tracker. mutable files owned by a class (FILE_HEAP,
+ *                                   FILE_HEAP_REUSE_SLOTS, FILE_MULTIPAGE_OBJECT_HEAP, FILE_BTREE,
+ *                                   FILE_BTREE_OVERFLOW_KEY and FILE_OOS) can be destroyed together with their class
+ *                                   at run-time, so they must first be protected by locking their class.
  *
  * return            : error code
  * thread_p (in)     : thread entry
@@ -10890,9 +10892,10 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   /* how it works:
    * this is part of the tracker iterate without holding latch on tracker during the entire iteration. however, it can
    * only work if the files processed outside latch are protected from being destroyed. otherwise, resuming is
-   * impossible. most file types are not mutable, so they don't need protection. however, table-owned mutable files
-   * need their class OID from the descriptor and a conditional lock. this is a best-effort approach; if locking fails,
-   * we just skip the file. */
+   * impossible. most file types are not mutable, so they don't need protection. however, class-owned files (heap,
+   * heap overflow, b-tree, b-tree overflow key and OOS files) can be destroyed together with their class, so for them
+   * we read the class OID from the file descriptor and try to lock it (conditionally!). this is a best-effort
+   * approach; if locking fails, we just skip the file. */
 
   /* check file type is right */
   switch (desired_type)
@@ -10909,6 +10912,10 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	  return NO_ERROR;
 	}
       break;
+    case FILE_OOS:
+      /* iterating OOS files is supported now that FILE_OOS descriptors store their owner class. accept only an exact
+       * type match, same as the default case below. */
+      /* FALLTHRU */
     default:
       /* accept the exact file type */
       if ((FILE_TYPE) item->type != desired_type)
@@ -10920,7 +10927,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
-   * run-time), but table-owned mutable files must be protected by lock. */
+   * run-time), but the class-owned file types listed below can be destroyed with their class, so they must be
+   * protected by lock. */
   switch ((FILE_TYPE) item->type)
     {
     case FILE_HEAP:
@@ -11014,7 +11022,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
  * thread_p (in)      : thread entry
  * desired_ftype (in) : desired type
  * vfid (in)          : file identifier and iterator cursor. iterate must start with a NULL identifier
- * class_oid (in)     : locked class OID (used to protect table-owned mutable files)
+ * class_oid (in)     : locked class OID (used to protect class-owned files: heap, b-tree and OOS files)
  */
 int
 file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid, OID * class_oid)
@@ -11037,8 +11045,8 @@ file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
   assert (class_oid != NULL);
 
   /* how it works:
-   * start from given VFID and get a new file of desired type. table-owned mutable files also require a class lock
-   * to protect them from being removed; otherwise iteration could not safely resume. */
+   * start from given VFID and get a new file of desired type. class-owned files (heap, b-tree and OOS files) also
+   * require a class lock to protect them from being removed; otherwise iteration could not safely resume. */
 
   page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_track_head == NULL)
@@ -11622,6 +11630,11 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
 	++(*heap);
 	break;
       case FILE_MULTIPAGE_OBJECT_HEAP:
+	++(*heap_ovf);
+	break;
+      case FILE_OOS:
+	/* OOS is per-heap overflow storage; count it as a heap overflow file to keep the four-counter output of
+	 * cleanfiledb stable. */
 	++(*heap_ovf);
 	break;
       case FILE_BTREE:
