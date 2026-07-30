@@ -259,7 +259,11 @@ commands:
               exit 0
             fi
             prune
-            echo "[debug] assigned testcases: $(wc -l < tc.list)"
+            # wc -w, not -l: the shell split writes tc.list as one space-separated
+            # line (tee), sql/medium writes one path per line — word count is the
+            # case count either way, and a wrong "0" here would look like the
+            # silent-skip failure mode we deliberately fail loudly on.
+            echo "[debug] assigned testcases: $(wc -w < tc.list)"
       - run:
           name: Mount debug build from GlusterFS
           shell: /bin/bash
