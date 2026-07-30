@@ -115,18 +115,22 @@ struct load_args
   VPID vpid_first_leaf;
 
   /*
-   * The fields below exist for the no-logging index build (loaddb --no-logging-index, i.e. no_redo == true with a
-   * parallel shard build); an ordinary CREATE INDEX only carries their inert defaults.  On the ordinary path
-   * provider stays NULL, worker_idx stays -1, new_page_fn is bt_load_new_page_serial, px_outcome stays
-   * BT_PX_NOT_ATTEMPTED, and neither the vacuum_* queue nor the report_* fields are ever read.
+   * The fields below were added for the no-logging index build (loaddb --no-logging-index, i.e. no_redo == true with
+   * a parallel shard build).  An ordinary CREATE INDEX still maintains some of them, but only as write-only
+   * bookkeeping: it leaves provider == NULL, worker_idx == -1, new_page_fn == bt_load_new_page_serial and
+   * px_outcome == BT_PX_NOT_ATTEMPTED, keeps the vacuum_* queue empty (a worker_idx < 0 caller appends its
+   * notification directly instead of queueing it), and never has the report_* values consumed, because only
+   * bt_load_px_join_finalize () reads them.  Code that runs on both paths must therefore not depend on any of these
+   * carrying a meaningful value.
    */
 
-  /* Build transaction's MVCCID, captured by the leader before the sort.  Shard workers put records under the
-   * leader's transaction descriptor, so this only backs a debug invariant on that path. */
+  /* Build transaction's MVCCID, captured before the sort.  Only asserted non-null (SERVER_MODE), on both paths;
+   * it exists because shard workers put records under the leader's transaction descriptor. */
   MVCCID build_mvccid;
 
-  /* MVCC vacuum notifications collected by a shard worker (worker_idx >= 0), which shares the leader's transaction
-   * descriptor and therefore cannot append to its log stream itself; the leader drains them after the join. */
+  /* MVCC vacuum notifications queued by a shard worker (worker_idx >= 0), which shares the leader's transaction
+   * descriptor and therefore cannot append to its log stream itself; the leader drains them after the join.  The
+   * transaction thread (worker_idx < 0) appends directly, so on the ordinary path this queue stays empty. */
   BT_LOAD_VACUUM_ITEM *vacuum_items;
   size_t vacuum_count;
   size_t vacuum_capacity;
@@ -138,8 +142,8 @@ struct load_args
   BT_LOAD_NEW_PAGE_FUNC new_page_fn;	/* Page source: serial allocation, provider pool, or the leader's inline pool. */
   BT_LOAD_PX_OUTCOME px_outcome;	/* Why the parallel build was skipped, or that it ran. */
 
-  /* Per-shard results published to the leader at the shard's close, and consumed by the join to patch the leaf-level
-   * seams and to build the non-leaf levels. */
+  /* Per-shard subtotals.  Maintained by btree_construct_leafs () on every path, but only ever consumed by
+   * bt_load_px_join_finalize (), which aggregates them to patch the leaf-level seams and build the non-leaf levels. */
   VPID report_first_leaf_vpid;
   VPID report_last_leaf_vpid;
   int report_local_max_key_len;
@@ -1404,18 +1408,17 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   if (load_args->no_redo)
     {
       /*
-       * Durability barrier.  Index pages are only marked dirty during the build (their
-       * content is never WAL-logged), so before the barrier record (RVBT_NO_LOGGING_INDEX_DURABLE)
-       * and the eventual commit can become durable, every one of them must actually be ON DISK.
+       * Durability barrier.  The leaf, non-leaf and overflow pages this build produced were only marked dirty
+       * (btree_log_page () skipped their content redo), so before the barrier record
+       * (RVBT_NO_LOGGING_INDEX_DURABLE) and the eventual commit can become durable, every one of them must
+       * actually be ON DISK.  The sticky root is the one exception: btree_build_nleafs () publishes its final
+       * copy through WAL (btree_log_page () with no_redo == false), so recovery can always rebuild that page.
        *
        * Flush the whole buffer pool, then synchronize every permanent volume (which also
        * drains the DWB when enabled).  A loaddb-only build has no concurrent traffic to
        * shield, so the global gate is the simplest correct form; most of those pages were
        * already written through right after their unfix, so the residue here is small.
-       * The empty-index path (built_nonempty_tree == false: the index file was destroyed by
-       * sysop abort and the replacement empty index is fully WAL-logged) takes the same
-       * gate.  The order is: pool flush first, DWB drain + fsync second, barrier record
-       * append only after success.
+       * The order is: pool flush first, DWB drain + fsync second, barrier record append only after success.
        *
        * The barrier is appended as a commit-time postpone instead of a plain redo record, so that
        * it lives and dies with the transaction: log_do_postpone skips the postpone records of a
@@ -1431,6 +1434,9 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 	  goto error;
 	}
     }
+  /* built_nonempty_tree is redundant here -- the empty-index path asserts !no_redo above, because both demotion
+   * points clear no_redo before it can be reached -- but it is kept so that a build with no leaves at all can never
+   * leave a barrier behind for recovery to trip over. */
   if (load_args->no_redo && built_nonempty_tree)
     {
       LOG_DATA_ADDR addr = { NULL, NULL, 0 };
@@ -4784,9 +4790,11 @@ bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
   int error;
   if (load_args->leaf.pgptr == NULL)
     {
-      /* Unreachable: every splitter is a key that exists in some run and the cut is key >= splitter
-       * (sort_px_run_lower_bound ()), so no shard can be empty.  Kept as a backstop, with an error set so that a
-       * future splitter change does not surface as a silent ER_FAILED. */
+      /* Unreachable.  Shard 0 always holds the first candidate group, because sort_px_select_splitters ()'s
+       * boundary-emission loop starts at group 1 and so never emits the minimum as a splitter; and every emitted
+       * splitter is a key that really exists in some run, which the cut (key >= splitter,
+       * sort_px_run_lower_bound ()) leaves in the shard that starts there.  Hence no shard can be empty.  Kept as a
+       * backstop, with an error set so that a future splitter change does not surface as a silent ER_FAILED. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
       return ER_FAILED;
     }

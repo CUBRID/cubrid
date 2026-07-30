@@ -3872,7 +3872,10 @@ sort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * run_temp, const int *r
     assert (consumed + acc + (iso[k - 1] ? 0 : grp[k - 1].weight) + iso_mass == W);	/* mass conservation */
   }
 
-  *n_splitters = m;		/* m == 0 (single key group) -> caller demotes to the legacy serial path */
+  /* m == 0 (no usable splitter: every sampled candidate fell into one key group) -> caller demotes to the legacy
+   * serial path.  Candidates are only the slot-0 keys of page-proportional positions, so this does not imply that
+   * the runs hold a single distinct key. */
+  *n_splitters = m;
 
 cleanup:
   if (cand != NULL)

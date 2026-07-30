@@ -914,7 +914,8 @@ extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTI
 						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);
 
 /* Stores an overflow key on behalf of btree_write_record_ex () and returns the VPID of its first page.  Lets the
- * parallel bulk index build route overflow keys through its own page provider instead of btree_store_overflow_key (). */
+ * parallel no-logging index build route overflow keys through its own page provider instead of
+ * btree_store_overflow_key (). */
 typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, DB_VALUE * key, int key_len,
 					 BTREE_NODE_TYPE node_type, VPID * first_vpid);
 

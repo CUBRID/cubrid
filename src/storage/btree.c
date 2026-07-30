@@ -4108,13 +4108,13 @@ btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB
 
 /*
  * btree_write_record_ex () - btree_write_record () with a replaceable overflow-key writer
- *   return: NO_ERROR
+ *   return: error code
  *   store_ovf_key_fn(in): stores the overflow key and returns its first VPID; NULL selects
  *                         btree_store_overflow_key ()
  *   store_ovf_key_arg(in): opaque argument handed back to store_ovf_key_fn
  *
- * Note: See btree_write_record ().  The hook exists so the parallel bulk index build can take overflow-key pages
- * from its own provider pool while sharing every other byte of the record format.
+ * Note: See btree_write_record ().  The hook exists so the parallel no-logging index build can take overflow-key
+ * pages from its own provider pool while sharing every other byte of the record format.
  */
 int
 btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
