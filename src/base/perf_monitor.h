@@ -392,6 +392,26 @@ typedef enum
   PSTAT_PRIOR_LSA_LIST_MAXED,
   PSTAT_PRIOR_LSA_LIST_REMOVED,
 
+  /* log insert path, attributed to the caller that paid the cost */
+  PSTAT_LOG_PRIOR_MUTEX_ACQUIRE,
+  PSTAT_LOG_PRIOR_MUTEX_HOLD,
+  PSTAT_LOG_PRIOR_LIST_MAXED_WAIT,
+  PSTAT_LOG_PRIOR_DRAIN_FLUSH_DAEMON,
+  PSTAT_LOG_PRIOR_DRAIN_FLUSH_DIRECT,
+  PSTAT_LOG_PRIOR_DRAIN_BACKPRESSURE,
+  PSTAT_LOG_PRIOR_DRAIN_READER_GUARD,
+  PSTAT_LOG_PRIOR_DRAIN_FETCH_RETRY,
+  PSTAT_LOG_CS_WRITE_WAIT_FLUSH,
+
+  /* in-flight window: whether a reader found the record it wanted still staged */
+  PSTAT_LOG_INFLIGHT_WINDOW_HIT,
+  PSTAT_LOG_INFLIGHT_WINDOW_MISS,
+  /* nodes handed to epoch reclamation, and nodes it has freed */
+  PSTAT_LOG_INFLIGHT_RETIRE,
+  PSTAT_LOG_INFLIGHT_RECLAIM,
+  /* the difference of the two above, sampled live: what reclamation still holds */
+  PSTAT_LOG_INFLIGHT_RETIRED_BACKLOG,
+
   /* HA replication delay */
   PSTAT_HA_REPL_DELAY,
 

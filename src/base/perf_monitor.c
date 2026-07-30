@@ -316,6 +316,25 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_MAXED, "Num_prior_lsa_list_maxed"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_LSA_LIST_REMOVED, "Num_prior_lsa_list_removed"),
 
+  /* log insert path, attributed to the caller that paid the cost */
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_MUTEX_ACQUIRE, "log_prior_mutex_acquire"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_MUTEX_HOLD, "log_prior_mutex_hold"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_LIST_MAXED_WAIT, "log_prior_list_maxed_wait"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_FLUSH_DAEMON, "log_prior_drain_flush_daemon"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_FLUSH_DIRECT, "log_prior_drain_flush_direct"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_BACKPRESSURE, "log_prior_drain_backpressure"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_READER_GUARD, "log_prior_drain_reader_guard"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_PRIOR_DRAIN_FETCH_RETRY, "log_prior_drain_fetch_retry"),
+  PSTAT_METADATA_INIT_COUNTER_TIMER (PSTAT_LOG_CS_WRITE_WAIT_FLUSH, "log_cs_write_wait_flush"),
+
+  /* in-flight window: whether a reader found the record it wanted still staged */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_WINDOW_HIT, "Num_log_inflight_window_hit"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_WINDOW_MISS, "Num_log_inflight_window_miss"),
+  /* nodes handed to epoch reclamation, nodes it has freed, and what it still holds */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_RETIRE, "Num_log_inflight_retire"),
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_INFLIGHT_RECLAIM, "Num_log_inflight_reclaim"),
+  PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_LOG_INFLIGHT_RETIRED_BACKLOG, "Num_log_inflight_retired_backlog"),
+
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
 
@@ -2007,6 +2026,7 @@ perfmon_server_calc_stats (UINT64 * stats, bool need_pgbuf_stat)
   // *INDENT-OFF*
   cubload::worker_manager_get_stats (&stats[pstat_Metadata[PSTAT_LOAD_THREAD_STATS].start_offset]);
   // *INDENT-ON*
+  stats[pstat_Metadata[PSTAT_LOG_INFLIGHT_RETIRED_BACKLOG].start_offset] = (UINT64) log_prior_inflight_backlog ();
 #endif // SERVER_MODE
 
   for (i = 0; i < PSTAT_COUNT; i++)

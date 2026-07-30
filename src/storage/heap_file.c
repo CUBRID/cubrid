@@ -25347,7 +25347,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   MVCC_REC_HEADER mvcc_header;
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-  LOG_LSA oldest_prior_lsa;
+  LOG_LSA copied_lsa;
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
@@ -25358,38 +25358,68 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       recdes->data = NULL;
     }
 
-  /* make sure prev_version_lsa is flushed from prior lsa list - wake up log flush thread if it's not flushed */
-  oldest_prior_lsa = *log_get_append_lsa ();	/* TODO: fix atomicity issue on x86 */
-  if (LSA_LT (&oldest_prior_lsa, previous_version_lsa))
-    {
-      LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      LOG_CS_EXIT (thread_p);
-
-      oldest_prior_lsa = *log_get_append_lsa ();
-      assert (!LSA_LT (&oldest_prior_lsa, previous_version_lsa));
-    }
-
   if (recdes->data == NULL)
     {
       scan_cache->assign_recdes_to_area (*recdes);
     }
 
-  /* check visibility of old versions from log following prev_version_lsa links */
+  /* Check visibility of old versions from log following prev_version_lsa links.
+   *
+   * A version already copied into the log page buffer is read from there, or from disk, as usual. One
+   * that is not yet copied is read straight out of its staged prior node in the in-flight window; only
+   * when the window does not have it either does this force a drain to get it onto a log page. The
+   * choice is made per hop, not once before the loop, because the chain runs toward older versions
+   * and any hop along it may still be waiting to be copied. */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
     {
-      /* Fetch the page where prev_vesion_lsa is located */
-      log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-      log_page_p->hdr.logical_pageid = NULL_PAGEID;
-      log_page_p->hdr.offset = NULL_OFFSET;
-      if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+      bool served_from_window = false;
+
+      copied_lsa = log_Gl.append.get_copied_lsa ();
+      if (LSA_LT (&copied_lsa, &process_lsa))
 	{
-	  assert (false);
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
-	  return S_ERROR;
+	  SCAN_CODE window_scan = S_SUCCESS;
+
+	  if (log_get_undo_record_from_inflight (thread_p, &process_lsa, recdes, &window_scan))
+	    {
+	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
+	      scan_code = window_scan;
+	      served_from_window = true;
+	    }
+	  else
+	    {
+	      /* The record is in neither place: its type is not kept in the window, the window was
+	       * full when it was appended, or it was copied and released just now. Drain, and let the
+	       * page path below pick it up. */
+	      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
+	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
+	      PERF_UTIME_TRACKER_START (thread_p, &time_track);
+	      LOG_CS_ENTER (thread_p);
+	      logpb_prior_lsa_append_all_list (thread_p);
+	      LOG_CS_EXIT (thread_p);
+	      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
+
+	      copied_lsa = log_Gl.append.get_copied_lsa ();
+	      assert (!LSA_LT (&copied_lsa, &process_lsa));
+	    }
 	}
 
-      scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+      if (!served_from_window)
+	{
+	  /* Fetch the page where process_lsa is located */
+	  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+	  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+	  log_page_p->hdr.offset = NULL_OFFSET;
+	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+	    {
+	      assert (false);
+	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
+	      return S_ERROR;
+	    }
+
+	  scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
+	}
+
       if (scan_code != S_SUCCESS)
 	{
 	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))

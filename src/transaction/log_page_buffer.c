@@ -1748,7 +1748,11 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
 
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
-  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
+  /* This pre-check reads copied_lsa rather than log_Gl.hdr.append_lsa, which is not atomic and can be
+   * read torn. copied_lsa never runs ahead of append_lsa, so the substitution is conservative: it can
+   * only send this thread into the LOG_CS block below, which re-checks append_lsa under the lock, more
+   * often than strictly needed - never skip a drain the requested page turns out to want. */
+  append_lsa = log_Gl.append.get_copied_lsa ();
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
   /*
@@ -1772,7 +1776,10 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
        */
       if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
 	{
+	  PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	  logpb_prior_lsa_append_all_list (thread_p);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FETCH_RETRY);
 	}
 
       LOG_CS_EXIT (thread_p);
@@ -2545,6 +2552,7 @@ logpb_fetch_start_append_page (THREAD_ENTRY * thread_p)
     }
 
   log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+  log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);	/* keep copied_lsa in step with nxio_lsa */
   /*
    * Save this log append page as an active page to be flushed at a later
    * time if the page is modified (dirty).
@@ -2596,6 +2604,7 @@ logpb_fetch_start_append_page_new (THREAD_ENTRY * thread_p)
     }
 
   log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+  log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);	/* keep copied_lsa in step with nxio_lsa */
 
   return log_Gl.append.log_pgptr;
 }
@@ -3055,20 +3064,34 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
 
       logpb_append_next_record (thread_p, node);
 
-      if (node->data_header != NULL)
-	{
-	  free_and_init (node->data_header);
-	}
-      if (node->udata != NULL)
-	{
-	  free_and_init (node->udata);
-	}
-      if (node->rdata != NULL)
-	{
-	  free_and_init (node->rdata);
-	}
+      /* append_lsa now sits at the end of the record just copied. Publish that before the node leaves
+       * the in-flight window below, so a reader that arrives too late for the window still finds the
+       * record copied and does not have to ask for a drain. */
+      log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);
 
-      free_and_init (node);
+      if (node->in_inflight)
+	{
+	  /* A reader may be holding this node, so it is retired for epoch reclamation to free rather
+	   * than freed here. */
+	  log_prior_inflight_retire (thread_p, node);
+	}
+      else
+	{
+	  if (node->data_header != NULL)
+	    {
+	      free_and_init (node->data_header);
+	    }
+	  if (node->udata != NULL)
+	    {
+	      free_and_init (node->udata);
+	    }
+	  if (node->rdata != NULL)
+	    {
+	      free_and_init (node->rdata);
+	    }
+
+	  free_and_init (node);
+	}
     }
 
   return NO_ERROR;
@@ -3122,6 +3145,10 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
 
       logpb_append_prior_lsa_list (thread_p, prior_list);
     }
+
+  /* Everything up to append_lsa is in the log page buffer now, and append_lsa ends on a record
+   * boundary. Covers the case where the list was empty and the loop above published nothing. */
+  log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);
 
   return NO_ERROR;
 }
@@ -3783,6 +3810,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
 
       /* now we can set the nxio_lsa to append_lsa */
       log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+      log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);	/* keep copied_lsa in step with nxio_lsa */
 
       log_Pb.partial_append.status = LOGPB_APPENDREC_PARTIAL_FLUSHED_ORIGINAL;
 
@@ -3802,6 +3830,7 @@ logpb_flush_all_append_pages (THREAD_ENTRY * thread_p)
   else if (log_Pb.partial_append.status == LOGPB_APPENDREC_SUCCESS)
     {
       log_Gl.append.set_nxio_lsa (log_Gl.hdr.append_lsa);
+      log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);	/* keep copied_lsa in step with nxio_lsa */
 
       logpb_log ("logpb_flush_all_append_pages: set nxio_lsa = %lld|%d.\n",
 		 (long long int) log_Gl.append.get_nxio_lsa ().pageid, (int) log_Gl.append.get_nxio_lsa ().offset);
@@ -3957,7 +3986,24 @@ logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  logpb_prior_lsa_append_all_list (thread_p);
+  {
+    PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
+    PERF_UTIME_TRACKER_START (thread_p, &time_track);
+    logpb_prior_lsa_append_all_list (thread_p);
+#if defined (SERVER_MODE)
+    if (thread_p != NULL && thread_p->type == TT_DAEMON)
+      {
+	PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FLUSH_DAEMON);
+      }
+    else
+      {
+	PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FLUSH_DIRECT);
+      }
+#else /* !SERVER_MODE */
+    PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FLUSH_DIRECT);
+#endif /* !SERVER_MODE */
+  }
   (void) logpb_flush_all_append_pages (thread_p);
   log_Stat.direct_flush_count++;
 }

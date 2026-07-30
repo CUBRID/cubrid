@@ -196,6 +196,9 @@ extern SCAN_CODE log_archive_log_header_next_scan (THREAD_ENTRY * thread_p, int 
 extern int log_archive_log_header_end_scan (THREAD_ENTRY * thread_p, void **ptr);
 extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA process_lsa,
 				      RECDES * recdes);
+/* read an undo image out of the in-flight window instead of draining to a log page first */
+extern bool log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes,
+					       SCAN_CODE * scan_out);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);

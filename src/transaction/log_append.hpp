@@ -75,6 +75,10 @@ struct log_append_info
   int vdes;			/* Volume descriptor of active log */
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
   /* todo - not really belonging here. should be part of page buffer. */
+  /* Record-aligned watermark: everything below it is already copied into the log page buffer, hence
+   * readable. Published (release) by the drain, read (acquire) by readers that may run ahead of the
+   * flush. Invariant: nxio_lsa <= copied_lsa <= prior_lsa. */
+  std::atomic<LOG_LSA> copied_lsa;
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
 
@@ -85,6 +89,8 @@ struct log_append_info
 
   LOG_LSA get_nxio_lsa () const;
   void set_nxio_lsa (const LOG_LSA &next_io_lsa);
+  LOG_LSA get_copied_lsa () const;
+  void set_copied_lsa (const LOG_LSA &copied);
 };
 
 typedef struct log_prior_node LOG_PRIOR_NODE;
@@ -105,8 +111,24 @@ struct log_prior_node
   int rlength;
   char *rdata;
 
+  bool in_inflight;		/* whether this node is registered in the in-flight window */
+  void *inflight_reclaim;	/* epoch-reclamation wrapper holding this node while it is registered */
+
   LOG_PRIOR_NODE *next;
 };
+
+/* In-flight window: an LSA-ordered bounded ring of the MVCC undo nodes not yet copied into the log
+ * page buffer, so that a reader chasing a previous version can take the undo image straight from the
+ * staged node. A registered node is freed through epoch reclamation instead of by the drain, so a
+ * reader holding one cannot have it freed underneath. Protocol and memory ordering: log_append.cpp. */
+void log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node);
+void log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
+LOG_PRIOR_NODE *log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa);
+void log_prior_inflight_unpin (THREAD_ENTRY *thread_p);
+
+/* Nodes handed to epoch reclamation but not freed yet. Exposed as a statdump gauge: a value that
+ * stays high means reclamation is not keeping up with the drain. */
+INT64 log_prior_inflight_backlog ();
 
 typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
 struct log_prior_lsa_info
