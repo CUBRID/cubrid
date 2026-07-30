@@ -19842,6 +19842,8 @@ heap_clear_operation_context (HEAP_OPERATION_CONTEXT * context, HFID * hfid_p)
   context->record_type = REC_UNKNOWN;
   context->ww_record_transformed = false;
   context->ww_oid_slock_held = false;
+  context->ww_check_snapshot_version = false;
+  context->ww_version_changed = false;
   context->file_type = FILE_UNKNOWN_TYPE;
   OID_SET_NULL (&context->res_oid);
   context->is_logical_old = false;
@@ -20993,6 +20995,44 @@ heap_get_record_location (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * cont
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * heap_ww_unevaluated_version () - is the version the seal is about to stamp one the statement's
+ *   predicate was never checked against?
+ *   header(in): header of the version the seal is about to stamp
+ *   returns: true when nothing may be stamped and the caller must be told
+ *
+ * Note: A DELETE's predicate is re-evaluated at the fetch (locator_delete_force_internal), and on develop
+ *       the row X-lock taken there is held through the stamp, so the version cannot change in between.
+ *       A decoupled DELETE holds no row lock and its seal may wait on a write-owner, so a committed update
+ *       can replace the version after the predicate said yes -- and the seal only asks "is there an owner",
+ *       never "does the predicate still hold".  INSID names the transaction that produced the version and
+ *       every MVCC update sets a fresh one, so an INSID that no longer matches means the evaluated version
+ *       is gone.  (UPDATE_INPLACE_OLD_MVCCID deliberately preserves INSID: it patches a version in place
+ *       rather than producing a new one, so not restarting is the right answer there.)
+ */
+static bool
+heap_ww_unevaluated_version (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, MVCC_REC_HEADER * header)
+{
+  MVCC_SNAPSHOT *snapshot;
+
+  if (!context->ww_check_snapshot_version)
+    {
+      return false;
+    }
+
+  /* The scan picked this row because a version visible to the statement snapshot satisfied the predicate,
+   * and for a DELETE that check is never repeated: plan generation disables MVCC re-evaluation and asks
+   * for the rows to be locked at the select stage instead (pt_to_delete_xasl).  A decoupled DELETE takes
+   * no such lock, so the version can move on -- either before the delete-side fetch or while the seal
+   * waits.  Asking the snapshot here covers both: a version outside it cannot be the one the predicate
+   * was checked against.  Versions this transaction produced itself stay visible, so deleting a row we
+   * updated ourselves is unaffected. */
+  snapshot = context->scan_cache_p->mvcc_snapshot;
+  return snapshot->snapshot_fnc (thread_p, header, snapshot) != SNAPSHOT_SATISFIED;
+}
+#endif /* SERVER_MODE */
+
 /*
  * heap_delete_bigone () - delete a REC_BIGONE record
  *   thread_p(in): thread entry
@@ -21128,6 +21168,13 @@ heap_delete_bigone (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, b
 		{
 		  if (!lock_is_xlocked_by_other (thread_p, &context->oid, &context->class_oid))
 		    {
+		      if (heap_ww_unevaluated_version (thread_p, context, &overflow_header))
+			{
+			  /* a committed update replaced the version whose predicate the caller evaluated:
+			   * stamp nothing, let it re-fetch and re-evaluate */
+			  context->ww_version_changed = true;
+			  return NO_ERROR;
+			}
 		      /* clean or ours: stamp atomically under the latches we still hold */
 		      break;
 		    }
@@ -21657,6 +21704,13 @@ heap_delete_relocation (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * contex
 			  return NO_ERROR;
 			}
 		      continue;
+		    }
+		  if (heap_ww_unevaluated_version (thread_p, context, &ww_header))
+		    {
+		      /* a committed update replaced the version whose predicate the caller evaluated:
+		       * stamp nothing, let it re-fetch and re-evaluate */
+		      context->ww_version_changed = true;
+		      return NO_ERROR;
 		    }
 		  /* clean or ours: stamp atomically under the latches we still hold */
 		  break;
@@ -22601,6 +22655,23 @@ heap_delete_home (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, boo
 	{
 	  /* the record left the home shape while the re-check waited: heap_delete_logical re-dispatches */
 	  return NO_ERROR;
+	}
+      if (context->ww_check_snapshot_version)
+	{
+	  MVCC_REC_HEADER ww_home_header;
+
+	  if (or_mvcc_get_header (&context->home_recdes, &ww_home_header) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  if (heap_ww_unevaluated_version (thread_p, context, &ww_home_header))
+	    {
+	      /* a committed update replaced the version whose predicate the caller evaluated:
+	       * stamp nothing, let it re-fetch and re-evaluate */
+	      context->ww_version_changed = true;
+	      return NO_ERROR;
+	    }
 	}
 #endif /* SERVER_MODE */
 
@@ -24637,7 +24708,7 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	}
     }
 
-  if (rc == NO_ERROR && context->do_supplemental_log == true)
+  if (rc == NO_ERROR && !context->ww_version_changed && context->do_supplemental_log == true)
     {
       (void) log_append_supplemental_lsa (thread_p,
 					  thread_p->trigger_involved ? LOG_SUPPLEMENT_TRIGGER_DELETE :

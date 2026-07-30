@@ -6225,6 +6225,9 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
   int error_code = NO_ERROR;
   bool deleted = false;
   SCAN_CODE scan_code = S_SUCCESS;
+  /* A decoupled MVCC DELETE has its predicate checked once, by the scan, against a version no lock keeps
+   * still.  Pin the seal to the statement snapshot so it can only stamp a version that check covered. */
+  bool ww_pin_to_snapshot = (scan_cache != NULL && scan_cache->mvcc_snapshot != NULL);
 
   /* Update note : While scanning objects, the given scancache does not fix the last accessed page. So, the object must
    * be copied to the record descriptor. Changes : (1) variable name : peek_recdes => copy_recdes (2) function call :
@@ -6366,6 +6369,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
 	      /* build operation context */
 	      heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
+	      /* let the seal stamp only a version the statement snapshot vouches for */
+	      delete_context.ww_check_snapshot_version = ww_pin_to_snapshot;
 
 	      /* attempt delete */
 	      if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
@@ -6387,6 +6392,18 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 		    {
 		      error_code = ER_FAILED;
 		    }
+		  goto error;
+		}
+
+	      if (delete_context.ww_version_changed)
+		{
+		  /* The row on the page is no longer the version the statement's predicate was checked
+		   * against, and a DELETE has no way to re-check it (plan generation disables MVCC
+		   * re-evaluation and relies on a select-stage lock this path does not take).  Deleting it
+		   * would be a guess, so treat it the way a raced vanish is treated: 0 rows under READ
+		   * COMMITTED, an isolation conflict above it.  Nothing was stamped and no index was
+		   * touched. */
+		  error_code = locator_mvcc_reset_vanished_row (thread_p, force_count);
 		  goto error;
 		}
 
@@ -6484,6 +6501,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 
       /* build operation context */
       heap_create_delete_context (&delete_context, hfid, oid, &class_oid, scan_cache);
+      /* same version pin as the indexed path above -- an MVCC table without indexes lands here */
+      delete_context.ww_check_snapshot_version = ww_pin_to_snapshot;
 
       /* attempt delete */
       if (heap_delete_logical (thread_p, &delete_context) != NO_ERROR)
@@ -6506,6 +6525,12 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
 	    {
 	      error_code = ER_FAILED;
 	    }
+	  goto error;
+	}
+      if (delete_context.ww_version_changed)
+	{
+	  /* not the version the predicate was checked against -- 0 rows (see the indexed path above) */
+	  error_code = locator_mvcc_reset_vanished_row (thread_p, force_count);
 	  goto error;
 	}
       deleted = true;

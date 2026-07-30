@@ -294,6 +294,11 @@ struct heap_operation_context
 				 * S lock on the OID: kept through the stamp so the next X writer queues
 				 * behind us (fairness) and cannot start its index maintenance before our
 				 * stamp lands; released at heap_delete_logical's exit */
+  bool ww_check_snapshot_version;	/* the seal must refuse any version outside the statement snapshot:
+					 * set by a decoupled MVCC DELETE, whose predicate was checked once
+					 * by the scan against a version no lock keeps still */
+  bool ww_version_changed;	/* out: the seal refused -- the version on the page is not the one the
+				 * statement's predicate was checked against, and nothing was stamped */
   FILE_TYPE file_type;		/* the file type of hfid */
 
   /* physical page watchers - these should not be referenced directly */
