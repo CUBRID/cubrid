@@ -1120,8 +1120,15 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
   LOG_CS_ENTER (thread_p);
 
+  /* Boot-only flag, cleared at every exit; must not leak in from a prior call. */
+  assert (logtb_Reuse_boot_managers == false);
+
   if (log_Gl.trantable.area != NULL)
     {
+      /* Boot defined this trantable (and its pgbuf/lock/file/mvcc) early; reuse
+       * that pool across the redefine below instead of rebuilding it. Not on
+       * emergency restart (recovery is skipped). */
+      logtb_Reuse_boot_managers = !init_emergency;
       log_final (thread_p);
     }
 
@@ -1226,6 +1233,11 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * Pagesize is incorrect. We need to undefine anything that has been
        * created with old pagesize and start again
        */
+      if (logtb_Reuse_boot_managers)
+	{
+	  logtb_Reuse_boot_managers = false;
+	  logtb_undefine_trantable (thread_p);
+	}
       if (db_set_page_size (log_Gl.hdr.db_iopagesize, log_Gl.hdr.db_logpagesize) != NO_ERROR)
 	{
 	  /* Pagesize is incompatible */
@@ -1344,6 +1356,8 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
     {
       goto error;
     }
+  /* redefine reused the pool successfully; leave the reuse window */
+  logtb_Reuse_boot_managers = false;
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
@@ -1507,6 +1521,13 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
 error:
   /* ***** */
+
+  /* reuse window aborted: finalize the boot-time managers log_final kept alive */
+  if (logtb_Reuse_boot_managers)
+    {
+      logtb_Reuse_boot_managers = false;
+      logtb_undefine_trantable (thread_p);
+    }
 
   if (log_Gl.append.vdes != NULL_VOLDES)
     {
