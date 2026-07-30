@@ -135,10 +135,10 @@ commands:
     description: "Upload the built tree as an artifact and hand its job number to consumers"
     parameters:
       mode:
-        # Uppercase because it names the workspace file (BUILD_NUM_<MODE>);
-        # download-build lowercases it for the builds/<SHA>/<mode> path.
+        # One vocabulary end to end: this is the workspace file suffix
+        # (BUILD_NUM_<mode>) and the builds/<SHA>/<mode> path segment.
         type: enum
-        enum: [ RELEASE, DEBUG ]
+        enum: [ release, debug ]
     steps:
       - run:
           name: Package build for artifact (<< parameters.mode >>)
@@ -299,6 +299,9 @@ commands:
               echo "[debug] non-shell suite runs on the artifact build; nothing to mount"
               exit 0
             fi
+            # Explicit, so the contract does not depend on the step's shell
+            # setting: any failure below (including publish's) aborts the job.
+            set -eo pipefail
             : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
             BUILD_DIR="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
 
@@ -362,7 +365,7 @@ commands:
       - run:
           name: Download build from artifact
           command: |
-            BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
+            BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_debug)
             echo "Downloading build from job #${BUILD_NUM}..."
 
             # Fetch artifact list
@@ -396,6 +399,9 @@ commands:
       - run:
           name: Download build to GlusterFS
           command: |
+            # Explicit, so the contract does not depend on the step's shell
+            # setting: any failure below (including publish's) aborts the job.
+            set -eo pipefail
             : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
 
             # One build-number file per packaged mode (package-build persists
@@ -423,7 +429,9 @@ commands:
               local response artifact_url
               response=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
                 "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${build_num}/artifacts")
-              artifact_url=$(echo "$response" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+              # `|| true`: grep exits non-zero when the artifact is absent, and
+              # under errexit that would kill the job before the diagnostic below.
+              artifact_url=$(echo "$response" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//' || true)
               if [ -z "$artifact_url" ]; then
                 echo "ERROR: CUBRID.tar.gz artifact not found in job #${build_num}"
                 echo "Response: $response"
@@ -446,11 +454,13 @@ commands:
               ls -la "${build_dir}/CUBRID"
             }
 
+            # publish is called plainly on purpose: errexit propagates any
+            # failure inside it (an `if !` wrapper would suspend errexit within
+            # the function and could publish a half-extracted tree).
             published=0
             for num_file in /tmp/workspace/BUILD_NUM_*; do
               [ -f "$num_file" ] || continue
-              mode=$(basename "$num_file" | sed 's/^BUILD_NUM_//' | tr '[:upper:]' '[:lower:]')
-              publish "$mode" "$(cat "$num_file")"
+              publish "${num_file##*/BUILD_NUM_}" "$(cat "$num_file")"
               published=$((published + 1))
             done
 
@@ -478,7 +488,7 @@ jobs:
             equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - package-build:
-                mode: RELEASE
+                mode: release
 
   build_debug:
     executor: cubrid-build
@@ -497,7 +507,7 @@ jobs:
               - equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - package-build:
-                mode: DEBUG
+                mode: debug
 
   # sql and medium tests share the same shape; parameterized to avoid duplication
   artifact-test:
@@ -550,24 +560,47 @@ jobs:
       - run-tests
 
   download-build:
-    description: "Download CUBRID build to GlusterFS and resolve the testcases branch once for all shell pods"
+    description: "Transport the packaged build(s) to GlusterFS; for the shell suite, also resolve the testcases branch once for all shell pods"
     executor: cubrid-test-shell
     parallelism: 1
+    parameters:
+      for-shell-tests:
+        # The develop path transports and stops: resolving the testcases branch
+        # there would run a private-repo ls-remote nobody reads, and its failure
+        # would redden the develop commit even though the transport succeeded.
+        type: boolean
+        default: true
     steps:
+      # If a shell run was also requested on this pipeline, the shell path's own
+      # download-build already transports the same build — stop here instead of
+      # doing it twice. (Job-level when/unless is not available in this config
+      # schema, so the guard lives in a step.)
+      - when:
+          condition:
+            and:
+              - not: << parameters.for-shell-tests >>
+              - << pipeline.parameters.run_shell_test >>
+          steps:
+            - run:
+                name: Skip — the shell path already transports this build
+                command: circleci-agent step halt
       - download-build-to-glusterfs
-      # Resolve the testcases branch a single time (reuses resolve-testcases,
-      # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell runs
-      # the private repo, so resolve against cubrid-testcases-private-ex.
-      - resolve-testcases:
-          tc-repo: cubrid-testcases-private-ex
-      - run:
-          name: Persist testcases branch for shell pods
-          command: |
-            mkdir -p /tmp/tcws
-            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
-      - persist_to_workspace:
-          root: /tmp/tcws
-          paths: [ BRANCH_TESTCASES ]
+      - when:
+          condition: << parameters.for-shell-tests >>
+          steps:
+            # Resolve the testcases branch a single time (reuses resolve-testcases,
+            # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell
+            # runs the private repo, so resolve against cubrid-testcases-private-ex.
+            - resolve-testcases:
+                tc-repo: cubrid-testcases-private-ex
+            - run:
+                name: Persist testcases branch for shell pods
+                command: |
+                  mkdir -p /tmp/tcws
+                  echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+            - persist_to_workspace:
+                root: /tmp/tcws
+                paths: [ BRANCH_TESTCASES ]
 
 # --------------------------------------------------
 # 4. Workflow (conditional test jobs via expression-based filters)
@@ -600,6 +633,7 @@ workflows:
       # Requires both builds so a release-only regression still blocks the upload.
       - download-build:
           name: store-build-develop
+          for-shell-tests: false
           requires: [build, build_debug]
           filters:
             branches:
