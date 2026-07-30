@@ -147,7 +147,15 @@ namespace lockfree
 	  m_retired_tail = NULL;
 	}
 
-      m_last_reclaim_minid = min_tran_id;
+      // Do not record the fully-idle sentinel. With no transaction active, get_min_active_tranid ()
+      // returns INVALID_TRANID, which is the largest id there is; storing that here would make the
+      // "min <= m_last_reclaim_minid" early return above true forever, and this descriptor would
+      // never reclaim anything again. Everything reclaimable was still reclaimed above - only the
+      // high-water mark is left finite, so that later passes keep making progress.
+      if (min_tran_id != INVALID_TRANID)
+	{
+	  m_last_reclaim_minid = min_tran_id;
+	}
     }
 
     void
