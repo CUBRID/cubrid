@@ -10020,16 +10020,40 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	   * all-rows fraction with the CURRENT node's columns. Using the chain head (pt_expr)
 	   * here applied the head's null fraction to every sibling, so a high-null column
 	   * behind a null-free head kept its conditional selectivity (inflated by 1/(1-nf)). */
-	  if (node->info.expr.arg1 && node->info.expr.arg1->node_type == PT_NAME
-	      && node->info.expr.arg1->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - node->info.expr.arg1->info.name.null_frequency);
-	    }
-	  if (node->info.expr.arg2 && node->info.expr.arg2->node_type == PT_NAME
-	      && node->info.expr.arg2->info.name.null_frequency >= 0.0)
-	    {
-	      selectivity = selectivity * (1 - node->info.expr.arg2->info.name.null_frequency);
-	    }
+	  {
+	    /* a qualified reference kept as a PT_DOT_ chain resolves to its terminal name node --
+	     * the same unwrap the histogram readers apply, so the correction cannot be skipped
+	     * for an argument whose estimate was histogram-based */
+	    PT_NODE *corr_arg1 = pt_get_end_path_node (node->info.expr.arg1);
+	    PT_NODE *corr_arg2 = pt_get_end_path_node (node->info.expr.arg2);
+
+	    bool nf1_known = (corr_arg1 != NULL && corr_arg1->node_type == PT_NAME
+			      && corr_arg1->info.name.null_frequency >= 0.0);
+	    bool nf2_known = (corr_arg2 != NULL && corr_arg2->node_type == PT_NAME
+			      && corr_arg2->info.name.null_frequency >= 0.0);
+
+	    if (node->info.expr.op == PT_NULLSAFE_EQ && nf1_known && nf2_known)
+	      {
+		/* a null-safe equality (<=>) also matches the two sides' NULL rows: scale the
+		 * non-null equality estimate to the non-null pair fraction, then add the
+		 * NULL-NULL pair mass that plain equality never produces */
+		double nf1 = corr_arg1->info.name.null_frequency;
+		double nf2 = corr_arg2->info.name.null_frequency;
+
+		selectivity = selectivity * (1 - nf1) * (1 - nf2) + nf1 * nf2;
+	      }
+	    else
+	      {
+		if (nf1_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg1->info.name.null_frequency);
+		  }
+		if (nf2_known)
+		  {
+		    selectivity = selectivity * (1 - corr_arg2->info.name.null_frequency);
+		  }
+	      }
+	  }
 	}
 
       total_selectivity = qo_or_selectivity (env, total_selectivity, selectivity);
@@ -10190,6 +10214,14 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PC_ATTR:
 	  /* attr = attr */
 
+	  /* non-null equality estimate, valid for = and <=> alike: the caller scales it to the
+	   * non-null pair fraction and, for a null-safe join, adds the NULL-NULL pair mass. */
+	  histogram_get_join_selectivity (lhs, rhs, &selectivity, &success);
+	  if (success)
+	    {
+	      break;
+	    }
+
 	  /* check for indexes on either of the attributes */
 	  lhs_icard = qo_index_cardinality (env, lhs);
 	  rhs_icard = qo_index_cardinality (env, rhs);
@@ -10204,7 +10236,6 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	      selectivity = DEFAULT_EQUIJOIN_SELECTIVITY;
 	    }
 
-	  /* TODO: add histogram selectivity */
 	  break;
 
 	case PC_CONST:

@@ -364,6 +364,21 @@ namespace cubstorage
     return allocate (class_oid, hfid, needed_size, consume_size, page_watcher);
   }
 
+  bestspace::status
+  bestspace::shard::find_candidate (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
+				    bestspace_entry &candidate, bool &valid, PGBUF_WATCHER &page_watcher)
+  {
+    status result;
+
+    result = allocate_verify_actual_space (class_oid, needed_size, candidate, valid, page_watcher);
+    if (result == status::FOUND)
+      {
+	candidate.freespace -= consume_size;
+	STATS_INC (found, 1);
+      }
+    return result;
+  }
+
   void
   bestspace::shard::add_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
@@ -598,8 +613,9 @@ namespace cubstorage
       }
 
     // is this page still belongs to the class (class_oid) ?
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP ||
-	heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
 	L1_remove (l2_index, l1_index, expected);
@@ -883,7 +899,8 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP)
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -1068,6 +1085,7 @@ namespace cubstorage
 
   bestspace::candidate_queue::candidate_queue ()
     : m_size (0)
+    , m_max_freespace (0)
     , m_mutex ()
   {
     std::size_t i;
@@ -1092,6 +1110,7 @@ namespace cubstorage
 	m_array[i].set_null ();
       }
     m_size = 0;
+    m_max_freespace.store (0, std::memory_order_release);
   }
 
   bool
@@ -1114,6 +1133,7 @@ namespace cubstorage
       }
 
     insert (candidate);
+    m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
 
     return true;
   }
@@ -1132,6 +1152,28 @@ namespace cubstorage
       }
 
     insert (candidate);
+    m_max_freespace.store (m_array[m_size - 1].freespace, std::memory_order_release);
+  }
+
+  bool
+  bestspace::candidate_queue::pop (bestspace_entry &candidate, std::uint16_t needed_size)
+  {
+    if (m_max_freespace.load (std::memory_order_acquire) < needed_size)
+      {
+	return false;
+      }
+
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    if (m_size == 0 || m_array[m_size - 1].freespace < needed_size)
+      {
+	return false;
+      }
+
+    candidate = m_array[m_size - 1];
+    m_size--;
+    m_max_freespace.store (m_size == 0 ? 0 : m_array[m_size - 1].freespace, std::memory_order_release);
+    return true;
   }
 
   std::size_t
@@ -1139,6 +1181,11 @@ namespace cubstorage
   {
     std::size_t num;
     std::size_t i;
+
+    if (m_max_freespace.load (std::memory_order_acquire) <= minimum)
+      {
+	return 0;
+      }
 
     std::lock_guard<std::mutex> lock (m_mutex);
 
@@ -1153,6 +1200,7 @@ namespace cubstorage
 	candidates[i] = m_array[m_size - 1];
 	m_size--;
       }
+    m_max_freespace.store (m_size == 0 ? 0 : m_array[m_size - 1].freespace, std::memory_order_release);
     return i;
   }
 
@@ -1327,6 +1375,10 @@ namespace cubstorage
   {
     int consume_size, needed_size;
     std::size_t shard, bias;
+    std::size_t num_checked_candidates;
+    bestspace_entry candidate;
+    bool candidate_valid;
+    status result;
     int errid;
 
     assert (size > 0 && size < DB_PAGESIZE);
@@ -1359,6 +1411,33 @@ namespace cubstorage
       }
     shard = 0;
     bias = 0;
+
+    num_checked_candidates = 0;
+    while (num_checked_candidates < MAX_CANDIDATES_QUEUE_SIZE && m_candidates.pop (candidate, needed_size))
+      {
+	result =
+		m_shards[shard].find_candidate (class_oid, needed_size, consume_size, candidate, candidate_valid, page_watcher);
+	if (result == status::FOUND)
+	  {
+	    m_candidates.push (candidate);
+	    m_shards[shard].add_estimates (0, is_newrec ? 1 : 0, consume_size - SPAGE_SLOT_SIZE);
+	    return NO_ERROR;
+	  }
+	if (result == status::FAILURE)
+	  {
+	    ASSERT_ERROR ();
+	    errid = er_errid ();
+	    return errid != NO_ERROR ? errid : ER_FAILED;
+	  }
+
+	assert (result == status::NOT_FOUND);
+	assert (PGBUF_IS_CLEAN_WATCHER (&page_watcher));
+	if (candidate_valid)
+	  {
+	    m_candidates.push (candidate);
+	  }
+	num_checked_candidates++;
+      }
 
     // find
     return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
