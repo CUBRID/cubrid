@@ -1,7 +1,8 @@
 version: 2.1
 
 # --------------------------------------------------
-# Pipeline-level parameters (values passed from GitHub Actions comment trigger)
+# Pipeline-level parameters — trigger-provided values (GitHub Actions comment
+# trigger) plus pipeline-wide CI knobs
 # --------------------------------------------------
 parameters:
   baseline:
@@ -19,6 +20,11 @@ parameters:
   run_all_test:
     type: boolean
     default: false
+  # Single knob for the shell fan-out width. CUBRIDQA-1471 (40/10 pool
+  # partition) changes this to 40 — keep every reference on this parameter.
+  shell_parallelism:
+    type: integer
+    default: 50
 
 # --------------------------------------------------
 # 1. Reusable executors
@@ -244,6 +250,41 @@ commands:
               echo "[debug] total testcases: $(wc -l tc_dirs.list)"
               echo "[debug] Remove tests that are not in the list"
               find $base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
+
+              # ---- Mount the debug build from GlusterFS (ADR-0005) ----
+              # postStart v2 no longer waits for or mounts moded-layout builds;
+              # this step owns it. Runs AFTER the empty-assignment halt above,
+              # so idle rerun pods release their slot without touching the build.
+              echo "[debug] Mount debug build from GlusterFS"
+              BUILD_DIR="/home/build-cache/builds/${CIRCLE_SHA1}/debug"
+              # requires(download-build) normally guarantees the sentinel is
+              # already there; the bounded wait is a safety belt for
+              # concurrent workflow reruns.
+              n=0
+              until [ -f "${BUILD_DIR}/.complete" ]; do
+                n=$((n + 1))
+                if [ "$n" -gt 60 ]; then
+                  echo "[error] build sentinel not found after 300s: ${BUILD_DIR}/.complete"
+                  exit 1
+                fi
+                [ $((n % 12)) -eq 1 ] && echo "[debug] waiting for build sentinel... ($(((n - 1) * 5))s elapsed)"
+                sleep 5
+              done
+              if [ -x /home/CUBRID/bin/cubrid ]; then
+                # Transition overlap: postStart already mounted a legacy
+                # flat-layout build of the same commit — reuse it.
+                echo "[debug] /home/CUBRID already present (legacy compat mount), skipping step mount"
+              else
+                # Overlay upper/work MUST live on the emptyDir volume
+                # (/build-rw): the kernel rejects them on the container
+                # rootfs (overlay-on-overlay). Verified 2026-07-30 in a live
+                # task pod — see circleci-k8s-ansible ADR-0005.
+                mkdir -p /build-rw/step-upper /build-rw/step-work /home/CUBRID
+                mount -t overlay overlay \
+                  -o "lowerdir=${BUILD_DIR}/CUBRID,upperdir=/build-rw/step-upper,workdir=/build-rw/step-work" /home/CUBRID \
+                  || { echo "[error] CUBRID overlay mount failed"; exit 1; }
+                echo "[debug] CUBRID mounted at /home/CUBRID (overlay on ${BUILD_DIR}/CUBRID)"
+              fi
             else
               echo "[debug] split tests for parallel execution"
               # Same resilience as the shell branch: retry a transient split failure
@@ -343,21 +384,30 @@ commands:
           name: Download build to GlusterFS
           command: |
             BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
-            # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
-            BUILD_DIR="/home/build-cache/builds/${CIRCLE_SHA1}"
+            # Moded layout (ADR-0005): builds/<SHA>/<mode>/CUBRID with a
+            # .complete sentinel next to it. Consumers (test_shell step, AI
+            # agent) trust ONLY the sentinel — a visible directory may still
+            # be mid-extraction.
+            BUILD_DIR="/home/build-cache/builds/${CIRCLE_SHA1}/debug"
 
             echo "CIRCLE_SHA1: ${CIRCLE_SHA1}"
             echo "BUILD_NUM: ${BUILD_NUM}"
             echo "BUILD_DIR: ${BUILD_DIR}"
 
-            # Check if build already exists (same commit = same build)
-            if [ -d "${BUILD_DIR}/CUBRID" ]; then
-              echo "Build already exists for this commit, skipping download"
+            # Same commit = same build: reuse across workflow retries.
+            if [ -f "${BUILD_DIR}/.complete" ]; then
+              echo "Build already complete for this commit, skipping download"
               ls -la "${BUILD_DIR}/CUBRID"
               exit 0
             fi
 
-            mkdir -p "${BUILD_DIR}"
+            # Stage into a temp dir, then publish with a single atomic
+            # rename (mv -T): consumers can never observe a half-extracted
+            # tree, and a concurrent duplicate run simply loses the rename
+            # and discards its staging dir — no rm of a published tree.
+            TMP_DIR="${BUILD_DIR}.tmp.$$"
+            rm -rf "${TMP_DIR}"
+            mkdir -p "${TMP_DIR}"
 
             echo "Downloading build from job #${BUILD_NUM}..."
 
@@ -371,17 +421,26 @@ commands:
             if [ -z "$ARTIFACT_URL" ]; then
               echo "ERROR: CUBRID.tar.gz artifact not found"
               echo "Response: $RESPONSE"
+              rm -rf "${TMP_DIR}"
               exit 1
             fi
 
             echo "Artifact URL: $ARTIFACT_URL"
 
-            # Download to GlusterFS
-            curl -L -o "${BUILD_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
-            tar xzf "${BUILD_DIR}/CUBRID.tar.gz" -C "${BUILD_DIR}"
-            rm "${BUILD_DIR}/CUBRID.tar.gz"
+            curl -L -o "${TMP_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
+            tar xzf "${TMP_DIR}/CUBRID.tar.gz" -C "${TMP_DIR}"
+            rm "${TMP_DIR}/CUBRID.tar.gz"
+            touch "${TMP_DIR}/.complete"
 
-            echo "Build extracted to ${BUILD_DIR}/CUBRID"
+            if mv -T "${TMP_DIR}" "${BUILD_DIR}" 2>/dev/null; then
+              echo "Build published at ${BUILD_DIR}"
+            else
+              # Lost the publish race to a concurrent duplicate run.
+              echo "Another run published this build first, discarding staging dir"
+              rm -rf "${TMP_DIR}"
+            fi
+
+            echo "Build ready at ${BUILD_DIR}/CUBRID"
             ls -la "${BUILD_DIR}/CUBRID"
             df -h /home/build-cache
 
@@ -462,7 +521,7 @@ jobs:
 
   test_shell:
     executor: cubrid-test-shell
-    parallelism: 50
+    parallelism: << pipeline.parameters.shell_parallelism >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
       TEST_SUITE: "shell"
