@@ -9913,6 +9913,10 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
   attr_info->inst_chn = NULL_CHN;
   attr_info->values = NULL;
   attr_info->lazy_recdes = NULL;	/* not in lazy mode by default */
+  attr_info->lazy_rows = 0;	/* lazy calibration counters start fresh with the cache */
+  attr_info->lazy_deferred = 0;
+  attr_info->lazy_decoded = 0;
+  attr_info->lazy_disabled = false;
   attr_info->num_values = -1;	/* initialize attr_info */
 
   /*
@@ -10816,12 +10820,19 @@ exit_on_error:
  *
  *   When recdes is NULL (class attribute / index info scans that read shared, class attributes and default
  *   values) there is no record to defer the reads from, so everything is read now, exactly as before.
+ *
+ *   Runtime calibration: deferring only pays off while short-circuit evaluation keeps skipping the deferred
+ *   reads, and how often it does depends on how selective the filter turns out to be on real data. So the
+ *   first HEAP_LAZY_CALIBRATE_ROWS rows are measured: if fewer than half a column read per row is being
+ *   saved, this scan gives up on lazy (attr_info->lazy_disabled) and reads eagerly for its remaining rows.
  */
+#define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
+
 int
 heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 				  HEAP_CACHE_ATTRINFO * attr_info)
 {
-  int i;
+  int i, deferred = 0;
   REPR_ID reprid;		/* The disk representation of the object */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   int ret = NO_ERROR;
@@ -10830,6 +10841,14 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
   if (unlikely (attr_info->num_values == -1))
     {
       return NO_ERROR;
+    }
+
+  if (attr_info->lazy_disabled)
+    {
+      /* calibration found too few reads being skipped to justify the per-row setup below: read everything
+       * now, exactly as eager. lazy_recdes is cleared so no record is left armed for a deferred read. */
+      attr_info->lazy_recdes = NULL;
+      return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
     }
 
   if (recdes == NULL || recdes->data == NULL)
@@ -10877,10 +10896,22 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
 	  (void) pr_clear_value (&value->dbvalue);
 	}
       value->state = HEAP_LAZY_ATTRVALUE;
+      deferred++;
     }
 
   /* arm lazy mode: heap_attrinfo_access () will read from this record */
   attr_info->lazy_recdes = recdes;
+
+  /* Account this row for the calibration, then judge once the sample is complete. Saving less than half a
+   * column read per row means short-circuit evaluation rejects too few rows - or the deferred columns are
+   * referenced anyway - for the marking above to earn its cost, so stop deferring. */
+  attr_info->lazy_rows++;
+  attr_info->lazy_deferred += deferred;
+  if (attr_info->lazy_rows == HEAP_LAZY_CALIBRATE_ROWS
+      && (attr_info->lazy_deferred - attr_info->lazy_decoded) * 2 < attr_info->lazy_rows)
+    {
+      attr_info->lazy_disabled = true;
+    }
 
   /* Cache the information of the instance */
   if (inst_oid != NULL)
@@ -11163,9 +11194,13 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
 DB_VALUE *
 heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  if (slot->state == HEAP_LAZY_ATTRVALUE && heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
+  if (slot->state == HEAP_LAZY_ATTRVALUE)
     {
-      return NULL;
+      attr_info->lazy_decoded++;	/* a deferred read this scan did not get to skip (calibration) */
+      if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
   return &slot->dbvalue;
 }
@@ -12839,7 +12874,11 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
       attr_info->read_classrepr = NULL;
       OID_SET_NULL (&attr_info->inst_oid);
       attr_info->inst_chn = NULL_CHN;
-      attr_info->lazy_recdes = NULL;	/* index-key cache never uses lazy mode; keep the pointer defined */
+      attr_info->lazy_recdes = NULL;	/* index-key cache never uses lazy mode; keep the fields defined */
+      attr_info->lazy_rows = 0;
+      attr_info->lazy_deferred = 0;
+      attr_info->lazy_decoded = 0;
+      attr_info->lazy_disabled = false;
       attr_info->num_values = num_found_attrs;
 
       if (num_found_attrs <= 0)

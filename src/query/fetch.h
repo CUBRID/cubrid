@@ -74,10 +74,14 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	case TYPE_ATTR_ID:
 	case TYPE_SHARED_ATTR_ID:
 	case TYPE_CLASS_ATTR_ID:
-	  if (regu_var->value.attr_descr.cache_slot != NULL)
+	  if (regu_var->value.attr_descr.cache_slot != NULL
+	      && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
 	    {
 	      /* deferred (lazy) predicate column: read it now if this row has not been read yet
-	       * (HEAP_LAZY_ATTRVALUE), otherwise heap_attrvalue_peek_lazy () just returns the value. */
+	       * (HEAP_LAZY_ATTRVALUE), otherwise heap_attrvalue_peek_lazy () just returns the value.
+	       * lazy_recdes is NULL once the scan gives up on lazy (calibration in
+	       * heap_attrinfo_read_dbvalues_lazy ()), and then the cached pointer below is peeked directly -
+	       * cache_slot cannot be cleared from there, as the attribute cache does not know its regus. */
 	      *peek_dbval = heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
 						      regu_var->value.attr_descr.cache_attrinfo);
 	      if (*peek_dbval == NULL)

@@ -4014,6 +4014,16 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    {
 	      goto exit_on_error;
 	    }
+	  if (slot->lazy_always_eager)
+	    {
+	      /* first-term column: heap_attrinfo_read_dbvalues_lazy () reads it in place on every row, so
+	       * the value is already current - no deferred read to do, and no cache_slot, so later rows
+	       * take the plain cached-pointer fast peek below. */
+	      *peek_dbval = &slot->dbvalue;
+	      regu_var->value.attr_descr.cache_dbvalp = &slot->dbvalue;
+	      regu_var->value.attr_descr.cache_slot = NULL;
+	      break;
+	    }
 	  *peek_dbval = heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo);
 	  if (*peek_dbval == NULL)
 	    {
