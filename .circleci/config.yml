@@ -1,9 +1,6 @@
 version: 2.1
 
-# --------------------------------------------------
-# Pipeline-level parameters — trigger-provided values (GitHub Actions comment
-# trigger) plus pipeline-wide CI knobs
-# --------------------------------------------------
+# Trigger-provided values (GitHub Actions comment trigger) + pipeline-wide knobs.
 parameters:
   baseline:
     type: string
@@ -26,9 +23,6 @@ parameters:
     type: integer
     default: 50
 
-# --------------------------------------------------
-# 1. Reusable executors
-# --------------------------------------------------
 executors:
   # Build machine: ccache environment baked in so both build jobs share it
   cubrid-build:
@@ -62,9 +56,6 @@ executors:
       BUILD_CACHE_ROOT: /home/build-cache/builds
       BUILD_SENTINEL: .complete
 
-# --------------------------------------------------
-# 2. Reusable commands
-# --------------------------------------------------
 commands:
   submodules:
     description: "Sync and init git submodules"
@@ -106,7 +97,7 @@ commands:
       - checkout
       - restore_cache:
           keys:
-            - << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-{{ .Revision }}
+            - &ccache_key << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-{{ .Revision }}
             - << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-
       - submodules
       - run:
@@ -124,7 +115,7 @@ commands:
             equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - save_cache:
-                key: << parameters.ccache-prefix >>-{{ checksum "build.sh" }}-{{ checksum "CMakeLists.txt" }}-develop-{{ .Revision }}
+                key: *ccache_key
                 paths:
                   - /home/.ccache
       - collect-build-logs
@@ -151,7 +142,6 @@ commands:
           command: |
             mkdir -p workspace
             echo "${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_<< parameters.mode >>
-            echo "Saved BUILD_NUM_<< parameters.mode >>: $(cat workspace/BUILD_NUM_<< parameters.mode >>)"
       - persist_to_workspace:
           root: workspace
           paths: [ BUILD_NUM_<< parameters.mode >> ]
@@ -200,18 +190,15 @@ commands:
               TC_SHA=$(resolve_sha develop)
             fi
 
-            CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
-
             echo "TC_BRANCH: $TC_BRANCH"
             echo "TC_SHA: $TC_SHA"
-            echo "CACHE_KEY_BRANCH: $CACHE_KEY_BRANCH"
 
             # checkout reads BRANCH_TESTCASES to select the testcases branch
             echo "export BRANCH_TESTCASES=$TC_BRANCH" >> "$BASH_ENV"
 
             # Cache keys cannot read shell vars, so materialize the runtime values
             # to files and reference them via {{ checksum }} in restore_cache/save_cache.
-            echo "$CACHE_KEY_BRANCH" > /tmp/tc_cache_branch
+            echo "${TC_BRANCH//\//-}" > /tmp/tc_cache_branch
             echo "$TC_SHA" > /tmp/tc_cache_sha
             echo "develop" > /tmp/tc_cache_develop
 
@@ -233,8 +220,7 @@ commands:
           name: Split tests for this node
           shell: /bin/bash
           command: |
-            # Per-suite differences only: how to glob+split, and how to prune the
-            # cases this node did not get. Everything else is shared below.
+            # Only the glob+split pipeline and the prune differ per suite.
             case "$TEST_SUITE" in
               shell)
                 base_dir="cubrid-testcases-private-ex"
@@ -366,7 +352,6 @@ commands:
             BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_debug)
             echo "Downloading build from job #${BUILD_NUM}..."
 
-            # Fetch artifact list
             RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
               "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
 
@@ -383,12 +368,10 @@ commands:
 
             echo "Artifact URL: $ARTIFACT_URL"
 
-            # Download and extract
             curl -L -o /tmp/CUBRID.tar.gz "$ARTIFACT_URL"
             tar xzf /tmp/CUBRID.tar.gz -C /home/
             rm /tmp/CUBRID.tar.gz
 
-            echo "Build extracted to /home/CUBRID"
             ls -la /home/CUBRID
 
   download-build-to-glusterfs:
@@ -471,9 +454,6 @@ commands:
             echo "Transported ${published} build(s) for ${CIRCLE_SHA1}"
             df -h /home/build-cache
 
-# --------------------------------------------------
-# 3. Jobs
-# --------------------------------------------------
 jobs:
   build:
     executor: cubrid-build
@@ -509,15 +489,14 @@ jobs:
             - package-build:
                 mode: debug
 
-  # sql and medium tests share the same shape; parameterized to avoid duplication
   artifact-test:
     executor: cubrid-default
-    resource_class: medium
     parameters:
       suite:
         type: string
       parallelism:
         type: integer
+        default: 1
     parallelism: << parameters.parallelism >>
     environment:
       TEST_SUITE: << parameters.suite >>
@@ -525,7 +504,7 @@ jobs:
       - resolve-testcases
       - restore_cache:
           keys:
-            - cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-{{ checksum "/tmp/tc_cache_sha" }}
+            - &tc_key cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-{{ checksum "/tmp/tc_cache_sha" }}
             - cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-
             - cubrid-testcases-{{ checksum "/tmp/tc_cache_develop" }}-
       - download-build-from-artifact
@@ -533,11 +512,10 @@ jobs:
       - run:
           name: Clean up tc before save_cache
           command: |
-            cd cubrid-testcases
-            git clean -fd
-            git reset --hard
+            git -C cubrid-testcases clean -fd
+            git -C cubrid-testcases reset --hard
       - save_cache:
-          key: cubrid-testcases-{{ checksum "/tmp/tc_cache_branch" }}-{{ checksum "/tmp/tc_cache_sha" }}
+          key: *tc_key
           paths:
             - cubrid-testcases
 
@@ -561,7 +539,6 @@ jobs:
   download-build:
     description: "Transport the packaged build(s) to GlusterFS; for the shell suite, also resolve the testcases branch once for all shell pods"
     executor: cubrid-test-shell
-    parallelism: 1
     parameters:
       for-shell-tests:
         # The develop path transports and stops: resolving the testcases branch
@@ -591,9 +568,7 @@ jobs:
                 root: /tmp/tcws
                 paths: [ BRANCH_TESTCASES ]
 
-# --------------------------------------------------
-# 4. Workflow (conditional test jobs via expression-based filters)
-# --------------------------------------------------
+# Test jobs are gated by expression-based filters (evaluated server-side).
 workflows:
   build_test:
     jobs:
@@ -602,7 +577,6 @@ workflows:
       - artifact-test:
           name: test_medium
           suite: medium
-          parallelism: 1
           requires: [build_debug]
           filters: pipeline.parameters.run_medium_test
       - artifact-test:
