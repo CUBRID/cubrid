@@ -4180,18 +4180,16 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	  /* combine each range specs of two RANGE nodes */
 	  qo_apply_range_intersection_helper (parser, node, sibling);
 
-	  /* Once a LIKE-derived range is merged with another range on the same
-	   * column it is no longer a pure derived range, so drop the flag on both:
-	   * the merged range is then counted normally. This is order-independent -
-	   * any condition order collapses to one unflagged merged range - so the
-	   * pure-LIKE case (no sibling to merge) still keeps the flag and is fixed,
-	   * while LIKE + same-column range coexistence is left as-is (CBRD-27036). */
-	  PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
-	  PT_EXPR_INFO_CLEAR_FLAG (sibling, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
-
 	  /* remove the sibling node if its range is empty */
 	  if (sibling->info.expr.arg2 == NULL)
 	    {
+	      /* sibling->arg2 == NULL means the ranges actually merged: the surviving
+	       * range folds in a real bound and must be counted, so drop the flag.
+	       * If they did not merge (e.g. a host-var bound, sibling->arg2 stays
+	       * non-NULL) keep the flag so the derived range stays excluded from
+	       * row-count, else the double count returns. */
+	      PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+
 	      sibling_prev->next = sibling->next;
 	      sibling->next = NULL;
 	      /* sibling->or_next == NULL */
