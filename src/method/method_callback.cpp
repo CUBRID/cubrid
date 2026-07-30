@@ -731,7 +731,7 @@ namespace cubmethod
   }
 
   static int
-  find_routine_of_type (const char *uniq_name, bool wants_function, MOP &routine_mop, bool ignore_err_when_not_found)
+  find_routine_of_type (const char *uniq_name, bool wants_function, MOP &routine_mop, bool err_when_not_found)
   {
 
     int err = NO_ERROR;
@@ -751,19 +751,24 @@ namespace cubmethod
 	      {
 		routine_mop = found;
 	      }
+	    else if (err_when_not_found)
+	      {
+		err = ER_SP_INVALID_TYPE;
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, uniq_name, wants_function ? "procedure" : "function");
+	      }
 	  }
 	AU_RESTORE (save);
       }
     else
       {
 	assert (er_errid () != NO_ERROR);
-	if (ignore_err_when_not_found)
+	if (err_when_not_found)
 	  {
-	    er_clear();
+	    err = er_errid();
 	  }
 	else
 	  {
-	    err = er_errid();
+	    er_clear();
 	  }
       }
 
@@ -828,7 +833,7 @@ namespace cubmethod
 	MOP routine_mop1 = NULL;
 	sm_downcase_name (name.c_str(), uniq_name, sizeof (uniq_name));
 
-	err = find_routine_of_type (uniq_name, wants_function, routine_mop1, true);
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop1, false);
 	if (err == NO_ERROR)
 	  {
 	    if (routine_mop1)
@@ -850,7 +855,7 @@ namespace cubmethod
 	MOP routine_mop2 = NULL;
 	prepend_user_name (name, uniq_name, sizeof (uniq_name));
 
-	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, true);
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop2, false);
 	if (err == NO_ERROR)
 	  {
 	    if (routine_mop2)
@@ -899,7 +904,7 @@ namespace cubmethod
 
 	// after the above case 0 and 2
 
-	err = find_routine_of_type (uniq_name, wants_function, routine_mop, false);
+	err = find_routine_of_type (uniq_name, wants_function, routine_mop, true);
 	if (err == NO_ERROR)
 	  {
 	    assert (routine_mop);
