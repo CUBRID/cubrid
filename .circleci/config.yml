@@ -573,19 +573,9 @@ jobs:
         type: boolean
         default: true
     steps:
-      # If a shell run was also requested on this pipeline, the shell path's own
-      # download-build already transports the same build — stop here instead of
-      # doing it twice. (Job-level when/unless is not available in this config
-      # schema, so the guard lives in a step.)
-      - when:
-          condition:
-            and:
-              - not: << parameters.for-shell-tests >>
-              - << pipeline.parameters.run_shell_test >>
-          steps:
-            - run:
-                name: Skip — the shell path already transports this build
-                command: circleci-agent step halt
+      # Note: a pipeline that is both on develop and has run_shell_test set would
+      # transport twice (this job and the shell path's). Not guarded: the comment
+      # trigger only fires on pull requests, so develop never carries that flag.
       - download-build-to-glusterfs
       - when:
           condition: << parameters.for-shell-tests >>
