@@ -372,8 +372,10 @@ commands:
             RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
               "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
 
-            # Extract CUBRID.tar.gz URL
-            ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+            # Extract CUBRID.tar.gz URL. `|| true`: grep exits non-zero when the
+            # artifact is absent, and under the default errexit shell that would
+            # kill the step before the diagnostic below ever prints.
+            ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//' || true)
 
             if [ -z "$ARTIFACT_URL" ]; then
               echo "ERROR: CUBRID.tar.gz artifact not found"
