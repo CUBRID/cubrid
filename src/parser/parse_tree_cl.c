@@ -2715,17 +2715,13 @@ pt_print_alias (PARSER_CONTEXT * parser, const PT_NODE * node)
 
 
 static PARSER_VARCHAR *
-pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+pt_conv_text_2_hash_text (PARSER_CONTEXT * parser, const unsigned char *ps)
 {
   unsigned int hash1 = 5381;
   unsigned int hash2 = 5381;
-  unsigned char *s, *ps;
+  const unsigned char *s;
   char buf[64];
 
-  assert (parser->dblink_server_text != NULL);
-  assert (parser->dblink_server_text->bytes != NULL);
-
-  ps = parser->dblink_server_text->bytes;
   if (!ps || *ps == '\0')
     {
       return NULL;
@@ -2737,7 +2733,7 @@ pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
       hash1 = ((hash1 << 5) + hash1) + *s;	/* hash * 33 + c */
     }
 
-  // reverse 
+  // reverse
   for (s--; s >= ps; s--)
     {
       hash2 = ((hash2 << 5) - hash2) + *s;	/* hash * 31 + c */
@@ -2746,6 +2742,139 @@ pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
   sprintf (buf, "%u,%u", hash1, hash2);
 
   return pt_append_nulstring (parser, NULL, buf);
+}
+
+static PARSER_VARCHAR *
+pt_conv_server_2_hash_text (PARSER_CONTEXT * parser)
+{
+  assert (parser->dblink_server_text != NULL);
+  assert (parser->dblink_server_text->bytes != NULL);
+
+  return pt_conv_text_2_hash_text (parser, parser->dblink_server_text->bytes);
+}
+
+/*
+ * pt_print_auto_param_value () - print the bound value of an auto-parameterized marker only
+ *   return: value text, or NULL for a real host variable (the caller falls back to printing '?')
+ *   parser(in):
+ *   val(in):
+ *
+ * Note: auto-parameterization replaces a literal with a host variable whose index sits at or above
+ *   parser->host_var_count. Such a value is fixed for the statement, so the cache key must depend on
+ *   it. A real host variable (index below host_var_count) is bound per execution and has to stay
+ *   opaque, otherwise statements that are meant to share one plan would take one entry per value.
+ */
+static PARSER_VARCHAR *
+pt_print_auto_param_value (PARSER_CONTEXT * parser, const PT_NODE * val)
+{
+  if (val->node_type == PT_HOST_VAR && val->info.host_var.index < parser->host_var_count)
+    {
+      return NULL;
+    }
+
+  return pt_print_node_value (parser, val);
+}
+
+/*
+ * pt_is_dblink_dml_target () - check whether the statement writes into a DBLink DML target
+ *   return: true if the INSERT/MERGE target spec was converted to PT_DBLINK_TABLE_DML
+ *   node(in):
+ */
+static bool
+pt_is_dblink_dml_target (const PT_NODE * node)
+{
+  PT_NODE *spec = NULL;
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      spec = node->info.insert.spec;
+      break;
+    case PT_MERGE:
+      spec = node->info.merge.into;
+      break;
+    default:
+      return false;
+    }
+
+  return (spec != NULL && spec->node_type == PT_SPEC && spec->info.spec.remote_server_name != NULL
+	  && spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
+}
+
+/*
+ * pt_conv_values_2_hash_text () - hash the values of a statement writing into a DBLink DML target
+ *   return: hash text, or NULL when there is nothing to hash
+ *   parser(in):
+ *   node(in): INSERT or MERGE statement
+ *
+ * Note: the values of an INSERT are replaced with host variables by auto-parameterization before the
+ *   cache key text is printed, so two INSERTs differing only in their values print the same text.
+ *   That is safe for a local table because the values are bound at execution, but the statement sent
+ *   to the remote server carries them as a literal string fixed at compile time - sharing one cache
+ *   entry would then execute another statement's values. Hashing the values restores the distinction
+ *   and keeps the key text short regardless of how large the values are.
+ */
+static PARSER_VARCHAR *
+pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  PT_NODE *values_list = NULL;
+  PARSER_VARCHAR *values_str = NULL;
+  PT_PRINT_VALUE_FUNC saved_print_db_value;
+  unsigned int saved_dont_prt_long_string, saved_long_string_skipped;
+
+  if (parser->auto_param_count <= 0)
+    {
+      /* nothing was auto-parameterized: the values are still visible in the printed text */
+      return NULL;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_INSERT:
+      values_list = node->info.insert.value_clauses;
+      break;
+    case PT_MERGE:
+      values_list = node->info.merge.insert.value_clauses;
+      break;
+    default:
+      return NULL;
+    }
+
+  if (values_list == NULL || values_list->node_type != PT_NODE_LIST)
+    {
+      return NULL;
+    }
+
+  if (values_list->info.node_list.list_type != PT_IS_VALUE)
+    {
+      /* The rows come from a subquery, so the statement sent to the remote server is a template
+       * bound row by row and carries no value of its own: such statements may share one plan.
+       * Verified on the pre-fix build - the two statements share one entry and insert their own
+       * rows. Leaving them out also keeps the query out of the key computation. */
+      return NULL;
+    }
+
+  saved_print_db_value = parser->print_db_value;
+  saved_dont_prt_long_string = parser->flag.dont_prt_long_string;
+  saved_long_string_skipped = parser->flag.long_string_skipped;
+
+  /* The guard that skips long strings must not apply here: a value left out of the hash input would
+   * let two different values collide again. Hashing keeps the key short whatever the value size. */
+  parser->print_db_value = pt_print_auto_param_value;
+  parser->flag.dont_prt_long_string = 0;
+
+  values_str = pt_print_bytes_l (parser, values_list);
+
+  parser->print_db_value = saved_print_db_value;
+  parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
+  parser->flag.long_string_skipped = saved_long_string_skipped;
+
+  if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
+    {
+      return NULL;
+    }
+
+  return pt_conv_text_2_hash_text (parser, values_str->bytes);
 }
 
 /*
@@ -2816,6 +2945,25 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  string = pt_append_varchar (parser, string, pt_conv_server_2_hash_text (parser));
 	  string = pt_append_bytes (parser, string, "}", 1);
 	  parser->dblink_server_text = NULL;
+
+	  /* Sitting inside this block ties the values to dblink_server_text being filled, which holds
+	   * for every statement that can reach execution: name resolution fills url/user/pwd or the
+	   * statement fails, and XASL generation refuses a DML target that is missing any of them.
+	   *
+	   * Only a DBLink DML target needs its values in the key: this block also runs when just the
+	   * source is remote (a local INSERT ... SELECT from a DBLink table), and those values are
+	   * bound at execution, so hashing them would take one cache entry per value for nothing. */
+	  if (pt_is_dblink_dml_target (node))
+	    {
+	      PARSER_VARCHAR *values_hash = pt_conv_values_2_hash_text (parser, node);
+
+	      if (values_hash != NULL)
+		{
+		  string = pt_append_nulstring (parser, string, ";values={");
+		  string = pt_append_varchar (parser, string, values_hash);
+		  string = pt_append_bytes (parser, string, "}", 1);
+		}
+	    }
 	}
 
       return (char *) string->bytes;
@@ -19705,30 +19853,6 @@ pt_print_dblink_table_dml (PARSER_CONTEXT * parser, PT_NODE * p)
 	      parser->dblink_server_text = pt_append_nulstring (parser, parser->dblink_server_text, ",");
 	    }
 	  parser->dblink_server_text = pt_append_varchar (parser, parser->dblink_server_text, var);
-	}
-    }
-
-  /* The remote DML payload must be part of the printed text: this text also feeds the XASL cache's
-   * SHA-1 key (CUSTOM_PRINT_4_SHA_COMPUTE), and different literal payloads to the same remote table
-   * must not collapse onto the same cache entry. Mirrors the payload-printing logic of
-   * pt_print_dblink_table(); the separator-emission condition below is intentionally narrower (see
-   * comment above the if), since both rewritten and qstr are NULL for the sink INSERT-SELECT
-   * per-row bind case and the local SELECT text already differentiates the cache key there. */
-  if (pt->rewritten || pt->qstr)
-    {
-      q = pt_append_bytes (parser, q, ", ", 2);
-      if (pt->rewritten)
-	{
-	  q = pt_append_quoted_string (parser, q, (char *) pt->rewritten->bytes, pt->rewritten->length);
-	}
-      else
-	{
-	  unsigned int alias_print_flag = (parser->custom_print & PT_CHARSET_COLLATE_FULL);
-	  parser->custom_print &= ~PT_CHARSET_COLLATE_FULL;
-	  r = pt_print_bytes (parser, pt->qstr);
-	  parser->custom_print |= alias_print_flag;
-
-	  q = pt_append_varchar (parser, q, r);
 	}
     }
 
