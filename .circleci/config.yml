@@ -131,6 +131,33 @@ commands:
                   - /home/.ccache
       - collect-build-logs
 
+  package-build:
+    description: "Upload the built tree as an artifact and hand its job number to consumers"
+    parameters:
+      mode:
+        # Uppercase because it names the workspace file (BUILD_NUM_<MODE>);
+        # download-build lowercases it for the builds/<SHA>/<mode> path.
+        type: enum
+        enum: [ RELEASE, DEBUG ]
+    steps:
+      - run:
+          name: Package build for artifact (<< parameters.mode >>)
+          command: |
+            tar czf CUBRID.tar.gz CUBRID
+            echo "Build packaged: $(ls -lh CUBRID.tar.gz | awk '{print $5}')"
+      - store_artifacts:
+          path: CUBRID.tar.gz
+          destination: CUBRID.tar.gz
+      - run:
+          name: Save build metadata for consumers (<< parameters.mode >>)
+          command: |
+            mkdir -p workspace
+            echo "${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_<< parameters.mode >>
+            echo "Saved BUILD_NUM_<< parameters.mode >>: $(cat workspace/BUILD_NUM_<< parameters.mode >>)"
+      - persist_to_workspace:
+          root: workspace
+          paths: [ BUILD_NUM_<< parameters.mode >> ]
+
   resolve-testcases:
     description: "Resolve testcases branch/SHA for a TC repo; export BRANCH_TESTCASES and materialize cache-key inputs"
     parameters:
@@ -369,53 +396,69 @@ commands:
       - run:
           name: Download build to GlusterFS
           command: |
-            BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
             : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
-            BUILD_DIR="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
-            echo "CIRCLE_SHA1=${CIRCLE_SHA1} BUILD_NUM=${BUILD_NUM} BUILD_DIR=${BUILD_DIR}"
 
-            # Same commit = same build: reuse across workflow retries.
-            if [ -f "${BUILD_DIR}/${BUILD_SENTINEL}" ]; then
-              echo "Build already complete for this commit, skipping download"
-              ls -la "${BUILD_DIR}/CUBRID"
-              exit 0
-            fi
+            # One build-number file per packaged mode (package-build persists
+            # BUILD_NUM_RELEASE / BUILD_NUM_DEBUG), so this transports exactly what
+            # the build jobs produced: debug only on PRs, both on develop.
+            publish() {
+              local mode="$1" build_num="$2"
+              local build_dir="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/${mode}"
+              echo "== ${mode}: artifact of job #${build_num} -> ${build_dir}"
 
-            # Stage, then publish with one atomic rename: consumers never see a
-            # half-extracted tree, and a concurrent duplicate run just loses the
-            # rename and drops its staging dir (no rm of a published tree).
-            TMP_DIR="${BUILD_DIR}.tmp.$$"
-            rm -rf "${TMP_DIR}"
-            mkdir -p "${TMP_DIR}"
+              # Same commit = same build: reuse across workflow retries.
+              if [ -f "${build_dir}/${BUILD_SENTINEL}" ]; then
+                echo "Build already complete for this commit, skipping download"
+                ls -la "${build_dir}/CUBRID"
+                return 0
+              fi
 
-            echo "Downloading build from job #${BUILD_NUM}..."
-            RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
-              "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
-            ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+              # Stage, then publish with one atomic rename: consumers never see a
+              # half-extracted tree, and a concurrent duplicate run just loses the
+              # rename and drops its staging dir (no rm of a published tree).
+              local tmp_dir="${build_dir}.tmp.$$"
+              rm -rf "${tmp_dir}"
+              mkdir -p "${tmp_dir}"
 
-            if [ -z "$ARTIFACT_URL" ]; then
-              echo "ERROR: CUBRID.tar.gz artifact not found"
-              echo "Response: $RESPONSE"
-              rm -rf "${TMP_DIR}"
+              local response artifact_url
+              response=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
+                "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${build_num}/artifacts")
+              artifact_url=$(echo "$response" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
+              if [ -z "$artifact_url" ]; then
+                echo "ERROR: CUBRID.tar.gz artifact not found in job #${build_num}"
+                echo "Response: $response"
+                rm -rf "${tmp_dir}"
+                return 1
+              fi
+
+              curl -L -o "${tmp_dir}/CUBRID.tar.gz" "$artifact_url"
+              tar xzf "${tmp_dir}/CUBRID.tar.gz" -C "${tmp_dir}"
+              rm "${tmp_dir}/CUBRID.tar.gz"
+              touch "${tmp_dir}/${BUILD_SENTINEL}"
+
+              if mv -T "${tmp_dir}" "${build_dir}" 2>/dev/null; then
+                echo "Build published at ${build_dir}"
+              else
+                # Lost the publish race to a concurrent duplicate run.
+                echo "Another run published this build first, discarding staging dir"
+                rm -rf "${tmp_dir}"
+              fi
+              ls -la "${build_dir}/CUBRID"
+            }
+
+            published=0
+            for num_file in /tmp/workspace/BUILD_NUM_*; do
+              [ -f "$num_file" ] || continue
+              mode=$(basename "$num_file" | sed 's/^BUILD_NUM_//' | tr '[:upper:]' '[:lower:]')
+              publish "$mode" "$(cat "$num_file")"
+              published=$((published + 1))
+            done
+
+            if [ "$published" -eq 0 ]; then
+              echo "ERROR: no BUILD_NUM_* file in the workspace - did a build job skip packaging?"
               exit 1
             fi
-
-            echo "Artifact URL: $ARTIFACT_URL"
-            curl -L -o "${TMP_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
-            tar xzf "${TMP_DIR}/CUBRID.tar.gz" -C "${TMP_DIR}"
-            rm "${TMP_DIR}/CUBRID.tar.gz"
-            touch "${TMP_DIR}/${BUILD_SENTINEL}"
-
-            if mv -T "${TMP_DIR}" "${BUILD_DIR}" 2>/dev/null; then
-              echo "Build published at ${BUILD_DIR}"
-            else
-              # Lost the publish race to a concurrent duplicate run.
-              echo "Another run published this build first, discarding staging dir"
-              rm -rf "${TMP_DIR}"
-            fi
-
-            echo "Build ready at ${BUILD_DIR}/CUBRID"
-            ls -la "${BUILD_DIR}/CUBRID"
+            echo "Transported ${published} build(s) for ${CIRCLE_SHA1}"
             df -h /home/build-cache
 
 # --------------------------------------------------
@@ -427,6 +470,15 @@ jobs:
     steps:
       - build-cubrid:
           ccache-prefix: ccache-global-v2
+      # The release build is packaged only on develop, where it is preserved in
+      # GlusterFS for downstream consumers. PR pipelines test the debug build,
+      # so packaging release there would upload an artifact nobody reads.
+      - when:
+          condition:
+            equal: [ develop, << pipeline.git.branch >> ]
+          steps:
+            - package-build:
+                mode: RELEASE
 
   build_debug:
     executor: cubrid-build
@@ -435,31 +487,17 @@ jobs:
           ccache-prefix: ccache-debug-v2
           mode: optdebug
           build-args: "-m optdebug"
-      # Package the debug build only when a test job will consume it.
+      # Package when a test job will consume it, or on develop for preservation.
       - when:
           condition:
             or:
               - << pipeline.parameters.run_sql_test >>
               - << pipeline.parameters.run_medium_test >>
               - << pipeline.parameters.run_shell_test >>
+              - equal: [ develop, << pipeline.git.branch >> ]
           steps:
-            - run:
-                name: Package build for artifact
-                command: |
-                  tar czf CUBRID.tar.gz CUBRID
-                  echo "Build packaged: $(ls -lh CUBRID.tar.gz | awk '{print $5}')"
-            - store_artifacts:
-                path: CUBRID.tar.gz
-                destination: CUBRID.tar.gz
-            - run:
-                name: Save build metadata for test jobs
-                command: |
-                  mkdir -p workspace
-                  echo "${CIRCLE_BUILD_NUM}" > workspace/BUILD_NUM_DEBUG
-                  echo "Saved BUILD_NUM_DEBUG: $(cat workspace/BUILD_NUM_DEBUG)"
-            - persist_to_workspace:
-                root: workspace
-                paths: [ BUILD_NUM_DEBUG ]
+            - package-build:
+                mode: DEBUG
 
   # sql and medium tests share the same shape; parameterized to avoid duplication
   artifact-test:
@@ -557,3 +595,12 @@ workflows:
       - test_shell:
           requires: [download-build]
           filters: pipeline.parameters.run_shell_test
+      # develop merge: transport only. Both builds are preserved in GlusterFS for
+      # downstream consumers (AI agent service); no test job runs on this path.
+      # Requires both builds so a release-only regression still blocks the upload.
+      - download-build:
+          name: store-build-develop
+          requires: [build, build_debug]
+          filters:
+            branches:
+              only: develop
