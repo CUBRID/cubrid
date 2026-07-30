@@ -144,9 +144,9 @@ struct heap_scancache
   public:
     int debug_initpattern;	/* A pattern which indicates that the structure has been initialized */
     HEAP_SCANCACHE_NODE node;	/* current scanned heap file information */
-    LOCK page_latch;		/* Indicates the latch/lock to be acquired on heap pages. Its value may be NULL_LOCK
-				 * when it is secure to skip lock on heap pages. For example, the class of the heap has
-				 * been locked with either S_LOCK, SIX_LOCK, or X_LOCK */
+    PGBUF_LATCH_MODE page_latch;	/* Page latch to acquire on heap pages for the whole scan:
+					 * PGBUF_LATCH_READ or PGBUF_LATCH_WRITE. PGBUF_LATCH_INVALID marks an
+					 * uninitialized / ended scan cache and is never used to fetch a page. */
     bool cache_last_fix_page;	/* Indicates if page buffers and memory are cached (left fixed) */
     bool mvcc_disabled_class;	/* Indicates if the class is MVCC disabled */
     PGBUF_WATCHER page_watcher;
@@ -425,6 +425,7 @@ extern SCAN_CODE heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, co
 				  OID * next_oid, RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking);
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
+extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 
 extern SCAN_CODE heap_prev_record_info (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * next_oid,
 					RECDES * recdes, HEAP_SCANCACHE * scan_cache, int ispeeking,
@@ -577,6 +578,8 @@ extern int heap_attrinfo_set_uninitialized_global (THREAD_ENTRY * thread_p, OID 
 extern int heap_rv_redo_newpage (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_redo_newpage_reuse_oid (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int heap_rv_undoredo_pagehdr (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_undo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int heap_rv_redo_mark_page_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern void heap_rv_dump_statistics (FILE * fp, int ignore_length, void *data);
 extern void heap_rv_dump_chain (FILE * fp, int ignore_length, void *data);
 extern int heap_rv_undo_insert (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
@@ -710,6 +713,7 @@ extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npage
 extern int heap_nonheader_page_capacity ();
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
+extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data);
 // *INDENT-OFF*
 extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid,

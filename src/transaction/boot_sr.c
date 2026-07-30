@@ -2662,7 +2662,9 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
       logtb_disable_update (NULL);
     }
 
-  error_code = serial_initialize_cache_pool (thread_p);
+  /* Skip the eager _db_serial attribute-info load when restarting from a backup (restoredb,
+   * restoreslave): no client workspace yet. */
+  error_code = serial_initialize_cache_pool (thread_p, !from_backup);
   if (error_code != NO_ERROR)
     {
       goto error;
