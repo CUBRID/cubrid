@@ -1645,6 +1645,7 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
   helper.forward_page = NULL;
   helper.n_vacuumed = 0;
   helper.n_bulk_vacuumed = 0;
+  helper.can_vacuum = VACUUM_RECORD_CANNOT_VACUUM;
   helper.initial_home_free_space = -1;
   VFID_SET_NULL (&helper.overflow_vfid);
   VFID_SET_NULL (&helper.oos_vfid);
@@ -1887,16 +1888,13 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 		  VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, &helper);
 		  goto end;
 		}
-	      else if (helper.home_page != NULL)
-		{
-		  /* Unfix page. */
-		  pgbuf_unfix_and_init (thread_p, helper.home_page);
-		}
-	      /* Fall through and go to end. */
 	    }
-	  else
+
+	  if (helper.home_page != NULL)
 	    {
-	      /* Finished vacuuming page. Unfix the page and go to end. */
+	      assert (!HFID_IS_NULL (&helper.hfid));
+	      heap_add_bestpage (thread_p, &helper.hfid, helper.home_page,
+				 helper.can_vacuum == VACUUM_RECORD_REMOVE ? 0 : helper.initial_home_free_space);
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
 	    }
 	  goto end;
@@ -2712,6 +2710,9 @@ static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
+  int bestspace_prev_freespace;
+  int i;
+
   assert (helper != NULL);
   assert (helper->home_page != NULL);
 
@@ -2735,8 +2736,18 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
    * OIDs and their statistics are updated in that context */
   if (update_best_space_stat == true && helper->initial_home_free_space != -1)
     {
+      bestspace_prev_freespace = helper->initial_home_free_space;
+      for (i = 0; i < helper->n_bulk_vacuumed; i++)
+	{
+	  if (helper->results[i] == VACUUM_RECORD_REMOVE)
+	    {
+	      bestspace_prev_freespace = 0;
+	      break;
+	    }
+	}
+
       assert (!HFID_IS_NULL (&helper->hfid));
-      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, helper->initial_home_free_space);
+      heap_add_bestpage (thread_p, &helper->hfid, helper->home_page, bestspace_prev_freespace);
     }
 
   VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
