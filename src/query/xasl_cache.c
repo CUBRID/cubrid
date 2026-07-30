@@ -1621,6 +1621,18 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
 	  if (to_be_recompiled != NULL)
 	    {
 	      assert (context->recompile_xasl);
+	      /* Hand the result cache over to the new entry. Cached results are keyed by parameter
+	       * values and stay valid across a replan: the same statement text with the same
+	       * parameters yields the same rows whichever plan runs. Move instead of copy -
+	       * xcache_entry_free clears the list cache of every entry that still owns a hash
+	       * table, so the old entry has to let go of it.
+	       */
+	      if (to_be_recompiled->list_ht_no >= 0)
+		{
+		  assert ((*xcache_entry)->list_ht_no == -1);
+		  (*xcache_entry)->list_ht_no = to_be_recompiled->list_ht_no;
+		  to_be_recompiled->list_ht_no = -1;
+		}
 	      /* Now that we inserted new cache entry, we can mark the old entry as recompiled. */
 	      do
 		{
