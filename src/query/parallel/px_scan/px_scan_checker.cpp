@@ -122,15 +122,15 @@ namespace parallel_scan
 	return r->value.dbvalptr == iv;
       case TYPE_INARITH:
       case TYPE_OUTARITH:
-	{
-	  ARITH_TYPE *a = r->value.arithptr;
-	  if (a == nullptr)
-	    {
-	      return false;
-	    }
-	  return regu_subtree_refs_instnum (a->leftptr, iv) || regu_subtree_refs_instnum (a->rightptr, iv)
-		 || regu_subtree_refs_instnum (a->thirdptr, iv);
-	}
+      {
+	ARITH_TYPE *a = r->value.arithptr;
+	if (a == nullptr)
+	  {
+	    return false;
+	  }
+	return regu_subtree_refs_instnum (a->leftptr, iv) || regu_subtree_refs_instnum (a->rightptr, iv)
+	       || regu_subtree_refs_instnum (a->thirdptr, iv);
+      }
       case TYPE_FUNC:
 	return regu_var_list_refs_instnum (r->value.funcp->operand, iv);
       case TYPE_SP:

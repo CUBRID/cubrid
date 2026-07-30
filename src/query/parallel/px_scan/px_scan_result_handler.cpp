@@ -311,14 +311,16 @@ namespace parallel_scan
 		    }
 		  pr_clear_value (&coerced);
 		}
-	      /* NULL rhs keeps limit 0: "inst_num() <= NULL" is unknown for every row -> no rows, like serial. */
-	      if (m_.instnum_limit_is_lt)
-		{
-		  m_.instnum_limit--;	/* draw < N  <=>  draw <= N-1 */
-		}
-	      if (m_.instnum_limit < 0)
+	      /* NULL rhs keeps limit 0: "inst_num() <= NULL" is unknown for every row -> no rows, like serial.
+	       * Clamp before the decrement: BIGINT_MIN-- would wrap to BIGINT_MAX and turn a 0-row query
+	       * into a full scan, so force non-positive limits to 0 first. */
+	      if (m_.instnum_limit <= 0)
 		{
 		  m_.instnum_limit = 0;
+		}
+	      else if (m_.instnum_limit_is_lt)
+		{
+		  m_.instnum_limit--;	/* draw < N  <=>  draw <= N-1; limit >= 1 keeps this >= 0 */
 		}
 	      m_.instnum_limit_resolved = true;
 	    }

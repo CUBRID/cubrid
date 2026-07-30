@@ -845,7 +845,12 @@ namespace parallel_scan
 		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
 	if (is_interrupt)
 	  {
-	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    /* logtb_is_interrupted_tran() above consumed (cleared) the transaction flag, so the
+	     * cancellation must be recorded even when a benign INST_NUM_SATISFIED early-stop got here
+	     * first; otherwise it is lost for good. Real error codes still take precedence. */
+	    parallel_query::interrupt::interrupt_code code = m_interrupt->get_code();
+	    if (code == parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+		|| code == parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		m_err_messages->move_top_error_message_to_this();
