@@ -190,29 +190,27 @@ dblink_2pc_send_prepare (THREAD_ENTRY * thread_p, int gtrid, int num_particps, v
    * block_particps_ids. */
   for (i = 0; i < num_particps; i++)
     {
-      char commit_log_msg[MAX_LEN_CONNECTION_URL + 80];
-
-      if (!dblink[i].xa_unsupported)
+      if (dblink[i].xa_unsupported)
 	{
-	  continue;
+	  char commit_log_msg[MAX_LEN_CONNECTION_URL + 80];
+
+	  if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
+	    {
+	      qmgr_dblink_clear_conn_entry (thread_p, false);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+		      dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
+	      return false;
+	    }
+
+	  one_phase_committed = true;
+
+	  snprintf (commit_log_msg, sizeof (commit_log_msg),
+		    "participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
+	  er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, commit_log_msg);
+
+	  (void) cci_disconnect (dblink[i].conn_handle, &err_buf);
+	  (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
 	}
-
-      if (cci_end_tran (dblink[i].conn_handle, CCI_TRAN_COMMIT, &err_buf) < 0)
-	{
-	  qmgr_dblink_clear_conn_entry (thread_p, false);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
-		  dblink_2pc_tran_err_msg (&err_buf, tran_err_msg, sizeof (tran_err_msg)));
-	  return false;
-	}
-
-      one_phase_committed = true;
-
-      snprintf (commit_log_msg, sizeof (commit_log_msg),
-		"participant without XA prepare committed with plain end-tran: %s", dblink[i].conn_url);
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, commit_log_msg);
-
-      (void) cci_disconnect (dblink[i].conn_handle, &err_buf);
-      (void) qmgr_dblink_remove_conn_entry (thread_p, dblink[i].conn_handle);
     }
 
   /* All participants are finished: XA-prepared (decision delivered later via the daemon)
