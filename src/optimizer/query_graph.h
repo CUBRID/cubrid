@@ -753,7 +753,8 @@ struct qo_term
 #define QO_TERM_MULTI_COLL_CONST    128	/* multi column && have constant value, (a,1) in .. */
 #define QO_TERM_OR_PRED             256	/* or predicate. e.g.) a=1 or b=2 */
 #define QO_TERM_IMPLIED             512	/* join term implied by transitive closure, not from a user predicate */
-#define QO_TERM_LIKE_DERIVED_RANGE 1024	/* range term derived from a prefix LIKE; skip in row-count selectivity */
+#define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
+#define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE; skip in row-count selectivity */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -968,6 +969,10 @@ struct qo_env
    * large, this is set to true.
    */
   bool multi_range_opt_candidate;
+
+  /* histogram provenance scratch for the term whose selectivity is being computed */
+  bool sel_hist_used;
+  bool sel_hist_fallback;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])
