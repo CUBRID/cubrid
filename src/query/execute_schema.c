@@ -176,6 +176,7 @@ enum
   P_IS_PARTITION_COL,		/* class has partitions */
   P_COMMENT,			/* has comment */
   P_OOS_PREFER_INLINE,		/* STORAGE PREFER_INLINE (lower OOS demotion priority) */
+  P_OOS_FORCE_OUTLINE,		/* STORAGE FORCE_OUTLINE (bypass record gate for values larger than OOS stub) */
   NUM_ATT_CHG_PROP
 };
 
@@ -8246,6 +8247,17 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
+  if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE
+      && (name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
+	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+    {
+      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_FORCE_OUTLINE_REQUIRES_VARIABLE_NORMAL_ATT, attr_name);
+      error = ER_PT_SEMANTIC;
+      tp_domain_free (attr_db_domain);
+      goto error_exit;
+    }
+
   on_update_expr = attribute->info.attr_def.on_update;
   pt_get_default_expression_from_data_default_node (parser, attribute->info.attr_def.data_default, &default_expr);
   default_value = &stack_value;
@@ -8307,6 +8319,19 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 	    {
 	      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
 	    }
+	}
+    }
+  else if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
+	{
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
+	}
+
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
 	}
     }
 
@@ -11829,11 +11854,23 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* add or drop STORAGE PREFER_INLINE option */
   if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_GAINED))
     {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
       found_att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
     }
   else if (is_att_prop_set (attr_chg_prop->p[P_OOS_PREFER_INLINE], ATT_CHG_PROPERTY_LOST))
     {
       found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+    }
+
+  /* add or drop STORAGE FORCE_OUTLINE option */
+  if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_GAINED))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_PREFER_INLINE);
+      found_att->flags |= SM_ATTFLAG_OOS_FORCE_OUTLINE;
+    }
+  else if (is_att_prop_set (attr_chg_prop->p[P_OOS_FORCE_OUTLINE], ATT_CHG_PROPERTY_LOST))
+    {
+      found_att->flags &= ~(SM_ATTFLAG_OOS_FORCE_OUTLINE);
     }
 
   /* delete or (re-)create auto_increment attribute's serial object */
@@ -12260,6 +12297,31 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
     }
 
+  /* STORAGE FORCE_OUTLINE */
+  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] = 0;
+  if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+    {
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET)
+    {
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_UNCHANGED;
+    }
+  else if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
+    {
+      /* PRESENT_NEW without PRESENT_OLD will be converted to GAINED by the consolidate properties loop below */
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
+    }
+  else if (attr_chg_properties->p[P_OOS_FORCE_OUTLINE] & ATT_CHG_PROPERTY_PRESENT_OLD)
+    {
+      /*
+       * attr_storage != PT_ATTR_STORAGE_FORCE_OUTLINE -> NOW not force-outline
+       * P_OOS_FORCE_OUTLINE & PRESENT_OLD             -> WAS force-outline
+       */
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~ATT_CHG_PROPERTY_PRESENT_OLD;
+    }
+
   /* check for existing constraints: FK referenced, unique, non-unique idx */
   if (ctemplate->current != NULL)
     {
@@ -12493,6 +12555,26 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       assert (er_errid () != NO_ERROR);
       return (er_errid ());
     }
+
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE
+      && (attr_chg_properties->new_name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
+	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+    {
+      PT_ERRORmf (parser, attr_def, MSGCAT_SET_PARSER_SEMANTIC,
+		  MSGCAT_SEMANTIC_FORCE_OUTLINE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attr_def));
+      tp_domain_free (attr_db_domain);
+      return ER_PT_SEMANTIC;
+    }
+
+  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      && (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+      && (attr_chg_properties->new_name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
+	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+    {
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
+      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+    }
+
   attr_chg_properties->p[P_TYPE] = 0;
   attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_NEW;
   attr_chg_properties->p[P_TYPE] |= ATT_CHG_PROPERTY_PRESENT_OLD;

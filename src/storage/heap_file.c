@@ -12166,9 +12166,27 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
 
+  /* FORCE_OUTLINE bypasses the normal record-size gate, but values must still be larger than the OOS stub so that
+   * moving them out of row shrinks the inline record. */
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (!attr_info->values[i].last_attrepr->is_fixed
+	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+	{
+	  (*oos_plan)[i].selected = true;
+	  payload_size -= column_size[i];
+	  payload_size += OR_OOS_INLINE_SIZE;
+	  *has_oos = true;
+	}
+    }
+
+  /* A forced value changes the payload and may change the variable-offset width. */
+  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+
   /* TODO: change the statistics */
-  /* push the largest variable column to OOS one by one until the heap record
-   * fits within DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column */
+  /* Push the largest remaining variable column to OOS one by one until the heap record fits within
+   * DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column. */
   if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
     {
       // *INDENT-OFF*
@@ -12179,11 +12197,13 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 	{
 	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
 	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
-	  if (!attr_info->values[i].last_attrepr->is_fixed && column_size[i] > OR_OOS_INLINE_SIZE)
+	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
+	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      // *INDENT-OFF*
 	      heap_oos_demote_priority priority =
-		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->is_oos_prefer_inline);
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_storage
+					      == OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE);
 	      oos_candidates.push_back ({ priority, column_size[i], i });
 	      // *INDENT-ON*
 	    }
@@ -12510,6 +12530,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 // *INDENT-ON*
 
 {
+  // *INDENT-OFF*
   std::vector < RECDES > payloads;
   std::vector < oos_insert_request > requests;
   SCAN_CODE scan_code = S_ERROR;
@@ -12557,6 +12578,7 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
 cleanup:
   heap_attrinfo_free_oos_payloads (&payloads);
   return scan_code;
+  // *INDENT-ON*
 }
 
 /*

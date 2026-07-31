@@ -212,6 +212,7 @@ static KEYWORD_RECORD keywords[] = {
   {FLOAT_, "REAL", 0},
   {For, "FOR", 0},
   {FORCE, "FORCE", 1},
+  {FORCE_OUTLINE, "FORCE_OUTLINE", 1},
   {FOREIGN, "FOREIGN", 0},
   {FOUND, "FOUND", 0},
   {FROM, "FROM", 0},
