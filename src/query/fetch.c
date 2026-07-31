@@ -4014,25 +4014,17 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    {
 	      goto exit_on_error;
 	    }
-	  if (slot->lazy_always_eager)
-	    {
-	      /* first-term column: heap_attrinfo_read_dbvalues_lazy () reads it in place on every row, so
-	       * the value is already current - no deferred read to do, and no cache_slot, so later rows
-	       * take the plain cached-pointer fast peek below. */
-	      *peek_dbval = &slot->dbvalue;
-	      regu_var->value.attr_descr.cache_dbvalp = &slot->dbvalue;
-	      regu_var->value.attr_descr.cache_slot = NULL;
-	      break;
-	    }
-	  *peek_dbval = heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo);
-	  if (*peek_dbval == NULL)
+	  /* A first-term column is already read in place by heap_attrinfo_read_dbvalues_lazy (), so there is
+	   * nothing to read here and no slot to remember. Any other column is deferred: read it now and keep
+	   * its slot so later rows skip the locate. cache_dbvalp enables REGU_VARIABLE_FAST_PEEK below. */
+	  if (!slot->lazy_always_eager
+	      && heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo) == NULL)
 	    {
 	      goto exit_on_error;
 	    }
-	  /* cache_dbvalp enables the REGU_VARIABLE_FAST_PEEK flag below; cache_slot lets the inline
-	   * fetch_peek_dbval () read this deferred column on later rows without re-locating it. */
+	  *peek_dbval = &slot->dbvalue;
 	  regu_var->value.attr_descr.cache_dbvalp = &slot->dbvalue;
-	  regu_var->value.attr_descr.cache_slot = slot;
+	  regu_var->value.attr_descr.cache_slot = slot->lazy_always_eager ? NULL : slot;
 	  break;
 	}
       *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;

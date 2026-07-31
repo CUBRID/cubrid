@@ -134,6 +134,7 @@ struct filter_info
 
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
 extern void eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cache);
+extern void eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache);
 extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);

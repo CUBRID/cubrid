@@ -10821,10 +10821,9 @@ exit_on_error:
  *   When recdes is NULL (class attribute / index info scans that read shared, class attributes and default
  *   values) there is no record to defer the reads from, so everything is read now, exactly as before.
  *
- *   Runtime calibration: deferring only pays off while short-circuit evaluation keeps skipping the deferred
- *   reads, and how often it does depends on how selective the filter turns out to be on real data. So the
- *   first HEAP_LAZY_CALIBRATE_ROWS rows are measured: if fewer than half a column read per row is being
- *   saved, this scan gives up on lazy (attr_info->lazy_disabled) and reads eagerly for its remaining rows.
+ *   Deferring only pays off while short-circuit evaluation keeps skipping the deferred reads, so the first
+ *   HEAP_LAZY_CALIBRATE_ROWS rows are measured: saving less than half a column read per row makes this scan
+ *   give up on lazy (attr_info->lazy_disabled) for its remaining rows.
  */
 #define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
 
@@ -10845,8 +10844,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
 
   if (attr_info->lazy_disabled)
     {
-      /* calibration found too few reads being skipped to justify the per-row setup below: read everything
-       * now, exactly as eager. lazy_recdes is cleared so no record is left armed for a deferred read. */
+      /* nothing worth deferring: read everything now, leaving no record armed for a deferred read */
       attr_info->lazy_recdes = NULL;
       return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
     }
@@ -10902,9 +10900,8 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
   /* arm lazy mode: heap_attrinfo_access () will read from this record */
   attr_info->lazy_recdes = recdes;
 
-  /* Account this row for the calibration, then judge once the sample is complete. Saving less than half a
-   * column read per row means short-circuit evaluation rejects too few rows - or the deferred columns are
-   * referenced anyway - for the marking above to earn its cost, so stop deferring. */
+  /* account this row, then judge once the sample is in: saving less than half a column read per row means
+   * the marking above does not earn its cost */
   attr_info->lazy_rows++;
   attr_info->lazy_deferred += deferred;
   if (attr_info->lazy_rows == HEAP_LAZY_CALIBRATE_ROWS
@@ -11187,16 +11184,15 @@ heap_locate_last_attrepr (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info)
  *                 fetch.c's slow path, or the cached cache_slot in the inline fetch_peek_dbval ())
  *   attr_info(in): the attribute cache holding the stashed record (lazy_recdes)
  *
- * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here. When the slot
- *   is HEAP_LAZY_ATTRVALUE (not yet read this row) it is read now from attr_info->lazy_recdes;
- *   heap_attrvalue_read () flips it to HEAP_READ_ATTRVALUE so later references in the same row reuse it.
+ * Note: the caller passes the slot, so no heap_attrvalue_locate () search happens here. A slot still flagged
+ *   HEAP_LAZY_ATTRVALUE is read now and flipped to HEAP_READ_ATTRVALUE, so later references reuse the value.
  */
 DB_VALUE *
 heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info)
 {
   if (slot->state == HEAP_LAZY_ATTRVALUE)
     {
-      attr_info->lazy_decoded++;	/* a deferred read this scan did not get to skip (calibration) */
+      attr_info->lazy_decoded++;	/* measured: a deferred read that was not skipped */
       if (heap_attrvalue_read (attr_info->lazy_recdes, slot, attr_info) != NO_ERROR)
 	{
 	  return NULL;

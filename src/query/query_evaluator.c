@@ -2843,6 +2843,37 @@ eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cac
 }
 
 /*
+ * eval_disable_lazy_read () - turn the lazy predicate-column read off when this scan defers nothing
+ *   return: none
+ *   attr_cache(in/out): predicate attribute cache, already marked by eval_mark_first_term_attrs ()
+ *
+ * Note: with every predicate column read up front (all slots flagged lazy_always_eager) nothing is ever
+ *   deferred, so short-circuit evaluation has nothing to skip. A single predicate column, or two conditions
+ *   on the same column, is exactly this case; no measurement is needed to know it cannot pay off.
+ */
+void
+eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
+{
+  int i;
+
+  if (attr_cache == NULL || attr_cache->num_values <= 0)
+    {
+      return;
+    }
+
+  for (i = 0; i < attr_cache->num_values; i++)
+    {
+      if (!attr_cache->values[i].lazy_always_eager)
+	{
+	  /* this column is deferred - the lazy read can still pay off */
+	  return;
+	}
+    }
+
+  attr_cache->lazy_disabled = true;
+}
+
+/*
  * eval_data_filter () -
  *   return: DB_LOGICAL (V_TRUE, V_FALSE, V_UNKNOWN or V_ERROR)
  * 	 oid(in): pointer to OID

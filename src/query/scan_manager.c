@@ -4613,9 +4613,10 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		}
 	    }
 	  hsidp->caches_inited = true;
-	  /* first-term-eager: flag the leftmost predicate term's column(s) so lazy reads them eagerly
-	   * (see eval_mark_first_term_attrs ()); runs once per (re)arm with the cache init. */
+	  /* flag the leftmost predicate term's column(s) to stay eager; once per (re)arm with the cache init */
 	  eval_mark_first_term_attrs (hsidp->scan_pred.pred_expr, hsidp->pred_attrs.attr_cache);
+	  /* nothing left to defer -> skip lazy mode for this scan */
+	  eval_disable_lazy_read (hsidp->pred_attrs.attr_cache);
 	}
       break;
     case S_PARALLEL_HEAP_SCAN:
@@ -4743,9 +4744,10 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      goto exit_on_error;
 	    }
 	  isidp->caches_inited = true;
-	  /* first-term-eager: flag the leftmost predicate term's column(s) so lazy reads them eagerly
-	   * (see eval_mark_first_term_attrs ()); runs once per (re)arm with the cache init. */
+	  /* flag the leftmost predicate term's column(s) to stay eager; once per (re)arm with the cache init */
 	  eval_mark_first_term_attrs (isidp->scan_pred.pred_expr, isidp->pred_attrs.attr_cache);
+	  /* nothing left to defer -> skip lazy mode for this scan */
+	  eval_disable_lazy_read (isidp->pred_attrs.attr_cache);
 	}
       isidp->oids_count = 0;
       isidp->curr_keyno = -1;
