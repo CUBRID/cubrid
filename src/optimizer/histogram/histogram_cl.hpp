@@ -102,6 +102,7 @@ void histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, doub
 void histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge, bool include_equal,
 				     double *selectivity,
 				     bool *success);
+void histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity, bool *success);
 void histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *selectivity, bool *success);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);

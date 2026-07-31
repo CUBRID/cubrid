@@ -1,7 +1,8 @@
 version: 2.1
 
 # --------------------------------------------------
-# Pipeline-level parameters (values passed from GitHub Actions comment trigger)
+# Pipeline-level parameters — trigger-provided values (GitHub Actions comment
+# trigger) plus pipeline-wide CI knobs
 # --------------------------------------------------
 parameters:
   baseline:
@@ -19,6 +20,11 @@ parameters:
   run_all_test:
     type: boolean
     default: false
+  # Single knob for the shell fan-out width. CUBRIDQA-1471 (40/10 pool
+  # partition) changes this to 40 — keep every reference on this parameter.
+  shell_parallelism:
+    type: integer
+    default: 50
 
 # --------------------------------------------------
 # 1. Reusable executors
@@ -49,6 +55,12 @@ executors:
     # self-hosted runner
     resource_class: cubrid/ramdisk
     working_directory: /home
+    environment:
+      # GlusterFS build layout contract, defined once for both sides:
+      # download-build publishes <root>/<sha>/<mode>/CUBRID + sentinel,
+      # test_shell waits on the sentinel and mounts that tree.
+      BUILD_CACHE_ROOT: /home/build-cache/builds
+      BUILD_SENTINEL: .complete
 
 # --------------------------------------------------
 # 2. Reusable commands
@@ -120,21 +132,47 @@ commands:
       - collect-build-logs
 
   resolve-testcases:
-    description: "Resolve testcases branch/SHA; export BRANCH_TESTCASES and materialize cache-key inputs"
+    description: "Resolve testcases branch/SHA for a TC repo; export BRANCH_TESTCASES and materialize cache-key inputs"
+    parameters:
+      tc-repo:
+        # Resolve against the repo the suite actually checks out: public
+        # cubrid-testcases for sql/medium, private cubrid-testcases-private-ex
+        # for shell. Their tc/pr-<N> branches are created independently and
+        # often diverge, so each suite must resolve against its own repo.
+        type: string
+        default: cubrid-testcases
     steps:
       - run:
-          name: Resolve testcases branch and SHA
+          name: Resolve testcases branch and SHA (<< parameters.tc-repo >>)
           command: |
+            TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/<< parameters.tc-repo >>.git"
+
+            # ls-remote the testcases repo with retries. A transient network error
+            # (e.g. "Empty reply from server") must not fail the job: on persistent
+            # failure we return empty and fall back to develop.
+            resolve_sha() {
+              local i out
+              for i in 1 2 3 4 5; do
+                if out=$(git ls-remote "$TC_REPO" "$1" 2>/dev/null); then
+                  echo "$out" | cut -f1
+                  return 0
+                fi
+                echo "[warn] ls-remote '$1' failed (attempt $i); retrying" >&2
+                sleep $((i * 3))
+              done
+              echo "[warn] ls-remote '$1' failed after retries; continuing without SHA" >&2
+            }
+
             if [[ "$CIRCLE_BRANCH" == pull/* ]]; then
               TC_BRANCH="tc/pr-${CIRCLE_BRANCH//[^0-9]/}"
             else
               TC_BRANCH="develop"
             fi
 
-            TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git ${TC_BRANCH} | cut -f1)
+            TC_SHA=$(resolve_sha "$TC_BRANCH")
             if [ -z "$TC_SHA" ]; then
               TC_BRANCH="develop"
-              TC_SHA=$(git ls-remote https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/cubrid-testcases.git develop | cut -f1)
+              TC_SHA=$(resolve_sha develop)
             fi
 
             CACHE_KEY_BRANCH="${TC_BRANCH//\//-}"
@@ -155,68 +193,118 @@ commands:
   run-tests:
     description: "Run test scripts (CUBRID must be at /home/CUBRID)"
     steps:
+      # NOTE: every step keeps `shell: /bin/bash` (i.e. no -e/-o pipefail) because
+      # the prune pipelines below exit non-zero when there is nothing to prune.
       - run:
-          name: Test
+          name: Check out testcases and testtools
           shell: /bin/bash
-          no_output_timeout: 45m
           command: |
-            # Limit core files to 10mb
-            ulimit -c 10485760
-
-            echo "[debug] Check out testcases and testtools"
+            if [ -z "$TEST_SUITE" ] || [ "$TEST_SUITE" = "none" ]; then
+              echo "[error] TEST_SUITE is not set"
+              exit 1
+            fi
             /entrypoint.sh checkout
+      - run:
+          name: Split tests for this node
+          shell: /bin/bash
+          command: |
+            # Per-suite differences only: how to glob+split, and how to prune the
+            # cases this node did not get. Everything else is shared below.
             case "$TEST_SUITE" in
-              none)
-                echo "TEST_SUITE is none"
-                exit 1
-                ;;
-              sql)
-                base_dir="cubrid-testcases"
-                glob_path="$base_dir/$TEST_SUITE/_*"
-                ;;
               shell)
                 base_dir="cubrid-testcases-private-ex"
-                rm -rf $base_dir/shell/_25_unstable
-                glob_path="$base_dir/$TEST_SUITE/_*/**/*.sh"
+                rm -rf "$base_dir/shell/_25_unstable"
+                split_pipe() {
+                  circleci tests glob "$base_dir/$TEST_SUITE/_*/**/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$' \
+                    | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+                }
+                prune() {
+                  xargs -n1 dirname < tc.list > tc_dirs.list
+                  find "$base_dir" -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
+                }
                 ;;
               *)
                 base_dir="cubrid-testcases"
-                glob_path="$base_dir/$TEST_SUITE/_*"
+                split_pipe() {
+                  circleci tests glob "$base_dir/$TEST_SUITE/_*" \
+                    | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+                }
+                prune() {
+                  find "$base_dir" -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
+                }
                 ;;
             esac
 
-            if [ "$TEST_SUITE" = "shell" ]; then
-              echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" | grep -P '/([^/]+)/cases/\1\.sh$' \
-                | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
-
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
-              if [ ! -s tc.list ]; then
-                echo "[debug] No tests assigned to this node"
-                circleci-agent step halt
-                exit 0
+            # A split can fail transiently (e.g. the circleci-tests-plugin-cli
+            # download timing out under 50-way fan-out). Retry, and on persistent
+            # failure fail this node rather than fall through to the empty-list
+            # halt below, which would silently skip this node's share of tests.
+            n=0
+            until { : > tc.list; split_pipe; }; do
+              n=$((n + 1))
+              if [ "$n" -ge 4 ]; then
+                echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
+                exit 1
               fi
-              cat tc.list | xargs -n1 dirname > tc_dirs.list
-              echo "[debug] total testcases: $(wc -l tc_dirs.list)"
-              echo "[debug] Remove tests that are not in the list"
-              find $base_dir -name "cases" -type d | grep -v -F -f tc_dirs.list | xargs -r rm -rf
-            else
-              echo "[debug] split tests for parallel execution"
-              circleci tests glob "$glob_path" \
-                | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+              echo "[warn] test split failed; retry $n after backoff"
+              sleep $((n * 10))
+            done
 
-              # Check if tc.list exists and is not empty (tests were assigned to this node)
-              if [ ! -s tc.list ]; then
-                echo "[debug] No tests assigned to this node"
-                circleci-agent step halt
-                exit 0
-              fi
-              echo "[debug] total testcases: $(wc -l tc.list)"
-              echo "[debug] Remove tests that are not in the list"
-              find $base_dir -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
+            # Split succeeded, so an empty list is a genuine empty assignment
+            # (normal during "rerun failed tests only") -> halt as success. Halting
+            # here, before the build wait, releases the slot right away.
+            if [ ! -s tc.list ]; then
+              echo "[debug] No tests assigned to this node"
+              circleci-agent step halt
+              exit 0
             fi
+            prune
+            # wc -w, not -l: the shell split writes tc.list as one space-separated
+            # line (tee), sql/medium writes one path per line — word count is the
+            # case count either way, and a wrong "0" here would look like the
+            # silent-skip failure mode we deliberately fail loudly on.
+            echo "[debug] assigned testcases: $(wc -w < tc.list)"
+      - run:
+          name: Mount debug build from GlusterFS
+          shell: /bin/bash
+          command: |
+            if [ "$TEST_SUITE" != "shell" ]; then
+              echo "[debug] non-shell suite runs on the artifact build; nothing to mount"
+              exit 0
+            fi
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
+            BUILD_DIR="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
 
-            echo "[debug] Run the tests"
+            # requires(download-build) normally means the sentinel is already
+            # there; the bounded wait covers concurrent workflow reruns.
+            n=0
+            until [ -f "${BUILD_DIR}/${BUILD_SENTINEL}" ]; do
+              n=$((n + 1))
+              if [ "$n" -gt 60 ]; then
+                echo "[error] build sentinel not found after 300s: ${BUILD_DIR}/${BUILD_SENTINEL}"
+                exit 1
+              fi
+              [ $((n % 12)) -eq 1 ] && echo "[debug] waiting for build sentinel... ($(((n - 1) * 5))s elapsed)"
+              sleep 5
+            done
+
+            if [ -x /home/CUBRID/bin/cubrid ]; then
+              echo "[debug] /home/CUBRID already mounted by postStart (legacy flat layout), reusing"
+              exit 0
+            fi
+            # upperdir/workdir must sit on the emptyDir volume: the kernel refuses
+            # an overlay whose upper is on the container rootfs.
+            mkdir -p /build-rw/step-upper /build-rw/step-work /home/CUBRID
+            mount -t overlay overlay \
+              -o "lowerdir=${BUILD_DIR}/CUBRID,upperdir=/build-rw/step-upper,workdir=/build-rw/step-work" /home/CUBRID \
+              || { echo "[error] CUBRID overlay mount failed"; exit 1; }
+            echo "[debug] CUBRID mounted (overlay on ${BUILD_DIR}/CUBRID)"
+      - run:
+          name: Run tests
+          shell: /bin/bash
+          no_output_timeout: 45m
+          command: |
+            ulimit -c 10485760   # limit core files to 10mb
             /entrypoint.sh test
       - run:
           name: Collect Logs
@@ -282,45 +370,51 @@ commands:
           name: Download build to GlusterFS
           command: |
             BUILD_NUM=$(cat /tmp/workspace/BUILD_NUM_DEBUG)
-            # Use CIRCLE_SHA1 (commit hash) to reuse build across workflow retries
-            BUILD_DIR="/home/build-cache/builds/${CIRCLE_SHA1}"
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
+            BUILD_DIR="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
+            echo "CIRCLE_SHA1=${CIRCLE_SHA1} BUILD_NUM=${BUILD_NUM} BUILD_DIR=${BUILD_DIR}"
 
-            echo "CIRCLE_SHA1: ${CIRCLE_SHA1}"
-            echo "BUILD_NUM: ${BUILD_NUM}"
-            echo "BUILD_DIR: ${BUILD_DIR}"
-
-            # Check if build already exists (same commit = same build)
-            if [ -d "${BUILD_DIR}/CUBRID" ]; then
-              echo "Build already exists for this commit, skipping download"
+            # Same commit = same build: reuse across workflow retries.
+            if [ -f "${BUILD_DIR}/${BUILD_SENTINEL}" ]; then
+              echo "Build already complete for this commit, skipping download"
               ls -la "${BUILD_DIR}/CUBRID"
               exit 0
             fi
 
-            mkdir -p "${BUILD_DIR}"
+            # Stage, then publish with one atomic rename: consumers never see a
+            # half-extracted tree, and a concurrent duplicate run just loses the
+            # rename and drops its staging dir (no rm of a published tree).
+            TMP_DIR="${BUILD_DIR}.tmp.$$"
+            rm -rf "${TMP_DIR}"
+            mkdir -p "${TMP_DIR}"
 
             echo "Downloading build from job #${BUILD_NUM}..."
-
-            # Fetch artifact list
             RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
               "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
-
-            # Extract CUBRID.tar.gz URL
             ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//')
 
             if [ -z "$ARTIFACT_URL" ]; then
               echo "ERROR: CUBRID.tar.gz artifact not found"
               echo "Response: $RESPONSE"
+              rm -rf "${TMP_DIR}"
               exit 1
             fi
 
             echo "Artifact URL: $ARTIFACT_URL"
+            curl -L -o "${TMP_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
+            tar xzf "${TMP_DIR}/CUBRID.tar.gz" -C "${TMP_DIR}"
+            rm "${TMP_DIR}/CUBRID.tar.gz"
+            touch "${TMP_DIR}/${BUILD_SENTINEL}"
 
-            # Download to GlusterFS
-            curl -L -o "${BUILD_DIR}/CUBRID.tar.gz" "$ARTIFACT_URL"
-            tar xzf "${BUILD_DIR}/CUBRID.tar.gz" -C "${BUILD_DIR}"
-            rm "${BUILD_DIR}/CUBRID.tar.gz"
+            if mv -T "${TMP_DIR}" "${BUILD_DIR}" 2>/dev/null; then
+              echo "Build published at ${BUILD_DIR}"
+            else
+              # Lost the publish race to a concurrent duplicate run.
+              echo "Another run published this build first, discarding staging dir"
+              rm -rf "${TMP_DIR}"
+            fi
 
-            echo "Build extracted to ${BUILD_DIR}/CUBRID"
+            echo "Build ready at ${BUILD_DIR}/CUBRID"
             ls -la "${BUILD_DIR}/CUBRID"
             df -h /home/build-cache
 
@@ -401,21 +495,41 @@ jobs:
 
   test_shell:
     executor: cubrid-test-shell
-    parallelism: 50
+    parallelism: << pipeline.parameters.shell_parallelism >>
     environment:
       BASELINE: << pipeline.parameters.baseline >>
       TEST_SUITE: "shell"
       GITHUB_TOKEN: $GHI_TOKEN
     steps:
-      - resolve-testcases
+      # Testcases branch is resolved once in download-build and shared via the
+      # workspace, so the 50 shell pods never hit cubrid-testcases themselves.
+      - attach_workspace:
+          at: /tmp/tcws
+      - run:
+          name: Load shared testcases branch
+          command: |
+            echo "export BRANCH_TESTCASES=$(cat /tmp/tcws/BRANCH_TESTCASES)" >> "$BASH_ENV"
       - run-tests
 
   download-build:
-    description: "Download CUBRID build to GlusterFS (1x download for all shell test pods)"
+    description: "Download CUBRID build to GlusterFS and resolve the testcases branch once for all shell pods"
     executor: cubrid-test-shell
     parallelism: 1
     steps:
       - download-build-to-glusterfs
+      # Resolve the testcases branch a single time (reuses resolve-testcases,
+      # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell runs
+      # the private repo, so resolve against cubrid-testcases-private-ex.
+      - resolve-testcases:
+          tc-repo: cubrid-testcases-private-ex
+      - run:
+          name: Persist testcases branch for shell pods
+          command: |
+            mkdir -p /tmp/tcws
+            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+      - persist_to_workspace:
+          root: /tmp/tcws
+          paths: [ BRANCH_TESTCASES ]
 
 # --------------------------------------------------
 # 4. Workflow (conditional test jobs via expression-based filters)
@@ -429,16 +543,16 @@ workflows:
           name: test_medium
           suite: medium
           parallelism: 1
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_medium_test
       - artifact-test:
           name: test_sql
           suite: sql
           parallelism: 10
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_sql_test
       - download-build:
-          requires: [build, build_debug]
+          requires: [build_debug]
           filters: pipeline.parameters.run_shell_test
       - test_shell:
           requires: [download-build]
