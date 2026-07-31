@@ -11910,6 +11910,31 @@ pt_dblink_delete_where_is_inscope (PT_NODE * node)
   return true;
 }
 
+/*
+ * pt_dblink_find_remote_spec () - parser_walk_tree pre-function: set *arg to true when the subtree still holds a
+ *   spec carrying a remote server name (tbl@srv).
+ *
+ *   Only the INSERT SELECT sink rewrites such specs into dblink derived tables (pt_check_sub_query_spec); the
+ *   remote DELETE sink does not.  Name resolution deliberately leaves flat_entity_list / spec.id unset on a
+ *   remote spec because it expects that rewrite to happen, so a remote spec left inside a DELETE WHERE subquery
+ *   reaches the optimizer half-built and crashes there.  Used below to keep the DELETE carve-out off that shape.
+ */
+static PT_NODE *
+pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SPEC && node->info.spec.remote_server_name != NULL)
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -11988,8 +12013,13 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * WHERE clause; pt_convert_dblink_dml_query (below) refines this, keeping it only when the WHERE subquery is
    * purely local and otherwise clearing it so the existing guards apply. WHERE shape restricted by
    * pt_dblink_delete_where_is_inscope -- see its doc comment for supported/excluded forms and where
-   * correlated/row subqueries are rejected downstream. */
-  if (remote_del == 1 && local_del == 0 && pt_dblink_delete_where_is_inscope (node))
+   * correlated/row subqueries are rejected downstream.
+   *
+   * spec->next == NULL is required as well: the sink only ever pushes a single-table DELETE, so a second FROM
+   * spec (DELETE remote_t FROM remote_t@conn, local_t2 WHERE ...) would be dropped silently and the remote rows
+   * deleted without the join the statement asks for. Keep such statements on the existing rejection. */
+  if (remote_del == 1 && local_del == 0 && node->info.delete_.spec->next == NULL
+      && pt_dblink_delete_where_is_inscope (node))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ;
     }
@@ -12240,10 +12270,28 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   /* remote DELETE + local subquery: keep the carve-out only when the WHERE subquery is purely local
    * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
    * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
-   * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected. */
+   * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected.
+   *
+   * The counters alone do not establish "purely local": local_cnt > 0 holds as soon as one local table is
+   * referenced and distinct_cnt == 1 holds when the only remote server is the target's, so a subquery mixing a
+   * local table with a same-server remote one satisfies both. Walk the WHERE clause for a surviving remote spec
+   * to exclude that shape -- the sink evaluates the subquery locally but nothing rewrites a remote spec inside it
+   * into a dblink derived table (pt_check_sub_query_spec runs for the INSERT SELECT sink only), so it would reach
+   * the optimizer half-built. Supporting the mixed shape is a separate change; here it keeps the pre-existing
+   * "local mixed remote DML is not allowed" rejection. */
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
     {
-      if (!(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
+      bool cond_has_remote_spec = false;
+
+      /* Single FROM spec is a precondition of this sink, established at the only site that sets the flag
+       * (pt_convert_dblink_delete_query). Asserted rather than re-checked so a future second set site -- the
+       * UPDATE extension this enum leaves room for -- fails loudly here instead of silently dropping a spec. */
+      assert (node->info.delete_.spec->next == NULL);
+
+      parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &cond_has_remote_spec,
+			NULL, NULL);
+
+      if (cond_has_remote_spec || !(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
 	{
 	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
 	}
