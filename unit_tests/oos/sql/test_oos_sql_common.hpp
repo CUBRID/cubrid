@@ -40,6 +40,8 @@
 #include "file_manager.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "slotted_page.h"
+#include "system_parameter.h"
 #include "vacuum.h"
 #endif /* SA_MODE */
 
@@ -184,10 +186,10 @@ exec_sql_commit (const char *sql)
 // ============================================================================
 
 #if defined(SA_MODE)
-// Get the OOS VFID for a given table name. Returns true on success.
-// SA_MODE only — requires server-side heap/file APIs.
+// Get the heap HFID for a given table name. Returns true on success.
+// SA_MODE only -- requires server-side heap/file APIs.
 static bool
-get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
+get_heap_hfid_for_table (const char *table_name, HFID *hfid_out)
 {
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
 
@@ -203,10 +205,19 @@ get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
       return false;
     }
 
-  HFID hfid;
   FILE_TYPE ftype;
-  int err = heap_get_class_info (thread_p, class_oid, &hfid, &ftype, NULL);
-  if (err != NO_ERROR)
+  return heap_get_class_info (thread_p, class_oid, hfid_out, &ftype, NULL) == NO_ERROR;
+}
+
+// Get the OOS VFID for a given table name. Returns true on success.
+// SA_MODE only — requires server-side heap/file APIs.
+static bool
+get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  HFID hfid;
+  if (!get_heap_hfid_for_table (table_name, &hfid))
     {
       return false;
     }
@@ -236,6 +247,15 @@ get_oos_page_count (const char *table_name)
 
   return num_pages;
 }
+
+// Return true if a table has created its lazy OOS file. SA_MODE only.
+static bool
+table_has_oos_file (const char *table_name)
+{
+  VFID oos_vfid;
+  return get_oos_vfid_for_table (table_name, &oos_vfid) && !VFID_ISNULL (&oos_vfid);
+}
+
 #endif /* SA_MODE */
 
 // Trigger vacuum (SA_MODE only: calls xvacuum() directly, synchronous).

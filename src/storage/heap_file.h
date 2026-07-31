@@ -732,6 +732,7 @@ extern int heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npage
 				 PGBUF_WATCHER * new_pg_watcher);
 
 extern int heap_nonheader_page_capacity ();
+extern int heap_oos_inline_target_size (void);
 
 extern int heap_rv_postpone_append_pages_to_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
 extern int heap_rv_postpone_mark_pages_in_heap (THREAD_ENTRY * thread_p, LOG_RCV * recv);
