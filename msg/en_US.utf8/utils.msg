@@ -1394,6 +1394,6 @@ upgradedb: upgrade system metadata to match the current CUBRID version.\n\
 usage: %1$s upgradedb [OPTION] database-name\n\
 \n\
 valid options:\n\
-      --check                  exit 1 if upgrade is required, 0 otherwise\n\
+      --check                  exit 0 if the version matches the engine, 1 otherwise\n\
   -f, --force                  apply the upgrade without prompting for confirmation\n\
   -v, --verbose                print upgrade scripts before applying them\n

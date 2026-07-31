@@ -1374,6 +1374,6 @@ upgradedb: 시스템 메타데이터를 현재 CUBRID 버전에 맞게 업그레
 usage: %1$s upgradedb [옵션] database-name\n\
 \n\
 옵션:\n\
-      --check                  업그레이드가 필요하면 1, 아니면 0을 반환합니다\n\
+      --check                  버전이 엔진과 일치하면 0, 아니면 1을 반환합니다\n\
   -f, --force                  확인 프롬프트 없이 업그레이드를 적용합니다\n\
   -v, --verbose                업그레이드 스크립트를 적용 전에 출력합니다\n
