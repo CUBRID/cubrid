@@ -4304,6 +4304,76 @@ locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID 
 }
 
 /*
+ * locator_child_still_references () - Does this child row still hold the key the scan searched for?
+ *
+ * return	      : NO_ERROR, or an error code if the row could not be read.
+ * thread_p (in)      : Thread entry.
+ * n_atts (in)	      : Number of referencing columns.
+ * attr_ids (in)      : Their attribute ids, in index order.
+ * key (in)	      : Parent key the scan searched for.
+ * oid (in)	      : Child row the scan returned.
+ * recdes (in)	      : Its record, as read after any wait.
+ * attr_info (in/out) : Attribute cache of the child class.
+ * matches (out)      : false once the row references some other key.
+ *
+ * Note: an index entry outlives the row version that made it, so the scan can return a child a
+ *	 concurrent UPDATE has already moved to another parent -- and the wait above is what lets
+ *	 that UPDATE commit first. The entry is therefore not evidence; the row itself decides.
+ */
+static int
+locator_child_still_references (THREAD_ENTRY * thread_p, int n_atts, const ATTR_ID * attr_ids, DB_VALUE * key,
+				const OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, bool * matches)
+{
+  DB_VALUE elem;
+  DB_VALUE *held, *wanted;
+  int k;
+  int error_code;
+
+  *matches = true;
+
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, attr_info);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (k = 0; k < n_atts; k++)
+    {
+      held = heap_attrinfo_access (attr_ids[k], attr_info);
+      if (held == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      if (n_atts == 1)
+	{
+	  wanted = key;
+	}
+      else
+	{
+	  /* A multi-column key arrives as a midxkey whose components are in index order. */
+	  assert (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY);
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (key), k, &elem, NULL, NULL) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  wanted = &elem;
+	}
+
+      if (tp_value_compare (held, wanted, 1, 1) != DB_EQ)
+	{
+	  *matches = false;
+	  return NO_ERROR;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * locator_check_primary_key_delete () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4532,8 +4602,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
+		  bool still_references = true;
 		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
@@ -4562,6 +4632,18 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  error_code =
+		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
+						    &attr_info, &still_references);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+		  if (!still_references)
+		    {
+		      continue;
 		    }
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
@@ -4892,8 +4974,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
+		  bool still_references = true;
 		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
@@ -4921,6 +5003,18 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  error_code =
+		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
+						    &attr_info, &still_references);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+		  if (!still_references)
+		    {
+		      continue;
 		    }
 
 		  if ((error_code = heap_attrinfo_clear_dbvalues (&attr_info)) != NO_ERROR)
