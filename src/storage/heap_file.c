@@ -20577,14 +20577,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
   if (lock == X_LOCK && !mvcc_is_mvcc_disabled_class (&context->class_oid))
     {
       /* Take the inserter's MVCCID self-lock (keyed by the row's insert-id stamp) so unique/FK checkers can wait
-       * on it; logtb_ensure_mvccid_self_lock acquires it at most once per (sub-)transaction.
-       *
-       * Note: the home page is already latched here, so this call must never block -- and it cannot. Normally it
-       * is a no-op, because the choke point at MVCCID assignment (logtb_self_lock_assigned_mvccid) already took
-       * the X. It only reaches the lock manager when that best-effort acquisition failed, and then no waiter can
-       * exist yet: a waiter has to read the MVCCID off a stamped record, and every stamp is gated on this call
-       * succeeding first. Unlike the waiter side (btree_key_wait_for_insert_mvccid), which unfixes every latch
-       * before suspending, there is nothing to unfix around. */
+       * on it; logtb_ensure_mvccid_self_lock acquires it at most once per (sub-)transaction. */
       error_code = logtb_ensure_mvccid_self_lock (thread_p);
       if (error_code != NO_ERROR)
 	{
