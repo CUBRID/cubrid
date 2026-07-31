@@ -247,6 +247,7 @@ set(CAS_COMMON_LIB_SOURCES
   ${BROKER_DIR}/cas_common_execute.c
   ${BROKER_DIR}/cas_common_function.c
   ${BROKER_DIR}/cas_common_vars.c
+  ${BROKER_DIR}/cas_sql_log_sp.c
   ${BASE_DIR}/ddl_log.c
   ${BROKER_DIR}/broker_util.c
   ${BROKER_DIR}/broker_filename.c
