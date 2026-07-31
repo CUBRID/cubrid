@@ -93,7 +93,11 @@ struct oos_hdr_stats
   int reserve1_for_future;
 };
 
+extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid);
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/* Low-level OOS tests use a synthetic, non-null owner descriptor while exercising storage in isolation. */
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */

@@ -12277,7 +12277,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_create_file (thread_p, *oos_vfid) != NO_ERROR)
+	  if (oos_create_file (thread_p, *hfid, heap_hdr->class_oid, *oos_vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
@@ -12487,11 +12487,13 @@ heap_attrinfo_free_oos_payloads (std::vector < RECDES > *payloads)
   payloads->clear ();
 }
 
+// *INDENT-OFF*
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 // *INDENT-OFF*
 static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
 // *INDENT-ON*
 #endif
+// *INDENT-ON*
 
 /*
  * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
