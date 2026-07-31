@@ -19,6 +19,11 @@
 #ifndef _UPGRADE_CHECKSUMS_H_
 #define _UPGRADE_CHECKSUMS_H_
 
+#include "system_metadata_version.h"
+
+static_assert (@UPGRADE_SCRIPT_COUNT_VAL@ == SYSTEM_METADATA_VERSION - 1,
+	       "the upgrade script chain must end at SYSTEM_METADATA_VERSION");
+
 static const char *UPGRADE_SCRIPT_SHA256S[] = {
 @UPGRADE_CHECKSUM_ENTRIES@};
 
