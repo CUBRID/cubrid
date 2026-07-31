@@ -23863,15 +23863,16 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    }
 	  else if (find_unique_helper->lock_mode == NULL_LOCK)
 	    {
-	      /* Conflicting object still being deleted. This scan takes no lock, so no lock conflict can serve as
-	       * the wait: block on the deleter's MVCCID instead, then re-read the key. */
+	      /* Referenced (parent) row still being deleted. This scan takes no lock, so no lock conflict can
+	       * serve as the wait: block on the deleter's MVCCID instead, then re-read the key. */
 	      MVCCID delete_mvccid = BTREE_MVCC_INFO_DELID (&mvcc_info);
 	      if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, delete_mvccid, find_unique_helper, leaf_page,
 						      NULL, restart);
 		}
-	      /* Deleter ended in the race since mvcc_satisfies_delete: re-read rather than consume a stale verdict. */
+	      /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the
+	       * stale DELETE_IN_PROGRESS as a live reference. */
 	      *restart = true;
 	      return NO_ERROR;
 	    }
@@ -23884,7 +23885,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 #if defined (SERVER_MODE)
 	  if (find_unique_helper->lock_mode == NULL_LOCK)
 	    {
-	      /* Lockless referential integrity check: the object exists and no other transaction is changing it. */
+	      /* The referenced (parent) row exists and no other transaction is changing it. Nothing to hold. */
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
@@ -24208,15 +24209,16 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	    }
 	  else if (find_unique_helper->lock_mode == NULL_LOCK)
 	    {
-	      /* Conflicting object still being deleted. This scan takes no lock, so no lock conflict can serve as
-	       * the wait: block on the deleter's MVCCID instead, then re-read the key. */
+	      /* Referenced (parent) row still being deleted. This scan takes no lock, so no lock conflict can
+	       * serve as the wait: block on the deleter's MVCCID instead, then re-read the key. */
 	      MVCCID delete_mvccid = BTREE_MVCC_INFO_DELID (&mvcc_info);
 	      if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, delete_mvccid, find_unique_helper, leaf_page,
 						      &overflow_page, restart);
 		}
-	      /* Deleter ended in the race since mvcc_satisfies_delete: re-read rather than consume a stale verdict. */
+	      /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the
+	       * stale DELETE_IN_PROGRESS as a live reference. */
 	      *restart = true;
 	      return NO_ERROR;
 	    }
@@ -24229,7 +24231,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 #if defined (SERVER_MODE)
 	  if (find_unique_helper->lock_mode == NULL_LOCK)
 	    {
-	      /* Lockless referential integrity check: the object exists and no other transaction is changing it. */
+	      /* The referenced (parent) row exists and no other transaction is changing it. Nothing to hold. */
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      if (overflow_page != NULL)

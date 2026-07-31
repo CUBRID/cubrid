@@ -4395,9 +4395,14 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool is_upd_scan_init;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attrinfo;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
+
+  /* error3 releases both caches, and it is reachable before either is started. */
+  attr_info.num_values = -1;
+  fk_attrinfo.num_values = -1;
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -4586,6 +4591,15 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
+		      /* A second cache holding only the referencing columns: the re-check below reads it once per
+		       * candidate row, and attr_info covers every column because the LOB scan needs them all. */
+		      error_code =
+			heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error1;
+			}
+
 		      for (i = 0; i < attr_info.num_values; i++)
 			{
 			  value = &attr_info.values[i];
@@ -4636,13 +4650,14 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  error_code =
 		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
-						    &attr_info, &still_references);
+						    &fk_attrinfo, &still_references);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
 		    }
 		  if (!still_references)
 		    {
+		      /* It moved to another parent while we waited, so this key's action has no claim on it. */
 		      continue;
 		    }
 
@@ -4719,6 +4734,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 		{
 		  heap_attrinfo_end (thread_p, &attr_info);
+		  heap_attrinfo_end (thread_p, &fk_attrinfo);
 		}
 	    }
 
@@ -4765,6 +4781,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attrinfo);
 
   goto end;
 }
@@ -4791,9 +4808,14 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool is_upd_scan_init;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attrinfo;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
+
+  /* error3 releases both caches, and it is reachable before either is started. */
+  attr_info.num_values = -1;
+  fk_attrinfo.num_values = -1;
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
@@ -4968,6 +4990,13 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      goto error1;
 		    }
+
+		  /* A second cache holding only the referencing columns, for the re-check below. */
+		  error_code = heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 		}
 
 	      for (i = 0; i < oid_cnt; i++)
@@ -5007,13 +5036,14 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 		  error_code =
 		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
-						    &attr_info, &still_references);
+						    &fk_attrinfo, &still_references);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
 		    }
 		  if (!still_references)
 		    {
+		      /* It moved to another parent while we waited, so this key's action has no claim on it. */
 		      continue;
 		    }
 
@@ -5070,6 +5100,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      heap_scancache_end_modify (thread_p, &scan_cache);
 	      heap_attrinfo_end (thread_p, &attr_info);
+	      heap_attrinfo_end (thread_p, &fk_attrinfo);
 	    }
 
 	  btree_scan_clear_key (&bt_scan);
@@ -5115,6 +5146,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attrinfo);
 
   goto end;
 }
