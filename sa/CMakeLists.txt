@@ -418,6 +418,7 @@ set(PARALLEL_QUERY_EXECUTE_HEADERS
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_sql_log.cpp
   ${METHOD_DIR}/method_scan.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp

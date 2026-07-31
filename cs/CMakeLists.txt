@@ -341,6 +341,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/method_sql_log.cpp
   ${METHOD_DIR}/method_query_handler.cpp
   ${METHOD_DIR}/method_query_result.cpp
   ${METHOD_DIR}/method_query_util.cpp
