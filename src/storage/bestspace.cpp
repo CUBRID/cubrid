@@ -613,8 +613,9 @@ namespace cubstorage
       }
 
     // is this page still belongs to the class (class_oid) ?
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP ||
-	heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
 	L1_remove (l2_index, l1_index, expected);
@@ -898,7 +899,8 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
-    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP)
+    if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
