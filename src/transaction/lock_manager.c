@@ -276,7 +276,14 @@ typedef enum
 #define MSGCAT_LK_INDEXNAME                     44
 #define MSGCAT_LK_RES_RR_TYPE			45
 #define MSGCAT_LK_MVCC_INFO			46
-#define MSGCAT_LK_LASTONE                       47
+/* Room for the longest resource phrase: "instance v|p|s of class <name>". */
+#define LK_RES_DESC_MAX                         (SM_MAX_IDENTIFIER_LENGTH + 128)
+
+#define MSGCAT_LK_RES_DESC_OBJECT                47
+#define MSGCAT_LK_RES_DESC_CLASS                 48
+#define MSGCAT_LK_RES_DESC_INSTANCE              49
+#define MSGCAT_LK_RES_DESC_TRANSACTION           50
+#define MSGCAT_LK_LASTONE                       51
 
 #if defined(SERVER_MODE)
 
@@ -537,6 +544,7 @@ static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
+static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
 static void lock_set_tran_abort_reason (int tran_index, TRAN_ABORT_REASON abort_reason);
@@ -1990,6 +1998,108 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 
 #if defined(SERVER_MODE)
 /*
+ * lock_describe_resource - Render a lock resource as the phrase the lock-timeout messages embed
+ *
+ * return: true if the resource kind has a description, false otherwise (caller then reports nothing)
+ *
+ *   thread_p(in):
+ *   res_ptr(in): the resource being waited on
+ *   desc(out): buffer receiving the phrase, e.g. "instance 1|641|1 of class dba.t"
+ *   desc_size(in): size of desc in bytes
+ *
+ * Note: one phrase per resource kind keeps one pair of timeout error codes for all kinds. Per-kind codes would
+ *	 have to be added to every place that enumerates them (ER_IS_LOCK_TIMEOUT_ERROR, LA_RETRY_ON_ERROR,
+ *	 qexec_execute_selupd_list), and a kind missing from one of them changes behavior silently. A new kind adds
+ *	 a MSGCAT_SET_LOCK phrase and a case here. The phrases sit in the catalog so locales can reorder them.
+ */
+static bool
+lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size)
+{
+  const OID *oid = &res_ptr->key.oid;
+  const OID *name_oid = NULL;	/* OID to resolve a class name from; NULL when the kind carries no class */
+  char *classname = NULL;
+  bool is_classname_alloced = false;
+  bool is_instance = false;
+  OID real_class_oid;
+  OID *oid_rr;
+
+  assert (res_ptr != NULL && desc != NULL && desc_size > 0);
+
+  switch (res_ptr->key.type)
+    {
+    case LOCK_RESOURCE_TRANSACTION:
+      /* The resource is the inserter's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
+      snprintf (desc, desc_size,
+		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_TRANSACTION),
+		(long long int) res_ptr->key.mvccid);
+      return true;
+
+    case LOCK_RESOURCE_ROOT_CLASS:
+    case LOCK_RESOURCE_CLASS:
+      oid_rr = oid_get_rep_read_tran_oid ();
+      if (oid_rr != NULL && OID_EQ (oid, oid_rr))
+	{
+	  classname = (char *) "Generic object for Repeatable Read consistency";
+	}
+      else
+	{
+	  name_oid = oid;
+	}
+      break;
+
+    case LOCK_RESOURCE_INSTANCE:
+      name_oid = &res_ptr->key.class_oid;
+      is_instance = true;
+      break;
+
+    default:
+      return false;
+    }
+
+  if (name_oid != NULL && !OID_ISTEMP (name_oid))
+    {
+      if (res_ptr->key.type != LOCK_RESOURCE_ROOT_CLASS && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (name_oid))
+	{
+	  OID_GET_REAL_CLASS_OF_DIR_OID (name_oid, &real_class_oid);
+	}
+      else
+	{
+	  COPY_OID (&real_class_oid, name_oid);
+	}
+      if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
+	{
+	  /* ignore: the object phrase names it by OID instead */
+	  er_clear ();
+	}
+      is_classname_alloced = (classname != NULL);
+    }
+
+  if (classname == NULL)
+    {
+      snprintf (desc, desc_size, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_OBJECT),
+		oid->volid, oid->pageid, oid->slotid);
+    }
+  else if (is_instance)
+    {
+      snprintf (desc, desc_size,
+		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_INSTANCE),
+		oid->volid, oid->pageid, oid->slotid, classname);
+    }
+  else
+    {
+      snprintf (desc, desc_size, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_CLASS),
+		classname);
+    }
+
+  if (is_classname_alloced)
+    {
+      free_and_init (classname);
+    }
+
+  return true;
+}
+
+/*
  * lock_set_error_for_timeout - Set error for lock timeout
  *
  * return:
@@ -2007,7 +2117,7 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int client_pid;		/* Client process id for transaction */
   char *waitfor_client_users_default = (char *) "";
   char *waitfor_client_users;	/* Waitfor users */
-  char *classname;		/* Name of the class */
+  char resource_desc[LK_RES_DESC_MAX];	/* Phrase naming the resource being waited on */
   int n, i, nwaits, max_waits = DEFAULT_WAIT_USERS;
   int wait_for_buf[DEFAULT_WAIT_USERS];
   int *wait_for = wait_for_buf, *t;
@@ -2016,11 +2126,9 @@ lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr)
   int unit_size = LOG_USERNAME_MAX + CUB_MAXHOSTNAMELEN + PATH_MAX + 20 + 4;
   char *ptr;
   int rv;
-  bool is_classname_alloced = false;
   bool free_mutex_flag = false;
   bool isdeadlock_timeout = false;
   int compat1, compat2;
-  OID *oid_rr;
 
   /* Find the users that transaction is waiting for */
   waitfor_client_users = waitfor_client_users_default;
@@ -2110,119 +2218,12 @@ set_error:
       isdeadlock_timeout = true;
     }
 
-  switch (entry_ptr->res_head->key.type)
+  if (lock_describe_resource (thread_p, entry_ptr->res_head, resource_desc, sizeof (resource_desc)))
     {
-    case LOCK_RESOURCE_ROOT_CLASS:
-    case LOCK_RESOURCE_CLASS:
-      oid_rr = oid_get_rep_read_tran_oid ();
-      if (oid_rr != NULL && OID_EQ (&entry_ptr->res_head->key.oid, oid_rr))
-	{
-	  classname = (char *) "Generic object for Repeatable Read consistency";
-	  is_classname_alloced = false;
-	}
-      else if (OID_ISTEMP (&entry_ptr->res_head->key.oid))
-	{
-	  classname = NULL;
-	}
-      else
-	{
-	  OID real_class_oid;
-
-	  if (entry_ptr->res_head->key.type == LOCK_RESOURCE_CLASS
-	      && OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.oid);
-	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
-	  else if (classname != NULL)
-	    {
-	      is_classname_alloced = true;
-	    }
-	}
-
-      if (classname != NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASS_MSG : ER_LK_OBJECT_TIMEOUT_CLASS_MSG), 7,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), classname, waitfor_client_users);
-	  if (is_classname_alloced)
-	    {
-	      free_and_init (classname);
-	    }
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-	}
-      break;
-
-    case LOCK_RESOURCE_INSTANCE:
-      if (OID_ISTEMP (&entry_ptr->res_head->key.class_oid))
-	{
-	  classname = NULL;
-	}
-      else
-	{
-	  OID real_class_oid;
-	  if (OID_IS_VIRTUAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.class_oid))
-	    {
-	      OID_GET_REAL_CLASS_OF_DIR_OID (&entry_ptr->res_head->key.class_oid, &real_class_oid);
-	    }
-	  else
-	    {
-	      COPY_OID (&real_class_oid, &entry_ptr->res_head->key.class_oid);
-	    }
-	  if (heap_get_class_name (thread_p, &real_class_oid, &classname) != NO_ERROR)
-	    {
-	      /* ignore */
-	      er_clear ();
-	    }
-	}
-
-      if (classname != NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_CLASSOF_MSG : ER_LK_OBJECT_TIMEOUT_CLASSOF_MSG), 10,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, classname,
-		  waitfor_client_users);
-	  free_and_init (classname);
-	}
-      else
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-		  ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
-		  entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-		  lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-		  entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-	}
-      break;
-
-    case LOCK_RESOURCE_TRANSACTION:
-      /* No class to name; emit the simple message like the INSTANCE branch with a NULL classname. */
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE,
-	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 9,
+	      ((isdeadlock_timeout) ? ER_LK_OBJECT_DL_TIMEOUT_SIMPLE_MSG : ER_LK_OBJECT_TIMEOUT_SIMPLE_MSG), 7,
 	      entry_ptr->tran_index, client_user_name, client_host_name, client_pid,
-	      lock_to_lockmode_string (entry_ptr->blocked_mode), entry_ptr->res_head->key.oid.volid,
-	      entry_ptr->res_head->key.oid.pageid, entry_ptr->res_head->key.oid.slotid, waitfor_client_users);
-      break;
-
-    default:
-      break;
+	      lock_to_lockmode_string (entry_ptr->blocked_mode), resource_desc, waitfor_client_users);
     }
 
   if (waitfor_client_users && waitfor_client_users != waitfor_client_users_default)

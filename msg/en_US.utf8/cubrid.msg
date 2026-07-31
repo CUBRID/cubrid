@@ -142,7 +142,7 @@ $set 5 MSGCAT_SET_ERROR
 70 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in classname hash table.
 71 Internal error: Class with name "%1$s" and oid = %2$d|%3$d|%4$d does not exist in its heap.
 72 Your transaction (index %1$d, %2$s@%3$s|%4$d) has been unilaterally aborted by the system.
-73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d. You are waiting for user(s) %9$s to finish.
+73 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s. You are waiting for user(s) %7$s to finish.
 74 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s. You are waiting for user(s) %7$s to finish.
 75 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s. You are waiting for user(s) %10$s to finish.
 76 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s on page %6$d|%7$d. You are waiting for user(s) %8$s to release the page lock.
@@ -1036,7 +1036,7 @@ $ LOADDB
 963 Broker error.
 964 The result set handle is closed.
 965 Cannot use duplicate attribute names in index key list. Attribute name '%1$s' listed more than once.
-966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on object %6$d|%7$d|%8$d because of deadlock. You are waiting for user(s) %9$s to finish.
+966 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 967 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on class %6$s because of deadlock. You are waiting for user(s) %7$s to finish.
 968 Your transaction (index %1$d, %2$s@%3$s|%4$d) timed out waiting on %5$s lock on instance %6$d|%7$d|%8$d of class %9$s because of deadlock. You are waiting for user(s) %10$s to finish.
 969 Server bit platform (%1$d) is different from client bit platform (%2$d).
@@ -2172,6 +2172,10 @@ $set 14 MSGCAT_SET_LOCK
 44 Index name: %1$s\n
 45 Object type: Generic object for Repeatable Read consistency.\n
 46 MVCC info: insert ID = %1$s, delete ID = %2$s.\n
+47 object %1$d|%2$d|%3$d
+48 class %1$s
+49 instance %1$d|%2$d|%3$d of class %4$s
+50 the self-lock of transaction MVCCID %1$lld
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n
