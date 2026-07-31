@@ -3899,9 +3899,33 @@ numeric_coerce_num_to_dec_str (const DB_VALUE * num_value, char *dec_str)
    *    17-byte buffer capacity (~40 digits) < 3 iterations (48 digits) */
   p_digits = dec_str + TWICE_NUM_MAX_PREC - 16;
 
-  /* 
-   * maximum decimal digits for 17-byte numeric is 40. 
-   * 3 iterations cover up to 48 digits (16 * 3). 
+  /* 6. fast path: the coefficient fits in a single word, that is at most 20 digits (2^64 - 1).
+   *    the divisor is a compile time constant here, so the 64-bit division is compiled into a
+   *    multiplication and no 128-bit division is performed. */
+  if ((work_word[0] | work_word[1]) == 0)
+    {
+      const uint64_t pow10_16 = _gv_mul_normalize_pow10_lookup[15];
+      uint64_t word_val = work_word[NUMERIC_AS_WORDS - 1];
+      uint64_t upper_digits;
+
+      if (word_val < pow10_16)
+	{
+	  /* up to 16 digits: a single block, no division at all */
+	  numeric_pack_digits4_ascii (p_digits, word_val);
+	  return;
+	}
+
+      /* 17 to 20 digits: split into the low 16 digits and the 1 to 4 digits above them */
+      upper_digits = word_val / pow10_16;
+      numeric_pack_digits4_ascii (p_digits, word_val - upper_digits * pow10_16);
+      numeric_pack_digits4_ascii (p_digits - 16, upper_digits);
+
+      return;
+    }
+
+  /*
+   * maximum decimal digits for 17-byte numeric is 40.
+   * 3 iterations cover up to 48 digits (16 * 3).
    */
   for (i = 0; i < NUMERIC_AS_WORDS; i++)
     {
@@ -5279,6 +5303,7 @@ static uint64_t
 float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uint64_t divisor)
 {
   uint64_t rem10 = 0;
+  uint64_t quotient = 0;
   int i = 0;
 
   uint128_t temp = 0;
@@ -5287,8 +5312,9 @@ float_numeric_div_pow10 (uint64_t * dbv_buf, int calc_words, int calc_bytes, uin
   for (i = 0; i < calc_words; i++)
     {
       temp = ((uint128_t) rem10 << 64) | word_ptr[i];
-      word_ptr[i] = (uint64_t) (temp / divisor);
-      rem10 = (uint64_t) (temp % divisor);
+      quotient = (uint64_t) (temp / divisor);
+      rem10 = (uint64_t) (temp - (uint128_t) quotient * divisor);
+      word_ptr[i] = quotient;
     }
 
   return rem10;
