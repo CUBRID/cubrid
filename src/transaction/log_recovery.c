@@ -4139,7 +4139,15 @@ log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes, 
   if (LSA_ISNULL (&last_parent_lsa))
     {
       /* no run postpones before system op. stop at start postpone. */
-      assert (LSA_EQ (&iter_lsa, postpone_start_lsa));
+      if (!LSA_EQ (&iter_lsa, postpone_start_lsa))
+	{
+	  assert (LSA_LT (&iter_lsa, postpone_start_lsa));
+	  _er_log_debug (ARG_FILE_LINE,
+			 "log_recovery_abort_interrupted_sysop: trid=%d walk overshot start-postpone: "
+			 "iter_lsa=%lld|%d, postpone_start_lsa=%lld|%d, undo_nxlsa=%lld|%d\n",
+			 tdes->trid, LSA_AS_ARGS (&iter_lsa), LSA_AS_ARGS (postpone_start_lsa),
+			 LSA_AS_ARGS (&tdes->undo_nxlsa));
+	}
       last_parent_lsa = *postpone_start_lsa;
     }
 
