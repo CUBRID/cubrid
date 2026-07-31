@@ -19733,6 +19733,17 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   assert (cond != NULL && cond->node_type == PT_EXPR);
 
+  /* Only the first predicate is translated below, so a second one would be dropped without a diagnostic. The
+   * parser gate admits a single predicate, but rewrites between there and here can append to the list -- LIMIT
+   * becomes inst_num() <= n during semantic check, for one. Those forms are excluded at the gate; reject here
+   * too so any future appender surfaces as an error instead of a silently unenforced condition. */
+  if (cond->next != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote DELETE subquery: only a single WHERE predicate is supported");
+      return NULL;
+    }
+
   /* operator -> remote WHERE SQL text (fixed safe set; IN / = ANY push per-row equality) */
   switch (cond->info.expr.op)
     {
@@ -19767,6 +19778,10 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
   else if (arg1 != NULL && arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
 	   && arg1->info.dot.arg2->node_type == PT_NAME)
     {
+      /* Only the trailing attribute survives here. That the qualifier names the delete target is established by
+       * the parser gate (pt_convert_dblink_dml_query); it is not re-checked at this point because by now name
+       * resolution has rewritten the dotted name and the spec's range variable no longer lines up with the
+       * qualifier as written, so the comparison cannot be repeated naively. */
       key_col = arg1->info.dot.arg2->info.name.original;
     }
   if (key_col == NULL)

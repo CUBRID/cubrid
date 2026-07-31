@@ -11935,6 +11935,81 @@ pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
   return node;
 }
 
+/*
+ * pt_dblink_delete_target_range_name () - name the DELETE target can be qualified with: its alias when one is
+ *   declared, otherwise the table name (declaring an alias replaces the table name as the correlation name).
+ */
+static const char *
+pt_dblink_delete_target_range_name (PT_NODE * spec)
+{
+  if (spec == NULL)
+    {
+      return NULL;
+    }
+
+  if (spec->info.spec.range_var != NULL && spec->info.spec.range_var->node_type == PT_NAME)
+    {
+      return spec->info.spec.range_var->info.name.original;
+    }
+
+  if (spec->info.spec.entity_name != NULL && spec->info.spec.entity_name->node_type == PT_NAME)
+    {
+      return spec->info.spec.entity_name->info.name.original;
+    }
+
+  return NULL;
+}
+
+/*
+ * pt_dblink_delete_qualifier_names_target () - true when the WHERE left-hand side is either unqualified or
+ *   qualified with the DELETE target's own correlation name. *bad_qualifier is set to the offending name when it
+ *   can be named, NULL when the shape itself is the problem.
+ *
+ *   pt_to_delete_xasl_remote_subquery keeps only the trailing attribute of a dotted name, so anything this
+ *   function cannot verify must be kept away from the sink. A local target gets the equivalent check from name
+ *   resolution; a remote spec does not, because pt_find_name_in_spec() reports every name as found there -- the
+ *   local server holds no schema for the remote table. Nested qualifiers (a.b.c) therefore return false rather
+ *   than being skipped: the qualifier is not a plain name, so it cannot be compared, and letting it through
+ *   deletes against whatever the trailing attribute happens to name.
+ */
+static bool
+pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualifier)
+{
+  PT_NODE *cond = node->info.delete_.search_cond;
+  PT_NODE *arg1, *qual;
+  const char *range_name;
+
+  *bad_qualifier = NULL;
+
+  if (cond == NULL || cond->node_type != PT_EXPR)
+    {
+      return true;
+    }
+
+  arg1 = cond->info.expr.arg1;
+  if (arg1 == NULL || arg1->node_type != PT_DOT_)
+    {
+      return true;		/* unqualified -- nothing to compare */
+    }
+
+  qual = arg1->info.dot.arg1;
+  if (qual == NULL || qual->node_type != PT_NAME)
+    {
+      return false;		/* nested qualifier: not a plain name, cannot be verified */
+    }
+
+  *bad_qualifier = qual->info.name.original;
+
+  range_name = pt_dblink_delete_target_range_name (node->info.delete_.spec);
+  if (range_name != NULL && intl_identifier_casecmp (*bad_qualifier, range_name) == 0)
+    {
+      *bad_qualifier = NULL;
+      return true;
+    }
+
+  return false;
+}
+
 static void
 pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -12017,7 +12092,11 @@ pt_convert_dblink_delete_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    *
    * spec->next == NULL is required as well: the sink only ever pushes a single-table DELETE, so a second FROM
    * spec (DELETE remote_t FROM remote_t@conn, local_t2 WHERE ...) would be dropped silently and the remote rows
-   * deleted without the join the statement asks for. Keep such statements on the existing rejection. */
+   * deleted without the join the statement asks for. Keep such statements on the existing rejection.
+   *
+   * LIMIT and a mismatched WHERE qualifier are rejected in pt_convert_dblink_dml_query instead of here: this gate
+   * cannot yet tell the local-subquery form from a same-server all-remote one, and both of those keep working
+   * through full pushdown, so diagnosing them here would break them. */
   if (remote_del == 1 && local_del == 0 && node->info.delete_.spec->next == NULL
       && pt_dblink_delete_where_is_inscope (node))
     {
@@ -12294,6 +12373,42 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       if (cond_has_remote_spec || !(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
 	{
 	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+      else
+	{
+	  /* Confirmed sink form. Two shapes are diagnosed only now, because a same-server all-remote statement
+	   * reaches this block too and keeps working through full pushdown -- rejecting them at the gate above
+	   * would break it. */
+	  const char *bad_qualifier;
+
+	  if (node->info.delete_.limit != NULL)
+	    {
+	      /* One statement becomes one remote DELETE per local value, so there is no single statement to cap
+	       * and the local side cannot tell how many remote rows a value removes. LIMIT would also be invisible
+	       * to the shape gate, which runs before semantic check turns it into an inst_num() predicate. */
+	      PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery does not support LIMIT");
+	      return;
+	    }
+
+	  if (!pt_dblink_delete_qualifier_names_target (node, &bad_qualifier))
+	    {
+	      char errmsg[256];
+
+	      if (bad_qualifier != NULL)
+		{
+		  snprintf (errmsg, sizeof (errmsg),
+			    "dblink: remote DELETE with a local subquery requires the WHERE qualifier to name the "
+			    "delete target, but \"%s\" does not", bad_qualifier);
+		}
+	      else
+		{
+		  snprintf (errmsg, sizeof (errmsg),
+			    "dblink: remote DELETE with a local subquery does not support a multi-part qualifier "
+			    "on the WHERE predicate");
+		}
+	      PT_ERROR (parser, upd_spec, errmsg);
+	      return;
+	    }
 	}
     }
 
