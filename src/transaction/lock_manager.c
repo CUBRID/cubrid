@@ -3536,7 +3536,11 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (thread_p->type != TT_LOADDB);
+  /* Load workers must not lock objects; they rely on the session transaction's BU_LOCK (CBRD-23375; see the
+   * TT_LOADDB handling in lock_object and the lock-state readers). Transaction self-locks are the one uniform
+   * exception: the key is the worker's own batch-transaction MVCCID, so the request never waits, and
+   * lock_unlock_all releases it when the batch transaction ends (load_session.cpp). */
+  assert (thread_p->type != TT_LOADDB || is_transaction_lock);
 
   thrd_entry = thread_p;
 
