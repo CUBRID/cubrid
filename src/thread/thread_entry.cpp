@@ -81,6 +81,8 @@ namespace cubthread
   entry::entry ()
   // public:
     : index (-1)
+    , pgbuf_fix_req_cnt (0)
+    , pgbuf_pg_unfix_cnt (0)
     , type (TT_NONE)
     , emulate_tid ()
     , client_id (-1)
@@ -144,6 +146,8 @@ namespace cubthread
     , m_uses_px_stats (false)
     , m_is_private_lru_enabled (false)
     , m_holder_anchor (NULL)
+    , uuidv7_last_ms (0)
+    , uuidv7_seq (0)
       // private:
     , m_id ()
     , m_error ()
@@ -202,6 +206,7 @@ namespace cubthread
     tran_entries[THREAD_TS_HFID_TABLE] = NULL;
     tran_entries[THREAD_TS_XCACHE] = NULL;
     tran_entries[THREAD_TS_FPCACHE] = NULL;
+    tran_entries[THREAD_TS_SERIAL_CACHE] = NULL;
 
     _unload_cnt_parallel_process = NO_UNLOAD_PARALLEL_PROCESSIING;
     _unload_parallel_process_idx = NO_UNLOAD_PARALLEL_PROCESSIING;
@@ -235,6 +240,7 @@ namespace cubthread
     tran_entries[THREAD_TS_XCACHE] = lf_tran_request_entry (&xcache_Ts);
     tran_entries[THREAD_TS_FPCACHE] = lf_tran_request_entry (&fpcache_Ts);
     tran_entries[THREAD_TS_DWB_SLOTS] = lf_tran_request_entry (&dwb_slots_Ts);
+    tran_entries[THREAD_TS_SERIAL_CACHE] = lf_tran_request_entry (&serial_Cache_Ts);
   }
 
   void

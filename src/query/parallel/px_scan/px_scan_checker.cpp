@@ -63,6 +63,17 @@ namespace parallel_scan
       case PT_VARIANCE:
       case PT_VAR_POP:
       case PT_VAR_SAMP:
+      case PT_AGG_BIT_AND:
+      case PT_AGG_BIT_OR:
+      case PT_AGG_BIT_XOR:
+      case PT_JSON_ARRAYAGG:
+      case PT_JSON_OBJECTAGG:
+      case PT_GROUP_CONCAT:
+      case PT_MEDIAN:
+      case PT_PERCENTILE_CONT:
+      case PT_PERCENTILE_DISC:
+      case PT_CUME_DIST:
+      case PT_PERCENT_RANK:
 	return true;
       default:
 	return false;
@@ -532,6 +543,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_LIST_MERGE);
       }
 
+    if (sibling->after_join_pred)
+      {
+	temp = check<is_outptr_list> (sibling->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
     if (sibling->if_pred)
       {
 	temp = check<is_outptr_list> (sibling->if_pred);
@@ -583,11 +603,9 @@ namespace parallel_scan
 	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
-	    int agg_cnt = 0;
 	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
-		agg_cnt++;
 		if (!is_buildvalue_opt_supported_function (agg_it->function))
 		  {
 		    buildvalue_opt = false;
@@ -599,10 +617,6 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-	      }
-	    if (agg_cnt != arg->outptr_list->valptr_cnt)
-	      {
-		buildvalue_opt = false;
 	      }
 	  }
 	break;
@@ -708,6 +722,15 @@ namespace parallel_scan
       {
 	set_flag (result, CANNOT_LIST_MERGE);
 	buildvalue_opt = false;
+      }
+
+    if (arg->after_join_pred)
+      {
+	temp = check<is_outptr_list> (arg->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
       }
 
     if (arg->if_pred)
@@ -825,7 +848,9 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated
+	 * scalar ones (precomp_owner_regu set), which recurse so inner scans parallelize. */
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
 	  }

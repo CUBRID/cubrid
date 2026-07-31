@@ -185,6 +185,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     + " as its return type");
                 }
 
+                if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
+                    throw new SemanticError( // s438
+                            Misc.getLineColumnOf(node.ctx),
+                            "a function that returns a query result set cannot be called from PL/CSQL."
+                                    + " Use JDBC CallableStatement to call it");
+                }
+
                 Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
 
                 gfc.decl =
@@ -212,7 +219,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 assert node instanceof TypeSpecPercent;
                 TypeSpecPercent tsp = (TypeSpecPercent) node;
-                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL) {
+                if (tsp.typeVisitMode == TYPE_VISIT_NORMAL
+                        || (ct.colType.type == DBType.DB_NUMERIC
+                                && (tsp.typeVisitMode == TYPE_VISIT_PARAM_OUT
+                                        || tsp.typeVisitMode == TYPE_VISIT_RETURN))) {
                     tsp.type =
                             DBTypeAdapter.getDeclType(
                                     iStore, ct.colType.type, ct.colType.prec, ct.colType.scale);
@@ -243,7 +253,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public Unit visitCreate_routine(Create_routineContext ctx) {
         previsitRoutine_definition(ctx.routine_definition(), null);
         DeclRoutine decl = visitRoutine_definition(ctx.routine_definition());
-        return new Unit(ctx, autonomousTransaction, connectionRequired, decl, spRevision);
+        return new Unit(ctx, connectionRequired, decl, spRevision);
     }
 
     @Override
@@ -310,7 +320,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -327,7 +337,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_IN;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -347,7 +357,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         String name = Misc.getNormalizedText(ctx.parameter_name());
         TypeSpec typeSpec;
         try {
-            typeVisitMode = TYPE_VISIT_PARAM;
+            typeVisitMode = TYPE_VISIT_PARAM_OUT;
             typeSpec = (TypeSpec) visit(ctx.type_spec());
         } finally {
             typeVisitMode = TYPE_VISIT_NORMAL;
@@ -1314,28 +1324,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitPragma_declaration(Pragma_declarationContext ctx) {
-        assert ctx.AUTONOMOUS_TRANSACTION() != null; // by syntax
-
-        // currently, only the Autonomous Transaction is
-        // allowed only in the top-level declarations
-        if (symbolStack.getCurrentScope().level != SymbolStack.LEVEL_MAIN + 1) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx), // s013
-                    "AUTONOMOUS_TRANSACTION can only be declared at the top level");
-        }
-
-        throw new SemanticError(
-                Misc.getLineColumnOf(ctx), "AUTONOMOUS_TRANSACTION is not supported yet");
-
-        /*
-        // just turn on the flag and return nothing
-        autonomousTransaction = true;
-        return null;
-         */
-    }
-
-    @Override
     public AstNode visitConstant_declaration(Constant_declarationContext ctx) {
 
         String name = Misc.getNormalizedText(ctx.identifier());
@@ -1437,10 +1425,8 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         try {
             if (ctx.LANGUAGE() != null
                     && symbolStack.getCurrentScope().level > SymbolStack.LEVEL_MAIN) {
-                int[] lineColumn = Misc.getLineColumnOf(ctx);
-                throw new SyntaxError(
-                        lineColumn[0],
-                        lineColumn[1],
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx),
                         "illegal keywords LANGUAGE PLCSQL for a local procedure/function");
             }
             String name = Misc.getNormalizedText(ctx.routine_uniq_name().name);
@@ -1647,6 +1633,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                         + "' uses unsupported type "
                                         + sqlType
                                         + " as its return type");
+                    }
+
+                    if (fs.retType.type == com.cubrid.jsp.data.DBType.DB_RESULTSET) {
+                        throw new SemanticError( // s439
+                                Misc.getLineColumnOf(ctx),
+                                "a function that returns a query result set cannot be called from PL/CSQL."
+                                        + " Use JDBC CallableStatement to call it");
                     }
 
                     Type retType = DBTypeAdapter.getValueType(iStore, fs.retType.type);
@@ -2378,7 +2371,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     @Override
-    public AstNode visitOpen_for_statement(Open_for_statementContext ctx) {
+    public StmtOpenFor visitOpen_for_statement(Open_for_statementContext ctx) {
 
         connectionRequired = true;
 
@@ -2394,17 +2387,35 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     "identifier in an OPEN-FOR statement must be of SYS_REFCURSOR type");
         }
 
-        SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
-        assert sws != null;
-        assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
-        if (sws.intoTargetStrs != null) {
-            throw new SemanticError(
-                    Misc.getLineColumnOf(ctx.static_sql()), // s043
-                    "SQL in an OPEN-FOR statement may not have an INTO clause");
-        }
-        StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+        if (ctx.static_sql() == null) {
+            // dynamic case
 
-        return new StmtOpenFor(ctx, refCursor, staticSql);
+            Expr dynSql = visitExpression(ctx.dyn_sql().expression());
+
+            NodeList<Expr> usedExprList;
+            Restricted_using_clauseContext usingClause = ctx.restricted_using_clause();
+            if (usingClause == null) {
+                usedExprList = null;
+            } else {
+                usedExprList = visitRestricted_using_clause(usingClause);
+            }
+
+            return new StmtOpenForDynamic(ctx, refCursor, dynSql, usedExprList);
+        } else {
+            // static case
+
+            SqlSemantics sws = getSqlSemanticsFromServer(ctx.static_sql());
+            assert sws != null;
+            assert sws.kind == ServerConstants.CUBRID_STMT_SELECT; // by syntax
+            if (sws.intoTargetStrs != null) {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx.static_sql()), // s043
+                        "SQL in an OPEN-FOR statement may not have an INTO clause");
+            }
+            StaticSql staticSql = checkAndConvertStaticSql(true, sws, ctx.static_sql());
+
+            return new StmtOpenForStatic(ctx, refCursor, staticSql);
+        }
     }
 
     @Override
@@ -2704,8 +2715,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     }
 
     private static final int TYPE_VISIT_NORMAL = 0;
-    private static final int TYPE_VISIT_PARAM = 1;
-    private static final int TYPE_VISIT_RETURN = 2;
+    private static final int TYPE_VISIT_PARAM_IN = 1; // IN parameter (and cursor parameter)
+    private static final int TYPE_VISIT_PARAM_OUT = 2; // OUT or IN OUT parameter
+    private static final int TYPE_VISIT_RETURN = 3;
 
     // --------------------------------------------------------
     // Private
@@ -2739,7 +2751,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private int exHandlerDepth;
 
-    private boolean autonomousTransaction = false;
     private boolean connectionRequired = false;
 
     private boolean controlFlowBlocked;
@@ -2922,7 +2933,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
                 Type retType = retTypeSpec.type;
                 if (scopeLevel == SymbolStack.LEVEL_MAIN) { // at top level
-                    if (retType == Type.BOOLEAN || retType == Type.SYS_REFCURSOR) {
+                    if (retType == Type.BOOLEAN) {
                         throw new SemanticError(
                                 Misc.getLineColumnOf(ctx.type_spec()), // s065
                                 "type "
