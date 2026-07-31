@@ -68,6 +68,7 @@
 #include "db_session.h"
 #include "cas_log.h"
 #include "ddl_log.h"
+#include "csql_sql_log.h"
 #include "network_histogram.hpp"
 #include "host_lookup.h"
 #include "network_interface_cl.h"
@@ -3328,6 +3329,9 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 
   logddl_init (APP_NAME_CSQL);
   logddl_check_ddl_audit_param ();
+
+  /* route SP-issued SQL logging into csql.err */
+  csql_sql_log_sp_init ();
 
   if (get_host_ip (ip_addr) == 0)
     {
