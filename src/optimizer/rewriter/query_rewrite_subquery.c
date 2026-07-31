@@ -73,9 +73,7 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
-  /* reject anything whose flattening would change cardinality or semantics. No INST_NUM / ROWNUM guard is
-   * needed: pt_check_instnum_pre () already rejects those anywhere inside a subquery, and ORDERBY_NUM needs
-   * an ORDER BY, rejected here. */
+  /* reject anything whose flattening would change cardinality or semantics */
   if (subq->info.query.q.select.group_by != NULL
       || subq->info.query.q.select.having != NULL
       || subq->info.query.q.select.connect_by != NULL
@@ -84,6 +82,16 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       || subq->info.query.order_by != NULL
       || subq->info.query.orderby_for != NULL
       || subq->info.query.limit != NULL || pt_has_aggregate (parser, subq) || pt_has_analytic (parser, subq))
+    {
+      return false;
+    }
+
+  /* INST_NUM / ROWNUM is legal in a nested subquery (it restarts per outer row), but once lifted into ON
+   * it is re-checked in the outer scope and rejected -- unnesting would turn a working query into an
+   * error. The walker stops at query-node scope boundaries, so probe the lifted clauses, not 'subq'
+   * itself; a deeper subquery's own ROWNUM moves intact inside its scope and rightly stays invisible. */
+  if (pt_has_inst_num (parser, subq->info.query.q.select.where)
+      || pt_has_inst_num (parser, subq->info.query.q.select.list))
     {
       return false;
     }
