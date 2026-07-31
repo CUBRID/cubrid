@@ -10585,6 +10585,8 @@ exit_on_error:
   return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
 }
 
+#define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
+
 /*
  * heap_attrinfo_read_dbvalues_lazy () - Defer reading of predicate columns
  *   return: NO_ERROR
@@ -10606,8 +10608,6 @@ exit_on_error:
  *   HEAP_LAZY_CALIBRATE_ROWS rows are measured: saving less than half a column read per row makes this scan
  *   give up on lazy (attr_info->lazy_disabled) for its remaining rows.
  */
-#define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
-
 int
 heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
 				  HEAP_CACHE_ATTRINFO * attr_info)
@@ -10633,6 +10633,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
   if (recdes == NULL || recdes->data == NULL)
     {
       /* no record to defer the reads from - read everything now, exactly as before */
+      attr_info->lazy_recdes = NULL;	/* defensive: leave no stale record armed */
       return heap_attrinfo_read_dbvalues (thread_p, inst_oid, recdes, attr_info);
     }
 
@@ -10678,7 +10679,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
       deferred++;
     }
 
-  /* arm lazy mode: heap_attrinfo_access () will read from this record */
+  /* arm lazy mode: heap_attrvalue_peek_lazy () will read from this record */
   attr_info->lazy_recdes = recdes;
 
   /* account this row, then judge once the sample is in: saving less than half a column read per row means

@@ -32,8 +32,8 @@ typedef enum
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
   HEAP_WRITTEN_LOB_ATTRVALUE,
-  HEAP_LAZY_ATTRVALUE		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes.
-				 * Behaves like HEAP_UNINIT_ATTRVALUE everywhere except heap_attrinfo_access (). */
+  HEAP_LAZY_ATTRVALUE		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes
+				 * by heap_attrvalue_peek_lazy () */
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -73,7 +73,7 @@ struct heap_cache_attrinfo
   int num_values;		/* Number of desired attribute values */
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
   RECDES *lazy_recdes;		/* non-NULL: lazy mode; record from which HEAP_LAZY_ATTRVALUE attrs are read
-				 * on demand by heap_attrinfo_access (). Set by heap_attrinfo_read_dbvalues_lazy (). */
+				 * on demand by heap_attrvalue_peek_lazy (). Set by heap_attrinfo_read_dbvalues_lazy (). */
   /* How much deferring actually saves depends on the data, so it is measured: the counters below accumulate
    * over the scan's first HEAP_LAZY_CALIBRATE_ROWS rows (see heap_attrinfo_read_dbvalues_lazy ()). */
   INT64 lazy_rows;		/* rows prepared in lazy mode */

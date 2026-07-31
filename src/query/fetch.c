@@ -4008,15 +4008,25 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       if (regu_var->value.attr_descr.cache_attrinfo != NULL
 	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
 	{
-	  HEAP_ATTRVALUE *slot =
-	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	  HEAP_ATTRVALUE *slot = regu_var->value.attr_descr.cache_slot;
 	  if (slot == NULL)
 	    {
+	      slot = heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	      if (slot == NULL)
+		{
+		  er_log_debug (ARG_FILE_LINE, "fetch_peek_dbval_slow: unknown attrid = %d",
+				regu_var->value.attr_descr.id);
+		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  goto exit_on_error;
+		}
+	    }
+	  if (slot->state == HEAP_UNINIT_ATTRVALUE)
+	    {
+	      /* a failed deferred read already set the error - propagate it */
 	      goto exit_on_error;
 	    }
-	  /* A first-term column is already read in place by heap_attrinfo_read_dbvalues_lazy (), so there is
-	   * nothing to read here and no slot to remember. Any other column is deferred: read it now and keep
-	   * its slot so later rows skip the locate. cache_dbvalp enables REGU_VARIABLE_FAST_PEEK below. */
+	  /* a first-term column is already read in place on every row; deferred columns are read here and
+	   * keep their slot so later rows skip the locate */
 	  if (!slot->lazy_always_eager
 	      && heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo) == NULL)
 	    {
