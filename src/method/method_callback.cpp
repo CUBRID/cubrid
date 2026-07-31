@@ -20,6 +20,7 @@
 
 #include "dbi.h"
 #include "ddl_log.h"
+#include "method_sql_log.hpp"
 
 #include "pl_struct_compile.hpp"
 #include "method_query_util.hpp"
@@ -230,8 +231,12 @@ namespace cubmethod
 
 	/* DDL audit */
 	DB_SESSION *hdl_session = handler->get_db_session();
+	HIDE_PWD_INFO_PTR hide_pwd = ((hdl_session && hdl_session->parser) ? & (hdl_session->parser->hide_pwd_info) : NULL);
 	logddl_set_callback_stmt (handler->get_statement_type(), (char *) sql.c_str (), sql.size (), m_error_ctx.get_error (),
-				  ((hdl_session && hdl_session->parser) ?  & (hdl_session->parser->hide_pwd_info) : NULL));
+				  hide_pwd);
+
+	/* SP-issued SQL log (prepare) */
+	sql_log_prepare (handler->get_id (), sql.c_str (), hide_pwd);
       }
 
     if (m_error_ctx.has_error())
@@ -285,6 +290,10 @@ namespace cubmethod
 		m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	      }
 	  }
+
+	/* SP-issued SQL log (bind + execute) */
+	sql_log_bind (request.handler_id, request.param_values);
+	sql_log_execute (request.handler_id, handler->get_execute_info ().num_affected, error);
 
 	/* DDL audit */
 	logddl_write_end ();
