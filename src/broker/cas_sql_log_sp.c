@@ -44,7 +44,9 @@ cas_sql_log_sp_emit (const char *body)
   cas_log_write (0, false, "%s", body);
 }
 
-static const cubmethod::sql_log_writer cas_sql_log_sp_writer = {
+static const
+  cubmethod::sql_log_writer
+  cas_sql_log_sp_writer = {
   cas_sql_log_sp_is_enabled,
   cas_sql_log_sp_emit
 };

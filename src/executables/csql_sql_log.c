@@ -44,7 +44,9 @@ csql_sql_log_sp_emit (const char *body)
   _er_log_debug (ARG_FILE_LINE, "%s\n", body);
 }
 
-static const cubmethod::sql_log_writer csql_sql_log_sp_writer = {
+static const
+  cubmethod::sql_log_writer
+  csql_sql_log_sp_writer = {
   csql_sql_log_sp_is_enabled,
   csql_sql_log_sp_emit
 };
