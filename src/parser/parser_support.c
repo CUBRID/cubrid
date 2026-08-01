@@ -12431,11 +12431,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    *
    * local_cnt > 0 and distinct_cnt == 1 don't establish this alone -- both hold whether or not the same-server
    * remote spec got converted. Walk the WHERE for a surviving (cross-server) spec instead: nothing rewrites
-   * those, and left in place they'd reach the optimizer half-built. */
+   * those, and left in place they'd reach the optimizer half-built.
+   *
+   * cond_has_remote_spec/remote_spec_known are scoped to cover the diagnostic block below too, so a statement
+   * that lands in both (e.g. a same-server mixed subquery, converted or not) only pays for the walk once. */
+  bool cond_has_remote_spec = false;
+  bool remote_spec_known = false;
+
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
     {
-      bool cond_has_remote_spec = false;
-
       /* Single FROM spec is a precondition of this sink, established at the only site that sets the flag
        * (pt_convert_dblink_delete_query). Asserted rather than re-checked so a future second set site -- the
        * UPDATE extension this enum leaves room for -- fails loudly here instead of silently dropping a spec. */
@@ -12443,6 +12447,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 
       parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &cond_has_remote_spec,
 			NULL, NULL);
+      remote_spec_known = true;
 
       if (cond_has_remote_spec || !(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
 	{
@@ -12486,9 +12491,39 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
+  /* Diagnose two specific reasons the DELETE carve-out declined this statement, ahead of the generic
+   * catch-all below -- local_cnt > 0 is required on both so a fully-remote statement that already works
+   * through full pushdown is never misdiagnosed here. */
+  if (node->node_type == PT_DELETE && remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
+      && pt_dblink_delete_where_is_inscope (node))
+    {
+      if (node->info.delete_.spec->next != NULL)
+	{
+	  PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery supports only a single "
+		    "FROM table");
+	  return;
+	}
+
+      if (!remote_spec_known)
+	{
+	  parser_walk_tree (parser, node->info.delete_.search_cond, pt_dblink_find_remote_spec, &cond_has_remote_spec,
+			    NULL, NULL);
+	}
+
+      if (cond_has_remote_spec)
+	{
+	  PT_ERROR (parser, upd_spec, "dblink: remote DELETE with a local subquery only supports a WHERE "
+		    "subquery that mixes local tables with a remote table on the delete target's own server");
+	  return;
+	}
+    }
+
   if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
     {
-      PT_ERROR (parser, upd_spec ? upd_spec : into_spec, "dblink: local mixed remote DML is not allowed");
+      PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
+		"dblink: this combination of local and remote references is not supported (some forms are, such "
+		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
+		"WHERE subquery)");
       return;
     }
 
