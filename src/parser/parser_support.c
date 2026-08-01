@@ -11944,10 +11944,10 @@ pt_dblink_delete_is_driving_pred (PT_NODE * cond)
  * pt_dblink_find_remote_spec () - parser_walk_tree pre-function: set *arg to true when the subtree still holds a
  *   spec carrying a remote server name (tbl@srv).
  *
- *   Only the INSERT SELECT sink rewrites such specs into dblink derived tables (pt_check_sub_query_spec); the
- *   remote DELETE sink does not.  Name resolution deliberately leaves flat_entity_list / spec.id unset on a
- *   remote spec because it expects that rewrite to happen, so a remote spec left inside a DELETE WHERE subquery
- *   reaches the optimizer half-built and crashes there.  Used below to keep the DELETE carve-out off that shape.
+ *   pt_check_sub_query_spec (both INSERT SELECT and, below, DELETE) rewrites such a spec into a dblink derived
+ *   table when it's on the same server as the DML target; a cross-server spec is never handed to it. Name
+ *   resolution leaves flat_entity_list / spec.id unset on a remote spec expecting that rewrite, so any spec this
+ *   walk still finds would reach the optimizer half-built and crash. Used below to keep the carve-out off that.
  */
 static PT_NODE *
 pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -12396,7 +12396,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 {
   int i;
   int tmp_server_cnt = snl->server_cnt;
-  int sub_sel_server_cnt = 0;	/* remote server count found in INSERT SELECT subquery */
+  int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12426,6 +12426,20 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       break;
     case PT_DELETE:
       upd_spec = node->info.delete_.spec;
+      if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
+	{
+	  /* Detect a remote spec in the WHERE subquery, mirroring INSERT's sub_sel_server_cnt; the actual
+	   * same-server-mixed conversion is further down, mirroring the INSERT_SELECT post-switch block.
+	   * Scoped to driving->arg2 so the delta reflects the subquery alone; the broader upd_spec walk
+	   * below re-walks the whole statement and adds to the same counters, harmlessly (those are never
+	   * relied on for an exact count). */
+	  PT_NODE *driving = pt_dblink_delete_and_tree_find_driving (node->info.delete_.search_cond);
+	  if (driving != NULL)
+	    {
+	      parser_walk_tree (parser, driving->info.expr.arg2, pt_get_server_name_list, snl, NULL, NULL);
+	      sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
+	    }
+	}
       break;
     case PT_UPDATE:
       upd_spec = node->info.update.spec;
@@ -12490,18 +12504,44 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	}
     }
 
-  /* remote DELETE + local subquery: keep the carve-out only when the WHERE subquery is purely local
-   * (references local tables, no second/other remote server, no dblink() function). Otherwise clear it so
-   * the existing guards below apply: same-server all-remote subquery falls through to full pushdown, while
-   * multi-remote (distinct_cnt >= 2) and dblink() forms are rejected.
+  /* Same-server mixed WHERE subquery (local + remote, all on the target server) -- mirrors the
+   * INSERT_SELECT block above. Convert the embedded remote spec(s) into dblink derived-table scans so
+   * the subquery compiles as an ordinary local-side query (join against a derived table); this needs no
+   * runtime change since the DELETE sink's aptr already compiles/executes whatever subquery
+   * pt_to_delete_xasl_remote_subquery is handed, generically. */
+  if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ && sub_sel_server_cnt > 0)
+    {
+      if (snl->local_cnt > 0 && snl->distinct_cnt == 1)
+	{
+	  PT_NODE *driving = pt_dblink_delete_and_tree_find_driving (node->info.delete_.search_cond);
+	  bool had_dblink_before = snl->has_dblink_query;
+
+	  if (driving != NULL)
+	    {
+	      parser_walk_tree (parser, driving->info.expr.arg2, pt_check_sub_query_spec, snl, NULL, NULL);
+	    }
+	  /* The rewrite marks the spec PT_DERIVED_DBLINK_TABLE, which pt_get_server_name_list treats like a
+	   * real dblink() call, flipping has_dblink_query. INSERT SELECT is exempt from the has_dblink_query
+	   * rejection below ("!= DBLINK_REMOTE_SINK_INSERT_SELECT"); DELETE isn't, so snapshot/restore instead
+	   * -- only a dblink() already present before this call still trips that rejection. */
+	  if (!had_dblink_before)
+	    {
+	      snl->has_dblink_query = false;
+	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
+	}
+    }
+
+  /* remote DELETE + local subquery: keep the carve-out only when no remote spec is left unconverted (the
+   * block above only converts same-server ones). Otherwise clear it: same-server all-remote falls through to
+   * full pushdown, multi-remote/dblink() forms are rejected.
    *
-   * The counters alone do not establish "purely local": local_cnt > 0 holds as soon as one local table is
-   * referenced and distinct_cnt == 1 holds when the only remote server is the target's, so a subquery mixing a
-   * local table with a same-server remote one satisfies both. Walk the WHERE clause for a surviving remote spec
-   * to exclude that shape -- the sink evaluates the subquery locally but nothing rewrites a remote spec inside it
-   * into a dblink derived table (pt_check_sub_query_spec runs for the INSERT SELECT sink only), so it would reach
-   * the optimizer half-built. Supporting the mixed shape is a separate change; here it keeps the pre-existing
-   * "local mixed remote DML is not allowed" rejection. */
+   * local_cnt > 0 and distinct_cnt == 1 don't establish this alone -- both hold whether or not the same-server
+   * remote spec got converted. Walk the WHERE for a surviving (cross-server) spec instead: nothing rewrites
+   * those, and left in place they'd reach the optimizer half-built. */
   if (snl->sink_kind == DBLINK_REMOTE_SINK_DELETE_LOCAL_SUBQ)
     {
       bool cond_has_remote_spec = false;
