@@ -11348,11 +11348,11 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  /* An unqualified server reference implicitly resolves to the current session user - the same
-   * rule CREATE SERVER uses to default an owner - so "srv" and "dba.srv" name one server when dba
-   * is the current user.  The name is resolved lazily and at most once per call (mirroring how
-   * server_find() in execute_statement.c defaults it) and released once after the loop, because a
-   * slot that turns out not to be a duplicate keeps the scan running. */
+  /* An unqualified server reference implicitly resolves to the current session user, the same way
+   * server_find() in execute_statement.c defaults an omitted owner at execution time, so "srv" and
+   * "dba.srv" name one server when dba is the current user.  The name is resolved lazily and at
+   * most once per call, and released once after the loop, because a slot that turns out not to be
+   * a duplicate keeps the scan running. */
   {
     const char *current_user_name = NULL;
     bool current_user_fetched = false;
