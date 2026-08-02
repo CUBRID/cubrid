@@ -11995,29 +11995,35 @@ pt_dblink_delete_target_range_name (PT_NODE * spec)
 }
 
 /*
- * pt_dblink_delete_qualifier_names_target () - true when the WHERE left-hand side is either unqualified or
- *   qualified with the DELETE target's own correlation name. *bad_qualifier is set to the offending name when it
- *   can be named, NULL when the shape itself is the problem.
+ * pt_dblink_delete_qualifier_names_target () - true when the driving predicate's left-hand side is either
+ *   unqualified or qualified with the DELETE target's own correlation name. *bad_qualifier names the offending
+ *   qualifier, or is NULL when the shape itself (a nested a.b.c) is the problem.
  *
- *   pt_to_delete_xasl_remote_subquery keeps only the trailing attribute of a dotted name, so anything this
- *   function cannot verify must be kept away from the sink. A local target gets the equivalent check from name
- *   resolution; a remote spec does not, because pt_find_name_in_spec() reports every name as found there -- the
- *   local server holds no schema for the remote table. Nested qualifiers (a.b.c) therefore return false rather
- *   than being skipped: the qualifier is not a plain name, so it cannot be compared, and letting it through
- *   deletes against whatever the trailing attribute happens to name.
+ *   Name resolution cannot do this for a remote spec -- pt_find_name_in_spec() reports every name as found
+ *   there, the local server holding no schema for the remote table -- while pt_to_delete_xasl_remote_subquery
+ *   keeps only the trailing attribute of a dotted name, so an unverifiable qualifier would delete against
+ *   whatever that attribute happens to name. Read the driving predicate rather than search_cond: with a
+ *   remote-only AND arm the root is PT_AND, whose arg1 is a conjunct rather than a PT_DOT_, and the qualifier
+ *   would never be compared.
  */
 static bool
 pt_dblink_delete_qualifier_names_target (PT_NODE * node, const char **bad_qualifier)
 {
-  PT_NODE *cond = node->info.delete_.search_cond;
+  PT_NODE *cond = pt_dblink_delete_and_tree_find_driving (node->info.delete_.search_cond);
   PT_NODE *arg1, *qual;
   const char *range_name;
 
   *bad_qualifier = NULL;
 
-  if (cond == NULL || cond->node_type != PT_EXPR)
+  /* The gate (pt_dblink_delete_where_is_inscope) established exactly one driving predicate before the sink was
+   * confirmed, and a driving predicate is always a PT_EXPR, so this lookup cannot come back empty here; a NULL
+   * means the gate and this lookup have drifted -- DBLINK_REMOTE_SINK_* leaves room for an UPDATE extension
+   * that would add a second site setting the flag. Fail closed rather than skipping the comparison: an
+   * unverified qualifier deletes remote rows the statement never named. */
+  assert (cond != NULL);
+  if (cond == NULL)
     {
-      return true;
+      return false;
     }
 
   arg1 = cond->info.expr.arg1;
