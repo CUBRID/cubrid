@@ -2261,11 +2261,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       /* Remove insert MVCCID and prev version lsa. */
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset. */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2280,7 +2280,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2312,7 +2313,7 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
        * helper->record is NOT populated for REC_BIGONE (the record body lives on overflow pages, and
        * vacuum_heap_prepare_record only reads the MVCC header from there), so the OOS flag must be
        * checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
 	{
 	  /* TEMP (CBRD-26668, ovf+oos spec change): hard-fail in BOTH debug and release. assert() is
 	   * compiled out under NDEBUG and assert_release() only logs an ER_NOTIFICATION, so neither halts
@@ -2356,11 +2357,11 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
       assert (helper->record.type == REC_HOME);
       update_record = &helper->record;
       start_p = update_record->data;
-      repid_and_flag_bits = OR_GET_MVCC_REPID_AND_FLAG (start_p);
-      mvcc_flags = (repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK;
+      repid_and_flag_bits = OR_GET_RECORD_REPID_AND_FLAGS (start_p);
+      mvcc_flags = OR_GET_MVCC_FLAGS (start_p);
 
       /* Skip bytes up to insid_offset */
-      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+      existing_data_p = start_p + mvcc_header_size_lookup[mvcc_flags];
       new_data_p = start_p + OR_MVCC_INSERT_ID_OFFSET;
       if (mvcc_flags & OR_MVCC_FLAG_VALID_DELID)
 	{
@@ -2375,7 +2376,8 @@ vacuum_heap_record_insid_and_prev_version (THREAD_ENTRY * thread_p, VACUUM_HEAP_
 	}
 
       /* Clear flag for valid insert MVCCID and prev version lsa. */
-      repid_and_flag_bits &= ~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_MVCC_FLAG_SHIFT_BITS);
+      repid_and_flag_bits &=
+	~((OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_PREV_VERSION) << OR_RECORD_FLAG_SHIFT_BITS);
       OR_PUT_INT (start_p, repid_and_flag_bits);
 
       /* Expect new_data_p != existing_data_p in most of the cases. */
@@ -2542,7 +2544,7 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
        * helper->record is NOT populated for REC_BIGONE (the body lives on overflow pages — note
        * this case logs helper->forward_recdes below, never helper->record), so the OOS flag must
        * be checked on helper->mvcc_header rather than by dereferencing the uninitialized helper->record. */
-      if (MVCC_GET_FLAG (&helper->mvcc_header) & OR_MVCC_FLAG_HAS_OOS)
+      if (RECORD_HEADER_HAS_OOS (&helper->mvcc_header))
 	{
 	  /* TEMP (CBRD-26668, ovf+oos spec change): assert() is compiled out under NDEBUG and
 	   * assert_release() only logs an ER_NOTIFICATION, so neither halts a release server. abort()
@@ -2940,12 +2942,12 @@ vacuum_rv_redo_vacuum_heap_page (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 
 	  /* Remove insert MVCCID */
 	  or_mvcc_get_header (&peek_record, &rec_header);
-	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+	  old_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 	  /* Clear insert MVCCID. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_INSID);
 	  /* Clear previous version. */
 	  MVCC_CLEAR_FLAG_BITS (&rec_header, OR_MVCC_FLAG_VALID_PREV_VERSION);
-	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+	  new_header_size = mvcc_header_size_lookup[MVCC_GET_FLAG (&rec_header) & OR_RECORD_MVCC_FLAG_MASK];
 
 	  /* Rebuild record */
 	  rebuild_record.type = peek_record.type;

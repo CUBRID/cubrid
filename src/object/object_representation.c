@@ -325,7 +325,7 @@ or_set_rep_id (RECDES * record, int repid)
   or_init (&orep, record->data, record->area_size);
   buf = &orep;
 
-  new_bits = OR_GET_MVCC_REPID_AND_FLAG (record->data);
+  new_bits = OR_GET_RECORD_REPID_AND_FLAGS (record->data);
 
   /* Remove old repid */
   new_bits &= ~OR_MVCC_REPID_MASK;
@@ -389,14 +389,14 @@ or_replace_chn (RECDES * record, int chn)
 }
 
 /*
- * or_mvcc_get_repid_and_flags () - Gets MVCC representation id and flags.
+ * or_get_record_repid_and_flags () - Gets record representation id and flags.
  *
- * return	   : MVCC flags.
+ * return	   : representation id and record flags.
  * buf (in/out) : or buffer
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
+or_get_record_repid_and_flags (OR_BUF * buf, int *error)
 {
   ASSERT_ALIGN (buf->ptr, INT_ALIGNMENT);
 
@@ -410,7 +410,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
 }
 
 /*
- * or_mvcc_set_repid_and_flags () - Set MVCC representation id and flags.
+ * or_set_record_repid_and_flags () - Set record representation id and flags.
  *
  * return	   : nothing
  * buf (in/out) : or buffer
@@ -419,7 +419,7 @@ or_mvcc_get_repid_and_flags (OR_BUF * buf, int *error)
  * error(out): NO_ERROR or error code
  */
 int
-or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_bit, int variable_offset_size)
+or_set_record_repid_and_flags (OR_BUF * buf, int record_flags, int repid, int bound_bit, int variable_offset_size)
 {
   int repid_and_flags;
 
@@ -433,7 +433,7 @@ or_mvcc_set_repid_and_flags (OR_BUF * buf, int mvcc_flag, int repid, int bound_b
     }
   OR_SET_VAR_OFFSET_SIZE (repid_and_flags, variable_offset_size);
 
-  repid_and_flags |= (mvcc_flag & OR_MVCC_FLAG_MASK) << OR_MVCC_FLAG_SHIFT_BITS;
+  repid_and_flags |= (record_flags & OR_RECORD_FLAG_MASK) << OR_RECORD_FLAG_SHIFT_BITS;
 
   return or_put_int (buf, repid_and_flags);
 }
@@ -5770,9 +5770,7 @@ error_return:
 int
 or_header_size (char *ptr)
 {
-  int mvcc_flag = OR_GET_MVCC_FLAG (ptr);
-
-  return mvcc_header_size_lookup[mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+  return mvcc_header_size_lookup[OR_GET_MVCC_FLAGS (ptr)];
 }
 
 /*

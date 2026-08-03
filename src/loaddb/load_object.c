@@ -523,7 +523,7 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
 
   /* offset size */
   OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
-  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_MVCC_FLAG_SHIFT_BITS);
+  repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
   or_put_int (buf, repid_bits);
   or_put_int (buf, 0);		/* CHN, fixed size */
   or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
@@ -945,9 +945,9 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   /* offset size */
   offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
   /* in case of MVCC, repid_bits contains MVCC flags */
-  repid_bits = or_mvcc_get_repid_and_flags (buf, &rc);
+  repid_bits = or_get_record_repid_and_flags (buf, &rc);
   repid = repid_bits & OR_MVCC_REPID_MASK;
-  mvcc_flags = (char) ((repid_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
+  mvcc_flags = (char) ((repid_bits >> OR_RECORD_FLAG_SHIFT_BITS) & OR_RECORD_MVCC_FLAG_MASK);
 
   i = OR_INT_SIZE;		/* skip chn */
   if (mvcc_flags & OR_MVCC_FLAG_VALID_INSID)
