@@ -12507,13 +12507,11 @@ heap_attrinfo_free_oos_payloads (std::vector < RECDES > *payloads)
   payloads->clear ();
 }
 
-// *INDENT-OFF*
-#if defined(CUBRID_UNIT_TEST_ENABLED)
-// *INDENT-OFF*
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/* *INDENT-OFF* */
 static std::atomic<bool> heap_Test_fail_after_oos_publication_reset { false };
-// *INDENT-ON*
+/* *INDENT-ON* */
 #endif
-// *INDENT-ON*
 
 /*
  * heap_attrinfo_insert_to_oos () - Serialize selected attribute values and delegate OOS insertion.
