@@ -2611,6 +2611,13 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
       return error;
     }
   provider = new BT_LOAD_PROVIDER ();
+  if (provider == NULL)
+    {
+      /* SERVER_MODE routes operator new through cub_alloc (), which is noexcept, so a failed allocation yields
+       * NULL here instead of throwing. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (BT_LOAD_PROVIDER));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
   provider->main_pool.vpids = NULL;
   /*
    * Publish only a small bootstrap pool (one 64-page span per worker) and leave the rest to the service loop's
@@ -2655,6 +2662,8 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
 	{
 	  free_and_init (provider->cond_worker);
 	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) n_workers * (sizeof (BT_LOAD_WORKER_SLOT) + sizeof (pthread_cond_t)));
       delete provider;
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
