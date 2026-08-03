@@ -62,6 +62,11 @@
 #define DBLINK_INSERT_SQL_PER_PLACEHOLDER   4
 #define DBLINK_INSERT_SQL_VALUES_OVERHEAD   16
 
+/* Remote savepoint taken by each remote DML sink statement, so that a statement failure rolls back only
+ * that statement's remote work. Re-set per statement under the same name: the most recently established
+ * savepoint with a given name is the one a rollback returns to. */
+#define DBLINK_SINK_SAVEPOINT_NAME          "cub_dblink_sink_stmt"
+
 // *INDENT-OFF*
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
@@ -1319,6 +1324,15 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   Remote COMMIT/ROLLBACK + disconnect happen in qmgr_check_dblink_trans()
  *   when the local transaction commits or aborts (explicit COMMIT/ROLLBACK,
  *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
+ *
+ *   When the remote supports savepoints, the statement also takes one (state->savepoint_set) so that
+ *   its abort path can roll back just this statement's remote work. A remote without savepoint
+ *   support (gateway) still opens successfully, with savepoint_set left false.
+ *
+ *   Every failure return past the point where the connection is acquired clears state->conn_handle:
+ *   the statement has written nothing on the remote yet, so its error path must not roll back or tear
+ *   down the connection that earlier statements of the same transaction are still using. The
+ *   connection stays in the pool either way.
  */
 int
 dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
@@ -1335,6 +1349,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
+  state->savepoint_set = false;
 
   /* guard: must have at least one column to insert */
   if (num_bind <= 0)
@@ -1391,6 +1406,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       if (state->conn_handle < 0)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  state->conn_handle = -1;	/* the failed call left an error code here, not a handle */
 	  return ER_DBLINK;
 	}
 
@@ -1423,6 +1439,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
       if (attr_name_lens == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) num_attrs * sizeof (int));
+	  state->conn_handle = -1;	/* nothing ran remotely; see Note above */
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       for (i = 0; i < num_attrs; i++)
@@ -1442,6 +1459,7 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  db_private_free_and_init (thread_p, attr_name_lens);
 	}
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      state->conn_handle = -1;	/* nothing ran remotely; see Note above */
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -1530,7 +1548,17 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      state->conn_handle = -1;	/* nothing ran remotely; see Note above */
       return ER_DBLINK;
+    }
+
+  /* Take this statement's remote savepoint. Everything that can fail before the first row is behind
+   * us, so the savepoint covers exactly this statement's remote work. A remote that does not support
+   * savepoints (gateway) fails here; that is not an error - the statement runs without one and its
+   * abort path falls back to rolling back the whole remote transaction. */
+  if (cci_savepoint (state->conn_handle, CCI_SP_SET, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
+    {
+      state->savepoint_set = true;
     }
 
   return NO_ERROR;
@@ -1543,6 +1571,7 @@ sql_build_error:
     }
   db_private_free (thread_p, sql);
   /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+  state->conn_handle = -1;	/* nothing ran remotely; see Note above */
   return ER_DBLINK;
 }
 
