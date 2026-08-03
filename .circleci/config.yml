@@ -1,6 +1,5 @@
 version: 2.1
 
-# Trigger-provided values (GitHub Actions comment trigger) + pipeline-wide knobs.
 parameters:
   baseline:
     type: string
@@ -17,14 +16,19 @@ parameters:
   run_all_test:
     type: boolean
     default: false
-  # Single knob for the shell fan-out width. CUBRIDQA-1471 (40/10 pool
-  # partition) changes this to 40 — keep every reference on this parameter.
   shell_parallelism:
     type: integer
     default: 50
+  # /rerun reuses the same test jobs: a commit status is named after the job, so only
+  # a job of that name can turn the red one green.
+  rerun_cases:            # space-separated; empty means a normal run
+    type: string
+    default: ""
+  rerun_build_job:
+    type: integer
+    default: 0
 
 executors:
-  # Build machine: ccache environment baked in so both build jobs share it
   cubrid-build:
     docker:
       - image: cubridci/cubridci:develop
@@ -50,9 +54,6 @@ executors:
     resource_class: cubrid/ramdisk
     working_directory: /home
     environment:
-      # GlusterFS build layout contract, defined once for both sides:
-      # download-build publishes <root>/<sha>/<mode>/CUBRID + sentinel,
-      # test_shell waits on the sentinel and mounts that tree.
       BUILD_CACHE_ROOT: /home/build-cache/builds
       BUILD_SENTINEL: .complete
 
@@ -69,8 +70,7 @@ commands:
   collect-build-logs:
     description: "Collect build logs and store them"
     steps:
-      # when: always — a failed build is exactly when build.log is worth having;
-      # without it this step is skipped and the upload below finds nothing.
+      # when: always - a failed build is exactly when build.log is worth having.
       - run:
           name: Store build logs and commits
           when: always
@@ -108,8 +108,7 @@ commands:
             ccache -z
             scl enable devtoolset-8 -- /entrypoint.sh build << parameters.build-args >>
             ccache -s
-      # ccache save: write only on develop-branch builds -> a single shared warm cache
-      # (other branches/PRs are restore-only; avoids 5G-per-PR bloat and non-develop pollution)
+      # develop only: one shared warm cache, no 5G per PR.
       - when:
           condition:
             equal: [ develop, << pipeline.git.branch >> ]
@@ -124,8 +123,6 @@ commands:
     description: "Upload the built tree as an artifact and hand its job number to consumers"
     parameters:
       mode:
-        # One vocabulary end to end: this is the workspace file suffix
-        # (BUILD_NUM_<mode>) and the builds/<SHA>/<mode> path segment.
         type: enum
         enum: [ release, debug ]
     steps:
@@ -146,14 +143,24 @@ commands:
           root: workspace
           paths: [ BUILD_NUM_<< parameters.mode >> ]
 
+  reuse-build:
+    description: "Point consumers at an earlier job's build instead of compiling again (/rerun)"
+    steps:
+      # Writes what package-build would, so its consumers need no rerun branch.
+      - run:
+          name: "Reuse the build of job #<< pipeline.parameters.rerun_build_job >>"   # quoted: bare '#' starts a comment
+          command: |
+            mkdir -p workspace
+            echo "<< pipeline.parameters.rerun_build_job >>" > workspace/BUILD_NUM_debug
+      - persist_to_workspace:
+          root: workspace
+          paths: [ BUILD_NUM_debug ]
+
   resolve-testcases:
     description: "Resolve testcases branch/SHA for a TC repo; export BRANCH_TESTCASES and materialize cache-key inputs"
     parameters:
       tc-repo:
-        # Resolve against the repo the suite actually checks out: public
-        # cubrid-testcases for sql/medium, private cubrid-testcases-private-ex
-        # for shell. Their tc/pr-<N> branches are created independently and
-        # often diverge, so each suite must resolve against its own repo.
+        # Each suite resolves against the repo it checks out; the tc/pr-<N> branches diverge.
         type: string
         default: cubrid-testcases
     steps:
@@ -162,9 +169,6 @@ commands:
           command: |
             TC_REPO="https://x-access-token:${GHI_TOKEN}@github.com/CUBRID/<< parameters.tc-repo >>.git"
 
-            # ls-remote the testcases repo with retries. A transient network error
-            # (e.g. "Empty reply from server") must not fail the job: on persistent
-            # failure we return empty and fall back to develop.
             resolve_sha() {
               local i out
               for i in 1 2 3 4 5; do
@@ -193,11 +197,9 @@ commands:
             echo "TC_BRANCH: $TC_BRANCH"
             echo "TC_SHA: $TC_SHA"
 
-            # checkout reads BRANCH_TESTCASES to select the testcases branch
             echo "export BRANCH_TESTCASES=$TC_BRANCH" >> "$BASH_ENV"
 
-            # Cache keys cannot read shell vars, so materialize the runtime values
-            # to files and reference them via {{ checksum }} in restore_cache/save_cache.
+            # Cache keys cannot read shell vars, hence these files for {{ checksum }}.
             echo "${TC_BRANCH//\//-}" > /tmp/tc_cache_branch
             echo "$TC_SHA" > /tmp/tc_cache_sha
             echo "develop" > /tmp/tc_cache_develop
@@ -205,8 +207,7 @@ commands:
   run-tests:
     description: "Run test scripts (CUBRID must be at /home/CUBRID)"
     steps:
-      # The test steps set `shell: /bin/bash` (i.e. no -e/-o pipefail): the prune
-      # pipelines exit non-zero when there is nothing left to prune.
+      # `shell: /bin/bash` drops -e/pipefail, which the prune pipelines need.
       - run:
           name: Check out testcases and testtools
           shell: /bin/bash
@@ -220,14 +221,15 @@ commands:
           name: Split tests for this node
           shell: /bin/bash
           command: |
-            # Only the glob+split pipeline and the prune differ per suite.
             case "$TEST_SUITE" in
               shell)
                 base_dir="cubrid-testcases-private-ex"
                 rm -rf "$base_dir/shell/_25_unstable"
-                split_pipe() {
-                  circleci tests glob "$base_dir/$TEST_SUITE/_*/**/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$' \
-                    | circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
+                candidates() {
+                  circleci tests glob "$base_dir/$TEST_SUITE/_*/**/*.sh" | grep -P '/([^/]+)/cases/\1\.sh$'
+                }
+                split_into_tc_list() {
+                  circleci tests run --command="tee tc.list" --verbose --split-by=timings --timings-type=file
                 }
                 prune() {
                   xargs -n1 dirname < tc.list > tc_dirs.list
@@ -236,9 +238,11 @@ commands:
                 ;;
               *)
                 base_dir="cubrid-testcases"
-                split_pipe() {
-                  circleci tests glob "$base_dir/$TEST_SUITE/_*" \
-                    | circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
+                candidates() {
+                  circleci tests glob "$base_dir/$TEST_SUITE/_*"
+                }
+                split_into_tc_list() {
+                  circleci tests run --command="xargs -n1 >> tc.list" --verbose --split-by=name
                 }
                 prune() {
                   find "$base_dir" -name "*.sql" -type f | grep -v -F -f tc.list | xargs -r rm -rf
@@ -246,12 +250,34 @@ commands:
                 ;;
             esac
 
-            # A split can fail transiently (e.g. the circleci-tests-plugin-cli
-            # download timing out under 50-way fan-out). Retry, and on persistent
-            # failure fail this node rather than fall through to the empty-list
-            # halt below, which would silently skip this node's share of tests.
+            # The tests API reports each case in the form these globs produce.
+            RERUN_CASES="<< pipeline.parameters.rerun_cases >>"
+            if [ -n "$RERUN_CASES" ]; then
+              printf '%s\n' $RERUN_CASES | sort -u > /tmp/rerun.list
+
+              # Paths come from testcase filenames a pull request can choose, and land
+              # here as text: no metacharacters, no `..`, no other suite.
+              if grep -qvE "^${base_dir}/[A-Za-z0-9._/-]+$" /tmp/rerun.list || grep -q '\.\.' /tmp/rerun.list; then
+                echo "[error] rerun_cases must be plain paths under ${base_dir}/:"
+                grep -vE "^${base_dir}/[A-Za-z0-9._/-]+$" /tmp/rerun.list
+                exit 1
+              fi
+
+              # None left must fail: otherwise every node halts and the rerun reports
+              # success having run nothing.
+              while read -r c; do
+                if [ -f "$c" ]; then echo "$c"; else echo "[warn] gone from this branch: $c" >&2; fi
+              done < /tmp/rerun.list > /tmp/rerun_targets.list
+              if [ ! -s /tmp/rerun_targets.list ]; then
+                echo "[error] none of the requested cases exist here; run the full suite instead"
+                exit 1
+              fi
+              echo "[debug] /rerun: $(wc -l < /tmp/rerun_targets.list) of $(wc -l < /tmp/rerun.list) case(s) present"
+              candidates() { cat /tmp/rerun_targets.list; }
+            fi
+
             n=0
-            until { : > tc.list; split_pipe; }; do
+            until { : > tc.list; candidates | split_into_tc_list; }; do
               n=$((n + 1))
               if [ "$n" -ge 4 ]; then
                 echo "[error] test split failed after $n attempts; failing node to avoid silently skipping tests"
@@ -261,19 +287,14 @@ commands:
               sleep $((n * 10))
             done
 
-            # Split succeeded, so an empty list is a genuine empty assignment
-            # (normal during "rerun failed tests only") -> halt as success. Halting
-            # here, before the build wait, releases the slot right away.
+            # Empty is a real empty assignment (usual on a /rerun) -> success, not failure.
             if [ ! -s tc.list ]; then
               echo "[debug] No tests assigned to this node"
               circleci-agent step halt
               exit 0
             fi
             prune
-            # wc -w, not -l: the shell split writes tc.list as one space-separated
-            # line (tee), sql/medium writes one path per line — word count is the
-            # case count either way, and a wrong "0" here would look like the
-            # silent-skip failure mode we deliberately fail loudly on.
+            # wc -w, not -l: the shell split writes tc.list as one space-separated line.
             echo "[debug] assigned testcases: $(wc -w < tc.list)"
       - run:
           name: Mount debug build from GlusterFS
@@ -283,14 +304,11 @@ commands:
               echo "[debug] non-shell suite runs on the artifact build; nothing to mount"
               exit 0
             fi
-            # Explicit, so the contract does not depend on the step's shell
-            # setting: any failure below (including publish's) aborts the job.
+            # Explicit, so the contract does not rest on the step shell.
             set -eo pipefail
             : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
             BUILD_DIR="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
 
-            # requires(download-build) normally means the sentinel is already
-            # there; the bounded wait covers concurrent workflow reruns.
             n=0
             until [ -f "${BUILD_DIR}/${BUILD_SENTINEL}" ]; do
               n=$((n + 1))
@@ -306,8 +324,7 @@ commands:
               echo "[debug] /home/CUBRID already mounted by postStart (legacy flat layout), reusing"
               exit 0
             fi
-            # upperdir/workdir must sit on the emptyDir volume: the kernel refuses
-            # an overlay whose upper is on the container rootfs.
+            # upperdir/workdir must be on the emptyDir; the kernel refuses overlay-on-rootfs.
             mkdir -p /build-rw/step-upper /build-rw/step-work /home/CUBRID
             mount -t overlay overlay \
               -o "lowerdir=${BUILD_DIR}/CUBRID,upperdir=/build-rw/step-upper,workdir=/build-rw/step-work" /home/CUBRID \
@@ -355,9 +372,7 @@ commands:
             RESPONSE=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
               "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${BUILD_NUM}/artifacts")
 
-            # Extract CUBRID.tar.gz URL. `|| true`: grep exits non-zero when the
-            # artifact is absent, and under the default errexit shell that would
-            # kill the step before the diagnostic below ever prints.
+            # `|| true`: grep exits non-zero when absent, killing the diagnostic below.
             ARTIFACT_URL=$(echo "$RESPONSE" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//' || true)
 
             if [ -z "$ARTIFACT_URL" ]; then
@@ -382,14 +397,10 @@ commands:
       - run:
           name: Download build to GlusterFS
           command: |
-            # Explicit, so the contract does not depend on the step's shell
-            # setting: any failure below (including publish's) aborts the job.
+            # Explicit, so the contract does not rest on the step shell.
             set -eo pipefail
             : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
 
-            # One build-number file per packaged mode (package-build persists
-            # BUILD_NUM_RELEASE / BUILD_NUM_DEBUG), so this transports exactly what
-            # the build jobs produced: debug only on PRs, both on develop.
             publish() {
               local mode="$1" build_num="$2"
               local build_dir="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/${mode}"
@@ -402,9 +413,7 @@ commands:
                 return 0
               fi
 
-              # Stage, then publish with one atomic rename: consumers never see a
-              # half-extracted tree, and a concurrent duplicate run just loses the
-              # rename and drops its staging dir (no rm of a published tree).
+              # Stage then rename: no consumer sees a half-extracted tree.
               local tmp_dir="${build_dir}.tmp.$$"
               rm -rf "${tmp_dir}"
               mkdir -p "${tmp_dir}"
@@ -412,8 +421,7 @@ commands:
               local response artifact_url
               response=$(curl -s -H "Circle-Token: ${CIRCLECI_TOKEN}" \
                 "https://circleci.com/api/v2/project/gh/${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${build_num}/artifacts")
-              # `|| true`: grep exits non-zero when the artifact is absent, and
-              # under errexit that would kill the job before the diagnostic below.
+              # `|| true`: grep exits non-zero when absent, killing the diagnostic below.
               artifact_url=$(echo "$response" | grep -o '"url": "[^"]*CUBRID.tar.gz[^"]*"' | head -1 | sed 's/"url": "//;s/"$//' || true)
               if [ -z "$artifact_url" ]; then
                 echo "ERROR: CUBRID.tar.gz artifact not found in job #${build_num}"
@@ -430,16 +438,13 @@ commands:
               if mv -T "${tmp_dir}" "${build_dir}" 2>/dev/null; then
                 echo "Build published at ${build_dir}"
               else
-                # Lost the publish race to a concurrent duplicate run.
                 echo "Another run published this build first, discarding staging dir"
                 rm -rf "${tmp_dir}"
               fi
               ls -la "${build_dir}/CUBRID"
             }
 
-            # publish is called plainly on purpose: errexit propagates any
-            # failure inside it (an `if !` wrapper would suspend errexit within
-            # the function and could publish a half-extracted tree).
+            # Plain call, not `if !`: that would suspend errexit inside publish.
             published=0
             for num_file in /tmp/workspace/BUILD_NUM_*; do
               [ -f "$num_file" ] || continue
@@ -460,9 +465,7 @@ jobs:
     steps:
       - build-cubrid:
           ccache-prefix: ccache-global-v2
-      # The release build is packaged only on develop, where it is preserved in
-      # GlusterFS for downstream consumers. PR pipelines test the debug build,
-      # so packaging release there would upload an artifact nobody reads.
+      # Only develop preserves release; a PR would upload an artifact nobody reads.
       - when:
           condition:
             equal: [ develop, << pipeline.git.branch >> ]
@@ -473,21 +476,28 @@ jobs:
   build_debug:
     executor: cubrid-build
     steps:
-      - build-cubrid:
-          ccache-prefix: ccache-debug-v2
-          mode: optdebug
-          build-args: "-m optdebug"
-      # Package when a test job will consume it, or on develop for preservation.
-      - when:
-          condition:
-            or:
-              - << pipeline.parameters.run_sql_test >>
-              - << pipeline.parameters.run_medium_test >>
-              - << pipeline.parameters.run_shell_test >>
-              - equal: [ develop, << pipeline.git.branch >> ]
+      # Still runs on a /rerun so its dependents keep their names.
+      - unless:
+          condition: << pipeline.parameters.rerun_build_job >>
           steps:
-            - package-build:
-                mode: debug
+            - build-cubrid:
+                ccache-prefix: ccache-debug-v2
+                mode: optdebug
+                build-args: "-m optdebug"
+            - when:
+                condition:
+                  or:
+                    - << pipeline.parameters.run_sql_test >>
+                    - << pipeline.parameters.run_medium_test >>
+                    - << pipeline.parameters.run_shell_test >>
+                    - equal: [ develop, << pipeline.git.branch >> ]
+                steps:
+                  - package-build:
+                      mode: debug
+      - when:
+          condition: << pipeline.parameters.rerun_build_job >>
+          steps:
+            - reuse-build
 
   artifact-test:
     executor: cubrid-default
@@ -526,8 +536,7 @@ jobs:
       BASELINE: << pipeline.parameters.baseline >>
       TEST_SUITE: "shell"
     steps:
-      # Testcases branch is resolved once in download-build and shared via the
-      # workspace, so the 50 shell pods never hit cubrid-testcases themselves.
+      # Resolved once in download-build so 50 pods do not each hit the repo.
       - attach_workspace:
           at: /tmp/tcws
       - run:
@@ -541,22 +550,15 @@ jobs:
     executor: cubrid-test-shell
     parameters:
       for-shell-tests:
-        # The develop path transports and stops: resolving the testcases branch
-        # there would run a private-repo ls-remote nobody reads, and its failure
-        # would redden the develop commit even though the transport succeeded.
+        # False on develop: an ls-remote nobody reads, whose failure would redden
+        # a commit whose transport succeeded.
         type: boolean
         default: true
     steps:
-      # Note: a pipeline that is both on develop and has run_shell_test set would
-      # transport twice (this job and the shell path's). Not guarded: the comment
-      # trigger only fires on pull requests, so develop never carries that flag.
       - download-build-to-glusterfs
       - when:
           condition: << parameters.for-shell-tests >>
           steps:
-            # Resolve the testcases branch a single time (reuses resolve-testcases,
-            # which exports BRANCH_TESTCASES) and hand it to the shell pods. Shell
-            # runs the private repo, so resolve against cubrid-testcases-private-ex.
             - resolve-testcases:
                 tc-repo: cubrid-testcases-private-ex
             - run:
@@ -568,7 +570,6 @@ jobs:
                 root: /tmp/tcws
                 paths: [ BRANCH_TESTCASES ]
 
-# Test jobs are gated by expression-based filters (evaluated server-side).
 workflows:
   build_test:
     jobs:
@@ -591,9 +592,7 @@ workflows:
       - test_shell:
           requires: [download-build]
           filters: pipeline.parameters.run_shell_test
-      # develop merge: transport only. Both builds are preserved in GlusterFS for
-      # downstream consumers (AI agent service); no test job runs on this path.
-      # Requires both builds so a release-only regression still blocks the upload.
+      # Transport only; requires both builds so a release-only regression blocks it.
       - download-build:
           name: store-build-develop
           for-shell-tests: false
