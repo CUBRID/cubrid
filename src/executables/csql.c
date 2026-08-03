@@ -637,6 +637,54 @@ multibyte_warning:
 #endif
 }
 
+static bool
+check_contents_has_noncomment (void)
+{
+  /* Check if csql_Edit_contents contains any actual content, 
+   * ignoring whitespace and comments 
+   */
+  char *p = csql_edit_contents_get ();
+  if (p)
+    {
+      while (*p)
+	{
+	  if (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n')
+	    {
+	      p++;
+	    }
+	  else if (p[0] == '-' && p[1] == '-')
+	    {
+	      for (p += 2; *p && *p != '\n'; p++)
+		/* blank */ ;
+	    }
+	  else if (p[0] == '/')
+	    {
+	      if (p[1] == '/')
+		{
+		  for (p += 2; *p && *p != '\n'; p++)
+		    /* blank */ ;
+		}
+	      else if (p[1] == '*')
+		{
+		  for (p += 2; *p && !(p[0] == '*' && p[1] == '/'); p++)
+		    /* blank */ ;
+		  p += (*p ? 2 : 0);
+		}
+	      else
+		{
+		  return true;
+		}
+	    }
+	  else
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
 /*
  * start_csql()
  *   return: none
@@ -832,6 +880,14 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	    {
 	      fprintf (csql_Output_fp, "\n");
 	      continue;
+	    }
+
+	  if (!csql_Is_interactive && csql_arg->single_line_execution
+	      && feof (csql_Input_fp) && check_contents_has_noncomment ())
+	    {
+	      /* single-line-oriented execution */
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
+	      csql_edit_contents_clear ();
 	    }
 
 	  /* Normal end condtion (with -i option) */
