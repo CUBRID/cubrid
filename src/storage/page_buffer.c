@@ -390,14 +390,6 @@ typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
 
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
 
-/* note: the per-fix counters that used to back the SHOW PAGE BUFFER STATUS counter columns (num_hit,
- * num_page_request, num_pages_created, num_pages_written, num_pages_read, num_flusher_waiting_threads) have been
- * removed. They were incremented on every page fix, which made the page fix hot path pay for a cache line write that
- * multiple workers of the same query contend on, and the very same numbers are already provided by
- * cubrid statdump (Num_data_page_fetches / Num_data_page_ioreads / Num_data_page_iowrites /
- * Data_page_buffer_hit_ratio).
- * The corresponding SHOW columns are deprecated and always report 0. */
-
 struct pgbuf_status_snapshot
 {
   unsigned int free_pages;
@@ -17303,9 +17295,6 @@ pgbuf_scan_bcb_table ()
  *   arg_values(in):
  *   arg_cnt(in):
  *   ptr(in/out):
- *
- * Note: only the page composition snapshot columns report real values. The counter columns are deprecated and always
- *       report 0; the equivalent statistics are available through cubrid statdump.
  */
 int
 pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
