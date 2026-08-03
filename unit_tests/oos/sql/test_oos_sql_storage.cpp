@@ -17,21 +17,22 @@
  */
 
 /*
- * test_oos_sql_storage.cpp - STORAGE PREFER_INLINE column option SQL tests (CBRD-26912)
+ * test_oos_sql_storage.cpp - STORAGE column option SQL tests (CBRD-26912, CBRD-26067)
  *
  * STORAGE PREFER_INLINE lowers a column's OOS demotion priority so the column stays
- * inline when possible. STORAGE PREFER_OUTLINE is equivalent to STORAGE DEFAULT in
- * this implementation. These tests assert the option's *persistence* through the
- * schema, which is where the option must not be silently lost:
+ * inline when possible. STORAGE FORCE_OUTLINE sends variable values larger than the
+ * 16-byte OOS stub to OOS regardless of record size. STORAGE PREFER_OUTLINE is
+ * equivalent to
+ * STORAGE DEFAULT in this implementation. These tests assert the options' persistence:
  *   - SHOW CREATE TABLE          -> object_printer::describe_attribute emit
  *   - CREATE TABLE ... LIKE      -> classobj_copy_attribute_like flag copy
  *   - ALTER TABLE ... MODIFY     -> build_attr_change_map GAINED/LOST state machine
  *
- * Note: SQL cannot observe *which* column was demoted to OOS (see the placement note in
- * test_oos_sql_boundary.cpp), so demote *ordering* is not asserted here - the demote sort
- * lives in the heap layer. These tests cover the schema-persistence gaps, which ARE
- * observable as DDL text. The unloaddb emit path (a separate utility binary) is not
- * reachable from this in-process harness and is left to a shell-level test.
+ * FORCE_OUTLINE placement is observable through SHOW HEAP OOS because even a small
+ * record with a value larger than the OOS stub creates an OOS file and value record.
+ * PREFER_INLINE ordering is not observable
+ * from SQL (see test_oos_sql_boundary.cpp). The unloaddb emit path (a separate utility
+ * binary) is not reachable from this in-process harness and is left to a shell-level test.
  */
 
 #include <string>
@@ -93,6 +94,12 @@ namespace
   }
 
   bool
+  ddl_has_force_outline (const std::string &ddl)
+  {
+    return ddl.find ("STORAGE FORCE_OUTLINE") != std::string::npos;
+  }
+
+  bool
   ddl_has_prefer_outline (const std::string &ddl)
   {
     return ddl.find ("STORAGE PREFER_OUTLINE") != std::string::npos;
@@ -102,6 +109,35 @@ namespace
   ddl_has_storage_default (const std::string &ddl)
   {
     return ddl.find ("STORAGE DEFAULT") != std::string::npos;
+  }
+
+  int
+  get_oos_stats (const char *table_name, OOS_STATS_INFO *out_stats)
+  {
+    DB_OBJECT *cls = db_find_class (table_name);
+    if (cls == nullptr)
+      {
+	return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      }
+
+    OID *class_oid = (OID *) db_identifier (cls);
+    if (class_oid == nullptr)
+      {
+	return ER_FAILED;
+      }
+
+    return xoos_get_stats_by_class_oid (thread_get_thread_entry_info (), class_oid, out_stats);
+  }
+
+  void
+  expect_force_outline_attribute_error ()
+  {
+    const char *message = db_error_string (3);
+    ASSERT_NE (message, nullptr);
+    std::string error (message);
+    EXPECT_TRUE (error.find ("STORAGE FORCE_OUTLINE") != std::string::npos
+		 || error.find ("only normal attributes can set storage options") != std::string::npos)
+	<< message;
   }
 }
 
@@ -137,6 +173,21 @@ TEST_F (OosSqlStorage, CreateTablePersistsPreferInline)
   rc = get_create_table_ddl ("t_oos_stg", ddl);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "DDL was:\n" << ddl;
+}
+
+TEST_F (OosSqlStorage, CreateTablePersistsForceOutline)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg ("
+		     "  id INT PRIMARY KEY,"
+		     "  payload VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_force_outline (ddl)) << "DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "DDL was:\n" << ddl;
 }
 
 // A column without the option must NOT emit any STORAGE clause (guards against a
@@ -193,6 +244,25 @@ TEST_F (OosSqlStorage, CreateTableLikeCopiesPreferInline)
   EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "cloned DDL was:\n" << ddl;
 }
 
+TEST_F (OosSqlStorage, CreateTableLikeCopiesForceOutline)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg ("
+		     "  id INT PRIMARY KEY,"
+		     "  payload VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("CREATE TABLE t_oos_stg_like LIKE t_oos_stg");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg_like", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_force_outline (ddl)) << "cloned DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "cloned DDL was:\n" << ddl;
+}
+
 // STORAGE PREFER_INLINE is meaningful only for normal instance attributes; shared
 // attributes are not stored in each heap record and must not persist a no-op policy.
 TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
@@ -207,6 +277,38 @@ TEST_F (OosSqlStorage, SharedAttributeRejectsPreferInline)
 
   rc = exec_sql ("CREATE TABLE t_oos_stg (s VARCHAR(4096) SHARED 'x' STORAGE DEFAULT)");
   EXPECT_LT (rc, 0);
+  db_abort_transaction ();
+}
+
+TEST_F (OosSqlStorage, ForceOutlineRejectsUnsupportedAttributes)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c INT STORAGE FORCE_OUTLINE)");
+  EXPECT_LT (rc, 0);
+  expect_force_outline_attribute_error ();
+  db_abort_transaction ();
+
+  rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4096) SHARED 'x' STORAGE FORCE_OUTLINE)");
+  EXPECT_LT (rc, 0);
+  expect_force_outline_attribute_error ();
+  db_abort_transaction ();
+
+  rc = exec_sql ("CREATE TABLE t_oos_stg CLASS ATTRIBUTE (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  EXPECT_LT (rc, 0);
+  expect_force_outline_attribute_error ();
+  db_abort_transaction ();
+
+  rc = exec_sql ("CREATE TABLE t_oos_stg (c INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT STORAGE FORCE_OUTLINE");
+  EXPECT_LT (rc, 0);
+  expect_force_outline_attribute_error ();
+  db_abort_transaction ();
+
+  rc = exec_sql ("CREATE VCLASS t_oos_stg_v (c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  EXPECT_LT (rc, 0);
+  expect_force_outline_attribute_error ();
   db_abort_transaction ();
 }
 
@@ -261,6 +363,193 @@ TEST_F (OosSqlStorage, AlterModifyAddsAndDropsPreferInline)
   EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
   EXPECT_FALSE (ddl_has_prefer_outline (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
   EXPECT_FALSE (ddl_has_storage_default (ddl)) << "after MODIFY PREFER_OUTLINE, DDL was:\n" << ddl;
+}
+
+TEST_F (OosSqlStorage, AlterModifyPreservesAndTransitionsForceOutline)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT PRIMARY KEY, c VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_TRUE (ddl_has_force_outline (ddl)) << "initial DDL was:\n" << ddl;
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_force_outline (ddl)) << "after omitted STORAGE clause, DDL was:\n" << ddl;
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192) STORAGE PREFER_INLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_prefer_inline (ddl)) << "after MODIFY PREFER_INLINE, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_force_outline (ddl)) << "after MODIFY PREFER_INLINE, DDL was:\n" << ddl;
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192) STORAGE FORCE_OUTLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_TRUE (ddl_has_force_outline (ddl)) << "after MODIFY FORCE_OUTLINE, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY FORCE_OUTLINE, DDL was:\n" << ddl;
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg CHANGE c c VARCHAR(8192) STORAGE PREFER_OUTLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_force_outline (ddl)) << "after CHANGE PREFER_OUTLINE, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after CHANGE PREFER_OUTLINE, DDL was:\n" << ddl;
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192) STORAGE FORCE_OUTLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c VARCHAR(8192) STORAGE DEFAULT");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_force_outline (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
+  EXPECT_FALSE (ddl_has_prefer_inline (ddl)) << "after MODIFY DEFAULT, DDL was:\n" << ddl;
+}
+
+TEST_F (OosSqlStorage, AlterModifyDropsForceOutlineForFixedType)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (c VARCHAR(4) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1234)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY c INT");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  std::string ddl;
+  rc = get_create_table_ddl ("t_oos_stg", ddl);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_FALSE (ddl_has_force_outline (ddl)) << "after MODIFY to fixed type, DDL was:\n" << ddl;
+
+  int value = 0;
+  rc = fetch_single_int ("SELECT c FROM t_oos_stg", &value);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value, 1234);
+}
+
+TEST_F (OosSqlStorage, ForceOutlineBypassesRecordGateOnlyAboveInlineStubSize)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg ("
+		     "  id INT PRIMARY KEY,"
+		     "  payload VARCHAR(4096) STORAGE FORCE_OUTLINE)");
+  ASSERT_GE (rc, 0);
+
+  /* Packed VARCHAR includes its length prefix, terminator, and alignment: 14 characters occupy 16 bytes on disk,
+   * while 15 characters occupy 20 bytes. */
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES "
+		 "(1, REPEAT('x', 3000)), (2, 'y'), (3, REPEAT('z', 14)), (4, REPEAT('w', 15)), (5, NULL)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  OOS_STATS_INFO stats;
+  rc = get_oos_stats ("t_oos_stg", &stats);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (stats.has_oos_file, 1);
+  EXPECT_EQ (stats.num_recs, 2);
+
+  int length = 0;
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 1", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 3000);
+
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 2", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 1);
+
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 3", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 14);
+
+  rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 3", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 16);
+
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 4", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 15);
+
+  rc = fetch_single_int ("SELECT DISK_SIZE(payload) FROM t_oos_stg WHERE id = 4", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_GT (length, 16);
+
+  int null_count = 0;
+  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_stg WHERE id = 5 AND payload IS NULL", &null_count);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (null_count, 1);
+}
+
+TEST_F (OosSqlStorage, AlterForceOutlineAppliesOnlyAfterRewrite)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (id INT PRIMARY KEY, payload VARCHAR(4096))");
+  ASSERT_GE (rc, 0);
+  rc = exec_sql ("INSERT INTO t_oos_stg VALUES (1, REPEAT('a', 3000))");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  OOS_STATS_INFO stats;
+  rc = get_oos_stats ("t_oos_stg", &stats);
+  ASSERT_EQ (rc, NO_ERROR);
+  ASSERT_EQ (stats.has_oos_file, 0);
+
+  rc = exec_sql ("ALTER TABLE t_oos_stg MODIFY payload VARCHAR(4096) STORAGE FORCE_OUTLINE");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_oos_stats ("t_oos_stg", &stats);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (stats.has_oos_file, 0);
+
+  rc = exec_sql ("UPDATE t_oos_stg SET payload = CONCAT(payload, 'b') WHERE id = 1");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = get_oos_stats ("t_oos_stg", &stats);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (stats.has_oos_file, 1);
+  EXPECT_EQ (stats.num_recs, 1);
+
+  int length = 0;
+  rc = fetch_single_int ("SELECT LENGTH(payload) FROM t_oos_stg WHERE id = 1", &length);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (length, 3001);
+}
+
+TEST_F (OosSqlStorage, ForceOutlineRemainsNonReservedIdentifier)
+{
+  int rc = exec_sql ("CREATE TABLE t_oos_stg (force_outline INT)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  rc = exec_sql ("INSERT INTO t_oos_stg (force_outline) VALUES (7)");
+  ASSERT_GE (rc, 0);
+  db_commit_transaction ();
+
+  int value = 0;
+  rc = fetch_single_int ("SELECT force_outline FROM t_oos_stg", &value);
+  ASSERT_EQ (rc, NO_ERROR);
+  EXPECT_EQ (value, 7);
 }
 
 // Functional non-regression: a PREFER_INLINE column round-trips a large value through

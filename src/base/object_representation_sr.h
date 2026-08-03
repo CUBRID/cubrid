@@ -88,6 +88,14 @@ struct or_auto_increment
 // *INDENT-ON*
 
 typedef struct or_attribute OR_ATTRIBUTE;
+
+typedef enum
+{
+  OR_ATTRIBUTE_OOS_STORAGE_DEFAULT,
+  OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE,
+  OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+} OR_ATTRIBUTE_OOS_STORAGE;
+
 struct or_attribute
 {
   OR_ATTRIBUTE *next;		/* obsolete : use array for accessing elements */
@@ -116,7 +124,7 @@ struct or_attribute
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
   unsigned is_invisible:1;	/* non-zero if att is invisible col */
-  unsigned is_oos_prefer_inline:1;	/* non-zero if att prefers inline storage (lower OOS demotion priority) */
+  OR_ATTRIBUTE_OOS_STORAGE oos_storage:2;	/* OOS storage policy */
 
   // Notice: Be sure to place "auto_increment" at the end of the structure.
   or_auto_increment auto_increment;

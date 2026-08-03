@@ -385,6 +385,8 @@ IDL       [a-zA-Z0-9_]
 									  return FIRST_VALUE; }
 [fF][oO][rR][cC][eE]							{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return FORCE; }
+[fF][oO][rR][cC][eE][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+									  return FORCE_OUTLINE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ return FOUND; }
 [fF][rR][oO][mM]							{ return FROM; }

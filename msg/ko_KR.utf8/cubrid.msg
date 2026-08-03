@@ -2000,6 +2000,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 NUMERIC의 스케일 범위(-84부터 127)를 초과했습니다.
 337 파티션 이름이 너무 깁니다.
 338 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
+339 STORAGE FORCE_OUTLINE은 클래스의 가변 타입 일반 속성에만 지정할 수 있습니다: '%1$s'.
 
 337 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 

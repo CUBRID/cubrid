@@ -965,14 +965,12 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int 
 // OOS File operations
 // ****************************************************************************
 
-int
-oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+static int
+oos_create_file_internal (THREAD_ENTRY *thread_p, FILE_DESCRIPTORS des, VFID &oos_vfid)
 {
   int err = NO_ERROR;
-  FILE_DESCRIPTORS des;
   FILE_TABLESPACE tablespace;
 
-  memset (&des, 0, sizeof (FILE_DESCRIPTORS));
   memset (&tablespace, 0, sizeof (FILE_TABLESPACE));
 
   tablespace.initial_size = DB_PAGESIZE;
@@ -1066,6 +1064,29 @@ oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
 
   return NO_ERROR;
 }
+
+int
+oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid)
+{
+  FILE_DESCRIPTORS des;
+
+  memset (&des, 0, sizeof (FILE_DESCRIPTORS));
+  HFID_COPY (&des.heap_oos.hfid, &heap_hfid);
+  COPY_OID (&des.heap_oos.class_oid, &class_oid);
+
+  return oos_create_file_internal (thread_p, des, oos_vfid);
+}
+
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+int
+oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid)
+{
+  const HFID test_owner_hfid = { { 1, 1 }, 1 };
+  const OID test_owner_class_oid = { 1, 1, 1 };
+
+  return oos_create_file (thread_p, test_owner_hfid, test_owner_class_oid, oos_vfid);
+}
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 
 int
 oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
