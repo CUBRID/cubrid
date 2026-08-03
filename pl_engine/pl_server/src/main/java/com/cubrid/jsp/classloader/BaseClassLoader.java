@@ -43,8 +43,9 @@ import java.util.stream.Stream;
 
 public abstract class BaseClassLoader extends URLClassLoader {
 
-    public BaseClassLoader(Path path, URL[] urls, ClassLoader parent) {
-        super(urls, parent);
+    public BaseClassLoader(Path path, ClassLoader parent) {
+        super(new URL[0], parent);
+        assert parent != null;
         init(path);
     }
 
@@ -69,38 +70,7 @@ public abstract class BaseClassLoader extends URLClassLoader {
                                 }
                             });
         } catch (NoSuchFileException e) {
-            // ignore
+            Server.log(e);
         }
-    }
-
-    @Override
-    public Class<?> loadClass(String name) throws ClassNotFoundException {
-        Class c = findLoadedClass(name);
-        if (c == null) {
-            // find child first
-            try {
-                c = super.loadClass(name);
-            } catch (ClassNotFoundException e) {
-                // ignore
-            }
-        }
-
-        if (c == null && getParent() != null) {
-            try {
-                c = getParent().loadClass(name);
-            } catch (ClassNotFoundException e) {
-                // ignore
-            }
-        }
-
-        if (c == null) {
-            try {
-                c = getSystemClassLoader().loadClass(name);
-            } catch (ClassNotFoundException e) {
-                throw e;
-            }
-        }
-
-        return c;
     }
 }

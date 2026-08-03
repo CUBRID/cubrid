@@ -37,8 +37,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.attribute.FileTime;
-import java.time.Instant;
-import java.util.Hashtable;
 
 public class ClassPathManager {
     private static Path dbPath = null;
@@ -69,12 +67,12 @@ public class ClassPathManager {
         return staticPath;
     }
 
-    public static FileTime getLastModifiedTimeOfPath(Path path) {
+    public static FileTime getLastModifiedTimeOfDynamicPath() {
         FileTime lastModifiedTime;
         try {
-            lastModifiedTime = Files.getLastModifiedTime(path);
+            lastModifiedTime = Files.getLastModifiedTime(getDynamicPath());
         } catch (IOException e) {
-            // should not be here...
+            Server.log(e);
             return null;
         }
         return lastModifiedTime;

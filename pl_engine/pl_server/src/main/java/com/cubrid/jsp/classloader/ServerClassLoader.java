@@ -31,8 +31,6 @@
 
 package com.cubrid.jsp.classloader;
 
-import java.net.URL;
-
 public class ServerClassLoader extends BaseClassLoader {
 
     // singleton
@@ -45,6 +43,6 @@ public class ServerClassLoader extends BaseClassLoader {
     }
 
     private ServerClassLoader() {
-        super(ClassPathManager.getStaticPath(), new URL[0], null);
+        super(ClassPathManager.getStaticPath(), getSystemClassLoader());
     }
 }

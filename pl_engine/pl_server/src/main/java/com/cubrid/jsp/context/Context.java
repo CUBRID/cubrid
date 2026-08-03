@@ -42,6 +42,7 @@ import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.file.attribute.FileTime;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -135,15 +136,14 @@ public class Context {
             tranactionId = tid;
             oldClassLoader = new ContextClassLoader();
         } else if (tranactionId != tid) {
-            // re-cretae dynamic class loader
-            if (oldClassLoader != null
-                    && oldClassLoader
-                                    .getInitializedTime()
-                                    .compareTo(
-                                            ClassPathManager.getLastModifiedTimeOfPath(
-                                                    ClassPathManager.getDynamicPath()))
-                            != 0) {
-                oldClassLoader = new ContextClassLoader();
+            assert oldClassLoader != null;
+            FileTime lastModifiedTimeOfDynamicPath =
+                    ClassPathManager.getLastModifiedTimeOfDynamicPath();
+            if (oldClassLoader.lastModifiedTimeOfDynamicPath.compareTo(
+                            lastModifiedTimeOfDynamicPath)
+                    != 0) {
+                // re-cretae dynamic class loader
+                oldClassLoader = new ContextClassLoader(lastModifiedTimeOfDynamicPath);
             }
 
             if (connection != null) {
