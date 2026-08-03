@@ -1824,8 +1824,25 @@ la_gate_dispatch_now (const LA_APPLY_TASK * task_in)
 static void
 la_gate_init (void)
 {
-  la_Gate_pending_head = NULL;
+  int freed_pending = 0;
+
+  /* Free any parked pending nodes left from a previous run before detaching the
+   * list; simply nulling the head (as before) leaked every parked node on
+   * restart/in-process retry. Mirror the order-FIFO cleanup just below. */
+  while (la_Gate_pending_head != NULL)
+    {
+      LA_GATE_PENDING *n = la_Gate_pending_head->next;
+
+      free_and_init (la_Gate_pending_head);
+      la_Gate_pending_head = n;
+      freed_pending++;
+    }
   la_Gate_pending_tail = NULL;
+  if (freed_pending > 0)
+    {
+      er_log_debug (ARG_FILE_LINE, "ws_gate init freed %d parked pending node(s)", freed_pending);
+    }
+
   la_Gate_completed_count = 0;
 
   /*프론티어/커밋순서 FIFO 초기화(재시작 시 이전 FIFO 잔여 해제). */
@@ -8006,7 +8023,10 @@ la_flush_repl_items (bool immediate, LA_APPLY_STATS * stats)
 
 	      sb.clear ();
 	      db_sprint_value (&flush_err->pkey_value, sb);
-	      snprintf (pkey_str, sizeof (pkey_str) - 1, sb.get_buffer ());
+	      /* The primary-key text is user data, not a format string. Feed it through
+	       * a "%s" conversion so a '%' inside the key can never be interpreted as a
+	       * printf directive (e.g. "%n" would corrupt memory). */
+	      snprintf (pkey_str, sizeof (pkey_str) - 1, "%s", sb.get_buffer ());
 
 	      if (LC_IS_FLUSH_INSERT (flush_err->operation) == true)
 		{
@@ -12126,9 +12146,24 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      error = la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, clear_owner);
 	      assert_release (error == NO_ERROR);
 
-	      if (final_log_hdr.ha_server_state != HA_SERVER_STATE_DEAD)
+	      if (final_log_hdr.ha_server_state != HA_SERVER_STATE_DEAD
+		  && !LSA_ISNULL (&la_Info.final_lsa)
+		  && la_Info.final_lsa.pageid <= final_log_hdr.append_lsa.pageid)
 		{
+		  /* Catch-up is done and the master is idle, so treating the read
+		   * position as the applied position is normally correct. Copy only
+		   * when final_lsa is in range; a torn/garbage final_lsa must not be
+		   * promoted into committed_lsa (which is persisted right below). */
 		  LSA_COPY (&la_Info.committed_lsa, &la_Info.final_lsa);
+		}
+	      else if (final_log_hdr.ha_server_state != HA_SERVER_STATE_DEAD)
+		{
+		  er_log_debug (ARG_FILE_LINE,
+				"ws_lsaguard skip committed_lsa sync: final_lsa %lld|%d out of range (append %lld|%d)",
+				(long long int) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset,
+				(long long int) final_log_hdr.append_lsa.pageid, (int) final_log_hdr.append_lsa.offset);
+		  /* Leave committed_lsa untouched; la_log_commit below persists the
+		   * existing (trusted) value. */
 		}
 
 	      if (LSA_GE (&la_Info.final_lsa, &la_Info.committed_lsa))
@@ -12405,12 +12440,31 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  break;
 		}
 
-	      if (!LSA_ISNULL (&lrec->forw_lsa) && LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa))
+	      if (!LSA_ISNULL (&lrec->forw_lsa)
+		  && (LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa)
+		      || lrec->forw_lsa.pageid > final_log_hdr.append_lsa.pageid))
 		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
-		  error = ER_LOG_PAGE_CORRUPTED;
-		  la_shutdown ();
-		  return error;
+		  /* forw_lsa is read from the log page body and can be garbage on a
+		   * torn/partial page. Reject backward movement (original guard) and a
+		   * forward jump past the end of the log. final_log_hdr is a snapshot
+		   * taken at the top of the outer loop, so the master may have legally
+		   * appended more since then; re-read the live header and only treat a
+		   * jump past the *current* append as corruption, so a fast-advancing
+		   * master does not trip a false positive. */
+		  LOG_PAGEID live_append_pageid = la_Info.act_log.log_hdr->append_lsa.pageid;
+
+		  if (LSA_GT (&la_Info.final_lsa, &lrec->forw_lsa) || lrec->forw_lsa.pageid > live_append_pageid)
+		    {
+		      er_log_debug (ARG_FILE_LINE,
+				    "ws_lsaguard reject forw_lsa overshoot: final %lld|%d forw %lld|%d live_append %lld",
+				    (long long int) la_Info.final_lsa.pageid, (int) la_Info.final_lsa.offset,
+				    (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset,
+				    (long long int) live_append_pageid);
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_PAGE_CORRUPTED, 1, la_Info.final_lsa.pageid);
+		      error = ER_LOG_PAGE_CORRUPTED;
+		      la_shutdown ();
+		      return error;
+		    }
 		}
 
 	      /* set the prev/next record */
