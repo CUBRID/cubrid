@@ -20,6 +20,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_sql_log.c
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/util_sa.c
@@ -418,6 +419,7 @@ set(PARALLEL_QUERY_EXECUTE_HEADERS
 set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp
+  ${METHOD_DIR}/method_sql_log.cpp
   ${METHOD_DIR}/method_scan.cpp
   ${METHOD_DIR}/method_struct_parameter_info.cpp
   ${METHOD_DIR}/method_struct_invoke.cpp
@@ -634,6 +636,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_result.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_sql_log.c
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/util_sa.c
   ${EXECUTABLES_DIR}/util_cs.c

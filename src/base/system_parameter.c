@@ -198,6 +198,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSQL_AUTO_COMMIT "csql_auto_commit"
 
+#define PRM_NAME_CSQL_LOG_SQL_FROM_SP "csql_log_sql_from_sp"
+
 #define PRM_NAME_WS_HASHTABLE_SIZE "initial_workspace_table_size"
 
 #define PRM_NAME_WS_MEMORY_REPORT "workspace_memory_report"
@@ -5422,6 +5424,17 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 40}},
    {false, {.i = 128}},
    {false, {.i = 10}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSQL_LOG_SQL_FROM_SP,
+   PRM_NAME_CSQL_LOG_SQL_FROM_SP,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = true}},
+   {false, {.b = true}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

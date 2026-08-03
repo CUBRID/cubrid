@@ -23,6 +23,7 @@ set(EXECUTABLE_SOURCES
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_sql_log.c
   ${EXECUTABLES_DIR}/extract_schema.cpp
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
@@ -341,6 +342,7 @@ set(METHOD_SOURCES
   ${METHOD_DIR}/method_callback.cpp
   ${METHOD_DIR}/method_error.cpp
   ${METHOD_DIR}/method_oid_handler.cpp
+  ${METHOD_DIR}/method_sql_log.cpp
   ${METHOD_DIR}/method_query_handler.cpp
   ${METHOD_DIR}/method_query_result.cpp
   ${METHOD_DIR}/method_query_util.cpp
@@ -499,6 +501,7 @@ SET_SOURCE_FILES_PROPERTIES(
   ${EXECUTABLES_DIR}/csql_result_format.c
   ${EXECUTABLES_DIR}/csql_session.c
   ${EXECUTABLES_DIR}/csql_support.c
+  ${EXECUTABLES_DIR}/csql_sql_log.c
   ${EXECUTABLES_DIR}/file_hash.c
   ${EXECUTABLES_DIR}/unload_object.c
   ${EXECUTABLES_DIR}/unload_object_file.c

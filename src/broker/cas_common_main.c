@@ -49,6 +49,7 @@
 #include "cas_handle.h"
 #include "error_manager.h"
 #include "ddl_log.h"
+#include "cas_sql_log_sp.h"
 #include "broker_process_size.h"
 #include "cas_common_execute.h"
 #include "cas_protocol.h"
@@ -490,6 +491,9 @@ cas_main_init (T_NET_BUF * net_buf, SOCKET * srv_sock_fd)
   er_init (NULL, ER_NEVER_EXIT);
 
   logddl_init (APP_NAME_CAS);
+
+  /* route SP-issued SQL logging into this CAS' *.sql.log */
+  cas_sql_log_sp_init ();
 
   return 0;
 }
