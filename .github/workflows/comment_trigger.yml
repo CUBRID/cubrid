@@ -5,94 +5,151 @@ on:
     types: [created, edited]
 
 jobs:
+  # Job id and display name are unchanged: a required-check name is tied to them.
   run_test:
     name: Run test on CircleCI
-    # A comment can take all 50 self-hosted slots, so the commenter needs write
-    # access. Read from the payload rather than the permission API, which would
-    # refuse everyone if it failed. CONTRIBUTOR is refused, so an outside
-    # contributor's own PR needs a maintainer to ask for the run.
+    # A comment can take all 50 slots. From the payload, not the permission API,
+    # which would refuse everyone if it failed.
     if: >-
       ${{ github.event.issue.pull_request != null
-      && startsWith(github.event.comment.body, '/run')
+      && (startsWith(github.event.comment.body, '/run') || startsWith(github.event.comment.body, '/rerun'))
       && contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association) }}
     runs-on: ubuntu-24.04
+    env:
+      # Never interpolated into a script: the author chooses this text.
+      COMMENT_BODY: ${{ github.event.comment.body }}
+      PR: ${{ github.event.issue.number }}
+      REPO: ${{ github.repository }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
+      API: https://circleci.com/api
+      # The list travels as a pipeline parameter, so an oversized one is refused.
+      MAX_RERUN_CASES: 50
     steps:
-      - name: Validate Command
+      - name: Read the command
         shell: bash
         run: |
-          COMMENT="${{ github.event.comment.body }}"
-          echo "[debug] Comment: $COMMENT"
-          # Echoed so the value the job condition gated on is visible in the log.
-          echo "[debug] Author association: ${{ github.event.comment.author_association }}"
+          set -euo pipefail
+          echo "[debug] association: ${{ github.event.comment.author_association }}"
+          CMD=$(printf '%s' "$COMMENT_BODY" | head -n 1 | tr -d '\r')
+          echo "[debug] command: $CMD"
 
-          # Allowed commands: /run all, /run shell, /run sql, /run medium
-          # Or any combination of them (up to 4)
-          if ! [[ "$COMMENT" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}$ ]]; then
-            echo "[info] Ignored invalid command: $COMMENT"
+          refuse() { { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
+
+          if [[ "$CMD" =~ ^/rerun[[:space:]]+(shell|sql|medium)[[:space:]]*$ ]]; then
+            { echo "MODE=rerun"; echo "SUITE=${BASH_REMATCH[1]}"; } >> "$GITHUB_ENV"
             exit 0
           fi
 
-          echo "[debug] Valid command: $COMMENT"
-          echo "VALID_RUN=true" >> $GITHUB_ENV
+          if [[ ! "$CMD" =~ ^/run([[:space:]]+(all|shell|sql|medium)){1,4}([[:space:]]+([0-9]+\.){3}[0-9]+-[0-9a-f]+)?[[:space:]]*$ ]]; then
+            refuse "I could not read \`$CMD\`. Use \`/run all\`, \`/run shell sql\` (any of shell, sql, medium), or \`/rerun <suite>\` to repeat only what failed."
+          fi
 
-      - name: Get Branch Name and Test Type
-        if: ${{ env.VALID_RUN == 'true' }}
+          if [[ "$CMD" =~ (^|[[:space:]])all($|[[:space:]]) ]]; then
+            PARAMS='{"run_shell_test":true,"run_sql_test":true,"run_medium_test":true,"run_all_test":true}'
+          else
+            PARAMS='{"run_all_test":false}'
+            for suite in shell sql medium; do
+              [[ "$CMD" =~ (^|[[:space:]])$suite($|[[:space:]]) ]] &&
+                PARAMS=$(jq -c --arg k "run_${suite}_test" '. + {($k): true}' <<<"$PARAMS")
+            done
+          fi
+          PARAMS=$(jq -c --arg b "$(grep -oE '([0-9]+\.){3}[0-9]+-[0-9a-f]+' <<<"$CMD" || echo none)" \
+                     '. + {baseline: $b}' <<<"$PARAMS")
+
+          { echo "MODE=run"
+            echo "PIPELINE_PARAMS=$PARAMS"
+            echo "SUMMARY=Started \`$CMD\`."; } >> "$GITHUB_ENV"
+
+      - name: Resolve the failures to repeat
+        if: ${{ env.MODE == 'rerun' }}
         shell: bash
         run: |
-          COMMENT="${{ github.event.comment.body }}"
-          echo "[debug] Comment: $COMMENT"
+          set -euo pipefail
+          proj="gh/${REPO}"
+          get()    { curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "$1"; }
+          refuse() { { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
 
-          TEST_TYPES="shell sql medium"
-          TEST_JSON="{"
+          SHA=$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)
 
-          # If 'all' is included, run all tests
-          if [[ "$COMMENT" =~ (^|[[:space:]])all($|[[:space:]]) ]]; then
-            echo "[debug] Running all tests"
-            for test in $TEST_TYPES; do
-              TEST_JSON+="\"run_${test}_test\":true,"
-            done
-            TEST_JSON+="\"run_all_test\":true,"
-          else
-            # Detect each combined test type separately
-            for test in $TEST_TYPES; do
-              if [[ "$COMMENT" =~ (^|[[:space:]])$test($|[[:space:]]) ]]; then
-                echo "[debug] Will run $test test"
-                TEST_JSON+="\"run_${test}_test\":true,"
-              fi
-            done
-            TEST_JSON+="\"run_all_test\":false,"
+          # No failed run for the head is also the "you pushed a new commit" case.
+          REF=$(get "${API}/v1.1/project/${proj}/tree/pull/${PR}/head?limit=100&shallow=true" \
+            | jq -r --arg job "test_${SUITE}" --arg sha "$SHA" '
+                [ .[] | select(.workflows.job_name == $job and .vcs_revision == $sha
+                               and .status == "failed") ] | first | .build_num // empty')
+          [ -n "$REF" ] || refuse "No failed \`test_${SUITE}\` run for \`${SHA:0:9}\`. If you pushed a new commit, run the suite once first."
+
+          # Reuse that run's build instead of compiling the commit again.
+          WF=$(get "${API}/v1.1/project/${proj}/${REF}" | jq -r .workflows.workflow_id)
+          BUILD=$(get "${API}/v2/workflow/${WF}/job" \
+            | jq -r '[ .items[] | select(.name == "build_debug") ] | first | .job_number // empty')
+          [ -n "$BUILD" ] || refuse "Run #${REF} has no \`build_debug\` job, so there is no build to reuse. Run the suite again."
+
+          # result is success | failure | skipped; a skipped case never ran.
+          : > cases
+          url="${API}/v2/project/${proj}/${REF}/tests"
+          while [ -n "$url" ]; do
+            page=$(get "$url")
+            jq -r '.items[] | select(.result == "failure") | .file // empty' <<<"$page" >> cases
+            next=$(jq -r '.next_page_token // empty' <<<"$page")
+            url=${next:+${API}/v2/project/${proj}/${REF}/tests?page-token=${next}}
+          done
+          sort -u -o cases cases
+          N=$(wc -l < cases)
+          echo "[debug] reference job #${REF}, build #${BUILD}, ${N} failure(s)"
+
+          [ "$N" -gt 0 ] || refuse "Run #${REF} reports no failed case — it probably failed before the tests ran. Check its log."
+          [ "$N" -le "$MAX_RERUN_CASES" ] || refuse "Run #${REF} failed ${N} cases, over the ${MAX_RERUN_CASES} a rerun carries. Run the full suite."
+          if grep -qvE '^[A-Za-z0-9._/-]+$' cases || grep -q '\.\.' cases; then
+            refuse "Run #${REF} reports a case path I will not pass on. Check its test results."
           fi
 
-          BASELINE=$(echo "$COMMENT" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+-[0-9a-f]+' || echo "")
-          if [ -n "$BASELINE" ]; then
-            echo "[debug] Baseline Version: $BASELINE"
-            TEST_JSON+="\"baseline\":\"$BASELINE\"}"
-          else
-            echo "[debug] No Baseline Version provided. Will use latest from DB."
-            TEST_JSON+="\"baseline\":\"none\"}"
+          # Extra nodes would only start to find nothing to do.
+          NODES=$(( N < 5 ? N : 5 ))
+          { echo "PIPELINE_PARAMS=$(jq -c -n \
+              --arg k "run_${SUITE}_test" --arg cases "$(paste -sd' ' cases)" \
+              --argjson build "$BUILD" --argjson nodes "$NODES" \
+              '{($k):true, run_all_test:false, baseline:"none",
+                rerun_cases:$cases, rerun_build_job:$build, shell_parallelism:$nodes}')"
+            echo "SUMMARY=Repeating ${N} failed \`${SUITE}\` case(s) from run #${REF} on \`${SHA:0:9}\`, across ${NODES} node(s)."
+          } >> "$GITHUB_ENV"
+
+      - name: Trigger CircleCI
+        if: ${{ env.MODE == 'run' || env.MODE == 'rerun' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BODY=$(jq -c -n --arg branch "pull/${PR}/head" --argjson params "$PIPELINE_PARAMS" \
+                   '{branch: $branch, parameters: $params}')
+          echo "[debug] request: $BODY"
+          if ! OUT=$(curl -sf -X POST --url "${API}/v2/project/gh/${REPO}/pipeline" \
+                       --header "Circle-Token: ${CIRCLECI_TOKEN}" \
+                       --header "Content-Type: application/json" --data "$BODY"); then
+            echo "REFUSAL=CircleCI rejected the request. See this workflow's log." >> "$GITHUB_ENV"
+            exit 1
           fi
+          echo "PIPELINE=$(jq -r '.number // empty' <<<"$OUT")" >> "$GITHUB_ENV"
 
-          TEST_JSON=$(echo $TEST_JSON | sed 's/,}/}/')
-          echo "TEST_JSON=$TEST_JSON" >> $GITHUB_ENV
-          echo "[debug] Test Parameters: $TEST_JSON"
-
-      - name: Trigger CircleCI Test
-        if: ${{ env.VALID_RUN == 'true' }}
+      - name: Report on the pull request
+        if: ${{ always() && (env.REFUSAL != '' || env.SUMMARY != '') }}
+        shell: bash
         env:
-          CIRCLECI_TOKEN: ${{ secrets.CIRCLECI_TOKEN }}
-          BRANCH_NAME: pull/${{ github.event.issue.number }}/head
-          TEST_JSON: ${{ env.TEST_JSON }}
-          REPO_OWNER: ${{ github.repository_owner }}
-          REPO_NAME: ${{ github.event.repository.name }}
-        shell: bash
+          MARKER: <!-- ci-comment-trigger -->
         run: |
-          DATA=$(echo '{"branch": "'"$BRANCH_NAME"'", "parameters": '"$TEST_JSON"'}')
-          echo "[debug] DATA: $DATA"
-          echo "[debug] REPO_OWNER: $REPO_OWNER"
-          echo "[debug] REPO_NAME: $REPO_NAME"
+          set -euo pipefail
+          if [ -n "${REFUSAL:-}" ]; then
+            BODY="${MARKER}"$'\n'"### CI trigger — not started"$'\n\n'"${REFUSAL}"
+          else
+            LINK=${PIPELINE:+" ([pipeline ${PIPELINE}](https://app.circleci.com/pipelines/github/${REPO}?branch=pull%2F${PR}%2Fhead))"}
+            BODY="${MARKER}"$'\n'"### CI trigger — started"$'\n\n'"${SUMMARY}${LINK}"
+          fi
 
-          curl --request POST \
-            --url "https://circleci.com/api/v2/project/gh/$REPO_OWNER/$REPO_NAME/pipeline" \
-            --header "Circle-Token: $CIRCLECI_TOKEN" \
-            --header "Content-Type: application/json" \
-            --data "$DATA"
+          # One comment per pull request, edited in place. One id per line: --paginate prints per page.
+          ID=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+                 --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" \
+               | tail -n 1)
+          if [ -n "$ID" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${ID}" -f body="$BODY" > /dev/null
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" > /dev/null
+          fi
