@@ -394,7 +394,8 @@ typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
  * num_page_request, num_pages_created, num_pages_written, num_pages_read, num_flusher_waiting_threads) have been
  * removed. They were incremented on every page fix, which made the page fix hot path pay for a cache line write that
  * multiple workers of the same query contend on, and the very same numbers are already provided by
- * cubrid statdump (Num_data_page_fix / Num_data_page_ioreads / Num_data_page_iowrites / hit_ratio).
+ * cubrid statdump (Num_data_page_fetches / Num_data_page_ioreads / Num_data_page_iowrites /
+ * Data_page_buffer_hit_ratio).
  * The corresponding SHOW columns are deprecated and always report 0. */
 
 struct pgbuf_status_snapshot
@@ -17341,7 +17342,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   idx = 0;
 
-  /* Hit_rate: deprecated, always 0. see hit_ratio of cubrid statdump. */
+  /* Hit_rate: deprecated, always 0. see Data_page_buffer_hit_ratio of cubrid statdump. */
   db_make_double (&db_val, 0);
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 13, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
@@ -17355,7 +17356,7 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_make_bigint (&vals[idx], 0);
   idx++;
 
-  /* Num_page_request: deprecated, always 0. see Num_data_page_fix of cubrid statdump. */
+  /* Num_page_request: deprecated, always 0. see Num_data_page_fetches of cubrid statdump. */
   db_make_bigint (&vals[idx], 0);
   idx++;
 

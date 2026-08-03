@@ -693,7 +693,8 @@ metadata_of_page_buffer_status (void)
   /* note: the counter columns (Hit_rate, Num_hit, Num_page_request, Num_pages_created, Num_pages_written,
    * Pages_written_rate, Num_pages_read, Pages_read_rate, Num_flusher_waiting_threads) are deprecated and always
    * report 0. They were maintained on the page fix hot path and duplicate statistics already provided by
-   * cubrid statdump (Num_data_page_fix / Num_data_page_ioreads / Num_data_page_iowrites / hit_ratio).
+   * cubrid statdump (Num_data_page_fetches / Num_data_page_ioreads / Num_data_page_iowrites /
+   * Data_page_buffer_hit_ratio).
    * The columns are kept so that the result set layout does not change. */
   static const SHOWSTMT_COLUMN cols[] = {
     {"Hit_rate", "numeric(13,10)"},	/* deprecated, always 0 */
