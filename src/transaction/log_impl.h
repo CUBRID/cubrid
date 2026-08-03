@@ -1215,8 +1215,8 @@ extern void logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_I
 extern MVCCID logtb_find_current_mvccid (THREAD_ENTRY * thread_p);
 extern MVCCID logtb_get_current_mvccid (THREAD_ENTRY * thread_p);
 extern int logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p);
-extern bool logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid);
-extern int logtb_wait_for_mvccid_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern bool logtb_is_active_other_tran (THREAD_ENTRY * thread_p, MVCCID mvccid);
+extern int logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid);
 extern int logtb_track_lockless_insert (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid);
 extern int logtb_2pc_lock_lockless_inserts (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 extern int logtb_invalidate_snapshot_data (THREAD_ENTRY * thread_p);

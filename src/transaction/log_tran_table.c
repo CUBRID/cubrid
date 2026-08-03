@@ -4188,22 +4188,25 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_is_active_other_mvccid () - Is mvccid a normal MVCCID belonging to another still-active transaction?
+ * logtb_is_active_other_tran () - Is mvccid an in-progress operation by another transaction?
  *
- * return	 : true when some other transaction is still working under mvccid.
+ * return	 : true if some other transaction is still working under mvccid.
  * thread_p (in) : Thread entry.
- * mvccid (in)	 : MVCCID to test.
+ * mvccid (in)	 : Candidate MVCCID (e.g. BTREE_MVCC_INFO_INSID or BTREE_MVCC_INFO_DELID of the record).
+ *
+ * Note: guards the "wait for that transaction to end" paths. False when the id is invalid, is our own
+ *	 operation, or the transaction has already ended -- in those cases there is nothing to wait on.
  */
 bool
-logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
+logtb_is_active_other_tran (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
     && log_Gl.mvcc_table.is_active (mvccid);
 }
 
 /*
- * logtb_wait_for_mvccid_end () - Block until the transaction working under mvccid ends: S_LOCK on its MVCCID
- *				  self-lock, then release.
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends: S_LOCK on the
+ *				self-lock logtb_ensure_mvccid_self_lock () holds, then release.
  *
  * return	 : NO_ERROR once that transaction has ended. An error if the lock failed, or if the
  *		   self-lock invariant is breached (grant while the transaction is still active) --
@@ -4215,7 +4218,7 @@ logtb_is_active_other_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid)
  * Note: call with no page latch held.
  */
 int
-logtb_wait_for_mvccid_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   int error_code;
 

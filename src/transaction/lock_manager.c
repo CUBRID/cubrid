@@ -6457,7 +6457,7 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
   int granted;
   LK_ENTRY *tran_entry = NULL;
 
-  /* callers pre-filter via logtb_get_current_mvccid / btree_is_active_other_inserter, so a non-normal
+  /* callers pre-filter via logtb_get_current_mvccid / logtb_is_active_other_tran, so a non-normal
    * MVCCID is not an expected input; the early return below is a safe no-op fallback. */
   assert (MVCCID_IS_NORMAL (mvccid));
   if (!MVCCID_IS_NORMAL (mvccid))

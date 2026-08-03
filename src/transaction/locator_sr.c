@@ -4283,12 +4283,12 @@ locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID 
 	}
 
       insert_mvccid = MVCC_GET_INSID (&mvcc_header);
-      if (!logtb_is_active_other_mvccid (thread_p, insert_mvccid))
+      if (!logtb_is_active_other_tran (thread_p, insert_mvccid))
 	{
 	  break;
 	}
 
-      error_code = logtb_wait_for_mvccid_end (thread_p, insert_mvccid);
+      error_code = logtb_wait_for_tran_end (thread_p, insert_mvccid);
       if (error_code != NO_ERROR)
 	{
 	  return error_code;

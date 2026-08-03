@@ -24270,7 +24270,7 @@ btree_key_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID conflict_mvccid,
     }
   pgbuf_unfix_and_init (thread_p, *leaf_page);
 
-  error_code = logtb_wait_for_mvccid_end (thread_p, conflict_mvccid);
+  error_code = logtb_wait_for_tran_end (thread_p, conflict_mvccid);
   if (error_code != NO_ERROR)
     {
       return error_code;
@@ -24414,7 +24414,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    {
 	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
 	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (logtb_is_active_other_mvccid (thread_p, insert_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, insert_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, insert_mvccid, find_unique_helper, leaf_page,
 						      NULL, restart);
@@ -24426,7 +24426,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	      /* Referenced (parent) row still being deleted. This scan takes no lock, so no lock conflict can
 	       * serve as the wait: block on the deleter's MVCCID instead, then re-read the key. */
 	      MVCCID delete_mvccid = BTREE_MVCC_INFO_DELID (&mvcc_info);
-	      if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, delete_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, delete_mvccid, find_unique_helper, leaf_page,
 						      NULL, restart);
@@ -24760,7 +24760,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	    {
 	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
 	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (logtb_is_active_other_mvccid (thread_p, insert_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, insert_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, insert_mvccid, find_unique_helper, leaf_page,
 						      &overflow_page, restart);
@@ -24772,7 +24772,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	      /* Referenced (parent) row still being deleted. This scan takes no lock, so no lock conflict can
 	       * serve as the wait: block on the deleter's MVCCID instead, then re-read the key. */
 	      MVCCID delete_mvccid = BTREE_MVCC_INFO_DELID (&mvcc_info);
-	      if (logtb_is_active_other_mvccid (thread_p, delete_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, delete_mvccid))
 		{
 		  return btree_key_wait_for_tran_end (thread_p, delete_mvccid, find_unique_helper, leaf_page,
 						      &overflow_page, restart);
@@ -27475,7 +27475,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
 	int fk_wait_error;
 
-	if (!logtb_is_active_other_mvccid (thread_p, fk_insert_mvccid))
+	if (!logtb_is_active_other_tran (thread_p, fk_insert_mvccid))
 	  {
 	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
 	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
@@ -27487,7 +27487,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
 	 * latches and any locked object, then wait out the inserter. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_mvccid_end (thread_p, fk_insert_mvccid);
+	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_insert_mvccid);
 	if (fk_wait_error != NO_ERROR)
 	  {
 	    return fk_wait_error;
@@ -27510,7 +27510,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	MVCCID fk_delete_mvccid = BTREE_MVCC_INFO_DELID (mvcc_info);
 	int fk_wait_error;
 
-	if (!logtb_is_active_other_mvccid (thread_p, fk_delete_mvccid))
+	if (!logtb_is_active_other_tran (thread_p, fk_delete_mvccid))
 	  {
 	    /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
 	     * DELETE_IN_PROGRESS as a live reference (mirrors the INSERT_IN_PROGRESS recheck above). */
@@ -27522,7 +27522,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
 	 * latches and any locked object, then wait out the deleter. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = logtb_wait_for_mvccid_end (thread_p, fk_delete_mvccid);
+	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_delete_mvccid);
 	if (fk_wait_error != NO_ERROR)
 	  {
 	    return fk_wait_error;
