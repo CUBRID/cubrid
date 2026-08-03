@@ -36732,8 +36732,12 @@ btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr)
       return PERF_PAGE_BTREE_GENERIC;
     }
 
-  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER))
+  if (header_record.length == sizeof (BTREE_OVERFLOW_HEADER)
+      || header_record.length == sizeof (BTREE_OVERFLOW_HEADER_V2))
     {
+      /* CBRD-24094: v2 (OID-ordered) overflow data/directory pages carry the 16-byte
+       * BTREE_OVERFLOW_HEADER_V2; classify them as overflow pages too. Without this they fall through to the
+       * root-header branch and trip its size assertion. */
       return PERF_PAGE_BTREE_OVF;
     }
   else if (header_record.length == sizeof (BTREE_NODE_HEADER))
