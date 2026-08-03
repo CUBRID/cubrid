@@ -35,6 +35,7 @@
 #include "memory_alloc.h"
 #include "external_sort.h"
 #include "file_manager.h"
+#include "heap_file.h"
 #include "page_buffer.h"
 #include "log_manager.h"
 #include "disk_manager.h"
@@ -6292,31 +6293,56 @@ sort_check_parallelism (THREAD_ENTRY * thread_p, SORT_PARAM * sort_param)
   else if (sort_param->px_type == SORT_INDEX_LEAF)
     {
       SORT_ARGS *sort_args_p = (SORT_ARGS *) sort_param->get_arg;
-      int n_sects = 0, tmp_sects = 0, error_code = NO_ERROR;
+      int n_data_pages = 0, n_sects = 0, tmp_pages = 0, tmp_sects = 0, error_code = NO_ERROR;
+      /* Only the no-logging index build (loaddb --no-logging-index) takes the maximum-degree policy below.
+       * An ordinary CREATE INDEX keeps the existing policy: parallel_sort_page_threshold decides whether the
+       * heap is large enough to go parallel and the parallelism parameter caps the degree. */
+      bool no_logging_build = bt_load_parallel_enabled ((const LOAD_ARGS *) sort_param->put_arg);
+
       if (sort_args_p->n_classes > 1)
 	{
 	  /* not partition, partition has own indexes, this means like this :
 	   * create t1; create t2 under t1; */
 	  return 1;
 	}
-      /* get number of data sectors to scan */
+      /* get number of pages to sort and number of data sectors to scan */
       for (int i = 0; i < sort_args_p->n_classes; i++)
 	{
+	  error_code = heap_get_num_data_pages (thread_p, &sort_args_p->hfids[i], &tmp_pages);
+	  if (error_code != NO_ERROR)
+	    {
+	      return 1;
+	    }
 	  error_code = file_get_num_data_sectors (thread_p, &sort_args_p->hfids[i].vfid, &tmp_sects);
 	  if (error_code != NO_ERROR)
 	    {
 	      return 1;
 	    }
+	  n_data_pages += tmp_pages;
 	  n_sects += tmp_sects;
 	}
 
-      /* No page threshold and no parallelism parameter for the index build: the degree is the number of
-       * system cores, capped by the maximum parallelism and the number of data sectors. */
-      parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD, n_sects);
+      if (no_logging_build)
+	{
+	  /* No page threshold and no parallelism parameter: the degree is the number of system cores, capped by
+	   * the maximum parallelism and the number of data sectors. */
+	  parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::INDEX_BUILD, n_sects);
+	}
+      else
+	{
+	  parallel_num = parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT, n_data_pages,
+								  -1 /* no hint at parallel index build */ );
+	}
 
       if (parallel_num < 2)
 	{
 	  /* single process */
+	  return 1;
+	}
+
+      if (n_sects < parallel_num)
+	{
+	  /* no sector in some threads */
 	  return 1;
 	}
 
