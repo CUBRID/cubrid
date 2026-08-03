@@ -2291,9 +2291,24 @@ la_apply_worker_end_client_context (LA_APPLY_WORKER_SESSION * session)
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   if (session->client_context_started)
     {
+      /* Serialize client-context teardown with worker startup using the same lock
+       * (la_worker_init_mutex) that la_apply_worker_start_session holds while it
+       * builds the context, so a finalizing worker never races a starting one.
+       *
+       * WARNING: do NOT call this function while already holding
+       * la_worker_init_mutex. The startup-error rollback path calls the raw
+       * au_final/sm_final/ws_final directly (already inside the lock), NOT this
+       * function; reusing this function on a locked path would self-deadlock.
+       *
+       * locator_free_areas() at worker exit is pure thread-local state and stays
+       * outside this lock. */
+      er_log_debug (ARG_FILE_LINE, "ws_teardown client-context teardown lock enter (session=%p)", (void *) session);
+      pthread_mutex_lock (&la_worker_init_mutex);
       au_final ();
       sm_final ();
       ws_final ();
+      pthread_mutex_unlock (&la_worker_init_mutex);
+      er_log_debug (ARG_FILE_LINE, "ws_teardown client-context teardown lock exit (session=%p)", (void *) session);
       db_set_session_id (DB_EMPTY_SESSION);
       session->client_context_started = false;
     }
@@ -3532,6 +3547,22 @@ static int
 la_start_apply_workers (void)
 {
   int i;
+
+  /* A restart on top of live workers would overwrite their slots (mutex/queue).
+   * la_shutdown() (which joins via la_stop_apply_workers and resets started=false)
+   * must have run first; if any slot is still started this is a structural bug —
+   * fail loudly instead of corrupting a running worker. */
+  for (i = 0; i < LA_APPLY_WORKER_COUNT; i++)
+    {
+      if (la_apply_Workers[i].started)
+	{
+	  er_log_debug (ARG_FILE_LINE, "ws_teardown reentry defense tripped: worker %d still started", i);
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "apply workers already started; missing la_shutdown before restart");
+	  return ER_FAILED;
+	}
+    }
 
   /* 디스패치 FIFO 를 기동 시 비운다 (리더 전용 구조) */
   la_dispatch_order_init ();
@@ -11964,6 +11995,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			 &la_Info.last_deleted_archive_num);
   if (error != NO_ERROR)
     {
+      /* Workers are already running (la_start_apply_workers above); join them via
+       * la_shutdown before returning so no global teardown races live workers. */
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_check_duplicated (error %d)", error);
+      la_shutdown ();
       return error;
     }
 
@@ -11972,6 +12007,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (la_Info.cache_pb == NULL)
     {
       er_log_debug (ARG_FILE_LINE, "Cannot initialize cache page buffer");
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_init_cache_pb");
+      la_shutdown ();
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -11980,6 +12017,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Cannot find log page size");
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_find_log_pagesize (error %d)", error);
+      la_shutdown ();
       return error;
     }
 
@@ -11989,6 +12028,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   if (error != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "Cannot initialize cache log buffer");
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_init_cache_log_buffer (error %d)", error);
+      la_shutdown ();
       return error;
     }
 
@@ -12010,6 +12051,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize _db_ha_apply_info");
       er_stack_pop ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_get_last_ha_applied_info (error %d)", error);
+      la_shutdown ();
       return error;
     }
 
@@ -12024,6 +12067,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_REPL_FILTER_GENERIC, 1,
 		  "failed to initialize replication filters");
+	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_create_repl_filter (error %d)", error);
+	  la_shutdown ();
 	  return error;
 	}
 
@@ -12048,6 +12093,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       error = la_start_dk_sharing ();
       if (error != NO_ERROR)
 	{
+	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_start_dk_sharing (error %d)", error);
+	  la_shutdown ();
 	  return error;
 	}
     }
@@ -12062,6 +12109,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
   error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
   if (error != NO_ERROR)
     {
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_lock_dbname (error %d)", error);
+      la_shutdown ();
       return error;
     }
 
