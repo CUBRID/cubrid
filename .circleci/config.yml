@@ -250,10 +250,13 @@ commands:
                 ;;
             esac
 
-            # The tests API reports each case in the form these globs produce.
-            RERUN_CASES="<< pipeline.parameters.rerun_cases >>"
-            if [ -n "$RERUN_CASES" ]; then
+            # The tests API reports each case in the form these globs produce. Read from
+            # the environment, not substituted into this script: the parameter must not
+            # become shell source. set -f so the paths cannot glob either.
+            if [ -n "${RERUN_CASES:-}" ]; then
+              set -f
               printf '%s\n' $RERUN_CASES | sort -u > /tmp/rerun.list
+              set +f
 
               # Paths come from testcase filenames a pull request can choose, and land
               # here as text: no metacharacters, no `..`, no other suite.
@@ -463,15 +466,25 @@ jobs:
   build:
     executor: cubrid-build
     steps:
-      - build-cubrid:
-          ccache-prefix: ccache-global-v2
-      # Only develop preserves release; a PR would upload an artifact nobody reads.
-      - when:
-          condition:
-            equal: [ develop, << pipeline.git.branch >> ]
+      - unless:
+          condition: << pipeline.parameters.rerun_build_job >>
           steps:
-            - package-build:
-                mode: release
+            - build-cubrid:
+                ccache-prefix: ccache-global-v2
+            # Only develop preserves release; a PR would upload an artifact nobody reads.
+            - when:
+                condition:
+                  equal: [ develop, << pipeline.git.branch >> ]
+                steps:
+                  - package-build:
+                      mode: release
+      # Nothing to build on a /rerun, but a job must have at least one step.
+      - when:
+          condition: << pipeline.parameters.rerun_build_job >>
+          steps:
+            - run:
+                name: Skip the release build (/rerun)
+                command: echo "The commit is already built and no test job reads the release tree."
 
   build_debug:
     executor: cubrid-build
@@ -510,6 +523,7 @@ jobs:
     parallelism: << parameters.parallelism >>
     environment:
       TEST_SUITE: << parameters.suite >>
+      RERUN_CASES: << pipeline.parameters.rerun_cases >>
     steps:
       - resolve-testcases
       - restore_cache:
@@ -535,6 +549,7 @@ jobs:
     environment:
       BASELINE: << pipeline.parameters.baseline >>
       TEST_SUITE: "shell"
+      RERUN_CASES: << pipeline.parameters.rerun_cases >>
     steps:
       # Resolved once in download-build so 50 pods do not each hit the repo.
       - attach_workspace:

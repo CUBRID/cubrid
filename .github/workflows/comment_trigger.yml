@@ -25,6 +25,7 @@ jobs:
       API: https://circleci.com/api
       # The list travels as a pipeline parameter, so an oversized one is refused.
       MAX_RERUN_CASES: 50
+      MAX_RERUN_NODES: 5
     steps:
       - name: Read the command
         shell: bash
@@ -34,7 +35,7 @@ jobs:
           CMD=$(printf '%s' "$COMMENT_BODY" | head -n 1 | tr -d '\r')
           echo "[debug] command: $CMD"
 
-          refuse() { { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
+          refuse() { echo "[info] refused: $1"; { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
 
           if [[ "$CMD" =~ ^/rerun[[:space:]]+(shell|sql|medium)[[:space:]]*$ ]]; then
             { echo "MODE=rerun"; echo "SUITE=${BASH_REMATCH[1]}"; } >> "$GITHUB_ENV"
@@ -68,50 +69,77 @@ jobs:
           set -euo pipefail
           proj="gh/${REPO}"
           get()    { curl -sf -H "Circle-Token: ${CIRCLECI_TOKEN}" "$1"; }
-          refuse() { { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
+          refuse() { echo "[info] refused: $1"; { echo "MODE=refuse"; echo "REFUSAL=$1"; } >> "$GITHUB_ENV"; exit 0; }
+
+          # Without this, an API error would leave the job with nothing to report.
+          trap 'echo "REFUSAL=Could not read the previous run from CircleCI. See this workflow log." >> "$GITHUB_ENV"' ERR
 
           SHA=$(gh api "repos/${REPO}/pulls/${PR}" --jq .head.sha)
+          builds=$(get "${API}/v1.1/project/${proj}/tree/pull/${PR}/head?limit=100&shallow=true")
 
-          # No failed run for the head is also the "you pushed a new commit" case.
-          REF=$(get "${API}/v1.1/project/${proj}/tree/pull/${PR}/head?limit=100&shallow=true" \
-            | jq -r --arg job "test_${SUITE}" --arg sha "$SHA" '
-                [ .[] | select(.workflows.job_name == $job and .vcs_revision == $sha
-                               and .status == "failed") ] | first | .build_num // empty')
-          [ -n "$REF" ] || refuse "No failed \`test_${SUITE}\` run for \`${SHA:0:9}\`. If you pushed a new commit, run the suite once first."
+          # The newest run of this suite on this commit, whatever its outcome. Taking the
+          # newest rather than the newest failed one is what makes a rerun of a rerun
+          # narrow the set further, the way the native "rerun failed tests" does; no run
+          # at all for this commit is the "you pushed a new commit" case.
+          read -r REF_JOB REF_STATUS <<<"$(jq -r --arg job "test_${SUITE}" --arg sha "$SHA" '
+              [ .[] | select(.workflows.job_name == $job and .vcs_revision == $sha) ]
+              | first | "\(.build_num // "") \(.status // "")"' <<<"$builds")"
+          [ -n "$REF_JOB" ] || refuse "No \`test_${SUITE}\` run for \`${SHA:0:9}\` yet. Run the suite once first."
+          case "$REF_STATUS" in
+            failed|timedout|infrastructure_fail) ;;
+            success|fixed) refuse "The last \`test_${SUITE}\` run (#${REF_JOB}) passed, so there is nothing to repeat." ;;
+            *)             refuse "\`test_${SUITE}\` run #${REF_JOB} is ${REF_STATUS}. Wait for it to finish." ;;
+          esac
 
-          # Reuse that run's build instead of compiling the commit again.
-          WF=$(get "${API}/v1.1/project/${proj}/${REF}" | jq -r .workflows.workflow_id)
-          BUILD=$(get "${API}/v2/workflow/${WF}/job" \
-            | jq -r '[ .items[] | select(.name == "build_debug") ] | first | .job_number // empty')
-          [ -n "$BUILD" ] || refuse "Run #${REF} has no \`build_debug\` job, so there is no build to reuse. Run the suite again."
+          # Any build of this commit will do, from whichever workflow: a rerun's own
+          # build_debug only points at an earlier build and stores no artifact, so take
+          # the newest one that still has it.
+          BUILD_JOB=""
+          for cand in $(jq -r --arg sha "$SHA" '
+                [ .[] | select(.workflows.job_name == "build_debug" and .vcs_revision == $sha) ]
+                | .[].build_num' <<<"$builds"); do
+            if get "${API}/v2/project/${proj}/${cand}/artifacts" \
+                 | jq -e 'any(.items[]?; .path | endswith("CUBRID.tar.gz"))' > /dev/null; then
+              BUILD_JOB=$cand
+              break
+            fi
+          done
+          [ -n "$BUILD_JOB" ] || refuse "No build of \`${SHA:0:9}\` still has its artifact (they are kept 30 days). Run the suite again."
 
           # result is success | failure | skipped; a skipped case never ran.
           : > cases
-          url="${API}/v2/project/${proj}/${REF}/tests"
+          url="${API}/v2/project/${proj}/${REF_JOB}/tests"
           while [ -n "$url" ]; do
             page=$(get "$url")
             jq -r '.items[] | select(.result == "failure") | .file // empty' <<<"$page" >> cases
             next=$(jq -r '.next_page_token // empty' <<<"$page")
-            url=${next:+${API}/v2/project/${proj}/${REF}/tests?page-token=${next}}
+            url=${next:+${API}/v2/project/${proj}/${REF_JOB}/tests?page-token=${next}}
           done
           sort -u -o cases cases
           N=$(wc -l < cases)
-          echo "[debug] reference job #${REF}, build #${BUILD}, ${N} failure(s)"
+          echo "[debug] reference job #${REF_JOB} (${REF_STATUS}), build #${BUILD_JOB}, ${N} failure(s)"
 
-          [ "$N" -gt 0 ] || refuse "Run #${REF} reports no failed case — it probably failed before the tests ran. Check its log."
-          [ "$N" -le "$MAX_RERUN_CASES" ] || refuse "Run #${REF} failed ${N} cases, over the ${MAX_RERUN_CASES} a rerun carries. Run the full suite."
+          [ "$N" -gt 0 ] || refuse "Run #${REF_JOB} reports no failed case — it probably failed before the tests ran. Check its log."
+          [ "$N" -le "$MAX_RERUN_CASES" ] || refuse "Run #${REF_JOB} failed ${N} cases, over the ${MAX_RERUN_CASES} a rerun carries. Run the full suite."
           if grep -qvE '^[A-Za-z0-9._/-]+$' cases || grep -q '\.\.' cases; then
-            refuse "Run #${REF} reports a case path I will not pass on. Check its test results."
+            refuse "Run #${REF_JOB} reports a case path I will not pass on. Check its test results."
           fi
 
-          # Extra nodes would only start to find nothing to do.
-          NODES=$(( N < 5 ? N : 5 ))
-          { echo "PIPELINE_PARAMS=$(jq -c -n \
-              --arg k "run_${SUITE}_test" --arg cases "$(paste -sd' ' cases)" \
-              --argjson build "$BUILD" --argjson nodes "$NODES" \
-              '{($k):true, run_all_test:false, baseline:"none",
-                rerun_cases:$cases, rerun_build_job:$build, shell_parallelism:$nodes}')"
-            echo "SUMMARY=Repeating ${N} failed \`${SUITE}\` case(s) from run #${REF} on \`${SHA:0:9}\`, across ${NODES} node(s)."
+          PARAMS=$(jq -c -n --arg k "run_${SUITE}_test" --arg cases "$(paste -sd' ' cases)" \
+                     --argjson build "$BUILD_JOB" \
+                     '{($k):true, run_all_test:false, baseline:"none",
+                       rerun_cases:$cases, rerun_build_job:$build}')
+          NOTE=""
+          # Only the shell suite reads shell_parallelism; sql and medium keep their own
+          # widths. Extra nodes would only start to find nothing to do.
+          if [ "$SUITE" = shell ]; then
+            NODES=$(( N < MAX_RERUN_NODES ? N : MAX_RERUN_NODES ))
+            PARAMS=$(jq -c --argjson n "$NODES" '. + {shell_parallelism:$n}' <<<"$PARAMS")
+            NOTE=", across ${NODES} node(s)"
+          fi
+
+          { echo "PIPELINE_PARAMS=$PARAMS"
+            echo "SUMMARY=Repeating ${N} failed \`${SUITE}\` case(s) from run #${REF_JOB} on \`${SHA:0:9}\`${NOTE}."
           } >> "$GITHUB_ENV"
 
       - name: Trigger CircleCI
@@ -144,12 +172,16 @@ jobs:
             BODY="${MARKER}"$'\n'"### CI trigger — started"$'\n\n'"${SUMMARY}${LINK}"
           fi
 
-          # One comment per pull request, edited in place. One id per line: --paginate prints per page.
-          ID=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
-                 --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" \
-               | tail -n 1)
-          if [ -n "$ID" ]; then
-            gh api -X PATCH "repos/${REPO}/issues/comments/${ID}" -f body="$BODY" > /dev/null
-          else
-            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" > /dev/null
-          fi
+          # One comment per pull request, edited in place. One id per line: --paginate
+          # prints per page. Best-effort, as in tc-merge-gate.yml: a flaky comment must
+          # not redden a pull request whose pipeline started fine.
+          {
+            ID=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate \
+                   --jq ".[] | select(.user.login == \"github-actions[bot]\" and (.body | startswith(\"$MARKER\"))) | .id" \
+                 | tail -n 1)
+            if [ -n "$ID" ]; then
+              gh api -X PATCH "repos/${REPO}/issues/comments/${ID}" -f body="$BODY" > /dev/null
+            else
+              gh api -X POST "repos/${REPO}/issues/${PR}/comments" -f body="$BODY" > /dev/null
+            fi
+          } || echo "::warning::Could not post the trigger comment; the pipeline is unaffected"
