@@ -24247,12 +24247,17 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 
 	      a_func_list->curr_sort_key_tuple_count = 0;
 	    }
+	}
 
-	  for (int i = 0; i < key_idx; i++)
-	    {
-	      pr_clear_value (&a_eval_list->current_values[i]);
-	      pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
-	    }
+      /* Advance the group baseline once per tuple, AFTER every function has
+       * compared against the previous tuple's sort key.  Performing this copy
+       * inside the per-function loop above corrupts the baseline for the
+       * remaining functions: they would compare temp_values against itself and
+       * never detect a partition boundary, losing their PARTITION BY. */
+      for (int i = 0; i < key_idx; i++)
+	{
+	  pr_clear_value (&a_eval_list->current_values[i]);
+	  pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
 	}
     }
 
