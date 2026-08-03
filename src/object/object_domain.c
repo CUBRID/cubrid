@@ -2074,6 +2074,13 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 		    if (dsize1 == 1)
 		      {
 			match = tp_domain_match (domain->setdomain, transient->setdomain, exact);
+
+			if (match && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+			    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (transient->setdomain))
+			    && domain->setdomain->collation_flag != transient->setdomain->collation_flag)
+			  {
+			    match = 0;
+			  }
 		      }
 		    else
 		      {
@@ -2083,7 +2090,10 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 			for (d1 = domain->setdomain, d2 = transient->setdomain; d1 != NULL && d2 != NULL;
 			     d1 = d1->next, d2 = d2->next)
 			  {
-			    if (!tp_domain_match (d1, d2, exact))
+			    if (!tp_domain_match (d1, d2, exact)
+				|| (TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient))
+				    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d2))
+				    && d1->collation_flag != d2->collation_flag))
 			      {
 				match = 0;
 				break;	/* immediately exit for loop */
@@ -2151,7 +2161,12 @@ tp_is_domain_cached (TP_DOMAIN * dlist, TP_DOMAIN * transient, TP_MATCH exact, T
 
 	    if (match)
 	      {
-		break;
+		if (!TP_IS_SET_TYPE (TP_DOMAIN_TYPE (transient)) || domain->is_desc == transient->is_desc)
+		  {
+		    break;
+		  }
+
+		match = 0;
 	      }
 
 	    *ins_pos = domain;
