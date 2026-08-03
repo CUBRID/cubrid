@@ -388,20 +388,14 @@ typedef struct pgbuf_monitor_bcb_mutex PGBUF_MONITOR_BCB_MUTEX;
 
 typedef struct pgbuf_holder_info PGBUF_HOLDER_INFO;
 
-typedef struct pgbuf_status PGBUF_STATUS;
 typedef struct pgbuf_status_snapshot PGBUF_STATUS_SNAPSHOT;
-typedef struct pgbuf_status_old PGBUF_STATUS_OLD;
 
-struct alignas (64) pgbuf_status
-{
-  unsigned long long num_hit;
-  unsigned long long num_page_request;
-  unsigned long long num_pages_created;
-  unsigned long long num_pages_written;
-  unsigned long long num_pages_read;
-  unsigned int num_flusher_waiting_threads;
-  unsigned int dummy;
-};
+/* note: the per-fix counters that used to back the SHOW PAGE BUFFER STATUS counter columns (num_hit,
+ * num_page_request, num_pages_created, num_pages_written, num_pages_read, num_flusher_waiting_threads) have been
+ * removed. They were incremented on every page fix, which made the page fix hot path pay for a cache line write that
+ * multiple workers of the same query contend on, and the very same numbers are already provided by
+ * cubrid statdump (Num_data_page_fix / Num_data_page_ioreads / Num_data_page_iowrites / hit_ratio).
+ * The corresponding SHOW columns are deprecated and always report 0. */
 
 struct pgbuf_status_snapshot
 {
@@ -413,16 +407,6 @@ struct pgbuf_status_snapshot
   unsigned int num_data_pages;
   unsigned int num_system_pages;
   unsigned int num_temp_pages;
-};
-
-struct pgbuf_status_old
-{
-  unsigned long long num_hit;
-  unsigned long long num_page_request;
-  unsigned long long num_pages_created;
-  unsigned long long num_pages_written;
-  unsigned long long num_pages_read;
-  time_t print_out_time;
 };
 
 struct pgbuf_holder_info
@@ -825,8 +809,6 @@ struct pgbuf_buffer_pool
   lockfree::circular_queue<int> *shared_lrus_with_victims;
   /* *INDENT-ON* */
 
-  PGBUF_STATUS *show_status;
-  PGBUF_STATUS_OLD show_status_old;
   PGBUF_STATUS_SNAPSHOT show_status_snapshot;
 #if defined (SERVER_MODE)
   pthread_mutex_t show_status_mutex;
@@ -1619,7 +1601,6 @@ pgbuf_initialize (void)
   memset (&pgbuf_Pool.buf_invalid_list, 0, sizeof (PGBUF_INVALID_LIST));
   memset (&pgbuf_Pool.seq_chkpt_flusher, 0, sizeof (PGBUF_SEQ_FLUSHER));
   memset (&pgbuf_Pool.quota, 0, sizeof (PGBUF_PAGE_QUOTA));
-  memset (&pgbuf_Pool.show_status_old, 0, sizeof (PGBUF_STATUS_OLD));
   memset (&pgbuf_Pool.show_status_snapshot, 0, sizeof (PGBUF_STATUS_SNAPSHOT));
 
 #if defined (SERVER_MODE)
@@ -1658,7 +1639,6 @@ pgbuf_initialize (void)
   pgbuf_Pool.big_private_lrus_with_victims = NULL;
   pgbuf_Pool.shared_lrus_with_victims = NULL;
 
-  pgbuf_Pool.show_status = NULL;
 #if defined (SERVER_MODE)
   pgbuf_Pool.show_status_mutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
@@ -1843,20 +1823,6 @@ pgbuf_initialize (void)
       ASSERT_ERROR ();
       goto error;
     }
-
-  /* cache-line aligned so each per-thread slot owns its own line (no false sharing) */
-  pgbuf_Pool.show_status =
-    (PGBUF_STATUS *) cub_aligned_alloc (64, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1),
-					__FILE__, __LINE__);
-  if (pgbuf_Pool.show_status == NULL)
-    {
-      ASSERT_ERROR ();
-      goto error;
-    }
-
-  memset (pgbuf_Pool.show_status, 0, sizeof (PGBUF_STATUS) * (thread_num_total_threads () + 1));
-
-  pgbuf_Pool.show_status_old.print_out_time = time (NULL);
 
 #if defined(SERVER_MODE)
   pthread_mutex_init (&pgbuf_Pool.show_status_mutex, NULL);
@@ -2053,12 +2019,6 @@ pgbuf_finalize (void)
       pgbuf_Pool.shared_lrus_with_victims = NULL;
     }
 
-  if (pgbuf_Pool.show_status != NULL)
-    {
-      free (pgbuf_Pool.show_status);
-      pgbuf_Pool.show_status = NULL;
-    }
-
 #if defined(SERVER_MODE)
   pthread_mutex_destroy (&pgbuf_Pool.show_status_mutex);
 #endif
@@ -2231,7 +2191,6 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
   bool maybe_deallocated;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
 
@@ -2324,7 +2283,6 @@ try_again:
 	  pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
 
-	  show_status->num_hit++;
 	  goto fast_path;
 	}
     }
@@ -2344,8 +2302,6 @@ try_again:
       CUBRID_PGBUF_HIT ();
       pgbuf_hit = true;
 #endif /* ENABLE_SYSTEMTAP */
-
-      show_status->num_hit++;
 
       if (fetch_mode == NEW_PAGE)
 	{
@@ -2565,8 +2521,6 @@ fast_path:
        * note: temporary pages are not strictly handled in regard with their deallocation status. */
       assert (fetch_mode != NEW_PAGE || pgbuf_is_lsa_temporary (pgptr));
     }
-
-  show_status->num_page_request++;
 
   /* Record number of fetches in statistics */
   if (perf.is_perf_tracking)
@@ -8139,7 +8093,6 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
   PERF_UTIME_TRACKER time_tracker_alloc_bcb = PERF_UTIME_TRACKER_INITIALIZER;
   PERF_UTIME_TRACKER time_tracker_alloc_search_and_wait = PERF_UTIME_TRACKER_INITIALIZER;
   bool detailed_perf = perfmon_is_perf_tracking_and_active (PERFMON_ACTIVATION_FLAG_PB_VICTIMIZATION);
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
 
 #if defined (SERVER_MODE)
   struct timespec to;
@@ -8251,11 +8204,7 @@ pgbuf_allocate_bcb (THREAD_ENTRY * thread_p, const VPID * src_vpid)
       // before migration of the page_flush_daemon it was a try_wakeup, check if still needed
       pgbuf_wakeup_page_flush_daemon (thread_p);
 
-      show_status->num_flusher_waiting_threads++;
-
       r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_ALLOC_BCB_SUSPENDED);
-
-      show_status->num_flusher_waiting_threads--;
 
       PERF_UTIME_TRACKER_TIME (thread_p, &time_tracker_alloc_search_and_wait, pstat_cond_wait);
 
@@ -8355,7 +8304,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   PAGE_PTR pgptr = NULL;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
   bool success;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
   PGBUF_ATOMIC_LATCH_IMPL impl;
 
 #if defined (ENABLE_SYSTEMTAP)
@@ -8442,7 +8390,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
     {
       /* Record number of reads in statistics */
       perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
-      show_status->num_pages_read++;
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -8572,9 +8519,6 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 	{
 	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
-
-      show_status->num_pages_created++;
-      show_status->num_hit++;
     }
 
   return bufptr;
@@ -10687,8 +10631,6 @@ pgbuf_bcb_flush_with_wal (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, bool is_p
   FILEIO_WRITE_MODE write_mode;
   bool is_temp = pgbuf_is_temporary_volume (bufptr->vpid.volid);
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
-  PGBUF_STATUS *show_status = &pgbuf_Pool.show_status[thread_get_entry_index (thread_p)];
-
 
   PGBUF_BCB_CHECK_OWN (bufptr);
 
@@ -10825,8 +10767,6 @@ copy_unflushed_lsa:
     }
   else
     {
-      show_status->num_pages_written++;
-
       /* Record number of writes in statistics */
       write_mode = (dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE);
 
@@ -17362,23 +17302,20 @@ pgbuf_scan_bcb_table ()
  *   arg_values(in):
  *   arg_cnt(in):
  *   ptr(in/out):
+ *
+ * Note: only the page composition snapshot columns report real values. The counter columns are deprecated and always
+ *       report 0; the equivalent statistics are available through cubrid statdump.
  */
 int
 pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int arg_cnt, void **ptr)
 {
   SHOWSTMT_ARRAY_CONTEXT *ctx = NULL;
   const int num_cols = 19;
-  time_t cur_time;
-  int idx, i;
+  int idx;
   int error = NO_ERROR;
   DB_VALUE *vals = NULL, db_val;
-  unsigned long long delta, hit_delta, request_delta;
-  double time_delta;
-  double hit_rate;
   DB_DATA_STATUS data_status;
-  PGBUF_STATUS status_accumulated = { };
   PGBUF_STATUS_SNAPSHOT *status_snapshot = &pgbuf_Pool.show_status_snapshot;
-  PGBUF_STATUS_OLD *status_old = &pgbuf_Pool.show_status_old;
 
   *ptr = NULL;
 
@@ -17388,21 +17325,11 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
 
   pgbuf_scan_bcb_table ();
 
-  for (i = 0; i <= (int) thread_num_total_threads (); i++)
-    {
-      status_accumulated.num_hit += pgbuf_Pool.show_status[i].num_hit;
-      status_accumulated.num_page_request += pgbuf_Pool.show_status[i].num_page_request;
-      status_accumulated.num_pages_created += pgbuf_Pool.show_status[i].num_pages_created;
-      status_accumulated.num_pages_written += pgbuf_Pool.show_status[i].num_pages_written;
-      status_accumulated.num_pages_read += pgbuf_Pool.show_status[i].num_pages_read;
-      status_accumulated.num_flusher_waiting_threads += pgbuf_Pool.show_status[i].num_flusher_waiting_threads;
-    }
-
   ctx = showstmt_alloc_array_context (thread_p, 1, num_cols);
   if (ctx == NULL)
     {
       error = er_errid ();
-      return error;
+      goto exit_on_error;
     }
 
   vals = showstmt_alloc_tuple_in_context (thread_p, ctx);
@@ -17412,17 +17339,10 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  cur_time = time (NULL);
-
-  time_delta = difftime (cur_time, status_old->print_out_time) + 0.0001;	// avoid dividing by 0
-
   idx = 0;
 
-  hit_rate = (status_accumulated.num_hit - status_old->num_hit) /
-    ((status_accumulated.num_page_request - status_old->num_page_request) + 0.0000000000001);
-  hit_rate = hit_rate * 100;
-
-  db_make_double (&db_val, hit_rate);
+  /* Hit_rate: deprecated, always 0. see hit_ratio of cubrid statdump. */
+  db_make_double (&db_val, 0);
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 13, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
@@ -17431,12 +17351,12 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  delta = status_accumulated.num_hit - status_old->num_hit;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_hit: deprecated, always 0. */
+  db_make_bigint (&vals[idx], 0);
   idx++;
 
-  delta = status_accumulated.num_page_request - status_old->num_page_request;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_page_request: deprecated, always 0. see Num_data_page_fix of cubrid statdump. */
+  db_make_bigint (&vals[idx], 0);
   idx++;
 
   db_make_int (&vals[idx], pgbuf_Pool.num_buffers);
@@ -17469,15 +17389,16 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
   db_make_int (&vals[idx], status_snapshot->num_temp_pages);
   idx++;
 
-  delta = status_accumulated.num_pages_created - status_old->num_pages_created;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_pages_created: deprecated, always 0. */
+  db_make_bigint (&vals[idx], 0);
   idx++;
 
-  delta = status_accumulated.num_pages_written - status_old->num_pages_written;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_pages_written: deprecated, always 0. see Num_data_page_iowrites of cubrid statdump. */
+  db_make_bigint (&vals[idx], 0);
   idx++;
 
-  db_make_double (&db_val, delta / time_delta);
+  /* Pages_written_rate: deprecated, always 0. */
+  db_make_double (&db_val, 0);
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
@@ -17486,11 +17407,12 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  delta = status_accumulated.num_pages_read - status_old->num_pages_read;
-  db_make_bigint (&vals[idx], delta);
+  /* Num_pages_read: deprecated, always 0. see Num_data_page_ioreads of cubrid statdump. */
+  db_make_bigint (&vals[idx], 0);
   idx++;
 
-  db_make_double (&db_val, delta / time_delta);
+  /* Pages_read_rate: deprecated, always 0. */
+  db_make_double (&db_val, 0);
   db_value_domain_init (&vals[idx], DB_TYPE_NUMERIC, 20, 10);
   error = numeric_db_value_coerce_to_num (&db_val, &vals[idx], &data_status);
   idx++;
@@ -17499,18 +17421,11 @@ pgbuf_start_scan (THREAD_ENTRY * thread_p, int type, DB_VALUE ** arg_values, int
       goto exit_on_error;
     }
 
-  db_make_int (&vals[idx], status_accumulated.num_flusher_waiting_threads);
+  /* Num_flusher_waiting_threads: deprecated, always 0. */
+  db_make_int (&vals[idx], 0);
   idx++;
 
   assert (idx == num_cols);
-
-  /* set now data to old data */
-  status_old->num_hit = status_accumulated.num_hit;
-  status_old->num_page_request = status_accumulated.num_page_request;
-  status_old->num_pages_created = status_accumulated.num_pages_created;
-  status_old->num_pages_written = status_accumulated.num_pages_written;
-  status_old->num_pages_read = status_accumulated.num_pages_read;
-  status_old->print_out_time = cur_time;
 
   *ptr = ctx;
 
