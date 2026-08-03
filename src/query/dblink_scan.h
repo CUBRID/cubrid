@@ -115,6 +115,12 @@ struct dblink_insert_state
 {
   int conn_handle;
   int stmt_handle;
+  bool savepoint_set;		/* true: a remote savepoint was taken for this statement, so a failure rolls
+				 * back only this statement's work. false: the savepoint could not be taken
+				 * (unsupported by the remote, or the request failed), so a failure must roll
+				 * back and tear down the whole remote transaction, and mark the local
+				 * transaction so that its commit is refused instead of silently confirming
+				 * the loss. */
 };
 
 extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,

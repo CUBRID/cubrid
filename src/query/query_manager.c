@@ -115,6 +115,10 @@ struct qmgr_tran_entry
   pthread_mutex_t mutex;
 
   bool is_dblink_autocommit;	/* for dblink autocommit check */
+  bool is_dblink_sink_aborted;	/* a remote DML sink statement failed on a connection without savepoint
+				 * support, so its whole remote transaction (including work done by earlier
+				 * statements) was rolled back. Committing would silently confirm that loss,
+				 * so the local transaction must be refused at commit time. */
 };
 
 typedef struct qmgr_temp_file_list QMGR_TEMP_FILE_LIST;
@@ -670,6 +674,7 @@ qmgr_initialize_tran_entry (QMGR_TRAN_ENTRY * tran_entry_p)
   tran_entry_p->dblink_entry = NULL;
   tran_entry_p->modified_classes_p = NULL;
   tran_entry_p->is_dblink_autocommit = true;
+  tran_entry_p->is_dblink_sink_aborted = false;
   pthread_mutex_init (&tran_entry_p->mutex, NULL);
 }
 
