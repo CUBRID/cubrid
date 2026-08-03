@@ -507,6 +507,12 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_
 						  RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lob (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, record_descriptor * new_recdes);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_probe_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							    RECDES * old_recdes, record_descriptor * new_recdes,
+							    int lob_create_flag, bool * would_demote_oos);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_oos_class (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							    RECDES * old_recdes, record_descriptor * new_recdes,
+							    int lob_create_flag, const OID * oos_class_oid);
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
 					     HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, DB_VALUE * dbvalue,
