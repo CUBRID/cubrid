@@ -2233,6 +2233,29 @@ qmgr_check_dblink_trans (THREAD_ENTRY * thread_p, bool is_abort)
   QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
   QMGR_TRAN_STATUS status = QMGR_TRAN_TERMINATED;
 
+  /* the transaction ends either way, so the mark never outlives it */
+  bool sink_aborted = tran_entry_p->is_dblink_sink_aborted;
+  tran_entry_p->is_dblink_sink_aborted = false;
+
+  if (!is_abort && sink_aborted)
+    {
+      /* A sink statement failed on a connection that could not be rolled back statement by statement,
+       * so that connection's remote transaction - including what earlier statements wrote - is already
+       * gone. Committing here would report success for work that no longer exists, so refuse it and
+       * roll the remaining connections back as well, leaving local and remote both aborted. */
+      if (tran_entry_p->dblink_entry != NULL)
+	{
+	  (void) dblink_end_tran (tran_entry_p->dblink_entry, true);
+	  tran_entry_p->dblink_entry = NULL;
+	}
+
+      tran_entry_p->is_dblink_autocommit = true;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_TRAN, 1,
+	      "a remote DML statement failed and its remote transaction was rolled back");
+
+      return QMGR_TRAN_DBLINK_ABORTED;
+    }
+
   /*
    * End DBLink connections when:
    *   (a) is_abort=true  - rollback ALL entries unconditionally; XA-prepare will not occur.
@@ -4045,8 +4068,9 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
  *
  * Note: Set from the sink statement abort path when the failing statement could not be undone on its
  *       own and its whole remote transaction had to be rolled back, taking the work of the earlier
- *       statements with it. The flag records that the transaction's remote work is already gone, so
- *       the transaction can no longer be committed as though it had succeeded.
+ *       statements with it. The flag records that the transaction's remote work is already gone;
+ *       qmgr_check_dblink_trans() then refuses the commit instead of reporting a success that
+ *       confirms the loss.
  */
 void
 qmgr_dblink_set_sink_aborted (THREAD_ENTRY * thread_p)
