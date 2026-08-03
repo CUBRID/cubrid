@@ -4005,43 +4005,36 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (regu_var->value.attr_descr.cache_attrinfo != NULL
-	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+      *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
+      if (*peek_dbval != NULL)
 	{
-	  HEAP_ATTRVALUE *slot = regu_var->value.attr_descr.cache_slot;
-	  if (slot == NULL)
+	  /* we have a cached pointer already */
+	  break;
+	}
+      else if (regu_var->value.attr_descr.cache_attrinfo != NULL
+	       && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  /* first fetch of a predicate column in a lazy scan: locate its slot once. A first-term column is
+	   * already read in place; a deferred one is read here and keeps its slot for the inline fast path. */
+	  HEAP_ATTRVALUE *slot =
+	    heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
+	  if (slot == NULL || slot->state == HEAP_UNINIT_ATTRVALUE)
 	    {
-	      slot = heap_attrvalue_locate (regu_var->value.attr_descr.id, regu_var->value.attr_descr.cache_attrinfo);
-	      if (slot == NULL)
+	      er_log_debug (ARG_FILE_LINE, "fetch_peek_dbval_slow: unreadable attr = %d",
+			    regu_var->value.attr_descr.id);
+	      if (er_errid () == NO_ERROR)
 		{
-		  er_log_debug (ARG_FILE_LINE, "fetch_peek_dbval_slow: unknown attrid = %d",
-				regu_var->value.attr_descr.id);
 		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-		  goto exit_on_error;
 		}
-	    }
-	  if (slot->state == HEAP_UNINIT_ATTRVALUE)
-	    {
-	      /* a failed deferred read already set the error - propagate it */
 	      goto exit_on_error;
 	    }
-	  /* a first-term column is already read in place on every row; deferred columns are read here and
-	   * keep their slot so later rows skip the locate */
 	  if (!slot->lazy_always_eager
 	      && heap_attrvalue_peek_lazy (slot, regu_var->value.attr_descr.cache_attrinfo) == NULL)
 	    {
 	      goto exit_on_error;
 	    }
 	  *peek_dbval = &slot->dbvalue;
-	  regu_var->value.attr_descr.cache_dbvalp = &slot->dbvalue;
 	  regu_var->value.attr_descr.cache_slot = slot->lazy_always_eager ? NULL : slot;
-	  break;
-	}
-      *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
-      if (*peek_dbval != NULL)
-	{
-	  /* we have a cached pointer already */
-	  break;
 	}
       else
 	{
@@ -4050,9 +4043,9 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    {
 	      goto exit_on_error;
 	    }
+	  regu_var->value.attr_descr.cache_slot = NULL;	/* eager fetch: no deferred slot for this regu */
 	}
       regu_var->value.attr_descr.cache_dbvalp = *peek_dbval;	/* cache */
-      regu_var->value.attr_descr.cache_slot = NULL;	/* eager fetch: no deferred slot for this regu */
       break;
 
     case TYPE_OID:		/* fetch object identifier value */

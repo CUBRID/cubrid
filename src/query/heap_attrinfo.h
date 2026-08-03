@@ -72,15 +72,13 @@ struct heap_cache_attrinfo
   int inst_chn;			/* Current chn of instance object */
   int num_values;		/* Number of desired attribute values */
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
-  RECDES *lazy_recdes;		/* non-NULL: lazy mode; record from which HEAP_LAZY_ATTRVALUE attrs are read
-				 * on demand by heap_attrvalue_peek_lazy (). Set by heap_attrinfo_read_dbvalues_lazy (). */
-  /* How much deferring actually saves depends on the data, so it is measured: the counters below accumulate
-   * over the scan's first HEAP_LAZY_CALIBRATE_ROWS rows (see heap_attrinfo_read_dbvalues_lazy ()). */
+  RECDES *lazy_recdes;		/* lazy mode when non-NULL: record the deferred attrs are read from */
+  /* deferring is worth it or not depending on the data, so it is measured over the first
+   * HEAP_LAZY_CALIBRATE_ROWS rows (see heap_attrinfo_read_dbvalues_lazy ()). */
   INT64 lazy_rows;		/* rows prepared in lazy mode */
-  INT64 lazy_deferred;		/* cumulative slots marked HEAP_LAZY_ATTRVALUE (reads lazy could have skipped) */
-  INT64 lazy_decoded;		/* cumulative slots of those actually read on demand (reads it did not skip) */
-  bool lazy_disabled;		/* true: read predicate columns eagerly - set at scan setup when nothing can be
-				 * deferred (eval_disable_lazy_read ()), or mid-scan by the measurement above */
+  INT64 lazy_deferred;		/* slots marked HEAP_LAZY_ATTRVALUE (reads lazy could have skipped) */
+  INT64 lazy_decoded;		/* those actually read on demand (reads it did not skip) */
+  bool lazy_disabled;		/* true: read predicate columns eagerly - nothing to defer, or not worth it */
 };
 
 extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info);
