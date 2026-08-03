@@ -64,6 +64,7 @@
 #include "log_append.hpp"
 #include "log_archives.hpp"
 #include "log_compress.h"
+#include "log_prior_inflight.hpp"
 #include "log_record.hpp"
 #include "log_recovery.h"
 #include "log_system_tran.hpp"
@@ -9836,6 +9837,9 @@ static SCAN_CODE
 log_get_undo_record_from_node (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, RECDES * recdes)
 {
   int header_ulength;
+
+  /* the window only ever stages types this switch knows */
+  assert (log_prior_inflight_is_registrable (node->log_header.type));
 
   switch (node->log_header.type)
     {

@@ -888,6 +888,8 @@ static void heap_page_rv_chain_update (THREAD_ENTRY * thread_p, PAGE_PTR heap_pa
 
 static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache,
 					      OID * partition_oid);
+static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
+						   LOG_PAGE * log_page_p, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -25324,6 +25326,65 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * heap_get_undo_record_for_version () - Read the undo image of one previous version, from wherever that
+ *				         version currently lives.
+ *
+ *   return: SCAN_CODE, as log_get_undo_record ()
+ *   thread_p (in): Thread entry.
+ *   version_lsa (in): Log address of the version to read.
+ *   log_page_p (in): Scratch log page, used only when the version is read from the log.
+ *   recdes (out): Record descriptor.
+ *
+ * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual. One
+ *       not copied yet is read straight out of its staged prior node in the in-flight window; only when
+ *       the window lacks it too is a drain forced. Decided per hop rather than once, because the chain
+ *       runs toward older versions and any hop along it may still be waiting to be copied.
+ */
+static SCAN_CODE
+heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
+				  RECDES * recdes)
+{
+  LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
+
+  if (LSA_LT (&copied_lsa, version_lsa))
+    {
+      SCAN_CODE window_scan;
+
+      if (log_get_undo_record_from_inflight (thread_p, version_lsa, recdes, &window_scan))
+	{
+	  perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
+	  return window_scan;
+	}
+
+      /* In neither place: type not kept in the window, window full when it was appended, or copied and
+       * released just now. Drain, and read from the page below. */
+      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
+      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
+      PERF_UTIME_TRACKER_START (thread_p, &time_track);
+      LOG_CS_ENTER (thread_p);
+      logpb_prior_lsa_append_all_list (thread_p);
+      LOG_CS_EXIT (thread_p);
+      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
+
+      copied_lsa = log_Gl.append.get_copied_lsa ();
+      assert (!LSA_LT (&copied_lsa, version_lsa));
+    }
+
+  /* Fetch the page where version_lsa is located */
+  log_page_p->hdr.logical_pageid = NULL_PAGEID;
+  log_page_p->hdr.offset = NULL_OFFSET;
+  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+    {
+      assert (false);
+      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_undo_record_for_version");
+      return S_ERROR;
+    }
+
+  return log_get_undo_record (thread_p, log_page_p, *version_lsa, recdes);
+}
+
+/*
  * heap_get_visible_version_from_log () - Iterate through old versions of object until a visible object is found
  *
  *   return: SCAN_CODE. Possible values:
@@ -25347,7 +25408,6 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   MVCC_REC_HEADER mvcc_header;
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
-  LOG_LSA copied_lsa;
 
   assert (scan_cache != NULL);
   assert (scan_cache->mvcc_snapshot != NULL);
@@ -25363,63 +25423,13 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       scan_cache->assign_recdes_to_area (*recdes);
     }
 
-  /* Check visibility of old versions from log following prev_version_lsa links.
-   *
-   * A version already copied into the log page buffer is read from there, or from disk, as usual. One
-   * that is not yet copied is read straight out of its staged prior node in the in-flight window; only
-   * when the window does not have it either does this force a drain to get it onto a log page. The
-   * choice is made per hop, not once before the loop, because the chain runs toward older versions
-   * and any hop along it may still be waiting to be copied. */
+  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+
+  /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
+   * read from is decided per hop, in heap_get_undo_record_for_version (). */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
     {
-      bool served_from_window = false;
-
-      copied_lsa = log_Gl.append.get_copied_lsa ();
-      if (LSA_LT (&copied_lsa, &process_lsa))
-	{
-	  SCAN_CODE window_scan = S_SUCCESS;
-
-	  if (log_get_undo_record_from_inflight (thread_p, &process_lsa, recdes, &window_scan))
-	    {
-	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_HIT);
-	      scan_code = window_scan;
-	      served_from_window = true;
-	    }
-	  else
-	    {
-	      /* The record is in neither place: its type is not kept in the window, the window was
-	       * full when it was appended, or it was copied and released just now. Drain, and let the
-	       * page path below pick it up. */
-	      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
-
-	      perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
-	      PERF_UTIME_TRACKER_START (thread_p, &time_track);
-	      LOG_CS_ENTER (thread_p);
-	      logpb_prior_lsa_append_all_list (thread_p);
-	      LOG_CS_EXIT (thread_p);
-	      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
-
-	      copied_lsa = log_Gl.append.get_copied_lsa ();
-	      assert (!LSA_LT (&copied_lsa, &process_lsa));
-	    }
-	}
-
-      if (!served_from_window)
-	{
-	  /* Fetch the page where process_lsa is located */
-	  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
-	  log_page_p->hdr.logical_pageid = NULL_PAGEID;
-	  log_page_p->hdr.offset = NULL_OFFSET;
-	  if (logpb_fetch_page (thread_p, &process_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
-	    {
-	      assert (false);
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_visible_version_from_log");
-	      return S_ERROR;
-	    }
-
-	  scan_code = log_get_undo_record (thread_p, log_page_p, process_lsa, recdes);
-	}
-
+      scan_code = heap_get_undo_record_for_version (thread_p, &process_lsa, log_page_p, recdes);
       if (scan_code != S_SUCCESS)
 	{
 	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))

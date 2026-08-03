@@ -83,6 +83,7 @@
 
 #if defined (SERVER_MODE)
 #include "load_worker_manager.hpp"
+#include "log_prior_inflight.hpp"
 #include "connection_error.h"
 #endif
 
