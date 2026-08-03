@@ -360,8 +360,8 @@ typedef enum
   HEAP_PAGE_VACUUM_UNKNOWN	/* Heap page requires an unknown number of vacuum actions. */
 } HEAP_PAGE_VACUUM_STATUS;
 
-/* CBRD-26847: every call site of both policies was audited; CONSUME_RAW_BYTES remains only where the
- * caller ships, re-inserts, byte-compares, or OR-parses the raw record outside the attribute layer. */
+/* Use CONSUME_RAW_BYTES only when the caller needs materialized logical RECDES bytes outside the OOS-aware
+ * attribute layer; otherwise preserve the stored RECDES (CBRD-26847). */
 typedef enum
 {
   HEAP_RECDES_CONSUMPTION_POLICY_INVALID = 0,

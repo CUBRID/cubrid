@@ -8228,8 +8228,8 @@ heap_first (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * o
   OID_SET_NULL (oid);
   oid->volid = hfid->vfid.volid;
 
-  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: all callers read via the attribute layer or ignore
-   * the record body (CBRD-26847 audit) */
+  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: callers use the attribute layer, ignore the body, or read
+   * fixed-layout records that cannot contain OOS stubs (CBRD-26847 audit) */
   return heap_next (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 }
 
@@ -8258,8 +8258,8 @@ heap_last (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid, OID * oi
   OID_SET_NULL (oid);
   oid->volid = hfid->vfid.volid;
 
-  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: all callers read via the attribute layer or ignore
-   * the record body (CBRD-26847 audit) */
+  /* hardcoded HEAP_RECDES_DONT_CONSUME_RAW_BYTES: the sole caller uses the returned OID for
+   * positioning and ignores the record body (CBRD-26847 audit) */
   return heap_prev (thread_p, hfid, class_oid, oid, recdes, scan_cache, ispeeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 }
 
@@ -8422,7 +8422,7 @@ heap_scanrange_to_following (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_rang
 	{
 	  /* Scanrange starts with the given object */
 	  scan_range->first_oid = *start_oid;
-	  /* positioning fetch: the local recdes is discarded (CBRD-26847) */
+	  /* only the fetch result and updated page watcher are used; the local record body is discarded (CBRD-26847) */
 	  scan = heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid,
 					   &recdes, &scan_range->scan_cache, PEEK, NULL_CHN,
 					   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
@@ -8534,7 +8534,7 @@ heap_scanrange_to_prior (THREAD_ENTRY * thread_p, HEAP_SCANRANGE * scan_range, O
 	{
 	  /* Scanrange ends with the given object */
 	  scan_range->last_oid = *last_oid;
-	  /* positioning fetch: the local recdes is discarded (CBRD-26847) */
+	  /* only the fetch result and updated page watcher are used; the local record body is discarded (CBRD-26847) */
 	  scan =
 	    heap_get_visible_version (thread_p, &scan_range->last_oid, &scan_range->scan_cache.node.class_oid, &recdes,
 				      &scan_range->scan_cache, PEEK, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
@@ -8631,7 +8631,7 @@ heap_scanrange_next (THREAD_ENTRY * thread_p, OID * next_oid, RECDES * recdes, H
 
   if (OID_ISNULL (next_oid) || OID_LT (next_oid, &scan_range->first_oid))
     {
-      /* Retrieve the first object in the scanrange; the caller reads it through the attribute layer,
+      /* Retrieve the first object; the sole caller reads the record body only through the attribute layer,
        * matching the heap_next fetches below (CBRD-26847) */
       *next_oid = scan_range->first_oid;
       scan =

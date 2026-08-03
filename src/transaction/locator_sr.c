@@ -5938,7 +5938,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
-	      /* old record is read via the MVCC header and the attribute layer only (CBRD-26847) */
+	      /* old record is read only through the attribute layer for index maintenance (CBRD-26847) */
 	      scan =
 		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
 					  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
@@ -6540,6 +6540,7 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
   bool found;
   int i;
   int error_code = NO_ERROR;
+  int scan_cache_error_code;
 
   assert ((class_oid != NULL) && (recdes != NULL || oid != NULL));
 
@@ -6584,6 +6585,11 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 				      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  error_code = ER_FAILED;
+		}
 	      goto error;
 	    }
 	  recdes = &copy_recdes;
@@ -6600,7 +6606,11 @@ error:
     }
   if (scan_cache_inited)
     {
-      error_code = heap_scancache_end (thread_p, &scan_cache);
+      scan_cache_error_code = heap_scancache_end (thread_p, &scan_cache);
+      if (error_code == NO_ERROR && scan_cache_error_code != NO_ERROR)
+	{
+	  error_code = scan_cache_error_code;
+	}
     }
 
   return error_code;
@@ -13876,7 +13886,10 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 end:
   if (scan_cache_inited)
     {
-      heap_scancache_end (thread_p, &local_scan_cache);
+      if (heap_scancache_end (thread_p, &local_scan_cache) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	}
     }
 
   return ev_res;

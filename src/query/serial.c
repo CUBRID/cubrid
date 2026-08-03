@@ -506,7 +506,7 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  /* record is consumed only through the attribute layer (CBRD-26847) */
+  /* record body is consumed through the attribute layer; record type is copied separately (CBRD-26847) */
   scan =
     heap_get_visible_version (thread_p, &entry->oid, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
 			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
@@ -644,7 +644,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
   oid_get_serial_oid (&serial_class_oid);
   heap_scancache_quick_start_modify_with_class_oid (thread_p, &scan_cache, &serial_class_oid);
 
-  /* record is consumed only through the attribute layer (CBRD-26847) */
+  /* record body is consumed through the attribute layer; record type is copied separately (CBRD-26847) */
   scan =
     heap_get_visible_version (thread_p, serial_oidp, &serial_class_oid, &recdesc, &scan_cache, PEEK, NULL_CHN,
 			      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
@@ -669,9 +669,13 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
       goto exit_on_error;
     }
 
-  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, &attr_info);
-
   attr_info_p = &attr_info;
+
+  ret = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, &recdesc, attr_info_p);
+  if (ret != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
 
   if (serial_get_attrid (thread_p, SERIAL_ATTR_CACHED_NUM_INDEX, attrid) != NO_ERROR)
     {
