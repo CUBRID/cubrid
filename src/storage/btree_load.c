@@ -5013,25 +5013,18 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->report_n_keys = report_n_keys;
   main_load_args->report_n_oids = report_n_oids;
   main_load_args->report_n_nulls = report_n_nulls;
+  /* btree_build_nleafs () below keeps counting into this field: a non-leaf record whose key does not fit in page
+   * stores it through bt_load_store_overflow_key_hook (), which increments it. The field, not this local, is the
+   * final total, and PHASE III of that function reads it to decide whether the pre-created overflow-key file can
+   * be destroyed. */
   main_load_args->report_overflow_key_count = overflow_key_count;
 
   /*
    * Fully-null keys never enter the final sort run. SORT_ARGS totals, which already include partial-null records,
    * remain authoritative for root/global statistics; report_n_nulls is the checked construct-shard subtotal.
    */
-  error = btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
-			      main_load_args->sort_args->n_oids, n_keys);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-  if (bt_load_checked_add_report_value (&overflow_key_count,
-					main_load_args->report_overflow_key_count - overflow_key_count) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  main_load_args->report_overflow_key_count = overflow_key_count;
-  return NO_ERROR;
+  return btree_build_nleafs (thread_p, main_load_args, main_load_args->sort_args->n_nulls,
+			     main_load_args->sort_args->n_oids, n_keys);
 }
 
 #if defined(CUBRID_DEBUG)
