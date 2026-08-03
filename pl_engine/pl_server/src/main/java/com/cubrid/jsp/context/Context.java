@@ -35,8 +35,7 @@ import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.ServerConfig;
 import com.cubrid.jsp.SysParam;
-import com.cubrid.jsp.TargetMethodCache;
-import com.cubrid.jsp.classloader.ClassLoaderManager;
+import com.cubrid.jsp.classloader.ClassPathManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
 import com.cubrid.jsp.classloader.SessionClassLoaderManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
@@ -70,9 +69,6 @@ public class Context {
     // dynamic classLoader for a session
     private SessionClassLoaderManager sessionClassLoaderManager = null;
     private ContextClassLoader oldClassLoader = null; // file
-
-    // method cache
-    private TargetMethodCache methodCache = null;
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
     private boolean transactionControl = false;
@@ -144,14 +140,10 @@ public class Context {
                     && oldClassLoader
                                     .getInitializedTime()
                                     .compareTo(
-                                            ClassLoaderManager.getLastModifiedTimeOfPath(
-                                                    ClassLoaderManager.getDynamicPath()))
+                                            ClassPathManager.getLastModifiedTimeOfPath(
+                                                    ClassPathManager.getDynamicPath()))
                             != 0) {
                 oldClassLoader = new ContextClassLoader();
-
-                if (methodCache != null) {
-                    methodCache.clear();
-                }
             }
 
             if (connection != null) {
@@ -187,11 +179,6 @@ public class Context {
             oldClassLoader = null;
         }
 
-        if (methodCache != null) {
-            methodCache.clear();
-            methodCache = null;
-        }
-
         if (messageBuffer != null) {
             messageBuffer.clear();
         }
@@ -218,14 +205,6 @@ public class Context {
         }
 
         return oldClassLoader;
-    }
-
-    public TargetMethodCache getTargetMethodCache() {
-        if (methodCache == null) {
-            methodCache = new TargetMethodCache();
-        }
-
-        return methodCache;
     }
 
     public void setTransactionControl(boolean tc) {

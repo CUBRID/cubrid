@@ -40,24 +40,22 @@ import java.nio.file.attribute.FileTime;
 import java.time.Instant;
 import java.util.Hashtable;
 
-public class ClassLoaderManager {
-    private static Hashtable<Path, Instant> lastModifiedMap = new Hashtable<>();
-
-    private static Path rootPath = null;
+public class ClassPathManager {
+    private static Path dbPath = null;
     private static Path staticPath = null;
     private static Path dynamicPath = null;
 
-    public static Path getRootPath() {
-        if (rootPath == null) {
-            rootPath = Paths.get(Server.getServerConfig().getDatabasePath());
-            createDirIfNotExists(rootPath);
+    private static Path getDbPath() {
+        if (dbPath == null) {
+            dbPath = Paths.get(Server.getServerConfig().getDatabasePath());
+            assert dbPath.toFile().exists();
         }
-        return rootPath;
+        return dbPath;
     }
 
     public static Path getDynamicPath() {
         if (dynamicPath == null) {
-            dynamicPath = getRootPath().resolve("java/");
+            dynamicPath = getDbPath().resolve("java/");
             createDirIfNotExists(dynamicPath);
         }
         return dynamicPath;
@@ -65,35 +63,14 @@ public class ClassLoaderManager {
 
     public static Path getStaticPath() {
         if (staticPath == null) {
-            staticPath = getRootPath().resolve("java_static/");
+            staticPath = getDbPath().resolve("java_static/");
             createDirIfNotExists(staticPath);
         }
         return staticPath;
     }
 
-    public static boolean isModified(Path path) {
-        Instant currentModified = getLastModifiedTimeOfPath(path).toInstant();
-        Instant prevModified = lastModifiedMap.get(path);
-        if (prevModified != null && currentModified.compareTo(prevModified) == 0) {
-            return false;
-        } else {
-            lastModifiedMap.put(path, currentModified);
-            return true;
-        }
-    }
-
     public static FileTime getLastModifiedTimeOfPath(Path path) {
         FileTime lastModifiedTime;
-        try {
-            lastModifiedTime = Files.getLastModifiedTime(path);
-        } catch (IOException e) {
-            // should not be here...
-            return null;
-        }
-        return lastModifiedTime;
-    }
-
-    public static FileTime setLastModifiedTime(Path path, FileTime lastModifiedTime) {
         try {
             lastModifiedTime = Files.getLastModifiedTime(path);
         } catch (IOException e) {
