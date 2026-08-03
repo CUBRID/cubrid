@@ -574,6 +574,124 @@ namespace parallel_scan
     return result;
   }
 
+  /* BUILDVALUE_OPT workers accumulate aggregate operands only; the outptr_list and the
+   * buildvalue HAVING predicate are fetched once on the main thread after the gather,
+   * where the val_list was never populated with any scanned row. Any reference to
+   * per-row scan state from those places -- a scan column emitted as a hidden output
+   * for an enclosing correlated scalar subquery (pt_make_aptr_parent_node), a direct
+   * attribute read, or a correlated (dptr) subquery -- would evaluate against NULL
+   * columns and diverge from serial execution, so it must disqualify BUILDVALUE_OPT. */
+  static bool refers_post_scan_state (REGU_VARIABLE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+				      const std::unordered_set<DB_VALUE *> &scan_vals);
+  static bool refers_post_scan_state (rv_list_node *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+				      const std::unordered_set<DB_VALUE *> &scan_vals);
+  static bool refers_post_scan_state (ARITH_TYPE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+				      const std::unordered_set<DB_VALUE *> &scan_vals);
+  static bool refers_post_scan_state (PRED_EXPR *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+				      const std::unordered_set<DB_VALUE *> &scan_vals);
+
+  static bool
+  refers_post_scan_state (rv_list_node *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+			  const std::unordered_set<DB_VALUE *> &scan_vals)
+  {
+    for (rv_list_node *curr = arg; curr != nullptr; curr = curr->next)
+      {
+	if (refers_post_scan_state (&curr->value, dptrs, scan_vals))
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
+  static bool
+  refers_post_scan_state (ARITH_TYPE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+			  const std::unordered_set<DB_VALUE *> &scan_vals)
+  {
+    if (arg == nullptr)
+      {
+	return false;
+      }
+    return refers_post_scan_state (arg->leftptr, dptrs, scan_vals)
+	   || refers_post_scan_state (arg->rightptr, dptrs, scan_vals)
+	   || refers_post_scan_state (arg->thirdptr, dptrs, scan_vals)
+	   || refers_post_scan_state (arg->pred, dptrs, scan_vals);
+  }
+
+  static bool
+  refers_post_scan_state (PRED_EXPR *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+			  const std::unordered_set<DB_VALUE *> &scan_vals)
+  {
+    if (arg == nullptr)
+      {
+	return false;
+      }
+    switch (arg->type)
+      {
+      case T_PRED:
+	return refers_post_scan_state (arg->pe.m_pred.lhs, dptrs, scan_vals)
+	       || refers_post_scan_state (arg->pe.m_pred.rhs, dptrs, scan_vals);
+      case T_EVAL_TERM:
+	switch (arg->pe.m_eval_term.et_type)
+	  {
+	  case T_COMP_EVAL_TERM:
+	    return refers_post_scan_state (arg->pe.m_eval_term.et.et_comp.lhs, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_comp.rhs, dptrs, scan_vals);
+	  case T_ALSM_EVAL_TERM:
+	    return refers_post_scan_state (arg->pe.m_eval_term.et.et_alsm.elem, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_alsm.elemset, dptrs, scan_vals);
+	  case T_LIKE_EVAL_TERM:
+	    return refers_post_scan_state (arg->pe.m_eval_term.et.et_like.src, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_like.pattern, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_like.esc_char, dptrs, scan_vals);
+	  case T_RLIKE_EVAL_TERM:
+	    return refers_post_scan_state (arg->pe.m_eval_term.et.et_rlike.src, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_rlike.pattern, dptrs, scan_vals)
+		   || refers_post_scan_state (arg->pe.m_eval_term.et.et_rlike.case_sensitive, dptrs, scan_vals);
+	  default:
+	    return false;
+	  }
+      case T_NOT_TERM:
+	return refers_post_scan_state (arg->pe.m_not_term, dptrs, scan_vals);
+      default:
+	return false;
+      }
+  }
+
+  static bool
+  refers_post_scan_state (REGU_VARIABLE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
+			  const std::unordered_set<DB_VALUE *> &scan_vals)
+  {
+    if (arg == nullptr)
+      {
+	return false;
+      }
+    if (arg->xasl != nullptr && dptrs.count (arg->xasl) > 0)
+      {
+	return true;
+      }
+    switch (arg->type)
+      {
+      case TYPE_ATTR_ID:
+      case TYPE_SHARED_ATTR_ID:
+      case TYPE_CLASS_ATTR_ID:
+	return true;
+      case TYPE_CONSTANT:
+	return scan_vals.count (arg->value.dbvalptr) > 0;
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+	return refers_post_scan_state (arg->value.arithptr, dptrs, scan_vals);
+      case TYPE_FUNC:
+	return refers_post_scan_state (arg->value.funcp->operand, dptrs, scan_vals);
+      case TYPE_REGU_VAR_LIST:
+	return refers_post_scan_state (arg->value.regu_var_list, dptrs, scan_vals);
+      case TYPE_SP:
+	return refers_post_scan_state (arg->value.sp_ptr->args, dptrs, scan_vals);
+      default:
+	return false;
+      }
+  }
+
   template <bool is_outptr_list>
   possible_flags check (XASL_NODE *arg)
   {
@@ -588,7 +706,7 @@ namespace parallel_scan
 	return it->second;
       }
 
-    /* mark visited (sentinel 0) before recursing — breaks XASL ref cycles. */
+    /* mark visited (sentinel 0) before recursing -- breaks XASL ref cycles. */
     xasl_check_cache[arg] = 0;
 
     possible_flags result = 0, temp = 0;
@@ -682,6 +800,28 @@ namespace parallel_scan
 	for (XASL_NODE *xaslp2 = xaslp1->dptr_list; xaslp2; xaslp2 = xaslp2->next)
 	  {
 	    dptrs.insert (xaslp2);
+	  }
+      }
+
+    if (buildvalue_opt)
+      {
+	/* main-thread post-gather fetch sites (outptr_list, HAVING) must not read per-row
+	 * scan state; see refers_post_scan_state () above. */
+	std::unordered_set<DB_VALUE *> scan_vals;
+	for (XASL_NODE *xptr = arg; xptr != nullptr; xptr = xptr->scan_ptr)
+	  {
+	    if (xptr->val_list != nullptr)
+	      {
+		for (QPROC_DB_VALUE_LIST valp = xptr->val_list->valp; valp != nullptr; valp = valp->next)
+		  {
+		    scan_vals.insert (valp->val);
+		  }
+	      }
+	  }
+	if ((arg->outptr_list != nullptr && refers_post_scan_state (arg->outptr_list->valptrp, dptrs, scan_vals))
+	    || refers_post_scan_state (arg->proc.buildvalue.having_pred, dptrs, scan_vals))
+	  {
+	    buildvalue_opt = false;
 	  }
       }
 
