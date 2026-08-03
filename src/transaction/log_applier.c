@@ -2582,13 +2582,17 @@ la_retire_ready_results (void)
 			    (long long int) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset);
 	    }
 	  assert (LSA_GE (&la_Gate_frontier, &la_Info.committed_lsa));
+	  /* Only ever advance. Assigning unconditionally would let a non-monotone
+	   * frontier retreat committed_lsa in a release build (assert disabled) and
+	   * then persist the retreat to disk, breaking the "everything at or below is
+	   * applied" contract. */
 	  if (LSA_GT (&la_Gate_frontier, &la_Info.committed_lsa))
 	    {
 	      er_log_debug (ARG_FILE_LINE, "ws_frontier committed_lsa %lld|%d -> %lld|%d",
 			    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
 			    (long long int) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset);
+	      LSA_COPY (&la_Info.committed_lsa, &la_Gate_frontier);
 	    }
-	  LSA_COPY (&la_Info.committed_lsa, &la_Gate_frontier);
 	}
 
       /* R2: workers fill committed_rep_lsa in result-arrival order, which is not
@@ -10810,6 +10814,22 @@ la_init (const char *log_path, const int max_mem_size)
   gettimeofday (&la_Debug_progress.last_progress_tv, NULL);
 #endif /* !NDEBUG */
 
+  /* The memory budget below (see la_check_mem_size) is compared against the
+   * process virtual size (VSZ), not resident memory (RSS). Each parallel apply
+   * worker thread carries its own glibc malloc arena that reserves up to ~64MB of
+   * address space, so with several workers the VSZ floor sits hundreds of MB above
+   * a single-threaded run even when actual resident memory is small. As a result,
+   * with the default ha_apply_max_mem_size (500MB) the applier can falsely trip the
+   * over-limit shutdown (ER_HA_LA_EXCEED_MAX_MEM_SIZE) while idle, with no real leak
+   * or backlog.
+   * Operational workaround: set ha_apply_max_mem_size large enough to cover the
+   * measured parallel peak; the absolute ceiling then dominates and the relative
+   * start_vsize-based leak check is effectively disabled.
+   * TODO: switch la_get_mem_size to RSS-based accounting so the arena-driven VSZ
+   * inflation stops causing false positives; revisit this absolute ceiling and its
+   * configuration dependence once that lands. (Alternative: capture start_vsize
+   * after the workers have started, which removes the false positive while keeping
+   * the relative leak check.) */
   la_Info.max_mem_size = max_mem_size;
   /* check vsize when it started */
   if (!start_vsize)
@@ -11999,6 +12019,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
        * la_shutdown before returning so no global teardown races live workers. */
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_check_duplicated (error %d)", error);
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_check_duplicated path)");
       return error;
     }
 
@@ -12009,6 +12030,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       er_log_debug (ARG_FILE_LINE, "Cannot initialize cache page buffer");
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_init_cache_pb");
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_init_cache_pb path)");
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
@@ -12019,6 +12041,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       er_log_debug (ARG_FILE_LINE, "Cannot find log page size");
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_find_log_pagesize (error %d)", error);
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_find_log_pagesize path)");
       return error;
     }
 
@@ -12030,6 +12053,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       er_log_debug (ARG_FILE_LINE, "Cannot initialize cache log buffer");
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_init_cache_log_buffer (error %d)", error);
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_init_cache_log_buffer path)");
       return error;
     }
 
@@ -12053,6 +12077,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
       er_stack_pop ();
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_get_last_ha_applied_info (error %d)", error);
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_get_last_ha_applied_info path)");
       return error;
     }
 
@@ -12069,6 +12094,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  "failed to initialize replication filters");
 	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_create_repl_filter (error %d)", error);
 	  la_shutdown ();
+	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_create_repl_filter path)");
 	  return error;
 	}
 
@@ -12095,6 +12121,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	{
 	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_start_dk_sharing (error %d)", error);
 	  la_shutdown ();
+	  er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_start_dk_sharing path)");
 	  return error;
 	}
     }
@@ -12111,6 +12138,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     {
       er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown from la_lock_dbname (error %d)", error);
       la_shutdown ();
+      er_log_debug (ARG_FILE_LINE, "ws_teardown la_shutdown join complete (la_lock_dbname path)");
       return error;
     }
 
@@ -12140,8 +12168,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		   * cache and never reach here. */
 		  if (log_buf != NULL)
 		    {
-		      er_log_debug (ARG_FILE_LINE, "ws_pagebuf release pageid %lld (loop iter)",
-				    (long long int) log_buf->pageid);
+		      er_log_debug (ARG_FILE_LINE, "ws_pagebuf release pageid %lld fix_count %d (loop iter)",
+				    (long long int) log_buf->pageid, log_buf->fix_count);
 		      la_release_page_buffer (log_buf->pageid);
 		      log_buf = NULL;
 		    }
@@ -12365,6 +12393,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (log_buf->logpage.hdr.offset < 0)
 		{
 		  la_invalidate_page_buffer (log_buf);
+		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 		  if ((final_log_hdr.ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED)
 		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.pageid)
 		      && (la_does_page_exist (la_Info.final_lsa.pageid + 1) != LA_PAGE_DOESNOT_EXIST))
@@ -12413,6 +12442,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		      la_Info.is_end_of_record);
 
 	      la_invalidate_page_buffer (log_buf);
+	      log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 	      /* TODO: continue? error ? just sleep and continue? */
 	      usleep (100 * 1000);
 
@@ -12446,11 +12476,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  la_Info.is_end_of_record = true;
 		  /* it should be refetched and release later */
 		  la_invalidate_page_buffer (log_buf);
+		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 		  break;
 		}
 	      else if (LSA_GT (&la_Info.final_lsa, &final_log_hdr.append_lsa))
 		{
 		  la_invalidate_page_buffer (log_buf);
+		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 		  break;
 		}
 
@@ -12468,6 +12500,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		{
 		  la_Info.is_end_of_record = true;
 		  la_invalidate_page_buffer (log_buf);
+		  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 		  break;
 		}
 
@@ -12543,6 +12576,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			{
 			  /* it should be refetched and release later */
 			  la_invalidate_page_buffer (log_buf);
+			  log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 			}
 		    }
 
@@ -12620,6 +12654,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    {
 	      /* it should be refetched and release */
 	      la_invalidate_page_buffer (log_buf);
+	      log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 	    }
 
 	  if (la_Info.is_role_changed == true)
@@ -12641,6 +12676,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
        * via break; the loop-top release covers continue/normal re-entry. */
       if (log_buf != NULL)
 	{
+	  er_log_debug (ARG_FILE_LINE, "ws_pagebuf release pageid %lld fix_count %d (loop exit)",
+			(long long int) log_buf->pageid, log_buf->fix_count);
 	  la_release_page_buffer (log_buf->pageid);
 	  log_buf = NULL;
 	}
