@@ -1326,8 +1326,8 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
  *
  *   When the remote supports savepoints, the statement also takes one (state->savepoint_set) so that
- *   its abort path can roll back just this statement's remote work. A remote without savepoint
- *   support (gateway) still opens successfully, with savepoint_set left false.
+ *   dblink_insert_stmt_abort() can roll back just this statement's remote work. A remote without
+ *   savepoint support (gateway) still opens successfully, with savepoint_set left false.
  *
  *   Every failure return past the point where the connection is acquired clears state->conn_handle:
  *   the statement has written nothing on the remote yet, so its error path must not roll back or tear
@@ -1554,8 +1554,9 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 
   /* Take this statement's remote savepoint. Everything that can fail before the first row is behind
    * us, so the savepoint covers exactly this statement's remote work. A remote that does not support
-   * savepoints (gateway) fails here; that is not an error - the statement runs without one and its
-   * abort path falls back to rolling back the whole remote transaction. */
+   * savepoints (gateway) fails here; that is not an error - the statement runs without one, and if it
+   * does fail, dblink_insert_stmt_abort() falls back to rolling back the whole remote transaction and
+   * refusing the local transaction's commit. */
   if (cci_savepoint (state->conn_handle, CCI_SP_SET, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
     {
       state->savepoint_set = true;
@@ -1585,8 +1586,9 @@ sql_build_error:
  *
  * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
  *   dblink_insert_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
- *   All-or-nothing semantics:
- *     - On error: dblink_insert_rollback() rolls back the remote txn immediately.
+ *   All-or-nothing semantics for the statement:
+ *     - On error: dblink_insert_stmt_abort() undoes this statement's remote rows, back to the
+ *       savepoint where one was taken, or by rolling back the whole remote transaction otherwise.
  *     - On success: qmgr_check_dblink_trans() commits the remote txn when the
  *       local transaction commits.
  */
@@ -1626,23 +1628,46 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
 }
 
 /*
- * dblink_insert_rollback () - Rollback remote transaction immediately on error.
- *   state(in) : connection handle to rollback
+ * dblink_insert_stmt_abort () - Undo the failed statement's remote work.
+ *   thread_p(in)  : thread entry
+ *   state(in/out) : statement state; conn_handle is cleared if the connection is torn down
  *
- * Note: Called from error paths in qexec_execute_remote_insert_select() to prevent
- *   partial inserts. Rollback is best-effort on the remote connection; if it fails,
- *   the conn remains in the dblink pool and qmgr_check_dblink_trans() will attempt
- *   remote ROLLBACK again at local transaction end (idempotent for already-rolled-back
- *   remote transactions).
+ * Note: Called from the error path of qexec_execute_remote_insert_select(), after the stmt handle has
+ *   been released (stmt close must precede connection teardown). The remote connection is shared by
+ *   every sink statement of the local transaction, so the undo has to stop at this statement: rolling
+ *   the remote transaction back as a whole would also discard what earlier statements wrote there.
+ *
+ *   That scope comes from the savepoint dblink_insert_open() took. Once rolled back to, the connection
+ *   stays live and registered, and the earlier statements' work is still committed by the normal
+ *   end-of-transaction path (2PC included).
+ *
+ *   Fallback, when no savepoint was taken (gateway) or the rollback to it failed (dead connection):
+ *   roll back the remote transaction as a whole, disconnect and unregister the connection so that
+ *   transaction end and 2PC prepare do not reach it again, and mark the local transaction as
+ *   sink-aborted. The earlier work is already gone by then, so the local transaction must be refused
+ *   at commit rather than report a success that confirms the loss.
  */
 void
-dblink_insert_rollback (DBLINK_INSERT_STATE * state)
+dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
 {
-  if (state->conn_handle >= 0)
+  T_CCI_ERROR err_buf;
+
+  if (state->conn_handle < 0)
     {
-      T_CCI_ERROR err_buf;
-      (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
+      return;
     }
+
+  if (state->savepoint_set
+      && cci_savepoint (state->conn_handle, CCI_SP_ROLLBACK, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
+    {
+      return;
+    }
+
+  (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
+  (void) cci_disconnect (state->conn_handle, &err_buf);
+  (void) qmgr_dblink_remove_conn_entry (thread_p, state->conn_handle);
+  state->conn_handle = -1;
+  qmgr_dblink_set_sink_aborted (thread_p);
 }
 
 /*
@@ -1660,8 +1685,12 @@ dblink_insert_rollback (DBLINK_INSERT_STATE * state)
  *   This asymmetric open/close design prevents partial inserts on remote:
  *   remote INSERT SELECT uses CCI_AUTOCOMMIT_FALSE (ignores DBLINK_AUTO_COMMIT) and
  *   ties remote commit/rollback to the local transaction:
- *     - On error: local txn abort -> remote ROLLBACK -> no partial data on remote
+ *     - On error: dblink_insert_stmt_abort() undoes the failing statement, and a local txn abort
+ *       rolls back whatever the transaction's other statements left on the remote
  *     - On success: local txn commit -> remote COMMIT -> all-or-nothing semantics
+ *
+ *   Order matters on the error path: the caller invokes this function before
+ *   dblink_insert_stmt_abort(), whose fallback may disconnect the connection this handle lives on.
  */
 void
 dblink_insert_close (DBLINK_INSERT_STATE * state)

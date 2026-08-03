@@ -4036,3 +4036,23 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
 
   return ER_FAILED;
 }
+
+/*
+ * qmgr_dblink_set_sink_aborted () - mark that a remote DML sink statement lost the transaction's
+ *                                   remote work
+ *   return: void
+ *   thread_p(in):
+ *
+ * Note: Set from the sink statement abort path when the failing statement could not be undone on its
+ *       own and its whole remote transaction had to be rolled back, taking the work of the earlier
+ *       statements with it. The flag records that the transaction's remote work is already gone, so
+ *       the transaction can no longer be committed as though it had succeeded.
+ */
+void
+qmgr_dblink_set_sink_aborted (THREAD_ENTRY * thread_p)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+
+  tran_entry_p->is_dblink_sink_aborted = true;
+}
