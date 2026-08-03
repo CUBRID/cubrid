@@ -987,6 +987,13 @@ namespace parallel_scan
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
 
+    /* Atomic-draw ROWNUM keeps an arbitrary N rows, which is fine on a heap (no scan order to begin
+     * with) but not on a materialized temp list: "WITH q AS (... ORDER BY c) SELECT * FROM q LIMIT n"
+     * is the usual top-N idiom and a serial list scan returned the sorted prefix. Keep list specs
+     * serial whenever an instnum_pred is present. Merge-time renumbering (output ROWNUM only, which
+     * requires instnum_pred == NULL) does not change which rows are returned, so it is unaffected. */
+    const bool block_list_spec = (arg->instnum_pred != nullptr);
+
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
@@ -998,11 +1005,15 @@ namespace parallel_scan
       }
     else
       {
-	if (block_index_spec)
+	if (block_index_spec || block_list_spec)
 	  {
 	    for (ACCESS_SPEC_TYPE *specp = arg->spec_list; specp; specp = specp->next)
 	      {
-		if (specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		if (block_index_spec && specp->type == TARGET_CLASS && specp->access == ACCESS_METHOD_INDEX)
+		  {
+		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
+		  }
+		if (block_list_spec && specp->type == TARGET_LIST)
 		  {
 		    ACCESS_SPEC_SET_FLAG (specp, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
 		  }
