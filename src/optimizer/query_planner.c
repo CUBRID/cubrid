@@ -7980,17 +7980,20 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		}
 	      else
 		{
-		  /* skip LIKE-derived range: subset-correlated with the retained LIKE */
+		  /* Skip a LIKE-derived range in both the row-count selectivity and the
+		   * join hit probability: it is subset-correlated with the retained LIKE,
+		   * so counting it in either would double count the same constraint. */
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE))
 		    {
+		      double head_factor, tail_factor;
+
 		      selectivity *= QO_TERM_SELECTIVITY (term);
 		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
-		    }
 
-		  double head_factor, tail_factor;
-		  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
-		  head_hit_prob *= head_factor;
-		  tail_hit_prob *= tail_factor;
+		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+		      head_hit_prob *= head_factor;
+		      tail_hit_prob *= tail_factor;
+		    }
 		}
 	    }
 	  cardinality *= selectivity;
