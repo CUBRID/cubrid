@@ -2551,10 +2551,46 @@ la_retire_ready_results (void)
 	  entry->apply->tranid = 0;
 	}
 
-      LSA_COPY (&la_Info.committed_lsa, &result->commit_lsa);
-      if (!LSA_ISNULL (&result->committed_rep_lsa))
+      /* H-1: advance committed_lsa by the gap-free frontier, not by dispatch order.
+       * la_gate_advance_frontier() (run during collect) has already moved
+       * la_Gate_frontier to the highest commit LSA whose predecessors are all
+       * applied, so committed_lsa stays monotone and gap-free even when a parked
+       * dependency lets a later commit finish first. Before the frontier is seeded
+       * (startup) committed_lsa keeps its restart seed. */
+      if (la_Gate_frontier_seeded && !LSA_ISNULL (&la_Gate_frontier))
+	{
+	  if (LSA_GT (&la_Info.committed_lsa, &la_Gate_frontier))
+	    {
+	      /* frontier fell behind committed_lsa — must never happen */
+	      er_log_debug (ARG_FILE_LINE, "ws_frontier NON-MONOTONE committed %lld|%d > frontier %lld|%d",
+			    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
+			    (long long int) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset);
+	    }
+	  assert (LSA_GE (&la_Gate_frontier, &la_Info.committed_lsa));
+	  if (LSA_GT (&la_Gate_frontier, &la_Info.committed_lsa))
+	    {
+	      er_log_debug (ARG_FILE_LINE, "ws_frontier committed_lsa %lld|%d -> %lld|%d",
+			    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
+			    (long long int) la_Gate_frontier.pageid, (int) la_Gate_frontier.offset);
+	    }
+	  LSA_COPY (&la_Info.committed_lsa, &la_Gate_frontier);
+	}
+
+      /* R2: workers fill committed_rep_lsa in result-arrival order, which is not
+       * commit order, so guard against regression. committed_rep_lsa is
+       * monitoring-only now (R3 removed it from the correctness gate); it feeds the
+       * _db_ha_apply_info column and applyinfo display, not re-apply decisions. */
+      if (!LSA_ISNULL (&result->committed_rep_lsa)
+	  && LSA_GT (&result->committed_rep_lsa, &la_Info.committed_rep_lsa))
 	{
 	  LSA_COPY (&la_Info.committed_rep_lsa, &result->committed_rep_lsa);
+	}
+      else if (!LSA_ISNULL (&result->committed_rep_lsa)
+	       && LSA_GT (&la_Info.committed_rep_lsa, &result->committed_rep_lsa))
+	{
+	  er_log_debug (ARG_FILE_LINE, "ws_repl reject committed_rep regress: cur %lld|%d result %lld|%d",
+			(long long int) la_Info.committed_rep_lsa.pageid, (int) la_Info.committed_rep_lsa.offset,
+			(long long int) result->committed_rep_lsa.pageid, (int) result->committed_rep_lsa.offset);
 	}
       la_Info.log_record_time = result->log_record_time;
 
@@ -2580,10 +2616,12 @@ la_retire_ready_results (void)
       struct timeval _commit_apply_info_begin;
       LA_TIME_BEGIN (_commit_apply_info_begin);
 #endif /* !NDEBUG */
-      /* POC: skip only _db_ha_apply_info update for bottleneck verification.
-       * Keep reader-side commit so client/session cleanup still runs. */
-      /* error = la_reader_commit_apply_info (); */
-      error = db_commit_transaction ();
+      /* Persist _db_ha_apply_info (committed/committed_rep/required) at each
+       * transaction retire — the most accurate point, right after H-1 has fixed
+       * the frontier. la_reader_commit_apply_info() commits the transaction
+       * internally on success, so the standalone db_commit_transaction() that
+       * replaced it during bottleneck measurement is no longer needed. */
+      error = la_reader_commit_apply_info ();
 #if !defined (NDEBUG)
       LA_TIME_ACCUM_USEC (_commit_apply_info_begin, la_Debug_progress.reader_commit_apply_info_usec_total);
       la_Debug_progress.reader_commit_apply_info_count_total++;
@@ -3540,26 +3578,6 @@ static int
 la_reader_commit_apply_info (void)
 {
   int res;
-#if !defined (NDEBUG)
-  static int skip_apply_info_update = -1;
-
-  if (skip_apply_info_update < 0)
-    {
-      const char *env = getenv ("LA_SKIP_READER_COMMIT_APPLY_INFO");
-      skip_apply_info_update = (env != NULL && env[0] != '\0' && strcmp (env, "0") != 0) ? 1 : 0;
-      if (skip_apply_info_update != 0)
-	{
-	  er_log_debug (ARG_FILE_LINE,
-			"reader_commit_apply_info skipped by LA_SKIP_READER_COMMIT_APPLY_INFO; "
-			"_db_ha_apply_info will not be updated");
-	}
-    }
-
-  if (skip_apply_info_update != 0)
-    {
-      return NO_ERROR;
-    }
-#endif /* !NDEBUG */
 
   res = la_update_ha_last_applied_info ();
   if (res > 0)
@@ -5301,6 +5319,27 @@ la_update_ha_last_applied_info (void)
   for (i = 0; i < in_value_idx; i++)
     {
       db_value_clear (&in_value[i]);
+    }
+
+  /* ws_applyinfo: record what was persisted (committed / committed_rep / required)
+   * plus the affected-row count. res == 0 means the UPDATE matched no row even
+   * after the re-insert retry above (silent failure) — flag it explicitly. */
+  if (res == 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "ws_applyinfo UPDATE affected 0 rows (silent failure) committed %lld|%d "
+		    "committed_rep %lld|%d required %lld|%d", (long long int) la_Info.committed_lsa.pageid,
+		    (int) la_Info.committed_lsa.offset, (long long int) la_Info.committed_rep_lsa.pageid,
+		    (int) la_Info.committed_rep_lsa.offset, (long long int) la_Info.required_lsa.pageid,
+		    (int) la_Info.required_lsa.offset);
+    }
+  else if (res > 0)
+    {
+      er_log_debug (ARG_FILE_LINE,
+		    "ws_applyinfo UPDATE res=%d committed %lld|%d committed_rep %lld|%d required %lld|%d", res,
+		    (long long int) la_Info.committed_lsa.pageid, (int) la_Info.committed_lsa.offset,
+		    (long long int) la_Info.committed_rep_lsa.pageid, (int) la_Info.committed_rep_lsa.offset,
+		    (long long int) la_Info.required_lsa.pageid, (int) la_Info.required_lsa.offset);
     }
 
   return res;
@@ -9285,6 +9324,13 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
   if (apply->head == NULL || LSA_LE (commit_lsa, &la_Info.last_committed_lsa))
     {
       /* 이미 적용된 트랜잭션이거나 빈 리스트면 아이템만 비우고 종료 (슬롯 정리는 리더) */
+      if (apply->head != NULL && LSA_LE (commit_lsa, &la_Info.last_committed_lsa))
+	{
+	  /* R3: the whole transaction is skipped here (already committed before this
+	   * process started). Log per transaction only — never per item. */
+	  er_log_debug (ARG_FILE_LINE, "ws_repl skip whole txn (already committed) trid %d commit_lsa %lld|%d",
+			apply->tranid, (long long int) commit_lsa->pageid, (int) commit_lsa->offset);
+	}
       la_free_all_repl_items (apply);
       return NO_ERROR;
     }
@@ -9303,8 +9349,14 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, int rect
       /* page cache is shared by the reader and workers.
        * In-use buffers must only be released through la_release_page_buffer(). */
 
-      if (LSA_GT (&item->lsa, &la_Info.last_committed_rep_lsa) && la_need_filter_out (item) == false
-	  && la_is_supported_poc_item (item))
+      /* R3: whether to re-apply is decided solely by the per-transaction gate
+       * (LSA_LE (commit_lsa, last_committed_lsa) above); the old per-item watermark
+       * (item->lsa vs last_committed_rep_lsa) is removed from the gate. PK-based
+       * apply is idempotent so re-applying a whole transaction is safe, whereas the
+       * per-item skip could partially apply a transaction whose early low-LSA items
+       * sit below a watermark that a different, earlier-committed transaction pushed
+       * up. committed_rep_lsa is monitoring-only now. */
+      if (la_need_filter_out (item) == false && la_is_supported_poc_item (item))
 	{
 	  if (item->log_type == LOG_REPLICATION_DATA)
 	    {
@@ -10727,14 +10779,7 @@ la_init (const char *log_path, const int max_mem_size)
   gettimeofday (&la_Debug_progress.last_progress_tv, NULL);
 #endif /* !NDEBUG */
 
-  /* PoC: parallel applylogdb workers inflate VSZ with per-thread glibc
-   * arenas (N worker threads * ~64MB arena reservation each). The stock
-   * budget was written for N=1 and trips on virtual-size measurements
-   * even when RSS is small. Force-raise the floor until la_get_mem_size()
-   * is switched to RSS-based accounting; to revert, delete the MAX()
-   * wrapper and reinstate the original assignment below. */
-  /* la_Info.max_mem_size = max_mem_size; */
-  la_Info.max_mem_size = MAX (max_mem_size, 4000);
+  la_Info.max_mem_size = max_mem_size;
   /* check vsize when it started */
   if (!start_vsize)
     {
