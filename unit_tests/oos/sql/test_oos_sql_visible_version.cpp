@@ -45,7 +45,7 @@ class OosSqlVisibleVersion : public ::testing::Test
     }
 };
 
-TEST_F (OosSqlVisibleVersion, ScanrangeBoundaryFetchDoesNotExpandWholeRecord)
+TEST_F (OosSqlVisibleVersion, ScanrangeNextFirstObjectFetchDoesNotExpandWholeRecord)
 {
   int rc;
 
@@ -74,6 +74,14 @@ TEST_F (OosSqlVisibleVersion, ScanrangeBoundaryFetchDoesNotExpandWholeRecord)
 
   bridge_oos_debug_counters_reset ();
   SCAN_CODE scan = heap_scanrange_to_following (thread_p, &scan_range, nullptr);
+  EXPECT_EQ (scan, S_SUCCESS);
+
+  OID next_oid;
+  RECDES recdes = RECDES_INITIALIZER;
+  OID_SET_NULL (&next_oid);
+
+  bridge_oos_debug_counters_reset ();
+  scan = heap_scanrange_next (thread_p, &next_oid, &recdes, &scan_range, PEEK);
   EXPECT_EQ (scan, S_SUCCESS);
   EXPECT_EQ (bridge_oos_debug_counters_get ().read_many_calls, 0ULL);
 
