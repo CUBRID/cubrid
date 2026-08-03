@@ -4663,6 +4663,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
 
   int timeout = 0;
 
+  /* exit code returned via the error_exit cleanup path; EXIT_SUCCESS only for a clean non-interactive quit */
+  int exit_status = EXIT_FAILURE;
+
   time_t current_time = time (NULL);
 
   num_tables = utility_get_option_string_table_size (arg_map) - 1;
@@ -4940,7 +4943,9 @@ flashback (UTIL_FUNCTION_ARG * arg)
 	  int scan_ret = scanf ("%d", &trid);
 	  if (scan_ret == EOF)
 	    {
-	      /* Non-interactive/EOF stdin (e.g. pipe or redirection): quit instead of looping forever. */
+	      /* Non-interactive/EOF stdin (e.g. pipe or redirection): there is nothing to select, so quit
+	       * normally instead of looping forever. This is not an error, so return EXIT_SUCCESS. */
+	      exit_status = EXIT_SUCCESS;
 	      goto error_exit;
 	    }
 	  if (scan_ret != 1)
@@ -5058,7 +5063,8 @@ error_exit:
       free_and_init (loginfo_list);
     }
 
-  return EXIT_FAILURE;
+  /* EXIT_FAILURE for every error path; EXIT_SUCCESS only when set for a clean non-interactive quit */
+  return exit_status;
 
 #else /* CS_MODE */
   fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_FLASHBACK, FLASHBACK_MSG_NOT_IN_STANDALONE),
