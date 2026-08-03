@@ -9929,6 +9929,7 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_LIKE_ESCAPE:
+	  env->sel_hist_fallback = true;
 	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
 	case PT_LIKE:
@@ -9949,10 +9950,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PT_SUBSETEQ:
 	case PT_IS:
 	case PT_XOR:
+	  env->sel_hist_fallback = true;
 	  selectivity = DEFAULT_SELECTIVITY;
 	  break;
 
 	case PT_IS_NOT:
+	  env->sel_hist_fallback = true;
 	  selectivity = qo_not_selectivity (env, DEFAULT_SELECTIVITY);
 	  break;
 
@@ -9969,15 +9972,18 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PT_LT_ALL:
 	case PT_LE_ALL:
 	case PT_IS_IN:
+	  env->sel_hist_fallback = true;
 	  selectivity = qo_all_some_in_selectivity (env, node);
 	  break;
 
 	case PT_IS_NOT_IN:
+	  env->sel_hist_fallback = true;
 	  lhs_selectivity = qo_all_some_in_selectivity (env, node);
 	  selectivity = qo_not_selectivity (env, lhs_selectivity);
 	  break;
 
 	case PT_IS_NULL:
+	  env->sel_hist_fallback = true;
 	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
 	      selectivity = node->info.expr.arg1->info.name.null_frequency;
@@ -9990,6 +9996,7 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NOT_NULL:
+	  env->sel_hist_fallback = true;
 	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
 	      selectivity = node->info.expr.arg1->info.name.null_frequency;
@@ -10112,6 +10119,15 @@ qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       selectivity = MAX (selectivity, 0.0);
       selectivity = MIN (selectivity, 1.0);
+    }
+
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
     }
 
   return selectivity;
@@ -10483,6 +10499,15 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
     }
 
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
+    }
+
   return selectivity;
 }
 
@@ -10621,7 +10646,13 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
     }
 
-  return success ? selectivity : DEFAULT_COMP_SELECTIVITY;
+  if (success)
+    {
+      env->sel_hist_used = true;
+      return selectivity;
+    }
+  env->sel_hist_fallback = true;
+  return DEFAULT_COMP_SELECTIVITY;
 }
 
 /*
@@ -10642,6 +10673,7 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   QO_ASSERT (env, and_node->node_type == PT_EXPR);
   QO_ASSERT (env, pt_is_between_range_op (and_node->info.expr.op));
 
+  env->sel_hist_fallback = true;
   return DEFAULT_BETWEEN_SELECTIVITY;
 }
 
@@ -10703,6 +10735,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     }
   else
     {
+      env->sel_hist_fallback = true;
       return DEFAULT_RANGE_SELECTIVITY;
     }
 #if 1				/* unused anymore - DO NOT DELETE ME */
@@ -10833,6 +10866,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 	  if (!(success1 && success2))
 	    {
+	      env->sel_hist_fallback = true;
 	      if (op_type == PT_BETWEEN_INF_LT || op_type == PT_BETWEEN_INF_LE || op_type == PT_BETWEEN_GE_INF
 		  || op_type == PT_BETWEEN_GT_INF)
 		{
@@ -10842,6 +10876,10 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		{
 		  selectivity = DEFAULT_BETWEEN_SELECTIVITY;
 		}
+	    }
+	  else
+	    {
+	      env->sel_hist_used = true;
 	    }
 	}
       else if (op_type == PT_BETWEEN_EQ_NA)
@@ -10853,6 +10891,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  if (pc1 == PC_ATTR)
 	    {
 	      /* attr1 range (attr2 = ) */
+	      env->sel_hist_fallback = true;
 	      rhs_icard = qo_index_cardinality (env, arg1);
 
 	      icard = MAX (lhs_icard, rhs_icard);
@@ -10873,6 +10912,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	      if (!success)
 		{
+		  env->sel_hist_fallback = true;
 		  /* attr1 range (const = ) */
 		  if (lhs_icard != 0)
 		    {
@@ -10883,7 +10923,16 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		      selectivity = DEFAULT_EQUAL_SELECTIVITY;
 		    }
 		}
+	      else
+		{
+		  env->sel_hist_used = true;
+		}
 	    }
+	}
+      else
+	{
+	  /* op not estimated above (e.g. unnormalized PT_BETWEEN_AND) */
+	  env->sel_hist_fallback = true;
 	}
 
 
