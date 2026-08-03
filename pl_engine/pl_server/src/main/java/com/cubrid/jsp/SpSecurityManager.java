@@ -31,8 +31,8 @@
 
 package com.cubrid.jsp;
 
+import com.cubrid.jsp.classloader.CatalogClassLoader;
 import com.cubrid.jsp.classloader.ContextClassLoader;
-import com.cubrid.jsp.classloader.SessionClassLoader;
 import java.io.FileDescriptor;
 import java.net.InetAddress;
 import java.security.Permission;
@@ -77,7 +77,7 @@ public class SpSecurityManager extends SecurityManager {
 
             if (loader != null
                     && ((loader instanceof ContextClassLoader)
-                            || (loader instanceof SessionClassLoader))) {
+                            || (loader instanceof CatalogClassLoader))) {
                 throw new SecurityException(
                         "Native library loading is not allowed. Please load your class using 'loadjava' with the '-jni' option.");
             }

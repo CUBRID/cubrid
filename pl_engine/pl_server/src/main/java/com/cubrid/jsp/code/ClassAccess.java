@@ -30,6 +30,7 @@
  */
 package com.cubrid.jsp.code;
 
+import com.cubrid.jsp.Server;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
@@ -40,42 +41,31 @@ import com.cubrid.jsp.value.Value;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
 import java.util.Base64;
 
 public class ClassAccess {
-    public static String getCodeMeta(Connection conn, String name) throws SQLException {
-        String ts = null;
-        String sql =
-                "SELECT created_time, is_static, is_system_generated FROM _db_stored_procedure_code WHERE name = ?";
-        PreparedStatement prepStmt = conn.prepareStatement(sql);
-        prepStmt.setString(1, name);
 
-        ResultSet rs = prepStmt.executeQuery();
-        if (rs.next()) {
-            ts = rs.getString(1);
-        }
-        rs.close();
-        return ts;
-    }
+    public static CompiledCodeSet getObjectCode(Connection conn, String className) {
 
-    public static String getTransactionKey(Connection conn, String name)
-            throws IOException, TypeMismatchException {
-        String ts = null;
+        CompiledCodeSet code = null;
 
-        sendGetCodeAttr("created_time");
-
-        Value val = receiveCodeAttrValue();
-        if (val != null) {
-            ts = val.toString();
+        try {
+            byte[] jarCode = getObjectCodeBytes(conn);
+            if (jarCode != null) {
+                code = CompiledCodeSet.loadFromJar(className, jarCode);
+            }
+        } catch (Exception e) {
+            Server.log(e);
         }
 
-        return ts;
+        return code;
     }
 
-    public static byte[] getObjectCodeBytes(Connection conn, String name)
+    // ======================
+    // Private
+    // ======================
+
+    private static byte[] getObjectCodeBytes(Connection conn)
             throws IOException, TypeMismatchException {
         byte[] jar = null;
 
@@ -88,29 +78,6 @@ public class ClassAccess {
         }
 
         return jar;
-    }
-
-    public static CompiledCodeSet getObjectCode(Connection conn, Signature sig) throws Exception {
-        CompiledCodeSet code = null;
-        String className = sig.getClassName();
-
-        String tKey = null;
-        try {
-            tKey = getTransactionKey(conn, className);
-        } catch (Exception e) {
-        }
-
-        if (tKey == null) {
-            return null;
-        }
-
-        byte[] jarCode = ClassAccess.getObjectCodeBytes(conn, className);
-        if (jarCode != null) {
-            code = CompiledCodeSet.loadFromJar(className, jarCode);
-            code.setTimestamp(tKey);
-        }
-
-        return code;
     }
 
     private static void sendGetCodeAttr(String attr_name) throws IOException {

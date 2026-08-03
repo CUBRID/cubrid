@@ -75,6 +75,10 @@ public class CompiledCodeSet {
         return codeMap.entrySet();
     }
 
+    public Map<String, CompiledCode> getCodeMap() {
+        return codeMap;
+    }
+
     public void setTimestamp(String tsString) {
         timestamp = Long.parseLong(tsString);
     }

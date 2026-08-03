@@ -43,20 +43,23 @@ public class Unit extends AstNode {
 
     public final boolean connectionRequired;
     public final DeclRoutine routine;
-    public final String revision;
+    public final String owner;
+    public final String compileSeqNo;
 
     public Unit(
             ParserRuleContext ctx,
             boolean connectionRequired,
             DeclRoutine routine,
-            String revision) {
+            String owner,
+            String compileSeqNo) {
         super(ctx);
 
         assert routine.scope.level == 1;
 
         this.connectionRequired = connectionRequired;
         this.routine = routine;
-        this.revision = revision;
+        this.owner = owner;
+        this.compileSeqNo = compileSeqNo;
     }
 
     public String getJavaSignature() {
@@ -93,8 +96,12 @@ public class Unit extends AstNode {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className =
                     String.format(
-                            "%s_%s_%s_%d",
-                            kindStr, routine.name, revision, new java.util.Date().getTime());
+                            "%s_%s_%s_%s_%d",
+                            kindStr,
+                            owner,
+                            routine.name,
+                            compileSeqNo,
+                            new java.util.Date().getTime());
         }
 
         return className;

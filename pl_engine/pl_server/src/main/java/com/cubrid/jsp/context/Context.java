@@ -35,9 +35,9 @@ import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.ServerConfig;
 import com.cubrid.jsp.SysParam;
+import com.cubrid.jsp.classloader.CatalogClassLoaderRelay;
 import com.cubrid.jsp.classloader.ClassPathManager;
 import com.cubrid.jsp.classloader.ContextClassLoader;
-import com.cubrid.jsp.classloader.SessionClassLoaderManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
@@ -68,7 +68,7 @@ public class Context {
     private Properties clientInfo = null;
 
     // dynamic classLoader for a session
-    private SessionClassLoaderManager sessionClassLoaderManager = null;
+    private CatalogClassLoaderRelay catalogClassLoaderRelay = null;
     private ContextClassLoader oldClassLoader = null; // file
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
@@ -152,8 +152,8 @@ public class Context {
 
             tranactionId = tid;
 
-            if (sessionClassLoaderManager != null) {
-                sessionClassLoaderManager.clear();
+            if (catalogClassLoaderRelay != null) {
+                catalogClassLoaderRelay.switchChildrenToOld();
             }
         }
     }
@@ -170,9 +170,9 @@ public class Context {
 
     public void destroy() {
         clear();
-        if (sessionClassLoaderManager != null) {
-            sessionClassLoaderManager.clear();
-            sessionClassLoaderManager = null;
+        if (catalogClassLoaderRelay != null) {
+            catalogClassLoaderRelay.clear();
+            catalogClassLoaderRelay = null;
         }
 
         if (oldClassLoader != null) {
@@ -191,12 +191,12 @@ public class Context {
         return messageBuffer;
     }
 
-    public SessionClassLoaderManager getSessionCLManager() {
-        if (sessionClassLoaderManager == null) {
-            sessionClassLoaderManager = new SessionClassLoaderManager(sessionId);
+    public CatalogClassLoaderRelay getCatalogClassLoaderRelay() {
+        if (catalogClassLoaderRelay == null) {
+            catalogClassLoaderRelay = new CatalogClassLoaderRelay(sessionId);
         }
 
-        return sessionClassLoaderManager;
+        return catalogClassLoaderRelay;
     }
 
     public ClassLoader getOldClassLoader() {
