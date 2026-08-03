@@ -9888,7 +9888,8 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       /* per-disjunct reset: an operator with no case below must contribute the default guess;
        * without this it reuses the previous disjunct's selectivity (or the 0.0 initializer when
-       * it is the first disjunct), which turns the whole term into a zero-row estimate. */
+       * it is the first disjunct), which turns the whole term into a zero-row estimate. The
+       * guess is not histogram-derived; the default case below marks the fallback. */
       selectivity = DEFAULT_SELECTIVITY;
 
       switch (node->info.expr.op)
@@ -10040,6 +10041,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	default:
+	  /* fall-through operator: selectivity stays at the per-disjunct DEFAULT_SELECTIVITY
+	   * reset above -- a guess, so keep the term from being tagged histogram-derived */
+	  env->sel_hist_fallback = true;
 	  break;
 	}
 
@@ -10211,6 +10215,15 @@ qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	{
 	  selectivity = fallback;
 	}
+    }
+
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
     }
 
   selectivity = MAX (selectivity, 0.0);

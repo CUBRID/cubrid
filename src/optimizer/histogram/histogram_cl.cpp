@@ -48,15 +48,14 @@
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
-static bool string_hist_value_equals_db_value (std::string_view hist_value, int hist_codeset, int hist_collation,
-    const DB_VALUE *probe);
-static bool string_hist_values_equal (std::string_view v1, int codeset1, int collation1,
-				      std::string_view v2, int codeset2, int collation2);
+static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
+    int collation);
 static void histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_collation,
     int *codeset, int *collation);
 static void mcv_join_parts_str (const hist::HistogramReader &r1, const hist::HistogramReader &r2,
 				PT_NODE *lhs, PT_NODE *rhs,
-				double &matchprodfreq, double &matchfreq1, double &matchfreq2, int &nmatches);
+				double &matchprodfreq, double &matchfreq1, double &matchfreq2,
+				int &nmatches1, int &nmatches2);
 
 /*
  * analyze_classes ()
@@ -908,18 +907,41 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
       break;
     case hist::histogram_key_kind::str:
     {
+      const DB_TYPE probe_type = DB_VALUE_TYPE (rhs_db_value);
+
+      if (probe_type == DB_TYPE_BIT || probe_type == DB_TYPE_VARBIT)
+	{
+	  /* bit strings have no collation: db_string_compare () rejects the CHAR-vs-BIT
+	   * category mix outright, and plain byte equality is already exact for them */
+	  mcv_index = histogram_reader.find_mcv<std::string_view> (std::string_view (key.str));
+	  break;
+	}
+
       /* Runtime equality resolves the common collation of the column and the probe, so a
        * whole equivalence class can match (case variants under a _ci collation) even though
        * the byte-sorted MCV list stores them as distinct entries. Sweep the list with the
        * runtime comparator and sum every matching MCV's mass; under a binary collation this
-       * reproduces the plain byte lookup. */
-      int codeset, collation;
+       * reproduces the plain byte lookup. The probe bytes are key.str, NOT the raw constant:
+       * the sampler strips trailing spaces from stored CHAR values and histogram_extract_key
+       * strips the probe to match -- the raw constant would compare padded against stripped.
+       * Both sides are built under the resolved common collation, which db_string_compare ()
+       * requires as a precondition. */
+      int column_codeset, column_collation;
+      int common_coll_id = -1;
+
       histogram_lhs_string_domain (lhs, db_get_string_codeset (rhs_db_value),
-				   db_get_string_collation (rhs_db_value), &codeset, &collation);
+				   db_get_string_collation (rhs_db_value), &column_codeset, &column_collation);
+      LANG_RT_COMMON_COLL (column_collation, db_get_string_collation (rhs_db_value), common_coll_id);
+      if (common_coll_id == -1)
+	{
+	  *success = false;
+	  return;
+	}
+
       for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
 	{
-	  if (string_hist_value_equals_db_value (histogram_reader.mcv_hi<std::string_view> (i),
-						 codeset, collation, rhs_db_value))
+	  if (string_values_equal_under_collation (histogram_reader.mcv_hi<std::string_view> (i),
+	      std::string_view (key.str), column_codeset, common_coll_id))
 	    {
 	      mcv_matched_freq += histogram_reader.mcv_freq (i);
 	    }
@@ -1204,19 +1226,30 @@ mcv_join_parts (const hist::HistogramReader &r1, const hist::HistogramReader &r2
 static void
 mcv_join_parts_str (const hist::HistogramReader &r1, const hist::HistogramReader &r2,
 		    PT_NODE *lhs, PT_NODE *rhs,
-		    double &matchprodfreq, double &matchfreq1, double &matchfreq2, int &nmatches)
+		    double &matchprodfreq, double &matchfreq1, double &matchfreq2,
+		    int &nmatches1, int &nmatches2)
 {
   const int n1 = static_cast<int> (r1.mcv_count ());
   const int n2 = static_cast<int> (r2.mcv_count ());
   int codeset1, collation1, codeset2, collation2;
+  int common_coll_id = -1;
 
   matchprodfreq = 0.0;
   matchfreq1 = 0.0;
   matchfreq2 = 0.0;
-  nmatches = 0;
+  nmatches1 = 0;
+  nmatches2 = 0;
 
   histogram_lhs_string_domain (lhs, LANG_SYS_CODESET, LANG_SYS_COLLATION, &codeset1, &collation1);
   histogram_lhs_string_domain (rhs, codeset1, collation1, &codeset2, &collation2);
+
+  /* db_string_compare () requires pre-aligned collations; resolve the two columns' common
+   * collation once, exactly like the executor does for the join predicate */
+  LANG_RT_COMMON_COLL (collation1, collation2, common_coll_id);
+  if (common_coll_id == -1)
+    {
+      return;			/* incompatible collations: execution would error out too */
+    }
 
   std::vector<bool> matched2 (static_cast<std::size_t> (n2), false);
 
@@ -1227,8 +1260,8 @@ mcv_join_parts_str (const hist::HistogramReader &r1, const hist::HistogramReader
 
       for (int j = 0; j < n2; j++)
 	{
-	  if (string_hist_values_equal (v1, codeset1, collation1,
-					r2.mcv_hi<std::string_view> (j), codeset2, collation2))
+	  if (string_values_equal_under_collation (v1, r2.mcv_hi<std::string_view> (j),
+	      codeset1, common_coll_id))
 	    {
 	      matchprodfreq += r1.mcv_freq (i) * r2.mcv_freq (j);
 	      matched_i = true;
@@ -1239,7 +1272,7 @@ mcv_join_parts_str (const hist::HistogramReader &r1, const hist::HistogramReader
       if (matched_i)
 	{
 	  matchfreq1 += r1.mcv_freq (i);
-	  nmatches++;
+	  nmatches1++;
 	}
     }
 
@@ -1248,6 +1281,7 @@ mcv_join_parts_str (const hist::HistogramReader &r1, const hist::HistogramReader
       if (matched2[static_cast<std::size_t> (j)])
 	{
 	  matchfreq2 += r2.mcv_freq (j);
+	  nmatches2++;
 	}
     }
 }
@@ -1297,21 +1331,35 @@ histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity,
   double matchprodfreq = 0.0;
   double matchfreq1 = 0.0;
   double matchfreq2 = 0.0;
-  int nmatches = 0;
+  int nmatches1 = 0;
+  int nmatches2 = 0;
 
   switch (kind)
     {
     case hist::histogram_key_kind::i64:
-      mcv_join_parts<std::int64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      mcv_join_parts<std::int64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches1);
+      nmatches2 = nmatches1;
       break;
     case hist::histogram_key_kind::dbl:
-      mcv_join_parts<double> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      mcv_join_parts<double> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches1);
+      nmatches2 = nmatches1;
       break;
     case hist::histogram_key_kind::str:
-      mcv_join_parts_str (reader1, reader2, lhs, rhs, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      if (reader1.value_type () == DB_TYPE_BIT || reader1.value_type () == DB_TYPE_VARBIT)
+	{
+	  /* bit strings have no collation; the byte two-pointer merge is already exact */
+	  mcv_join_parts<std::string_view> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches1);
+	  nmatches2 = nmatches1;
+	}
+      else
+	{
+	  mcv_join_parts_str (reader1, reader2, lhs, rhs, matchprodfreq, matchfreq1, matchfreq2,
+			      nmatches1, nmatches2);
+	}
       break;
     case hist::histogram_key_kind::u64:
-      mcv_join_parts<std::uint64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches);
+      mcv_join_parts<std::uint64_t> (reader1, reader2, matchprodfreq, matchfreq1, matchfreq2, nmatches1);
+      nmatches2 = nmatches1;
       break;
     case hist::histogram_key_kind::invalid:
     default:
@@ -1346,9 +1394,11 @@ histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity,
     {
       totalsel1 += unmatchfreq1 * otherfreq2 / (nd2 - nmcv2);
     }
-  if (nd2 > nmatches)
+  if (nd2 > nmatches2)
     {
-      totalsel1 += otherfreq1 * (otherfreq2 + unmatchfreq2) / (nd2 - nmatches);
+      /* the many-to-many collation-aware match can count matched MCVs differently per side;
+       * each viewpoint's denominator must exclude ITS OWN side's matched distinct values */
+      totalsel1 += otherfreq1 * (otherfreq2 + unmatchfreq2) / (nd2 - nmatches2);
     }
 
   double totalsel2 = matchprodfreq;
@@ -1356,9 +1406,9 @@ histogram_get_join_selectivity (PT_NODE *lhs, PT_NODE *rhs, double *selectivity,
     {
       totalsel2 += unmatchfreq2 * otherfreq1 / (nd1 - nmcv1);
     }
-  if (nd1 > nmatches)
+  if (nd1 > nmatches1)
     {
-      totalsel2 += otherfreq2 * (otherfreq1 + unmatchfreq1) / (nd1 - nmatches);
+      totalsel2 += otherfreq2 * (otherfreq1 + unmatchfreq1) / (nd1 - nmatches1);
     }
 
   /* the smaller estimate is the view from the larger-NDV side */
@@ -1465,61 +1515,63 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
 static bool
 like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value)
 {
-  DB_VALUE src;
+  DB_VALUE src, pattern;
   int res = V_FALSE;
   int err;
+  int common_coll_id = -1;
 
   /* Match through the runtime evaluator (db_string_like) so the estimate cannot diverge from
    * execution: it matches '_' per character (not per byte) and folds case under the common
    * collation of the column and the pattern, neither of which a byte-wise matcher can do.
-   * value is a string_view into the histogram blob (NOT NUL-terminated, not owned): give the
-   * transient DB_VALUE the pattern's codeset (a valid query guarantees compatibility) and the
-   * COLUMN's collation, exactly like the runtime source operand. */
+   * The string comparison layer requires pre-aligned collations, so both transient operands
+   * are built under the resolved common collation of the column and the pattern -- the same
+   * alignment the executor guarantees. value is a string_view into the histogram blob (NOT
+   * NUL-terminated, not owned). */
+  LANG_RT_COMMON_COLL (src_collation_id, db_get_string_collation (pattern_db_value), common_coll_id);
+  if (common_coll_id == -1)
+    {
+      return false;
+    }
+
   db_make_varchar (&src, DB_MAX_VARCHAR_PRECISION, value.data (), static_cast<int> (value.size ()),
-		   db_get_string_codeset (pattern_db_value), src_collation_id);
+		   db_get_string_codeset (pattern_db_value), common_coll_id);
+  db_make_varchar (&pattern, DB_MAX_VARCHAR_PRECISION, db_get_string (pattern_db_value),
+		   db_get_string_size (pattern_db_value), db_get_string_codeset (pattern_db_value),
+		   common_coll_id);
 
   /* db_string_like () er_set()s on type/codeset failures; a planning probe must not leave that
    * in the global error state -- shield it and treat the value as unmatched */
   er_stack_push ();
-  err = db_string_like (&src, pattern_db_value, NULL, &res);
+  err = db_string_like (&src, &pattern, NULL, &res);
   er_stack_pop ();
 
   return (err == NO_ERROR && res == V_TRUE);
 }
 
-/* runtime-equivalent equality between two histogram-blob string slots (or a slot and a probe
- * constant, via the DB_VALUE overload below): db_string_compare () resolves the common collation
- * exactly like the executor, so collation-equal values (e.g. case variants under a _ci collation)
- * compare equal even though their bytes differ */
+/* runtime-equivalent equality between two raw string values (histogram-blob slots or an
+ * extracted probe key). db_string_compare () REQUIRES its operands' collations to be already
+ * aligned (it asserts equality after the coercibility check), so both transient DB_VALUEs are
+ * built under the caller-resolved COMMON collation -- the same alignment the executor
+ * guarantees before comparing. Collation-equal values (e.g. case variants under a _ci
+ * collation) then compare equal even though their bytes differ. */
 static bool
-string_hist_value_equals_db_value (std::string_view hist_value, int hist_codeset, int hist_collation,
-				   const DB_VALUE *probe)
+string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset, int collation)
 {
-  DB_VALUE hist_dbval, cmp_result;
+  DB_VALUE dbval1, dbval2, cmp_result;
   int err;
 
-  db_make_varchar (&hist_dbval, DB_MAX_VARCHAR_PRECISION, hist_value.data (),
-		   static_cast<int> (hist_value.size ()), hist_codeset, hist_collation);
+  db_make_varchar (&dbval1, DB_MAX_VARCHAR_PRECISION, v1.data (), static_cast<int> (v1.size ()),
+		   codeset, collation);
+  db_make_varchar (&dbval2, DB_MAX_VARCHAR_PRECISION, v2.data (), static_cast<int> (v2.size ()),
+		   codeset, collation);
   db_make_null (&cmp_result);
 
   /* db_string_compare () er_set()s on codeset failures; shield the planning probe */
   er_stack_push ();
-  err = db_string_compare (&hist_dbval, probe, &cmp_result);
+  err = db_string_compare (&dbval1, &dbval2, &cmp_result);
   er_stack_pop ();
 
   return (err == NO_ERROR && DB_VALUE_TYPE (&cmp_result) == DB_TYPE_INTEGER && db_get_int (&cmp_result) == 0);
-}
-
-static bool
-string_hist_values_equal (std::string_view v1, int codeset1, int collation1,
-			  std::string_view v2, int codeset2, int collation2)
-{
-  DB_VALUE dbval2;
-
-  db_make_varchar (&dbval2, DB_MAX_VARCHAR_PRECISION, v2.data (), static_cast<int> (v2.size ()),
-		   codeset2, collation2);
-
-  return string_hist_value_equals_db_value (v1, codeset1, collation1, &dbval2);
 }
 
 /* column collation/codeset for a histogram-carrying operand; falls back to the given values
@@ -1563,8 +1615,9 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   const double total_rows = histogram_reader.total_rows ();
   if (total_rows <= 0.0)
     {
-      *success = true;
-      *selectivity = 0.0;
+      /* stale/empty statistics: fall back to the caller's guess instead of returning a
+       * zero-row estimate (matches histogram_get_equal_selectivity's convention) */
+      *success = false;
       return;
     }
 
@@ -1579,6 +1632,14 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
     {
       /* LIKE probes decode the value slots as strings; a non-string blob (stale after ALTER)
        * would yield out-of-range string reads */
+      *success = false;
+      return;
+    }
+
+  if (histogram_reader.value_type () == DB_TYPE_BIT || histogram_reader.value_type () == DB_TYPE_VARBIT)
+    {
+      /* bit strings share the str storage kind but have no collation; the runtime string
+       * matcher rejects the CHAR-vs-BIT category mix, so every probe would silently miss */
       *success = false;
       return;
     }
@@ -1722,8 +1783,9 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
   const double total_rows = histogram_reader.total_rows ();
   if (total_rows <= 0.0)
     {
-      *success = true;
-      *selectivity = 0.0;
+      /* stale/empty statistics: fall back to the caller's guess instead of returning a
+       * zero-row estimate (matches histogram_get_equal_selectivity's convention) */
+      *success = false;
       return;
     }
 
@@ -1737,6 +1799,12 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
     {
       /* the probes below decode the value slots as strings; a non-string blob (stale after
        * ALTER) would yield out-of-range string reads */
+      return;
+    }
+
+  if (histogram_reader.value_type () == DB_TYPE_BIT || histogram_reader.value_type () == DB_TYPE_VARBIT)
+    {
+      /* bit strings have no collation and no regex semantics at the storage level */
       return;
     }
 
