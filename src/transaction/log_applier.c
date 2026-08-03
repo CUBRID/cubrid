@@ -12037,6 +12037,21 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      /* start loop for apply */
 	      while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false)
 		{
+		  /* ws_pagebuf: single release paired 1:1 with the la_get_page_buffer fix
+		   * below. Release the page fixed on the previous iteration before we
+		   * (re)fix or leave the loop, so every post-fix continue/normal re-entry
+		   * drops that fix exactly once. Paths that already called
+		   * la_invalidate_page_buffer left pageid=0, so this becomes a harmless
+		   * hash-miss no-op; paths that call la_shutdown()+return free the whole
+		   * cache and never reach here. */
+		  if (log_buf != NULL)
+		    {
+		      er_log_debug (ARG_FILE_LINE, "ws_pagebuf release pageid %lld (loop iter)",
+				    (long long int) log_buf->pageid);
+		      la_release_page_buffer (log_buf->pageid);
+		      log_buf = NULL;
+		    }
+
 		  error = la_collect_apply_results ();
 		  if (error == ER_NET_CANT_CONNECT_SERVER)
 		    {
@@ -12527,6 +12542,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      continue;
 	    }
 	}		/* while (!LSA_ISNULL (&la_Info.final_lsa) && la_applier_need_shutdown == false) */
+
+      /* ws_pagebuf: release the last page fixed by the middle loop when it exits
+       * via break; the loop-top release covers continue/normal re-entry. */
+      if (log_buf != NULL)
+	{
+	  la_release_page_buffer (log_buf->pageid);
+	  log_buf = NULL;
+	}
 
       error = la_collect_apply_results ();
       if (error != NO_ERROR)
