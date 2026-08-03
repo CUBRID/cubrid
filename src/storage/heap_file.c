@@ -17117,19 +17117,21 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       /* Resolve the serial's cache block size once and cache it on the attribute rep, so the
        * value-generation calls below take the cached driver branch. cached_num <= 1 keeps the
        * uncached, per-row-write behavior. */
-      if (att->auto_increment.cached_num < 0)
+      int ai_cached_num = att->auto_increment.cached_num.load ();
+      if (ai_cached_num < 0)
 	{
 	  OID ai_serial_oid = att->auto_increment.serial_obj.load ().oid;
-	  int ai_cached_num = 0;
+
+	  ai_cached_num = 0;
 	  if (!OID_ISNULL (&ai_serial_oid)
-	      && xserial_get_cached_num (thread_p, &ai_cached_num, &ai_serial_oid) == NO_ERROR)
+	      && xserial_get_cached_num (thread_p, &ai_cached_num, &ai_serial_oid) != NO_ERROR)
 	    {
-	      att->auto_increment.cached_num = ai_cached_num;
+	      /* keep the uncached behavior, and do not leave the failure on the error stack */
+	      er_clear ();
+	      ai_cached_num = 0;
 	    }
-	  else
-	    {
-	      att->auto_increment.cached_num = 0;
-	    }
+
+	  att->auto_increment.cached_num.store (ai_cached_num);
 	}
 
       thread_p->no_supplemental_log = true;
@@ -17137,7 +17139,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       if ((att->type == DB_TYPE_SHORT) || (att->type == DB_TYPE_INTEGER) || (att->type == DB_TYPE_BIGINT))
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, att->auto_increment.cached_num,	/* cached block */
+	  if (xserial_get_next_value (thread_p, &dbvalue_numeric, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {
@@ -17154,7 +17156,7 @@ heap_set_autoincrement_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * att
       else if (att->type == DB_TYPE_NUMERIC)
 	{
 	  OID serial_obj_oid = att->auto_increment.serial_obj.load ().oid;
-	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, att->auto_increment.cached_num,	/* cached block */
+	  if (xserial_get_next_value (thread_p, dbvalue, &serial_obj_oid, ai_cached_num,	/* cached block */
 				      1,	/* generate one value */
 				      GENERATE_AUTO_INCREMENT, false) != NO_ERROR)
 	    {

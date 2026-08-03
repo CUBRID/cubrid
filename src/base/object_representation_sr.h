@@ -84,7 +84,7 @@ struct or_auto_increment
 {
   std::atomic<or_aligned_oid> serial_obj;
   std::atomic<char *> serial_name;
-  int cached_num;		/* serial cache block size; -1 = unresolved */
+  std::atomic<int> cached_num;	/* serial cache block size; -1 = unresolved. shared like the two above */
 };
 // *INDENT-ON*
 

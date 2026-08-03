@@ -523,24 +523,41 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
   /* consumed all cached value */
   if (exhausted == true)
     {
+      DB_VALUE new_last_cached_val;
+
+      db_make_null (&new_last_cached_val);
+
       nturns = CEIL_PTVDIV (num_alloc, entry->cached_num);
 
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (nturns * entry->cached_num), &entry->last_cached_val, true);
+			      &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val, true);
 
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
-      /* cur_val of _db_serial is updated to last_cached_val of entry */
-      error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+      error = numeric_db_value_compare (&new_last_cached_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
 
+      /* A reservation clamped to the range boundary can reserve nothing new; leave the entry and
+       * _db_serial alone then, because the value generation below raises the range overflow anyway
+       * and a durable write per failing call buys nothing. */
+      if (db_get_int (&cmp_result) != 0)
+	{
+	  pr_clone_value (&new_last_cached_val, &entry->last_cached_val);
+
+	  /* cur_val of _db_serial is updated to last_cached_val of entry */
+	  error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
     }
 
   /* get next value */

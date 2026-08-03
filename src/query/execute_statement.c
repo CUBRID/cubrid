@@ -192,6 +192,8 @@ typedef struct reserved_class_info
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
+static int auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+					    bool * fits);
 static bool truncate_need_repl_log (PT_NODE * statement);
 static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
@@ -331,6 +333,101 @@ check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int 
     }
 
   return NO_ERROR;
+}
+
+/*
+ * auto_increment_cache_fits_range() - can one cache block of cached_num values fit the serial's range?
+ *   return: Error code
+ *   inc_val(in):
+ *   min_val(in):
+ *   max_val(in):
+ *   cached_num(in):
+ *   fits(out): false when ABS (cached_num * inc_val) > max_val - min_val
+ *
+ * Note: this is the invariant CREATE SERIAL / ALTER SERIAL enforce on CACHE n (see do_create_serial).
+ *   An AUTO_INCREMENT serial takes its block size from auto_increment_cache_size rather than from the
+ *   statement, so the caller turns the cache off instead of failing the DDL. A column whose whole
+ *   range holds fewer values than one block would have its range clamped to max_val and durably
+ *   consumed by the first generated value, and it can never see the row volume a cache amortizes.
+ */
+static int
+auto_increment_cache_fits_range (DB_VALUE * inc_val, DB_VALUE * min_val, DB_VALUE * max_val, int cached_num,
+				 bool * fits)
+{
+  DB_VALUE range_val, cached_num_int_val, cached_num_val, tmp_val, abs_cached_range_val, cmp_result;
+  DB_DATA_STATUS data_stat;
+  int error = NO_ERROR;
+
+  *fits = true;
+
+  db_make_null (&range_val);
+  db_make_null (&cached_num_int_val);
+  db_make_null (&cached_num_val);
+  db_make_null (&tmp_val);
+  db_make_null (&abs_cached_range_val);
+  db_make_null (&cmp_result);
+
+  error = numeric_db_value_sub (max_val, min_val, &range_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* max - min flooded, so the range is wide enough for any block size */
+      er_clear ();
+      error = NO_ERROR;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&range_val);
+
+  /* ABS (cached_num * inc_val) <= range_val */
+  db_make_int (&cached_num_int_val, cached_num);
+  db_value_domain_init (&cached_num_val, DB_TYPE_NUMERIC, DB_MAX_FIXED_NUMERIC_PRECISION, 0);
+  error = numeric_db_value_coerce_to_num (&cached_num_int_val, &cached_num_val, &data_stat);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_mul (inc_val, &cached_num_val, &tmp_val);
+  if (error == ER_IT_DATA_OVERFLOW)
+    {
+      /* the block overflows the numeric domain, so it cannot fit any range */
+      er_clear ();
+      error = NO_ERROR;
+      *fits = false;
+      goto end;
+    }
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  FLOAT_TO_FIXED_NUMERIC (&tmp_val);
+
+  error = db_abs_dbval (&abs_cached_range_val, &tmp_val);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  error = numeric_db_value_compare (&abs_cached_range_val, &range_val, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  *fits = (db_get_int (&cmp_result) <= 0);
+
+end:
+  pr_clear_value (&range_val);
+  pr_clear_value (&cached_num_int_val);
+  pr_clear_value (&cached_num_val);
+  pr_clear_value (&tmp_val);
+  pr_clear_value (&abs_cached_range_val);
+  pr_clear_value (&cmp_result);
+
+  return error;
 }
 
 /*
@@ -2034,6 +2131,7 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
   DB_VALUE e38;
   char *p, num[DB_MAX_FIXED_NUMERIC_PRECISION + 1];
   char att_downcase_name[SM_MAX_IDENTIFIER_LENGTH];
+  int cached_num;
 
   db_make_null (&e38);
   db_make_null (&value);
@@ -2245,12 +2343,31 @@ do_create_auto_increment_serial (PARSER_CONTEXT * parser, MOP * serial_object, c
       goto end;
     }
 
-  /* create auto increment serial object; cached_num comes from auto_increment_cache_size.
-   * 0 keeps the per-row durable catalog write; n >= 2 makes the serial cache a block of n
-   * values so heap_set_autoincrement_value takes the cached path. */
+  /* cached_num comes from auto_increment_cache_size. 0 keeps the per-row durable catalog write;
+   * n >= 2 makes the serial cache a block of n values so heap_set_autoincrement_value takes the
+   * cached path. A column whose whole range holds fewer values than one block goes uncached: the
+   * parameter is a global default, so it cannot fail the DDL the way CREATE SERIAL ... CACHE n does. */
+  cached_num = prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE);
+  if (cached_num > 1)
+    {
+      bool fits = true;
+
+      error = auto_increment_cache_fits_range (&inc_val, &min_val, &max_val, cached_num, &fits);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (!fits)
+	{
+	  cached_num = 0;
+	}
+    }
+
+  /* create auto increment serial object */
   error =
-    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0,
-			       prm_get_integer_value (PRM_ID_AUTO_INCREMENT_CACHE_SIZE), 0, NULL, class_name, att_name);
+    do_create_serial_internal (serial_object, serial_name, &start_val, &inc_val, &min_val, &max_val, 0, cached_num, 0,
+			       NULL, class_name, att_name);
   if (error < 0)
     {
       goto end;
