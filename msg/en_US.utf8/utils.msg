@@ -525,10 +525,7 @@ valid options:\n\
                                  This behavior may be conditionally disabled.\n\
       --schema-file-list=FILE    The content of this file is a list of schema file names to be used in loaddb.\n\
                                  loaddb is executed sequentially from the top.\n\
-                                 WARNING: Cannot be used with the -s option.\n\
-      --no-logging-index         create the indexes given by -i without redo logging; ignored in SA mode.\n\
-                                 WARNING: media recovery cannot replay a log chain past such a build;\n\
-                                 take a new backup after loaddb finishes.\n
+                                 WARNING: Cannot be used with the -s option.\n
 
 
 $set 13 MSGCAT_UTIL_SET_UNLOADDB
