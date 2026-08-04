@@ -912,6 +912,10 @@ loaddb_internal (UTIL_FUNCTION_ARG * arg, int dba_mode)
   return status;
 
 error_return:
+  /* The no-logging-index request flag may still be set when the index loading failed (the success path
+   * resets it right after ldr_exec_query_from_file).  Reset it idempotently on every failure path so a
+   * later session in this process can never inherit it. */
+  btree_set_no_logging_index (false);
   if (schema_file != NULL)
     {
       fclose_and_init (schema_file);
