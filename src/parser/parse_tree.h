@@ -3334,6 +3334,9 @@ struct pt_execute_info
   XASL_ID xasl_id;		/* XASL id */
   CUBRID_STMT_TYPE stmt_type;	/* statement type */
   int recompile;		/* not 0 if this statement should be recompiled */
+  int bind_before_compile;	/* not 0 when the recompile exists to adapt the plan to the bound
+				 * values (LIKE / MRO / SORT-LIMIT checks): compile after binding,
+				 * the way every recompile worked before the unpeeked-plan path */
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */

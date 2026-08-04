@@ -3076,6 +3076,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	{
 	  if (db_check_where_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
+	      /* the point of this recompile is a plan adapted to the bound values */
+	      statement->info.execute.bind_before_compile = 1;
 	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	    }
 	}
@@ -3085,7 +3087,9 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	{
 	  if (db_check_limit_need_recompile (parser, statement, xasl_header.xasl_flag))
 	    {
-	      /* need recompile, set XASL_ID to NULL */
+	      /* need recompile, set XASL_ID to NULL; the replacement plan must see the
+	       * bound limit values -- that is what the MRO / SORT-LIMIT check is for */
+	      statement->info.execute.bind_before_compile = 1;
 	      XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	    }
 	}
@@ -3546,8 +3550,15 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
    * DML keeps the original bind-then-compile order: its compilation consumes the values
    * (e.g. the OID-collecting subselect built for a client-side trigger UPDATE evaluates
    * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows. */
-  if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT)
+  if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT || statement->info.execute.bind_before_compile
+      || statement->info.execute.recompile)
     {
+      /* bind first: DML (see above), and every value-adaptive SELECT recompile -- the
+       * LIKE / MRO / SORT-LIMIT checks and the user's RECOMPILE request existed before the
+       * unpeeked-plan path and always compiled with the values bound, which is what lets
+       * host-variable peeking shape the replacement plan (and dump it for SET TRACE).
+       * Compile-first is kept only for the unpeeked first execution, whose value-typed
+       * replan runs separately below. */
       assert (session->parser->flag.set_host_var == 1);
       err = do_set_user_host_variables (new_session, statement->info.execute.using_list);
       if (err != NO_ERROR)
