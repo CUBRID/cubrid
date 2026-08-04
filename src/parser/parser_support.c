@@ -10781,27 +10781,34 @@ pt_cdt_canonical_domain (TP_DOMAIN * domain)
  * pt_cdt_put_node_header () - emit the uniform OP/FUNC node header: tag,
  *	code, qualifier, canonical result domain, 32-bit alignment
  *   return: NO_ERROR or error code
+ *
+ * On overflow this returns ER_TF_BUFFER_OVERFLOW before anything is written 
+ * past the buffer, which lets pt_cdt_serialize retry with a larger buffer.
  */
 static int
 pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, int tag, int code, int qualifier)
 {
+  TP_DOMAIN *domain;
   int rc;
 
-  rc = or_put_int (buf, tag);
-  if (rc == NO_ERROR)
+  domain = pt_cdt_canonical_domain (pt_xasl_node_to_domain (parser, node));
+  if (domain == NULL)
     {
-      rc = or_put_int (buf, code);
+      /* an admissible node is type-checked; without a result domain the tree
+       * cannot be serialized faithfully (or_put_domain cannot take NULL) */
+      return ER_FAILED;
     }
-  if (rc == NO_ERROR)
-    {
-      rc = or_put_int (buf, qualifier);
-    }
-  if (rc == NO_ERROR)
-    {
-      TP_DOMAIN *domain = pt_cdt_canonical_domain (pt_xasl_node_to_domain (parser, node));
 
-      rc = or_put_domain (buf, domain, 0, (domain == NULL) ? 1 : 0);
+  if (buf->ptr + 3 * OR_INT_SIZE + DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT) + OR_INT_SIZE
+      > buf->endptr)
+    {
+      return ER_TF_BUFFER_OVERFLOW;
     }
+
+  or_put_int (buf, tag);
+  or_put_int (buf, code);
+  or_put_int (buf, qualifier);
+  rc = or_put_domain (buf, domain, 0, 0);
   if (rc == NO_ERROR)
     {
       rc = or_put_align32 (buf);
@@ -10832,6 +10839,15 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	  {
 	    return ER_FAILED;
 	  }
+
+	/* pre-check the space: see pt_cdt_put_node_header.  or_packed_value_size
+	 * is the exact pair of or_put_value and already includes the trailing
+	 * pad up to a 4-byte boundary. */
+	if (buf->ptr + OR_INT_SIZE + or_packed_value_size (db_value, 1, 1, 0) > buf->endptr)
+	  {
+	    return ER_TF_BUFFER_OVERFLOW;
+	  }
+
 	rc = or_put_int (buf, PT_CDT_TAG_VALUE);
 	if (rc == NO_ERROR)
 	  {
@@ -10934,8 +10950,14 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
 
       if (rc == NO_ERROR)
 	{
-	  *stream = data;
+	  char *fitted;
+
 	  *stream_size = CAST_BUFLEN (buf.ptr - buf.buffer);
+
+	  /* shrink the buffer to the bytes actually produced; on realloc
+	   * failure just keep the larger buffer */
+	  fitted = (char *) realloc (data, *stream_size);
+	  *stream = (fitted != NULL) ? fitted : data;
 	  return NO_ERROR;
 	}
 
