@@ -3963,6 +3963,26 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
 }
 
 /*
+ * pt_trim_whitespace_edges () - shrink [*str, *str + *len) past its leading
+ *	and trailing whitespace; the string itself is not modified
+ *   str(in/out): start of the region
+ *   len(in/out): its length
+ */
+static void
+pt_trim_whitespace_edges (const char **str, size_t * len)
+{
+  while (*len > 0 && char_isspace ((*str)[0]))
+    {
+      (*str)++;
+      (*len)--;
+    }
+  while (*len > 0 && char_isspace ((*str)[*len - 1]))
+    {
+      (*len)--;
+    }
+}
+
+/*
  * pt_default_expr_normalized_text () - source text of a DEFAULT expression,
  *	wrapped in exactly one outer pair of parentheses
  *   return: parser-allocated normalized text (NULL on failure)
@@ -3994,15 +4014,7 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
   /* trim whitespace the printer leaves around some keywords (" unix_timestamp()")
    * up front, so the wrapped-group detection below sees the parentheses */
   len = strlen (printed);
-  while (len > 0 && char_isspace (printed[0]))
-    {
-      printed++;
-      len--;
-    }
-  while (len > 0 && char_isspace (printed[len - 1]))
-    {
-      len--;
-    }
+  pt_trim_whitespace_edges (&printed, &len);
 
   fully_wrapped = false;
   if (len >= 2 && printed[0] == '(' && printed[len - 1] == ')')
@@ -4046,15 +4058,7 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
       /* drop the printer's own parentheses (re-wrapped below) and trim again */
       printed++;
       len -= 2;
-      while (len > 0 && char_isspace (printed[0]))
-	{
-	  printed++;
-	  len--;
-	}
-      while (len > 0 && char_isspace (printed[len - 1]))
-	{
-	  len--;
-	}
+      pt_trim_whitespace_edges (&printed, &len);
     }
 
   result = (char *) parser_alloc (parser, (int) len + 3);
