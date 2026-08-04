@@ -4779,8 +4779,8 @@ get_enumeration (OR_BUF * buf, DB_ENUMERATION * enumeration, int expected)
 
 /*
  * tf_attribute_put_stream_prop - Stores a sized binary stream under an
- * attribute property (as a sized character value, like a function-index
- * expr_stream), or drops the property when the stream is absent.
+ * attribute property (a sized VARCHAR value, or drops the property when the
+ * stream is absent.
  *  returns: error code or NO_ERROR
  *  attr(in/out): attribute
  *  prop_name(in): property name
@@ -4791,6 +4791,7 @@ static int
 tf_attribute_put_stream_prop (SM_ATTRIBUTE * attr, const char *prop_name, const char *stream, int stream_size)
 {
   DB_VALUE value;
+  int error;
 
   if (stream == NULL || stream_size <= 0)
     {
@@ -4812,7 +4813,15 @@ tf_attribute_put_stream_prop (SM_ATTRIBUTE * attr, const char *prop_name, const 
 	}
     }
 
-  db_make_char (&value, stream_size, stream, stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  /* a VARCHAR value, NOT CHAR: db_make_char rejects a length above
+   * DB_MAX_CHAR_PRECISION (2048) with a warning and leaves the value NULL,
+   * which would persist a NULL property and silently freeze the DEFAULT.
+   * Serialized streams routinely exceed 2048 bytes. */
+  error = db_make_varchar (&value, DB_MAX_VARCHAR_PRECISION, stream, stream_size, LANG_SYS_CODESET, LANG_SYS_COLLATION);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
   classobj_put_prop (attr->properties, prop_name, &value);
 
   return NO_ERROR;
@@ -4940,7 +4949,7 @@ tf_attribute_default_expr_to_property (SM_ATTRIBUTE * attr_list)
 
       /* residual DEFAULT: persist the serialized REGU form for Server Evaluation
        * and the Compact DEFAULT Tree for Local Evaluation (each stored like a
-       * function-index expr_stream: a sized character value) */
+       * function-index expr_stream: a sized string value) */
       int rc = tf_attribute_put_stream_prop (attr, "default_expr_regu", default_expr->default_expr_regu_stream,
 					     default_expr->default_expr_regu_stream_size);
       if (rc != NO_ERROR)
