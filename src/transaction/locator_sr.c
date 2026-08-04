@@ -4113,11 +4113,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       if (!locator_index_has_attr (index, att_id, n_att_id))
 	{
 	  /* Because this update modifies none of this FK's referencing columns,
-	   * the child row still references the same parent row as before, which was already valid,
-	   * so the constraint holds and needs no re-check.
-	   * We can therefore skip ahead, sparing the parent PK lookup
-	   * and, above all, the WS_LOCK it would place on that parent row,
-	   * which would only add contention while the value is unchanged.
+	   * the child row still references the same, already-valid parent row: no re-check is needed.
 	   * (On the INSERT path att_id is NULL, so nothing is ever skipped.) */
 	  continue;
 	}
@@ -13509,9 +13505,9 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  * class_oid (in)      : Class OID.
  * recdes (out)	       : Record descriptor.
  * scan_cache (in)     : Heap scan cache.
+ * lock (in)	       : Lock mode.
  * ispeeking (in)      : PEEK or COPY.
  * old_chn (in)	       : CHN of known record data.
- * mvcc_reev_data (in) : MVCC reevaluation data.
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning

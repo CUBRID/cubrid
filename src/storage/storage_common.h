@@ -448,13 +448,14 @@ typedef enum
 
 typedef enum
 {
-  S_SELECT = 0,			/* By default MVCC requires no locks for select operations. */
-  S_SELECT_WITH_LOCK = 1,	/* Read operation that doesn't plan to modify the object, but has to know the exact
+  S_SELECT,			/* By default MVCC requires no locks for select operations. */
+  S_SELECT_WITH_LOCK,		/* Read operation that doesn't plan to modify the object, but has to know the exact
 				 * fate of last version. Used for unique constraint checks. */
-  S_SELECT_WITH_KEY_SHARE_LOCK = 2,	/* FK existence check — uses WS_LOCK to avoid deadlock with WX_LOCK. */
-  S_DELETE = 3,			/* Delete object operation. */
-  S_UPDATE = 4,			/* Update object operation. */
-  S_UPDATE_NO_KEY = 5,		/* Non-key column UPDATE — uses WX_LOCK to allow concurrent FK checks (WS_LOCK). */
+  S_DELETE,			/* Delete object operation. */
+  S_UPDATE,			/* Update object operation. */
+  S_SELECT_WITH_KEY_SHARE_LOCK,	/* FK existence check — uses WS_LOCK to avoid deadlock with WX_LOCK. */
+  S_UPDATE_NO_KEY		/* Non-key column UPDATE — uses WX_LOCK to allow concurrent FK checks (WS_LOCK).
+				 * Both appended last so the values above keep their encoding. */
 } SCAN_OPERATION_TYPE;
 
 #define IS_WRITE_EXCLUSIVE_LOCK(lock) ((lock) == X_LOCK || (lock) == WX_LOCK || (lock) == SCH_M_LOCK)
