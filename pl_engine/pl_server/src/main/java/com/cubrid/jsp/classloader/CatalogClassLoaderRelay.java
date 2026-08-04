@@ -36,19 +36,10 @@ package com.cubrid.jsp.classloader;
 // import java.util.Map.Entry;
 // import java.util.UUID;
 
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 public class CatalogClassLoaderRelay extends ClassLoader {
-
-    public void switchChildrenToOld() {
-
-        assert Collections.disjoint(pastTranClassLoaders.keySet(), currTranClassLoaders.keySet());
-
-        pastTranClassLoaders.putAll(currTranClassLoaders);
-        currTranClassLoaders = new HashMap<>();
-    }
 
     public CatalogClassLoaderRelay(long sessionId) {
         super(getSystemClassLoader());
@@ -75,45 +66,35 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         // NOTE: (class) name ends with a string of the form
         // _<seqno>_<creation-time>[$<nested-class-postfix>]
-        // Detaching this string yields the invariant part of the main class name of an SP of the
-        // form
-        // Proc_<procedure-name> or Func_<function-name>.
-        String mainClassName = getSpMainClassName(name); // which ends with _<seqno>_<creation-time>
-        String spKey = getInvariantPartOfSpClassName(mainClassName);
-        if (spKey == null) {
-            // the name is not an SP class name
+        // Detaching this string yields the invariant part of the main class name of the form
+        // Proc_<owner>_<procedure-name> or Func_<owner>_<function-name>.
+        String mainClassName = getMainClassName(name); // which ends with _<seqno>_<creation-time>
+        String unitKey = getInvariantPartOfMainClassName(mainClassName);
+        if (unitKey == null) {
+            // the name is not an unit (procedure, function) class name
             throw new ClassNotFoundException(name);
         }
 
-        CatalogClassLoader classLoader = currTranClassLoaders.get(spKey);
-        if (classLoader == null) {
-
-            CatalogClassLoader pastTranClassLoader =
-                    pastTranClassLoaders.remove(spKey); // NOTE: remove. not get
-            if (pastTranClassLoader != null
-                    && mainClassName.equals(pastTranClassLoader.mainClassName)) {
-                // the SP has not been recompiled since the last transaction. reuse the classloader
-                currTranClassLoaders.put(spKey, pastTranClassLoader);
-                classLoader = pastTranClassLoader;
-            } else {
-                // past class loader does not exist, or it got old and invalid because
-                // the SP has been recompiled (and now has a different main class name)
-                classLoader = new CatalogClassLoader(mainClassName, this);
-                currTranClassLoaders.put(spKey, classLoader);
+        CatalogClassLoader classLoader = unitClassLoaders.get(unitKey);
+        if (classLoader == null || !mainClassName.equals(classLoader.mainClassName)) {
+            // if the unit's class is first loaded or it is recompiled to a new class
+            classLoader = new CatalogClassLoader(mainClassName, this);
+            CatalogClassLoader old = unitClassLoaders.put(unitKey, classLoader);
+            if (old != null) {
+                old.clear();
             }
         }
 
         assert classLoader != null;
 
-        // CAUTION: do not use classLoader.loadClass() : it will result in an infinite loop
+        // CAUTION: do not use classLoader.loadClass() :
+        //  it will result in an infinite loop because classLoader's parent is this relaying class
         return classLoader.findClass(name);
     }
 
     public void clear() {
-        currTranClassLoaders.clear();
-        pastTranClassLoaders.clear();
-        currTranClassLoaders = null;
-        pastTranClassLoaders = null;
+        unitClassLoaders.clear();
+        unitClassLoaders = null;
     }
 
     // =======================
@@ -121,10 +102,9 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     // =======================
 
     private final long sessionId;
-    private Map<String, CatalogClassLoader> currTranClassLoaders = new HashMap<>();
-    private Map<String, CatalogClassLoader> pastTranClassLoaders = new HashMap<>();
+    private Map<String, CatalogClassLoader> unitClassLoaders = new HashMap<>();
 
-    private static String getSpMainClassName(String className) {
+    private static String getMainClassName(String className) {
 
         int mainClassNameEnd = className.indexOf('$');
         if (mainClassNameEnd == -1) {
@@ -134,7 +114,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         }
     }
 
-    private static String getInvariantPartOfSpClassName(String mainClassName) {
+    private static String getInvariantPartOfMainClassName(String mainClassName) {
 
         // mainClassName should be of the form <invariant-part>_<seqno>_<creation-time>
         // where <invariant-part> starts with 'Proc_' or 'Func_'.

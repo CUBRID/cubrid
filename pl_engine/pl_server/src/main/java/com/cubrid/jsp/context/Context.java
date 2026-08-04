@@ -151,10 +151,6 @@ public class Context {
             }
 
             tranactionId = tid;
-
-            if (catalogClassLoaderRelay != null) {
-                catalogClassLoaderRelay.switchChildrenToOld();
-            }
         }
     }
 

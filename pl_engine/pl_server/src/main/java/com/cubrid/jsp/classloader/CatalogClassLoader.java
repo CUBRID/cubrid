@@ -34,17 +34,18 @@ package com.cubrid.jsp.classloader;
 import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
-import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
 import java.sql.Connection;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 
 public class CatalogClassLoader extends ClassLoader {
 
     public final String mainClassName;
 
-    public CatalogClassLoader(String mainClassName, ClassLoader parent) throws ClassNotFoundException {
+    public CatalogClassLoader(String mainClassName, ClassLoader parent)
+            throws ClassNotFoundException {
         super(parent);
 
         this.mainClassName = mainClassName;
@@ -53,7 +54,8 @@ public class CatalogClassLoader extends ClassLoader {
         Connection conn = ctx.getConnection();
         codeSet = ClassAccess.getObjectCode(conn, mainClassName);
         if (codeSet == null) {
-            throw new IllegalStateException("retrieving object code failed for a class " + mainClassName);
+            throw new IllegalStateException(
+                    "retrieving object code failed for a class " + mainClassName);
         }
     }
 
@@ -65,8 +67,8 @@ public class CatalogClassLoader extends ClassLoader {
             return ret;
         }
 
-		CompiledCode code = codeSet.getCodeMap().get(name);
-	    if (code == null) {
+        CompiledCode code = codeSet.getCodeMap().get(name);
+        if (code == null) {
             throw new ClassNotFoundException(name);
         }
 
@@ -77,10 +79,18 @@ public class CatalogClassLoader extends ClassLoader {
         return ret;
     }
 
+    public void clear() {
+        // faster garbage collection?
+        codeSet.clear();
+        defined.clear();
+        codeSet = null;
+        defined = null;
+    }
+
     // ===========================
     // Private
     // ===========================
 
-    private final CompiledCodeSet codeSet;
-    private final Map<String, Class> defined = new HashMap<>();
+    private CompiledCodeSet codeSet;
+    private Map<String, Class> defined = new HashMap<>();
 }
