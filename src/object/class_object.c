@@ -8784,25 +8784,10 @@ classobj_clear_default_expr (DB_DEFAULT_EXPR * default_expr)
 {
   assert (default_expr != NULL);
 
-  if (default_expr->default_expr_format)
-    {
-      ws_free_string (default_expr->default_expr_format);
-    }
-
-  if (default_expr->default_expr_text)
-    {
-      ws_free_string (default_expr->default_expr_text);
-    }
-
-  if (default_expr->default_expr_regu_stream)
-    {
-      db_ws_free ((void *) default_expr->default_expr_regu_stream);
-    }
-
-  if (default_expr->default_expr_tree_stream)
-    {
-      db_ws_free ((void *) default_expr->default_expr_tree_stream);
-    }
+  ws_free_string (default_expr->default_expr_format);
+  ws_free_string (default_expr->default_expr_text);
+  db_ws_free ((void *) default_expr->default_expr_regu_stream);
+  db_ws_free ((void *) default_expr->default_expr_tree_stream);
 
   classobj_initialize_default_expr (default_expr);
 }

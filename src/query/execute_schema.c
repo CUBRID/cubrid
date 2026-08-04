@@ -8318,14 +8318,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   error = smt_add_attribute_w_dflt_w_order (ctemplate, attr_name, NULL, attr_db_domain, default_value, name_space,
 					    add_first, add_after_attr, &default_expr, &on_update_expr, NULL);
 
-  if (default_expr_stream != NULL)
-    {
-      free_and_init (default_expr_stream);
-    }
-  if (default_expr_tree_stream != NULL)
-    {
-      free_and_init (default_expr_tree_stream);
-    }
+  free_and_init (default_expr_stream);
+  free_and_init (default_expr_tree_stream);
 
   db_value_clear (&stack_value);
 
@@ -12073,14 +12067,8 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   assert (attr_chg_prop->name_space == ID_ATTRIBUTE);
 
 exit:
-  if (default_expr_stream != NULL)
-    {
-      free_and_init (default_expr_stream);
-    }
-  if (default_expr_tree_stream != NULL)
-    {
-      free_and_init (default_expr_tree_stream);
-    }
+  free_and_init (default_expr_stream);
+  free_and_init (default_expr_tree_stream);
   db_value_clear (&stack_value);
   return error;
 }

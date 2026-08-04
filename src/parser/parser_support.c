@@ -11000,10 +11000,7 @@ pt_compact_default_tree_to_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char
 	{
 	  rc = pt_cdt_serialize (parser, rehydrated, &verify_stream, &verify_size);
 	  assert (rc == NO_ERROR && verify_size == *stream_size && memcmp (verify_stream, *stream, verify_size) == 0);
-	  if (verify_stream != NULL)
-	    {
-	      free_and_init (verify_stream);
-	    }
+	  free_and_init (verify_stream);
 	}
     }
 #endif
