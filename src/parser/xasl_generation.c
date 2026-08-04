@@ -29638,7 +29638,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
       node = QO_SEG_PT_NODE (seg);
       attr = pt_get_node_from_list (info->select_list, sort_list->pos_descr.pos_no);
 
-      if (((sort_list->s_order == S_ASC && !is_desc) || (sort_list->s_order == S_DESC && is_desc))
+      /* an ascending index run supplies NULLs first and a descending run supplies NULLs last; a sort spec
+       * requesting the opposite NULL placement cannot reuse the index order */
+      if (((sort_list->s_order == S_ASC && !is_desc && sort_list->s_nulls == S_NULLS_FIRST)
+	   || (sort_list->s_order == S_DESC && is_desc && sort_list->s_nulls == S_NULLS_LAST))
 	  && pt_check_path_eq (parser, attr, node) == 0)
 	{
 	  covered_count++;

@@ -2787,7 +2787,13 @@ wrapup:
       break;
 
     case PREDICATE_TERM:
+      env->sel_hist_used = false;
+      env->sel_hist_fallback = false;
       QO_TERM_SELECTIVITY (term) = qo_expr_selectivity (env, pt_expr);
+      if (env->sel_hist_used && !env->sel_hist_fallback)
+	{
+	  QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_HISTOGRAM);
+	}
       break;
 
     default:
@@ -5942,6 +5948,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
       env->plan_dump_enabled = true;
     }
   env->multi_range_opt_candidate = false;
+  env->sel_hist_used = false;
+  env->sel_hist_fallback = false;
 
   return env;
 }
