@@ -8156,6 +8156,11 @@ do_compile_stable_default_streams (PARSER_CONTEXT * parser, PT_NODE * data_defau
   error = pt_compact_default_tree_to_stream (parser, residual_expr, tree_stream, tree_stream_size);
   if (error != NO_ERROR)
     {
+      /* release the partial result: no caller error path owns it yet */
+      free_and_init (*regu_stream);
+      *regu_stream_size = 0;
+      dest->default_expr_regu_stream = NULL;
+      dest->default_expr_regu_stream_size = 0;
       return error;
     }
   dest->default_expr_tree_stream = *tree_stream;
