@@ -4098,8 +4098,8 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
 
 /*
  * logtb_self_lock_assigned_mvccid () - Best-effort self-lock of a just-assigned MVCCID -- the choke point every
- *					INSID producer passes, making "an observable INSID implies a held X
- *					self-lock" hold by construction.
+ *					INSID/DELID producer passes, making "an observable INSID or DELID implies
+ *					a held X self-lock" hold by construction.
  *
  *   thread_p(in): thread entry
  *   curr_mvcc_info(in/out): current MVCC info
@@ -4163,7 +4163,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
  *
  * Note: the error-propagating layer over the choke-point acquisition (logtb_self_lock_assigned_mvccid): a fast
  *	 no-op via the self_locked_mvccid hint when the choke point succeeded, otherwise re-tries and returns the
- *	 error so the caller can fail the statement before the INSID stamp becomes observable.
+ *	 error so the caller can fail the statement before the INSID or DELID stamp becomes observable.
  */
 int
 logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
@@ -4221,6 +4221,8 @@ int
 logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   int error_code;
+
+  assert (MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid));
 
   if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
