@@ -3977,6 +3977,7 @@ qmgr_dblink_add_conn_handle (THREAD_ENTRY * thread_p, int conn_handle, char *con
 
   dblink_conn_entry->conn_info.conn_handle = conn_handle;
   dblink_conn_entry->is_2pc_participant = set_participant;
+  dblink_conn_entry->has_uncommitted_dml = false;
 
   snprintf (dblink_conn_entry->conn_info.conn_url, sizeof (dblink_conn_entry->conn_info.conn_url), "%s", conn_url);
   snprintf (dblink_conn_entry->conn_info.user_name, sizeof (dblink_conn_entry->conn_info.user_name), "%s", user_name);
@@ -4058,6 +4059,61 @@ qmgr_dblink_remove_conn_entry (THREAD_ENTRY * thread_p, int conn_handle)
     }
 
   return ER_FAILED;
+}
+
+/*
+ * qmgr_dblink_set_conn_dml () - record whether a connection carries uncommitted remote DML of this
+ *                               transaction
+ *   return: void
+ *   thread_p(in):
+ *   conn_handle(in): connection the DML ran on
+ *   has_dml(in): true once a remote DML statement has executed a row on it, false again when that work
+ *                has been undone and nothing else of this transaction is left there
+ *
+ * Note: While the flag is set, rolling that connection's remote transaction back would discard work the
+ *       transaction still expects to commit.
+ */
+void
+qmgr_dblink_set_conn_dml (THREAD_ENTRY * thread_p, int conn_handle, bool has_dml)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  dblink->has_uncommitted_dml = has_dml;
+	  return;
+	}
+      dblink = dblink->next;
+    }
+}
+
+/*
+ * qmgr_dblink_conn_has_dml () - whether the connection already carries uncommitted remote DML
+ *   return: true if it does
+ *   thread_p(in):
+ *   conn_handle(in): connection to ask about
+ */
+bool
+qmgr_dblink_conn_has_dml (THREAD_ENTRY * thread_p, int conn_handle)
+{
+  int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  QMGR_TRAN_ENTRY *tran_entry_p = &qmgr_Query_table.tran_entries_p[tran_index];
+  DBLINK_CONN_ENTRY *dblink = tran_entry_p->dblink_entry;
+
+  while (dblink)
+    {
+      if (dblink->conn_info.conn_handle == conn_handle)
+	{
+	  return dblink->has_uncommitted_dml;
+	}
+      dblink = dblink->next;
+    }
+
+  return false;
 }
 
 /*

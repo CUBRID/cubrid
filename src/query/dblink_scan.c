@@ -690,6 +690,13 @@ dblink_execute_query (THREAD_ENTRY * thread_p, struct access_spec_node *spec, VA
       goto error_exit;
     }
 
+  if (!auto_commit)
+    {
+      /* the statement's rows stay uncommitted on the pooled connection until the local transaction
+       * ends, so a later sink failure that rolls this connection back would lose them */
+      qmgr_dblink_set_conn_dml (thread_p, conn_handle, true);
+    }
+
   if (auto_commit)
     {
       ret = cci_disconnect (conn_handle, &err_buf);
@@ -1327,7 +1334,9 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
  *
  *   When the remote supports savepoints, the statement also takes one (state->savepoint_set) so that
  *   dblink_insert_stmt_abort() can roll back just this statement's remote work. A remote without
- *   savepoint support (gateway) still opens successfully, with savepoint_set left false.
+ *   savepoint support (gateway) still opens successfully, with savepoint_set left false; a failure
+ *   there rolls the whole remote transaction back, which only loses something if the connection was
+ *   already carrying uncommitted work of this transaction (state->conn_had_dml).
  *
  *   Every failure return past the point where the connection is acquired clears state->conn_handle:
  *   the statement has written nothing on the remote yet, so its error path must not roll back or tear
@@ -1350,6 +1359,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   state->conn_handle = -1;
   state->stmt_handle = -1;
   state->savepoint_set = false;
+  state->conn_had_dml = false;
+  state->rows_sent = false;
 
   /* guard: must have at least one column to insert */
   if (num_bind <= 0)
@@ -1429,6 +1440,11 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
 	  return ER_DBLINK;
 	}
     }
+
+  /* Snapshot taken before this statement runs: only work that was already on the connection can be
+   * lost by the fallback in dblink_insert_stmt_abort(). This statement's own rows do not count -
+   * undoing them is what the failure asks for. */
+  state->conn_had_dml = qmgr_dblink_conn_has_dml (thread_p, state->conn_handle);
 
   /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
   table_name_len = strlen (table_name);
@@ -1555,8 +1571,8 @@ dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, 
   /* Take this statement's remote savepoint. Everything that can fail before the first row is behind
    * us, so the savepoint covers exactly this statement's remote work. A remote that does not support
    * savepoints (gateway) fails here; that is not an error - the statement runs without one, and if it
-   * does fail, dblink_insert_stmt_abort() falls back to rolling back the whole remote transaction and
-   * refusing the local transaction's commit. */
+   * does fail, dblink_insert_stmt_abort() falls back to rolling back the whole remote transaction,
+   * refusing the local transaction's commit when that rollback loses earlier work. */
   if (cci_savepoint (state->conn_handle, CCI_SP_SET, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
     {
       state->savepoint_set = true;
@@ -1598,8 +1614,6 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
   int k, result, err;
   T_CCI_ERROR err_buf;
 
-  (void) thread_p;
-
   /* bind each column value */
   for (k = 0; k < num_vals; k++)
     {
@@ -1624,6 +1638,13 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
       return ER_DBLINK;
     }
 
+  if (!state->rows_sent)
+    {
+      /* from here on the connection carries uncommitted work of this transaction */
+      state->rows_sent = true;
+      qmgr_dblink_set_conn_dml (thread_p, state->conn_handle, true);
+    }
+
   return NO_ERROR;
 }
 
@@ -1642,10 +1663,14 @@ dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state,
  *   end-of-transaction path (2PC included).
  *
  *   Fallback, when no savepoint was taken (gateway) or the rollback to it failed (dead connection):
- *   roll back the remote transaction as a whole, disconnect and unregister the connection so that
- *   transaction end and 2PC prepare do not reach it again, and mark the local transaction as
- *   sink-aborted. The earlier work is already gone by then, so the local transaction must be refused
- *   at commit rather than report a success that confirms the loss.
+ *   roll back the remote transaction as a whole, and disconnect and unregister the connection so that
+ *   transaction end and 2PC prepare do not reach it again.
+ *
+ *   That whole-connection rollback loses work only if the connection already carried uncommitted
+ *   remote DML of this transaction (state->conn_had_dml). Only then is the local transaction marked
+ *   sink-aborted, so that its commit is refused rather than reporting a success that confirms the
+ *   loss. When nothing was there to lose - typically a statement that failed on its first row - the
+ *   failure stays a statement error and the transaction may still commit.
  */
 void
 dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
@@ -1660,6 +1685,12 @@ dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
   if (state->savepoint_set
       && cci_savepoint (state->conn_handle, CCI_SP_ROLLBACK, (char *) DBLINK_SINK_SAVEPOINT_NAME, &err_buf) >= 0)
     {
+      if (state->rows_sent && !state->conn_had_dml)
+	{
+	  /* this statement's rows were the only uncommitted work on the connection and the savepoint
+	   * has just undone them, so the connection is back to carrying nothing */
+	  qmgr_dblink_set_conn_dml (thread_p, state->conn_handle, false);
+	}
       return;
     }
 
@@ -1667,7 +1698,11 @@ dblink_insert_stmt_abort (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state)
   (void) cci_disconnect (state->conn_handle, &err_buf);
   (void) qmgr_dblink_remove_conn_entry (thread_p, state->conn_handle);
   state->conn_handle = -1;
-  qmgr_dblink_set_sink_aborted (thread_p);
+
+  if (state->conn_had_dml)
+    {
+      qmgr_dblink_set_sink_aborted (thread_p);
+    }
 }
 
 /*

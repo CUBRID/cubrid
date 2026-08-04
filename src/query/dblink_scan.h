@@ -94,6 +94,10 @@ struct dblink_conn_entry
 {
   DBLINK_CONN_INFO conn_info;
   bool is_2pc_participant;
+  bool has_uncommitted_dml;	/* a remote DML statement of this transaction has executed on this
+				 * connection and is not committed yet. Rolling the connection's remote
+				 * transaction back would therefore lose work the transaction still
+				 * expects to commit. */
 
   DBLINK_CONN_ENTRY *next;
 };
@@ -118,9 +122,13 @@ struct dblink_insert_state
   bool savepoint_set;		/* true: a remote savepoint was taken for this statement, so a failure rolls
 				 * back only this statement's work. false: the savepoint could not be taken
 				 * (unsupported by the remote, or the request failed), so a failure must roll
-				 * back and tear down the whole remote transaction, and mark the local
-				 * transaction so that its commit is refused instead of silently confirming
-				 * the loss. */
+				 * back and tear down the whole remote transaction; the local transaction's
+				 * commit is then refused only when that rollback discards work of earlier
+				 * statements (conn_had_dml). */
+  bool conn_had_dml;		/* the connection already carried uncommitted remote DML of this transaction
+				 * when this statement opened. Only then does the fallback lose work that
+				 * has to be reported. */
+  bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
 extern int dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,

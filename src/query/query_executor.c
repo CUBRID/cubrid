@@ -12463,7 +12463,7 @@ qexec_execute_remote_insert_select (THREAD_ENTRY * thread_p, XASL_NODE * xasl, X
   SCAN_ID *s_id = NULL;
   QPROC_DB_VALUE_LIST vallist;
   int k, val_no;
-  DBLINK_INSERT_STATE dblink_state = { -1, -1, false };
+  DBLINK_INSERT_STATE dblink_state = { -1, -1, false, false, false };
 
   assert (specp != NULL);
   assert (insert->is_remote_insert);
