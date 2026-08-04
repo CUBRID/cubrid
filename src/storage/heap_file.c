@@ -24426,8 +24426,22 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 
   if (entry)
     {
+      /* The cache is publish-then-fill: heap_hfid_cache_get () exposes the entry in the hash through
+       * lf_hash_find_or_insert () first and fills it afterwards, publishing classname last (CAS). If classname is
+       * not set yet, the entry is still being filled by a concurrent thread; treat it as a cache miss. Reading
+       * classname before hfid mirrors the writer's order (hfid store, then classname CAS), so a non-NULL
+       * classname guarantees a valid hfid. */
+      char *classname_local = entry->classname;
+
+      if (classname_local == NULL || HFID_IS_NULL (&entry->hfid))
+	{
+	  /* *success remains false */
+	  lf_tran_end_with_mb (t_entry);
+	  return NO_ERROR;
+	}
+
       assert (entry->hfid.hpgid != NULL_PAGEID && entry->hfid.vfid.fileid != NULL_FILEID
-	      && entry->hfid.vfid.volid != NULL_VOLID && entry->classname != NULL);
+	      && entry->hfid.vfid.volid != NULL_VOLID);
 
       if (hfid_out != NULL)
 	{
@@ -24439,7 +24453,7 @@ heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * 
 	}
       if (classname_out != NULL)
 	{
-	  *classname_out = entry->classname;
+	  *classname_out = classname_local;
 	}
 
       *success = true;
