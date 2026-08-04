@@ -1810,6 +1810,15 @@ log_final (THREAD_ENTRY * thread_p)
 	       * affects this process' in-memory bookkeeping, the same as what a crash would do. */
 	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
 	      lock_unlock_all (thread_p);
+
+	      /* tdes->mvccinfo.id is deliberately preserved (see logtb_release_tran_index()) so a
+	       * coordinator daemon can still complete this transaction while the server is up. Once
+	       * we get here the server is going down regardless, so clear it the same way the locks
+	       * above are released: this only clears in-memory bookkeeping in this dying process and
+	       * has no effect on disk state. Without it, logtb_clear_tdes() would assert on a
+	       * still-valid mvccinfo.id below.
+	       */
+	      tdes->mvccinfo.reset ();
 	      anyloose_ends = true;
 	    }
 	}
