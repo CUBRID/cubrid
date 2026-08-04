@@ -7642,7 +7642,7 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 	      return ER_INTERRUPTED;
 	    }
-	  thread_sleep (100);	/* 100 msec */
+	  thread_sleep (1000);	/* 1000 msec, same cadence as the checkpoint wait in logpb_backup () */
 	}
 
       /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
@@ -7667,6 +7667,17 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 	}
     }
 
+  /* leave the R/T LSAs behind so a non-convergence (pages that never flush) can be diagnosed */
+  _er_log_debug (ARG_FILE_LINE,
+		 "logpb_backup_ensure_fresh_checkpoint: no fresh checkpoint after %d attempts; "
+		 "chkpt_redo_lsa (%lld|%d) is still below the target append LSA (%lld|%d)\n",
+		 max_attempts, LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+  if (session->verbose_fp != NULL)
+    {
+      fprintf (session->verbose_fp,
+	       "[ Backup failed: no fresh checkpoint completed; redo LSA (%lld|%d) < target LSA (%lld|%d). ]\n\n",
+	       LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+    }
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DBBACKUP_FAIL, 1, log_Gl.hdr.prefix_name);
   return ER_LOG_DBBACKUP_FAIL;
 }
