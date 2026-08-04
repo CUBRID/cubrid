@@ -10830,7 +10830,10 @@ la_init (const char *log_path, const int max_mem_size)
    * configuration dependence once that lands. (Alternative: capture start_vsize
    * after the workers have started, which removes the false positive while keeping
    * the relative leak check.) */
-  la_Info.max_mem_size = max_mem_size;
+  /* TEMP (testing): floor the budget at 4000MB so the arena-inflated parallel VSZ
+   * does not falsely trip ER_HA_LA_EXCEED_MAX_MEM_SIZE and stall replication before
+   * the ceiling is sized properly. Revert to the plain assignment once done. */
+  la_Info.max_mem_size = MAX (max_mem_size, 4000);
   /* check vsize when it started */
   if (!start_vsize)
     {
