@@ -4146,6 +4146,17 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	       * once-per-statement evaluation. */
 	      expr_vol = vol;
 	      edl_text = pt_default_expr_normalized_text (parser, default_value);
+
+	      /* the persisted text surfaces through catalog columns declared as
+	       * VARCHAR (DB_MAX_DEFAULT_EXPR_LENGTH); a longer one would be
+	       * silently truncated there, so reject it up front (the same
+	       * policy PL/CSQL applies to its parameter defaults) */
+	      if (edl_text != NULL && strlen (edl_text) > DB_MAX_DEFAULT_EXPR_LENGTH)
+		{
+		  PT_ERRORmf (parser, default_value, MSGCAT_SET_PARSER_SEMANTIC,
+			      MSGCAT_SEMANTIC_SP_PARAM_DEFAULT_STR_TOO_BIG, DB_MAX_DEFAULT_EXPR_LENGTH);
+		  goto end;
+		}
 	    }
 	}
 
