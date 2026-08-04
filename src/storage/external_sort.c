@@ -200,6 +200,9 @@ struct sort_param
     parallel_query::worker_manager * px_worker_manager;
   ORDERBY_STATS orderby_stats;
     cuberr::context * main_error_context;
+  bool px_error_published;	/* first-error-wins guard: set (under px_mtx) by the first failing worker that
+				 * publishes its error context into main_error_context; later failures keep quiet
+				 * so the root cause is not overwritten (lives on the main SORT_PARAM only) */
   void *px_extra_arg;		/* extra parallel context; for SORT_GROUP_BY/SORT_ANALYTIC: SORT_LISTFILE_PX_ARG* */
   SORT_PX_MERGE_INPUT *px_merge_inputs;	/* index-leaf shard put: this shard's key-range slice of every worker run */
   int px_merge_n_inputs;
@@ -1510,6 +1513,7 @@ sort_listfile (THREAD_ENTRY * thread_p, INT16 volid, int est_inp_pg_cnt, SORT_GE
   sort_param->px_type = parallel_type;
   sort_param->px_extra_arg = px_extra_arg;
   sort_param->px_sector_scan = NULL;
+  sort_param->px_error_published = false;
 
   tde_er_log ("sort_listfile(): tde_encrypted = %d\n", sort_param->tde_encrypted);
 
@@ -1813,7 +1817,16 @@ cleanup:
   sort_param->px_status = px_status;
   if (px_status == PX_ERR_FAILED)
     {
-      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+      /* first-error-wins: only the first failing worker publishes its error context into the main
+       * thread's context; a later failure must not overwrite the root cause. */
+      if (sort_param->ori_sort_param == NULL || !sort_param->ori_sort_param->px_error_published)
+	{
+	  if (sort_param->ori_sort_param != NULL)
+	    {
+	      sort_param->ori_sort_param->px_error_published = true;
+	    }
+	  sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	}
     }
   thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
@@ -5867,7 +5880,16 @@ sort_put_result_index_leaf (cubthread::entry & thread_ref, SORT_PARAM * sort_par
   sort_param->px_status = error == NO_ERROR ? PX_DONE : PX_ERR_FAILED;
   if (error != NO_ERROR)
     {
-      sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+      /* first-error-wins: only the first failing shard publishes its error context (e.g. the dedicated
+       * vacuum-notification-limit error of a no-logging build) into the main thread's context. */
+      if (sort_param->ori_sort_param == NULL || !sort_param->ori_sort_param->px_error_published)
+	{
+	  if (sort_param->ori_sort_param != NULL)
+	    {
+	      sort_param->ori_sort_param->px_error_published = true;
+	    }
+	  sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
+	}
     }
   thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);

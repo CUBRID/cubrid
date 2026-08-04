@@ -4261,8 +4261,8 @@ bt_load_notify_to_vacuum (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, S_PARA
 	  || load_args->vacuum_payload_size + (size_t) notify_vacuum_rv_data_length
 	  > BT_LOAD_VACUUM_SLOT_LIMIT - reserved_size)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, BT_LOAD_VACUUM_SLOT_LIMIT);
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BT_LOAD_NOTIFY_VACUUM_LIMIT, 1, (int) BT_LOAD_VACUUM_SLOT_LIMIT);
+	  return ER_BT_LOAD_NOTIFY_VACUUM_LIMIT;
 	}
 
       if (new_capacity != load_args->vacuum_capacity)
