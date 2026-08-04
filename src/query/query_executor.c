@@ -12180,7 +12180,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	      *pruned_partition_scan_cache = &pruning_cache->scan_cache;
 	    }
 
-	  /* We now hold an U_LOCK on the instance. It will be upgraded to an X_LOCK when the update is executed. */
+	  /* We now hold an X_LOCK on the instance. */
 	  if (pruning_type == DB_PARTITION_CLASS)
 	    {
 	      if (!OID_EQ (&class_oid, &pcontext->selected_partition->class_oid))
@@ -14608,9 +14608,8 @@ qexec_execute_selupd_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE
 	    }
 	  else
 	    {
-	      /* already locked during scan phase */
-	      assert ((lock_get_object_lock (&crt_incr_info.m_oid, &crt_incr_info.m_class_oid) == X_LOCK)
-		      || lock_get_object_lock (&crt_incr_info.m_class_oid, oid_Root_class_oid) >= X_LOCK);
+	      /* the object being incremented must be exclusively held by the current transaction. */
+	      assert (lock_has_xlock_or_self_lock (thread_p, &crt_incr_info.m_oid, &crt_incr_info.m_class_oid));
 	    }
 
 	  all_incr_info.push_back (crt_incr_info);
@@ -20430,6 +20429,7 @@ static DB_VALUE_COMPARE_RESULT
 bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
+  char *str1, *str2;
   int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
   int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
   OR_BUF buf1, buf2;
@@ -20437,22 +20437,40 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
   char *string1 = NULL, *string2 = NULL;
   bool alloced_string1 = false, alloced_string2 = false;
 
-  /* String 1: parse the string header (TINY / SMALL / MEDIUM / LARGE) and decompress if needed. */
-  or_init (&buf1, (char *) mem1, 0);
-  rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
-  if (rc != NO_ERROR)
+  str1 = (char *) mem1;
+  str2 = (char *) mem2;
+
+  /* generally, data is short enough */
+  str_length1 = OR_GET_BYTE (str1);
+  str_length2 = OR_GET_BYTE (str2);
+  if (str_length1 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && str_length2 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
-      goto cleanup;
+      str1 += OR_BYTE_SIZE;
+      str2 += OR_BYTE_SIZE;
+      return bf2df_str_compare ((unsigned char *) str1, str_length1, (unsigned char *) str2, str_length2);
     }
 
-  if (str1_compressed_length > 0)
+  assert (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+
+  /* String 1 */
+  or_init (&buf1, str1, 0);
+  if (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
+      rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
       string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
       if (string1 == NULL)
 	{
+	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str1_decompressed_length);
 	  goto cleanup;
 	}
+
       alloced_string1 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
@@ -20460,30 +20478,40 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-      string1[str1_decompressed_length] = '\0';
+
+      str_length1 = str1_decompressed_length;
+      string1[str_length1] = '\0';
     }
   else
     {
-      string1 = buf1.ptr;	/* peek into disk image */
+      /* Skip the size byte */
+      string1 = str1 + OR_BYTE_SIZE;
     }
-  str_length1 = str1_decompressed_length;
 
-  /* String 2 */
-  or_init (&buf2, (char *) mem2, 0);
-  rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
   if (rc != NO_ERROR)
     {
+      ASSERT_ERROR ();
       goto cleanup;
     }
 
-  if (str2_compressed_length > 0)
+  /* String 2 */
+  or_init (&buf2, str2, 0);
+  if (str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
     {
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
       string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
       if (string2 == NULL)
 	{
+	  /* Error report */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, str2_decompressed_length);
 	  goto cleanup;
 	}
+
       alloced_string2 = true;
 
       rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
@@ -20491,26 +20519,49 @@ bf2df_str_cmpdisk (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, 
 	{
 	  goto cleanup;
 	}
-      string2[str2_decompressed_length] = '\0';
+
+      str_length2 = str2_decompressed_length;
+      string2[str_length2] = '\0';
     }
   else
     {
-      string2 = buf2.ptr;	/* peek into disk image */
+      /* Skip the size byte */
+      string2 = str2 + OR_BYTE_SIZE;
     }
-  str_length2 = str2_decompressed_length;
 
+  if (rc != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      goto cleanup;
+    }
+
+  /* Compare the strings */
   c = bf2df_str_compare ((unsigned char *) string1, str_length1, (unsigned char *) string2, str_length2);
+  /* Clean up the strings */
+  if (string1 != NULL && alloced_string1 == true)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+
+  if (string2 != NULL && alloced_string2 == true)
+    {
+      db_private_free_and_init (NULL, string2);
+    }
+
+  return c;
 
 cleanup:
   if (string1 != NULL && alloced_string1 == true)
     {
       db_private_free_and_init (NULL, string1);
     }
+
   if (string2 != NULL && alloced_string2 == true)
     {
       db_private_free_and_init (NULL, string2);
     }
-  return c;
+
+  return DB_UNK;
 }
 
 /*
@@ -24194,12 +24245,17 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 
 	      a_func_list->curr_sort_key_tuple_count = 0;
 	    }
+	}
 
-	  for (int i = 0; i < key_idx; i++)
-	    {
-	      pr_clear_value (&a_eval_list->current_values[i]);
-	      pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
-	    }
+      /* Advance the group baseline once per tuple, AFTER every function has
+       * compared against the previous tuple's sort key.  Performing this copy
+       * inside the per-function loop above corrupts the baseline for the
+       * remaining functions: they would compare temp_values against itself and
+       * never detect a partition boundary, losing their PARTITION BY. */
+      for (int i = 0; i < key_idx; i++)
+	{
+	  pr_clear_value (&a_eval_list->current_values[i]);
+	  pr_clone_value (&a_eval_list->temp_values[i], &a_eval_list->current_values[i]);
 	}
     }
 
