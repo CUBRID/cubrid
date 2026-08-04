@@ -6577,6 +6577,15 @@ pt_print_alter_user (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
+  if (p->info.alter_user.login_capability == PT_LOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " login");
+    }
+  else if (p->info.alter_user.login_capability == PT_NOLOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " nologin");
+    }
+
   if (p->info.alter_user.comment != NULL)
     {
       r1 = pt_print_bytes (parser, p->info.alter_user.comment);
@@ -7679,6 +7688,14 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
       r1 = pt_print_bytes (parser, p->info.create_user.password);
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
+    }
+  if (p->info.create_user.login_capability == PT_LOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " login");
+    }
+  else if (p->info.create_user.login_capability == PT_NOLOGIN)
+    {
+      b = pt_append_nulstring (parser, b, " nologin");
     }
   if (p->info.create_user.groups)
     {
