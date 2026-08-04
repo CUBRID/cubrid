@@ -1378,12 +1378,11 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	    }
 	  else
 	    {
-	      pr_clear_value (&att->default_value.value);
-	      pr_clone_value (value, &att->default_value.value);
-	      classobj_clear_default_expr (&att->default_value.default_expr);
+	      DB_DEFAULT_EXPR default_expr_copy;
+	      classobj_initialize_default_expr (&default_expr_copy);
 	      if (default_expr != NULL)
 		{
-		  error = classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+		  error = classobj_copy_default_expr (&default_expr_copy, default_expr);
 		}
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
@@ -1394,6 +1393,18 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
 		{
 		  error = smt_set_attribute_orig_default_value (att, value, default_expr);
+		}
+
+	      if (error == NO_ERROR)
+		{
+		  pr_clear_value (&att->default_value.value);
+		  pr_clone_value (value, &att->default_value.value);
+		  classobj_clear_default_expr (&att->default_value.default_expr);
+		  att->default_value.default_expr = default_expr_copy;
+		}
+	      else
+		{
+		  classobj_clear_default_expr (&default_expr_copy);
 		}
 	    }
 	}
@@ -1432,16 +1443,28 @@ smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_va
   assert (att != NULL);
   assert (new_orig_value != NULL);
 
+  DB_DEFAULT_EXPR default_expr_copy;
+  int error = NO_ERROR;
+
+  /* deep-copy before clearing: default_expr may alias the attribute's own
+   * default expression (see smt_set_attribute_default) */
+  classobj_initialize_default_expr (&default_expr_copy);
+  if (default_expr != NULL)
+    {
+      error = classobj_copy_default_expr (&default_expr_copy, default_expr);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
 
   classobj_clear_default_expr (&att->default_value.default_expr);
-  if (default_expr == NULL)
-    {
-      return NO_ERROR;
-    }
+  att->default_value.default_expr = default_expr_copy;
 
-  return classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
+  return NO_ERROR;
 }
 
 /*
