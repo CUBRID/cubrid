@@ -185,8 +185,13 @@ static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_at
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
 				      ATTR_ID * att_id, int n_att_id);
-static int locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
-					     RECDES * recdes, HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code);
+static int locator_check_object_still_references (THREAD_ENTRY * thread_p, const ATTR_ID * attr_ids, int n_atts,
+					          DB_VALUE * key, const OID * oid, RECDES * recdes,
+					          HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references);
+static int locator_lock_and_get_fk_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+					   RECDES * recdes, HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code,
+					   const ATTR_ID * attr_ids, int n_atts, DB_VALUE * key,
+					   HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4015,13 +4020,15 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
  *
  * return: true if any attribute in att_id is a column of the index, or if att_id is "all" (NULL); false otherwise.
  * index(in): the index to check
- * att_id(in): array of attribute IDs being updated (NULL means "all")
+ * att_id(in): array of attribute IDs to look for (NULL means "all")
  * n_att_id(in): number of entries in att_id (0 means "all")
  */
 static bool
 locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id)
 {
   int i, j;
+
+  assert (index != NULL);
 
   if (att_id == NULL || n_att_id <= 0)
     {
@@ -4110,10 +4117,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
       if (!locator_index_has_attr (index, att_id, n_att_id))
 	{
-	  /* Because this update modifies none of this FK's referencing columns, the child row still references the
-	   * same parent row as before, which was already valid, so the constraint holds and needs no re-check.
-	   * Skipping spares the parent PK lookup and, when that parent is mid-change, a wait on its MVCCID that
-	   * nothing about this update requires.
+	  /* Because this update modifies none of this FK's referencing columns,
+	   * the child row still references the same, already-valid parent row: no re-check is needed.
 	   * (On the INSERT path att_id is NULL, so nothing is ever skipped.) */
 	  continue;
 	}
@@ -4246,29 +4251,48 @@ error:
 }
 
 /*
- * locator_wait_for_uncommitted_row () - Wait out the transaction that inserted this row, if it is still active,
- *					 then re-fetch it.
+ * locator_lock_and_get_fk_object () - X_LOCK and fetch a row the FK index scan returned,
+ *                                     wait out a still-active inserter,
+ *                                     then re-check that it still references the searched key.
  *
- * return	     : NO_ERROR, or an error code if the wait or the re-fetch failed.
- * thread_p (in)     : Thread entry.
- * oid (in)	     : Instance OID being modified.
- * class_oid (in)    : Class OID of the instance.
- * recdes (in/out)   : Fetched record; replaced by the re-fetched one after a wait.
- * scan_cache (in)   : Scan cache used for the re-fetch.
- * scan_code (in/out): Fetch result; S_DOESNT_EXIST once the inserter rolled back.
+ * return                 : NO_ERROR, or an error code if a fetch, the wait or the re-check failed.
+ * thread_p (in)          : Thread entry.
+ * oid (in)               : Candidate OID returned by the scan.
+ * class_oid (in)         : Class OID of the referencing class.
+ * recdes (out)           : Fetched record.
+ * scan_cache (in)        : Scan cache used for the fetches.
+ * scan_code (out)        : Fetch result; S_DOESNT_EXIST once the inserter rolled back.
+ * attr_ids (in)          : Attribute ids of the referencing columns, in index order.
+ * n_atts (in)            : Number of referencing columns.
+ * key (in)               : Parent key the scan searched for.
+ * fk_attrinfo (in/out)   : Attribute cache started on the referencing columns (attr_ids); it is read
+ *                          per candidate row, so the class's full cache would decode every column each time.
+ * still_references (out) : false once the row references some other key; the caller skips it.
  *
  * Note: the CASCADE/SET NULL scan reads dirty, so it can hand back a row whose inserter is still active.
- *	 An insert into an MVCC class takes no per-row lock, so the X_LOCK the caller already holds does not
- *	 serialize against that inserter -- writing now would modify a row that may still roll back. Block on
- *	 the inserter's MVCCID instead and re-read the row's fate.
+ *	 Appended rows take no per-row X-lock, so the X_LOCK here is granted at once;
+ *	 the wait is on the inserter's MVCCID instead.
  */
 static int
-locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-				  HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code)
+locator_lock_and_get_fk_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code, const ATTR_ID * attr_ids,
+				int n_atts, DB_VALUE * key, HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references)
 {
   MVCC_REC_HEADER mvcc_header;
   MVCCID insert_mvccid;
   int error_code;
+
+  assert (oid != NULL && !OID_ISNULL (oid));
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (recdes != NULL && scan_cache != NULL && scan_code != NULL);
+  assert (attr_ids != NULL && n_atts > 0);
+  assert (key != NULL && fk_attrinfo != NULL && still_references != NULL);
+
+  *still_references = true;
+
+  recdes->data = NULL;
+  *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
+					    LOG_ERROR_IF_DELETED);
 
   while (*scan_code == S_SUCCESS)
     {
@@ -4277,6 +4301,7 @@ locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID 
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
 	}
+
       if (!MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID))
 	{
 	  break;
@@ -4294,54 +4319,67 @@ locator_wait_for_uncommitted_row (THREAD_ENTRY * thread_p, const OID * oid, OID 
 	  return error_code;
 	}
 
-      /* That transaction ended; the row is now either committed or gone. */
+      /* That transaction ended; the row is now either committed or gone.
+       * The record in hand predates the wait, so fetch again to see which. */
       recdes->data = NULL;
       *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY,
 						NULL_CHN, LOG_WARNING_IF_DELETED);
     }
 
-  return NO_ERROR;
+  if (*scan_code != S_SUCCESS)
+    {
+      return NO_ERROR;
+    }
+
+  return locator_check_object_still_references (thread_p, attr_ids, n_atts, key, oid, recdes, fk_attrinfo,
+						still_references);
 }
 
 /*
- * locator_child_still_references () - Does this child row still hold the key the scan searched for?
+ * locator_check_object_still_references () - Does this child row still hold the key the scan searched for?
  *
- * return	      : NO_ERROR, or an error code if the row could not be read.
- * thread_p (in)      : Thread entry.
- * n_atts (in)	      : Number of referencing columns.
- * attr_ids (in)      : Their attribute ids, in index order.
- * key (in)	      : Parent key the scan searched for.
- * oid (in)	      : Child row the scan returned.
- * recdes (in)	      : Its record, as read after any wait.
- * attr_info (in/out) : Attribute cache of the child class.
- * matches (out)      : false once the row references some other key.
+ * return                 : NO_ERROR, or an error code if the row could not be read.
+ * thread_p (in)          : Thread entry.
+ * attr_ids (in)          : Attribute ids of the referencing columns, in index order.
+ * n_atts (in)            : Number of referencing columns.
+ * key (in)               : Parent key the scan searched for.
+ * oid (in)               : Child row the scan returned.
+ * recdes (in)            : Its record, as read after any wait.
+ * fk_attrinfo (in/out)   : Attribute cache started on the referencing columns.
+ * still_references (out) : false once the row references some other key.
  *
- * Note: an index entry outlives the row version that made it, so the scan can return a child a
- *	 concurrent UPDATE has already moved to another parent -- and the wait above is what lets
+ * Note: an index entry outlives the row version that made it, so the scan can return a child
+ *	 whose reference a concurrent UPDATE has already changed -- and the wait above is what lets
  *	 that UPDATE commit first. The entry is therefore not evidence; the row itself decides.
  */
 static int
-locator_child_still_references (THREAD_ENTRY * thread_p, int n_atts, const ATTR_ID * attr_ids, DB_VALUE * key,
-				const OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, bool * matches)
+locator_check_object_still_references (THREAD_ENTRY * thread_p, const ATTR_ID * attr_ids, int n_atts, DB_VALUE * key,
+				       const OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * fk_attrinfo,
+				       bool * still_references)
 {
-  DB_VALUE elem;
-  DB_VALUE *held, *wanted;
-  int k;
+  DB_VALUE key_element;
+  DB_VALUE *row_value, *key_value;
+  int i;
   int error_code;
 
-  *matches = true;
+  assert (attr_ids != NULL && n_atts > 0);
+  assert (key != NULL);
+  assert (oid != NULL && !OID_ISNULL (oid));
+  assert (recdes != NULL && fk_attrinfo != NULL && still_references != NULL);
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, attr_info);
+  *still_references = true;
+
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, fk_attrinfo);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       return error_code;
     }
 
-  for (k = 0; k < n_atts; k++)
+  for (i = 0; i < n_atts; i++)
     {
-      held = heap_attrinfo_access (attr_ids[k], attr_info);
-      if (held == NULL)
+      row_value = heap_attrinfo_access (attr_ids[i], fk_attrinfo);
+      if (row_value == NULL)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  return error_code;
@@ -4349,23 +4387,23 @@ locator_child_still_references (THREAD_ENTRY * thread_p, int n_atts, const ATTR_
 
       if (n_atts == 1)
 	{
-	  wanted = key;
+	  key_value = key;
 	}
       else
 	{
 	  /* A multi-column key arrives as a midxkey whose components are in index order. */
 	  assert (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY);
-	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (key), k, &elem, NULL, NULL) != NO_ERROR)
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (key), i, &key_element, NULL, NULL) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
 	      return error_code;
 	    }
-	  wanted = &elem;
+	  key_value = &key_element;
 	}
 
-      if (tp_value_compare (held, wanted, 1, 1) != DB_EQ)
+      if (tp_value_compare (row_value, key_value, 1, 1) != DB_EQ)
 	{
-	  *matches = false;
+	  *still_references = false;
 	  return NO_ERROR;
 	}
     }
@@ -4414,9 +4452,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  /* CASCADE/SET NULL collects referencing (child) rows dirty. The referenced (parent) row already carries this
-   * transaction's DELID, so any child inserted after that point blocks on it in its own check and cannot be
-   * missed here; a visible-only scan would instead skip children that are merely uncommitted and orphan them. */
+  /* Collect dirty: a visible-only scan would skip uncommitted children and orphan them.
+   * A child inserted later blocks on the parent's DELID in its own check, so none is missed here. */
   dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
   mvcc_snapshot = &dirty_snapshot;
 
@@ -4591,8 +4628,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
-		      /* A second cache holding only the referencing columns: the re-check below reads it once per
-		       * candidate row, and attr_info covers every column because the LOB scan needs them all. */
+		      /* Only the referencing columns: the re-check reads them per candidate row. */
 		      error_code =
 			heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
 		      if (error_code != NO_ERROR)
@@ -4617,17 +4653,16 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
 		  bool still_references = true;
-		  recdes.data = NULL;
 
-		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  error_code =
-		    locator_wait_for_uncommitted_row (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-						      &scan_code);
+		    locator_lock_and_get_fk_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						    &scan_code, attr_ids, index->n_atts, key, &fk_attrinfo,
+						    &still_references);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
 		    }
+
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4648,16 +4683,9 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      goto error1;
 		    }
 
-		  error_code =
-		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
-						    &fk_attrinfo, &still_references);
-		  if (error_code != NO_ERROR)
-		    {
-		      goto error1;
-		    }
 		  if (!still_references)
 		    {
-		      /* It moved to another parent while we waited, so this key's action has no claim on it. */
+		      /* Its reference changed while we waited, so this key's action has no claim on it. */
 		      continue;
 		    }
 
@@ -4827,9 +4855,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  /* CASCADE/SET NULL collects referencing (child) rows dirty. The referenced (parent) row already carries this
-   * transaction's DELID, so any child inserted after that point blocks on it in its own check and cannot be
-   * missed here; a visible-only scan would instead skip children that are merely uncommitted and orphan them. */
+  /* Collect dirty: a visible-only scan would skip uncommitted children and orphan them.
+   * A child inserted later blocks on the parent's DELID in its own check, so none is missed here. */
   dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
   mvcc_snapshot = &dirty_snapshot;
 
@@ -4991,7 +5018,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      goto error1;
 		    }
 
-		  /* A second cache holding only the referencing columns, for the re-check below. */
+		  /* Only the referencing columns: the re-check reads them per candidate row. */
 		  error_code = heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
 		  if (error_code != NO_ERROR)
 		    {
@@ -5004,17 +5031,16 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
 		  bool still_references = true;
-		  recdes.data = NULL;
 
-		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
 		  error_code =
-		    locator_wait_for_uncommitted_row (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-						      &scan_code);
+		    locator_lock_and_get_fk_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						    &scan_code, attr_ids, index->n_atts, key, &fk_attrinfo,
+						    &still_references);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
 		    }
+
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -5034,16 +5060,9 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      goto error1;
 		    }
 
-		  error_code =
-		    locator_child_still_references (thread_p, index->n_atts, attr_ids, key, oid_ptr, &recdes,
-						    &fk_attrinfo, &still_references);
-		  if (error_code != NO_ERROR)
-		    {
-		      goto error1;
-		    }
 		  if (!still_references)
 		    {
-		      /* It moved to another parent while we waited, so this key's action has no claim on it. */
+		      /* Its reference changed while we waited, so this key's action has no claim on it. */
 		      continue;
 		    }
 
@@ -8171,9 +8190,8 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 
 	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk && mvcc_is_mvcc_disabled_class (class_oid))
 		{
-		  /* Reserve the inserted row so that the check coming from the referenced (parent) side has something
-		   * to block on. Needed only where there is no MVCCID to wait on instead: an MVCC row carries the
-		   * inserter's MVCCID, and that side waits it out. */
+		  /* An MVCC row needs no lock here: the parent-side check waits on the inserter's MVCCID.
+		   * A non-MVCC row carries no MVCCID to wait on, so reserve it for that check to block on. */
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
 		      goto error;
@@ -13605,9 +13623,9 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  * class_oid (in)      : Class OID.
  * recdes (out)	       : Record descriptor.
  * scan_cache (in)     : Heap scan cache.
+ * lock (in)	       : Lock mode.
  * ispeeking (in)      : PEEK or COPY.
  * old_chn (in)	       : CHN of known record data.
- * mvcc_reev_data (in) : MVCC reevaluation data.
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
