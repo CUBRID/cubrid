@@ -4021,6 +4021,8 @@ locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id)
 {
   int i, j;
 
+  assert (index != NULL);
+
   if (att_id == NULL || n_att_id <= 0)
     {
       /* Conservative: full update or unknown attribute set. */
