@@ -8854,7 +8854,12 @@ classobj_copy_default_expr (DB_DEFAULT_EXPR * dest, const DB_DEFAULT_EXPR * src)
 {
   int error = NO_ERROR;
 
-  assert (dest != NULL && src != NULL);
+  assert (dest != NULL && src != NULL && dest != src);
+
+  /* start from a deterministic state so the rollback below stays safe even
+   * when the caller hands over uninitialized storage; dest owns nothing on
+   * entry (owning callers clear it first) */
+  classobj_initialize_default_expr (dest);
 
   dest->default_expr_type = src->default_expr_type;
   dest->default_expr_op = src->default_expr_op;
