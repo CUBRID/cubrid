@@ -2336,7 +2336,8 @@ bind_fp_hash_value (const DB_VALUE *val)
  * out_reversed (out) : true when the host variable is on the left ('? op col')
  */
 static bool
-histogram_split_hv_predicate (PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv, bool *out_reversed)
+histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
+			      bool *out_reversed)
 {
   if (out_name != NULL)
     {
@@ -2362,10 +2363,21 @@ histogram_split_hv_predicate (PT_NODE *node, PT_NODE **out_name, PT_NODE **out_h
       return false;
     }
 
+  /* only USER host variables count: their value is unknown until EXECUTE, which is what
+   * the unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized
+   * literals (index >= host_var_count; see pt_rewrite_to_auto_param) are constants the
+   * compiler already saw -- treating them as bind variables made every catalog-vclass
+   * query (whose view spec is full of literals) replan on its first EXECUTE. */
+  auto is_user_host_var = [parser] (const PT_NODE * hv)
+  {
+    return hv->info.host_var.index < parser->host_var_count;
+  };
+
   PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
   PT_NODE *a2 = node->info.expr.arg2;
 
-  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR)
+  if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR
+      && is_user_host_var (a2))
     {
       if (out_name != NULL)
 	{
@@ -2378,7 +2390,7 @@ histogram_split_hv_predicate (PT_NODE *node, PT_NODE **out_name, PT_NODE **out_h
       return true;
     }
 
-  if (a1 != NULL && a1->node_type == PT_HOST_VAR
+  if (a1 != NULL && a1->node_type == PT_HOST_VAR && is_user_host_var (a1)
       && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
     {
       if (out_name != NULL)
@@ -2414,7 +2426,7 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   PT_NODE *name, *hv;
   bool reversed = false;
 
-  if (!histogram_split_hv_predicate (node, &name, &hv, &reversed))
+  if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
     {
       return node;
     }
@@ -2482,7 +2494,7 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 {
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
 
-  if (histogram_split_hv_predicate (node, NULL, NULL, NULL))
+  if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;
