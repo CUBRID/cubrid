@@ -8779,6 +8779,48 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
+/*
+ * lock_copy_key_for_log - Copy a lock resource key into an entry bound for the 2PC prepare record
+ *
+ * return: nothing
+ *
+ *   dest(out): key of the gathered entry
+ *   src(in): key of the lock resource the entry was gathered from
+ *
+ * Note: A struct assignment would carry the source's padding along, and an LK_RES key is filled
+ *       member by member (lock_res_key_copy) on a malloc'd, recycled resource, so its padding holds
+ *       whatever the previous owner left. The entry is written to the log verbatim, so zero the key
+ *       and copy only the members its type selects -- that keeps the record a function of the lock
+ *       set alone.
+ */
+static void
+lock_copy_key_for_log (LK_RES_KEY * dest, const LK_RES_KEY * src)
+{
+  memset (dest, 0, sizeof (*dest));
+
+  dest->type = src->type;
+  switch (src->type)
+    {
+    case LOCK_RESOURCE_INSTANCE:
+    case LOCK_RESOURCE_CLASS:
+    case LOCK_RESOURCE_ROOT_CLASS:
+      COPY_OID (&dest->oid, &src->oid);
+      COPY_OID (&dest->class_oid, &src->class_oid);
+      break;
+
+    case LOCK_RESOURCE_TRANSACTION:
+      /* transaction self-lock: the MVCCID is the key; reserved stays zeroed */
+      dest->mvccid = src->mvccid;
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * lock_unlock_all_shared_get_all_exclusive - Release all shared type locks and
  *                              optionally list the exclusive type locks
@@ -8850,9 +8892,9 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	  return;
 	}
 
-      /* This buffer is written verbatim into the 2PC prepare record, and the entry has interior padding that field
-       * assignment leaves indeterminate (lock_create_search_key does not value-initialize its key either). Zero it so
-       * no uninitialized heap bytes reach the log. */
+      /* This buffer is written verbatim into the 2PC prepare record. Zero it so the padding that follows each
+       * entry's lock member carries no uninitialized heap bytes; the key's own padding is handled by
+       * lock_copy_key_for_log below. */
       memset (acqlocks->locks, 0, SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
 
       /* initialize idx in acqlocks->locks array */
@@ -8864,7 +8906,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
 	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
@@ -8874,7 +8916,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
 	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
@@ -8885,7 +8927,7 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	{
 	  assert (tran_index == entry_ptr->tran_index);
 
-	  acqlocks->locks[idx].key = entry_ptr->res_head->key;
+	  lock_copy_key_for_log (&acqlocks->locks[idx].key, &entry_ptr->res_head->key);
 	  acqlocks->locks[idx].lock = entry_ptr->granted_mode;
 	  idx += 1;
 	}
