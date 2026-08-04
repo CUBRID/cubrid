@@ -12565,15 +12565,15 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 			NULL, NULL);
       remote_spec_known = true;
 
-      if (cond_has_remote_spec || !(snl->local_cnt > 0 && snl->distinct_cnt == 1 && !snl->has_dblink_query))
+      /* the sink form holds only when the WHERE has no remote spec left unconverted, the subquery really is
+       * local-mixed on the one target server, and it carries no dblink() call of its own */
+      bool sink_form_confirmed = (!cond_has_remote_spec && snl->local_cnt > 0 && snl->distinct_cnt == 1
+				  && !snl->has_dblink_query);
+
+      if (sink_form_confirmed)
 	{
-	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
-	}
-      else
-	{
-	  /* Confirmed sink form. Two shapes are diagnosed only now, because a same-server all-remote statement
-	   * reaches this block too and keeps working through full pushdown -- rejecting them at the gate above
-	   * would break it. */
+	  /* Two shapes are diagnosed only now, because a same-server all-remote statement reaches this block
+	   * too and keeps working through full pushdown -- rejecting them at the gate above would break it. */
 	  const char *bad_qualifier;
 
 	  if (node->info.delete_.limit != NULL)
@@ -12604,6 +12604,10 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
 	      PT_ERROR (parser, upd_spec, errmsg);
 	      return;
 	    }
+	}
+      else
+	{
+	  snl->sink_kind = DBLINK_REMOTE_SINK_NONE;
 	}
     }
 
