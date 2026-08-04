@@ -30,6 +30,7 @@
 
 extern EXPORT_IMPORT void catcls_init (void);
 extern EXPORT_IMPORT int catcls_install (void);
+extern EXPORT_IMPORT int catcls_rebuild_vclasses (void);
 
 extern EXPORT_IMPORT bool sm_check_system_class_by_name (const std::string_view class_name);
 

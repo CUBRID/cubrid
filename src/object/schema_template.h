@@ -47,6 +47,7 @@ extern int smt_quit (SM_TEMPLATE * template_);
 extern SM_TEMPLATE *smt_def_typed_class (const char *name, SM_CLASS_TYPE ct);
 extern SM_CLASS_TYPE smt_get_class_type (SM_TEMPLATE * template_);
 extern int smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name);
+extern void smt_reset_vclass_definition (SM_TEMPLATE * template_);
 
 /* Attribute definition */
 extern int smt_add_attribute_w_dflt (DB_CTMPL * def, const char *name, const char *domain_string, DB_DOMAIN * domain,

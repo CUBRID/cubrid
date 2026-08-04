@@ -77,6 +77,7 @@
 #include "log_impl.h"
 #include "log_manager.h"
 #include "schema_system_catalog.hpp"
+#include "schema_information_schema.hpp"
 #include "catalog_class.h"
 #include "system_metadata_version.h"
 #include "crypt_opfunc.h"
@@ -164,6 +165,8 @@ typedef struct
 } UPGRADEDB_OPTIONS;
 
 static int upgradedb_truncate_catalog_classes (void);
+static int upgradedb_rebuild_catalog_vclasses (void);
+static int upgradedb_drop_catalog_class_representations (void);
 static int upgradedb_rebuild_catalog (void);
 static void upgradedb_update_and_log_version (int target_version);
 static bool upgradedb_confirm (void);
@@ -5283,6 +5286,58 @@ upgradedb_truncate_catalog_classes (void)
 }
 
 /*
+ * upgradedb_rebuild_catalog_vclasses () - redefine the catalog vclasses from
+ *     the running binary's definitions
+ *   return: error code
+ *
+ *   Note: writing them in SQL instead would duplicate *_query_spec.cpp and have
+ *   to stay identical to it. Runs after the scripts, whose altered catalog
+ *   classes the vclasses select from.
+ */
+static int
+upgradedb_rebuild_catalog_vclasses (void)
+{
+  int error = catcls_rebuild_vclasses ();
+
+  if (error == NO_ERROR)
+    {
+      error = info_schema_rebuild_vclasses ();
+    }
+
+  return error;
+}
+
+/*
+ * upgradedb_drop_catalog_class_representations () - drop the representation
+ *     history the upgrade scripts left on the catalog classes
+ *   return: error code
+ *
+ *   Note: each altered class leaves a dead representation behind and compactdb
+ *   skips catalog classes, so they would pile up one per release. Only
+ *   ct_Classes, truncated above, may be dropped: any other catalog class still
+ *   holds rows an older representation is needed to decode.
+ */
+static int
+upgradedb_drop_catalog_class_representations (void)
+{
+  int error = NO_ERROR;
+
+  for (int i = 0; error == NO_ERROR && ct_Classes[i] != NULL; i++)
+    {
+      MOP class_mop = sm_find_class (ct_Classes[i]->cc_name);
+      if (class_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  break;
+	}
+
+      error = sm_destroy_representations (class_mop);
+    }
+
+  return error;
+}
+
+/*
  * upgradedb_rebuild_catalog () - recompile catalog classes (skipped at boot via
  *     boot_set_skip_check_ct_classes) and flush metadata to disk
  *   return: error code
@@ -5659,6 +5714,18 @@ upgradedb_run (const UPGRADEDB_OPTIONS * opts)
     }
 
   error = upgradedb_run_scripts (opts, UPGRADEDB_OP_EXECUTE);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = upgradedb_rebuild_catalog_vclasses ();
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = upgradedb_drop_catalog_class_representations ();
   if (error != NO_ERROR)
     {
       goto error_exit;

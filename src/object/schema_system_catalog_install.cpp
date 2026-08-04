@@ -32,6 +32,7 @@
 #include "work_space.h"
 #include "schema_system_catalog_builder.hpp"
 #include "schema_system_catalog_definition.hpp"
+#include "schema_manager.h"
 #include "authenticate.h"
 
 #define CT_DUAL_DUMMY   "dummy"
@@ -379,6 +380,43 @@ catcls_install (void)
     }
 
 end:
+  AU_RESTORE (save);
+
+  clist.clear ();
+  vclist.clear ();
+
+  return error_code;
+}
+
+int
+catcls_rebuild_vclasses (void)
+{
+  int error_code = NO_ERROR;
+  int save;
+
+  using catalog_builder = cubschema::system_catalog_builder;
+
+  catcls_init ();
+  AU_SAVE_AND_DISABLE (save);
+
+  for (size_t i = 0; i < vclist.size () && error_code == NO_ERROR; i++)
+    {
+      /* the existing object, so build_vclass () redefines it in place and the OID survives */
+      MOP class_mop = db_find_class (vclist[i].name.c_str ());
+      if (class_mop == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  break;
+	}
+
+      error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
+      if (error_code == NO_ERROR)
+	{
+	  /* a vclass holds no instance, so nothing needs the superseded representation */
+	  error_code = sm_destroy_representations (class_mop);
+	}
+    }
+
   AU_RESTORE (save);
 
   clist.clear ();
