@@ -5854,7 +5854,13 @@ la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int *total_row
 
 	      sb.clear ();
 	      db_sprint_value (la_get_item_pk_value (item), sb);
-	      sprintf (error_string, "[%s,%s] %s", item->class_name, sb.get_buffer (), db_error_string (1));
+	      const char *class_name = item->class_name;
+	      const char *pk_string = sb.get_buffer ();
+	      const char *class_ellipsis = strlen (class_name) > 16 ? "..." : "";
+	      const char *pk_ellipsis = strlen (pk_string) > 16 ? "..." : "";
+
+	      snprintf (error_string, sizeof (error_string), "[%.16s%s,%.16s%s] %s", class_name, class_ellipsis,
+			pk_string, pk_ellipsis, db_error_string (1));
 	      er_log_debug (ARG_FILE_LINE, "Internal system failure: %s", error_string);
 
 	      if (ER_IS_SERVER_DOWN_ERROR (errid))
