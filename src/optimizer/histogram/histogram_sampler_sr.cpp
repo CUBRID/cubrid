@@ -1922,7 +1922,9 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	   * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
 	   * updated row's visible version must be read from the undo log */
 	  recdes.data = NULL;
-	  sc = heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+	  sc =
+		  heap_next (thread_p, tgt_hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK,
+			     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (sc != S_SUCCESS)
 	    {
 	      break;
@@ -2251,7 +2253,9 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
        * recdes as a caller-supplied buffer and fail with S_DOESNT_FIT when a concurrently
        * updated row's visible version must be read from the undo log */
       recdes.data = NULL;
-      sc = heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK);
+      sc =
+	      heap_next (thread_p, hfid, &scan_class_oid, &inst_oid, &recdes, &scan_cache, PEEK,
+			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (sc != S_SUCCESS)
 	{
 	  break;

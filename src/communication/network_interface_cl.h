@@ -364,6 +364,7 @@ extern int csession_get_variable (DB_VALUE * name, DB_VALUE * value);
 extern int csession_drop_session_variables (DB_VALUE * variables, const int count);
 
 extern int cvacuum (void);
+extern int oos_get_stats_by_class_oid (const OID * class_oid, struct db_oos_stats *stats);
 extern int log_get_mvcc_snapshot (void);
 extern int tran_lock_rep_read (LOCK lock_rr_tran);
 

@@ -3536,7 +3536,11 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
       thread_p = thread_get_thread_entry_info ();
     }
 
-  assert (thread_p->type != TT_LOADDB);
+  /* Load workers must not lock objects; they rely on the session transaction's BU_LOCK (CBRD-23375; see the
+   * TT_LOADDB handling in lock_object and the lock-state readers). Transaction self-locks are the one uniform
+   * exception: the key is the worker's own batch-transaction MVCCID, so the request never waits, and
+   * lock_unlock_all releases it when the batch transaction ends (load_session.cpp). */
+  assert (thread_p->type != TT_LOADDB || is_transaction_lock);
 
   thrd_entry = thread_p;
 
@@ -5695,8 +5699,9 @@ lock_dump_resource (THREAD_ENTRY * thread_p, FILE * outfp, LK_RES * res_ptr)
 	    {
 	      RECDES recdes = RECDES_INITIALIZER;
 
-	      if (heap_get_visible_version (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache,
-					    PEEK, NULL_CHN) == S_SUCCESS)
+	      if (heap_get_visible_version
+		  (thread_p, &res_ptr->key.oid, &res_ptr->key.class_oid, &recdes, &scan_cache, PEEK,
+		   NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES) == S_SUCCESS)
 		{
 		  MVCC_REC_HEADER mvcc_rec_header;
 		  if (or_mvcc_get_header (&recdes, &mvcc_rec_header) == NO_ERROR)

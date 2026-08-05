@@ -3250,8 +3250,8 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 		     HEAP_CACHE_ATTRINFO * cache_rest, SCAN_TYPE scan_type, DB_VALUE ** cache_recordinfo,
 		     regu_variable_list_node * regu_list_recordinfo, bool cached_scan)
 {
-  /* Guard: this function is shared by S_HEAP_SCAN, S_HEAP_SCAN_RECORD_INFO, and S_HEAP_SAMPLING_SCAN.
-   * Only plain heap scans may activate the cached scan; record-info and sampling scans never do,
+  /* Guard: this function is shared by S_HEAP_SCAN and S_HEAP_SCAN_RECORD_INFO.
+   * Only plain heap scans may activate the cached scan; record-info scans never do,
    * defense-in-depth on top of the caller-side eligibility predicate. */
   scan_id->cached_scan = cached_scan && (scan_type == S_HEAP_SCAN);
 
@@ -5924,8 +5924,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
 		  sp_scan =
-		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+			       &hsidp->scan_cache, is_peeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 	      else
 		{
@@ -5941,8 +5941,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
 		  sp_scan =
-		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+		    heap_prev (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+			       &hsidp->scan_cache, is_peeking, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 	      else
 		{
@@ -6039,7 +6039,8 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  /* get with lock and reevaluate if the visible version wasn't the latest version */
 	  sp_scan =
 	    locator_lock_and_get_object_with_evaluation (thread_p, &current_oid, NULL, &recdes, &hsidp->scan_cache,
-							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+							 is_peeking, NULL_CHN, &mvcc_reev_data, LOG_WARNING_IF_DELETED,
+							 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (sp_scan == S_SUCCESS && mvcc_reev_data.filter_result == V_FALSE)
 	    {
 	      continue;
@@ -6802,8 +6803,9 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
       recdes.data = NULL;
     }
 
-  sp_scan = heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
-				      NULL_CHN);
+  sp_scan =
+    heap_get_visible_version (thread_p, isidp->curr_oidp, NULL, &recdes, &isidp->scan_cache, scan_id->fixed,
+			      NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
   if (sp_scan == S_SNAPSHOT_NOT_SATISFIED)
     {
       if (SCAN_IS_INDEX_COVERED (isidp))
@@ -6858,7 +6860,8 @@ scan_next_index_lookup_heap (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, INDX_SC
 
       sp_scan = locator_lock_and_get_object_with_evaluation (thread_p, isidp->curr_oidp, NULL, &recdes,
 							     &isidp->scan_cache, scan_id->fixed, NULL_CHN,
-							     &mvcc_reev_data, LOG_WARNING_IF_DELETED);
+							     &mvcc_reev_data, LOG_WARNING_IF_DELETED,
+							     HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (sp_scan == S_SUCCESS)
 	{
 	  switch (mvcc_reev_data.filter_result)

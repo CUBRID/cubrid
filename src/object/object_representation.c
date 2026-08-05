@@ -5770,7 +5770,9 @@ error_return:
 int
 or_header_size (char *ptr)
 {
-  return mvcc_header_size_lookup[OR_GET_MVCC_FLAG (ptr)];
+  int mvcc_flag = OR_GET_MVCC_FLAG (ptr);
+
+  return mvcc_header_size_lookup[mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
 }
 
 /*

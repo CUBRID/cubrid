@@ -46,6 +46,7 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
+#include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
 #include "lock_manager.h"
@@ -234,6 +235,8 @@ static DB_LOGICAL locator_mvcc_reev_cond_and_assignment (THREAD_ENTRY * thread_p
 /* lob */
 static int locator_lob_make_dir_path (char *buf, const HFID * hfid, int attrid);
 
+static int locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes);
+
 /*
  * locator_initialize () - Initialize the locator on the server
  *
@@ -296,7 +299,8 @@ locator_initialize (THREAD_ENTRY * thread_p)
 
   OID_SET_NULL (&class_oid);
 
-  while (heap_next (thread_p, &root_hfid, NULL, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &root_hfid, NULL, &class_oid, &peek, &scan_cache, PEEK,
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
       assert (!OID_ISNULL (&class_oid));
 
@@ -1968,7 +1972,8 @@ locator_check_class_names (THREAD_ENTRY * thread_p)
   class_oid.slotid = NULL_SLOTID;
 
   isvalid = DISK_VALID;
-  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK,
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
       classname = or_class_name (&peek);
       assert (classname != NULL);
@@ -2328,8 +2333,12 @@ locator_lock_and_return_object (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * 
       chn = heap_chnguess_get (thread_p, oid, tran_index);
     }
 
+  /* Raw RECDES is shipped to the client via LC_COPYAREA and CS-mode clients cannot resolve inline
+   * OOS OID slots, so expand them here (same rule as xlocator_fetch_all). An expansion that
+   * outgrows the copy area returns S_DOESNT_FIT with the needed size as a negative recdes length,
+   * which the callers' standard grow-and-retry protocol already handles. */
   scan = locator_get_object (thread_p, oid, class_oid, &assign->recdes, assign->ptr_scancache, op_type, lock_mode, COPY,
-			     chn);
+			     chn, HEAP_RECDES_CONSUME_RAW_BYTES);
   if (scan == S_ERROR || scan == S_SNAPSHOT_NOT_SATISFIED || scan == S_END || scan == S_DOESNT_EXIST)
     {
       return scan;
@@ -2900,7 +2909,8 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       mobjs->num_objs = 0;
       offset = 0;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY)) == S_SUCCESS)
+      while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY,
+				HEAP_RECDES_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
 	  mobjs->num_objs++;
 	  COPY_OID (&obj->class_oid, class_oid);
@@ -3485,8 +3495,9 @@ locator_all_reference_lockset (THREAD_ENTRY * thread_p, OID * oid, int prune_lev
 
       /* Get the object to find out its direct references */
       OID_SET_NULL (&class_oid);
-      scan = heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
-				       PEEK, NULL_CHN);
+      scan =
+	heap_get_visible_version (thread_p, &lockset->objects[ref_num].oid, &class_oid, &peek_recdes, &scan_cache,
+				  PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_EXIST && (quit_on_errors == true || er_errid () == ER_INTERRUPTED))
@@ -3951,7 +3962,8 @@ xlocator_does_exist (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock, LC_
 
 	  (void) heap_scancache_quick_start (&scan_cache);
 
-	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, &scan_cache, op_type, lock, PEEK, NULL_CHN);
+	  scan_code = locator_get_object (thread_p, oid, class_oid, NULL, &scan_cache, op_type, lock, PEEK, NULL_CHN,
+					  HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  heap_scancache_end (thread_p, &scan_cache);
 	  if (scan_code == S_ERROR)
 	    {
@@ -4432,7 +4444,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED,
+							   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4787,7 +4800,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  /* TO DO - handle reevaluation */
 
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED,
+							   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -5269,6 +5283,61 @@ error2:
   return error_code;
 }
 
+int
+locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes)
+{
+  int error_code = NO_ERROR;
+  HFID oos_hfid = HFID_INITIALIZER;
+  VFID oos_vfid = VFID_INITIALIZER;
+  OID oos_oid = OID_INITIALIZER;
+
+  error_code = heap_get_class_info (thread_p, class_oid, &oos_hfid, NULL, NULL);
+  if (error_code != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to get class heap information for OOS replication insert");
+	  error_code = er_errid ();
+	}
+      return error_code;
+    }
+
+  if (!heap_oos_find_vfid (thread_p, &oos_hfid, &oos_vfid, true))
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to find or create OOS file for replication insert");
+	}
+      error_code = er_errid ();
+      return error_code;
+    }
+
+  /* Skip the on-log OOS header (oos_insert prepends its own). Reject corrupt
+   * records that would underflow the subtraction below. */
+  if (recdes->length <= OOS_RECORD_HEADER_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "OOS replication log record shorter than header");
+      return ER_HA_GENERIC_ERROR;
+    }
+  oos_buffer payload (recdes->data + OOS_RECORD_HEADER_SIZE, (size_t) (recdes->length - OOS_RECORD_HEADER_SIZE));
+  error_code = oos_insert (thread_p, oos_vfid, payload, oos_oid);
+  if (error_code != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "failed to insert OOS record during replication apply");
+	  error_code = er_errid ();
+	}
+      return error_code;
+    }
+
+  return error_code;
+}
+
 /*
  * locator_move_record () - relocate a record from a partitioned class
  * return : error code or NO_ERROR
@@ -5720,12 +5789,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  scan = locator_lock_and_get_object_with_evaluation (thread_p, oid, class_oid, &copy_recdes,
 								      local_scan_cache, COPY, NULL_CHN, mvcc_reev_data,
-								      LOG_ERROR_IF_DELETED);
+								      LOG_ERROR_IF_DELETED,
+								      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 		}
 	      else
 		{
-		  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY,
-						   NULL_CHN);
+		  scan =
+		    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
+					      HEAP_RECDES_CONSUME_RAW_BYTES);
 		}
 
 
@@ -5867,7 +5938,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		}
 
 	      scan =
-		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN);
+		heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, local_scan_cache, COPY, NULL_CHN,
+					  HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan == S_SUCCESS)
 		{
 		  oldrecdes = &copy_recdes;
@@ -6208,7 +6280,8 @@ locator_delete_force_internal (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, 
      not the visible one; we need only the last version to use it to retrieve the last version of the btree key */
   scan_code =
     locator_lock_and_get_object_with_evaluation (thread_p, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
-						 mvcc_reev_data, LOG_WARNING_IF_DELETED);
+						 mvcc_reev_data, LOG_WARNING_IF_DELETED,
+						 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
   if (scan_code == S_SUCCESS && mvcc_reev_data != NULL && mvcc_reev_data->filter_result == V_FALSE)
     {
@@ -6503,7 +6576,9 @@ locator_delete_lob_force (THREAD_ENTRY * thread_p, OID * class_oid, OID * oid, R
 	    }
 	  scan_cache_inited = true;
 
-	  scan = heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN);
+	  scan =
+	    heap_get_visible_version (thread_p, oid, class_oid, &copy_recdes, &scan_cache, COPY, NULL_CHN,
+				      HEAP_RECDES_CONSUME_RAW_BYTES);
 	  if (scan != S_SUCCESS)
 	    {
 	      goto error;
@@ -6827,7 +6902,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       scan_op_type = S_UPDATE;
     }
 
-  if (obj->operation != LC_FLUSH_DELETE)
+  /* OOS records are not heap records; their leading bytes are OOS_RECORD_HEADER, not a representation id. */
+  if (obj->operation != LC_FLUSH_DELETE && obj->operation != LC_FLUSH_INSERT_OOS)
     {
       last_repr_id = heap_get_class_repr_id (thread_p, &obj->class_oid);
       if (last_repr_id == 0)
@@ -6865,7 +6941,8 @@ locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, R
       assert (OID_ISNULL (&obj->oid) != true);
 
       scan =
-	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN);
+	heap_get_visible_version (thread_p, &obj->oid, &obj->class_oid, old_recdes, force_scancache, PEEK, NULL_CHN,
+				  HEAP_RECDES_CONSUME_RAW_BYTES);
 
       if (scan != S_SUCCESS)
 	{
@@ -6944,6 +7021,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
 
+  thread_p->oos_oids.clear ();
+
   /* need to start a topop to ensure the atomic operation. */
   error_code = xtran_server_start_topop (thread_p, &lsa);
   if (error_code != NO_ERROR)
@@ -7007,8 +7086,22 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	{
 	  has_index = LC_ONEOBJ_GET_INDEX_FLAG (obj);
 
+	  if (obj->operation != LC_FLUSH_INSERT_OOS
+	      && (LC_IS_FLUSH_INSERT (obj->operation) || LC_IS_FLUSH_UPDATE (obj->operation))
+	      && heap_recdes_contains_oos (&recdes))
+	    {
+	      error_code = locator_fixup_oos_oids_in_recdes (thread_p, &obj->class_oid, &recdes);
+	      if (error_code != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+	    }
+
 	  switch (obj->operation)
 	    {
+	    case LC_FLUSH_INSERT_OOS:
+	      error_code = locator_oos_insert_force (thread_p, &obj->class_oid, &recdes);
+	      break;
 	    case LC_FLUSH_INSERT:
 	    case LC_FLUSH_INSERT_PRUNE:
 	    case LC_FLUSH_INSERT_PRUNE_VERIFY:
@@ -7068,6 +7161,13 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       if (error_code != NO_ERROR)
 	{
+	  if (obj->operation == LC_FLUSH_INSERT_OOS)
+	    {
+	      /* One failed OOS item invalidates the pending OOS-plus-heap-row apply group. */
+	      thread_p->oos_oids.clear ();
+	      goto exit_on_error;
+	    }
+
 	  assert (er_errid () != NO_ERROR);
 	  locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
@@ -7081,6 +7181,11 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	}
       pr_clear_value (&key_value);
+
+      if (obj->operation != LC_FLUSH_INSERT_OOS)
+	{
+	  thread_p->oos_oids.clear ();
+	}
     }
 
   if (force_scancache != NULL)
@@ -7099,6 +7204,9 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
 exit_on_error:
   assert_release (error_code == ER_FAILED || error_code == er_errid ());
+
+  /* Never carry a partial replication-apply OID group beyond an aborted force area. */
+  thread_p->oos_oids.clear ();
 
   if (DB_IS_NULL (&key_value) == false)
     {
@@ -7503,7 +7611,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	  HEAP_GET_CONTEXT context;
 
 	  /* don't consider visiblity, just get the last version of the object */
-	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN);
+	  heap_init_get_context (thread_p, &context, oid, &class_oid, &copy_recdes, scan_cache, COPY, NULL_CHN,
+				 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  scan = heap_get_last_version (thread_p, &context);
 	  heap_clean_get_context (thread_p, &context);
 
@@ -7523,7 +7632,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	    }
 
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED);
+					      NULL_CHN, LOG_ERROR_IF_DELETED, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
@@ -8038,6 +8147,26 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
       if (need_replication && index->type == BTREE_PRIMARY_KEY && error_code == NO_ERROR
 	  && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
 	{
+	  if (heap_recdes_contains_oos (recdes))
+	    {
+	      // insert oos replication log
+	      for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+		{
+		  LOG_RCVINDEX oos_repl_rcvindex =
+		    OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+		  error_code = repl_log_insert (thread_p,
+						class_oid,
+						&thread_p->oos_oids[i],
+						LOG_REPLICATION_DATA,
+						oos_repl_rcvindex, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL);
+		  if (error_code != NO_ERROR)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      goto error;
+		    }
+		}
+	    }
+
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, inst_oid, datayn ? LOG_REPLICATION_DATA : LOG_REPLICATION_STATEMENT,
 			     is_insert ? RVREPL_DATA_INSERT : RVREPL_DATA_DELETE, key_dbvalue,
@@ -8771,6 +8900,8 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     {
       assert (repl_info != NULL);
 
+      bool free_old_key = false;
+
       if (repl_old_key == NULL)
 	{
 	  key_domain = NULL;
@@ -8800,22 +8931,61 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	       */
 	      repl_old_key->data.midxkey.domain = key_domain;
 	    }
-
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
-	  if (repl_old_key == &old_dbvalue)
-	    {
-	      pr_clear_value (&old_dbvalue);
-	    }
 	}
       else
 	{
-	  error_code =
-	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
-			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  free_old_key = true;
+	}
+
+      /* insert oos replication log */
+      if (heap_recdes_contains_oos (new_recdes))
+	{
+	  if (new_key == NULL)
+	    {
+	      db_make_null (&new_dbvalue);
+	      new_key =
+		heap_attrvalue_get_key (thread_p, pk_btid_index, new_attrinfo, new_recdes, &new_btid, &new_dbvalue,
+					aligned_newbuf, NULL, NULL, oid, false);
+	      if (new_key == NULL)
+		{
+		  error_code = ER_FAILED;
+		  goto error;
+		}
+	    }
+
+	  for (int i = 0; i < (int) thread_p->oos_oids.size (); i++)
+	    {
+	      LOG_RCVINDEX oos_repl_rcvindex =
+		OID_ISNULL (&thread_p->oos_oids[i]) ? RVREPL_DUMMY_OOS_RECORD : RVREPL_OOS_INSERT;
+	      error_code =
+		repl_log_insert (thread_p, class_oid, &thread_p->oos_oids[i], LOG_REPLICATION_DATA, oos_repl_rcvindex,
+				 new_key, REPL_INFO_TYPE_RBR_NORMAL);
+	      if (error_code != NO_ERROR)
+		{
+		  assert (er_errid () != NO_ERROR);
+		  goto error;
+		}
+	    }
+
+	  if (new_key == &new_dbvalue)
+	    {
+	      pr_clear_value (&new_dbvalue);
+	      new_key = NULL;
+	    }
+	}
+
+      error_code =
+	repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
+			 (REPL_INFO_TYPE) repl_info->repl_info_type);
+
+      if (free_old_key)
+	{
 	  pr_free_ext_value (repl_old_key);
 	  repl_old_key = NULL;
+	}
+      else if (repl_old_key == &old_dbvalue)
+	{
+	  pr_clear_value (&old_dbvalue);
 	}
     }
   else
@@ -8985,7 +9155,9 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	  dbvalue_ptr = NULL;
 	}
 
-      scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &copy_rec, &scan_cache, COPY);
+      scan =
+	heap_next (thread_p, hfid, class_oid, &inst_oid, &copy_rec, &scan_cache, COPY,
+		   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (scan != S_SUCCESS)
 	{
 	  if (scan != S_DOESNT_FIT)
@@ -9439,7 +9611,8 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
   inst_oid.pageid = NULL_PAGEID;
   inst_oid.slotid = NULL_SLOTID;
 
-  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &record, &scan_cache, COPY)) == S_SUCCESS)
+  while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &record, &scan_cache, COPY,
+			    HEAP_RECDES_DONT_CONSUME_RAW_BYTES)) == S_SUCCESS)
     {
       num_heap_oids++;
 
@@ -9893,7 +10066,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
       inst_oid.pageid = NULL_PAGEID;
       inst_oid.slotid = NULL_SLOTID;
 
-      while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache[j], PEEK)) == S_SUCCESS)
+      while ((scan = heap_next (thread_p, hfid, class_oid, &inst_oid, &peek, &scan_cache[j], PEEK,
+				HEAP_RECDES_DONT_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
 	  num_heap_oids++;
 
@@ -10606,7 +10780,8 @@ locator_check_all_entries_of_all_btrees (THREAD_ENTRY * thread_p, bool repair)
   while (isallvalid != DISK_ERROR)
     {
       copy_rec.data = NULL;
-      code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid, &copy_rec, &scan, COPY);
+      code = heap_next (thread_p, &root_hfid, oid_Root_class_oid, &oid, &copy_rec, &scan, COPY,
+			HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (code != S_SUCCESS)
 	{
 	  break;
@@ -11791,7 +11966,8 @@ xlocator_check_fk_validity (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid,
   oid.volid = hfid->vfid.volid;
 
   copy_recdes.data = NULL;
-  while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache, COPY) == S_SUCCESS)
+  while (heap_next (thread_p, hfid, NULL, &oid, &copy_recdes, &scan_cache, COPY, HEAP_RECDES_DONT_CONSUME_RAW_BYTES) ==
+	 S_SUCCESS)
     {
       key_val =
 	heap_attrinfo_generate_key (thread_p, n_attrs, attr_ids, NULL, &attr_info, &copy_recdes, &tmpval,
@@ -11856,9 +12032,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
   int round_length;		/* Length of object rounded to integer alignment */
   int copyarea_length;
   OID oid;
+  OID prev_oid;
   HEAP_SCANCACHE scan_cache;
   SCAN_CODE scan;
   int error_code = NO_ERROR;
+  bool retry_current_oid;
 
   if (fetch_area == NULL)
     {
@@ -11933,14 +12111,19 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
       obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (mobjs);
       mobjs->num_objs = 0;
       offset = 0;
+      retry_current_oid = false;
 
       while (true)
 	{
+	  COPY_OID (&prev_oid, &oid);
+
 	  if (instance_lock && (*instance_lock != NULL_LOCK))
 	    {
 	      int lock_result = 0;
 
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	      scan =
+		heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
 		  break;
@@ -11963,9 +12146,16 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		  continue;
 		}
 
-	      scan = heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN);
+	      scan =
+		heap_get_visible_version (thread_p, &oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN,
+					  HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
+		  if (scan == S_DOESNT_FIT)
+		    {
+		      retry_current_oid = true;
+		      break;
+		    }
 		  (*nfailed_instance_locks)++;
 		  continue;
 		}
@@ -11973,7 +12163,8 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	    }
 	  else
 	    {
-	      scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY);
+	      scan =
+		heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY, HEAP_RECDES_CONSUME_RAW_BYTES);
 	      if (scan != S_SUCCESS)
 		{
 		  break;
@@ -12003,6 +12194,12 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 	{
 	  break;
 	}
+
+      if (retry_current_oid)
+	{
+	  COPY_OID (&oid, &prev_oid);
+	}
+
       /*
        * The first object does not fit into given copy area
        * Get a larger area
@@ -12377,6 +12574,7 @@ locator_area_op_to_pruning_type (LC_COPYAREA_OPERATION op)
     case LC_FLUSH_INSERT:
     case LC_FLUSH_UPDATE:
     case LC_FLUSH_DELETE:
+    case LC_FLUSH_INSERT_OOS:
       return DB_NOT_PARTITIONED_CLASS;
 
     case LC_FLUSH_INSERT_PRUNE:
@@ -12863,8 +13061,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
 	      recdes.data = NULL;
 
-	      if (heap_get_visible_version (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN) !=
-		  S_SUCCESS)
+	      if (heap_get_visible_version
+		  (thread_p, &inst_oid, class_oid, &recdes, &scan_cache, COPY, NULL_CHN,
+		   HEAP_RECDES_CONSUME_RAW_BYTES) != S_SUCCESS)
 		{
 		  error = ER_FAILED;
 		  goto exit;
@@ -13112,6 +13311,7 @@ error:
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  *
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  */
@@ -13119,7 +13319,8 @@ SCAN_CODE
 locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid, OID * class_oid, RECDES * recdes,
 					     HEAP_SCANCACHE * scan_cache, int ispeeking, int old_chn,
 					     MVCC_REEV_DATA * mvcc_reev_data,
-					     NON_EXISTENT_HANDLING non_ex_handling_type)
+					     NON_EXISTENT_HANDLING non_ex_handling_type,
+					     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan = S_SUCCESS;
@@ -13151,7 +13352,8 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
 	  return S_ERROR;
 	}
     }
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13248,6 +13450,7 @@ exit:
  * op_type (in)	  : Requested type of operation.
  * lock_mode (in) : Lock type, see note.
  * ispeeking (in) : Peek record or copy.
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  *
  * Note: This function should be used when class_oid is unknown, which is required to decide lock_mode;
  *       When lock_mode is known, a more appropriate function is recommended.
@@ -13258,7 +13461,8 @@ exit:
  */
 SCAN_CODE
 locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
-		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode, int ispeeking, int chn)
+		    HEAP_SCANCACHE * scan_cache, SCAN_OPERATION_TYPE op_type, LOCK lock_mode, int ispeeking, int chn,
+		    HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   SCAN_CODE scan_code;
   OID class_oid_local = OID_INITIALIZER;
@@ -13284,7 +13488,8 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, chn,
+			 recdes_consumption_policy);
 
   /* get class_oid if it is unknown */
   if (OID_ISNULL (class_oid))
@@ -13366,11 +13571,13 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
+ * recdes_consumption_policy (in) : Whether the caller consumes the returned raw RECDES bytes.
  */
 SCAN_CODE
 locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
 			     HEAP_SCANCACHE * scan_cache, LOCK lock, int ispeeking, int old_chn,
-			     NON_EXISTENT_HANDLING non_ex_handling_type)
+			     NON_EXISTENT_HANDLING non_ex_handling_type,
+			     HEAP_RECDES_CONSUMPTION_POLICY recdes_consumption_policy)
 {
   HEAP_GET_CONTEXT context;
   SCAN_CODE scan_code;
@@ -13384,7 +13591,8 @@ locator_lock_and_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * cla
 	}
     }
 
-  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn);
+  heap_init_get_context (thread_p, &context, oid, class_oid, recdes, scan_cache, ispeeking, old_chn,
+			 recdes_consumption_policy);
   scan_code = locator_lock_and_get_object_internal (thread_p, &context, lock);
   heap_clean_get_context (thread_p, &context);
   return scan_code;
@@ -13618,7 +13826,9 @@ locator_mvcc_reeval_scan_filters (THREAD_ENTRY * thread_p, const OID * oid, HEAP
 	  goto end;
 	}
       scan_cache_inited = true;
-      scan_code = heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN);
+      scan_code =
+	heap_get_visible_version (thread_p, oid_inst, NULL, recdesp, &local_scan_cache, PEEK, NULL_CHN,
+				  HEAP_RECDES_CONSUME_RAW_BYTES);
       if (scan_code != S_SUCCESS)
 	{
 	  ev_res = V_ERROR;
@@ -13951,6 +14161,114 @@ xsynonym_remove_xasl_by_oid (THREAD_ENTRY * thread_p, OID * oidp)
 {
   xcache_remove_by_oid (thread_p, oidp);
 }
+
+static int
+locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+{
+  HEAP_CACHE_ATTRINFO attr_info;
+  OR_CLASSREP *classrep = NULL;
+  OR_ATTRIBUTE *attrepr = NULL;
+  OID oos_oid = oid_Null_oid;
+  OR_BUF buf = { NULL, NULL, NULL, NULL };
+  char *oid_ptr = NULL;
+  int offset_size = 0;
+  int offset = 0;
+  int oos_oid_count = 0;
+  int error = NO_ERROR;
+
+  if (thread_p->oos_oids.empty ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "missing OOS OID while applying replicated heap record");
+      return ER_HA_GENERIC_ERROR;
+    }
+
+  error = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  classrep = attr_info.last_classrepr;
+  offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+
+  for (int i = 0; i < classrep->n_attributes; i++)
+    {
+      attrepr = &classrep->attributes[i];
+
+      if (attrepr->is_fixed != 0)
+	{
+	  continue;
+	}
+
+      if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
+	{
+	  continue;
+	}
+
+      offset = 0;
+
+      switch (offset_size)
+	{
+	case OR_BYTE_SIZE:
+	  offset = OR_GET_BYTE (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							  attrepr->location, offset_size));
+	  break;
+
+	case OR_SHORT_SIZE:
+	  offset = OR_GET_SHORT (OR_VAR_TABLE_ELEMENT_PTR (OR_GET_OBJECT_VAR_TABLE (recdes->data),
+							   attrepr->location, offset_size));
+	  break;
+
+	default:
+	  assert_release (false);
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (!OR_IS_OOS (offset))
+	{
+	  continue;
+	}
+
+      if (oos_oid_count >= (int) thread_p->oos_oids.size ())
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+		  "not enough OOS OIDs while applying replicated heap record");
+	  error = ER_HA_GENERIC_ERROR;
+	  goto end;
+	}
+
+      oos_oid = thread_p->oos_oids[oos_oid_count];
+      oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location);
+
+      buf.ptr = oid_ptr;
+      buf.endptr = (char *) recdes->data + recdes->length;
+
+      or_put_oid (&buf, &oos_oid);
+
+      oos_oid_count++;
+    }
+
+  if (oos_oid_count != (int) thread_p->oos_oids.size ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "too many OOS OIDs while applying replicated heap record");
+      error = ER_HA_GENERIC_ERROR;
+    }
+
+end:
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error;
+}
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+int
+bridge_locator_fixup_oos_oids_in_recdes (THREAD_ENTRY * thread_p, const OID * class_oid, RECDES * recdes)
+{
+  return locator_fixup_oos_oids_in_recdes (thread_p, class_oid, recdes);
+}
+#endif
 
 /*
  * xlob_create_dir () - create lob dir

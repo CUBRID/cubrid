@@ -4715,7 +4715,8 @@ catalog_check_consistency (THREAD_ENTRY * thread_p)
 
   ct_valid = DISK_VALID;
 
-  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK,
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);
@@ -5026,7 +5027,8 @@ catalog_dump (THREAD_ENTRY * thread_p, FILE * fp, int dump_flag)
   class_oid.pageid = NULL_PAGEID;
   class_oid.slotid = NULL_SLOTID;
 
-  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK) == S_SUCCESS)
+  while (heap_next (thread_p, &root_hfid, oid_Root_class_oid, &class_oid, &peek, &scan_cache, PEEK,
+		    HEAP_RECDES_DONT_CONSUME_RAW_BYTES) == S_SUCCESS)
     {
 #if !defined(NDEBUG)
       classname = or_class_name (&peek);

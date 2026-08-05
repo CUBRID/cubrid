@@ -3728,7 +3728,7 @@ btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg)
       scan_result =
 	heap_next (thread_p, &sort_args->hfids[cur_class], &sort_args->class_ids[cur_class], &sort_args->cur_oid,
 		   &sort_args->in_recdes, &sort_args->hfscan_cache,
-		   sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY);
+		   sort_args->hfscan_cache.cache_last_fix_page ? PEEK : COPY, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
       switch (scan_result)
 	{
@@ -5374,7 +5374,8 @@ online_index_builder (THREAD_ENTRY * thread_p, BTID_INT * btid_int, HFID * hfids
 
       cur_record.data = NULL;
 
-      sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, COPY);
+      sc = heap_next (thread_p, &hfids[cur_class], &class_oids[cur_class], &cur_oid, &cur_record, scancache, COPY,
+		      HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
       if (sc != S_SUCCESS)
         {
           if (sc != S_END)

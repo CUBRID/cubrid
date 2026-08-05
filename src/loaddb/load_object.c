@@ -342,7 +342,7 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 	  or_put_offset_internal (buf, offset, offset_size);
 	  offset += len;
 	}
-      or_put_offset_internal (buf, offset, offset_size);
+      or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (offset), offset_size);
       buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 }

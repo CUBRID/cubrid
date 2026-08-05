@@ -6603,7 +6603,17 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
 	}
     }
 
-  if (attribute->flags & SM_ATTFLAG_INVISIBLE_COLUMN)
+#if !defined (NDEBUG)
+  if (attribute->flags & (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
+    {
+      assert (attribute->header.name_space != ID_CLASS_ATTRIBUTE);
+      assert (attribute->header.name_space != ID_SHARED_ATTRIBUTE);
+      assert ((attribute->flags & (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
+	      != (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE));
+    }
+#endif
+
+  if (attribute->flags & (SM_ATTFLAG_INVISIBLE_COLUMN | SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
     {
       SM_ATTRIBUTE *att;
       error =
@@ -6611,7 +6621,9 @@ classobj_copy_attribute_like (DB_CTMPL * ctemplate, SM_ATTRIBUTE * attribute, co
 			    attribute->header.name_space == ID_CLASS_ATTRIBUTE ? 1 : 0, &att);
       if (error == NO_ERROR)
 	{
-	  att->flags |= SM_ATTFLAG_INVISIBLE_COLUMN;
+	  att->flags |=
+	    (attribute->flags
+	     & (SM_ATTFLAG_INVISIBLE_COLUMN | SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE));
 	}
     }
 

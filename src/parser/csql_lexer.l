@@ -385,6 +385,8 @@ IDL       [a-zA-Z0-9_]
 									  return FIRST_VALUE; }
 [fF][oO][rR][cC][eE]							{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return FORCE; }
+[fF][oO][rR][cC][eE][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+									  return FORCE_OUTLINE; }
 [fF][oO][rR][eE][iI][gG][nN]						{ return FOREIGN; }
 [fF][oO][uU][nN][dD]							{ return FOUND; }
 [fF][rR][oO][mM]							{ return FROM; }
@@ -653,6 +655,8 @@ IDL       [a-zA-Z0-9_]
 [oO][nN][lL][iI][nN][eE]						{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return ONLINE; }
 [oO][nN][lL][yY]							{ return ONLY; }
+[oO][oO][sS]								{ csql_yylval.cptr = pt_makename(yytext);
+									  return OOS; }
 [oO][pP][eE][nN]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return OPEN; }
 [oO][pP][tT][iI][mM][iI][zZ][aA][tT][iI][oO][nN]			{ return OPTIMIZATION; }
@@ -698,6 +702,10 @@ IDL       [a-zA-Z0-9_]
 									  return PORT; }
 [pP][oO][sS][iI][tT][iI][oO][nN]					{ return POSITION; }
 [pP][rR][eE][cC][iI][sS][iI][oO][nN]					{ return PRECISION; }
+[pP][rR][eE][fF][eE][rR][_][iI][nN][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+										  return PREFER_INLINE; }
+[pP][rR][eE][fF][eE][rR][_][oO][uU][tT][lL][iI][nN][eE]			{ csql_yylval.cptr = pt_makename(yytext);
+										  return PREFER_OUTLINE; }
 [pP][rR][eE][pP][aA][rR][eE]						{ return PREPARE; }
 [pP][rR][eE][sS][eE][rR][vV][eE]					{ return PRESERVE; }
 [pP][rR][iI][mM][aA][rR][yY]						{ return PRIMARY; }
@@ -845,6 +853,8 @@ IDL       [a-zA-Z0-9_]
 									  return STDDEV_POP; }
 [sS][tT][dD][dD][eE][vV][_][sS][aA][mM][pP]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return STDDEV_SAMP; }
+[sS][tT][oO][rR][aA][gG][eE]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return STORAGE; }
 [sS][tT][rR][_][tT][oO][_][dD][aA][tT][eE]				{ csql_yylval.cptr = pt_makename(yytext);
 									  return STR_TO_DATE; }
 [sS][uU][bB][cC][lL][aA][sS][sS]					{ return SUBCLASS; }

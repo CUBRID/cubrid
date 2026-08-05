@@ -239,10 +239,12 @@ namespace cubload
 
     while (true)
       {
-	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK);
+	scan_code = heap_next (&thread_ref, &hfid, NULL, &inst_oid, &recdes, &scan_cache, PEEK,
+			       HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 	if (scan_code == S_SUCCESS)
 	  {
-	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache, PEEK, NULL_CHN);
+	    scan_code = heap_get_visible_version (&thread_ref, &inst_oid, oid_User_class_oid, &recdes, &scan_cache,
+						  PEEK, NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
 	    if (scan_code == S_SNAPSHOT_NOT_SATISFIED || scan_code == S_DOESNT_EXIST)
 	      {
 		continue;
@@ -712,6 +714,12 @@ namespace cubload
 	if (!m_error_handler.current_line_has_error ())
 	  {
 	    m_recdes_collected.push_back (std::move (new_recdes));
+
+	    if (!HA_DISABLED () && heap_recdes_contains_oos (&m_recdes_collected.back ().get_recdes ()))
+	      {
+		/* OOS replication state is thread/transaction-local and belongs to the just-transformed record. */
+		flush_records ();
+	      }
 	  }
 	else
 	  {
@@ -788,6 +796,7 @@ namespace cubload
 		  }
 
 		// Error was filtered so we can continue.
+		m_error_handler.set_error_on_current_line (false);
 		continue;
 	      }
 
@@ -795,6 +804,7 @@ namespace cubload
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    ++m_rows;
 	  }
+	m_recdes_collected.clear ();
       }
     else
       {
@@ -813,6 +823,7 @@ namespace cubload
 	  {
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    m_rows += m_recdes_collected.size ();
+	    m_recdes_collected.clear ();
 	  }
       }
   }

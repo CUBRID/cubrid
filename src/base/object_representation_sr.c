@@ -2517,9 +2517,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
-      att->is_autoincrement = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
-      att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
-      att->is_invisible = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+      int attribute_flags = OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET);
+      att->is_autoincrement = (attribute_flags & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
+      att->is_notnull = (attribute_flags & SM_ATTFLAG_NON_NULL) ? 1 : 0;
+      att->is_invisible = (attribute_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+      assert ((attribute_flags & (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
+	      != (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE));
+      if (attribute_flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE;
+	}
+      else if (attribute_flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE;
+	}
+      else
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_DEFAULT;
+	}
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -4301,8 +4316,8 @@ or_mvcc_set_header (RECDES * record, MVCC_REC_HEADER * mvcc_rec_header)
 
   mvcc_old_flag = (char) ((repid_and_flag_bits >> OR_MVCC_FLAG_SHIFT_BITS) & OR_MVCC_FLAG_MASK);
 
-  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag];
-  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag];
+  old_mvcc_size = mvcc_header_size_lookup[mvcc_old_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
+  new_mvcc_size = mvcc_header_size_lookup[mvcc_rec_header->mvcc_flag & OR_MVCC_HEADER_SIZE_LOOKUP_MASK];
   if (old_mvcc_size != new_mvcc_size)
     {
       /* resize MVCC info inside recdes */

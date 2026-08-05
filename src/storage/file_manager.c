@@ -1428,6 +1428,11 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
 
   switch (fhead->type)
     {
+    case FILE_OOS:
+      file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap_oos.class_oid);
+      fprintf (fp, ", OOS for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_oos.hfid));
+      break;
+
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap.class_oid);
@@ -3054,6 +3059,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "QUERY_AREA";
     case FILE_TEMP:
       return "TEMPORARILY";
+    case FILE_OOS:
+      return "OUT_OF_LINE_OVERFLOW_STORAGE";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
@@ -3438,7 +3445,7 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* decide on what page to use as file header page (which is going to decide the VFID also). */
 #if defined (SERVER_MODE)
-  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS)
+  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_OOS)
     {
       /* we need to consider dropped files in vacuum's list. If we create a file with a duplicate VFID, we can run
        * into problems. */
@@ -10859,14 +10866,16 @@ exit:
 #endif /* SA_MODE */
 
 /*
- * file_tracker_get_and_protect () - get a file from tracker. if we want to get b-tree or heap files, we must first
- *                                   protect them by locking class.
+ * file_tracker_get_and_protect () - get a file from tracker. mutable files owned by a class (FILE_HEAP,
+ *                                   FILE_HEAP_REUSE_SLOTS, FILE_MULTIPAGE_OBJECT_HEAP, FILE_BTREE,
+ *                                   FILE_BTREE_OVERFLOW_KEY and FILE_OOS) can be destroyed together with their class
+ *                                   at run-time, so they must first be protected by locking their class.
  *
  * return            : error code
  * thread_p (in)     : thread entry
  * desired_type (in) : desired file type. FILE_UNKNOWN_TYPE for any type.
  * item (in)         : tracker item
- * class_oid (out)   : output locked class OID (for b-tree and heap). NULL OID if no class is locked.
+ * class_oid (out)   : output locked class OID. NULL OID if no class is locked.
  * stop (out)        : output true when item is accepted
  */
 STATIC_INLINE int
@@ -10883,9 +10892,10 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
   /* how it works:
    * this is part of the tracker iterate without holding latch on tracker during the entire iteration. however, it can
    * only work if the files processed outside latch are protected from being destroyed. otherwise, resuming is
-   * impossible. most file types are not mutable, so they don't need protection. however, for b-tree and heap files we
-   * need to read class OID from descriptor and try to lock it (conditionally!). this is a best-effort approach, if the
-   * locking fails, we just skip the file. */
+   * impossible. most file types are not mutable, so they don't need protection. however, class-owned files (heap,
+   * heap overflow, b-tree, b-tree overflow key and OOS files) can be destroyed together with their class, so for them
+   * we read the class OID from the file descriptor and try to lock it (conditionally!). this is a best-effort
+   * approach; if locking fails, we just skip the file. */
 
   /* check file type is right */
   switch (desired_type)
@@ -10902,6 +10912,10 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	  return NO_ERROR;
 	}
       break;
+    case FILE_OOS:
+      /* iterating OOS files is supported now that FILE_OOS descriptors store their owner class. accept only an exact
+       * type match, same as the default case below. */
+      /* FALLTHRU */
     default:
       /* accept the exact file type */
       if ((FILE_TYPE) item->type != desired_type)
@@ -10913,7 +10927,8 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     }
 
   /* now we need to make sure the file is protected. most types are not mutable (cannot be created or destroyed during
-   * run-time), but b-tree and heap files must be protected by lock. */
+   * run-time), but the class-owned file types listed below can be destroyed with their class, so they must be
+   * protected by lock. */
   switch ((FILE_TYPE) item->type)
     {
     case FILE_HEAP:
@@ -10929,6 +10944,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_BTREE:
     case FILE_MULTIPAGE_OBJECT_HEAP:
     case FILE_BTREE_OVERFLOW_KEY:
+    case FILE_OOS:
       /* we need to protect with lock. fall through */
       break;
     default:
@@ -10954,6 +10970,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     {
     case FILE_BTREE:
       *class_oid = fhead->descriptor.btree.class_oid;
+      break;
+    case FILE_OOS:
+      *class_oid = fhead->descriptor.heap_oos.class_oid;
       break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
@@ -11003,7 +11022,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
  * thread_p (in)      : thread entry
  * desired_ftype (in) : desired type
  * vfid (in)          : file identifier and iterator cursor. iterate must start with a NULL identifier
- * class_oid (in)     : locked class OID (used to protect b-tree and heap files)
+ * class_oid (in)     : locked class OID (used to protect class-owned files: heap, b-tree and OOS files)
  */
 int
 file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_ftype, VFID * vfid, OID * class_oid)
@@ -11026,8 +11045,8 @@ file_tracker_interruptable_iterate (THREAD_ENTRY * thread_p, FILE_TYPE desired_f
   assert (class_oid != NULL);
 
   /* how it works:
-   * start from given VFID and get a new file of desired type. for b-tree and heap files, we also need to lock their
-   * class OID in order to protect them from being removed. otherwise we could not resume in next iteration. */
+   * start from given VFID and get a new file of desired type. class-owned files (heap, b-tree and OOS files) also
+   * require a class lock to protect them from being removed; otherwise iteration could not safely resume. */
 
   page_track_head = pgbuf_fix (thread_p, &file_Tracker_vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
   if (page_track_head == NULL)
@@ -11337,6 +11356,9 @@ file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
 	case FILE_MULTIPAGE_OBJECT_HEAP:
 	  class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
 	  break;
+	case FILE_OOS:
+	  class_oid_p = &fhead->descriptor.heap_oos.class_oid;
+	  break;
 	case FILE_BTREE:
 	  class_oid_p = &fhead->descriptor.btree.class_oid;
 	  break;
@@ -11510,6 +11532,9 @@ file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_o
     case FILE_MULTIPAGE_OBJECT_HEAP:
       class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
       break;
+    case FILE_OOS:
+      class_oid_p = &fhead->descriptor.heap_oos.class_oid;
+      break;
     case FILE_BTREE:
       class_oid_p = &fhead->descriptor.btree.class_oid;
       break;
@@ -11605,6 +11630,11 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
 	++(*heap);
 	break;
       case FILE_MULTIPAGE_OBJECT_HEAP:
+	++(*heap_ovf);
+	break;
+      case FILE_OOS:
+	/* OOS is per-heap overflow storage; count it as a heap overflow file to keep the four-counter output of
+	 * cleanfiledb stable. */
 	++(*heap_ovf);
 	break;
       case FILE_BTREE:
@@ -12210,6 +12240,11 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       /* index file */
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
+    case FILE_OOS:
+      /* OOS is table-owned storage, but FILE_OOS has no separate SPACEDB category. Fold it into heap totals to keep
+       * the spacedb wire/output format stable; a dedicated OOS line requires a separate output/protocol change. */
+      spacedb_ftype = SPACEDB_HEAP_FILE;
+      break;
     case FILE_HEAP:
     case FILE_HEAP_REUSE_SLOTS:
     case FILE_MULTIPAGE_OBJECT_HEAP:
@@ -12430,6 +12465,28 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
     }
+
+  /* apply to OOS file (if it has been lazily created already).
+   * Lazy creation that happens after this point applies TDE inline in
+   * heap_oos_find_vfid (docreate=true branch). */
+  {
+    VFID oos_vfid;
+    VFID_SET_NULL (&oos_vfid);
+    if (!heap_oos_find_vfid (thread_p, &hfid, &oos_vfid, false))
+      {
+	/* genuine failure reading the heap header, not "no OOS file" */
+	ASSERT_ERROR_AND_SET (error_code);
+	goto exit;
+      }
+    if (!VFID_ISNULL (&oos_vfid))
+      {
+	error_code = file_apply_tde_algorithm (thread_p, &oos_vfid, tde_algo);
+	if (error_code != NO_ERROR)
+	  {
+	    goto exit;
+	  }
+      }
+  }
 
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
   if (or_repr == NULL)

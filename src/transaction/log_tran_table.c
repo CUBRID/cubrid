@@ -1591,6 +1591,8 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->fl_mark_repl_recidx = -1;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
   tdes->query_start_time = 0;
@@ -1679,6 +1681,8 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->repl_records = NULL;
   LSA_SET_NULL (&tdes->repl_insert_lsa);
   LSA_SET_NULL (&tdes->repl_update_lsa);
+  tdes->oos_insert_lsa_queue.clear ();
+  tdes->oos_suppress_insert_lsa_queueing = false;
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();

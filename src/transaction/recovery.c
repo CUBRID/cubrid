@@ -33,6 +33,7 @@
 #include "file_manager.h"
 #include "locator_sr.h"
 #include "log_manager.h"
+#include "oos_file.hpp"
 #include "overflow_file.h"
 #include "replication.h"
 #include "system_catalog.h"
@@ -859,6 +860,52 @@ struct rvfun RV_fun[] = {
    heap_rv_redo_mark_page_in_heap,
    NULL,
    NULL},
+  {RVOOS_INSERT,
+   "RVOOS_INSERT",
+   oos_rv_redo_delete,
+   oos_rv_redo_insert,
+   NULL,
+   NULL},
+  {RVOOS_DELETE,
+   "RVOOS_DELETE",
+   oos_rv_redo_insert,
+   oos_rv_redo_delete,
+   NULL,
+   NULL},
+  {RVREPL_OOS_INSERT,
+   "RVREPL_OOS_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  {RVREPL_OOS_DELETE,
+   "RVREPL_OOS_DELETE",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM; kept as a no-op stub so the positionally
+   * indexed RV_fun[] stays contiguous. See recovery.h for the matching enum-side TODO. */
+  {RVOOS_NOTIFY_VACUUM,
+   "RVOOS_NOTIFY_VACUUM",
+   vacuum_rv_es_nop,
+   vacuum_rv_es_nop,
+   NULL, NULL},
+  {RVREPL_DUMMY_OOS_RECORD,
+   "RVREPL_DUMMY_OOS_RECORD",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump},
+  /* Crash recovery replays the forward REC_NEWHOME delete identically to RVHF_DELETE; the OOS
+   * reclaim is an additional vacuum-time action driven off the undo image, not part of redo/undo.
+   * Handlers MUST mirror RVHF_DELETE's (heap_rv_undo_delete / heap_rv_redo_delete). */
+  {RVHF_DELETE_NEWHOME_NOTIFY_VACUUM,
+   "RVHF_DELETE_NEWHOME_NOTIFY_VACUUM",
+   heap_rv_undo_delete,
+   heap_rv_redo_delete,
+   log_rv_dump_hexa,
+   log_rv_dump_hexa}
 };
 
 /*

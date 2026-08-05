@@ -166,6 +166,7 @@ static void pt_fill_conn_info_container(PARSER_CONTEXT *parser, int buffer_pos, 
 #define COLUMN_CONSTRAINT_COMMENT       (0x80)
 #define COLUMN_CONSTRAINT_ON_UPDATE     (0x100)
 #define COLUMN_CONSTRAINT_INVISIBLE	(0x200)
+#define COLUMN_CONSTRAINT_STORAGE	(0x400)
 
 #define STACK_SIZE	128
 
@@ -1559,6 +1560,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> EXPLAIN
 %token <cptr> FIRST_VALUE
 %token <cptr> FORCE
+%token <cptr> FORCE_OUTLINE
 %token <cptr> FULLSCAN
 %token <cptr> GE_INF_
 %token <cptr> GE_LE_
@@ -1584,6 +1586,9 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> INSTANCES
 %token <cptr> INVALIDATE
 %token <cptr> INVISIBLE
+%token <cptr> PREFER_INLINE
+%token <cptr> PREFER_OUTLINE
+%token <cptr> STORAGE
 %token <cptr> ISNULL
 %token <cptr> KEYLIMIT
 %token <cptr> KEYS
@@ -1641,6 +1646,7 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
 %token <cptr> NULLS
 %token <cptr> OFFSET
 %token <cptr> ONLINE
+%token <cptr> OOS
 %token <cptr> OPEN
 %token <cptr> ORDINALITY
 %token <cptr> OVER
@@ -7525,6 +7531,14 @@ show_type_id
 		{{
 			$$ = SHOWSTMT_ALL_HEAP_CAPACITY;
 		}}
+	| HEAP OOS
+		{{
+			$$ = SHOWSTMT_HEAP_OOS;
+		}}
+	| ALL HEAP OOS
+		{{
+			$$ = SHOWSTMT_ALL_HEAP_OOS;
+		}}
 	| ALL INDEXES HEADER
 		{{
 			$$ = SHOWSTMT_ALL_INDEXES_HEADER;
@@ -9985,6 +9999,15 @@ attr_def_one
 			      {
 			        node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE_UNSET;
 			      }
+			    if ((mask & COLUMN_CONSTRAINT_STORAGE)
+				&& (node->info.attr_def.attr_type == PT_SHARED
+				    || node->info.attr_def.attr_type == PT_META_ATTR))
+			      {
+				PT_ERRORmf (this_parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+					    MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE,
+					    node->info.attr_def.attr_name->info.name.original);
+				node->info.attr_def.attr_storage = PT_ATTR_STORAGE_UNSET;
+			      }
 			  }
 
 			$$ = node;
@@ -10121,6 +10144,10 @@ column_constraint_and_comment_def
 	| column_invisible_def
 		{{
 			$$ = COLUMN_CONSTRAINT_INVISIBLE;
+		}}
+	| column_storage_def
+		{{
+			$$ = COLUMN_CONSTRAINT_STORAGE;
 		}}
 	;
 
@@ -10501,6 +10528,29 @@ column_invisible_def
 		{{
 			PT_NODE* attr_node = parser_get_attr_def_one ();
 			attr_node->info.attr_def.attr_invisible = PT_ATTR_INVISIBLE;
+		}}
+	;
+
+column_storage_def
+	: STORAGE PREFER_INLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_INLINE;
+		}}
+	| STORAGE FORCE_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_FORCE_OUTLINE;
+		}}
+	| STORAGE DEFAULT
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_DEFAULT;
+		}}
+	| STORAGE PREFER_OUTLINE
+		{{
+			PT_NODE* attr_node = parser_get_attr_def_one ();
+			attr_node->info.attr_def.attr_storage = PT_ATTR_STORAGE_PREFER_OUTLINE;
 		}}
 	;
 
@@ -20599,6 +20649,7 @@ identifier
 	| ERROR_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| EXPLAIN                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FIRST_VALUE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| FORCE_OUTLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| FULLSCAN               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_INF_                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| GE_LE_                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20680,6 +20731,7 @@ identifier
 	| NULLS                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OFFSET                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ONLINE                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| OOS                    {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OPEN                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| ORDINALITY             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| OVER                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20695,6 +20747,8 @@ identifier
 	| PERCENT_RANK           {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PLCSQL                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PORT                   {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PREFER_INLINE          {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| PREFER_OUTLINE         {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRINT                  {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRIORITY               {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| PRIVATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
@@ -20736,6 +20790,7 @@ identifier
 	| STDDEV                 {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_POP             {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STDDEV_SAMP            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
+	| STORAGE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| STR_TO_DATE            {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SUBDATE                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
 	| SYNONYM                {{ SET_CPTR_2_PTNAME($$, $1, @1, @$.buffer_pos);  }}
