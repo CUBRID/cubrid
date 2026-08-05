@@ -2140,7 +2140,18 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		{
 		  return err;
 		}
-	      /* the kept tree could not be re-executed (e.g. a schema change); discard it
+	      if (err != ER_QPROC_XASLNODE_RECOMPILE_REQUESTED && err != ER_QPROC_INVALID_XASLNODE
+		  && err != ER_QPROC_RESULT_CACHE_INVALID)
+		{
+		  /* a genuine execution error (interrupt, timeout, runtime failure): report
+		   * it instead of silently re-running the statement -- a cancelled query
+		   * must not complete on a second pass, side-effecting expressions
+		   * (serials, methods) must not evaluate twice, and the first error must
+		   * not be masked by a retry (same whitelist as the prepared-statement
+		   * retry below) */
+		  return err;
+		}
+	      /* the kept tree is stale (schema change / cache invalidation); discard it
 	       * and fall back to a fresh compilation of the stored statement text */
 	      db_prepared_tree_remove (session, statement->info.execute.name->info.name.original);
 	      er_clear ();
@@ -3423,6 +3434,7 @@ static int
 do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int err;
+  unsigned int save_recompile = statement->flag.recompile;
 
   if (statement->xasl_id != NULL)
     {
@@ -3435,6 +3447,11 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
   parser->query_id = NULL_QUERY_ID;
 
   err = do_prepare_statement (parser, statement);
+
+  /* the forced-recompile intent is scoped to this replan; restore the flag so later
+   * re-prepares of this kept node (e.g. the XASLNODE_RECOMPILE_REQUESTED retry) can
+   * consult the cache again */
+  statement->flag.recompile = save_recompile;
 
   return err;
 }
