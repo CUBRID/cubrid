@@ -4222,8 +4222,6 @@ logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
 {
   int error_code;
 
-  assert (MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid));
-
   if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
     {
       error_code = er_errid ();
