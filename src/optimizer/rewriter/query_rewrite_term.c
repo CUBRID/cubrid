@@ -990,6 +990,16 @@ qo_reduce_equality_terms_post (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 
   if (node->node_type == PT_SELECT)
     {
+      if (!node->flag.done_reduce_equality_terms && node->info.query.q.select.connect_by == NULL)
+	{
+	  int continue_innerjoin;
+
+	  qo_move_on_of_explicit_join_to_where (parser, &node->info.query.q.select.from,
+						&node->info.query.q.select.where);
+	  node->info.query.q.select.where = pt_cnf (parser, node->info.query.q.select.where);
+	  qo_rewrite_innerjoin (parser, node, NULL, &continue_innerjoin);
+	}
+
       wherep = &node->info.query.q.select.where;
       QO_CHECK_AND_REDUCE_EQUALITY_TERMS (parser, node, wherep);
     }
