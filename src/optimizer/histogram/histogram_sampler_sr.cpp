@@ -656,12 +656,18 @@ namespace
   struct pgbuf_no_boost_guard
   {
     THREAD_ENTRY *m_thread;
+    bool m_prev = false;
 
     explicit pgbuf_no_boost_guard (THREAD_ENTRY *thread_p)
       : m_thread (thread_p)
     {
       if (m_thread != NULL)
 	{
+	  /* save/restore instead of set/clear: the multi-column full scan holds a
+	   * function-scope guard while each ftab partition scan constructs its own --
+	   * an unconditional clear in the inner destructor would re-enable boosting
+	   * for the remainder of the outer scan */
+	  m_prev = m_thread->pgbuf_no_boost_scan;
 	  m_thread->pgbuf_no_boost_scan = true;
 	}
     }
@@ -669,7 +675,7 @@ namespace
     {
       if (m_thread != NULL)
 	{
-	  m_thread->pgbuf_no_boost_scan = false;
+	  m_thread->pgbuf_no_boost_scan = m_prev;
 	}
     }
   };
@@ -983,6 +989,13 @@ cleanup:
       }
     if (scan_hint > mem_max_degree)
       {
+	/* leave a diagnosable trace: a wide table silently losing collection parallelism to
+	 * the memory budget is otherwise indistinguishable from "the table was too small" */
+	er_log_debug (ARG_FILE_LINE,
+		      "histogram collection: parallel degree capped by memory budget: "
+		      "attrs=%d, per_worker_bytes=%lld, budget=%lld, hint %d -> %d\n",
+		      attr_cnt, (long long) per_worker_bytes, (long long) HISTOGRAM_COLLECT_MEM_BUDGET,
+		      scan_hint, mem_max_degree);
 	scan_hint = mem_max_degree;
       }
     int degree =
@@ -990,6 +1003,11 @@ cleanup:
 		scan_hint);
     if (degree < 2)
       {
+	if (mem_max_degree < 2)
+	  {
+	    er_log_debug (ARG_FILE_LINE,
+			  "histogram collection: serial fallback forced by memory budget (attrs=%d)\n", attr_cnt);
+	  }
 	return 0;		/* not worth it / parallelism disabled -> serial */
       }
 
@@ -2063,20 +2081,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency, char **histogram_blob,
     int *blob_length, INT64 *out_ndv, INT64 *out_total_rows)
 {
-  HEAP_SCANCACHE scan_cache;
-  HEAP_CACHE_ATTRINFO attr_info;
-  RECDES recdes;
-  OID inst_oid;
-  OID scan_class_oid;
-  SCAN_CODE sc;
   int error = NO_ERROR;
   int i;
-  bool scancache_inited = false;
-  bool attrinfo_inited = false;
-  PAGEID cur_pageid = NULL_PAGEID;
-  short cur_volid = -1;
-  bool cur_page_accepted = false;
-  bool dummy_continue_checking = true;
   std::int64_t serial_pages_seen = 0;
   std::int64_t serial_pages_kept = 0;
   std::int64_t total_rows = 0;
@@ -2290,14 +2296,6 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   error = NO_ERROR;
 
 cleanup:
-  if (attrinfo_inited)
-    {
-      heap_attrinfo_end (thread_p, &attr_info);
-    }
-  if (scancache_inited)
-    {
-      (void) heap_scancache_end (thread_p, &scan_cache);
-    }
   for (i = 0; i < attr_cnt; i++)
     {
       delete collectors[i];
