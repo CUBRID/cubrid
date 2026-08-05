@@ -33,16 +33,16 @@ package com.cubrid.jsp.classloader;
 
 import java.nio.file.attribute.FileTime;
 
-public class ContextClassLoader extends BaseClassLoader {
+public class FileClassLoaderDynamic extends FileClassLoader {
 
     public final FileTime lastModifiedTimeOfDynamicPath;
 
-    public ContextClassLoader(FileTime lastModifiedTime) {
-        super(ClassPathManager.getDynamicPath(), ServerClassLoader.getInstance());
+    public FileClassLoaderDynamic(FileTime lastModifiedTime) {
+        super(ClassPathHelper.getDynamicPath(), FileClassLoaderStatic.getInstance());
         this.lastModifiedTimeOfDynamicPath = lastModifiedTime;
     }
 
-    public ContextClassLoader() {
-        this(ClassPathManager.getLastModifiedTimeOfDynamicPath());
+    public FileClassLoaderDynamic() {
+        this(ClassPathHelper.getLastModifiedTimeOfDynamicPath());
     }
 }

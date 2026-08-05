@@ -98,7 +98,7 @@ public class StoredProcedure {
                 break;
 
             case LANG_JAVASP:
-                c = ctx.getOldClassLoader().loadClass(mainClassName);
+                c = ctx.getFileClassLoader().loadClass(mainClassName);
                 break;
 
             default:

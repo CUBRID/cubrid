@@ -33,59 +33,44 @@ package com.cubrid.jsp.classloader;
 
 import com.cubrid.jsp.Server;
 import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.attribute.FileTime;
+import java.util.stream.Stream;
 
-public class ClassPathManager {
-    private static Path dbPath = null;
-    private static Path staticPath = null;
-    private static Path dynamicPath = null;
+public abstract class FileClassLoader extends URLClassLoader {
 
-    private static Path getDbPath() {
-        if (dbPath == null) {
-            dbPath = Paths.get(Server.getServerConfig().getDatabasePath());
-            assert dbPath.toFile().exists();
-        }
-        return dbPath;
+    public FileClassLoader(Path path, ClassLoader parent) {
+        super(new URL[0], parent);
+        assert parent != null;
+        init(path);
     }
 
-    public static Path getDynamicPath() {
-        if (dynamicPath == null) {
-            dynamicPath = getDbPath().resolve("java/");
-            createDirIfNotExists(dynamicPath);
-        }
-        return dynamicPath;
-    }
-
-    public static Path getStaticPath() {
-        if (staticPath == null) {
-            staticPath = getDbPath().resolve("java_static/");
-            createDirIfNotExists(staticPath);
-        }
-        return staticPath;
-    }
-
-    public static FileTime getLastModifiedTimeOfDynamicPath() {
-        FileTime lastModifiedTime;
+    private void init(Path path) {
         try {
-            lastModifiedTime = Files.getLastModifiedTime(getDynamicPath());
-        } catch (IOException e) {
+            addURL(path.toUri().toURL());
+            initJar(path);
+        } catch (Exception e) {
             Server.log(e);
-            return null;
         }
-        return lastModifiedTime;
     }
 
-    private static void createDirIfNotExists(Path path) {
-        if (path.toFile().exists() == false) {
-            try {
-                Files.createDirectories(path);
-            } catch (IOException e) {
-                Server.log(e);
-                System.exit(1);
-            }
+    private void initJar(Path path) throws IOException {
+        try (Stream<Path> files = Files.list(path)) {
+            files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
+                    .forEach(
+                            jar -> {
+                                try {
+                                    addURL(jar.toUri().toURL());
+                                } catch (MalformedURLException e) {
+                                    Server.log(e);
+                                }
+                            });
+        } catch (NoSuchFileException e) {
+            Server.log(e);
         }
     }
 }

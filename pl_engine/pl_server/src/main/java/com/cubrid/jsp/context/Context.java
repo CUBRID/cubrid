@@ -36,8 +36,8 @@ import com.cubrid.jsp.Server;
 import com.cubrid.jsp.ServerConfig;
 import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.classloader.CatalogClassLoaderRelay;
-import com.cubrid.jsp.classloader.ClassPathManager;
-import com.cubrid.jsp.classloader.ContextClassLoader;
+import com.cubrid.jsp.classloader.ClassPathHelper;
+import com.cubrid.jsp.classloader.FileClassLoaderDynamic;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
@@ -69,7 +69,7 @@ public class Context {
 
     // dynamic classLoader for a session
     private CatalogClassLoaderRelay catalogClassLoaderRelay = null;
-    private ContextClassLoader oldClassLoader = null; // file
+    private FileClassLoaderDynamic fileClassLoader = null; // file
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
     private boolean transactionControl = false;
@@ -134,16 +134,16 @@ public class Context {
     public void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
-            oldClassLoader = new ContextClassLoader();
+            fileClassLoader = new FileClassLoaderDynamic();
         } else if (tranactionId != tid) {
-            assert oldClassLoader != null;
+            assert fileClassLoader != null;
             FileTime lastModifiedTimeOfDynamicPath =
-                    ClassPathManager.getLastModifiedTimeOfDynamicPath();
-            if (oldClassLoader.lastModifiedTimeOfDynamicPath.compareTo(
+                    ClassPathHelper.getLastModifiedTimeOfDynamicPath();
+            if (fileClassLoader.lastModifiedTimeOfDynamicPath.compareTo(
                             lastModifiedTimeOfDynamicPath)
                     != 0) {
                 // re-cretae dynamic class loader
-                oldClassLoader = new ContextClassLoader(lastModifiedTimeOfDynamicPath);
+                fileClassLoader = new FileClassLoaderDynamic(lastModifiedTimeOfDynamicPath);
             }
 
             if (connection != null) {
@@ -171,8 +171,8 @@ public class Context {
             catalogClassLoaderRelay = null;
         }
 
-        if (oldClassLoader != null) {
-            oldClassLoader = null;
+        if (fileClassLoader != null) {
+            fileClassLoader = null;
         }
 
         if (messageBuffer != null) {
@@ -195,12 +195,12 @@ public class Context {
         return catalogClassLoaderRelay;
     }
 
-    public ClassLoader getOldClassLoader() {
-        if (oldClassLoader == null) {
-            oldClassLoader = new ContextClassLoader();
+    public ClassLoader getFileClassLoader() {
+        if (fileClassLoader == null) {
+            fileClassLoader = new FileClassLoaderDynamic();
         }
 
-        return oldClassLoader;
+        return fileClassLoader;
     }
 
     public void setTransactionControl(boolean tc) {

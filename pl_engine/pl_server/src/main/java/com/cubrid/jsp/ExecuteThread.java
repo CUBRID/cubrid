@@ -31,7 +31,7 @@
 
 package com.cubrid.jsp;
 
-import com.cubrid.jsp.classloader.ClassPathManager;
+import com.cubrid.jsp.classloader.ClassPathHelper;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
 import com.cubrid.jsp.code.SourceCode;
@@ -432,7 +432,7 @@ public class ExecuteThread extends Thread {
                 // write to persistent
                 if (mode == 0) {
                     Path jarPath =
-                            ClassPathManager.getDynamicPath().resolve(info.className + ".jar");
+                            ClassPathHelper.getDynamicPath().resolve(info.className + ".jar");
                     OutputStream jarStream = Files.newOutputStream(jarPath);
                     writeJar(codeSet, jarStream);
                     data = Files.readAllBytes(jarPath);

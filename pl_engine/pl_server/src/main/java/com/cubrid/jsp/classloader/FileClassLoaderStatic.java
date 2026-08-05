@@ -31,46 +31,18 @@
 
 package com.cubrid.jsp.classloader;
 
-import com.cubrid.jsp.Server;
-import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URL;
-import java.net.URLClassLoader;
-import java.nio.file.Files;
-import java.nio.file.NoSuchFileException;
-import java.nio.file.Path;
-import java.util.stream.Stream;
+public class FileClassLoaderStatic extends FileClassLoader {
 
-public abstract class BaseClassLoader extends URLClassLoader {
-
-    public BaseClassLoader(Path path, ClassLoader parent) {
-        super(new URL[0], parent);
-        assert parent != null;
-        init(path);
+    // singleton
+    private static class LazyHolder {
+        private static final FileClassLoaderStatic INSTANCE = new FileClassLoaderStatic();
     }
 
-    private void init(Path path) {
-        try {
-            addURL(path.toUri().toURL());
-            initJar(path);
-        } catch (Exception e) {
-            Server.log(e);
-        }
+    public static FileClassLoaderStatic getInstance() {
+        return LazyHolder.INSTANCE;
     }
 
-    private void initJar(Path path) throws IOException {
-        try (Stream<Path> files = Files.list(path)) {
-            files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
-                    .forEach(
-                            jar -> {
-                                try {
-                                    addURL(jar.toUri().toURL());
-                                } catch (MalformedURLException e) {
-                                    Server.log(e);
-                                }
-                            });
-        } catch (NoSuchFileException e) {
-            Server.log(e);
-        }
+    private FileClassLoaderStatic() {
+        super(ClassPathHelper.getStaticPath(), getSystemClassLoader());
     }
 }
