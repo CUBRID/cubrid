@@ -1479,7 +1479,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1377 Last Error
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
+
+1378 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL
@@ -2280,6 +2282,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger
