@@ -454,6 +454,9 @@ typedef enum
   PSTAT_HEAP_VACUUM_EXECUTE,
   PSTAT_HEAP_VACUUM_LOG,
 
+  /* OOS sector-bitmap enumeration. */
+  PSTAT_OOS_NUM_BITMAP_SNAPSHOT_SKIPS,
+
   /* B-tree ops detailed statistics. */
   PSTAT_BT_FIX_OVF_OIDS,
   PSTAT_BT_UNIQUE_RLOCKS,
