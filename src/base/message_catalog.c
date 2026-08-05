@@ -46,6 +46,9 @@
 #include <string.h>
 #include <limits.h>
 #include <stdio.h>
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "porting.h"
 
@@ -496,7 +499,6 @@ static struct msgcat_def msgcat_System[] = {
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 // To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
 // In addition, msgcat_init() and msgcat_final() must not be called concurrently in a multi-thread environment
-#include <mutex>
 static
   std::mutex
   g_msgcat_mutex;
@@ -509,7 +511,8 @@ static
 int
 msgcat_init (void)
 {
-  size_t i;
+  size_t
+    i;
   int
     rc = NO_ERROR;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
@@ -539,7 +542,8 @@ msgcat_init (void)
 int
 msgcat_final (void)
 {
-  size_t i;
+  size_t
+    i;
   int
     rc;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
@@ -625,8 +629,10 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 MSG_CATD
 msgcat_open (const char *name)
 {
-  cub_nl_catd catd;
-  MSG_CATD msg_catd;
+  cub_nl_catd
+    catd;
+  MSG_CATD
+    msg_catd;
   char
     path[PATH_MAX];
 
@@ -685,7 +691,8 @@ msgcat_get_descriptor (int cat_id)
 char *
 msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 {
-  cub_nl_catd catd;
+  cub_nl_catd
+    catd;
 
   catd = (cub_nl_catd) msg_catd->catd;
   return cub_catgets (catd, set_id, msg_id, s);
@@ -701,7 +708,8 @@ msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 int
 msgcat_close (MSG_CATD msg_catd)
 {
-  cub_nl_catd catd;
+  cub_nl_catd
+    catd;
 
   catd = (cub_nl_catd) msg_catd->catd;
   free ((void *) msg_catd->file);
