@@ -94,6 +94,7 @@ static TP_DOMAIN *or_get_domain_and_cache (char *ptr);
 static void or_get_att_index (char *ptr, BTID * btid);
 static int or_get_default_value (OR_ATTRIBUTE * attr, char *ptr, int length);
 static int or_get_current_default_value (OR_ATTRIBUTE * attr, char *ptr, int length);
+static void or_free_auto_increment (OR_ATTRIBUTE * att);
 static int or_cl_get_prop_nocopy (DB_SEQ * properties, const char *name, DB_VALUE * pvalue);
 static void or_install_btids_foreign_key (const char *fkname, DB_SEQ * fk_seq, OR_INDEX * index);
 static void or_install_btids_foreign_key_ref (DB_SEQ * fk_container, OR_INDEX * index);
@@ -123,6 +124,22 @@ static INLINE int or_mvcc_set_prev_version_lsa (OR_BUF * buf, MVCC_REC_HEADER * 
   __attribute__ ((ALWAYS_INLINE));
 static INLINE int or_mvcc_get_prev_version_lsa (OR_BUF * buf, int mvcc_flags, LOG_LSA * prev_version_lsa)
   __attribute__ ((ALWAYS_INLINE));
+
+/*
+ * or_free_auto_increment () - free server-side cached auto-increment metadata
+ *   return: void
+ *   att(in): attribute representation
+ */
+static void
+or_free_auto_increment (OR_ATTRIBUTE * att)
+{
+  char *serial_name = att->auto_increment.serial_name.exchange (NULL);
+
+  if (serial_name != NULL)
+    {
+      free_and_init (serial_name);
+    }
+}
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
@@ -2500,10 +2517,24 @@ or_get_current_representation (RECDES * record, int do_indexes)
       /* set ptr to the beginning of the fixed attributes */
       ptr = diskatt + OR_VAR_TABLE_SIZE (ORC_ATT_VAR_ATT_COUNT);
 
-      att->is_autoincrement = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
-      att->is_notnull = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_NON_NULL) ? 1 : 0;
-      att->is_invisible = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
-      att->is_oos_prefer_inline = (OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET) & SM_ATTFLAG_OOS_PREFER_INLINE) ? 1 : 0;
+      int attribute_flags = OR_GET_INT (ptr + ORC_ATT_FLAG_OFFSET);
+      att->is_autoincrement = (attribute_flags & SM_ATTFLAG_AUTO_INCREMENT) ? 1 : 0;
+      att->is_notnull = (attribute_flags & SM_ATTFLAG_NON_NULL) ? 1 : 0;
+      att->is_invisible = (attribute_flags & SM_ATTFLAG_INVISIBLE_COLUMN) ? 1 : 0;
+      assert ((attribute_flags & (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE))
+	      != (SM_ATTFLAG_OOS_PREFER_INLINE | SM_ATTFLAG_OOS_FORCE_OUTLINE));
+      if (attribute_flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE;
+	}
+      else if (attribute_flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE;
+	}
+      else
+	{
+	  att->oos_storage = OR_ATTRIBUTE_OOS_STORAGE_DEFAULT;
+	}
 
       att->type = (DB_TYPE) OR_GET_INT (ptr + ORC_ATT_TYPE_OFFSET);
       att->id = OR_GET_INT (ptr + ORC_ATT_ID_OFFSET);
@@ -2518,6 +2549,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
       att->classoid = oid;
 
       att->auto_increment.serial_obj = oid_Null_oid;
+      att->auto_increment.serial_name = NULL;
       /* get the btree index id if an index has been assigned */
       or_get_att_index (ptr + ORC_ATT_INDEX_OFFSET, &att->index);
 
@@ -3652,6 +3684,8 @@ or_free_classrep (OR_CLASSREP * rep)
 	    {
 	      free_and_init (att->btids);
 	    }
+
+	  or_free_auto_increment (att);
 	}
       free_and_init (rep->attributes);
     }
@@ -3885,6 +3919,7 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 {
   char *diskatt, *attr = NULL;
   int offset = 0, offset_next = 0;
+  unsigned char len = 0;
   OR_BUF buffer;
   int compressed_length = 0, decompressed_length = 0, rc = NO_ERROR;
 
@@ -3910,12 +3945,28 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
        */
       offset_next = OR_VAR_TABLE_ELEMENT_OFFSET (diskatt, attr_index + 1);
 
+      /*
+       * kludge kludge kludge
+       * This is now an encoded "varchar" string, we need to skip over the
+       * length before returning it.  Note that this also depends on the
+       * stored string being NULL terminated.
+       */
       assert (attr != NULL);
+      if (attr != NULL)
+	{
+	  len = *((unsigned char *) attr);
+	}
 
       if (offset == offset_next)
 	{
 	  attr = NULL;
 	  *string = NULL;
+	}
+      else if (len < 0xFFU)
+	{
+	  assert (len != 0 || *(attr + 1) == '\0');
+	  attr += 1;
+	  *string = attr;
 	}
       else
 	{
@@ -3929,30 +3980,23 @@ or_get_attr_string (RECDES * record, int attr_id, int attr_index, char **string,
 	      return rc;
 	    }
 
-	  if (compressed_length > 0)
+	  assert (*string == NULL);
+	  *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
+	  if (*string == NULL)
 	    {
-	      assert (*string == NULL);
-	      *string = (char *) db_private_alloc (NULL, decompressed_length + 1);
-	      if (*string == NULL)
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
-		  return ER_OUT_OF_VIRTUAL_MEMORY;
-		}
-	      *alloced_string = 1;
-
-	      rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
-	      if (rc != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  db_private_free (NULL, *string);
-		  *alloced_string = 0;
-		  *string = NULL;
-		  return rc;
-		}
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, decompressed_length + 1);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
-	  else
+	  *alloced_string = 1;
+
+	  rc = pr_get_compressed_data_from_buffer (&buffer, *string, compressed_length, decompressed_length);
+	  if (rc != NO_ERROR)
 	    {
-	      *string = buffer.ptr;
+	      ASSERT_ERROR ();
+	      db_private_free (NULL, *string);
+	      *alloced_string = 0;
+	      *string = NULL;
+	      return rc;
 	    }
 	}
     }

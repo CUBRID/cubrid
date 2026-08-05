@@ -93,7 +93,11 @@ struct oos_hdr_stats
   int reserve1_for_future;
 };
 
+extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &oos_vfid);
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/* Low-level OOS tests use a synthetic, non-null owner descriptor while exercising storage in isolation. */
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
+#endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
 extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
@@ -150,8 +154,12 @@ struct oos_debug_counters
   unsigned long long read_many_requests;
   unsigned long long read_many_grouped_head_pages;
   unsigned long long read_values_per_fixed_page;
-  unsigned long long bitmap_snapshot_skips;
 };
+
+/* One-shot publication failure seams used by focused SERVER_MODE tests. */
+extern void oos_test_fail_insert_many_after_publications (int publication_count);
+extern void oos_test_throw_bad_alloc_on_next_oid_publication ();
+extern void oos_test_disarm_insert_publication_failures ();
 #endif
 
 #endif /* _OOS_FILE_HPP_ */

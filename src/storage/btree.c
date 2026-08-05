@@ -55,6 +55,7 @@
 #include "perf_monitor.h"
 #include "regu_var.hpp"
 #include "fault_injection.h"
+#include "memory_hash.h"
 #include "dbtype.h"
 #include "thread_manager.hpp"
 
@@ -328,6 +329,9 @@ typedef enum
 #define LOFFS4  6		/* RECDES Data Offset */
 
 /* B+tree statistical information environment */
+/* uniform key reservoir feeding the Duj1 prefix distinct estimator (CBRD-26903) */
+#define BTREE_STATS_DUJ1_SAMPLE 4096
+
 typedef struct btree_stats_env BTREE_STATS_ENV;
 struct btree_stats_env
 {
@@ -338,6 +342,15 @@ struct btree_stats_env
 
   DB_VALUE prev_key_val;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   int same_prefix_len;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
+
+  bool collect_prefix_sample;	/* the current sampled leaf feeds the prefix hash reservoir */
+  INT64 sample_seen;		/* keys offered to the reservoir so far */
+  int sample_size;		/* filled reservoir slots, <= BTREE_STATS_DUJ1_SAMPLE */
+  UINT64 *prefix_sample;	/* [pkeys_val_num][BTREE_STATS_DUJ1_SAMPLE] prefix hashes */
+  VPID *sampled_leaves;		/* leaves already offered, so a revisited leaf (the AR descent
+				 * draws with replacement) cannot duplicate its keys in the
+				 * reservoir and deflate the Duj1 singleton count */
+  int sampled_leaf_cnt;
 };
 
 typedef struct show_index_scan_ctx SHOW_INDEX_SCAN_CTX;
@@ -1256,6 +1269,11 @@ static int btree_get_subtree_stats (THREAD_ENTRY * thread_p, BTID_INT * btid, PA
 static int btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDXKEY * midxkey);
 static int btree_get_stats_key (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, MVCC_SNAPSHOT * mvcc_snapshot);
 static int btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
+static int btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level,
+						   bool * exhausted, int *count);
+static int btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2);
+static int btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level);
+static int btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static int btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env);
 static DISK_ISVALID btree_check_page_key (THREAD_ENTRY * thread_p, const OID * class_oid_p, BTID_INT * btid,
 					  const char *btname, PAGE_PTR page_ptr, VPID * page_vpid);
@@ -6866,6 +6884,50 @@ btree_get_stats_midxkey (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, DB_MIDX
       goto exit_on_error;
     }
 
+  if (env->collect_prefix_sample && env->prefix_sample != NULL)
+    {
+      /* uniform reservoir over the sampled keys: every key offers one slot decision shared by
+       * all levels, so the reservoir is one row sample carrying each level's prefix hash */
+      int slot;
+
+      env->sample_seen++;
+      if (env->sample_size < BTREE_STATS_DUJ1_SAMPLE)
+	{
+	  slot = env->sample_size++;
+	}
+      else
+	{
+	  INT64 pos = (INT64) (drand48 () * env->sample_seen);
+	  slot = (pos < BTREE_STATS_DUJ1_SAMPLE) ? (int) pos : -1;
+	}
+      if (slot >= 0)
+	{
+	  UINT64 hash = 0;
+	  unsigned int val_hash;
+
+	  prev_k_index = 0;
+	  prev_k_ptr = NULL;
+	  for (k = 0; k < env->pkeys_val_num; k++)
+	    {
+	      ret = pr_midxkey_get_element_nocopy (midxkey, k, &elem, &prev_k_index, &prev_k_ptr);
+	      if (ret != NO_ERROR)
+		{
+		  assert_release (false);
+		  goto exit_on_error;
+		}
+	      /* the NULL marker must not collide with any value hash, so values are bounded away
+	       * from it (mht_valhash reduces modulo its ht_size argument) */
+	      val_hash = DB_IS_NULL (&elem) ? 0xFFFFFFFFU : mht_valhash (&elem, 0xFFFFFFFEU);
+	      hash = hash * 1099511628211ULL + val_hash;
+	      env->prefix_sample[(size_t) k * BTREE_STATS_DUJ1_SAMPLE + slot] = hash;
+	      if (elem.need_clear == true)
+		{
+		  pr_clear_value (&elem);
+		}
+	    }
+	}
+    }
+
   prev_i_index = 0;
   prev_i_ptr = NULL;
   for (i = 0; i < env->pkeys_val_num; i++)
@@ -7123,6 +7185,437 @@ exit_on_error:
   goto end;
 }
 
+/* seek budget of the prefix skip scan: with more distinct leading values than this the leaf
+ * sampling is reliable anyway (transitions are spread over the leaves), so the scan bails out.
+ * Deeper levels get the previous level's distinct count on top of it -- enumerating level k
+ * costs one seek per (k + 1)-column combination, so a budget relative to what is already known
+ * lets an exact count through whenever the per-level increment is small, no matter how large
+ * the shallower levels are -- capped at the MAX below to keep the whole scan bounded. */
+#define BTREE_STATS_PREFIX_SEEK_BUDGET 1024
+#define BTREE_STATS_PREFIX_SEEK_BUDGET_MAX (16 * BTREE_STATS_PREFIX_SEEK_BUDGET)
+
+/*
+ * btree_get_stats_prefix_skip_scan_level () - exact distinct count of the (level + 1)-column
+ *     prefixes by skip scan
+ *   return: NO_ERROR
+ *   env(in/out): stats environment already filled by the AR sampling
+ *   level(in): pkeys level to enumerate (prefix of level + 1 leading columns)
+ *   budget(in): seek budget for this level
+ *   exhausted(out): set when the seek budget ran out before the rightmost leaf
+ *   count(out): distinct prefixes enumerated -- exact unless exhausted, then a lower bound
+ *
+ * Note: (CBRD-26903) enumerates the distinct (level + 1)-column prefixes by repeatedly seeking
+ * past the current prefix group: the seek key is the current key truncated to the prefix with
+ * column level + 1 raised to a sentinel (min_max_val) that compares past every key sharing the
+ * prefix in tree order -- MAX_COLUMN for an ascending sentinel column, MIN_COLUMN for a
+ * descending one (btree_compare_key () inverts the comparison by the diff column's direction).
+ * Each seek is one btree_locate_key (), O(height) page fixes per distinct prefix, independent
+ * of how many rows or leaves the prefix spans. Completing within the seek budget yields the
+ * exact distinct count (the failure mode of leaf sampling); exhausting it means the prefix has
+ * many distinct values, exactly the regime where the sampled estimate is sound, so the scan
+ * keeps it and only applies what it saw as a lower bound.
+ *
+ * The first enumerated group is not counted when its prefix is entirely NULL, matching the
+ * fullscan semantics exactly: there the initial pkeys_val is NULL, so only a first-in-scan-order
+ * all-NULL prefix fails to register a transition; an all-NULL group reached later (descending
+ * leading column) does transition and is counted by both.
+ */
+static int
+btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env, int level, int budget,
+					bool * exhausted, int *count)
+{
+  BTID_INT *btid_int;
+  PAGE_PTR page = NULL;
+  BTREE_NODE_HEADER *header = NULL;
+  TP_DOMAIN *sentinel_dom;
+  MIN_MAX_COLUMN_TYPE sentinel_type;
+  VPID vpid;
+  INT16 slot_id;
+  int key_cnt;
+  RECDES rec;
+  LEAF_REC leaf_pnt;
+  DB_VALUE cur_key, seek_key, elem;
+  bool clear_cur_key = false;
+  bool found;
+  bool prefix_all_null;
+  int offset;
+  int prev_index;
+  char *prev_ptr;
+  int groups = 0;
+  int distinct = 0;
+  int seeks = 0;
+  int col;
+  int ret = NO_ERROR;
+
+  assert (env != NULL);
+  assert (env->stat_info != NULL);
+  assert (level >= 0 && level < env->pkeys_val_num - 1);
+
+  *exhausted = false;
+  *count = 0;
+
+  btid_int = &(env->btree_scan.btid_int);
+
+  /* the sentinel column decides the seek direction in tree order */
+  sentinel_dom = btid_int->key_type->setdomain;
+  for (col = 0; col < level + 1 && sentinel_dom != NULL; col++)
+    {
+      sentinel_dom = sentinel_dom->next;
+    }
+  if (sentinel_dom == NULL)
+    {
+      assert_release (false);
+      return NO_ERROR;
+    }
+  sentinel_type = sentinel_dom->is_desc ? MIN_COLUMN : MAX_COLUMN;
+
+  db_make_null (&cur_key);
+  db_make_null (&seek_key);
+
+  page = btree_find_leftmost_leaf (thread_p, btid_int->sys_btid, &vpid, NULL);
+  if (page == NULL)
+    {
+      ASSERT_ERROR_AND_SET (ret);
+      return ret;
+    }
+  slot_id = 1;
+
+  while (true)
+    {
+      key_cnt = btree_node_number_of_keys (thread_p, page);
+      if (slot_id > key_cnt)
+	{
+	  /* move to the right neighbor leaf */
+	  PAGE_PTR next_page;
+
+	  header = btree_get_node_header (thread_p, page);
+	  if (header == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  vpid = header->next_vpid;
+	  if (VPID_ISNULL (&vpid))
+	    {
+	      /* walked past the rightmost leaf: the enumeration is complete */
+	      pgbuf_unfix_and_init (thread_p, page);
+	      break;
+	    }
+	  /* couple the latches: fix the sibling before releasing the current leaf, or a
+	   * concurrent merge could deallocate it in between (UPDATE STATISTICS holds only
+	   * SCH_S_LOCK, so DML runs concurrently) */
+	  next_page = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+	  pgbuf_unfix_and_init (thread_p, page);
+	  if (next_page == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	  page = next_page;
+	  slot_id = 1;
+	  continue;
+	}
+
+      if (spage_get_record (thread_p, page, slot_id, &rec, PEEK) != S_SUCCESS)
+	{
+	  goto exit_on_error;
+	}
+      if (btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
+	{
+	  slot_id++;
+	  continue;
+	}
+
+      btree_clear_key_value (&clear_cur_key, &cur_key);
+      if (btree_read_record (thread_p, btid_int, page, &rec, &cur_key, (void *) &leaf_pnt, BTREE_LEAF_NODE,
+			     &clear_cur_key, &offset, PEEK_KEY_VALUE, NULL) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+
+      /* the first-in-scan-order group is not counted when its whole prefix is NULL */
+      prefix_all_null = true;
+      prev_index = 0;
+      prev_ptr = NULL;
+      for (col = 0; col <= level; col++)
+	{
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (&cur_key), col, &elem, &prev_index, &prev_ptr) != NO_ERROR)
+	    {
+	      goto exit_on_error;
+	    }
+	  if (!DB_IS_NULL (&elem))
+	    {
+	      prefix_all_null = false;
+	    }
+	  if (elem.need_clear == true)
+	    {
+	      pr_clear_value (&elem);
+	    }
+	  if (!prefix_all_null)
+	    {
+	      break;
+	    }
+	}
+      if (groups > 0 || !prefix_all_null)
+	{
+	  distinct++;
+	}
+      groups++;
+
+      if (++seeks > budget)
+	{
+	  *exhausted = true;	/* many distinct prefixes: the sampled estimate is fine */
+	  break;
+	}
+
+      /* seek past every key sharing this prefix. The seek key is the current key truncated
+       * to the prefix with the sentinel raised on column level + 1: it compares past every
+       * key sharing this prefix in tree order and before any following prefix group. The
+       * sentinel only applies to UNBOUND columns, so the trailing columns must be nulled
+       * out, not merely overridden (the truncation mirrors pr_midxkey_unique_prefix ()). */
+      {
+	DB_MIDXKEY *cur_midxkey = db_get_midxkey (&cur_key);
+	DB_MIDXKEY trunc_midxkey;
+	int precision = cur_midxkey->domain->precision;
+	int trunc_size;
+
+	trunc_size = or_multi_get_next_element_offset (cur_midxkey->buf, precision, level);
+	if (trunc_size < 0)
+	  {
+	    /* offset table saturated: header plus the prefix elements' bytes */
+	    TP_DOMAIN *col_dom = cur_midxkey->domain->setdomain;
+
+	    trunc_size = or_multi_header_size (precision);
+	    for (col = 0; col <= level && col_dom != NULL; col++, col_dom = col_dom->next)
+	      {
+		if (or_multi_is_not_null (cur_midxkey->buf, col))
+		  {
+		    trunc_size += pr_midxkey_element_disk_size (cur_midxkey->buf + trunc_size, col_dom);
+		  }
+	      }
+	  }
+
+	trunc_midxkey.buf = (char *) db_private_alloc (NULL, trunc_size);
+	if (trunc_midxkey.buf == NULL)
+	  {
+	    ASSERT_ERROR_AND_SET (ret);
+	    goto exit_on_error;
+	  }
+	memcpy (trunc_midxkey.buf, cur_midxkey->buf, trunc_size);
+	for (col = level + 1; col < precision; col++)
+	  {
+	    or_multi_set_null (trunc_midxkey.buf, col);
+	    or_multi_put_next_element_offset (trunc_midxkey.buf, precision, trunc_size, col);
+	  }
+	or_multi_put_size_offset (trunc_midxkey.buf, precision, trunc_size);
+
+	trunc_midxkey.size = trunc_size;
+	trunc_midxkey.ncolumns = cur_midxkey->ncolumns;
+	trunc_midxkey.domain = cur_midxkey->domain;
+	trunc_midxkey.min_max_val.position = level + 1;
+	trunc_midxkey.min_max_val.type = sentinel_type;
+
+	pr_clear_value (&seek_key);
+	db_make_midxkey (&seek_key, &trunc_midxkey);
+	seek_key.need_clear = true;
+      }
+
+      btree_clear_key_value (&clear_cur_key, &cur_key);
+      pgbuf_unfix_and_init (thread_p, page);
+
+      ret = btree_locate_key (thread_p, btid_int, &seek_key, &vpid, &slot_id, &page, &found);
+      if (ret != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  goto exit_on_error;
+	}
+      assert (!found);		/* no stored key carries the sentinel */
+      if (slot_id <= 0)
+	{
+	  /* BTREE_KEY_SMALLER: the seek key compares smaller than every key in the landed leaf
+	   * (possible when a concurrent deletion removes the whole current prefix group); slot 0
+	   * is the page header, so normalize to the first key slot */
+	  slot_id = 1;
+	}
+    }
+
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  btree_clear_key_value (&clear_cur_key, &cur_key);
+  pr_clear_value (&seek_key);
+
+  *count = distinct;
+
+  return NO_ERROR;
+
+exit_on_error:
+
+  if (page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, page);
+    }
+  btree_clear_key_value (&clear_cur_key, &cur_key);
+  pr_clear_value (&seek_key);
+
+  return (ret == NO_ERROR && (ret = er_errid ()) == NO_ERROR) ? ER_FAILED : ret;
+}
+
+/*
+ * btree_get_stats_compare_prefix_hash () - qsort comparator for the prefix hash reservoir
+ */
+static int
+btree_get_stats_compare_prefix_hash (const void *hash1, const void *hash2)
+{
+  UINT64 h1 = *(const UINT64 *) hash1;
+  UINT64 h2 = *(const UINT64 *) hash2;
+
+  return (h1 < h2) ? -1 : (h1 > h2) ? 1 : 0;
+}
+
+/*
+ * btree_get_stats_duj1_estimate () - distinct prefix estimate of one pkeys level from the
+ *     uniform key reservoir
+ *   return: estimated distinct count
+ *   env(in): stats environment with a filled prefix hash reservoir
+ *   level(in): pkeys level to estimate
+ *
+ * Note: (CBRD-26903) unsmoothed first-order jackknife ("Duj1", Haas/Naughton/Seshadri/Stokes,
+ * VLDB 1995): D = n*d / (n - f1 + f1*n/N), with d the distinct and f1 the once-occurring
+ * values in a uniform n-key sample of an N-key population. Unlike scaling the transition
+ * count of the sampled leaves, it is insensitive to the visit order of the samples.
+ */
+static int
+btree_get_stats_duj1_estimate (BTREE_STATS_ENV * env, int level)
+{
+  UINT64 *sample = env->prefix_sample + ((size_t) level * BTREE_STATS_DUJ1_SAMPLE);
+  int n = env->sample_size;
+  int i, run, d = 0, f1 = 0;
+  double total_keys, estimate;
+
+  assert (n > 0 && n <= BTREE_STATS_DUJ1_SAMPLE);
+
+  qsort (sample, n, sizeof (UINT64), btree_get_stats_compare_prefix_hash);
+  run = 1;
+  for (i = 1; i <= n; i++)
+    {
+      if (i < n && sample[i] == sample[i - 1])
+	{
+	  run++;
+	  continue;
+	}
+      d++;
+      if (run == 1)
+	{
+	  f1++;
+	}
+      run = 1;
+    }
+
+  total_keys = MAX ((double) env->stat_info->keys, (double) n);
+  estimate = ((double) n * d) / ((double) n - f1 + f1 * ((double) n / total_keys));
+  estimate = MAX (estimate, (double) d);
+  estimate = MIN (estimate, total_keys);
+
+  return (int) estimate;
+}
+
+/*
+ * btree_get_stats_prefix_skip_scan () - exact distinct prefix counts by per-level skip scans
+ *   return: NO_ERROR
+ *   env(in/out): stats environment already filled by the AR sampling
+ *
+ * Note: (CBRD-26903) runs the prefix skip scan level by level, shallow to deep, with a seek
+ * budget relative to the previous level's (exact or estimated) distinct count: a level is worth
+ * enumerating whenever its increment over the level above fits the base budget, no matter how
+ * many distinct prefixes the shallower levels hold. An exhausted level takes the reservoir
+ * (Duj1) estimate with the enumerated part as a lower bound, and enumeration keeps going while
+ * the relative budget stays under the cap. The last level (the whole key) is never enumerated
+ * nor estimated: enumeration degenerates to visiting every key, and the reservoir holds b-tree
+ * keys, which are unique, so its Duj1 estimate reproduces the sampled key count.
+ *
+ * The levels the skip scan could not enumerate are estimated from the key reservoir with the
+ * Duj1 estimator: the transition count of the sampled leaves is corrupted by their random
+ * visit order (the state carried across non-adjacent leaves fabricates a prefix transition at
+ * almost every jump, inflating few-zone prefixes; one dominant value deflates them instead).
+ */
+static int
+btree_get_stats_prefix_skip_scan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
+{
+  BTID_INT *btid_int;
+  bool exhausted, have_sample;
+  int level, prev_final = 0, budget, count, i;
+  int ret = NO_ERROR;
+
+  assert (env != NULL);
+  assert (env->stat_info != NULL);
+
+  btid_int = &(env->btree_scan.btid_int);
+
+  if (env->pkeys_val_num <= 1 || TP_DOMAIN_TYPE (btid_int->key_type) != DB_TYPE_MIDXKEY
+      || btid_int->key_type->setdomain == NULL)
+    {
+      /* single-column index: duplicates share one key record, so every record is a distinct key
+       * and the leaf sampling has no clustered-prefix failure mode */
+      return NO_ERROR;
+    }
+
+  have_sample = (env->prefix_sample != NULL && env->sample_size > 0);
+
+  /* The last level (the whole key) is never touched: enumerating it means visiting every key,
+   * and estimating it is pointless -- the reservoir holds b-tree keys, which are unique, so its
+   * Duj1 estimate degenerates to the key count the AR sampling already produced. */
+  for (level = 0; level < env->pkeys_val_num - 1; level++)
+    {
+      budget = BTREE_STATS_PREFIX_SEEK_BUDGET + prev_final;
+      if (budget > BTREE_STATS_PREFIX_SEEK_BUDGET_MAX)
+	{
+	  break;		/* enumeration priced out; deeper levels are estimated below */
+	}
+      exhausted = false;
+      ret = btree_get_stats_prefix_skip_scan_level (thread_p, env, level, budget, &exhausted, &count);
+      if (ret != NO_ERROR)
+	{
+	  return ret;
+	}
+      if (!exhausted)
+	{
+	  env->stat_info->pkeys[level] = count;	/* exact */
+	}
+      else if (have_sample)
+	{
+	  /* what the exhausted skip scan enumerated is still a valid lower bound */
+	  env->stat_info->pkeys[level] = MAX (btree_get_stats_duj1_estimate (env, level), count);
+	}
+      else if (env->stat_info->pkeys[level] < count)
+	{
+	  env->stat_info->pkeys[level] = count;
+	}
+      prev_final = env->stat_info->pkeys[level];
+    }
+
+  /* levels the budget cap priced out of enumeration keep a reservoir estimate instead */
+  for (; have_sample && level < env->pkeys_val_num - 1; level++)
+    {
+      env->stat_info->pkeys[level] = btree_get_stats_duj1_estimate (env, level);
+    }
+
+  /* prefix distinct counts are non-decreasing by definition; the key count bounds them all */
+  for (i = 1; i < env->pkeys_val_num; i++)
+    {
+      if (env->stat_info->pkeys[i] < env->stat_info->pkeys[i - 1])
+	{
+	  env->stat_info->pkeys[i] = env->stat_info->pkeys[i - 1];
+	}
+    }
+  if (env->stat_info->keys < env->stat_info->pkeys[env->pkeys_val_num - 1])
+    {
+      env->stat_info->keys = env->stat_info->pkeys[env->pkeys_val_num - 1];
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * btree_get_stats_with_AR_sampling () - Do Acceptance/Rejection Sampling
  *   return: NO_ERROR
@@ -7168,6 +7661,25 @@ btree_get_stats_with_AR_sampling (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env
       assert (header != NULL);
       assert (header->node_level == 1);	/* BTREE_LEAF_NODE */
 #endif
+
+      if (env->prefix_sample != NULL && env->sampled_leaves != NULL)
+	{
+	  /* only a first visit feeds the reservoir: the AR descent draws leaves with
+	   * replacement, and re-offering a leaf's keys would plant duplicate occurrences */
+	  env->collect_prefix_sample = true;
+	  for (i = 0; i < env->sampled_leaf_cnt; i++)
+	    {
+	      if (VPID_EQ (&(env->sampled_leaves[i]), &BTS->C_vpid))
+		{
+		  env->collect_prefix_sample = false;
+		  break;
+		}
+	    }
+	  if (env->collect_prefix_sample)
+	    {
+	      env->sampled_leaves[env->sampled_leaf_cnt++] = BTS->C_vpid;
+	    }
+	}
 
       if (key_cnt > 0)
 	{
@@ -7430,6 +7942,13 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
       db_make_null (&(env->pkeys_val[i]));
     }
 
+  env->collect_prefix_sample = false;
+  env->sample_seen = 0;
+  env->sample_size = 0;
+  env->prefix_sample = NULL;
+  env->sampled_leaves = NULL;
+  env->sampled_leaf_cnt = 0;
+
   root_vpid.pageid = env->stat_info->btid.root_pageid;	/* read root page */
   root_vpid.volid = env->stat_info->btid.vfid.volid;
 
@@ -7506,7 +8025,36 @@ btree_get_stats (THREAD_ENTRY * thread_p, BTREE_STATS * stat_info_p, bool with_f
     }
   else
     {
+      if (env->pkeys_val_num > 1 && dom_type == DB_TYPE_MIDXKEY)
+	{
+	  /* (CBRD-26903) reservoir feeding the Duj1 estimate of the non-enumerable levels */
+	  env->prefix_sample =
+	    (UINT64 *) db_private_alloc (thread_p,
+					 (size_t) env->pkeys_val_num * BTREE_STATS_DUJ1_SAMPLE * sizeof (UINT64));
+	  if (env->prefix_sample == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	  env->sampled_leaves = (VPID *) db_private_alloc (thread_p, STATS_SAMPLING_THRESHOLD * sizeof (VPID));
+	  if (env->sampled_leaves == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (ret);
+	      goto exit_on_error;
+	    }
+	}
+
       ret = btree_get_stats_with_AR_sampling (thread_p, env);
+      if (ret == NO_ERROR)
+	{
+	  /* (CBRD-26903) leaf sampling estimates the distinct prefixes from the transitions
+	   * seen in the sampled leaves, which their random visit order corrupts in both
+	   * directions (a dominant leading value collapses the count, a few-zone prefix
+	   * inflates it). The sorted order makes an exact, bounded correction possible:
+	   * skip-scan the distinct prefixes level by level, and re-estimate the levels too
+	   * wide to enumerate from the key reservoir (Duj1). */
+	  ret = btree_get_stats_prefix_skip_scan (thread_p, env);
+	}
     }
 
   pr_clear_value (&(env->prev_key_val));
@@ -7566,6 +8114,15 @@ end:
   if (root_page_ptr)
     {
       pgbuf_unfix_and_init (thread_p, root_page_ptr);
+    }
+
+  if (env->prefix_sample != NULL)
+    {
+      db_private_free_and_init (thread_p, env->prefix_sample);
+    }
+  if (env->sampled_leaves != NULL)
+    {
+      db_private_free_and_init (thread_p, env->sampled_leaves);
     }
 
   /* clear partial key-values */
@@ -15318,10 +15875,13 @@ btree_find_AR_sampling_leaf (THREAD_ENTRY * thread_p, BTID * btid, VPID * pg_vpi
 	  goto error;
 	}
 
-      slot_id = (int) (drand48 () * key_cnt);
-      slot_id = MAX (slot_id, 1);
+      /* (CBRD-26903) pick a child slot uniformly over [1, key_cnt]: drand48 () is in [0, 1), so the
+       * truncation yields [0, key_cnt - 1] and the +1 shift makes every child reachable. The former
+       * MAX (slot_id, 1) form never selected the last slot, so the rightmost subtree of every level
+       * was excluded from the sample (and the first child was picked with a doubled weight). */
+      slot_id = (int) (drand48 () * key_cnt) + 1;
 
-      assert (slot_id > 0);
+      assert (slot_id > 0 && slot_id <= key_cnt);
       if (spage_get_record (thread_p, P_page, slot_id, &rec, PEEK) != S_SUCCESS)
 	{
 	  goto error;
@@ -23665,6 +24225,114 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
     }
 }
 
+#if defined (SERVER_MODE)
+/*
+ * btree_is_active_other_inserter () - Is insert_mvccid an in-progress insert by another transaction?
+ *
+ * return	      : true if some other transaction is still inserting under insert_mvccid.
+ * thread_p (in)      : Thread entry.
+ * insert_mvccid (in) : Candidate inserter MVCCID (e.g. BTREE_MVCC_INFO_INSID of the record).
+ *
+ * Note: guards the "wait for the inserter to end" paths. False when the id is invalid, is our own
+ *	 insert, or the inserter has already ended -- in those cases there is nothing to wait on.
+ */
+static bool
+btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
+{
+  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
+    && log_Gl.mvcc_table.is_active (insert_mvccid);
+}
+
+/*
+ * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
+ *				    S_LOCK on its MVCCID self-lock, then release.
+ *
+ * return	      : NO_ERROR once the inserter has ended. An error if the lock failed, or if the
+ *			self-lock invariant is breached (grant while the inserter is still active) --
+ *			the wait was a no-op and waiting again cannot recover it, so fail the
+ *			statement rather than spin.
+ * thread_p (in)      : Thread entry.
+ * insert_mvccid (in) : MVCCID of the in-progress inserter to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+static int
+btree_wait_for_inserter_end (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (insert_mvccid))
+    {
+      /* Invariant breach: no-op grant while the inserter is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btree_key_wait_for_insert_mvccid () - Wait for the transaction inserting a conflicting object to
+ *					 end, then signal a restart from root.
+ *
+ * return	       : Error code (NO_ERROR on success, with *restart set to true).
+ * thread_p (in)       : Thread entry.
+ * insert_mvccid (in)  : MVCCID of the in-progress inserter to wait on.
+ * find_unique_helper (in/out) : Find-unique state; any object it has locked is released first.
+ * leaf_page (in/out)  : Leaf node page latch; unfixed before suspending and left NULL.
+ * overflow_page (in/out) : Optional overflow node page latch (..._of_non_unique () scans overflow pages);
+ *			    unfixed before suspending and left NULL. NULL when there is no overflow page.
+ * restart (out)       : Set to true so the caller re-reads the key from root.
+ *
+ * Note: shared by ..._of_unique () and ..._of_non_unique (); blocks on the inserter transaction
+ *	 (S_LOCK then release) since appended rows take no per-row X-lock, then restarts from root.
+ *	 All page latches must be released before blocking on the lock (never wait while holding a latch).
+ */
+static int
+btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
+				  BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
+				  PAGE_PTR * overflow_page, bool * restart)
+{
+  int error_code = NO_ERROR;
+
+  /* Release any previously locked object before suspending. */
+  if (!OID_ISNULL (&find_unique_helper->locked_oid))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_unique_helper->locked_oid,
+					       &find_unique_helper->locked_class_oid, find_unique_helper->lock_mode);
+      OID_SET_NULL (&find_unique_helper->locked_oid);
+    }
+  /* Release page latches before blocking on the lock. */
+  if (overflow_page != NULL && *overflow_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, *overflow_page);
+    }
+  pgbuf_unfix_and_init (thread_p, *leaf_page);
+
+  error_code = btree_wait_for_inserter_end (thread_p, insert_mvccid);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* Inserter has ended; the page may have changed during the wait, so re-read the key from root. */
+  *restart = true;
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * btree_key_find_and_lock_unique_of_unique () - Find key and lock its first object (if not deleted or dirty).
  *
@@ -23788,11 +24456,22 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	case DELETE_RECORD_INSERT_IN_PROGRESS:
 	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
-	  /* Impossible. */
+	  /* Impossible: standalone mode has no other active transactions. */
 	  assert_release (false);
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
+	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
+	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
+	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+		{
+		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+							   NULL, restart);
+		}
+	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
+	    }
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
@@ -24100,11 +24779,22 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	case DELETE_RECORD_INSERT_IN_PROGRESS:
 	case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SA_MODE)
-	  /* Impossible. */
+	  /* Impossible: standalone mode has no other active transactions. */
 	  assert_release (false);
 	  error_code = ER_FAILED;
 	  goto error_or_not_found;
 #else	/* !SA_MODE */	       /* SERVER_MODE */
+	  if (satisfies_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
+	    {
+	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
+	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
+	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+		{
+		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+							   &overflow_page, restart);
+		}
+	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
+	    }
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
 	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
@@ -26672,6 +27362,44 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * btree_fk_release_pages_and_locks () - Release the page latches and any locked object held by an
+ *                                       FK-existence scan before it suspends on a conflicting transaction.
+ *
+ * thread_p (in)       : Thread entry.
+ * bts (in/out)        : FK-existence scan; marked interrupted, with its current and overflow pages unfixed.
+ * fk_arg (in)         : FK-existence scan argument carrying the optional overflow page.
+ * find_fk_obj (in/out): FK-find state; any object it has locked is released.
+ * class_oid (in)      : Class OID of the locked object.
+ *
+ * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
+ *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
+ *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ */
+static void
+btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,
+				  BTREE_FIND_FK_OBJECT * find_fk_obj, OID * class_oid)
+{
+  bts->is_interrupted = true;
+  /* TODO: it's not clear at this stage; to be safe, put cur_key in decompressed state. */
+  btree_check_decompress_key (bts);
+  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
+  pgbuf_unfix_and_init (thread_p, bts->C_page);
+  if (fk_arg->ovfl_page != NULL)
+    {
+      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
+    }
+  /* Make sure another object was not already fixed. */
+  if (!OID_ISNULL (&find_fk_obj->locked_object))
+    {
+      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
+					       find_fk_obj->lock_mode);
+      OID_SET_NULL (&find_fk_obj->locked_object);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * btree_fk_object_does_exist () - Check whether current object exists (it must not be deleted and successfully locked).
  *
@@ -26719,10 +27447,33 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_INSERT_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* Recently inserted. This can be ignored, since it is not inserted yet. To successfully insert, the inserter
-       * should also obtain lock on primary key object (which is already held by current transaction). Current
-       * transaction can consider that this object doesn't exist yet. */
-      return NO_ERROR;
+      /* Referenced row still being inserted. */
+      {
+	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
+	int fk_wait_error;
+
+	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
+	  {
+	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
+	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
+	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	    *stop = true;
+	    return NO_ERROR;
+	  }
+
+	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
+	 * latches and any locked object, then wait out the inserter. */
+	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	fk_wait_error = btree_wait_for_inserter_end (thread_p, fk_insert_mvccid);
+	if (fk_wait_error != NO_ERROR)
+	  {
+	    return fk_wait_error;
+	  }
+
+	/* Inserter ended; trigger re-check. */
+	*stop = true;
+	return NO_ERROR;
+      }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
       /* Impossible: no other active transactions. */
       assert_release (false);
@@ -26791,26 +27542,8 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
   /* Object may exist but could not be locked conditionally. */
   /* Unconditional lock on object. */
   /* Must release fixed pages first. */
-  bts->is_interrupted = true;
+  btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 
-  /* TODO: 
-   * It's not clear at this stage.
-   * To be safe, we put cur_key in decompressed state. */
-  btree_check_decompress_key (bts);
-  COMMON_PREFIX_PAGE_SIZE_RESET (bts);
-  pgbuf_unfix_and_init (thread_p, bts->C_page);
-  if (fk_arg->ovfl_page != NULL)
-    {
-      pgbuf_unfix_and_init (thread_p, fk_arg->ovfl_page);
-    }
-
-  /* Make sure another object was not already fixed. */
-  if (!OID_ISNULL (&find_fk_obj->locked_object))
-    {
-      lock_unlock_object_donot_move_to_non2pl (thread_p, &find_fk_obj->locked_object, class_oid,
-					       find_fk_obj->lock_mode);
-      OID_SET_NULL (&find_fk_obj->locked_object);
-    }
   lock_result = lock_object (thread_p, oid, class_oid, find_fk_obj->lock_mode, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
@@ -27627,7 +28360,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	btree_get_max_new_data_size (thread_p, btid_int, *crt_page, node_type, max_key_len, insert_helper, false);
 
       /* Split is needed if there is a risk that inserted data doesn't fit the root node. */
-      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page, NULL));
+      need_split = (max_new_data_size > spage_get_free_space_without_saving (thread_p, *crt_page));
 
       /* If root node should suffer changes, its latch must be promoted to exclusive. */
       if (insert_helper->nonleaf_latch_mode == PGBUF_LATCH_READ
@@ -27900,7 +28633,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   max_new_data_size =
     btree_get_max_new_data_size (thread_p, btid_int, child_page, node_type, max_key_len, insert_helper, false);
 
-  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page, NULL);
+  need_split = max_new_data_size > spage_get_free_space_without_saving (thread_p, child_page);
 
   /* If split is needed, we first need to make sure current node is latched exclusively. A new entry must be added.
    * Promoting latch from read to write may be required if the node is not already latched exclusively. Node is not
@@ -28552,7 +29285,7 @@ btree_key_insert_does_leaf_need_split (THREAD_ENTRY * thread_p, BTID_INT * btid_
   if (search_key->result == BTREE_KEY_FOUND)
     {
       /* Does a new object fit the page? */
-      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page, NULL));
+      return (BTREE_OBJECT_MAX_SIZE > spage_get_free_space_without_saving (thread_p, leaf_page));
     }
   else
     {
@@ -31594,7 +32327,15 @@ btree_key_delete_remove_object (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 	}
       else
 	{
-	  /* Key/oid should be found. */
+	  /* Key/oid should be found. Dump the identifying facts unconditionally before the debug abort -- when this
+	   * replays during recovery the database is unrecoverable and must at least say why. Ordering: in release
+	   * builds assert_release only er_sets an ER_FAILED_ASSERTION notification and falls through, so
+	   * btree_set_unknown_key_error must stay AFTER it for er_errid () to end up as ER_BTREE_UNKNOWN_KEY. */
+	  _er_log_debug (ARG_FILE_LINE,
+			 "btree_key_delete_remove_object: object to remove was not found in its key -- "
+			 "this is unrecoverable if replayed during recovery. \n"
+			 BTREE_DELETE_HELPER_MSG ("\t") "\t" BTREE_ID_MSG "\n",
+			 BTREE_DELETE_HELPER_AS_ARGS (delete_helper), BTID_AS_ARGS (btid_int->sys_btid));
 	  assert_release (false);
 	  btree_set_unknown_key_error (thread_p, btid_int->sys_btid, key,
 				       "btree_key_delete_remove_object: key was not found.");
@@ -34449,7 +35190,7 @@ btree_key_online_index_IB_insert_list (THREAD_ENTRY * thread_p, BTID_INT * btid_
       bool key_already_in_page = false;
       int new_ent_size = btree_get_max_new_data_size (thread_p, btid_int, *leaf_page, BTREE_LEAF_NODE, key_len,
 						      &helper->insert_helper, key_already_in_page);
-      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page, NULL))
+      if (new_ent_size > spage_get_free_space_without_saving (thread_p, *leaf_page))
 	{
 	  /* no more space in page */
 	  perfmon_inc_stat (thread_p, PSTAT_BT_ONLINE_NUM_RETRY);
@@ -36369,6 +37110,14 @@ btree_check_locking_for_insert_unique (THREAD_ENTRY * thread_p, const BTREE_INSE
       return true;
     }
 
+  /* An MVCC-class inserter holds an X_LOCK on its own MVCCID (the transaction self-lock) instead of a
+   * per-row X_LOCK on the appended object; that self-lock serializes the unique insert, so accept it here. */
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+  if (MVCCID_IS_VALID (my_mvccid) && lock_has_lock_on_transaction_mvccid (thread_p, my_mvccid, X_LOCK) > 0)
+    {
+      return true;
+    }
+
   return false;
 }
 
@@ -36395,6 +37144,19 @@ btree_check_locking_for_delete_unique (THREAD_ENTRY * thread_p, const BTREE_DELE
   has_instance_lock = lock_has_lock_on_object (BTREE_DELETE_OID (delete_helper),
 					       BTREE_DELETE_CLASS_OID (delete_helper), X_LOCK);
   if (has_instance_lock > 0)
+    {
+      return true;
+    }
+
+  /* An MVCC inserter holds an X self-lock on its MVCCID instead of a per-row X_LOCK; accept that here for a
+   * rollback that deletes the row. Key on the DELETED RECORD's insert MVCCID, not the transaction's current one:
+   * a sub-MVCCID-stamped row (selupd INCR/DECR) does not match the current main id, and reading the current id
+   * can assign a fresh MVCCID as a side effect. A sub-MVCCID row is only ever undo-deleted by the sub's own
+   * abort, while its id is still current and self-locked; any other case correctly returns false and the
+   * caller's assert catches it. */
+  MVCCID rec_insid = BTREE_MVCC_INFO_INSID (BTREE_DELETE_MVCC_INFO (delete_helper));
+  if (MVCCID_IS_NORMAL (rec_insid) && logtb_is_current_mvccid (thread_p, rec_insid)
+      && lock_has_lock_on_transaction_mvccid (thread_p, rec_insid, X_LOCK) > 0)
     {
       return true;
     }

@@ -842,6 +842,24 @@ struct rvfun RV_fun[] = {
    heap_rv_lob_remove_dir,
    NULL,
    NULL},
+  {RVHF_UPDATE_BESTSPACE_ENTRIES,
+   "RVHF_UPDATE_BESTSPACE_ENTRIES",
+   NULL,
+   heap_rv_redo_update,
+   NULL,
+   log_rv_dump_hexa},
+  {RVHF_MARK_PAGES_IN_HEAP,
+   "RVHF_MARK_PAGES_IN_HEAP",
+   NULL,
+   heap_rv_postpone_mark_pages_in_heap,
+   NULL,
+   heap_rv_dump_append_pages_to_heap},
+  {RVHF_UPDATE_PAGE_IN_HEAP_FLAG,
+   "RVHF_UPDATE_PAGE_IN_HEAP_FLAG",
+   heap_rv_undo_mark_page_in_heap,
+   heap_rv_redo_mark_page_in_heap,
+   NULL,
+   NULL},
   {RVOOS_INSERT,
    "RVOOS_INSERT",
    oos_rv_redo_delete,
@@ -866,9 +884,8 @@ struct rvfun RV_fun[] = {
    NULL,
    NULL,
    repl_data_insert_log_dump},
-  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM (=134); kept as a no-op stub because
-   * RV_fun[] is positionally indexed by rcvindex and existing on-disk logs may still reference
-   * this slot. See recovery.h for the matching enum-side TODO. */
+  /* TODO: slot reserved for RVOOS_NOTIFY_VACUUM; kept as a no-op stub so the positionally
+   * indexed RV_fun[] stays contiguous. See recovery.h for the matching enum-side TODO. */
   {RVOOS_NOTIFY_VACUUM,
    "RVOOS_NOTIFY_VACUUM",
    vacuum_rv_es_nop,

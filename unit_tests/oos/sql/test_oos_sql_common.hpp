@@ -211,7 +211,7 @@ get_oos_vfid_for_table (const char *table_name, VFID *oos_vfid_out)
       return false;
     }
 
-  return heap_oos_find_vfid (thread_p, &hfid, oos_vfid_out, false, PGBUF_UNCONDITIONAL_LATCH);
+  return heap_oos_find_vfid (thread_p, &hfid, oos_vfid_out, false);
 }
 
 // Get the number of user pages in the OOS file for a given table.

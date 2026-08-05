@@ -234,7 +234,7 @@ compactdb_start (bool verbose_flag, char *input_filename, char **input_class_nam
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
     }
 
   thread_p = thread_get_thread_entry_info ();
@@ -279,7 +279,7 @@ phase2:
   if (verbose_flag)
     {
       printf ("\n");
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
 
   for (i = 0; i < num_class_mops; i++)
@@ -313,7 +313,7 @@ phase3:
   if (verbose_flag)
     {
       printf ("\n");
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS3));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS3));
     }
 
   catalog_reclaim_space (thread_p);
@@ -519,7 +519,7 @@ process_object (THREAD_ENTRY * thread_p, DESC_OBJ * desc_obj, OID * obj_oid, boo
     {
       if (verbose_flag)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
+	  printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UPDATING));
 	}
       disk_update_instance (thread_p, desc_obj->classop, desc_obj, obj_oid);
     }
@@ -562,7 +562,8 @@ process_value (THREAD_ENTRY * thread_p, DB_VALUE * value)
 	heap_scancache_quick_start (&scan_cache);
 	scan_cache.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 	scan_code =
-	  heap_get_visible_version (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN, HEAP_WITH_OOS_EXPAND);
+	  heap_get_visible_version (thread_p, ref_oid, NULL, NULL, &scan_cache, PEEK, NULL_CHN,
+				    HEAP_RECDES_CONSUME_RAW_BYTES);
 	heap_scancache_end (thread_p, &scan_cache);
 
 #if defined(CUBRID_DEBUG)
@@ -680,7 +681,8 @@ disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID 
 	  /* try one more time */
 	  if (desc_obj_to_disk (obj, Diskrec, &has_indexes))
 	    {
-	      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_TRANSFORM));
+	      printf ("%s",
+		      msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_TRANSFORM));
 	      return (0);
 	    }
 	}
@@ -689,7 +691,7 @@ disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID 
   hfid = sm_ch_heap ((MOBJ) (obj->class_));
   if (HFID_IS_NULL (hfid))
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_NO_HEAP));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_NO_HEAP));
       return (0);
     }
 
@@ -702,7 +704,7 @@ disk_update_instance (THREAD_ENTRY * thread_p, MOP classop, DESC_OBJ * obj, OID 
 			      UPDATE_INPLACE_CURRENT_MVCCID);
   if (heap_update_logical (thread_p, &update_context) != NO_ERROR)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_UPDATE));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_CANT_UPDATE));
       return (0);
     }
 
@@ -779,7 +781,7 @@ update_indexes (OID * class_oid, OID * obj_oid, RECDES * rec)
 
   (void) heap_scancache_quick_start (&scan_cache);
   heap_init_get_context (NULL, &context, obj_oid, class_oid, &oldrec, &scan_cache, COPY, NULL_CHN,
-			 HEAP_WITHOUT_OOS_EXPAND);
+			 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
 
   old_object = (heap_get_last_version (NULL, &context) == S_SUCCESS);
 

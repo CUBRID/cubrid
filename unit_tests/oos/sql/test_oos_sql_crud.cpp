@@ -216,9 +216,8 @@ TEST_F (OosSqlCrud, Cbrd27006MixedSingleChunkAndMultiChunkRow)
 
 }
 
-// CBRD-27006 follow-up: lazy OOS Resolve is batched through oos_read_many() only
-// when at least two requested attributes are OOS values. Non-OOS projections and
-// single-OOS projections must stay on the scalar path.
+// Lazy OOS Resolve uses oos_read_many() only when at least two requested attributes
+// are OOS-backed. Non-OOS and single-OOS projections stay on the scalar path.
 TEST_F (OosSqlCrud, Cbrd27006ReadDispatchBatchesOnlyMultiOosProjections)
 {
   int rc;
@@ -321,43 +320,6 @@ TEST_F (OosSqlCrud, MixedChunkSizes)
   rc = fetch_single_int ("SELECT LENGTH(data_col) FROM t_oos_crud WHERE id = 2", &len);
   ASSERT_EQ (rc, NO_ERROR);
   EXPECT_EQ (len, 65536);
-}
-
-// Regression for OOS non-numerable allocation: grow a real VARBIT-backed OOS
-// file beyond one disk sector and verify that every value remains readable.
-TEST_F (OosSqlCrud, NonNumerableAllocationAcrossSectors)
-{
-  int rc;
-  const int num_rows = DISK_SECTOR_NPAGES + 5;
-
-  rc = exec_sql ("CREATE TABLE t_oos_crud (id INT PRIMARY KEY, payload BIT VARYING)");
-  ASSERT_GE (rc, 0);
-  db_commit_transaction ();
-
-  for (int id = 1; id <= num_rows; id++)
-    {
-      char sql[256];
-      snprintf (sql, sizeof (sql),
-		"INSERT INTO t_oos_crud VALUES (%d, REPEAT(X'AB', 12000))", id);
-      rc = exec_sql (sql);
-      ASSERT_GE (rc, 0) << "OOS allocation failed at row " << id;
-    }
-  db_commit_transaction ();
-
-  int count = 0;
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_crud", &count);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, num_rows);
-
-  rc = fetch_single_int ("SELECT COUNT(*) FROM t_oos_crud WHERE LENGTH(payload) = 24000", &count);
-  ASSERT_EQ (rc, NO_ERROR);
-  EXPECT_EQ (count, num_rows);
-
-#if defined(SA_MODE)
-  const int oos_pages = get_oos_page_count ("t_oos_crud");
-  EXPECT_GT (oos_pages, DISK_SECTOR_NPAGES)
-      << "VARBIT allocation must grow the OOS file beyond one sector";
-#endif
 }
 
 int

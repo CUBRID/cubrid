@@ -4191,10 +4191,10 @@ locator_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 	      int save;
 	      MOP mop = ws_mop (&obj->oid, sm_Root_class_mop);
 
-	      AU_DISABLE (save);
+	      AU_SAVE_AND_DISABLE (save);
 	      /* fetch to update catalog representation directory */
 	      error_code = au_fetch_class (mop, &smclass, AU_FETCH_READ, AU_SELECT);
-	      AU_ENABLE (save);
+	      AU_RESTORE (save);
 	    }
 	}
 

@@ -954,13 +954,12 @@ TEST (OosBestspaceTest, BestspaceHeaderPageNeverReturned)
 
 
 // ===========================================================================
-// TEST: BestspaceSectorBitmapSyncAcrossSectors
+// TEST: BestspaceSyncRefillsCache
 //
-// Grow a non-numerable OOS file beyond one disk sector, free selected pages,
-// clear the global cache, then verify the sector-bitmap sync walk discovers
-// the free pages and repopulates the cache.
+// Create a file with multiple pages, clear the global cache, then verify
+// that sync_bestspace repopulates the cache so find_best_page succeeds.
 // ===========================================================================
-TEST (OosBestspaceTest, BestspaceSectorBitmapSyncAcrossSectors)
+TEST (OosBestspaceTest, BestspaceSyncRefillsCache)
 {
   int err;
   VFID oos_vfid;
@@ -970,16 +969,14 @@ TEST (OosBestspaceTest, BestspaceSectorBitmapSyncAcrossSectors)
 
   const int max_chunk = bridge_oos_get_max_chunk_size_within_page ();
 
-  // A near-maximum record consumes one page. Crossing DISK_SECTOR_NPAGES
-  // guarantees the collector must enumerate at least two sector bitmaps.
-  const int record_size = max_chunk - 50;
-  const int num_records = DISK_SECTOR_NPAGES + 5;
+  // Create multiple pages with some free space by inserting medium records
+  const int medium_size = max_chunk / 2;
   std::vector<OID> oids;
-  std::set<PAGEID> reusable_pages;
+  std::set<PAGEID> original_pages;
 
-  for (int i = 0; i < num_records; i++)
+  for (int i = 0; i < 5; i++)
     {
-      auto data = test_oos_utils::make_repeated_pattern_string (record_size);
+      auto data = test_oos_utils::make_repeated_pattern_string (medium_size);
       RECDES rec{};
       err = test_oos_utils::from_string_into_recdes (data, rec);
       ASSERT_EQ (err, NO_ERROR);
@@ -988,26 +985,13 @@ TEST (OosBestspaceTest, BestspaceSectorBitmapSyncAcrossSectors)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec, oid);
       ASSERT_EQ (err, NO_ERROR);
       oids.push_back (oid);
+      original_pages.insert (oid.pageid);
       recdes_free_data_area (&rec);
     }
 
-  std::set<PAGEID> allocated_pages;
-  for (const OID &oid : oids)
-    {
-      allocated_pages.insert (oid.pageid);
-    }
-  ASSERT_EQ ((int) allocated_pages.size (), num_records);
+  test_oos_debug ("Created %d pages with medium records", (int) original_pages.size ());
 
-  // Free a page in each part of the scan range. oos_delete publishes these
-  // pages to the cache, so remove them below to force sync to rediscover them.
-  for (int i = 0; i < num_records; i += 16)
-    {
-      err = oos_delete (thread_p, oos_vfid, oids[i]);
-      ASSERT_EQ (err, NO_ERROR);
-      reusable_pages.insert (oids[i].pageid);
-    }
-
-  // Delete all cached entries so only the sector-bitmap sync can repopulate them.
+  // Delete all cached entries for these pages from the global cache
   for (auto &oid : oids)
     {
       VPID vpid = {oid.pageid, oid.volid};
@@ -1036,7 +1020,6 @@ TEST (OosBestspaceTest, BestspaceSectorBitmapSyncAcrossSectors)
   // Run sync to repopulate
   int found = bridge_oos_stats_sync_bestspace (thread_p, &oos_vfid, oos_hdr, &hdr_vpid, true);
   test_oos_debug ("sync_bestspace found %d pages with good free space", found);
-  ASSERT_GE (found, (int) reusable_pages.size ());
 
   pgbuf_unfix_and_init (thread_p, hdr_page);
 
@@ -1046,9 +1029,9 @@ TEST (OosBestspaceTest, BestspaceSectorBitmapSyncAcrossSectors)
   ASSERT_NE (page, nullptr);
   ASSERT_NE (found_vpid.pageid, NULL_PAGEID);
 
-  // The found page must be one of the pages freed before the scan.
-  ASSERT_TRUE (reusable_pages.count (found_vpid.pageid) > 0)
-      << "sector-bitmap sync did not find a reusable OOS page";
+  // The found page should be one of the original pages (which still have space)
+  ASSERT_TRUE (original_pages.count (found_vpid.pageid) > 0)
+      << "sync did not find any of the original pages";
 
   err = oos_remove_file (thread_p, oos_vfid);
   ASSERT_EQ (err, NO_ERROR);

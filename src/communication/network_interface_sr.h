@@ -60,6 +60,7 @@ extern void slocator_rename_class_name (THREAD_ENTRY * thread_p, unsigned int ri
 extern void slocator_assign_oid (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slocator_demote_class_lock (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sqst_server_get_statistics (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sqst_histogram_build_by_reservoir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slog_checkpoint (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void slogtb_has_updated (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
@@ -244,6 +245,8 @@ extern void sloaddb_destroy (THREAD_ENTRY * thread_p, unsigned int rid, char *re
 extern void sloaddb_interrupt (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sloaddb_update_stats (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session);
+extern void ssession_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session);
+extern void ssession_destroy_load_session (THREAD_ENTRY * thread_p, void *session);
 
 extern void slob_create_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slob_remove_dir (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);

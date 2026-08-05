@@ -1382,6 +1382,18 @@ db_attribute_is_oos_prefer_inline (DB_ATTRIBUTE * attribute)
   return (status);
 }
 
+/*
+ * db_attribute_is_oos_force_outline() - This function tests if attribute forces
+ *     profitable variable values to OOS regardless of record size.
+ * return : non-zero if the STORAGE FORCE_OUTLINE option is set.
+ * attribute(in): attribute descriptor
+ */
+int
+db_attribute_is_oos_force_outline (DB_ATTRIBUTE * attribute)
+{
+  return attribute != NULL && (attribute->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE) != 0;
+}
+
 
 /*
  * db_attribute_is_reverse_unique() - This function tests the status of the

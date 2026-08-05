@@ -744,7 +744,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
@@ -883,7 +883,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -953,7 +953,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
@@ -1122,7 +1122,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -1180,8 +1180,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  // TODO: it should be moved to before db_compile_and_execute_local(). It can be returned without AU_ENABLE().
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1190,6 +1189,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
       if (uppercase_user == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1205,6 +1205,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1365,7 +1366,7 @@ end:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -3085,6 +3086,10 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
     {
       output_ctx (" STORAGE PREFER_INLINE");
     }
+  else if (db_attribute_is_oos_force_outline (attribute))
+    {
+      output_ctx (" STORAGE FORCE_OUTLINE");
+    }
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
@@ -3677,7 +3682,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   if (partitioned_subclass)
     {
       DB_OBJECT *root_op = NULL;
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       if (do_get_partition_parent (class_, &root_op) == NO_ERROR)
 	{
 	  if (au_fetch_class (root_op, &supclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -3686,7 +3691,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
@@ -4359,7 +4364,7 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
   int err;
   int err_count = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   for (i = 0; i < arg_cnt; i++)
     {
@@ -4411,7 +4416,7 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
       pr_clear_value (&arg_val);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return err_count;
 }
 
@@ -4437,12 +4442,12 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
   char output_owner[DB_MAX_USER_LENGTH + 4];
   output_owner[0] = '\0';
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   cls = db_find_class (SP_CLASS_NAME);
   if (cls == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return 1;
     }
 
@@ -4603,7 +4608,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
     }
 
   db_objlist_free (sp_list);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err_count;
 }
@@ -4624,12 +4629,12 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
   int err_count = 0;
   const char *owner_name;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   cls = db_find_class (SP_CLASS_NAME);
   if (cls == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return 1;
     }
 
@@ -4696,7 +4701,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
     }
 
   db_objlist_free (sp_list);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err_count;
 }
@@ -4721,7 +4726,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_string (&value, code_name);
   obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
@@ -4802,7 +4807,7 @@ exit:
 
   db_value_clear (&value);
   db_value_clear (&scode_val);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err;
 }
@@ -4993,7 +4998,7 @@ export_server (extract_context & ctxt, print_output & output_ctx)
     }
 
   int au_save;
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error <= 0)
@@ -5085,7 +5090,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 

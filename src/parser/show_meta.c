@@ -79,6 +79,7 @@ static SHOWSTMT_METADATA *metadata_of_slotted_page_header (void);
 static SHOWSTMT_METADATA *metadata_of_slotted_page_slots (void);
 static SHOWSTMT_METADATA *metadata_of_heap_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_heap_capacity (SHOW_ONLY_ALL flag);
+static SHOWSTMT_METADATA *metadata_of_heap_oos (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_header (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_index_capacity (SHOW_ONLY_ALL flag);
 static SHOWSTMT_METADATA *metadata_of_global_critical_sections (void);
@@ -223,7 +224,6 @@ metadata_of_slotted_page_header (void)
     {"Total_free_area", "int"},
     {"Contiguous_free_area", "int"},
     {"Free_space_offset", "int"},
-    {"Need_update_best_hint", "int"},
     {"Is_saving", "int"},
     {"Flags", "int"}
   };
@@ -304,21 +304,11 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
     {"Header_page_id", "int"},
     {"Overflow_vfid", "varchar(64)"},
     {"Next_vpid", "varchar(64)"},
+    {"Last_vpid", "varchar(64)"},
     {"Unfill_space", "int"},
-    {"Estimates_num_pages", "bigint"},
-    {"Estimates_num_recs", "bigint"},
-    {"Estimates_avg_rec_len", "int"},
-    {"Estimates_num_high_best", "int"},
-    {"Estimates_num_others_high_best", "int"},
-    {"Estimates_head", "int"},
-    {"Estimates_best_list", "varchar(512)"},
-    {"Estimates_num_second_best", "int"},
-    {"Estimates_head_second_best", "int"},
-    {"Estimates_tail_second_best", "int"},
-    {"Estimates_num_substitutions", "int"},
-    {"Estimates_second_best_list", "varchar(256)"},
-    {"Estimates_last_vpid", "varchar(64)"},
-    {"Estimates_full_search_vpid", "varchar(64)"}
+    {"Num_pages", "bigint"},
+    {"Num_recs", "bigint"},
+    {"Avg_rec_len", "int"}
   };
 
   static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
@@ -383,6 +373,47 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
 
   static SHOWSTMT_METADATA md_all = {
     SHOWSTMT_ALL_HEAP_CAPACITY, true /* only_for_dba */ , "show all heap capacity of ",
+    cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  return (flag == SHOW_ALL) ? &md_all : &md_only;
+}
+
+static SHOWSTMT_METADATA *
+metadata_of_heap_oos (SHOW_ONLY_ALL flag)
+{
+  static const SHOWSTMT_COLUMN cols[] = {
+    {"Table_name", "varchar(256)"},
+    {"Class_oid", "varchar(64)"},
+    {"Heap_volume_id", "int"},
+    {"Heap_file_id", "int"},
+    {"Heap_header_page_id", "int"},
+    {"Has_oos_file", "int"},
+    {"Oos_volume_id", "int"},
+    {"Oos_file_id", "int"},
+    {"Oos_num_user_pages", "int"},
+    {"Oos_page_size", "int"},
+    {"Oos_num_recs", "int"},
+    {"Oos_recs_sumlen", "bigint"},
+    {"Oos_physical_bytes", "bigint"},
+    {"Oos_unused_bytes", "bigint"}
+  };
+
+  static const SHOWSTMT_COLUMN_ORDERBY orderby[] = {
+    {1, ORDER_ASC}
+  };
+
+  static const SHOWSTMT_NAMED_ARG args[] = {
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+  };
+
+  static SHOWSTMT_METADATA md_only = {
+    SHOWSTMT_HEAP_OOS, true /* only_for_dba */ , "show heap oos of ",
+    cols, DIM (cols), NULL, 0, args, DIM (args), pt_check_table_in_show_heap, NULL
+  };
+
+  static SHOWSTMT_METADATA md_all = {
+    SHOWSTMT_ALL_HEAP_OOS, true /* only_for_dba */ , "show all heap oos of ",
     cols, DIM (cols), orderby, DIM (orderby), args, DIM (args), pt_check_table_in_show_heap, NULL
   };
 
@@ -801,7 +832,8 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
 
   show_type = derived_table->info.showstmt.show_type;
   assert (show_type == SHOWSTMT_HEAP_HEADER || show_type == SHOWSTMT_ALL_HEAP_HEADER
-	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY);
+	  || show_type == SHOWSTMT_HEAP_CAPACITY || show_type == SHOWSTMT_ALL_HEAP_CAPACITY
+	  || show_type == SHOWSTMT_HEAP_OOS || show_type == SHOWSTMT_ALL_HEAP_OOS);
 
   show_args_node = derived_table->info.showstmt.show_args;
   assert (show_args_node != NULL);
@@ -818,9 +850,9 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
@@ -965,6 +997,8 @@ showstmt_metadata_init (void)
   show_Metas[SHOWSTMT_ALL_HEAP_HEADER] = metadata_of_heap_header (SHOW_ALL);
   show_Metas[SHOWSTMT_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_HEAP_CAPACITY] = metadata_of_heap_capacity (SHOW_ALL);
+  show_Metas[SHOWSTMT_HEAP_OOS] = metadata_of_heap_oos (SHOW_ONLY);
+  show_Metas[SHOWSTMT_ALL_HEAP_OOS] = metadata_of_heap_oos (SHOW_ALL);
   show_Metas[SHOWSTMT_INDEX_HEADER] = metadata_of_index_header (SHOW_ONLY);
   show_Metas[SHOWSTMT_INDEX_CAPACITY] = metadata_of_index_capacity (SHOW_ONLY);
   show_Metas[SHOWSTMT_ALL_INDEXES_HEADER] = metadata_of_index_header (SHOW_ALL);
@@ -1108,9 +1142,9 @@ pt_check_show_index (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = au_fetch_class_force (cls, &sm_class, AU_FETCH_READ);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (error == NO_ERROR)
     {
       if (sm_get_class_type (sm_class) != SM_CLASS_CT)
