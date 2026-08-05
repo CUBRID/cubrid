@@ -8119,6 +8119,31 @@ get_attr_name (PT_NODE * attribute)
 	  ? attribute->info.attr_def.attr_name->alias_print : attribute->info.attr_def.attr_name->info.name.original);
 }
 
+static bool
+is_oos_storage_eligible_attribute (DB_CTMPL * ctemplate, SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+{
+  assert (ctemplate != NULL);
+  assert (domain != NULL);
+
+  return name_space == ID_ATTRIBUTE && smt_get_class_type (ctemplate) == SM_CLASS_CT
+    && pr_is_variable_type (TP_DOMAIN_TYPE (domain));
+}
+
+static int
+validate_oos_storage_setting (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attribute,
+			      SM_NAME_SPACE name_space, const TP_DOMAIN * domain)
+{
+  if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
+      || is_oos_storage_eligible_attribute (ctemplate, name_space, domain))
+    {
+      return NO_ERROR;
+    }
+
+  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
+	      MSGCAT_SEMANTIC_STORAGE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attribute));
+  return ER_PT_SEMANTIC;
+}
+
 /*
  * do_add_attribute() - Adds an attribute to a class object
  *   return: Error code
@@ -8247,13 +8272,9 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
       name_space = ID_ATTRIBUTE;
     }
 
-  if (attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE
-      && (name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
-	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+  error = validate_oos_storage_setting (parser, ctemplate, attribute, name_space, attr_db_domain);
+  if (error != NO_ERROR)
     {
-      PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_FORCE_OUTLINE_REQUIRES_VARIABLE_NORMAL_ATT, attr_name);
-      error = ER_PT_SEMANTIC;
       tp_domain_free (attr_db_domain);
       goto error_exit;
     }
@@ -8301,24 +8322,15 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
 
   if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_PREFER_INLINE)
     {
-      if (name_space != ID_ATTRIBUTE)
+      /* skip finding attribute if att is already available */
+      if (att == NULL)
 	{
-	  PT_ERRORmf (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC,
-		      MSGCAT_SEMANTIC_CLASS_ATT_OR_SHARED_CANT_SET_STORAGE, attr_name);
-	  error = ER_PT_SEMANTIC;
+	  error = smt_find_attribute (ctemplate, attr_name, 0, &att);
 	}
-      else
-	{
-	  /* skip finding attribute if att is already available */
-	  if (att == NULL)
-	    {
-	      error = smt_find_attribute (ctemplate, attr_name, 0, &att);
-	    }
 
-	  if (error == NO_ERROR)
-	    {
-	      att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
-	    }
+      if (error == NO_ERROR)
+	{
+	  att->flags |= SM_ATTFLAG_OOS_PREFER_INLINE;
 	}
     }
   else if (error == NO_ERROR && attribute->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE)
@@ -12556,23 +12568,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
       return (er_errid ());
     }
 
-  if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_FORCE_OUTLINE
-      && (attr_chg_properties->new_name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
-	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+  error = validate_oos_storage_setting (parser, ctemplate, attr_def, attr_chg_properties->new_name_space,
+					attr_db_domain);
+  if (error != NO_ERROR)
     {
-      PT_ERRORmf (parser, attr_def, MSGCAT_SET_PARSER_SEMANTIC,
-		  MSGCAT_SEMANTIC_FORCE_OUTLINE_REQUIRES_VARIABLE_NORMAL_ATT, get_attr_name (attr_def));
       tp_domain_free (attr_db_domain);
-      return ER_PT_SEMANTIC;
+      return error;
     }
 
   if (attr_def->info.attr_def.attr_storage == PT_ATTR_STORAGE_UNSET
-      && (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
-      && (attr_chg_properties->new_name_space != ID_ATTRIBUTE || smt_get_class_type (ctemplate) != SM_CLASS_CT
-	  || !pr_is_variable_type (TP_DOMAIN_TYPE (attr_db_domain))))
+      && !is_oos_storage_eligible_attribute (ctemplate, attr_chg_properties->new_name_space, attr_db_domain))
     {
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
-      attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+      if (att->flags & SM_ATTFLAG_OOS_PREFER_INLINE)
+	{
+	  attr_chg_properties->p[P_OOS_PREFER_INLINE] |= ATT_CHG_PROPERTY_LOST;
+	  attr_chg_properties->p[P_OOS_PREFER_INLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+	}
+      if (att->flags & SM_ATTFLAG_OOS_FORCE_OUTLINE)
+	{
+	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] |= ATT_CHG_PROPERTY_LOST;
+	  attr_chg_properties->p[P_OOS_FORCE_OUTLINE] &= ~(ATT_CHG_PROPERTY_PRESENT_OLD | ATT_CHG_PROPERTY_UNCHANGED);
+	}
     }
 
   attr_chg_properties->p[P_TYPE] = 0;

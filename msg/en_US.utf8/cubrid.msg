@@ -2001,7 +2001,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 336 Numeric scale specifier is out of range -84 to 127
 337 The partition name is too long.
 338 '%1$s' is a CLASS or SHARED attribute but only normal attributes can set storage options.
-339 STORAGE FORCE_OUTLINE can be set only on variable-type normal attributes of a class: '%1$s'.
+339 STORAGE options can be set only on variable-type normal attributes of a class: '%1$s'.
 
 337 Undefined argument. UUID only supports UUIDv4, or UUIDv7; the version argument cannot be NULL.
 
