@@ -4744,6 +4744,10 @@ update_statistics_stmt
 			    ups->info.update_stats.no_histogram = (($5 & 0x04) != 0);
 			    ups->info.update_stats.drop_histogram = (($5 & 0x08) != 0);
 			    ups->info.update_stats.bucket_count = ($5 >> 8);
+			    if (($5 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4760,6 +4764,10 @@ update_statistics_stmt
 			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
 			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
 			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4776,6 +4784,10 @@ update_statistics_stmt
 			    ups->info.update_stats.no_histogram = (($6 & 0x04) != 0);
 			    ups->info.update_stats.drop_histogram = (($6 & 0x08) != 0);
 			    ups->info.update_stats.bucket_count = ($6 >> 8);
+			    if (($6 & 0x10) != 0)
+			      {
+				PT_ERRORf (this_parser, ups, "%s", "Duplicated or conflicting UPDATE STATISTICS options.");
+			      }
 			  }
 			$$ = ups;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
@@ -4830,7 +4842,19 @@ stats_option_list
                 }}
         | stats_option_list ',' stats_option
                 {{
-                        $$ = $1 | $3;
+                        /* a repeated option kind (including two BUCKETS counts) or the
+                         * NO HISTOGRAM / DROP HISTOGRAM contradiction must not OR-merge
+                         * silently (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets);
+                         * poison the value and let the statement rule raise the error
+                         * where a parse node exists to attach it to */
+                        int merged = $1 | $3;
+                        if ((($1 & $3) & 0x0F) != 0
+                            || (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)
+                            || ((merged & 0x0C) == 0x0C))
+                          {
+                            merged |= 0x10;
+                          }
+                        $$ = merged;
                 }}
         ;
 
@@ -4859,9 +4883,9 @@ stats_option
                           {
                             bcnt = 1;
                           }
-                        else if (bcnt > 0xFFFFFF)
+                        else if (bcnt > 0x7FFFFF)
                           {
-                            bcnt = 0xFFFFFF;
+                            bcnt = 0x7FFFFF;
                           }
                         $$ = (bcnt << 8);
                 }}

@@ -4656,6 +4656,16 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_OBJ_INVALID_ARGUMENTS;
     }
 
+  if (statement->info.update_stats.all_classes < 0
+      && (statement->info.update_stats.no_histogram || statement->info.update_stats.random_seed))
+    {
+      /* the CATALOG CLASSES refresh (sm_update_all_catalog_statistics) builds no histograms
+       * and takes no sampling seed; reject these options like DROP HISTOGRAM / n BUCKETS
+       * above instead of silently ignoring them */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
   if (statement->info.update_stats.all_classes > 0)
     {
       // ALL CLASSES

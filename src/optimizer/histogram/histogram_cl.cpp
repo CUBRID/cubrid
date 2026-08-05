@@ -2466,9 +2466,20 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
   std::uint64_t component;
   if (ok)
     {
-      /* quantized selectivity: values falling in the same MCV/bucket produce the same estimate,
-       * hence the same fingerprint, hence plan reuse */
-      component = (std::uint64_t) (sel * 1.0e12);
+      if (op == PT_EQ)
+	{
+	  /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
+	   * the same class produce the same estimate, hence the same fingerprint, hence reuse */
+	  component = (std::uint64_t) (sel * 1.0e12);
+	}
+      else
+	{
+	  /* range estimates interpolate LINEARLY inside the straddling bucket, so the raw
+	   * estimate is continuous in the bound value: a fine quantization would hand nearly
+	   * every bound its own fingerprint (a replan per value). 0.01 steps bound the
+	   * distinct fingerprints of one predicate to ~100. */
+	  component = (std::uint64_t) (sel * 100.0);
+	}
     }
   else
     {
