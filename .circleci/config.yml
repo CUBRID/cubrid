@@ -652,12 +652,13 @@ jobs:
               || { echo "[error] ${CIRCLE_SHA1} is not reachable from ${head_ref}"; exit 1; }
 
             git -C /home/cubrid checkout --quiet --detach "$CIRCLE_SHA1"
-            git -C /home/cubrid submodule init
 
-            # Take each submodule from its mirror only when the mirror has the
-            # pinned commit. The mirror is never refreshed from here, so a bump
-            # pins one it has not seen, and that must cost a fetch rather than
-            # the whole build.
+            # What the submodules command runs, with one thing inserted: a URL
+            # is repointed at the mirror when the mirror holds the commit this
+            # revision pins. Objects are content-addressed, so that changes
+            # where the bytes come from and not the tree they produce.
+            git -C /home/cubrid submodule sync
+            git -C /home/cubrid submodule init
             while read -r key url; do
               name=${key#submodule.}; name=${name%.url}
               path=$(git -C /home/cubrid config -f .gitmodules --get "submodule.${name}.path")
@@ -666,13 +667,16 @@ jobs:
               if git -C "$mirror" cat-file -e "${want}^{commit}" 2> /dev/null; then
                 git -C /home/cubrid config "submodule.${name}.url" "$mirror"
               else
-                echo "[warn] ${path} ${want} is not in the mirror; taking it from ${url} over the WAN"
+                # The mirror is a seed nothing refreshes, so a submodule bumped
+                # after it was taken comes over the WAN in full until someone
+                # re-seeds. Sizes: cci 28MB, jdbc 1.5MB, manager-server 67MB.
+                echo "[warn] ${path} ${want} is not in the mirror; cloning it from ${url} over the WAN"
               fi
             done < <(git -C /home/cubrid config --get-regexp '^submodule\..*\.url')
 
             # protocol.file.allow: since git 2.38 a submodule may not be cloned
             # from a path, which is exactly what the rewrite above produces.
-            git -C /home/cubrid -c protocol.file.allow=always submodule update --quiet
+            git -C /home/cubrid -c protocol.file.allow=always submodule update
             echo "[debug] source ${CIRCLE_SHA1}, build serial $(git -C /home/cubrid rev-list --count --after 2019-12-12 HEAD)"
       - run:
           name: Build the debug package
