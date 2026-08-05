@@ -53,8 +53,27 @@ executors:
       # GlusterFS build layout contract, defined once for both sides:
       # download-build publishes <root>/<sha>/<mode>/CUBRID + sentinel,
       # test_shell waits on the sentinel and mounts that tree.
-      BUILD_CACHE_ROOT: /home/build-cache/builds
-      BUILD_SENTINEL: .complete
+      BUILD_CACHE_ROOT: &build_cache_root /home/build-cache/builds
+      BUILD_SENTINEL: &build_sentinel .complete
+
+  # CUBRIDQA-1506, temporary. The Helm values pin cubridci:test_shell on this
+  # resource class; the image named here wins, so building on it needs no
+  # runner-side change.
+  cubrid-build-node:
+    docker:
+      - image: cubridci/cubridci:rl8.10
+    resource_class: cubrid/ramdisk
+    working_directory: /home
+    environment:
+      BUILD_CACHE_ROOT: *build_cache_root
+      BUILD_SENTINEL: *build_sentinel
+      BUILD_MIRROR: /home/build-cache/cubrid-mirror
+      CCACHE_DIR: /home/build-cache/ccache-shell-debug
+      # This cache lives on GlusterFS and the build tree does not, so no
+      # CCACHE_HARDLINK here -- it would silently fall back to copying. The
+      # image already exports CC/CXX through ccache. Content, not mtime: the
+      # image is pulled per node, and mtime would split the cache per node.
+      CCACHE_COMPILERCHECK: content
 
 commands:
   submodules:
@@ -478,12 +497,12 @@ jobs:
           mode: optdebug
           build-args: "-m optdebug"
       # Package when a test job will consume it, or on develop for preservation.
+      # Not for shell: it builds on its own node now (CUBRIDQA-1506).
       - when:
           condition:
             or:
               - << pipeline.parameters.run_sql_test >>
               - << pipeline.parameters.run_medium_test >>
-              - << pipeline.parameters.run_shell_test >>
               - equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - package-build:
@@ -568,6 +587,177 @@ jobs:
                 root: /tmp/tcws
                 paths: [ BRANCH_TESTCASES ]
 
+  # CUBRIDQA-1506, temporary: stands in for download-build on the shell path
+  # and goes away with CircleCI (CUBRIDQA-1501).
+  build-debug-node:
+    description: "Build the debug package on the runner node and publish it to GlusterFS"
+    executor: cubrid-build-node
+    steps:
+      # Before the halt below: it ends the job as a success, so an early one
+      # would leave the shell pods with no branch and silently test develop.
+      - resolve-testcases:
+          tc-repo: cubrid-testcases-private-ex
+      - run:
+          name: Persist testcases branch for shell pods
+          command: |
+            mkdir -p /tmp/tcws
+            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+      - persist_to_workspace:
+          root: /tmp/tcws
+          paths: [ BRANCH_TESTCASES ]
+      - run:
+          name: Reuse an existing build
+          command: |
+            set -eo pipefail
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
+            if [ -f "${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug/${BUILD_SENTINEL}" ]; then
+              echo "[debug] ${CIRCLE_SHA1} is already published; skipping the build"
+              circleci-agent step halt
+              exit 0
+            fi
+      - run:
+          name: Sync the source mirror
+          no_output_timeout: 30m
+          command: |
+            set -eo pipefail
+            : "${BUILD_MIRROR:?}"
+            mkdir -p "$BUILD_MIRROR"
+
+            # Advisory: git locks its own refs, so a missing flock or a
+            # filesystem that ignores it costs a retry, not correctness.
+            if command -v flock > /dev/null; then
+              exec 9> "$BUILD_MIRROR/.lock"
+              flock -w 900 9 || echo "[warn] mirror lock timed out; continuing"
+            fi
+
+            # Not $$: that is a container PID, and two pods staging into the
+            # same shared directory can easily hold the same one.
+            stage=${CIRCLE_BUILD_NUM}
+
+            sync_mirror() {
+              local dir=$1 url=$2 repo; shift 2
+              repo="$BUILD_MIRROR/$dir"
+              if [ ! -d "$repo" ]; then
+                echo "[warn] no mirror at $repo; seeding it from $url over the WAN (one full clone)"
+                rm -rf "$repo.tmp.$stage"
+                # --progress, not --quiet: git prints none unless asked when
+                # stderr is not a tty, and a silent 745MB clone on a shared
+                # 30Mbps line trips the step's no-output timeout.
+                git clone --bare --progress "$url" "$repo.tmp.$stage" || { rm -rf "$repo.tmp.$stage"; return 1; }
+                mv -T "$repo.tmp.$stage" "$repo" 2> /dev/null || rm -rf "$repo.tmp.$stage"
+              fi
+              # Never let a repack run: the build tree clones --shared, so it
+              # reads this repo's packs from start to finish.
+              git -C "$repo" config gc.auto 0 || return 1
+              git -C "$repo" fetch --quiet origin "$@"
+            }
+
+            # A pull request head lives under refs/pull, which a bare clone of
+            # the fork point never carries -- fetch it by name, every run.
+            refspecs=( '+refs/heads/develop:refs/heads/develop' )
+            case "$CIRCLE_BRANCH" in
+              pull/*) refspecs+=( "+refs/${CIRCLE_BRANCH}:refs/${CIRCLE_BRANCH}" ) ;;
+              ?*)     refspecs+=( "+refs/heads/${CIRCLE_BRANCH}:refs/heads/${CIRCLE_BRANCH}" ) ;;
+            esac
+            sync_mirror cubrid.git https://github.com/CUBRID/cubrid.git "${refspecs[@]}"
+
+            # Advisory, unlike cubrid.git: the tree step decides per submodule
+            # whether the mirror has the pinned commit, so a mirror we cannot
+            # reach costs bandwidth rather than the build.
+            for url in https://github.com/CUBRID/cubrid-cci.git \
+                       https://github.com/cubrid/cubrid-jdbc \
+                       https://github.com/CUBRID/cubrid-manager-server; do
+              sync_mirror "$(basename "${url%.git}").git" "$url" '+refs/heads/*:refs/heads/*' \
+                || echo "[warn] could not sync the mirror for ${url}"
+            done
+
+            git -C "$BUILD_MIRROR/cubrid.git" cat-file -e "${CIRCLE_SHA1}^{commit}" 2> /dev/null \
+              || { echo "[error] ${CIRCLE_SHA1} is not in the mirror after fetching ${CIRCLE_BRANCH}"; exit 1; }
+      - run:
+          name: Prepare the source tree
+          command: |
+            set -eo pipefail
+            : "${BUILD_MIRROR:?}"
+            rm -rf /home/cubrid
+
+            # --shared, so this borrows the mirror's objects instead of copying
+            # 745MB per run. Full history: the build number counts commits, and
+            # a shallow clone would quietly stamp the package 0001.
+            git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" /home/cubrid
+            git -C /home/cubrid checkout --quiet --detach "$CIRCLE_SHA1"
+            git -C /home/cubrid submodule init
+
+            # Take each submodule from its mirror only when the mirror already
+            # has the pinned commit: a bump pins one that is not on develop yet,
+            # and that must cost a fetch rather than the whole build.
+            while read -r key url; do
+              name=${key#submodule.}; name=${name%.url}
+              path=$(git -C /home/cubrid config -f .gitmodules --get "submodule.${name}.path")
+              mirror="${BUILD_MIRROR}/$(basename "${url%.git}").git"
+              want=$(git -C /home/cubrid rev-parse "HEAD:${path}")
+              if git -C "$mirror" cat-file -e "${want}^{commit}" 2> /dev/null; then
+                git -C /home/cubrid config "submodule.${name}.url" "$mirror"
+              else
+                echo "[warn] ${path} ${want} is not in the mirror; taking it from ${url} over the WAN"
+              fi
+            done < <(git -C /home/cubrid config --get-regexp '^submodule\..*\.url')
+
+            # protocol.file.allow: since git 2.38 a submodule may not be cloned
+            # from a path, which is exactly what the rewrite above produces.
+            git -C /home/cubrid -c protocol.file.allow=always submodule update --quiet
+            echo "[debug] source ${CIRCLE_SHA1}, build serial $(git -C /home/cubrid rev-list --count --after 2019-12-12 HEAD)"
+      - run:
+          name: Build the debug package
+          no_output_timeout: 45m
+          command: |
+            set -eo pipefail
+            : "${CCACHE_DIR:?}"
+            mkdir -p "$CCACHE_DIR"
+            ccache --max-size=5G
+            ccache -z
+            # From the source root. The entrypoint decides whether the build
+            # failed by reading ./build.log, which it only writes there when
+            # build.sh is in the current directory; run from /home it reads a
+            # path that does not exist and calls a failed build a success.
+            cd /home/cubrid
+            /entrypoint.sh build -m optdebug
+            ccache -s
+      - run:
+          name: Publish the build to GlusterFS
+          # cp -a of the built tree to GlusterFS prints nothing while it runs.
+          no_output_timeout: 30m
+          command: |
+            set -eo pipefail
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
+            build_dir="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
+
+            # Stage, then publish with one atomic rename: consumers never see a
+            # half-copied tree, and a run that loses the rename drops its
+            # staging dir instead of touching the published one.
+            tmp_dir="${build_dir}.tmp.${CIRCLE_BUILD_NUM}"
+            rm -rf "$tmp_dir"
+            mkdir -p "$tmp_dir"
+            cp -a /home/CUBRID "${tmp_dir}/CUBRID"
+            touch "${tmp_dir}/${BUILD_SENTINEL}"
+            if mv -T "$tmp_dir" "$build_dir" 2> /dev/null; then
+              echo "Build published at ${build_dir}"
+            else
+              echo "Another run published this build first, discarding staging dir"
+              rm -rf "$tmp_dir"
+            fi
+            ls -la "${build_dir}/CUBRID"
+            df -h /home/build-cache
+      - run:
+          name: Store build logs and commits
+          when: always
+          command: |
+            mkdir -p /tmp/build_logs
+            mv -f /home/cubrid/build.log /tmp/build_logs || true
+            git -C /home/cubrid log | head -n 1000 > /tmp/build_logs/commits.log || true
+      - store_artifacts:
+          path: /tmp/build_logs
+          when: always
+
 # Test jobs are gated by expression-based filters (evaluated server-side).
 workflows:
   build_test:
@@ -585,8 +775,11 @@ workflows:
           parallelism: 10
           requires: [build_debug]
           filters: pipeline.parameters.run_sql_test
-      - download-build:
-          requires: [build_debug]
+      # Keeps the name: it is the commit status context and what test_shell
+      # requires. No requires of its own -- not waiting for the cloud build is
+      # where the time goes (CUBRIDQA-1506).
+      - build-debug-node:
+          name: download-build
           filters: pipeline.parameters.run_shell_test
       - test_shell:
           requires: [download-build]
