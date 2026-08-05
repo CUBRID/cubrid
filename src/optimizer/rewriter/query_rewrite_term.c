@@ -4425,3 +4425,303 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	}
     }
 }
+
+/* bookkeeping for qo_or_extract_check_ref_pre () */
+typedef struct qo_or_extract_ref_info QO_OR_EXTRACT_REF_INFO;
+struct qo_or_extract_ref_info
+{
+  UINTPTR spec_id;		/* id of the spec being tested */
+  bool refers_spec;		/* a column of the tested spec appears */
+  bool refers_other;		/* a column of any other spec appears */
+  bool is_unsafe;		/* contains a piece that must not be evaluated twice or out of place */
+};
+
+/*
+ * qo_or_extract_check_ref_pre () - classify which specs an expression touches and whether it
+ *				    is safe to duplicate as a derived scan filter
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): QO_OR_EXTRACT_REF_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_or_extract_check_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  QO_OR_EXTRACT_REF_INFO *info = (QO_OR_EXTRACT_REF_INFO *) arg;
+
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (PT_IS_QUERY (node) || node->node_type == PT_METHOD_CALL)
+    {
+      /* evaluating a subquery or a method one extra time per scanned row is not free and may be
+       * correlated; leave such terms alone */
+      info->is_unsafe = true;
+    }
+  else if (node->node_type == PT_NAME)
+    {
+      if (node->info.name.meta_class == PT_PARAMETER)
+	{
+	  ;			/* an interpreter parameter behaves like a constant */
+	}
+      else if (node->info.name.spec_id == info->spec_id)
+	{
+	  info->refers_spec = true;
+	}
+      else
+	{
+	  info->refers_other = true;
+	}
+    }
+  else if (node->node_type == PT_EXPR)
+    {
+      switch (node->info.expr.op)
+	{
+	case PT_RAND:
+	case PT_RANDOM:
+	case PT_DRAND:
+	case PT_DRANDOM:
+	case PT_SYS_GUID:
+	  /* a second evaluation draws a different value, so a duplicated filter could reject rows
+	   * the original predicate accepts */
+	case PT_CURRENT_VALUE:
+	case PT_NEXT_VALUE:
+	  /* serial access has side effects */
+	case PT_INST_NUM:
+	case PT_ROWNUM:
+	case PT_ORDERBY_NUM:
+	  /* row-numbering terms are position dependent */
+	case PT_LEVEL:
+	case PT_PRIOR:
+	case PT_CONNECT_BY_ROOT:
+	case PT_SYS_CONNECT_BY_PATH:
+	  /* hierarchy pseudo columns are only meaningful in their original place */
+	case PT_DEFINE_VARIABLE:
+	case PT_EVALUATE_VARIABLE:
+	  /* session variables are order sensitive */
+	  info->is_unsafe = true;
+	  break;
+	default:
+	  break;
+	}
+    }
+
+  if (info->is_unsafe)
+    {
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_or_extract_flatten () - flatten a PT_AND/PT_OR tree into an array of operand expressions
+ *   return: number of operands collected so far, or -1 when there are more than max_cnt
+ *   expr(in): boolean expression tree
+ *   op(in): PT_AND or PT_OR
+ *   out(out): operand array of size max_cnt (may be NULL to only count)
+ *   cnt(in): operands collected before this call
+ *   max_cnt(in):
+ */
+static int
+qo_or_extract_flatten (PT_NODE * expr, PT_OP_TYPE op, PT_NODE ** out, int cnt, int max_cnt)
+{
+  if (expr != NULL && expr->node_type == PT_EXPR && expr->info.expr.op == op)
+    {
+      cnt = qo_or_extract_flatten (expr->info.expr.arg1, op, out, cnt, max_cnt);
+      if (cnt < 0)
+	{
+	  return -1;
+	}
+      return qo_or_extract_flatten (expr->info.expr.arg2, op, out, cnt, max_cnt);
+    }
+
+  if (cnt >= max_cnt)
+    {
+      return -1;
+    }
+  if (out != NULL)
+    {
+      out[cnt] = expr;
+    }
+  return cnt + 1;
+}
+
+/*
+ * qo_or_extract_build_for_spec () - conjunction of the copies of the conjuncts of one disjunct
+ *				     that reference only the given spec
+ *   return: newly built expression, or NULL when the disjunct has no usable conjunct
+ *   parser(in):
+ *   disjunct(in): one disjunct of a CNF OR factor; may itself be an AND tree
+ *   spec_id(in):
+ */
+static PT_NODE *
+qo_or_extract_build_for_spec (PARSER_CONTEXT * parser, PT_NODE * disjunct, UINTPTR spec_id)
+{
+#define QO_OR_EXTRACT_MAX_CONJUNCTS 16
+  PT_NODE *conjuncts[QO_OR_EXTRACT_MAX_CONJUNCTS];
+  PT_NODE *result = NULL, *copied;
+  QO_OR_EXTRACT_REF_INFO info;
+  int cnt, i;
+
+  cnt = qo_or_extract_flatten (disjunct, PT_AND, conjuncts, 0, QO_OR_EXTRACT_MAX_CONJUNCTS);
+  if (cnt < 0)
+    {
+      return NULL;
+    }
+
+  for (i = 0; i < cnt; i++)
+    {
+      info.spec_id = spec_id;
+      info.refers_spec = false;
+      info.refers_other = false;
+      info.is_unsafe = false;
+      (void) parser_walk_tree (parser, conjuncts[i], qo_or_extract_check_ref_pre, &info, NULL, NULL);
+
+      if (info.is_unsafe)
+	{
+	  return NULL;		/* should have been filtered at the factor gate; stay safe */
+	}
+      if (!info.refers_spec || info.refers_other)
+	{
+	  continue;		/* not a single-spec conjunct of this spec */
+	}
+
+      copied = parser_copy_tree (parser, conjuncts[i]);
+      if (copied == NULL)
+	{
+	  return NULL;
+	}
+
+      if (result == NULL)
+	{
+	  result = copied;
+	}
+      else
+	{
+	  result = pt_and (parser, result, copied);
+	  if (result == NULL)
+	    {
+	      return NULL;
+	    }
+	}
+    }
+
+  return result;
+#undef QO_OR_EXTRACT_MAX_CONJUNCTS
+}
+
+/*
+ * qo_extract_or_restrictions () - derive single-spec scan filters from multi-spec OR terms
+ *   return:
+ *   parser(in):
+ *   spec_list(in): FROM specs of the current statement
+ *   wherep(in/out): WHERE in CNF
+ *
+ * Note: For a CNF factor of the form (A1 and B1 and ...) or (A2 and B2 and ...) or ..., where
+ *	 every disjunct contains at least one conjunct referencing only one particular spec S
+ *	 (the A's), the disjunction (A1 or A2 or ...) is implied by the original factor: any row
+ *	 combination accepted by the factor satisfies some disjunct, hence that disjunct's A part.
+ *	 Appending it to the WHERE clause therefore never changes the result, while it gives the
+ *	 scan of S a data filter (sarg) the original multi-spec factor cannot provide, and with it
+ *	 an index/cardinality opportunity.  TPC-H Q19 is the canonical shape: without this the
+ *	 part table gets no filter at all from the brand/container/size branches and every plan
+ *	 has to carry the full table through the join.
+ */
+void
+qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NODE ** wherep)
+{
+#define QO_OR_EXTRACT_MAX_DISJUNCTS 8
+  PT_NODE *disjuncts[QO_OR_EXTRACT_MAX_DISJUNCTS];
+  PT_NODE *cnf, *spec, *part, *ors, *or_node, *new_terms = NULL;
+  QO_OR_EXTRACT_REF_INFO info;
+  int dis_cnt, i;
+  bool ok;
+
+  if (wherep == NULL || *wherep == NULL || spec_list == NULL)
+    {
+      return;
+    }
+
+  for (cnf = *wherep; cnf != NULL; cnf = cnf->next)
+    {
+      if (cnf->node_type != PT_EXPR || cnf->info.expr.op != PT_OR)
+	{
+	  continue;
+	}
+
+      dis_cnt = qo_or_extract_flatten (cnf, PT_OR, disjuncts, 0, QO_OR_EXTRACT_MAX_DISJUNCTS);
+      if (dis_cnt < 2)
+	{
+	  continue;		/* too many disjuncts (-1) or degenerate */
+	}
+
+      for (spec = spec_list; spec != NULL; spec = spec->next)
+	{
+	  if (spec->node_type != PT_SPEC)
+	    {
+	      continue;
+	    }
+
+	  /* factor gate: it must be safe to duplicate pieces of this factor, it must touch this
+	   * spec, and it must touch something else too -- otherwise it already is a sarg of it */
+	  info.spec_id = spec->info.spec.id;
+	  info.refers_spec = false;
+	  info.refers_other = false;
+	  info.is_unsafe = false;
+	  (void) parser_walk_tree (parser, cnf, qo_or_extract_check_ref_pre, &info, NULL, NULL);
+	  if (info.is_unsafe || !info.refers_spec || !info.refers_other)
+	    {
+	      continue;
+	    }
+
+	  ors = NULL;
+	  ok = true;
+	  for (i = 0; i < dis_cnt; i++)
+	    {
+	      part = qo_or_extract_build_for_spec (parser, disjuncts[i], spec->info.spec.id);
+	      if (part == NULL)
+		{
+		  ok = false;	/* one disjunct contributes nothing; no implied restriction */
+		  break;
+		}
+
+	      if (ors == NULL)
+		{
+		  ors = part;
+		}
+	      else
+		{
+		  or_node = parser_new_node (parser, PT_EXPR);
+		  if (or_node == NULL)
+		    {
+		      ok = false;
+		      break;
+		    }
+		  or_node->info.expr.op = PT_OR;
+		  or_node->info.expr.arg1 = ors;
+		  or_node->info.expr.arg2 = part;
+		  ors = or_node;
+		}
+	    }
+
+	  if (!ok || ors == NULL)
+	    {
+	      continue;
+	    }
+
+	  new_terms = parser_append_node (ors, new_terms);
+	}
+    }
+
+  if (new_terms != NULL)
+    {
+      /* give the derived terms the same term-level rewrites the original CNF factors received */
+      qo_rewrite_terms (parser, spec_list, &new_terms);
+      *wherep = parser_append_node (new_terms, *wherep);
+    }
+#undef QO_OR_EXTRACT_MAX_DISJUNCTS
+}
