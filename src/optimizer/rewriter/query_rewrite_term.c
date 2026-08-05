@@ -4653,6 +4653,15 @@ qo_extract_or_restrictions (PARSER_CONTEXT * parser, PT_NODE * spec_list, PT_NOD
 	  continue;
 	}
 
+      /* only true WHERE-level factors may donate restrictions: a factor that came from an outer
+       * join's ON condition (location > 0) is evaluated at its join level and does not reject the
+       * null-padded rows, while the derived filter would run at WHERE level and wrongly reject
+       * them; the same asymmetry makes any outer-join-context factor unsafe to project down */
+      if (cnf->info.expr.location != 0)
+	{
+	  continue;
+	}
+
       dis_cnt = qo_or_extract_flatten (cnf, PT_OR, disjuncts, 0, QO_OR_EXTRACT_MAX_DISJUNCTS);
       if (dis_cnt < 2)
 	{
