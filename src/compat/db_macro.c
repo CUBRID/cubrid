@@ -80,11 +80,7 @@ struct valcnv_buffer
 };
 
 
-// TODO: ctshim, 추가 확인 필요
-//static const int valcnv_Max_set_elements = 10;
-
-static thread_local int valcnv_Max_set_elements = 10;
-static thread_local bool valcnv_Quote_strings = false;	// 함수 호출 시 인수로 전달하는 것으로 대체하는 것이 어떠한가?
+static const int valcnv_Max_set_elements = 10;
 
 #if !defined(SERVER_MODE)
 CUB_THREAD_LOCAL int db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
@@ -113,10 +109,13 @@ static VALCNV_BUFFER *valcnv_append_string (VALCNV_BUFFER * old_string, const ch
 static VALCNV_BUFFER *valcnv_convert_float_to_string (VALCNV_BUFFER * buf, const float value);
 static VALCNV_BUFFER *valcnv_convert_double_to_string (VALCNV_BUFFER * buf, const double value);
 static VALCNV_BUFFER *valcnv_convert_bit_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
-static VALCNV_BUFFER *valcnv_convert_set_to_string (VALCNV_BUFFER * buf, DB_SET * set);
+static VALCNV_BUFFER *valcnv_convert_set_to_string (VALCNV_BUFFER * buf, DB_SET * set,
+						    bool is_collection_value_to_string);
 static VALCNV_BUFFER *valcnv_convert_money_to_string (const double value);
-static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
-static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value);
+static VALCNV_BUFFER *valcnv_convert_data_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value,
+						     bool is_collection_value_to_string);
+static VALCNV_BUFFER *valcnv_convert_db_value_to_string (VALCNV_BUFFER * buf, const DB_VALUE * value,
+							 bool is_collection_value_to_string);
 
 /*
  *  db_value_put_null()
@@ -2296,7 +2295,7 @@ valcnv_convert_bit_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
+valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p, bool is_collection_value_to_string)
 {
   DB_VALUE value;
   int err, size, max_n, i;
@@ -2313,7 +2312,7 @@ valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
     }
 
   size = set_size (set_p);
-  if (valcnv_Max_set_elements == 0)
+  if (is_collection_value_to_string)
     {
       max_n = size;
     }
@@ -2330,7 +2329,7 @@ valcnv_convert_set_to_string (VALCNV_BUFFER * buffer_p, DB_SET * set_p)
 	  return NULL;
 	}
 
-      buffer_p = valcnv_convert_db_value_to_string (buffer_p, &value);
+      buffer_p = valcnv_convert_db_value_to_string (buffer_p, &value, is_collection_value_to_string);
       pr_clear_value (&value);
       if (i < size - 1)
 	{
@@ -2396,7 +2395,7 @@ valcnv_convert_money_to_string (const double value)
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
+valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p, bool is_collection_value_to_string)
 {
   OID *oid_p;
   DB_SET *set_p;
@@ -2548,7 +2547,7 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	    }
 	  else
 	    {
-	      return valcnv_convert_set_to_string (buffer_p, set_p);
+	      return valcnv_convert_set_to_string (buffer_p, set_p, is_collection_value_to_string);
 	    }
 
 	  break;
@@ -2704,13 +2703,13 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
 	      /* ENUM special error value */
 	      db_value_domain_default (&dbval, DB_TYPE_VARCHAR,
 				       DB_DEFAULT_PRECISION, 0, LANG_SYS_CODESET, LANG_SYS_COLLATION, NULL);
-	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval, is_collection_value_to_string);
 	    }
 	  else if (db_get_enum_string_size (value_p) > 0)
 	    {
 	      db_make_string (&dbval, db_get_enum_string (value_p));
 
-	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval);
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, &dbval, is_collection_value_to_string);
 	    }
 	  break;
 
@@ -2731,7 +2730,8 @@ valcnv_convert_data_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_
  *
  */
 static VALCNV_BUFFER *
-valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p)
+valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * value_p,
+				   bool is_collection_value_to_string)
 {
   if (DB_IS_NULL (value_p))
     {
@@ -2749,7 +2749,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	      return NULL;
 	    }
 
-	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	  if (buffer_p == NULL)
 	    {
 	      return NULL;
@@ -2774,7 +2774,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	      return NULL;
 	    }
 
-	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	  if (buffer_p == NULL)
 	    {
 	      return NULL;
@@ -2790,7 +2790,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	      return NULL;
 	    }
 
-	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	  if (buffer_p == NULL)
 	    {
 	      return NULL;
@@ -2801,7 +2801,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  if (valcnv_Quote_strings)
+	  if (is_collection_value_to_string)
 	    {
 	      buffer_p = valcnv_append_string (buffer_p, "'");
 	      if (buffer_p == NULL)
@@ -2809,7 +2809,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 		  return NULL;
 		}
 
-	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	      if (buffer_p == NULL)
 		{
 		  return NULL;
@@ -2819,12 +2819,12 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
 	    }
 	  else
 	    {
-	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	      buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	    }
 	  break;
 
 	default:
-	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p);
+	  buffer_p = valcnv_convert_data_to_string (buffer_p, value_p, is_collection_value_to_string);
 	  break;
 	}
     }
@@ -2841,7 +2841,7 @@ valcnv_convert_db_value_to_string (VALCNV_BUFFER * buffer_p, const DB_VALUE * va
  *
  */
 int
-valcnv_convert_value_to_string (DB_VALUE * value_p)
+valcnv_convert_value_to_string (DB_VALUE * value_p, bool is_collection_value_to_string)
 {
   VALCNV_BUFFER buffer = { 0, NULL };
   VALCNV_BUFFER *buf_p;
@@ -2850,7 +2850,7 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
   if (!DB_IS_NULL (value_p))
     {
       buf_p = &buffer;
-      buf_p = valcnv_convert_db_value_to_string (buf_p, value_p);
+      buf_p = valcnv_convert_db_value_to_string (buf_p, value_p, is_collection_value_to_string);
       if (buf_p == NULL)
 	{
 	  return ER_FAILED;
@@ -2872,19 +2872,11 @@ valcnv_convert_value_to_string (DB_VALUE * value_p)
 int
 valcnv_convert_collection_value_to_string_all_elements (DB_VALUE * value_p)
 {
-  int save_max = valcnv_Max_set_elements;
-  bool save_quote = valcnv_Quote_strings;
   int error = NO_ERROR;
 
   assert (db_value_type_is_collection (value_p));
 
-  valcnv_Max_set_elements = 0;
-  valcnv_Quote_strings = true;
-
-  error = valcnv_convert_value_to_string (value_p);
-
-  valcnv_Max_set_elements = save_max;
-  valcnv_Quote_strings = save_quote;
+  error = valcnv_convert_value_to_string (value_p, true);
 
   return error;
 }

@@ -117,8 +117,8 @@ static CUB_THREAD_LOCAL char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, }
 static CUB_THREAD_LOCAL char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
 
 #if defined(MULTI_CONN_TO_A_SERVER)
-static char g_server_host_name[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
-static char g_server_db_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+static char *g_server_host_name = NULL;
+static char *g_server_db_name = NULL;
 #endif
 
 static void return_error_to_server (char *host, unsigned int eid);
@@ -3640,15 +3640,9 @@ net_client_init (const char *dbname, const char *hostname, int client_type)
   if (hostname != NULL && strlen (hostname) <= CUB_MAXHOSTNAMELEN)
     {
       strcpy (net_Server_host, hostname);
-#if defined(MULTI_CONN_TO_A_SERVER)
-      strcpy (g_server_host_name, net_Server_host);
-#endif
       if (dbname != NULL && strlen (dbname) <= DB_MAX_IDENTIFIER_LENGTH)
 	{
 	  strcpy (net_Server_name, dbname);
-#if defined(MULTI_CONN_TO_A_SERVER)
-	  strcpy (g_server_db_name, net_Server_name);
-#endif
 	}
       else
 	{
@@ -3669,6 +3663,13 @@ end:
     {
       __gv_cvar.css_terminate (false);
     }
+#if defined(MULTI_CONN_TO_A_SERVER)
+  else
+    {
+      g_server_host_name = net_Server_host;
+      g_server_db_name = net_Server_name;
+    }
+#endif
 
   return error;
 }
@@ -3679,10 +3680,10 @@ net_client_sub_init ()
 {
   int error = NO_ERROR;
 
-  if (g_server_host_name[0] != '\0')
+  if (g_server_host_name && g_server_host_name[0])
     {
       strcpy (net_Server_host, g_server_host_name);
-      if (g_server_db_name[0] != '\0')
+      if (g_server_db_name && g_server_db_name[0])
 	{
 	  strcpy (net_Server_name, g_server_db_name);
 	}
@@ -3700,17 +3701,14 @@ net_client_sub_init ()
 
   if (error == NO_ERROR)
     {
-      error = __gv_cvar.css_client_sub_init (g_server_db_name, g_server_host_name, db_get_client_type ());
+      error = __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
       if (error == ER_CSS_ALLOC)
 	{
-	  __gv_cvar.css_client_sub_terminate (g_server_host_name);
+	  __gv_cvar.css_client_sub_terminate (net_Server_host);
 	}
     }
 
   return error;
-  // ctshim
-  //return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
-
 }
 
 void

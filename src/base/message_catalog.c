@@ -493,6 +493,15 @@ static struct msgcat_def msgcat_System[] = {
 #define MSGCAT_SYSTEM_DIM \
         (sizeof(msgcat_System) / sizeof(struct msgcat_def))
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+// To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
+// In addition, msgcat_init() and msgcat_final() must not be called concurrently in a multi-thread environment
+#include <mutex>
+static
+  std::mutex
+  g_msgcat_mutex;
+#endif
+
 /*
  * msgcat_init - initialize message catalog module
  *   return: NO_ERROR or ER_FAILED
@@ -501,7 +510,11 @@ int
 msgcat_init (void)
 {
   size_t i;
-  int rc = NO_ERROR;
+  int
+    rc = NO_ERROR;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+#endif
 
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
     {
@@ -527,7 +540,11 @@ int
 msgcat_final (void)
 {
   size_t i;
-  int rc;
+  int
+    rc;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+#endif
 
   rc = NO_ERROR;
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
@@ -557,8 +574,10 @@ msgcat_final (void)
 char *
 msgcat_message (int cat_id, int set_id, int msg_id)
 {
-  char *msg;
-  static char *empty = (char *) "";
+  char *
+    msg;
+  static char *
+    empty = (char *) "";
 
   if (cat_id < 0 || ((size_t) cat_id) >= MSGCAT_SYSTEM_DIM)
     {
@@ -567,15 +586,17 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
-      /* TODO: 
-       * To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
-       */
-      assert (false);
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      std::lock_guard < std::mutex > lock (g_msgcat_mutex);
 
-      msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
       if (msgcat_System[cat_id].msg_catd == NULL)
+#endif
 	{
-	  return NULL;
+	  msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
+	  if (msgcat_System[cat_id].msg_catd == NULL)
+	    {
+	      return NULL;
+	    }
 	}
     }
 
@@ -606,7 +627,8 @@ msgcat_open (const char *name)
 {
   cub_nl_catd catd;
   MSG_CATD msg_catd;
-  char path[PATH_MAX];
+  char
+    path[PATH_MAX];
 
   /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
@@ -700,8 +722,10 @@ msgcat_close (MSG_CATD msg_catd)
 FILE *
 msgcat_open_file (const char *name)
 {
-  FILE *fp;
-  char path[PATH_MAX];
+  FILE *
+    fp;
+  char
+    path[PATH_MAX];
 
   /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);

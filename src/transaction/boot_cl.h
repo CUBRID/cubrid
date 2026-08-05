@@ -53,9 +53,6 @@ extern VOLID boot_User_volid;
 #if defined(CS_MODE)
 /* Server host connected */
 extern char boot_Host_connected[CUB_MAXHOSTNAMELEN];
-#if defined(MULTI_CONN_TO_A_SERVER)
-extern int g_max_trans_multi_conn_to_a_server;
-#endif
 #endif /* CS_MODE */
 
 #if defined(SA_MODE)

@@ -133,9 +133,10 @@ static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
 
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static BOOT_CLIENT_CREDENTIAL gv_client_credential;
-static
-  std::atomic <
-bool > g_ready_to_sub = false;
+
+// *INDENT-OFF* 
+static  std::atomic <bool> g_ready_to_sub = false; // flag indicating successful connection in db_restart()
+// *INDENT-ON*
 #endif
 
 /*
@@ -1013,7 +1014,13 @@ db_restart_sub (int sub_index)
   client_credential = gv_client_credential;
   client_credential.program_name = program_name;
 
-  error = au_login (client_credential.get_db_user (), "", false);	// TODO: ctshim, password
+  /* 
+   * Before reaching this point, db_restart() was already executed.
+   * Here, the connection is made using an already logged-in user account.
+   * Since this is an authorized user who has already gone through the login process, password verification is not strictly necessary.
+   */
+  AU_DISABLE_PASSWORDS ();
+  error = au_login (client_credential.get_db_user (), "", false);
   if (error != NO_ERROR)
     {
       return error;

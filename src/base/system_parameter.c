@@ -5477,7 +5477,7 @@ static const int *PARAM_VALUE_SHARE[] = {
  * loaded from cubrid.conf file. When a new client connects to CAS, it should
  * reload these parameters (because some may be changed by previous clients)
  */
-/* CUB_THREAD_LOCAL */ SESSION_PARAM *cached_session_parameters = NULL;
+CUB_THREAD_LOCAL SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
 
 /*
@@ -6098,6 +6098,43 @@ sysprm_check_id_order ()
 }
 #endif
 
+
+#if defined (CS_MODE)
+void
+sysprm_load_session_parameters ()
+{
+  int i;
+  int num_session_prms;
+  SESSION_PARAM *sprm = NULL;
+
+  /* cache session parameters */
+  if (cached_session_parameters != NULL)
+    {
+      /* free previous cache */
+      sysprm_free_session_parameters (&cached_session_parameters);
+    }
+  cached_session_parameters = sysprm_alloc_session_parameters ();
+  num_session_prms = 0;
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == num_session_prms);
+	  sprm = &cached_session_parameters[num_session_prms++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+      else
+	{
+	  assert (prm_Def_session_idx[i] == -1);
+	}
+    }
+}
+#endif /* CS_MODE */
+
 /*
  * sysprm_load_and_init_internal - Read system parameters from the init files
  *   return: NO_ERROR or ER_FAILED
@@ -6297,31 +6334,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 
 #if defined (CS_MODE)
-  /* cache session parameters */
-  if (cached_session_parameters != NULL)
-    {
-      /* free previous cache */
-      sysprm_free_session_parameters (&cached_session_parameters);
-    }
-  cached_session_parameters = sysprm_alloc_session_parameters ();
-  num_session_prms = 0;
-  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
-    {
-      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
-	{
-	  assert (prm_Def_session_idx[i] == num_session_prms);
-	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = (PARAM_ID) i;
-	  sprm->flag = (GET_PRM (i)->dynamic_flag);
-	  sprm->datatype = GET_PRM (i)->datatype;
-	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
-	  sysprm_update_session_prm_flag_allocated (sprm);
-	}
-      else
-	{
-	  assert (prm_Def_session_idx[i] == -1);
-	}
-    }
+  sysprm_load_session_parameters ();
 #endif /* CS_MODE */
 
 #if !defined(NDEBUG)

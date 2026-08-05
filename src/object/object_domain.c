@@ -559,7 +559,6 @@ static pthread_mutex_t tp_domain_cache_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
 /* *INDENT-OFF* */
-#ifdef __cplusplus
 /* Notice)
  * The constructor of this class is used solely to initialize global variable(db_type_rank_order).
  */
@@ -576,18 +575,6 @@ public:
   }
 };
 static volatile class type_rank_order_initializer tro_instance;
-#else
-__attribute__ ((constructor))
-static void 
-tp_init_db_type_rank_order (void)
-{
-  memset (db_type_rank_order, 0x00, sizeof (db_type_rank_order));
-  for (int i = 0; db_type_rank[i] < (DB_TYPE_LAST + 1); i++)
-    {
-      db_type_rank_order[db_type_rank[i]] = i;
-    }
-}
-#endif
 /* *INDENT-ON* */
 
 static int tp_domain_size_internal (const TP_DOMAIN * domain);

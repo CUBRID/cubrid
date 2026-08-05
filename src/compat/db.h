@@ -49,9 +49,8 @@
 #define DB_CONNECTION_STATUS_RESET              -1
 #if !defined(SERVER_MODE)
 extern CUB_THREAD_LOCAL int db_Connect_status;
-#endif
-
 extern CUB_THREAD_LOCAL SESSION_ID db_Session_id;
+#endif
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_

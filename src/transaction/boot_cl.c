@@ -1384,11 +1384,10 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   //tz_load();
   //msgcat_init();
   //sysprm_load_and_init_client(NULL, NULL);
-  // er_init()
+  //er_init()
   //area_init ();
   //locator_initialize_areas ();
-  // perfmon_initialize (1);
-
+  //perfmon_initialize (1);
 
   er_clear ();
 
@@ -1398,7 +1397,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
       db_disable_modification ();
     }
 
-  //db_clear_host_status ();    
+  //db_clear_host_status ();
 
   error_code = net_client_sub_init ();
   if (error_code != NO_ERROR)
@@ -1406,7 +1405,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
       return error_code;
     }
 
-  //  if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
+  //if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
   //  {
   //    db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
   //  }  
@@ -1484,6 +1483,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
       goto error;
     }
 #endif //
+
   /* Initialize client modules for execution */
   boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
 
@@ -1502,6 +1502,7 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   /* FIX-ME) Locks are used to prevent concurrency until thread-safe handling 
    * for system parameter global variables is fully implemented."
    */
+  sysprm_load_session_parameters ();
   pthread_mutex_lock (&g_db_restart_client_sub_mutex);
   (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
   pthread_mutex_unlock (&g_db_restart_client_sub_mutex);
@@ -1587,6 +1588,8 @@ boot_finalize_client_sub ()
   //tz_unload ();
   boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
   //boot_Is_client_all_final = true;
+
+  sysprm_free_session_parameters (&cached_session_parameters);
 
   if (boot_Server_credential.db_full_name)
     {

@@ -99,4 +99,11 @@ struct boot_client_credential : public clientids
   virtual void unpack (cubpacking::unpacker &deserializator) override;
 };
 
+typedef struct
+{
+  BOOT_CLIENT_CREDENTIAL  client_credential;
+  char *password;
+} BOOT_CLIENT_CREDENTIAL_SUB;
+
+
 #endif // !_CLIENT_CREDENTIALS_HPP_

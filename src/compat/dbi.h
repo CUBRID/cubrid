@@ -60,8 +60,6 @@ extern "C"
   { PARSER_FOR_PLCSQL_STATIC_SQL = 0x1 };
 
   extern int g_open_buffer_control_flags;
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-#endif
 
 /* Memory reclamation functions */
   extern void db_objlist_free (DB_OBJLIST * list);

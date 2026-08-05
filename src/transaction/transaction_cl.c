@@ -94,17 +94,11 @@ typedef struct
   int timeout;
 } QUERY_TIMEOUT_INFO;
 
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-// FIX-ME: fix me for call method 
+// TODO: FIX-ME: fix me for call method 
 // When the method is called, the task must be executed by the same existing thread.
 static CUB_THREAD_LOCAL QUERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
 
 static CUB_THREAD_LOCAL int tm_libcas_depth = 0;
-#else
-static QUERY_TIMEOUT_INFO tm_Query_timeout_info = { 0, 0 };
-
-static int tm_libcas_depth = 0;
-#endif
 
 /* this is a local list of user-defined savepoints.  It may be updated upon
  * the following calls:

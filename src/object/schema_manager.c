@@ -257,10 +257,10 @@ CUB_THREAD_LOCAL MOP sm_Root_class_mop = NULL;
 const char *sm_Root_class_name = ROOTCLASS_NAME;
 
 /* Heap file identifier for the root class */
-#if defined(CS_MODE)
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = NULL;
 #else
-CUB_THREAD_LOCAL HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
+HFID *sm_Root_class_hfid = &sm_Root_class.header.ch_heap;
 #endif
 
 
