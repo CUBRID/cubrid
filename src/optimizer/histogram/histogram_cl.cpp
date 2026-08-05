@@ -882,8 +882,9 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
   if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
     {
       /* probe constant does not match the column's stored value encoding (e.g. an integer column
-       * probed with a fractional constant, or a stale blob after ALTER changed the column type);
-       * decoding the slots with the wrong template would produce garbage. Use default estimates. */
+       * probed with a fractional constant). A blob/column type disagreement has no known
+       * producing path today (ALTER drops the histogram outright) but stays guarded: decoding
+       * the slots with the wrong template would produce garbage. Use default estimates. */
       *success = false;
       return;
     }
@@ -1048,8 +1049,9 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
 	 * range probes commonly carry a cross-kind numeric constant -- price < 100 on a
 	 * DOUBLE/NUMERIC column, c_int < 5000.0 -- and rejecting them here would discard the
 	 * histogram for the most common range predicates. Promote safe numeric cases to the
-	 * column's stored kind; anything else (string vs numeric, datetime vs numeric, a stale
-	 * blob after ALTER) still falls back to the default estimate, since decoding the slots
+	 * column's stored kind; anything else (string vs numeric, datetime vs numeric, a
+	 * blob/column kind disagreement -- no known producing path today) still falls back to
+	 * the default estimate, since decoding the slots
 	 * with the wrong template would produce garbage. */
 	if (col_kind == hist::histogram_key_kind::dbl && key.kind == hist::histogram_key_kind::i64)
 	  {
@@ -1630,8 +1632,9 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 
   if (histogram_key_kind_for_type (histogram_reader.value_type ()) != hist::histogram_key_kind::str)
     {
-      /* LIKE probes decode the value slots as strings; a non-string blob (stale after ALTER)
-       * would yield out-of-range string reads */
+      /* defense against a blob whose value kind disagrees with the column: no known path
+       * produces one today (ALTER drops the histogram outright), but decoding a non-string
+       * blob as strings would yield out-of-range reads, so keep the guard as a safety net */
       *success = false;
       return;
     }
@@ -1644,12 +1647,17 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
       return;
     }
 
-  const std::string &pattern = db_get_string (rhs_db_value);
-  if (pattern.empty())
+  /* extract by the stored size, not strlen: a constant-folded pattern can carry an embedded
+   * NUL (e.g. 'ab' || CHR(0) || 'cd') and truncating it would match a different pattern than
+   * execution does (same convention as histogram_get_rlike_selectivity) */
+  const char *pattern_p = db_get_string (rhs_db_value);
+  const int pattern_size = db_get_string_size (rhs_db_value);
+  if (pattern_p == NULL || pattern_size <= 0)
     {
       *success = false;
       return;
     }
+  const std::string pattern (pattern_p, pattern_size);
 
   /* the runtime source operand carries the COLUMN's collation; mirror it (fall back to the
    * pattern's collation when the column node carries no data_type) */
@@ -1797,8 +1805,9 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
 
   if (histogram_key_kind_for_type (histogram_reader.value_type ()) != hist::histogram_key_kind::str)
     {
-      /* the probes below decode the value slots as strings; a non-string blob (stale after
-       * ALTER) would yield out-of-range string reads */
+      /* defense against a blob whose value kind disagrees with the column: no known path
+       * produces one today (ALTER drops the histogram outright); kept as a safety net
+       * against out-of-range string reads */
       return;
     }
 
