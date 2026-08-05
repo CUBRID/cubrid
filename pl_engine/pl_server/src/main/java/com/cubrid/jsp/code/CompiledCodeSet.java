@@ -38,65 +38,25 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveInputStream;
 
 public class CompiledCodeSet {
 
-    private String mainClass = null;
-    private long timestamp = -1;
-    private Map<String, CompiledCode> codeMap = null;
+    public Map<String, CompiledCode> codeMap = null;
 
-    public CompiledCodeSet(String mainClass, Collection<CompiledCode> codeList) {
-        this.mainClass = mainClass;
+    public CompiledCodeSet(Collection<CompiledCode> codeList) {
         this.codeMap =
                 codeList.stream()
                         .collect(Collectors.toMap(CompiledCode::getClassName, item -> item));
     }
 
-    public String getMainClassName() {
-        return mainClass;
-    }
-
-    public void add(CompiledCode c) {
-        codeMap.put(c.getClassName(), c);
-    }
-
-    public void addAll(Collection<CompiledCode> cl) {
-        Map<String, CompiledCode> map =
-                cl.stream().collect(Collectors.toMap(CompiledCode::getClassName, item -> item));
-        codeMap.putAll(map);
-    }
-
-    public Set<Entry<String, CompiledCode>> getCodeList() {
-        return codeMap.entrySet();
-    }
-
-    public Map<String, CompiledCode> getCodeMap() {
-        return codeMap;
-    }
-
-    public void setTimestamp(String tsString) {
-        timestamp = Long.parseLong(tsString);
-    }
-
-    public void setTimestamp(long ts) {
-        timestamp = ts;
-    }
-
-    public long getTimeStamp() {
-        return timestamp;
-    }
-
     public void clear() {
-        mainClass = null;
         codeMap.clear();
     }
 
-    public static CompiledCodeSet loadFromJar(String mainClass, byte[] jarString) throws Exception {
+    public static CompiledCodeSet loadFromJar(byte[] jarString) throws Exception {
 
         List<CompiledCode> codeList = new ArrayList<>();
 
@@ -127,11 +87,10 @@ public class CompiledCodeSet {
                 }
                 jarIn.read(buffer);
                 os.write(buffer);
-                // IOUtils.copy (jarIn, os, fileSize);
                 codeList.add(c);
             }
         }
 
-        return new CompiledCodeSet(mainClass, codeList);
+        return new CompiledCodeSet(codeList);
     }
 }

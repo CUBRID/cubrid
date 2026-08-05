@@ -44,15 +44,14 @@ public class CatalogClassLoader extends ClassLoader {
 
     public final String mainClassName;
 
-    public CatalogClassLoader(String mainClassName, ClassLoader parent)
-            throws ClassNotFoundException {
+    public CatalogClassLoader(String mainClassName, ClassLoader parent) {
         super(parent);
 
         this.mainClassName = mainClassName;
 
         Context ctx = ContextManager.getContextofCurrentThread();
         Connection conn = ctx.getConnection();
-        codeSet = ClassAccess.getObjectCode(conn, mainClassName);
+        codeSet = ClassAccess.getObjectCode(conn);
         if (codeSet == null) {
             throw new IllegalStateException(
                     "retrieving object code failed for a class " + mainClassName);
@@ -67,7 +66,7 @@ public class CatalogClassLoader extends ClassLoader {
             return ret;
         }
 
-        CompiledCode code = codeSet.getCodeMap().get(name);
+        CompiledCode code = codeSet.codeMap.get(name);
         if (code == null) {
             throw new ClassNotFoundException(name);
         }
@@ -83,8 +82,6 @@ public class CatalogClassLoader extends ClassLoader {
         // faster garbage collection?
         codeSet.clear();
         defined.clear();
-        codeSet = null;
-        defined = null;
     }
 
     // ===========================
@@ -92,5 +89,5 @@ public class CatalogClassLoader extends ClassLoader {
     // ===========================
 
     private CompiledCodeSet codeSet;
-    private Map<String, Class> defined = new HashMap<>();
+    private Map<String, Class<?>> defined = new HashMap<>();
 }

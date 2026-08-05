@@ -104,6 +104,6 @@ public class MemoryJavaCompiler {
 
         assert (code.getClassName() != null);
 
-        return new CompiledCodeSet(code.getClassName(), fileManager.getCodeList());
+        return new CompiledCodeSet(fileManager.getCodeList());
     }
 }

@@ -94,7 +94,6 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
     public void clear() {
         unitClassLoaders.clear();
-        unitClassLoaders = null;
     }
 
     // =======================
@@ -118,13 +117,18 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         // mainClassName should be of the form <invariant-part>_<seqno>_<creation-time>
         // where <invariant-part> starts with 'Proc_' or 'Func_'.
+
+        if (!mainClassName.startsWith("Proc_") && !mainClassName.startsWith("Func_")) {
+            return null;
+        }
+
         int lastIndex = mainClassName.lastIndexOf('_');
         if (lastIndex == -1) {
             return null;
         }
 
         lastIndex = mainClassName.lastIndexOf('_', lastIndex - 1);
-        if (lastIndex <= 5) {
+        if (lastIndex == -1) {
             return null;
         }
 

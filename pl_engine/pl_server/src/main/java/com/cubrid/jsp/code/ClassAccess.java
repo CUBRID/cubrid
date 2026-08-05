@@ -45,14 +45,15 @@ import java.util.Base64;
 
 public class ClassAccess {
 
-    public static CompiledCodeSet getObjectCode(Connection conn, String className) {
+    // get object code of the invoked SP
+    public static CompiledCodeSet getObjectCode(Connection conn) {
 
         CompiledCodeSet code = null;
 
         try {
             byte[] jarCode = getObjectCodeBytes(conn);
             if (jarCode != null) {
-                code = CompiledCodeSet.loadFromJar(className, jarCode);
+                code = CompiledCodeSet.loadFromJar(jarCode);
             }
         } catch (Exception e) {
             Server.log(e);

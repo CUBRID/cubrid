@@ -142,7 +142,7 @@ public class Context {
             if (fileClassLoader.lastModifiedTimeOfDynamicPath.compareTo(
                             lastModifiedTimeOfDynamicPath)
                     != 0) {
-                // re-cretae dynamic class loader
+                // re-create dynamic class loader
                 fileClassLoader = new FileClassLoaderDynamic(lastModifiedTimeOfDynamicPath);
             }
 
@@ -171,9 +171,7 @@ public class Context {
             catalogClassLoaderRelay = null;
         }
 
-        if (fileClassLoader != null) {
-            fileClassLoader = null;
-        }
+        fileClassLoader = null;
 
         if (messageBuffer != null) {
             messageBuffer.clear();

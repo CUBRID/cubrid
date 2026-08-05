@@ -68,7 +68,6 @@ import java.nio.file.Paths;
 import java.sql.SQLException;
 import java.util.Base64;
 import java.util.List;
-import java.util.Map;
 import org.apache.commons.compress.archivers.jar.JarArchiveEntry;
 import org.apache.commons.compress.archivers.jar.JarArchiveOutputStream;
 
@@ -343,18 +342,13 @@ public class ExecuteThread extends Thread {
         try {
             jaos = new JarArchiveOutputStream(new BufferedOutputStream(jarStream));
 
-            for (Map.Entry<String, CompiledCode> entry : codeSet.getCodeList()) {
-                JarArchiveEntry jae =
-                        new JarArchiveEntry(entry.getValue().getClassNameWithExtention());
-                byte[] arr = entry.getValue().getByteCode();
+            for (CompiledCode cc : codeSet.codeMap.values()) {
+                JarArchiveEntry jae = new JarArchiveEntry(cc.getClassNameWithExtention());
+                byte[] arr = cc.getByteCode();
                 jae.setSize(arr.length);
                 jaos.putArchiveEntry(jae);
                 jaos.write(arr);
                 jaos.flush();
-                // ByteArrayInputStream bis = new
-                // ByteArrayInputStream(entry.getValue().getByteCode());
-                // IOUtils.copy(bis, jaos);
-                // bis.close();
 
                 jaos.closeArchiveEntry();
             }
