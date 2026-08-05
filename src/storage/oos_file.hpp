@@ -23,6 +23,8 @@
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
+#include <vector>
+
 struct oos_record_header
 {
   int total_data_length;	/* total length of user data across all chunks (excluding OOS headers) */
@@ -99,7 +101,12 @@ extern int oos_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const
 extern int oos_create_file (THREAD_ENTRY *thread_p, VFID &oos_vfid);
 #endif /* CUBRID_UNIT_TEST_ENABLED */
 extern int oos_remove_file (THREAD_ENTRY *thread_p, const VFID &oos_vfid);
-extern int oos_remove_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
+/* Deallocates vpid back to the file manager's partial sector table iff it is a fully empty OOS
+ * data page. Idempotent, zero-wait, best-effort: busy / already-deallocated / re-filled /
+ * sticky-first-page candidates are skipped with NO_ERROR. Call only AFTER the deletes that
+ * emptied the page are committed (a live undo could otherwise restore chunks onto a
+ * deallocated page). */
+extern int oos_try_reclaim_empty_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const VPID &vpid);
 /* Inserts src.size() bytes; on multi-page payloads, oid is the head-chunk OID. */
 extern int oos_insert (THREAD_ENTRY *thread_p, const VFID &oos_vfid, oos_buffer src, OID &oid);
 /* Inserts requests in logical order; each request receives its head OOS OID. */
@@ -108,7 +115,10 @@ extern int oos_insert_many (THREAD_ENTRY *thread_p, const VFID &oos_vfid, cubbas
  * heap record's inline 8B field (or oos_get_length in tests) and sizes dest. */
 extern int oos_read (THREAD_ENTRY *thread_p, const OID &oid, oos_buffer dest);
 extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request> requests);
-extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid);
+/* touched_vpids (optional): pages that lost a chunk are appended (with duplicates) so
+ * batch-boundary callers can feed oos_try_reclaim_empty_page after committing. */
+extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+		       std::vector<VPID> *touched_vpids = NULL);
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
  * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);

@@ -6832,6 +6832,39 @@ file_get_num_user_pages (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_user
   return NO_ERROR;
 }
 
+/*
+ * file_is_numerable () - Output whether the file is numerable (keeps a user page table).
+ *
+ * return                 : Error code
+ * thread_p (in)          : Thread entry
+ * vfid (in)              : File identifier
+ * is_numerable_out (out) : Output true iff the file is numerable
+ */
+int
+file_is_numerable (THREAD_ENTRY * thread_p, const VFID * vfid, bool * is_numerable_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead;
+  FILE_HEADER *fhead;
+  int error_code = NO_ERROR;
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_fhead == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  file_header_sanity_check (thread_p, fhead);
+
+  *is_numerable_out = FILE_IS_NUMERABLE (fhead);
+  pgbuf_unfix (thread_p, page_fhead);
+
+  return NO_ERROR;
+}
+
 int
 file_get_num_data_sectors (THREAD_ENTRY * thread_p, const VFID * vfid, int *n_sectors_out)
 {

@@ -2456,6 +2456,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 		  && (helper->record_type == REC_HOME || helper->record_type == REC_RELOCATION)
 		  && heap_recdes_contains_oos (&helper->record));
 
+  /* OOS pages emptied by this record's deletes; reclaimed right after the sysop commits. */
+  VACUUM_OOS_TOUCHED_PAGES oos_touched_pages;
+
   if (helper->record_type == REC_RELOCATION || helper->record_type == REC_BIGONE || has_oos)
     {
       /* Multi-page operations (rel/big/oos) are performed as a single operation: flush all existing
@@ -2519,7 +2522,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       /* Delete OOS records (if any) before committing the sysop. */
       if (has_oos)
 	{
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     &oos_touched_pages);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2528,6 +2532,12 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	}
 
       log_sysop_commit (thread_p);
+
+      if (has_oos)
+	{
+	  /* Deletes are committed; return the pages this record emptied to the file manager. */
+	  vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
+	}
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
 
@@ -2594,7 +2604,8 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	  vacuum_log_redoundo_vacuum_record (thread_p, helper->home_page, helper->crt_slotid, &helper->record,
 					     helper->reusable);
 
-	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record);
+	  int oos_err = vacuum_heap_oos_delete_within_sysop (thread_p, &helper->oos_vfid, &helper->record,
+							     &oos_touched_pages);
 	  if (oos_err != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
@@ -2602,6 +2613,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	    }
 
 	  log_sysop_commit (thread_p);
+
+	  /* Deletes are committed; return the pages this record emptied to the file manager. */
+	  vacuum_oos_reclaim_empty_pages (thread_p, &helper->oos_vfid, &oos_touched_pages);
 	}
       else
 	{

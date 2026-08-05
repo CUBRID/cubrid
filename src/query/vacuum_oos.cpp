@@ -168,6 +168,8 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   /* TODO(perf): oos_delete fixes and unfixes the OOS page on every call. The OIDs above are already
    * sorted into page order, so one day we should group the OIDs that share a page and delete them
    * under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
+  VACUUM_OOS_TOUCHED_PAGES touched_pages;
+
   log_sysop_start (thread_p);
   for (const OID &oid : oos_oids)
     {
@@ -185,7 +187,7 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
 	{
 	  continue;
 	}
-      error_code = oos_delete (thread_p, *oos_vfid, oid);
+      error_code = oos_delete (thread_p, *oos_vfid, oid, &touched_pages);
       if (error_code != NO_ERROR)
 	{
 	  break;
@@ -194,12 +196,67 @@ vacuum_forward_walk_oos_delete_atomic (THREAD_ENTRY *thread_p, const VFID *oos_v
   if (error_code == NO_ERROR)
     {
       log_sysop_commit (thread_p);
+
+      /* Deletes are committed; pages this batch emptied can now be returned to the file manager.
+       * Must run after the commit — an aborted sysop would restore the chunks, and undo cannot
+       * re-insert into a deallocated page. */
+      vacuum_oos_reclaim_empty_pages (thread_p, oos_vfid, &touched_pages);
     }
   else
     {
       log_sysop_abort (thread_p);
     }
   return error_code;
+}
+
+/*
+ * vacuum_oos_reclaim_empty_pages () - Offer every page touched by a committed OOS delete batch to
+ *   oos_try_reclaim_empty_page, which deallocates the fully emptied ones back to the file
+ *   manager's partial sector table. Best-effort by design: a page we fail to reclaim (busy,
+ *   transient error) simply stays allocated and becomes a candidate for the next vacuum cycle,
+ *   so failures are logged as warnings and never fail the caller. Clears *touched_pages.
+ *
+ * thread_p (in)          : Thread entry.
+ * oos_vfid (in)          : OOS file the pages belong to.
+ * touched_pages (in/out) : Pages the delete batch touched (duplicates allowed); cleared on return.
+ */
+void
+vacuum_oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID *oos_vfid,
+				VACUUM_OOS_TOUCHED_PAGES *touched_pages)
+{
+  assert (oos_vfid != NULL && !VFID_ISNULL (oos_vfid));
+  assert (touched_pages != NULL);
+
+  if (touched_pages->empty ())
+    {
+      return;
+    }
+
+  /* Dedupe: a chain usually deletes several chunks from the same page (JIRA Q3 — vector +
+   * sort/unique beats a set for the single-digit sizes seen here). */
+  std::sort (touched_pages->begin (), touched_pages->end (),
+	     [] (const VPID &a, const VPID &b)
+  {
+    return a.volid < b.volid || (a.volid == b.volid && a.pageid < b.pageid);
+  });
+  touched_pages->erase (std::unique (touched_pages->begin (), touched_pages->end (),
+				     [] (const VPID &a, const VPID &b)
+  {
+    return VPID_EQ (&a, &b);
+  }), touched_pages->end ());
+
+  for (const VPID &vpid : *touched_pages)
+    {
+      if (oos_try_reclaim_empty_page (thread_p, *oos_vfid, vpid) != NO_ERROR)
+	{
+	  vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+				 "Could not reclaim empty OOS page %d|%d (file %d|%d); leaving it for a later cycle.",
+				 VPID_AS_ARGS (&vpid), VFID_AS_ARGS (oos_vfid));
+	  er_clear ();
+	}
+    }
+
+  touched_pages->clear ();
 }
 
 /*
@@ -391,13 +448,16 @@ vacuum_oos_find_vfid_for_heap_record (THREAD_ENTRY *thread_p, const HFID *hfid, 
  *   opens and commits its own. Same rule ("OOS deletes happen in exactly one sysop"), different
  *   nesting level - so one must start a sysop and the other must not.
  *
- * return	  : Error code.
- * thread_p (in)  : Thread entry.
- * oos_vfid (in)  : OOS file of the record's heap (must be valid).
- * record (in)	  : Heap record whose OOS references are deleted.
+ * return		   : Error code.
+ * thread_p (in)	   : Thread entry.
+ * oos_vfid (in)	   : OOS file of the record's heap (must be valid).
+ * record (in)		   : Heap record whose OOS references are deleted.
+ * touched_pages_out (out) : Optional; pages that lost chunks are appended so the caller can hand
+ *			     them to vacuum_oos_reclaim_empty_pages AFTER its sysop commits.
  */
 int
-vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record)
+vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfid, const RECDES *record,
+				     VACUUM_OOS_TOUCHED_PAGES *touched_pages_out)
 {
   assert (!VFID_ISNULL (oos_vfid));
   std::vector<OID> oos_oids;
@@ -413,7 +473,7 @@ vacuum_heap_oos_delete_within_sysop (THREAD_ENTRY *thread_p, const VFID *oos_vfi
    * a page's values under a single pgbuf_fix, instead of re-fixing the same page once per OID. */
   for (const OID &oos_oid : oos_oids)
     {
-      error_code = oos_delete (thread_p, *oos_vfid, oos_oid);
+      error_code = oos_delete (thread_p, *oos_vfid, oos_oid, touched_pages_out);
       if (error_code != NO_ERROR)
 	{
 	  vacuum_er_log_error (VACUUM_ER_LOG_HEAP,
