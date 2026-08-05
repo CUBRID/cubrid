@@ -12,6 +12,7 @@ on:
     branches:
       - develop
       - 'feature/**'
+      - 'feat/oos'
 
 permissions: {} # Least privilege — jobs opt-in below
 
