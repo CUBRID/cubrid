@@ -55,13 +55,10 @@ static int rv;
 
 #if defined(SERVER_MODE)
 #define LOCATOR_NKEEP_LIMIT (200)
-#else /* SERVER_MODE */
-// TODO: ctshim
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-#define LOCATOR_NKEEP_LIMIT (100)
+#elif defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#define LOCATOR_NKEEP_LIMIT (20)
 #else
 #define LOCATOR_NKEEP_LIMIT (2)
-#endif
 #endif /* SERVER_MODE */
 
 #define LOCATOR_CACHED_COPYAREA_SIZE_LIMIT \

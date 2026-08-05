@@ -499,9 +499,9 @@ static struct msgcat_def msgcat_System[] = {
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 // To ensure safety in a multi-threaded environment, access to msgcat_System[x].msg_catd must be protected using a lock.
 // In addition, msgcat_init() and msgcat_final() must not be called concurrently in a multi-thread environment
-static
-  std::mutex
-  g_msgcat_mutex;
+/* *INDENT-OFF* */
+static std::mutex g_msgcat_mutex;
+/* *INDENT-ON* */
 #endif
 
 /*
@@ -511,10 +511,8 @@ static
 int
 msgcat_init (void)
 {
-  size_t
-    i;
-  int
-    rc = NO_ERROR;
+  size_t i;
+  int rc = NO_ERROR;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   std::lock_guard < std::mutex > lock (g_msgcat_mutex);
 #endif
@@ -542,10 +540,8 @@ msgcat_init (void)
 int
 msgcat_final (void)
 {
-  size_t
-    i;
-  int
-    rc;
+  size_t i;
+  int rc;
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   std::lock_guard < std::mutex > lock (g_msgcat_mutex);
 #endif
@@ -578,10 +574,8 @@ msgcat_final (void)
 char *
 msgcat_message (int cat_id, int set_id, int msg_id)
 {
-  char *
-    msg;
-  static char *
-    empty = (char *) "";
+  char *msg;
+  static char *empty = (char *) "";
 
   if (cat_id < 0 || ((size_t) cat_id) >= MSGCAT_SYSTEM_DIM)
     {
@@ -629,12 +623,9 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 MSG_CATD
 msgcat_open (const char *name)
 {
-  cub_nl_catd
-    catd;
-  MSG_CATD
-    msg_catd;
-  char
-    path[PATH_MAX];
+  cub_nl_catd catd;
+  MSG_CATD msg_catd;
+  char path[PATH_MAX];
 
   /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
@@ -691,8 +682,7 @@ msgcat_get_descriptor (int cat_id)
 char *
 msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 {
-  cub_nl_catd
-    catd;
+  cub_nl_catd catd;
 
   catd = (cub_nl_catd) msg_catd->catd;
   return cub_catgets (catd, set_id, msg_id, s);
@@ -708,8 +698,7 @@ msgcat_gets (MSG_CATD msg_catd, int set_id, int msg_id, const char *s)
 int
 msgcat_close (MSG_CATD msg_catd)
 {
-  cub_nl_catd
-    catd;
+  cub_nl_catd catd;
 
   catd = (cub_nl_catd) msg_catd->catd;
   free ((void *) msg_catd->file);
@@ -730,10 +719,8 @@ msgcat_close (MSG_CATD msg_catd)
 FILE *
 msgcat_open_file (const char *name)
 {
-  FILE *
-    fp;
-  char
-    path[PATH_MAX];
+  FILE *fp;
+  char path[PATH_MAX];
 
   /* $CUBRID/msg/$CUBRID_MSG_LANG/'name' */
   envvar_localedir_file (path, PATH_MAX, lang_get_msg_Loc_name (), name);
