@@ -616,80 +616,48 @@ jobs:
               exit 0
             fi
       - run:
-          name: Sync the source mirror
-          no_output_timeout: 30m
-          command: |
-            set -eo pipefail
-            : "${BUILD_MIRROR:?}"
-            mkdir -p "$BUILD_MIRROR"
-
-            # Advisory: git locks its own refs, so a missing flock or a
-            # filesystem that ignores it costs a retry, not correctness.
-            if command -v flock > /dev/null; then
-              exec 9> "$BUILD_MIRROR/.lock"
-              flock -w 900 9 || echo "[warn] mirror lock timed out; continuing"
-            fi
-
-            # Not $$: that is a container PID, and two pods staging into the
-            # same shared directory can easily hold the same one.
-            stage=${CIRCLE_BUILD_NUM}
-
-            sync_mirror() {
-              local dir=$1 url=$2 repo; shift 2
-              repo="$BUILD_MIRROR/$dir"
-              if [ ! -d "$repo" ]; then
-                echo "[warn] no mirror at $repo; seeding it from $url over the WAN (one full clone)"
-                rm -rf "$repo.tmp.$stage"
-                # --progress, not --quiet: git prints none unless asked when
-                # stderr is not a tty, and a silent 745MB clone on a shared
-                # 30Mbps line trips the step's no-output timeout.
-                git clone --bare --progress "$url" "$repo.tmp.$stage" || { rm -rf "$repo.tmp.$stage"; return 1; }
-                mv -T "$repo.tmp.$stage" "$repo" 2> /dev/null || rm -rf "$repo.tmp.$stage"
-              fi
-              # Never let a repack run: the build tree clones --shared, so it
-              # reads this repo's packs from start to finish.
-              git -C "$repo" config gc.auto 0 || return 1
-              git -C "$repo" fetch --quiet origin "$@"
-            }
-
-            # A pull request head lives under refs/pull, which a bare clone of
-            # the fork point never carries -- fetch it by name, every run.
-            refspecs=( '+refs/heads/develop:refs/heads/develop' )
-            case "$CIRCLE_BRANCH" in
-              pull/*) refspecs+=( "+refs/${CIRCLE_BRANCH}:refs/${CIRCLE_BRANCH}" ) ;;
-              ?*)     refspecs+=( "+refs/heads/${CIRCLE_BRANCH}:refs/heads/${CIRCLE_BRANCH}" ) ;;
-            esac
-            sync_mirror cubrid.git https://github.com/CUBRID/cubrid.git "${refspecs[@]}"
-
-            # Advisory, unlike cubrid.git: the tree step decides per submodule
-            # whether the mirror has the pinned commit, so a mirror we cannot
-            # reach costs bandwidth rather than the build.
-            for url in https://github.com/CUBRID/cubrid-cci.git \
-                       https://github.com/cubrid/cubrid-jdbc \
-                       https://github.com/CUBRID/cubrid-manager-server; do
-              sync_mirror "$(basename "${url%.git}").git" "$url" '+refs/heads/*:refs/heads/*' \
-                || echo "[warn] could not sync the mirror for ${url}"
-            done
-
-            git -C "$BUILD_MIRROR/cubrid.git" cat-file -e "${CIRCLE_SHA1}^{commit}" 2> /dev/null \
-              || { echo "[error] ${CIRCLE_SHA1} is not in the mirror after fetching ${CIRCLE_BRANCH}"; exit 1; }
-      - run:
           name: Prepare the source tree
+          no_output_timeout: 30m
           command: |
             set -eo pipefail
             : "${BUILD_MIRROR:?}"
             rm -rf /home/cubrid
 
-            # --shared, so this borrows the mirror's objects instead of copying
-            # 745MB per run. Full history: the build number counts commits, and
+            # Read-only against the mirror: many pods share it, so fetching
+            # into it would need a lock they all honour, and a pod killed
+            # mid-fetch would leave a ref lock that stops every later build.
+            # This run's increment goes into the clone below instead -- 2MB
+            # against a week-old mirror, 8MB against a 90-day-old one.
+            #
+            # --shared borrows the mirror's objects rather than copying 745MB.
+            # It also means the mirror must never be repacked while a build
+            # holds a clone; the seed sets gc.auto=0 for that.
+            if [ -d "$BUILD_MIRROR/cubrid.git" ]; then
+              git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" /home/cubrid
+            else
+              # --progress: git prints none unless asked when stderr is not a
+              # tty, and a silent full clone would trip the no-output timeout.
+              echo "[warn] no mirror at $BUILD_MIRROR/cubrid.git; cloning the full history over the WAN"
+              git clone --progress --no-checkout https://github.com/CUBRID/cubrid.git /home/cubrid
+            fi
+
+            # Full history, never shallow: the build number counts commits, and
             # a shallow clone would quietly stamp the package 0001.
-            git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" /home/cubrid
+            case "$CIRCLE_BRANCH" in
+              pull/*) head_ref="refs/${CIRCLE_BRANCH}" ;;
+              *)      head_ref="refs/heads/${CIRCLE_BRANCH}" ;;
+            esac
+            git -C /home/cubrid fetch --quiet https://github.com/CUBRID/cubrid.git "+${head_ref}:refs/ci/head"
+            git -C /home/cubrid cat-file -e "${CIRCLE_SHA1}^{commit}" 2> /dev/null \
+              || { echo "[error] ${CIRCLE_SHA1} is not reachable from ${head_ref}"; exit 1; }
+
             git -C /home/cubrid checkout --quiet --detach "$CIRCLE_SHA1"
             git -C /home/cubrid submodule init
 
-            # Take each submodule from its mirror only when the mirror already
-            # has the pinned commit: a bump pins one that is not on develop yet,
-            # and that must cost a fetch rather than the whole build.
+            # Take each submodule from its mirror only when the mirror has the
+            # pinned commit. The mirror is never refreshed from here, so a bump
+            # pins one it has not seen, and that must cost a fetch rather than
+            # the whole build.
             while read -r key url; do
               name=${key#submodule.}; name=${name%.url}
               path=$(git -C /home/cubrid config -f .gitmodules --get "submodule.${name}.path")
