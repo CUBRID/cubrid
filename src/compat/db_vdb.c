@@ -3105,8 +3105,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	    }
 	}
 
-      if ((xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED)
-	  && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY))
+      if ((xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED) && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY))
 	{
 	  /* the cached plan was chosen with unbound host-variable predicate markers (at
 	   * PREPARE). Null the XASL_ID so this first execution takes the recompile path and
