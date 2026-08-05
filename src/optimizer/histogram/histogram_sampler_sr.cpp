@@ -73,7 +73,11 @@
 #define HISTOGRAM_MIN_SAMPLE_ROWS 10000
 #define HISTOGRAM_MAX_SAMPLE_ROWS 300000
 #define HISTOGRAM_COLLECT_MEM_BUDGET (256LL * 1024 * 1024)	/* cap for HLLs + reservoirs across all workers */
-#define HISTOGRAM_SAMPLE_ELEM_BYTES 32	/* estimated reservoir bytes per kept value (8B numerics, avg strings) */
+#define HISTOGRAM_SAMPLE_ELEM_BYTES 32	/* reservoir bytes per kept numeric value (8B payload + bookkeeping) */
+/* A kept string value costs the std::string object itself (32B on libstdc++) plus a heap
+ * allocation for anything beyond SSO; budgeting strings at the numeric rate understated a
+ * 200B varchar column by 6x+ and let wide varchar tables blow through the memory budget. */
+#define HISTOGRAM_SAMPLE_STR_ELEM_BYTES 160
 
 /* Per-class set of per-column HLL sketches (see histogram_sampler_sr.hpp). One entry per column
  * the NDV scan could measure; columns of unsupported types have no entry. */
@@ -945,8 +949,8 @@ cleanup:
    * reservation (release with release_workers ()) and `parts` holds that many ftab partitions. */
   static int
   reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, int sample_rows_target, int attr_cnt,
-		     bool with_fullscan, std::vector<ftab_set> &parts, parallel_query::worker_manager **out_wm,
-		     double *out_sample_fraction)
+		     int str_attr_cnt, bool with_fullscan, std::vector<ftab_set> &parts,
+		     parallel_query::worker_manager **out_wm, double *out_sample_fraction)
   {
     *out_wm = NULL;
     *out_sample_fraction = 1.0;
@@ -979,9 +983,13 @@ cleanup:
      * column. Cap the worker count so the whole collection stays inside a fixed budget instead of
      * scaling with columns x cores (a wide table on a large box could otherwise claim hundreds of
      * MB). One worker set is the floor; the serial fallback allocates exactly one set. */
+    const int num_attr = MAX (attr_cnt, 1);
+    const int str_attr = MIN (MAX (str_attr_cnt, 0), num_attr);
     const std::int64_t per_worker_bytes =
-	    (std::int64_t) MAX (attr_cnt, 1) * (16 * 1024 + (std::int64_t) MAX (sample_rows_target, 0)
-		* HISTOGRAM_SAMPLE_ELEM_BYTES);
+	    (std::int64_t) num_attr * (16 * 1024)
+	    + (std::int64_t) MAX (sample_rows_target, 0)
+	    * ((std::int64_t) str_attr * HISTOGRAM_SAMPLE_STR_ELEM_BYTES
+	       + (std::int64_t) (num_attr - str_attr) * HISTOGRAM_SAMPLE_ELEM_BYTES);
     int mem_max_degree = (int) (HISTOGRAM_COLLECT_MEM_BUDGET / MAX (per_worker_bytes, 1));
     if (mem_max_degree < 1)
       {
@@ -1519,7 +1527,16 @@ cleanup:
 
     std::vector<ftab_set> parts;
     parallel_query::worker_manager *wm = NULL;
-    int degree = reserve_and_split (thread_p, hfid, sample_size, attr_cnt, with_fullscan, parts, &wm,
+    int str_attr_cnt = 0;
+    for (int a = 0; a < attr_cnt; a++)
+      {
+	const DB_TYPE t = attr_types[a];
+	if (t == DB_TYPE_STRING || t == DB_TYPE_CHAR || t == DB_TYPE_BIT || t == DB_TYPE_VARBIT)
+	  {
+	    str_attr_cnt++;
+	  }
+      }
+    int degree = reserve_and_split (thread_p, hfid, sample_size, attr_cnt, str_attr_cnt, with_fullscan, parts, &wm,
 				    out_sample_fraction);
     if (degree < 2)
       {
