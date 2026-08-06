@@ -2048,6 +2048,7 @@ sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub)
   sm_Descriptors = NULL;
 }
 
+#if defined(SA_MODE)
 /*
  * sm_create_root() - Called when the database is first created.
  *    Sets up the root class globals, used later when the root class
@@ -2074,6 +2075,7 @@ sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid)
   /* Sets up sm_Root_class_mop and Rootclass_oid */
   locator_add_root (rootclass_oid, (MOBJ) (&sm_Root_class));
 }
+#endif
 
 /*
  * sm_free_resident_classes_virtual_query_cache () - free virual query cache of resident classes

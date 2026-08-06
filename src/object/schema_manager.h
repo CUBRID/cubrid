@@ -298,7 +298,9 @@ extern void sm_fee_resident_classes_virtual_query_cache (void);
 extern void sm_final (void);
 extern void sm_transaction_boundary (void);
 
+#if defined(SA_MODE)
 extern void sm_create_root (OID * rootclass_oid, HFID * rootclass_hfid);
+#endif
 extern void sm_init (OID * rootclass_oid, HFID * rootclass_hfid, bool is_sub);
 #if defined (ENABLE_UNUSED_FUNCTION)	/* to disable TEXT */
 extern int sm_has_text_domain (DB_ATTRIBUTE * attributes, int check_all);
