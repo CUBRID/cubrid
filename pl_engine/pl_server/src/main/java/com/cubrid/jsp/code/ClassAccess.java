@@ -45,7 +45,7 @@ import java.util.Base64;
 
 public class ClassAccess {
 
-    // get object code of the invoked SP
+    // get object code of the SP being invoked
     public static CompiledCodeSet getObjectCode(Connection conn) {
 
         CompiledCodeSet code = null;
