@@ -8971,7 +8971,7 @@ lock_dump_acquired (FILE * fp, LK_ACQUIRED_LOCKS * acqlocks)
 	    }
 	  else
 	    {
-	      fprintf (fp, "   |%d|%d|%d| %s\n", key->oid.volid, key->oid.pageid, key->oid.slotid, mode);
+	      fprintf (fp, "   |%d|%d|%d| %s\n", OID_AS_ARGS (&key->oid), mode);
 	    }
 	}
     }
