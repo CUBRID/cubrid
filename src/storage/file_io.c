@@ -489,8 +489,10 @@ static int fileio_initialize_volume_info_cache (void);
 static void fileio_make_volume_lock_name (char *vol_lockname, const char *vol_fullname);
 static int fileio_create (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel, VOLID volid,
 			  bool dolock, bool dosync);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static int fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_fullname, const char *vlabel,
 					VOLID volid, bool dolock, bool dosync, int atleast_pages);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 static int fileio_max_permanent_volumes (int index, int num_permanent_volums);
 static int fileio_min_temporary_volumes (int index, int num_temp_volums, int num_volinfo_array);
 static FILEIO_SYSTEM_VOLUME_INFO *fileio_traverse_system_volume (THREAD_ENTRY * thread_p,
@@ -542,6 +544,7 @@ static FILEIO_LOCKF_TYPE fileio_get_lockf_type (int vdes);
 #endif /* !WINDOWS */
 
 static int fileio_get_primitive_way_max (const char *path, long int *filename_max, long int *pathname_max);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static int fileio_flush_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session);
 static ssize_t fileio_read_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, int pageid);
 static int fileio_write_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, ssize_t towrite_nbytes);
@@ -560,9 +563,11 @@ static FILEIO_RELOCATION_VOLUME fileio_find_restore_volume (THREAD_ENTRY * threa
 							    int reason);
 
 static int fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, bool user_new);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 static int fileio_initialize_backup_info (int which_bkvinf);
 static FILEIO_BACKUP_INFO_ENTRY *fileio_allocate_backup_info (int which_bkvinf);
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static FILEIO_BACKUP_SESSION *fileio_continue_restore (THREAD_ENTRY * thread_p, const char *db_fullname,
 						       INT64 db_creation, FILEIO_BACKUP_SESSION * session,
 						       bool first_time, bool authenticate, INT64 match_bkupcreation);
@@ -575,7 +580,9 @@ static FILEIO_NODE *fileio_delete_queue_head (FILEIO_QUEUE * qp);
 static int fileio_compress_backup_node (FILEIO_NODE * node, FILEIO_BACKUP_HEADER * backup_hdr);
 static int fileio_write_backup_node (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session, FILEIO_NODE * node,
 				     FILEIO_BACKUP_HEADER * backup_hdr);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 static char *fileio_ctime (INT64 * clock, char *buf);
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static const char *fileio_get_backup_level_string (FILEIO_BACKUP_LEVEL level);
 
 static int fileio_initialize_backup_thread (FILEIO_BACKUP_SESSION * session_p, int num_threads);
@@ -583,6 +590,7 @@ static void fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FI
 static int fileio_write_backup_end_time_to_header (FILEIO_BACKUP_SESSION * session_p, INT64 end_time);
 static void fileio_write_backup_end_time_to_last_page (FILEIO_BACKUP_SESSION * session_p, INT64 end_time);
 static void fileio_read_backup_end_time_from_last_page (FILEIO_BACKUP_SESSION * session_p);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 #if !defined(WINDOWS)
 static int fileio_get_lock (int fd, const char *vlabel);
@@ -602,9 +610,11 @@ static int fileio_flush_control_get_token (THREAD_ENTRY * thread_p, int ntoken);
 static int fileio_flush_control_get_desired_rate (TOKEN_BUCKET * tb);
 static int fileio_synchronize_bg_archive_volume (THREAD_ENTRY * thread_p);
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 static void fileio_page_bitmap_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static bool fileio_page_bitmap_is_set (FILEIO_RESTORE_PAGE_BITMAP * page_bitmap, int page_id);
 static void fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_bitmap);
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 static int
 fileio_increase_flushed_page_count (int npages)
@@ -2200,6 +2210,7 @@ fileio_create (THREAD_ENTRY * thread_p, const char *db_full_name_p, const char *
   return vol_fd;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_create_backup_volume () - CREATE A BACKUP VOLUME (INSURE ENOUGH SPACE EXISTS)
  *   return: volume descriptor identifier on success, NULL_VOLDES on failure
@@ -2277,6 +2288,7 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_full_name_p
 
   return (fileio_create (thread_p, db_full_name_p, vol_label_p, vol_id, is_do_lock, is_do_sync));
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_format () - Format a volume of npages and mount the volume
@@ -5712,6 +5724,7 @@ fileio_make_log_active_name (char *log_active_name_p, const char *log_path_p, co
 
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_make_temp_log_files_from_backup () - Build the name of volumes
  *   return: void
@@ -5742,6 +5755,7 @@ fileio_make_temp_log_files_from_backup (char *temp_log_name, VOLID to_volid, FIL
       break;
     }
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_make_log_archive_name () - Build the name of volumes
@@ -5837,6 +5851,7 @@ fileio_make_backup_volume_info_name (char *backup_volinfo_name_p, const char *ba
 	   FILEIO_SUFFIX_BACKUP_VOLINFO);
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_make_backup_name () - Build the name of volumes
  *   return: void
@@ -5866,6 +5881,7 @@ fileio_make_backup_name (char *backup_name_p, const char *no_path_vol_name_p, co
 	       level);
     }
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_make_dwb_name () - Build the name of DWB volume
@@ -6623,6 +6639,7 @@ fileio_get_lockf_type (int vol_fd)
   return lockf_type;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 #if 0
   /* currently, disable the following code. DO NOT DELETE ME NEED FUTURE OPTIMIZATION */
 static void
@@ -7330,7 +7347,6 @@ fileio_read_backup_end_time_from_last_page (FILEIO_BACKUP_SESSION * session_p)
   memcpy ((char *) &(session_p->bkup.bkuphdr->end_time), read_from, sizeof (INT64));
 }
 
-#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_finish_backup () - Finish the backup session successfully
  *   return: session or NULL
@@ -7470,7 +7486,7 @@ fileio_finish_backup (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 
   return session_p;
 }
-#endif /* SERVER_MODE || SA_MODE */
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_remove_all_backup () - REMOVE ALL BACKUP VOLUMES
@@ -7525,6 +7541,7 @@ fileio_remove_all_backup (THREAD_ENTRY * thread_p, int start_level)
   fileio_clear_backup_info_level (start_level, false, FILEIO_FIRST_BACKUP_VOL_INFO);
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_allocate_node () -
  *   return:
@@ -10826,6 +10843,7 @@ fileio_get_backup_level_string (FILEIO_BACKUP_LEVEL level)
       return ("UNKNOWN");
     }
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_get_zip_method_string () - return the string name of the compression method
@@ -10875,6 +10893,7 @@ fileio_get_zip_level_string (FILEIO_ZIP_LEVEL zip_level)
     }
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_get_next_backup_volume () - FIND LOCATION OR NEW VOLUME NAME TO CONTINUE BACKUP
  *   return:
@@ -11021,6 +11040,7 @@ fileio_get_next_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
 
   return NO_ERROR;
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 
 /*
@@ -11110,6 +11130,7 @@ fileio_add_volume_to_backup_info (const char *name_p, FILEIO_BACKUP_LEVEL level,
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_write_backup_info_entries () - Prints internal bkvinf table in a format
  *                             suitable for the bkvinf file as well as human
@@ -11145,6 +11166,7 @@ fileio_write_backup_info_entries (FILE * fp, int which_bkvinf)
 
   return NO_ERROR;
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_read_backup_info_entries () - Read and parse the entries in a bkvinf file and
@@ -11380,6 +11402,7 @@ fileio_clear_backup_info_level (int level, bool is_dealloc, int which_bkvinf)
   return NO_ERROR;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * fileio_request_user_response () - REQUEST A RESPONSE VIA REMOVE CLIENT
  *   return:
@@ -11582,6 +11605,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
   return (pr_status);
 #endif /* SERVER_MODE */
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 #if !defined(WINDOWS)
 /*
@@ -11682,6 +11706,7 @@ fileio_initialize_res (THREAD_ENTRY * thread_p, FILEIO_PAGE * io_page, PGLENGTH 
 }
 
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * PAGE BITMAP FUNCTIONS
  */
@@ -11913,6 +11938,7 @@ fileio_page_bitmap_dump (FILE * out_fp, const FILEIO_RESTORE_PAGE_BITMAP * page_
     }
   fprintf (out_fp, "\n");
 }
+#endif /* defined (SERVER_MODE) || (SA_MODE) */
 
 /*
  * fileio_page_check_corruption - Check whether the page is corrupted.
