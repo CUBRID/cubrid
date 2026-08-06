@@ -185,11 +185,8 @@ struct lang_collation
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 
-  /* true if LIKE on this collation can be evaluated by byte-lockstep
-   * comparison : UTF-8 codeset, no expansions, no contractions and identity
-   * weights, so byte equality is collation equality; computed once at
-   * collation registration (must stay last : built-in collations use
-   * positional aggregate initializers) */
+  /* true if LIKE can use byte-lockstep matching (identity-weight UTF-8 collation); computed at
+   * registration; must stay last : built-in collations use positional aggregate initializers */
   bool byte_lockstep_like;
 };
 

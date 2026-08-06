@@ -872,9 +872,8 @@ lang_init_builtin (void)
       (void) register_collation (built_In_collations[i]);
     }
 
-  /* decide byte-lockstep LIKE eligibility only after all built-in collations
-   * are registered : some of them (e.g. utf8_bin) share weight arrays that
-   * another collation's init function fills */
+  /* decide byte-lockstep LIKE eligibility only after all registrations : some built-in
+   * collations (e.g. utf8_bin) share weight arrays filled by another collation's init */
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       lang_set_byte_lockstep_like (built_In_collations[i]);
@@ -1617,9 +1616,7 @@ register_collation (LANG_COLLATION * coll)
 
   if (!coll->built_in)
     {
-      /* loaded collations have complete weight data at this point; built-in
-       * collations are handled after the registration loop in
-       * lang_init_builtin() */
+      /* loaded collations have complete weight data here; built-in ones are decided in lang_init_builtin () */
       lang_set_byte_lockstep_like (coll);
     }
 
@@ -1627,9 +1624,8 @@ register_collation (LANG_COLLATION * coll)
 }
 
 /*
- * lang_set_byte_lockstep_like - decides whether LIKE on this collation can be
- *   evaluated by byte-lockstep comparison : UTF-8 codeset, no expansions, no
- *   contractions and identity weights, so byte equality is collation equality
+ * lang_set_byte_lockstep_like - decides whether LIKE can use byte-lockstep matching :
+ *   UTF-8 codeset with identity weights makes byte equality collation equality
  *   return: void
  *   lang_coll(in/out): collation
  */
@@ -1652,9 +1648,7 @@ lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
 
   if (lang_coll->strmatch != lang_strmatch_utf8)
     {
-      /* the fast path mirrors lang_strmatch_utf8 () semantics only; a future
-       * collation with identity weights but a different matcher must not be
-       * silently redirected */
+      /* the fast path mirrors lang_strmatch_utf8 () semantics only */
       return;
     }
 
