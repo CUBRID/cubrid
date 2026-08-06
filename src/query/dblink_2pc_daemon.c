@@ -46,6 +46,7 @@
 
 #include <assert.h>
 #include <chrono>
+#include <errno.h>
 #include <stddef.h>
 #include <string.h>
 #include <time.h>
@@ -85,6 +86,177 @@ private:
 static cubthread::daemon * dblink_2pc_Daemon = NULL;
 static dblink_2pc_daemon_context_manager * dblink_2pc_Daemon_context_manager = NULL;
 /* *INDENT-ON* */
+
+/*
+ * Completion waiter
+ *
+ * Lets the commit path wait until the daemon has delivered this transaction's decisions, so that
+ * the remote changes are visible to the next statement of the same session.  See the contract in
+ * dblink_2pc_daemon.h; the whole implementation is kept together here on purpose.
+ */
+
+/*
+ * dblink_2pc_waiter_create - Create a waiter for num_participants decisions.
+ *
+ * return: the waiter, or NULL if it could not be created
+ *
+ * Note: NULL is a usable outcome, not an error - the caller then skips the wait and the daemon
+ *       delivers the decision as it does today.  Every other waiter function accepts NULL.
+ */
+DBLINK_2PC_WAITER *
+dblink_2pc_waiter_create (int num_participants)
+{
+  DBLINK_2PC_WAITER *waiter;
+
+  assert (num_participants > 0);
+
+  waiter = (DBLINK_2PC_WAITER *) malloc (sizeof (DBLINK_2PC_WAITER));
+  if (waiter == NULL)
+    {
+      return NULL;
+    }
+
+  if (pthread_mutex_init (&waiter->mutex, NULL) != 0)
+    {
+      free (waiter);
+      return NULL;
+    }
+
+  if (pthread_cond_init (&waiter->cond, NULL) != 0)
+    {
+      (void) pthread_mutex_destroy (&waiter->mutex);
+      free (waiter);
+      return NULL;
+    }
+
+  waiter->remaining = num_participants;
+  waiter->refcount = 1;		/* the commit path; each queue entry adds its own */
+
+  return waiter;
+}
+
+/*
+ * dblink_2pc_waiter_ref - Take a reference before attaching the waiter to a queue entry.
+ */
+void
+dblink_2pc_waiter_ref (DBLINK_2PC_WAITER * waiter)
+{
+  if (waiter == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&waiter->mutex);
+  assert (waiter->refcount > 0);
+  waiter->refcount++;
+  pthread_mutex_unlock (&waiter->mutex);
+}
+
+/*
+ * dblink_2pc_waiter_unref - Drop one reference, freeing the waiter with the last one.
+ */
+void
+dblink_2pc_waiter_unref (DBLINK_2PC_WAITER * waiter)
+{
+  int refcount;
+
+  if (waiter == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&waiter->mutex);
+  assert (waiter->refcount > 0);
+  refcount = --waiter->refcount;
+  pthread_mutex_unlock (&waiter->mutex);
+
+  if (refcount == 0)
+    {
+      (void) pthread_cond_destroy (&waiter->cond);
+      (void) pthread_mutex_destroy (&waiter->mutex);
+      free (waiter);
+    }
+}
+
+/*
+ * dblink_2pc_waiter_done - Settle one entry and consume its reference.
+ *
+ * Note: called when a decision was delivered, and when an entry that took a reference never made it
+ *       into the queue - so remaining is never left counting an entry that no longer exists.  It is
+ *       deliberately not called on a failed delivery: that entry is re-enqueued and keeps its slot.
+ *       The signal is sent while the mutex is held; the waiter cannot be freed underneath us
+ *       because this call still owns a reference until it releases one at the end.
+ */
+void
+dblink_2pc_waiter_done (DBLINK_2PC_WAITER * waiter)
+{
+  if (waiter == NULL)
+    {
+      return;
+    }
+
+  pthread_mutex_lock (&waiter->mutex);
+  assert (waiter->remaining > 0);
+  if (waiter->remaining > 0)
+    {
+      if (--waiter->remaining == 0)
+	{
+	  pthread_cond_signal (&waiter->cond);
+	}
+    }
+  pthread_mutex_unlock (&waiter->mutex);
+
+  dblink_2pc_waiter_unref (waiter);
+}
+
+/*
+ * dblink_2pc_waiter_wait - Wait for every decision to be settled, up to timeout_msec.
+ *
+ * return: true if all were settled, false on timeout
+ *
+ * Note: false is not an error.  The decisions stay queued and the daemon keeps delivering them,
+ *       which is the pre-existing asynchronous behaviour.  A timeout_msec of 0 or less yields a
+ *       deadline in the past, which polls rather than blocks - that is a usable meaning, so it is
+ *       documented instead of rejected.
+ */
+bool
+dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec)
+{
+  struct timespec deadline;
+  bool settled;
+
+  if (waiter == NULL)
+    {
+      return false;
+    }
+
+  /* pthread_cond_timedwait takes an absolute CLOCK_REALTIME deadline, so compute it once and let
+   * the loop below re-check it on every wakeup - that also absorbs spurious wakeups.
+   * CLOCK_MONOTONIC would be steadier under an NTP step, but it needs pthread_condattr_setclock(),
+   * which the Windows porting layer (base/porting.h) does not provide.  The existing waits in the
+   * tree take the same approach - see broker.c. */
+  clock_gettime (CLOCK_REALTIME, &deadline);
+  deadline.tv_sec += timeout_msec / 1000;
+  deadline.tv_nsec += (long) (timeout_msec % 1000) * 1000000L;
+  if (deadline.tv_nsec >= 1000000000L)
+    {
+      deadline.tv_sec++;
+      deadline.tv_nsec -= 1000000000L;
+    }
+
+  pthread_mutex_lock (&waiter->mutex);
+  while (waiter->remaining > 0)
+    {
+      if (pthread_cond_timedwait (&waiter->cond, &waiter->mutex, &deadline) == ETIMEDOUT)
+	{
+	  break;
+	}
+    }
+  settled = (waiter->remaining == 0);
+  pthread_mutex_unlock (&waiter->mutex);
+
+  return settled;
+}
 
 /*
  * global_tran_queue_expand - Expand queue by GLOBAL_TRAN_QUEUE_GROW_SIZE entries

@@ -40,11 +40,42 @@
 
 #include "dblink_scan.h"
 
+#include <pthread.h>
+
 /* State for _db_global_tran: 'P' = before Prepare, 'A' = Abort decision, 'C' = Commit decision */
 #define DBLINK_2PC_STATE_PREPARE   'P'
 #define DBLINK_2PC_STATE_ABORT    'A'
 #define DBLINK_2PC_STATE_COMMIT   'C'
 #define DBLINK_2PC_STATE_EMPTY    ' '
+
+/* How long the commit path waits for the 2PC daemon to deliver its decisions before answering the
+ * client.  The wait is what makes the remote changes visible to the next statement of the same
+ * session; the bound is what keeps a slow participant from stalling the commit response.  On
+ * timeout the decision stays queued and the daemon keeps delivering it, which is exactly the
+ * pre-existing asynchronous behaviour.  Deliberately generous: this is a safety net for a
+ * participant that stopped responding, not a knob for trimming a slow one.  Tightening it makes
+ * healthy-but-busy transactions fall back, which brings the visibility gap back. */
+#define DBLINK_2PC_DECISION_WAIT_MSEC 1000
+
+/*
+ * Completion waiter: one per coordinator transaction, shared by that transaction's queue entries.
+ *
+ * The commit path creates it with remaining = number of participants, enqueues one entry per
+ * participant carrying a pointer to it, then waits for remaining to reach 0.  The daemon calls
+ * dblink_2pc_waiter_done() once per participant, right after the decision is actually delivered.
+ *
+ * Lifetime is refcounted because neither side reliably outlives the other: the commit path may give
+ * up on the bound while entries are still queued, and an entry may be retried long after.  refcount
+ * starts at 1 for the commit path; each queue entry adds one.  The last release frees it.
+ */
+typedef struct dblink_2pc_waiter DBLINK_2PC_WAITER;
+struct dblink_2pc_waiter
+{
+  pthread_mutex_t mutex;
+  pthread_cond_t cond;
+  int remaining;		/* participants whose decision is not delivered yet */
+  int refcount;			/* commit path (1) + entries still referencing this waiter */
+};
 
 typedef struct global_tran_queue_entry GLOBAL_TRAN_QUEUE_ENTRY;
 struct global_tran_queue_entry
@@ -53,6 +84,45 @@ struct global_tran_queue_entry
   char state;			/* DBLINK_2PC_STATE_PREPARE / ABORT / COMMIT */
   DBLINK_CONN_INFO participant;	/* single participant (embedded) */
 };
+
+/*
+ * Ownership rule for the two counters.  Attaching the waiter to a queue entry takes a reference
+ * with _ref(); that entry is then settled with exactly one _done(), which drops both remaining and
+ * the reference.  Concretely there are three cases, and only the first two settle an entry:
+ *
+ *   decision delivered      the daemon calls _done()
+ *   delivery failed         nothing is called - the entry keeps its reference and its slot in
+ *                           remaining, and is re-enqueued for retry as it is today
+ *   never enqueued          the caller that took the reference calls _done() itself, so a queue
+ *                           that refused the entry does not leave the commit path waiting for it
+ *
+ * Every function tolerates a NULL waiter, so callers do not need to branch on allocation failure.
+ *
+ * Create a waiter for num_participants decisions.  Returns NULL on allocation failure; that is not
+ * an error condition - the caller simply does not wait, and the daemon still delivers the decision.
+ */
+extern DBLINK_2PC_WAITER *dblink_2pc_waiter_create (int num_participants);
+
+/* Take a reference before attaching the waiter to a queue entry. */
+extern void dblink_2pc_waiter_ref (DBLINK_2PC_WAITER * waiter);
+
+/* Drop one reference; frees the waiter when the last one goes away. */
+extern void dblink_2pc_waiter_unref (DBLINK_2PC_WAITER * waiter);
+
+/*
+ * Settle one entry - see the three cases above.  Wakes the waiter when none are left, then consumes
+ * that entry's reference, so the caller must not touch the waiter afterwards.  Not called on a
+ * failed delivery: that entry is retried and stays counted.
+ */
+extern void dblink_2pc_waiter_done (DBLINK_2PC_WAITER * waiter);
+
+/*
+ * Wait until every participant's decision has been settled or timeout_msec elapses.
+ * Returns true if all were settled.  A false return is not an error: the decisions remain queued
+ * and the daemon keeps delivering them.  A timeout_msec of 0 or less polls - it reports whether
+ * everything is already settled without blocking.
+ */
+extern bool dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec);
 
 /*
  * Enqueue one participant for daemon to persist to _db_global_tran and/or send decision.
