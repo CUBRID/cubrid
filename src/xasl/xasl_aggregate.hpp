@@ -104,6 +104,9 @@ namespace cubxasl
     int *operand_prog_idx;	/* program root index per operand ordinal or -1; head only */
     int operand_prog_state;	/* 0 = untried, 1 = active, 2 = disabled; head only */
     int operand_prog_base;	/* THIS node's first ordinal in operand_prog_idx, or -1 */
+    void *acc_kernel;		/* QDATA_ACC_KERNEL_FN (query_aggregate.cpp) accumulating this
+				 * node straight from its program cell, or NULL for the
+				 * interpreted tail; resolved with the program */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {

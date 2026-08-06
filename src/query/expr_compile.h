@@ -96,6 +96,12 @@ struct expr_prog
   EXPR_STEP *steps;
   int n_steps;
 
+  /* the first n_prologue steps only read compile-time literals, so they run once per
+   * program lifetime instead of once per row (e.g. coercing the INT literal of
+   * "1 - discount" to NUMERIC) */
+  int n_prologue;
+  bool prologue_done;
+
   DB_VALUE *slots;		/* step-owned result slots */
   int n_slots;
 
@@ -120,9 +126,16 @@ extern EXPR_PROG *expr_prog_compile (cubthread::entry * thread_p, regu_variable_
  * root becomes a fallback step; without it the root is EXCLUDED from the program (its
  * root_idx_out entry is -1) so the program contains only side-effect-free steps and may
  * be evaluated unconditionally.  root_idx_out (size n_roots, may be NULL) receives each
- * root's index for expr_prog_value (), or -1 when excluded. */
+ * root's index for expr_prog_value (), or -1 when excluded.
+ *
+ * allow_wired_only keeps a program in which no root needed a step (every root is a
+ * wired constant cell, e.g. the TYPE_CONSTANT operands of a buildlist aggregate); such
+ * a program is pure cell publication, useful when the CONSUMER attaches per-root fast
+ * paths (aggregate accumulate kernels).  Without it a step-less program is considered
+ * pointless indirection and NULL is returned. */
 extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int n_roots,
-					   val_descr * vd, bool allow_fallback_roots, int *root_idx_out);
+					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
+					   int *root_idx_out);
 
 /* true when the program's recorded host-variable type signature matches vd */
 extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
@@ -136,5 +149,9 @@ extern int expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_de
 extern DB_VALUE *expr_prog_value (const EXPR_PROG * prog, int root_idx);
 
 extern void expr_prog_free (EXPR_PROG * prog);
+
+/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c); exported for
+ * consumers that replicate an interpreted tail coercion (e.g. aggregate accumulation) */
+extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);
 
 #endif /* _EXPR_COMPILE_H_ */
