@@ -1699,6 +1699,14 @@ mq_remove_select_list_for_inline_view (PARSER_CONTEXT * parser, PT_NODE * statem
 
   /* copy select_list to as_attr_list before mq_lambda() */
   as_attr_list = parser_copy_tree_list (parser, tmp_query->info.query.q.select.list);
+  /* as_attr_list entries are bare column-name declarations for the derived table's exposed
+   * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
+   * select.list items copied above may carry one over from how the outer query referenced
+   * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec */
+  for (col = as_attr_list; col != NULL; col = col->next)
+    {
+      col->alias_print = NULL;
+    }
 
   /* substitute attributes for query_spec_columns in statement */
   tmp_query = mq_lambda (parser, tmp_query, attributes, query_spec_columns);
@@ -2149,6 +2157,17 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* check inst num or orderby_num */
   if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
+    {
+      return NON_PUSHABLE;
+    }
+
+  /* subquery's select list has inst_num/rownum nested inside another expression (not as a bare
+   * column). merging would inline that expression into mainquery's tree (e.g. producing
+   * DECODE(rownum, ...)), and if a later merge step then absorbs an ORDER BY and converts that
+   * rownum to orderby_num() in place, the result is DECODE(orderby_num(), ...), which the engine
+   * cannot validly re-parse (see MSGCAT_SEMANTIC_ORDERBYNUM_SELECT_LIST_ERR). this is unsafe
+   * regardless of is_only_spec, so it is not covered by the check above. */
+  if (pt_has_expr_of_inst_in_sel_list (parser, subquery->info.query.q.select.list))
     {
       return NON_PUSHABLE;
     }
@@ -5527,6 +5546,14 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   else
     {
       spec->info.spec.as_attr_list = parser_copy_tree_list (parser, new_query->info.query.q.select.list);
+      /* as_attr_list entries are bare column-name declarations for the derived table's exposed
+       * interface (printed as "spec (col1, col2)"); an "AS alias" is never valid there, but
+       * select.list items copied above may carry one over from how the outer query referenced
+       * this spec (e.g. "A.col1 AS out1") -- discard it so it can't leak into the printed spec */
+      for (col = spec->info.spec.as_attr_list; col != NULL; col = col->next)
+	{
+	  col->alias_print = NULL;
+	}
     }
   spec->info.spec.derived_table_type = PT_IS_SUBQUERY;
   spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_FROM_VCLASS);
@@ -12745,6 +12772,9 @@ mq_lambda_node (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *co
 #if 0
 		  result->info.name.original = node->info.name.original;
 #endif /* 0 */
+		  /* discard tree's own alias: result may end up nested inside another expr
+		   * (e.g. a function arg), where re-printing tree's alias breaks the SQL text */
+		  result->alias_print = node->alias_print;
 		}
 
 	      /* we may have just copied a whole query, if so, reset its id's */

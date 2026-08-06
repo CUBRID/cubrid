@@ -739,6 +739,14 @@ pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
       /* replace 'tree_or_name' node with 'lambda_arg->tree' */
       next = tree_or_name->next;
       result = parser_copy_tree_list (parser, lambda_arg->tree);
+      /* discard lambda_arg->tree's own alias_print: 'result' may end up nested inside
+       * another expr (e.g. a function arg) rather than at the top of a select list, so
+       * re-printing that alias there would break the SQL text; only tree_or_name's own
+       * alias (if any) belongs at this position */
+      if (result != NULL)
+	{
+	  result->alias_print = tree_or_name->alias_print;
+	}
       parser_free_node (parser, tree_or_name);
       for (temp = result; temp->next; temp = temp->next)
 	{
