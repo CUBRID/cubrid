@@ -156,8 +156,13 @@ static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACH
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
 					const OID * serial_oidp, DB_VALUE * key_val);
+static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
+					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
+					  bool clamp_block);
 static int serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
-				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block);
+				 DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
+static int serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+				     DB_VALUE * cyclic, int nth, DB_VALUE * result_val);
 static void serial_set_cache_entry (SERIAL_CACHE_ENTRY * entry, DB_VALUE * inc_val, DB_VALUE * cur_val,
 				    DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * started, DB_VALUE * cyclic,
 				    DB_VALUE * last_val, int cached_num);
@@ -507,7 +512,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
     {
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
-			      num_alloc, &next_val, false);
+			      num_alloc, &next_val);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -536,8 +541,8 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
       nturns = CEIL_PTVDIV (num_alloc, entry->cached_num);
 
       error =
-	serial_get_nth_value (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
-			      &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val, true);
+	serial_reserve_block_end (&entry->inc_val, &entry->last_cached_val, &entry->min_val, &entry->max_val,
+				  &entry->cyclic, (nturns * entry->cached_num), &new_last_cached_val);
 
       if (error != NO_ERROR)
 	{
@@ -571,7 +576,7 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
     {
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
-			      num_alloc, &next_val, false);
+			      num_alloc, &next_val);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -867,8 +872,8 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	      nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	      ret =
-		serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * (cached_num - 1)),
-				      &last_val, true);
+		serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic,
+					  (nturns * (cached_num - 1)), &last_val);
 	    }
 
 	  num_alloc--;
@@ -882,13 +887,13 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 	  nturns = CEIL_PTVDIV (num_alloc, cached_num);
 
 	  ret =
-	    serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num), &last_val,
-				  true);
+	    serial_reserve_block_end (&inc_val, &cur_val, &min_val, &max_val, &cyclic, (nturns * cached_num),
+				      &last_val);
 	}
 
       if (ret == NO_ERROR)
 	{
-	  ret = serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, num_alloc, &next_val, false);
+	  ret = serial_get_nth_value (&inc_val, &cur_val, &min_val, &max_val, &cyclic, num_alloc, &next_val);
 	}
     }
 
@@ -1112,7 +1117,7 @@ exit_on_error:
 }
 
 /*
- * serial_get_nth_value () - get Nth next_value
+ * serial_get_nth_value () - get Nth next_value, for handing the value out
  *   return: NO_ERROR, or ER_status
  *   inc_val(in)        :
  *   cur_val(in)        :
@@ -1121,10 +1126,55 @@ exit_on_error:
  *   cyclic(in)         :
  *   nth(in)            :
  *   result_val(out)    :
+ *
+ * A value past max_val (min_val for a negative increment) on a non-cyclic serial is out of
+ * range, so this raises ER_QPROC_SERIAL_RANGE_OVERFLOW.
  */
 static int
 serial_get_nth_value (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val, DB_VALUE * cyclic,
-		      int nth, DB_VALUE * result_val, bool clamp_block)
+		      int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, false);
+}
+
+/*
+ * serial_reserve_block_end () - get Nth next_value, for reserving a cache block up to it
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *
+ * A block end past max_val (min_val for a negative increment) on a non-cyclic serial is
+ * clamped to that boundary, so the values up to it stay reservable instead of the whole
+ * block failing. The value generation still raises the overflow for a value past it.
+ */
+static int
+serial_reserve_block_end (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			  DB_VALUE * cyclic, int nth, DB_VALUE * result_val)
+{
+  return serial_get_nth_value_internal (inc_val, cur_val, min_val, max_val, cyclic, nth, result_val, true);
+}
+
+/*
+ * serial_get_nth_value_internal () - get Nth next_value
+ *   return: NO_ERROR, or ER_status
+ *   inc_val(in)        :
+ *   cur_val(in)        :
+ *   min_val(in)        :
+ *   max_val(in)        :
+ *   cyclic(in)         :
+ *   nth(in)            :
+ *   result_val(out)    :
+ *   clamp_block(in)    : what to do when the Nth value leaves the range -- see the two
+ *                        callers above, which is what a caller should use
+ */
+static int
+serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val, DB_VALUE * max_val,
+			       DB_VALUE * cyclic, int nth, DB_VALUE * result_val, bool clamp_block)
 {
   DB_VALUE tmp_val, cmp_result, add_val;
   unsigned char num[DB_NUMERIC_BUF_SIZE];
