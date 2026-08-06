@@ -34,6 +34,7 @@
 #include "jansson.h"
 
 #include "parser.h"
+#include "object_domain.h"
 #include "object_primitive.h"
 #include "optimizer.h"
 #include "query_planner.h"
@@ -100,6 +101,9 @@
 						   correction in qo_nljoin_cost (); matches the data_buffer_pages
 						   default (512M / 16K). The real parameter is server-only, so the
 						   client-side optimizer cannot read it. */
+#define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
+				   (external_sort.c); that file is server-only, so the value cannot be
+				   included here -- keep in sync manually. */
 #define SSCAN_DEFAULT_CARD 50
 #define GUESSED_BIND_LIMIT_CARD 2000	/* When limit is a bind variable, assume that fewer rows will be assigned. */
 
@@ -467,6 +471,7 @@ static double qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
+static DB_VALUE *qo_in_list_elem_value (QO_ENV * env, PT_NODE * elem);
 
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
@@ -2831,12 +2836,14 @@ qo_sort_cost (QO_PLAN * planp)
 		}
 	      else
 		{
-		  /* External merge sort: every merge pass reads and writes the whole run set once, and
-		   * the number of passes is ceil (log_F (pages / F)) with F the real merge fan-in -- the
-		   * sort buffer size -- not a fixed 3 (the old log3 (pages / 4) model overpriced large
-		   * sorts by a multiple and then patched itself with an arbitrary *0.1 cache guess). */
-		  double fan_in = MAX (2.0, (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS));
-		  double merge_passes = ceil (log (MAX (pages / fan_in, 1.0)) / log (fan_in));
+		  /* External merge sort: the initial pass writes every page once into runs of the
+		   * sort-buffer size, then every merge pass reads and writes the whole run set once.
+		   * The executor merges at most SORT_MERGE_FAN_IN runs per pass, so the number of
+		   * passes is ceil (log_fan_in (runs)) -- the old log3 (pages / 4) model used a fixed
+		   * fan-in of 3 over the raw page count and patched its overpricing with an arbitrary
+		   * *0.1 cache guess. */
+		  double runs = MAX (pages / MAX (2.0, (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS)), 1.0);
+		  double merge_passes = ceil (log (runs) / log (SORT_MERGE_FAN_IN));
 
 		  sort_io = pages * (1.0 + merge_passes);	/* initial run formation + merge passes */
 		}
@@ -3471,6 +3478,10 @@ qo_nljoin_cost (QO_PLAN * planp)
 	}
 
       naive_io = guessed_result_cardinality * inner->variable_io_cost;
+      /* pages_fetched is a raw page count while naive_io already carries the
+       * optimizer_random_page_cost_ratio through the inner's variable_io_cost; scale it by the
+       * same ratio so the MIN () compares like units (both sides are random heap-page reads). */
+      pages_fetched *= (double) prm_get_float_value (PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO);
       inner_io_cost = MIN (naive_io, pages_fetched);
     }
   else
@@ -11021,6 +11032,27 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 }
 
 /*
+ * qo_in_list_elem_value () - the DB_VALUE of an IN-list element when it is a plain constant
+ *			      or a bound host variable
+ *   return: the value, or NULL when the element cannot be resolved to a value
+ *   env(in):
+ *   elem(in): one element of the IN-list set function
+ */
+static DB_VALUE *
+qo_in_list_elem_value (QO_ENV * env, PT_NODE * elem)
+{
+  switch (qo_classify (elem))
+    {
+    case PC_CONST:
+      return &elem->info.value.db_value;
+    case PC_HOST_VAR:
+      return &env->parser->host_variables[elem->info.host_var.index];
+    default:
+      return NULL;
+    }
+}
+
+/*
  * qo_all_some_in_selectivity () - Compute the selectivity of an in predicate
  *   return: double
  *   env(in): Pointer to an environment structure
@@ -11049,6 +11081,67 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
    * SUM of the per-value equality selectivities. When the column has a histogram, sum the exact
    * per-value probes (this reflects the real value frequencies -- e.g. an IN list of common
    * values is far more selective-heavy than the flat 1/ndv assumption). */
+  if (pc_lhs == PC_ATTR && pc_rhs == PC_SET && !pt_is_function (arg2) && arg2->node_type == PT_VALUE)
+    {
+      /* a constant IN list is folded into one set VALUE before it reaches the optimizer, so the
+       * element-node loop below never sees it; probe the folded elements the same way */
+      DB_SET *in_set = db_get_set (&arg2->info.value.db_value);
+      int set_size = (in_set != NULL) ? db_set_size (in_set) : -1;
+
+      if (set_size > 0)
+	{
+	  double sum = 0.0;
+	  bool all_probed = true;
+	  int i, j;
+
+	  for (i = 0; i < set_size && all_probed; i++)
+	    {
+	      DB_VALUE elem_value, prev_value;
+	      double one = 0.0;
+	      bool success = false, duplicated = false;
+
+	      if (db_set_get (in_set, i, &elem_value) != NO_ERROR)
+		{
+		  all_probed = false;
+		  break;
+		}
+
+	      /* a duplicated element (col IN (1, 1)) must contribute only once: the per-value
+	       * equalities are mutually exclusive -- and their selectivities addable -- only for
+	       * DISTINCT values */
+	      for (j = 0; j < i && !duplicated; j++)
+		{
+		  if (db_set_get (in_set, j, &prev_value) != NO_ERROR)
+		    {
+		      break;
+		    }
+		  duplicated = (tp_value_compare (&elem_value, &prev_value, 1, 0) == DB_EQ);
+		  pr_clear_value (&prev_value);
+		}
+
+	      if (!duplicated)
+		{
+		  histogram_get_equal_selectivity (arg1, &elem_value, &one, &success);
+		  if (success)
+		    {
+		      sum += one;
+		    }
+		  else
+		    {
+		      all_probed = false;
+		    }
+		}
+	      pr_clear_value (&elem_value);
+	    }
+
+	  if (all_probed)
+	    {
+	      return MIN (MAX (sum, 0.0), 1.0);
+	    }
+	}
+      /* fall through to the generic estimate below */
+    }
+
   if (pc_lhs == PC_ATTR && pc_rhs == PC_SET && pt_is_function (arg2))
     {
       double sum = 0.0;
@@ -11057,23 +11150,32 @@ qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
       for (elem = arg2->info.function.arg_list; elem != NULL; elem = elem->next)
 	{
-	  PRED_CLASS pc_elem = qo_classify (elem);
-	  DB_VALUE *elem_value = NULL;
+	  DB_VALUE *elem_value = qo_in_list_elem_value (env, elem);
+	  PT_NODE *prev;
 	  double one = 0.0;
-	  bool success = false;
+	  bool success = false, duplicated = false;
 
-	  if (pc_elem == PC_CONST)
-	    {
-	      elem_value = &elem->info.value.db_value;
-	    }
-	  else if (pc_elem == PC_HOST_VAR)
-	    {
-	      elem_value = &env->parser->host_variables[elem->info.host_var.index];
-	    }
-	  else
+	  if (elem_value == NULL)
 	    {
 	      all_probed = false;
 	      break;
+	    }
+
+	  /* a duplicated literal (col IN (1, 1)) must contribute only once: the per-value
+	   * equalities are mutually exclusive -- and their selectivities addable -- only for
+	   * DISTINCT values */
+	  for (prev = arg2->info.function.arg_list; prev != elem && !duplicated; prev = prev->next)
+	    {
+	      DB_VALUE *prev_value = qo_in_list_elem_value (env, prev);
+
+	      if (prev_value != NULL && tp_value_compare (elem_value, prev_value, 1, 0) == DB_EQ)
+		{
+		  duplicated = true;
+		}
+	    }
+	  if (duplicated)
+	    {
+	      continue;
 	    }
 
 	  histogram_get_equal_selectivity (arg1, elem_value, &one, &success);
