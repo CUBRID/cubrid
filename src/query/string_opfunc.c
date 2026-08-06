@@ -5914,8 +5914,17 @@ db_string_fix_string_size (DB_VALUE * src_string)
   do \
     { \
       int nc_len_ = intl_Len_utf8_char[*(p)]; \
-      (remain) -= nc_len_; \
-      (p) += nc_len_; \
+      if (nc_len_ > (remain)) \
+	{ \
+	  /* truncated character : stop at buffer end to avoid an out-of-bounds pointer */ \
+	  (p) += (remain); \
+	  (remain) = -1; \
+	} \
+      else \
+	{ \
+	  (p) += nc_len_; \
+	  (remain) -= nc_len_; \
+	} \
     } \
   while (0)
 
