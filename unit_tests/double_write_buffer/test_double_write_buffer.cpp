@@ -16,25 +16,20 @@
  *
  */
 
-/*
- * parallel.h - parallel module
- */
+#define CATCH_CONFIG_MAIN
+#define CATCH_CONFIG_NO_POSIX_SIGNALS
+#include "catch2/catch.hpp"
 
-#pragma once
+#include "double_write_buffer.hpp"
+#include "error_code.h"
 
-#include "system.h"
-
-namespace parallel_query
+TEST_CASE ("Disabled DWB delegates permanent volume synchronization", "[double_write_buffer]")
 {
-  enum class parallel_type : int
-  {
-    SCAN      = 0,	/* heap / list / index scan */
-    HASH_JOIN = 1,
-    SORT      = 2,
-    SUBQUERY  = 3,
-    INDEX_BUILD = 4,	/* no-logging (loaddb) index build; an ordinary CREATE INDEX uses SORT */
-  };
+  REQUIRE_FALSE (dwb_is_created ());
 
-  UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
-				  int hint_degree = -1 /* auto-compute */ ) noexcept;
-}				/* namespace parallel_query */
+  bool all_sync = true;
+  int error_code = dwb_flush_force (NULL, &all_sync);
+
+  REQUIRE (error_code == NO_ERROR);
+  REQUIRE_FALSE (all_sync);
+}

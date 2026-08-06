@@ -1479,17 +1479,19 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1376 The current transaction is implicitly aborted by the system for the execution of the login method.
 
-1377 Package "%1$s" already exists.
-1378 Package Body "%1$s" already exists.
-1379 Package "%1$s" does not exist.
-1380 Package Body "%1$s" does not exist.
-1381 Package compile error: %1$s
-1382 The owner or a member of DBA group can %1$s a package.
-1383 Dropping a system generated package is not allowed.
-1384 Package Procedure's unique name exceeds 255 characters.
-1385 Duplicate package name '%1$s' in the name list.
+1377 The no-logging index build exceeded its vacuum notification memory limit (%1$d bytes). Retry the loaddb while no concurrent transactions are active, or rebuild the index without the no-logging option.
 
-1386 Last Error
+1378 Package "%1$s" already exists.
+1379 Package Body "%1$s" already exists.
+1380 Package "%1$s" does not exist.
+1381 Package Body "%1$s" does not exist.
+1382 Package compile error: %1$s
+1383 The owner or a member of DBA group can %1$s a package.
+1384 Dropping a system generated package is not allowed.
+1385 Package Procedure's unique name exceeds 255 characters.
+1386 Duplicate package name '%1$s' in the name list.
+
+1387 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -2290,6 +2292,7 @@ including those from the current backup level and higher.\n
 29 COMMENT: Log archive %1$s, which contains log pages before %2$lld, is not needed any longer by any HA utilities.\n
 30 Number of active log archives has been exceeded the max desired number.
 
+31 This backup and log chain contains a no-logging index build (loaddb) and cannot be replayed past that point; restore from a backup taken after loaddb, or use a partial restore up to a time before it.
 $set 17 MSGCAT_SET_GLOSSARY
 1 class
 2 trigger
