@@ -236,6 +236,25 @@ dblink_make_cci_value (DB_VALUE * cci_value, T_CCI_U_TYPE utype, void *val, int 
 	db_make_varchar (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     case CCI_U_TYPE_CHAR:
+      /* The remote materialized its pad in the REMOTE codeset, and the pad character is
+       * codeset-specific (intl_pad_char ()).  Left in place it is coerced as ordinary data and lands
+       * on a character the local trailing-space rule does not recognize.  Drop it here, where the
+       * remote metadata tells us the tail is padding, so the coercion sees a value shorter than its
+       * precision and re-pads with the LOCAL pad character.  It must be this boundary: inside the
+       * coercion a materialized pad and a data trailing space are indistinguishable, both having
+       * length == precision.  No codeset comparison is needed -- a same-codeset value gets re-padded
+       * with the very same character, so its bytes come out identical.  And only the source pad
+       * character is stripped; any other padding is converted as data, which is what we want. */
+      {
+	unsigned char pad[2];
+	int pad_size = 0;
+
+	intl_pad_char ((INTL_CODESET) codeset, pad, &pad_size);
+	while (pad_size > 0 && len >= pad_size && memcmp ((char *) val + len - pad_size, pad, pad_size) == 0)
+	  {
+	    len -= pad_size;
+	  }
+      }
       error = db_make_char (cci_value, prec, (DB_CONST_C_CHAR) val, len, codeset, LANG_GET_BINARY_COLLATION (codeset));
       break;
     default:

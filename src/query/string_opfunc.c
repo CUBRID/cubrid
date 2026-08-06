@@ -9634,35 +9634,6 @@ qstr_coerce (const unsigned char *src, int src_length, int src_precision, DB_TYP
   *data_status = DATA_STATUS_OK;
   *dest_size = 0;
 
-  /* A fixed-length string arrives with its pad already materialized in the SOURCE codeset, and the
-   * pad character is codeset-specific (intl_pad_char ()).  Drop it before the conversion so the
-   * padding below re-creates it with the destination's own pad character; converting it as ordinary
-   * data would leave a character that the destination's trailing-space rule does not recognize.
-   * INVARIANT: the pad of a coerced fixed-length string always belongs to <dest_codeset>.
-   *
-   * Both sides must be fixed-length: an unpadded destination has no pad to normalize, and its
-   * <dest_length> comes from <src_precision>, which this block does not touch -- trimming would
-   * leave a gap that gets refilled with the pad character, corrupting a *data* trailing space.
-   * Binary charsets are excluded as well; there the pad is '\0' and every byte is data. */
-  if (QSTR_IS_PADDED_LENGTH (src_type) && QSTR_IS_PADDED_LENGTH (dest_type) && src_codeset != dest_codeset
-      && src_codeset != INTL_CODESET_RAW_BYTES && dest_codeset != INTL_CODESET_RAW_BYTES)
-    {
-      unsigned char pad[2];
-      int pad_size = 0, src_size = 0, trimmed_size = 0;
-      int dummy_length = 0;
-
-      intl_pad_char (src_codeset, pad, &pad_size);
-      intl_char_size (src, src_length, src_codeset, &src_size);
-      /* Only the trimmed SIZE is usable: qstr_trim_trailing () decrements the length by the trim
-       * charset's BYTE size, overcounting a multi-byte pad.  Recount the characters from it. */
-      qstr_trim_trailing (pad, pad_size, src, src_type, src_length, src_size, src_codeset, &dummy_length,
-			  &trimmed_size, true);
-      if (trimmed_size < src_size)
-	{
-	  intl_char_count (src, trimmed_size, src_codeset, &src_length);
-	}
-    }
-
   /*
    *  <src_padded_length> is the length of the fully padded
    *  source string.
