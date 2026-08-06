@@ -4312,8 +4312,12 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 
   if (trace_on && do_histogram == DO_HISTOGRAM_CREATE)
     {
+      /* "page sampling eligible" is the REQUESTED mode only -- sampling actually runs when the
+       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap;
+       * the post-collection TRACE line below reports what the scan really did */
       fprintf (stdout, "TRACE   histogram: bucket target %d, %s%s\n", bucket_count,
-	       with_fullscan ? "fullscan" : "page sampling", histogram_info->random_seed ? ", random seed" : "");
+	       with_fullscan ? "fullscan" : "page sampling eligible",
+	       histogram_info->random_seed ? ", random seed" : "");
     }
 
   /* Update statistics for the class. For the all-columns histogram path (nnames == 0) this is
@@ -4433,11 +4437,12 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	   * update never leaves new histograms beside stale class statistics. */
 	  CLASS_ATTR_NDV ndv_info = CLASS_ATTR_NDV_INITIALIZER;
 	  INT64 hist_total_rows = 0;
+	  INT64 hist_pages_seen = 0, hist_pages_kept = 0;
 	  HISTOGRAM_COLLECT hist_collect = HISTOGRAM_COLLECT_INITIALIZER;
 	  error =
 	    analyze_classes_multi_by_reservoir (NULL, db_get_class_name (obj), bucket_count, with_fullscan ? 1 : 0,
 						histogram_info->random_seed, obj, &ndv_info, &hist_total_rows,
-						&hist_collect);
+						&hist_collect, &hist_pages_seen, &hist_pages_kept);
 	  if (error == NO_ERROR)
 	    {
 	      error = sm_update_statistics (obj, with_fullscan, &ndv_info);
@@ -4459,10 +4464,27 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  if (trace_on)
 	    {
 	      gettimeofday (&trace_t1, NULL);
-	      fprintf (stdout, "TRACE   histogram: single heap scan sampled %lld row(s); histograms built,"
-		       " class statistics refreshed and histograms stored in %.1f ms\n",
-		       (long long) hist_total_rows,
-		       (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 + (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+	      /* report what the scan actually did (the header line above only shows the REQUESTED
+	       * mode): full scan vs realized page sampling, the realized fraction, and whether the
+	       * stored NDV is the exact HLL count or the Duj1 sample extrapolation */
+	      if (hist_pages_seen > 0 && hist_pages_kept < hist_pages_seen)
+		{
+		  fprintf (stdout, "TRACE   histogram: single heap scan SAMPLED %lld of %lld data page(s) (%.2f%%),"
+			   " population estimated at %lld row(s); NDV extrapolated (Duj1); histograms built,"
+			   " class statistics refreshed and histograms stored in %.1f ms\n",
+			   (long long) hist_pages_kept, (long long) hist_pages_seen,
+			   100.0 * (double) hist_pages_kept / (double) hist_pages_seen, (long long) hist_total_rows,
+			   (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 +
+			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+		}
+	      else
+		{
+		  fprintf (stdout, "TRACE   histogram: single FULL heap scan of %lld data page(s), %lld row(s);"
+			   " NDV exact (HLL); histograms built, class statistics refreshed and histograms stored"
+			   " in %.1f ms\n", (long long) hist_pages_seen, (long long) hist_total_rows,
+			   (trace_t1.tv_sec - trace_t0.tv_sec) * 1000.0 +
+			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
+		}
 	    }
 	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
 	       att = db_attribute_next (att))

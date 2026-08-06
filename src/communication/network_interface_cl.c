@@ -5801,7 +5801,8 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
 
   status =
     histogram_build_multi_by_reservoir_request (class_oid, 1, ids, types, uniq, max_buckets, sample_size,
-						with_fullscan, sample_seed, nf, blobs, blens, ndv, &total_rows);
+						with_fullscan, sample_seed, nf, blobs, blens, ndv, &total_rows,
+						NULL, NULL);
 
   *null_frequency = nf[0];
   *blob = blobs[0];
@@ -5814,19 +5815,29 @@ histogram_build_by_reservoir_request (OID * class_oid, int attr_id, int attr_typ
  *   Sends all columns in one request; the server reads the heap once and returns one blob
  *   per column. Output arrays (sized attr_cnt) are filled by the caller's storage.
  *
- *   reply variable-data layout: attr_cnt doubles (null_frequency), then attr_cnt ints
- *   (blob_length), then the blobs concatenated in column order.
+ *   reply variable-data layout: total_rows / pages_seen / pages_kept (int64), attr_cnt NDV
+ *   (int64), attr_cnt doubles (null_frequency), then attr_cnt ints (blob_length), then the
+ *   blobs concatenated in column order. out_pages_seen / out_pages_kept (may be NULL) report
+ *   the realized scan coverage: kept == seen means a full scan, kept < seen page sampling.
  */
 int
 histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const int *attr_ids,
 					    const int *attr_types, const int *attr_unique, int max_buckets,
 					    int sample_size, int with_fullscan, UINT64 sample_seed,
 					    double *null_frequency, char **blob, int *blob_length, INT64 * out_ndv,
-					    INT64 * out_total_rows)
+					    INT64 * out_total_rows, INT64 * out_pages_seen, INT64 * out_pages_kept)
 {
   int i;
 
   *out_total_rows = 0;
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = 0;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = 0;
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       blob[i] = NULL;
@@ -5880,7 +5891,7 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
       ptr = or_unpack_int (reply, &data_len);
       ptr = or_unpack_int (ptr, &status);
 
-      if (area_size < OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
+      if (area_size < 3 * OR_INT64_SIZE + attr_cnt * (OR_INT64_SIZE + OR_DOUBLE_SIZE + OR_INT_SIZE))
 	{
 	  /* truncated reply: unpacking the fixed part below would read past the buffer */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_DATA_RECEIVE, 0);
@@ -5890,6 +5901,19 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
 
       ap = or_unpack_int64 (ap, &tr);
       *out_total_rows = tr;
+      {
+	INT64 ps = 0, pk = 0;
+	ap = or_unpack_int64 (ap, &ps);
+	ap = or_unpack_int64 (ap, &pk);
+	if (out_pages_seen != NULL)
+	  {
+	    *out_pages_seen = ps;
+	  }
+	if (out_pages_kept != NULL)
+	  {
+	    *out_pages_kept = pk;
+	  }
+      }
       for (i = 0; i < attr_cnt; i++)
 	{
 	  INT64 nv = -1;
@@ -5966,7 +5990,8 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
     xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, &hfid, (const ATTR_ID *) attr_ids,
 						  (const DB_TYPE *) attr_types, attr_unique, attr_cnt, max_buckets,
 						  sample_size, with_fullscan != 0, sample_seed, null_frequency,
-						  priv_blobs, blob_length, out_ndv, out_total_rows);
+						  priv_blobs, blob_length, out_ndv, out_total_rows, out_pages_seen,
+						  out_pages_kept);
   if (status == NO_ERROR)
     {
       for (i = 0; i < attr_cnt; i++)

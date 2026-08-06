@@ -965,6 +965,13 @@ cleanup:
 	er_clear ();
 	npages = 0;
       }
+    if (npages > 0)
+      {
+	/* the walker skips the heap file header page, so exclude it from the page universe the
+	 * sampling gate and fraction are computed over -- otherwise a heap with exactly
+	 * threshold data pages is gated into sampling by its header page */
+	npages--;
+      }
 
     *out_sample_fraction = histogram_compute_sample_fraction (npages, sample_rows_target, with_fullscan);
 
@@ -1517,13 +1524,22 @@ cleanup:
 			     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt,
 			     int sample_size, bool with_fullscan, std::uint64_t sample_seed,
 			     std::vector<col_collector *> &merged, std::int64_t *out_total_rows,
-			     double *out_sample_fraction, bool *did_parallel)
+			     double *out_sample_fraction, bool *did_parallel,
+			     std::int64_t *out_pages_seen = NULL, std::int64_t *out_pages_kept = NULL)
   {
     int w, c;
     std::int64_t pages_seen = 0, pages_kept = 0;
     *did_parallel = false;
     *out_total_rows = 0;
     *out_sample_fraction = 1.0;
+    if (out_pages_seen != NULL)
+      {
+	*out_pages_seen = 0;
+      }
+    if (out_pages_kept != NULL)
+      {
+	*out_pages_kept = 0;
+      }
 
     std::vector<ftab_set> parts;
     parallel_query::worker_manager *wm = NULL;
@@ -1626,12 +1642,43 @@ cleanup:
 	pages_seen += results[w].pages_seen;
 	pages_kept += results[w].pages_kept;
       }
+    if (out_pages_seen != NULL)
+      {
+	*out_pages_seen = pages_seen;
+      }
+    if (out_pages_kept != NULL)
+      {
+	*out_pages_kept = pages_kept;
+      }
     if (*out_sample_fraction < 1.0 && pages_seen > 0 && pages_kept > 0)
       {
 	/* the walkers enumerated the whole ftab, so kept/seen is the EXACT realized fraction --
 	 * use it for the population expansion instead of the metadata page-count estimate the
 	 * requested fraction was derived from (heap_get_num_objects can be stale) */
 	*out_sample_fraction = (double) pages_kept / (double) pages_seen;
+      }
+    else if (*out_sample_fraction < 1.0 && pages_seen > 0 && pages_kept == 0 && error == NO_ERROR && !push_oom)
+      {
+	/* The deterministic page filter kept no page at all (a tiny statistics_sample_pages
+	 * against a larger heap can realize an empty pick). Expanding an empty sample would
+	 * overwrite the real statistics with "empty table" values (rows = 0, every NDV = 0),
+	 * and retrying with the same seed is a no-op since the filter is deterministic per
+	 * VPID -- so retry once as a full scan. The zero-kept pass fixed no data page, so the
+	 * wasted work is the ftab walk only. */
+	er_log_debug (ARG_FILE_LINE,
+		      "histogram parallel scan: page filter kept 0 of %lld data pages; retrying as a full scan\n",
+		      (long long) pages_seen);
+	for (w = 0; w < degree; w++)
+	  {
+	    for (c = 0; c < attr_cnt; c++)
+	      {
+		delete results[w].collectors[c];
+		results[w].collectors[c] = NULL;
+	      }
+	  }
+	return parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
+					  sample_size, true /* with_fullscan */, sample_seed, merged, out_total_rows,
+					  out_sample_fraction, did_parallel, out_pages_seen, out_pages_kept);
       }
     if (push_oom && error == NO_ERROR)
       {
@@ -1838,14 +1885,14 @@ cleanup:
 			const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
 			int sample_size, bool with_fullscan, std::uint64_t sample_seed, double *null_frequency,
 			char **histogram_blob, int *blob_length, INT64 *out_ndv, INT64 *out_total_rows,
-			bool *did_parallel)
+			bool *did_parallel, std::int64_t *out_pages_seen = NULL, std::int64_t *out_pages_kept = NULL)
   {
     std::vector<col_collector *> merged;
     std::int64_t total_rows = 0;
     double sample_fraction = 1.0;
     int error = parallel_scan_merge_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
 					   sample_size, with_fullscan, sample_seed, merged, &total_rows,
-					   &sample_fraction, did_parallel);
+					   &sample_fraction, did_parallel, out_pages_seen, out_pages_kept);
     if (error != NO_ERROR || !*did_parallel)
       {
 	return error;
@@ -2096,7 +2143,7 @@ int
 xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *class_oid, const HFID *hfid,
     const ATTR_ID *attr_ids, const DB_TYPE *attr_types, const int *attr_unique, int attr_cnt, int max_buckets,
     int sample_size, bool with_fullscan, UINT64 sample_seed, double *null_frequency, char **histogram_blob,
-    int *blob_length, INT64 *out_ndv, INT64 *out_total_rows)
+    int *blob_length, INT64 *out_ndv, INT64 *out_total_rows, INT64 *out_pages_seen, INT64 *out_pages_kept)
 {
   int error = NO_ERROR;
   int i;
@@ -2115,6 +2162,14 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
     }
 
   *out_total_rows = 0;
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = 0;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = 0;
+    }
   for (i = 0; i < attr_cnt; i++)
     {
       histogram_blob[i] = NULL;
@@ -2159,7 +2214,7 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       int perr = parallel_build_multi (thread_p, class_oid, hfid, attr_ids, attr_types, attr_unique, attr_cnt,
 				       max_buckets, sample_size, with_fullscan, (std::uint64_t) sample_seed,
 				       null_frequency, histogram_blob, blob_length, out_ndv, out_total_rows,
-				       &did_parallel);
+				       &did_parallel, out_pages_seen, out_pages_kept);
       if (perr != NO_ERROR)
 	{
 	  return perr;
@@ -2185,7 +2240,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
       int np = 0;
       if (file_get_num_user_pages (thread_p, &tgt.second.vfid, &np) == NO_ERROR && np > 0)
 	{
-	  serial_npages += np;
+	  /* minus each heap's header page, which the walker skips (see reserve_and_split) */
+	  serial_npages += np - 1;
 	}
       else
 	{
@@ -2260,6 +2316,37 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	  goto cleanup;
 	}
       total_rows += tgt_rows;
+    }
+
+  if (serial_fraction < 1.0 && serial_pages_seen > 0 && serial_pages_kept == 0)
+    {
+      /* the deterministic page filter kept no page at all: expanding an empty sample would
+       * overwrite the real statistics with "empty table" values (rows = 0, every NDV = 0), and
+       * retrying with the same seed is a no-op since the filter is deterministic per VPID --
+       * so retry once as a full scan (see parallel_scan_merge_multi for the parallel twin).
+       * The zero-kept pass fixed no data page, so the wasted work is the ftab walk only. */
+      er_log_debug (ARG_FILE_LINE,
+		    "histogram serial scan: page filter kept 0 of %lld data pages; retrying as a full scan\n",
+		    (long long) serial_pages_seen);
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  delete collectors[i];
+	  collectors[i] = NULL;
+	}
+      return xhistogram_build_multi_by_fullscan_reservoir (thread_p, class_oid, hfid, attr_ids, attr_types,
+	     attr_unique, attr_cnt, max_buckets, sample_size,
+	     true /* with_fullscan */, sample_seed, null_frequency,
+	     histogram_blob, blob_length, out_ndv, out_total_rows,
+	     out_pages_seen, out_pages_kept);
+    }
+
+  if (out_pages_seen != NULL)
+    {
+      *out_pages_seen = serial_pages_seen;
+    }
+  if (out_pages_kept != NULL)
+    {
+      *out_pages_kept = serial_pages_kept;
     }
 
   if (serial_fraction < 1.0 && serial_pages_kept > 0)

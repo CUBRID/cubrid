@@ -248,7 +248,8 @@ extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr
 						       const int *attr_types, const int *attr_unique, int max_buckets,
 						       int sample_size, int with_fullscan, UINT64 sample_seed,
 						       double *null_frequency, char **blob, int *blob_length,
-						       INT64 * out_ndv, INT64 * out_total_rows);
+						       INT64 * out_ndv, INT64 * out_total_rows,
+						       INT64 * out_pages_seen = NULL, INT64 * out_pages_kept = NULL);
 extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
 extern int stats_update_all_statistics (int with_fullscan, int print_summary);
 extern int update_histogram_for_all_classes (int random_seed);

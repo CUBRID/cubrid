@@ -2106,6 +2106,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
   INT64 *ndvs = NULL;
   int *attr_unique = NULL;
   INT64 total_rows = 0;
+  INT64 pages_seen = 0, pages_kept = 0;
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -2196,7 +2197,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
 
   status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
 	   attr_unique, attr_cnt, max_buckets, sample_size, with_fullscan != 0, (UINT64) sample_seed, null_freqs,
-	   blobs, blob_lens, ndvs, &total_rows);
+	   blobs, blob_lens, ndvs, &total_rows, &pages_seen, &pages_kept);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -2204,9 +2205,11 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     }
 
   /* reply var-data (8-byte items first for natural alignment):
-   *   total_rows (int64), attr_cnt NDV (int64), attr_cnt null_frequency (double),
-   *   attr_cnt blob_length (int), then the blobs concatenated in column order. */
-  send_len = OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
+   *   total_rows (int64), pages_seen (int64), pages_kept (int64) -- realized scan coverage, so
+   *   the client trace can report whether sampling actually happened -- then attr_cnt NDV
+   *   (int64), attr_cnt null_frequency (double), attr_cnt blob_length (int), then the blobs
+   *   concatenated in column order. */
+  send_len = 3 * OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
   for (i = 0; i < attr_cnt; i++)
     {
       if (blob_lens[i] > 0)
@@ -2219,6 +2222,8 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
     {
       char *sp = send_buf;
       sp = or_pack_int64 (sp, total_rows);
+      sp = or_pack_int64 (sp, pages_seen);
+      sp = or_pack_int64 (sp, pages_kept);
       for (i = 0; i < attr_cnt; i++)
 	{
 	  sp = or_pack_int64 (sp, ndvs[i]);

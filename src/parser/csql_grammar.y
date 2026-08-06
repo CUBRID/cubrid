@@ -4842,11 +4842,21 @@ stats_option_list
                 }}
         | stats_option_list ',' stats_option
                 {{
-                        /* a repeated option kind (including two BUCKETS counts) or the
-                         * NO HISTOGRAM / DROP HISTOGRAM contradiction must not OR-merge
-                         * silently (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets);
-                         * poison the value and let the statement rule raise the error
-                         * where a parse node exists to attach it to */
+                        /* stats_option value layout (see the stats_option rule below):
+                         *   0x01 FULLSCAN | 0x02 RANDOM SEED | 0x04 NO HISTOGRAM | 0x08 DROP HISTOGRAM
+                         *   0x10 poison flag: the combined list is invalid (set here, tested in the
+                         *        UPDATE STATISTICS statement rules, where a parse node exists to
+                         *        attach the error to)
+                         *   bits 8.. : the BUCKETS count, shifted left by 8
+                         *
+                         * A repeated option kind or a contradictory pair must not OR-merge silently
+                         * (WITH 3 BUCKETS, 5 BUCKETS would become 7 buckets), so poison the value when
+                         *   1. ((($1 & $3) & 0x0F) != 0)   -- the same flag option appears on both
+                         *      sides (e.g. WITH FULLSCAN, FULLSCAN);
+                         *   2. (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)   -- both sides carry a
+                         *      BUCKETS count (two BUCKETS clauses; their shifted counts would OR);
+                         *   3. ((merged & 0x0C) == 0x0C)   -- NO HISTOGRAM and DROP HISTOGRAM are
+                         *      both present, which is a contradiction (skip vs remove). */
                         int merged = $1 | $3;
                         if ((($1 & $3) & 0x0F) != 0
                             || (($1 & ~0xFF) != 0 && ($3 & ~0xFF) != 0)

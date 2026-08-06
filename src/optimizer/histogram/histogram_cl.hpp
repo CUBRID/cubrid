@@ -89,10 +89,13 @@ int analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, 
  * If out_collect is non-NULL the per-column blobs are NOT written to the catalog; they are handed to
  * the caller (transfer of ownership) so it can store them only after UPDATE STATISTICS succeeds --
  * store with store_collected_histograms () and release with histogram_collect_clear (). When
- * out_collect is NULL the blobs are stored immediately (legacy behavior). */
+ * out_collect is NULL the blobs are stored immediately (legacy behavior).
+ * out_pages_seen / out_pages_kept (may be NULL) report the scan's realized page coverage:
+ * kept == seen means the collection was a full scan, kept < seen means page sampling ran. */
 int analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
 					int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
-					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect);
+					INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
+					INT64 *out_pages_seen = NULL, INT64 *out_pages_kept = NULL);
 /* fingerprint of the host-variable predicate values as the plan would see them: for each
  * (column op ?) predicate mix in the quantized histogram selectivity of the bound value (same
  * MCV/bucket -> same fingerprint -> same plan), or a typed value hash when no histogram applies.

@@ -228,7 +228,8 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 int
 analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, int max_number_of_buckets,
 				    int with_fullscan, int random_seed, MOP classop, CLASS_ATTR_NDV *out_ndv_info,
-				    INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect)
+				    INT64 *out_total_rows, HISTOGRAM_COLLECT *out_collect,
+				    INT64 *out_pages_seen, INT64 *out_pages_kept)
 {
   OID *class_oid = ws_oid (classop);
   if (class_oid == NULL || OID_ISNULL (class_oid))
@@ -288,7 +289,7 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
   int error =
 	  histogram_build_multi_by_reservoir_request (class_oid, n, attr_ids.data (), attr_types.data (),
 	      attr_unique.data (), max_number_of_buckets, 0, with_fullscan, sample_seed, null_freqs.data (),
-	      blobs.data (), blob_lens.data (), ndvs.data (), &total_rows);
+	      blobs.data (), blob_lens.data (), ndvs.data (), &total_rows, out_pages_seen, out_pages_kept);
   if (error != NO_ERROR)
     {
       for (int i = 0; i < n; i++)
@@ -915,15 +916,38 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
       return;
     }
 
-  if (key.kind != histogram_key_kind_for_type (histogram_reader.value_type ()))
-    {
-      /* probe constant does not match the column's stored value encoding (e.g. an integer column
-       * probed with a fractional constant). A blob/column type disagreement has no known
-       * producing path today (ALTER drops the histogram outright) but stays guarded: decoding
-       * the slots with the wrong template would produce garbage. Use default estimates. */
-      *success = false;
-      return;
-    }
+  {
+    const hist::histogram_key_kind col_kind = histogram_key_kind_for_type (histogram_reader.value_type ());
+    if (key.kind != col_kind)
+      {
+	/* Equality probes carry cross-kind numeric constants just as range probes do: `m = 1` on a
+	 * MONETARY/DOUBLE/NUMERIC/FLOAT column extracts an i64 key (integer literals are the common
+	 * way such predicates are written), and rejecting it here would silently disable the
+	 * histogram for the most common equality form on those columns. Promote the same safe
+	 * numeric cases as histogram_get_comp_selectivity; anything else (string vs numeric,
+	 * datetime vs numeric, a blob/column kind disagreement -- no known producing path today,
+	 * since ALTER drops the histogram outright) still falls back to the default estimate,
+	 * since decoding the slots with the wrong template would produce garbage. */
+	if (col_kind == hist::histogram_key_kind::dbl && key.kind == hist::histogram_key_kind::i64)
+	  {
+	    key.dbl = static_cast<double> (key.i64);
+	    key.kind = hist::histogram_key_kind::dbl;
+	  }
+	else if (col_kind == hist::histogram_key_kind::i64 && key.kind == hist::histogram_key_kind::dbl
+		 && key.dbl >= -9.0e18 && key.dbl <= 9.0e18 && key.dbl == std::floor (key.dbl))
+	  {
+	    /* a fractional constant can equal no integer value; leave that case to the default
+	     * estimate rather than claiming a zero-selectivity fact the optimizer would trust. */
+	    key.i64 = static_cast<std::int64_t> (key.dbl);
+	    key.kind = hist::histogram_key_kind::i64;
+	  }
+	else
+	  {
+	    *success = false;
+	    return;
+	  }
+      }
+  }
 
   const double total_rows = static_cast<double> (histogram_reader.total_rows ());
   if (total_rows <= 0.0)
@@ -1081,13 +1105,13 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
     const hist::histogram_key_kind col_kind = histogram_key_kind_for_type (histogram_reader.value_type ());
     if (key.kind != col_kind)
       {
-	/* Unlike the equality path (whose probe constant arrives coerced to the column domain),
-	 * range probes commonly carry a cross-kind numeric constant -- price < 100 on a
+	/* Range probes commonly carry a cross-kind numeric constant -- price < 100 on a
 	 * DOUBLE/NUMERIC column, c_int < 5000.0 -- and rejecting them here would discard the
-	 * histogram for the most common range predicates. Promote safe numeric cases to the
-	 * column's stored kind; anything else (string vs numeric, datetime vs numeric, a
-	 * blob/column kind disagreement -- no known producing path today) still falls back to
-	 * the default estimate, since decoding the slots
+	 * histogram for the most common range predicates. (Equality probes arrive the same way;
+	 * histogram_get_equal_selectivity applies the same promotion.) Promote safe numeric cases
+	 * to the column's stored kind; anything else (string vs numeric, datetime vs numeric, a
+	 * blob/column kind disagreement -- no known producing path today, since ALTER drops the
+	 * histogram outright) still falls back to the default estimate, since decoding the slots
 	 * with the wrong template would produce garbage. */
 	if (col_kind == hist::histogram_key_kind::dbl && key.kind == hist::histogram_key_kind::i64)
 	  {

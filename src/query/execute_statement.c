@@ -4757,8 +4757,11 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  if (trace_on)
 	    {
+	      /* "page sampling eligible" is the requested mode only: sampling actually runs when the
+	       * server-side gate (statistics_sampling_threshold_pages, 0 = disabled) admits the heap.
+	       * The histogram TRACE lines report the realized coverage after the collection. */
 	      fprintf (stdout, "\nTRACE update statistics: %s (%s%s%s%s)\n", sm_get_ch_name (class_mop),
-		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling",
+		       statement->info.update_stats.with_fullscan ? "fullscan" : "page sampling eligible",
 		       statement->info.update_stats.random_seed ? ", random seed" : "",
 		       statement->info.update_stats.no_histogram ? ", no histogram" : "",
 		       statement->info.update_stats.drop_histogram ? ", drop histogram" : "");
