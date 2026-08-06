@@ -4,6 +4,9 @@
 `information_schema`, …) up to the running binary's version, in place. The target
 version is `SYSTEM_METADATA_VERSION` (`src/object/system_metadata_version.h`).
 
+Scripts carry catalog **class** changes only. The catalog vclasses (`db_*`,
+`information_schema.*`) are rebuilt from the running binary once the scripts have run.
+
 Two kinds of script live here:
 
 | | Versioned | Internal (debug builds only) |
@@ -27,7 +30,7 @@ When a PR changes system metadata:
 
 1. Make the metadata change as usual.
 2. Add `internal/cbrd<NNNNN>.sql` that applies the same change to an existing
-   database.
+   database. Skip if the change was only to a vclass definition.
 3. On a debug build, list it in a script-list file and run
    `cubrid upgradedb --apply-script-list <list> <db>`.
 4. Check the upgraded metadata matches a freshly created database.
