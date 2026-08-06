@@ -2175,7 +2175,7 @@ $set 14 MSGCAT_SET_LOCK
 47 object %1$d|%2$d|%3$d
 48 class %1$s
 49 instance %1$d|%2$d|%3$d of class %4$s
-50 the self-lock of transaction MVCCID %1$lld
+50 transaction MVCCID %1$llu
 
 $set 15 MSGCAT_SET_IO
 1 \n*************************************************************************\n

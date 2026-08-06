@@ -103,6 +103,9 @@
 /* is younger transaction ? */
 #define LK_ISYOUNGER(young_tranid, old_tranid) (young_tranid > old_tranid)
 
+/* Room for the longest resource phrase of a lock-timeout message: "instance v|p|s of class <name>". */
+#define LK_RES_DESC_MAX (SM_MAX_IDENTIFIER_LENGTH + 128)
+
 /* Defines for printing lock activity messages */
 #define LK_MSG_LOCK_HELPER(entry, msgnum) \
   fprintf(stdout, \
@@ -276,13 +279,10 @@ typedef enum
 #define MSGCAT_LK_INDEXNAME                     44
 #define MSGCAT_LK_RES_RR_TYPE			45
 #define MSGCAT_LK_MVCC_INFO			46
-/* Room for the longest resource phrase: "instance v|p|s of class <name>". */
-#define LK_RES_DESC_MAX                         (SM_MAX_IDENTIFIER_LENGTH + 128)
-
-#define MSGCAT_LK_RES_DESC_OBJECT                47
-#define MSGCAT_LK_RES_DESC_CLASS                 48
-#define MSGCAT_LK_RES_DESC_INSTANCE              49
-#define MSGCAT_LK_RES_DESC_TRANSACTION           50
+#define MSGCAT_LK_RES_DESC_OBJECT               47
+#define MSGCAT_LK_RES_DESC_CLASS                48
+#define MSGCAT_LK_RES_DESC_INSTANCE             49
+#define MSGCAT_LK_RES_DESC_TRANSACTION          50
 #define MSGCAT_LK_LASTONE                       51
 
 #if defined(SERVER_MODE)
@@ -544,6 +544,7 @@ static void lock_detect_local_deadlock (THREAD_ENTRY * thread_p);
 static bool lock_is_class_lock_escalated (LOCK class_lock, LOCK lock_escalation);
 static LK_ENTRY *lock_add_non2pl_lock (THREAD_ENTRY * thread_p, LK_RES * res_ptr, int tran_index, LOCK lock);
 static void lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr);
+static const char *lock_res_desc_format (int msgnum);
 static bool lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *desc, size_t desc_size);
 static void lock_set_error_for_timeout (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr);
 static void lock_set_error_for_aborted (LK_ENTRY * entry_ptr);
@@ -1998,6 +1999,25 @@ lock_position_holder_entry (LK_RES * res_ptr, LK_ENTRY * entry_ptr)
 
 #if defined(SERVER_MODE)
 /*
+ * lock_res_desc_format - Format string of a resource-description phrase, never NULL
+ *
+ * return: the phrase from MSGCAT_SET_LOCK, or "" if the message catalog cannot be opened
+ *
+ *   msgnum(in): one of MSGCAT_LK_RES_DESC_*
+ *
+ * Note: msgcat_message () returns NULL when the catalog cannot be opened, and a NULL format is undefined behavior
+ *	 in snprintf (). An empty phrase loses nothing there: the message that embeds it comes from the same
+ *	 catalog, so it cannot be rendered either.
+ */
+static const char *
+lock_res_desc_format (int msgnum)
+{
+  const char *format = msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, msgnum);
+
+  return (format != NULL) ? format : "";
+}
+
+/*
  * lock_describe_resource - Render a lock resource as the phrase the lock-timeout messages embed
  *
  * return: true if the resource kind has a description, false otherwise (caller then reports nothing)
@@ -2029,9 +2049,8 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
     {
     case LOCK_RESOURCE_TRANSACTION:
       /* The resource is the inserter's MVCCID; key.oid would be those same bytes reinterpreted (LK_RES_KEY). */
-      snprintf (desc, desc_size,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_TRANSACTION),
-		(long long int) res_ptr->key.mvccid);
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_TRANSACTION),
+		(unsigned long long) res_ptr->key.mvccid);
       return true;
 
     case LOCK_RESOURCE_ROOT_CLASS:
@@ -2076,19 +2095,17 @@ lock_describe_resource (THREAD_ENTRY * thread_p, const LK_RES * res_ptr, char *d
 
   if (classname == NULL)
     {
-      snprintf (desc, desc_size, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_OBJECT),
-		oid->volid, oid->pageid, oid->slotid);
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_OBJECT), oid->volid, oid->pageid,
+		oid->slotid);
     }
   else if (is_instance)
     {
-      snprintf (desc, desc_size,
-		msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_INSTANCE),
-		oid->volid, oid->pageid, oid->slotid, classname);
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_INSTANCE), oid->volid, oid->pageid,
+		oid->slotid, classname);
     }
   else
     {
-      snprintf (desc, desc_size, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_RES_DESC_CLASS),
-		classname);
+      snprintf (desc, desc_size, lock_res_desc_format (MSGCAT_LK_RES_DESC_CLASS), classname);
     }
 
   if (is_classname_alloced)
