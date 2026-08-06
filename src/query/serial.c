@@ -487,6 +487,8 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
 
   assert (1 <= num_alloc);
 
+  db_make_null (&next_val);
+
   /* check if cached numbers were already exhausted */
   if (num_alloc == 1)
     {
@@ -506,6 +508,10 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
       error =
 	serial_get_nth_value (&entry->inc_val, &entry->cur_val, &entry->min_val, &entry->max_val, &entry->cyclic,
 			      num_alloc, &next_val, false);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
 
       error = numeric_db_value_compare (&next_val, &entry->last_cached_val, &cmp_result);
       if (error != NO_ERROR)
