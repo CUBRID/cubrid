@@ -1768,17 +1768,19 @@
 
 #define ER_IMPLICITLY_ABORT_FOR_LOGIN_METHOD        -1376
 
-#define ER_PKG_ALREADY_EXIST                        -1377
-#define ER_PKG_BODY_ALREADY_EXIST                   -1378
-#define ER_PKG_NOT_EXIST                            -1379
-#define ER_PKG_BODY_NOT_EXIST                       -1380
-#define ER_PKG_COMPILE_ERROR                        -1381
-#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1382
-#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1383
-#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1384
-#define ER_PKG_DUPLICATE_NAME                       -1385
+#define ER_BT_LOAD_NOTIFY_VACUUM_LIMIT              -1377
 
-#define ER_LAST_ERROR                               -1386
+#define ER_PKG_ALREADY_EXIST                        -1378
+#define ER_PKG_BODY_ALREADY_EXIST                   -1379
+#define ER_PKG_NOT_EXIST                            -1380
+#define ER_PKG_BODY_NOT_EXIST                       -1381
+#define ER_PKG_COMPILE_ERROR                        -1382
+#define ER_PKG_DDL_NOT_ALLOWED_PRIVILEGES           -1383
+#define ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED    -1384
+#define ER_PKG_PROC_UNIQ_NAME_TOO_LONG              -1385
+#define ER_PKG_DUPLICATE_NAME                       -1386
+
+#define ER_LAST_ERROR                               -1387
 
 /*
  * CAUTION!

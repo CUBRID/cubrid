@@ -189,6 +189,12 @@ typedef struct reserved_class_info
   char name[DB_MAX_IDENTIFIER_LENGTH];
 } RESERVED_CLASS_INFO;
 
+typedef struct reserved_class_info_list
+{
+  RESERVED_CLASS_INFO *cls_info;
+  int num_classes;
+} RESERVED_CLASS_INFO_LIST;
+
 static void initialize_serial_invariant (SERIAL_INVARIANT * invariant, DB_VALUE val1, DB_VALUE val2,
 					 PT_OP_TYPE cmp_op, int val1_msgid, int val2_msgid, int error_type);
 static int check_serial_invariants (SERIAL_INVARIANT * invariants, int num_invariants, int *ret_msg_id);
@@ -210,10 +216,12 @@ static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_v
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
 static MOP server_find (PT_NODE * node_server, PT_NODE * node_owner);
 
-static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-				      OID * reserved_oid);
+static int do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+				      RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid);
 
-static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info);
+static int do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement,
+				 RESERVED_CLASS_INFO_LIST & reserved_cls_info);
+static void do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info);
 
 static int do_reserve_oidinfo (PARSER_CONTEXT * parser, PT_NODE * statement, OID ** oid);
 /*
@@ -3293,7 +3301,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error = NO_ERROR;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   /* save old read fetch instance version */
@@ -3489,7 +3497,12 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  break;
 
 	case PT_DROP:
-	  (void) do_reserve_classinfo (parser, statement, cls_info);
+	  error = do_reserve_classinfo (parser, statement, reserved_cls_info);
+	  /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
 
 	  error = do_check_internal_statements (parser, statement,
 						/* statement->info.drop. internal_stmts, */
@@ -3730,23 +3743,11 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (error >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
 	{
-	  (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+	  (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
 	}
     }
 
 end:
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
-
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
   /* There may be parse tree fragments that were collected during the execution of the statement that should be freed
@@ -3766,6 +3767,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
 
   if (reserved_oid != NULL)
     {
@@ -4034,7 +4037,7 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   int suppress_repl_error;
   LC_FETCH_VERSION_TYPE read_fetch_instance_version;
 
-  RESERVED_CLASS_INFO *cls_info[64] = { NULL, };
+  RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
   assert (parser->query_id == NULL_QUERY_ID);
@@ -4237,7 +4240,12 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
       /* err = do_drop(parser, statement); */
       /* execute internal statements before and after do_drop() */
 
-      (void) do_reserve_classinfo (parser, statement, cls_info);
+      err = do_reserve_classinfo (parser, statement, reserved_cls_info);
+      /* Do not execute DROP if CDC supplemental log metadata cannot be reserved. */
+      if (err != NO_ERROR)
+	{
+	  goto end;
+	}
       err = do_check_internal_statements (parser, statement,
 					  /* statement->info.drop.internal_stmts, */
 					  do_drop);
@@ -4455,22 +4463,10 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   if (err >= 0 && prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) > 0)
     {
-      (void) do_supplemental_statement (parser, statement, cls_info, reserved_oid);
+      (void) do_supplemental_statement (parser, statement, reserved_cls_info, reserved_oid);
     }
 
 end:
-
-  /* release the class info reserved for supplemental logging; entries consumed by do_supplemental_statement are
-   * already freed and cleared (free_and_init), so this only frees what is left (e.g. a failed DROP skips the call) */
-  if (cls_info[0] != NULL)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
-    }
 
   /* restore old read fetch instance version */
   db_set_read_fetch_instance_version (read_fetch_instance_version);
@@ -4492,6 +4488,8 @@ end:
     }
 
   RESET_HOST_VARIABLES_IF_INTERNAL_STATEMENT (parser);
+
+  do_free_reserved_classinfo (reserved_cls_info);
 
   if (reserved_oid != NULL)
     {
@@ -14564,9 +14562,17 @@ call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (DB_VALUE_TYPE (&target_value) == DB_TYPE_NULL)
     {
       /*
-       * Don't understand the rationale behind this case.  What's the
-       * point here?  MRS 4/30/96
+       * The target evaluates to NULL. If it comes from a bind variable
+       * (host variable/parameter), reject it with METH_TARGET_NOT_OBJ,
+       * since NULL cannot be a method target.
+       * Otherwise (e.g. the target is a literal NULL, which is already
+       * rejected earlier in the parser via opt_on_target), just fall
+       * through without error.
        */
+      if (target->node_type == PT_NAME && target->info.name.meta_class == PT_PARAMETER)
+	{
+	  PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_METH_TARGET_NOT_OBJ);
+	}
       error = NO_ERROR;
     }
   else
@@ -15870,14 +15876,21 @@ do_find_object_type (PT_MISC_TYPE type, const char *classname, CDC_DDL_OBJECT_TY
 }
 
 static int
-do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info)
+do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO_LIST & reserved_cls_info)
 {
   int count = 0;
+  int num_class = 0;
+  int error = NO_ERROR;
+  size_t cls_info_size = 0;
   PT_NODE *entity = NULL;
   PT_NODE *entity_spec = NULL;
 
   const char *classname;
   DB_OBJECT *class_obj;
+  OID *class_oid;
+
+  reserved_cls_info.cls_info = NULL;
+  reserved_cls_info.num_classes = 0;
 
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) != 1)
     {
@@ -15893,41 +15906,88 @@ do_reserve_classinfo (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLA
 
       for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
 	{
-	  entity = entity_spec->info.spec.flat_entity_list;
+	  num_class++;
+	}
 
-	  cls_info[count] = (RESERVED_CLASS_INFO *) malloc (sizeof (RESERVED_CLASS_INFO));
-	  if (cls_info[count] == NULL)
+      cls_info_size = num_class * sizeof (RESERVED_CLASS_INFO);
+      reserved_cls_info.cls_info = (RESERVED_CLASS_INFO *) calloc (num_class, sizeof (RESERVED_CLASS_INFO));
+      if (reserved_cls_info.cls_info == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cls_info_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      reserved_cls_info.num_classes = 0;
+
+      for (entity_spec = statement->info.drop.spec_list; entity_spec != NULL; entity_spec = entity_spec->next)
+	{
+	  RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[count];
+
+	  entity = entity_spec->info.spec.flat_entity_list;
+	  if (entity == NULL || entity->info.name.original == NULL)
 	    {
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
 	    }
 
 	  classname = entity->info.name.original;
 	  class_obj = db_find_class (classname);
-
-	  assert ((int) sizeof (cls_info[count]->name) > strlen (classname));
-	  strcpy (cls_info[count]->name, classname);
-
-	  memcpy (&cls_info[count]->oid, ws_oid (class_obj), sizeof (OID));
-
-	  if (do_find_object_type (statement->info.drop.entity_type, classname, &cls_info[count]->objtype) != NO_ERROR)
+	  if (class_obj == NULL)
 	    {
-	      return ER_FAILED;
+	      if (statement->info.drop.if_exists)
+		{
+		  er_clear ();
+		  continue;
+		}
+
+	      ERROR_SET_ERROR_1ARG (error, ER_LC_UNKNOWN_CLASSNAME, classname);
+	      goto error_exit;
 	    }
 
-	  assert (cls_info[count]->objtype == CDC_TABLE || cls_info[count]->objtype == CDC_VIEW);
+	  class_oid = ws_oid (class_obj);
+	  if (class_oid == NULL)
+	    {
+	      assert (false);
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  assert ((int) sizeof (class_info.name) > strlen (classname));
+	  strcpy (class_info.name, classname);
+
+	  memcpy (&class_info.oid, class_oid, sizeof (OID));
+
+	  if (do_find_object_type (statement->info.drop.entity_type, classname, &class_info.objtype) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto error_exit;
+	    }
+
+	  assert (class_info.objtype == CDC_TABLE || class_info.objtype == CDC_VIEW);
 
 	  count++;
 	}
+
+      reserved_cls_info.num_classes = count;
     }
 
-  cls_info[count] = NULL;
-
   return NO_ERROR;
+
+error_exit:
+  do_free_reserved_classinfo (reserved_cls_info);
+  return error;
+}
+
+static void
+do_free_reserved_classinfo (RESERVED_CLASS_INFO_LIST & reserved_cls_info)
+{
+  free_and_init (reserved_cls_info.cls_info);
+  reserved_cls_info.num_classes = 0;
 }
 
 static int
-do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVED_CLASS_INFO ** cls_info,
-			   OID * reserved_oid)
+do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement,
+			   RESERVED_CLASS_INFO_LIST & reserved_cls_info, OID * reserved_oid)
 {
   int error = NO_ERROR;
   PARSER_VARCHAR **host_val = NULL;
@@ -15940,8 +16000,8 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
   const char *classname = NULL;
   const char *objname = NULL;
 
-  CDC_DDL_TYPE ddl_type;
-  CDC_DDL_OBJECT_TYPE objtype;
+  CDC_DDL_TYPE ddl_type = CDC_CREATE;
+  CDC_DDL_OBJECT_TYPE objtype = CDC_TABLE;
   PT_NODE *target = NULL;
   OID *classoid = NULL;
   OID oid_tmp = OID_INITIALIZER;
@@ -16084,75 +16144,70 @@ do_supplemental_statement (PARSER_CONTEXT * parser, PT_NODE * statement, RESERVE
 	pre_drop_length =
 	  MAX (drop_prefix_len, drop_view_prefix_len) + if_exist_statement_len + cascade_statement_len + 2;
 
-	if (cls_info != NULL)
+	for (int i = 0; i < reserved_cls_info.num_classes; i++)
 	  {
-	    for (int i = 0; cls_info[i] != NULL; i++)
+	    RESERVED_CLASS_INFO & class_info = reserved_cls_info.cls_info[i];
+
+	    name_len = strlen (class_info.name);
+	    drop_copied_length = pre_drop_length + name_len;
+
+	    if (drop_stmt_length < drop_copied_length)
 	      {
-		name_len = strlen (cls_info[i]->name);
-		drop_copied_length = pre_drop_length + name_len;
-
-		if (drop_stmt_length < drop_copied_length)
+		if (drop_stmt)
 		  {
-		    if (drop_stmt)
-		      {
-			free (drop_stmt);
-		      }
-		    else
-		      {
-			drop_copied_length += 32;	// Ensure sufficient size to avoid reallocation of memory.
-		      }
-
-		    drop_stmt_length = drop_copied_length;
-		    drop_stmt = (char *) malloc (drop_stmt_length);
-		    if (drop_stmt == NULL)
-		      {
-			error = ER_OUT_OF_VIRTUAL_MEMORY;
-			goto end;
-		      }
-		  }
-
-		if (cls_info[i]->objtype == CDC_TABLE)
-		  {
-		    memcpy (drop_stmt, drop_prefix, drop_prefix_len);
-		    drop_copied_length = drop_prefix_len;
-		  }
-		else if (cls_info[i]->objtype == CDC_VIEW)
-		  {
-		    memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
-		    drop_copied_length = drop_view_prefix_len;
+		    free (drop_stmt);
 		  }
 		else
 		  {
-		    assert (false);
-		    error = ER_FAILED;
+		    drop_copied_length += 32;	/* Ensure sufficient size to avoid reallocation of memory. */
+		  }
+
+		drop_stmt_length = drop_copied_length;
+		drop_stmt = (char *) malloc (drop_stmt_length);
+		if (drop_stmt == NULL)
+		  {
+		    error = ER_OUT_OF_VIRTUAL_MEMORY;
 		    goto end;
 		  }
-
-		if (statement->info.drop.if_exists)
-		  {
-		    memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
-		    drop_copied_length += if_exist_statement_len;
-		  }
-
-		memcpy (drop_stmt + drop_copied_length, cls_info[i]->name, name_len);
-		drop_copied_length += name_len;
-
-		if (statement->info.drop.is_cascade_constraints)
-		  {
-		    memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
-		    drop_copied_length += cascade_statement_len;
-		  }
-
-		drop_stmt[drop_copied_length] = '\0';
-
-		error =
-		  log_supplement_statement (ddl_type, cls_info[i]->objtype, &cls_info[i]->oid, &cls_info[i]->oid,
-					    drop_stmt);
-
-		free_and_init (cls_info[i]);
 	      }
-	  }
 
+	    if (class_info.objtype == CDC_TABLE)
+	      {
+		memcpy (drop_stmt, drop_prefix, drop_prefix_len);
+		drop_copied_length = drop_prefix_len;
+	      }
+	    else if (class_info.objtype == CDC_VIEW)
+	      {
+		memcpy (drop_stmt, drop_view_prefix, drop_view_prefix_len);
+		drop_copied_length = drop_view_prefix_len;
+	      }
+	    else
+	      {
+		assert (false);
+		error = ER_FAILED;
+		goto end;
+	      }
+
+	    if (statement->info.drop.if_exists)
+	      {
+		memcpy (drop_stmt + drop_copied_length, if_exist_statement, if_exist_statement_len);
+		drop_copied_length += if_exist_statement_len;
+	      }
+
+	    memcpy (drop_stmt + drop_copied_length, class_info.name, name_len);
+	    drop_copied_length += name_len;
+
+	    if (statement->info.drop.is_cascade_constraints)
+	      {
+		memcpy (drop_stmt + drop_copied_length, cascade_statement, cascade_statement_len);
+		drop_copied_length += cascade_statement_len;
+	      }
+
+	    drop_stmt[drop_copied_length] = '\0';
+
+	    error =
+	      log_supplement_statement (ddl_type, class_info.objtype, &class_info.oid, &class_info.oid, drop_stmt);
+	  }
 	supp_appended = true;
 
 	break;
@@ -16542,16 +16597,6 @@ end:
   if (drop_stmt != NULL)
     {
       free_and_init (drop_stmt);
-    }
-
-  if (cls_info[0] != NULL && statement->node_type == PT_DROP)
-    {
-      int i = 0;
-
-      while (cls_info[i] != NULL)
-	{
-	  free_and_init (cls_info[i++]);
-	}
     }
 
   return error;
