@@ -35,14 +35,14 @@ import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.ServerConfig;
 import com.cubrid.jsp.SysParam;
-import com.cubrid.jsp.TargetMethodCache;
-import com.cubrid.jsp.classloader.ClassLoaderManager;
-import com.cubrid.jsp.classloader.ContextClassLoader;
-import com.cubrid.jsp.classloader.SessionClassLoaderManager;
+import com.cubrid.jsp.classloader.CatalogClassLoaderRelay;
+import com.cubrid.jsp.classloader.ClassPathHelper;
+import com.cubrid.jsp.classloader.FileClassLoaderDynamic;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
 import com.cubrid.plcsql.builtin.MessageBuffer;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.file.attribute.FileTime;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.util.HashMap;
@@ -68,11 +68,8 @@ public class Context {
     private Properties clientInfo = null;
 
     // dynamic classLoader for a session
-    private SessionClassLoaderManager sessionClassLoaderManager = null;
-    private ContextClassLoader oldClassLoader = null; // file
-
-    // method cache
-    private TargetMethodCache methodCache = null;
+    private CatalogClassLoaderRelay catalogClassLoaderRelay = null;
+    private FileClassLoaderDynamic fileClassLoader = null; // file
 
     // Whether SP is able to process TCL (commit, rollback). (default: false)
     private boolean transactionControl = false;
@@ -137,21 +134,16 @@ public class Context {
     public void checkTranId(int tid) {
         if (tranactionId == -1) {
             tranactionId = tid;
-            oldClassLoader = new ContextClassLoader();
+            fileClassLoader = new FileClassLoaderDynamic();
         } else if (tranactionId != tid) {
-            // re-cretae dynamic class loader
-            if (oldClassLoader != null
-                    && oldClassLoader
-                                    .getInitializedTime()
-                                    .compareTo(
-                                            ClassLoaderManager.getLastModifiedTimeOfPath(
-                                                    ClassLoaderManager.getDynamicPath()))
-                            != 0) {
-                oldClassLoader = new ContextClassLoader();
-
-                if (methodCache != null) {
-                    methodCache.clear();
-                }
+            assert fileClassLoader != null;
+            FileTime lastModifiedTimeOfDynamicPath =
+                    ClassPathHelper.getLastModifiedTimeOfDynamicPath();
+            if (fileClassLoader.lastModifiedTimeOfDynamicPath.compareTo(
+                            lastModifiedTimeOfDynamicPath)
+                    != 0) {
+                // re-create dynamic class loader
+                fileClassLoader = new FileClassLoaderDynamic(lastModifiedTimeOfDynamicPath);
             }
 
             if (connection != null) {
@@ -159,10 +151,6 @@ public class Context {
             }
 
             tranactionId = tid;
-
-            if (sessionClassLoaderManager != null) {
-                sessionClassLoaderManager.clear();
-            }
         }
     }
 
@@ -178,19 +166,12 @@ public class Context {
 
     public void destroy() {
         clear();
-        if (sessionClassLoaderManager != null) {
-            sessionClassLoaderManager.clear();
-            sessionClassLoaderManager = null;
+        if (catalogClassLoaderRelay != null) {
+            catalogClassLoaderRelay.clear();
+            catalogClassLoaderRelay = null;
         }
 
-        if (oldClassLoader != null) {
-            oldClassLoader = null;
-        }
-
-        if (methodCache != null) {
-            methodCache.clear();
-            methodCache = null;
-        }
+        fileClassLoader = null;
 
         if (messageBuffer != null) {
             messageBuffer.clear();
@@ -204,28 +185,20 @@ public class Context {
         return messageBuffer;
     }
 
-    public SessionClassLoaderManager getSessionCLManager() {
-        if (sessionClassLoaderManager == null) {
-            sessionClassLoaderManager = new SessionClassLoaderManager(sessionId);
+    public CatalogClassLoaderRelay getCatalogClassLoaderRelay() {
+        if (catalogClassLoaderRelay == null) {
+            catalogClassLoaderRelay = new CatalogClassLoaderRelay(sessionId);
         }
 
-        return sessionClassLoaderManager;
+        return catalogClassLoaderRelay;
     }
 
-    public ClassLoader getOldClassLoader() {
-        if (oldClassLoader == null) {
-            oldClassLoader = new ContextClassLoader();
+    public ClassLoader getFileClassLoader() {
+        if (fileClassLoader == null) {
+            fileClassLoader = new FileClassLoaderDynamic();
         }
 
-        return oldClassLoader;
-    }
-
-    public TargetMethodCache getTargetMethodCache() {
-        if (methodCache == null) {
-            methodCache = new TargetMethodCache();
-        }
-
-        return methodCache;
+        return fileClassLoader;
     }
 
     public void setTransactionControl(boolean tc) {

@@ -46,9 +46,10 @@ public class UnitSp extends Unit {
     public UnitSp(
             ParserRuleContext ctx,
             boolean connectionRequired,
-            String revision,
+            String owner,
+            String compileSeqNo,
             DeclRoutine routine) {
-        super(ctx, connectionRequired, revision);
+        super(ctx, connectionRequired, owner, compileSeqNo);
 
         assert routine.scope.level == 1;
 
@@ -65,8 +66,12 @@ public class UnitSp extends Unit {
             String kindStr = routine.isProcedure() ? "Proc" : "Func";
             className =
                     String.format(
-                            "%s_%s_%s_%d",
-                            kindStr, routine.name, revision, new java.util.Date().getTime());
+                            "%s_%s_%s_%s_%d",
+                            kindStr,
+                            owner,
+                            routine.name,
+                            compileSeqNo,
+                            new java.util.Date().getTime());
         }
 
         return className;

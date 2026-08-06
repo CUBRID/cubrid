@@ -29,42 +29,48 @@
  *
  */
 
-package com.cubrid.jsp.code;
+package com.cubrid.jsp.classloader;
 
-// cacheable Class object in-memory
-public class MemoryClass {
+import com.cubrid.jsp.Server;
+import java.io.IOException;
+import java.net.MalformedURLException;
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
+import java.nio.file.Path;
+import java.util.stream.Stream;
 
-    private String className = null;
-    private CompiledCodeSet loadedCode = null;
-    private Class<?> loadedClass = null;
+public abstract class FileClassLoader extends URLClassLoader {
 
-    public MemoryClass(String className) {
-        this.className = className;
+    public FileClassLoader(Path path, ClassLoader parent) {
+        super(new URL[0], parent);
+        assert parent != null;
+        init(path);
     }
 
-    public String getClassName() {
-        return className;
-    }
-
-    public void setCode(CompiledCodeSet codeset) {
-        clear();
-        this.loadedCode = codeset;
-    }
-
-    public Class<?> getLoadedClass() {
-        return loadedClass;
-    }
-
-    public void setLoadedClass(Class<?> loadedClass) {
-        this.loadedClass = loadedClass;
-    }
-
-    public void clear() {
-        if (this.loadedCode != null) {
-            this.loadedCode.clear();
-            this.loadedCode = null;
+    private void init(Path path) {
+        try {
+            addURL(path.toUri().toURL());
+            initJar(path);
+        } catch (Exception e) {
+            Server.log(e);
         }
+    }
 
-        loadedClass = null;
+    private void initJar(Path path) throws IOException {
+        try (Stream<Path> files = Files.list(path)) {
+            files.filter((file) -> !Files.isDirectory(file) && (file.toString().endsWith(".jar")))
+                    .forEach(
+                            jar -> {
+                                try {
+                                    addURL(jar.toUri().toURL());
+                                } catch (MalformedURLException e) {
+                                    Server.log(e);
+                                }
+                            });
+        } catch (NoSuchFileException e) {
+            Server.log(e);
+        }
     }
 }

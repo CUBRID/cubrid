@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2008 Search Solution Corporation.
+ *
  * Copyright (c) 2016 CUBRID Corporation.
  *
  * Redistribution and use in source and binary forms, with or without modification,
@@ -29,31 +29,65 @@
  *
  */
 
-package com.cubrid.jsp;
+package com.cubrid.jsp.classloader;
 
+import com.cubrid.jsp.code.ClassAccess;
+import com.cubrid.jsp.code.CompiledCode;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
+import java.sql.Connection;
 import java.util.HashMap;
+import java.util.Map;
 
-public class TargetMethodCache {
-    private HashMap<String, TargetMethod> methods;
+public class CatalogClassLoader extends ClassLoader {
 
-    public TargetMethodCache() {
-        methods = new HashMap<String, TargetMethod>();
+    public final String mainClassName;
+
+    public CatalogClassLoader(String mainClassName, ClassLoader parent) {
+        super(parent);
+
+        this.mainClassName = mainClassName;
+
+        Context ctx = ContextManager.getContextofCurrentThread();
+        Connection conn = ctx.getConnection();
+        codeSet = ClassAccess.getObjectCode(conn);
+        if (codeSet == null) {
+            throw new IllegalStateException(
+                    "retrieving object code failed for a class " + mainClassName);
+        }
     }
 
-    public TargetMethod get(String signature) throws Exception {
-        TargetMethod method = null;
+    @Override
+    public Class<?> findClass(String name) throws ClassNotFoundException {
 
-        method = methods.get(signature);
-        if (method == null) {
-            // TODO (CBRD-25370) : disabled temporary
-            // method = new TargetMethod(signature);
-            methods.put(signature, method);
+        Class<?> ret = defined.get(name);
+        if (ret != null) {
+            return ret;
         }
 
-        return method;
+        CompiledCode code = codeSet.codeMap.get(name);
+        if (code == null) {
+            throw new ClassNotFoundException(name);
+        }
+
+        byte[] classBytes = code.getByteCode();
+        ret = defineClass(name, classBytes, 0, classBytes.length);
+        defined.put(name, ret);
+
+        return ret;
     }
 
     public void clear() {
-        methods.clear();
+        // faster garbage collection?
+        codeSet.clear();
+        defined.clear();
     }
+
+    // ===========================
+    // Private
+    // ===========================
+
+    private CompiledCodeSet codeSet;
+    private Map<String, Class<?>> defined = new HashMap<>();
 }

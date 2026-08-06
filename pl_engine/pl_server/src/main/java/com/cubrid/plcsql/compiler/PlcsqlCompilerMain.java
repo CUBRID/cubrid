@@ -73,14 +73,18 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    public static CompileResponse compilePLCSQL(CompileRequest request) {
-        return compilePLCSQL(request, Integer.toString(revision++));
+    private static synchronized long getCompileSeqNo() {
+        return compileSeqNo++;
     }
 
-    public static CompileResponse compilePLCSQL(CompileRequest request, String revision) {
+    public static CompileResponse compilePLCSQL(CompileRequest request) {
+        return compilePLCSQL(request, Long.toString(getCompileSeqNo()));
+    }
+
+    public static CompileResponse compilePLCSQL(CompileRequest request, String compileSeqNo) {
 
         try {
-            return compileInner(new InstanceStore(), revision, request);
+            return compileInner(new InstanceStore(), compileSeqNo, request);
         } catch (SyntaxError e) {
             CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
@@ -122,8 +126,7 @@ public class PlcsqlCompilerMain {
     // Private
     // ------------------------------------------------------------------
 
-    // temporary code - the owner and revision strings will come from the server
-    private static int revision = 1;
+    private static long compileSeqNo = 1;
 
     private static final String STR_EXPECTING = " expecting ";
     private static final int STR_EXPECTING_LEN = STR_EXPECTING.length();
@@ -205,7 +208,7 @@ public class PlcsqlCompilerMain {
     }
 
     private static CompileResponse compileInner(
-            InstanceStore iStore, String revision, CompileRequest request) {
+            InstanceStore iStore, String compileSeqNo, CompileRequest request) {
 
         int type = request.type;
         String code = request.code;
@@ -310,7 +313,7 @@ public class PlcsqlCompilerMain {
         Unit unit;
         UnitSp unitSp = null;
         UnitPkg unitPkg = null;
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, revision);
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
 
         if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
             unit = unitSp = (UnitSp) converter.visit(codeTree);
