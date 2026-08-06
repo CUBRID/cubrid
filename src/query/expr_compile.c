@@ -52,6 +52,10 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+/* argument cells are carried 1-BASED through the build phase (0 must stay
+ * distinguishable from "argument unused" == NULL); decoded in materialization */
+#define EXPR_ARG_ENCODE(cell_idx) ((DB_VALUE **) (intptr_t) ((cell_idx) + 1))
+
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
 typedef struct expr_build_ctx EXPR_BUILD_CTX;
 struct expr_build_ctx
@@ -64,6 +68,9 @@ struct expr_build_ctx
   DB_VALUE *cells[EXPR_MAX_STEPS];
   int n_cells;
   bool cell_is_slot[EXPR_MAX_STEPS];	/* the cell is published by a step into slots[] */
+
+  /* step reads only compile-time literals; hoisted to run once per program lifetime */
+  bool step_prologue[EXPR_MAX_STEPS];
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -90,7 +97,7 @@ struct expr_build_ctx
  ******************************************************************************/
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c) */
-static int
+int
 expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   TP_DOMAIN_STATUS dom_status;
@@ -738,8 +745,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      {
 		return -1;
 	      }
-	    step->arg1p = (DB_VALUE **) (intptr_t) c1;
-	    step->arg2p = (DB_VALUE **) (intptr_t) c2;
+	    step->arg1p = EXPR_ARG_ENCODE (c1);
+	    step->arg2p = EXPR_ARG_ENCODE (c2);
 	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->regu = regu;
 	    expr_cse_add (bctx, NULL, T_NVL, c1, c2, -1, cell);
@@ -765,7 +772,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	      {
 		return -1;
 	      }
-	    step->arg1p = (DB_VALUE **) (intptr_t) c1;
+	    step->arg1p = EXPR_ARG_ENCODE (c1);
 	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
 	    step->domain = regu->domain;
 	    step->regu = regu;
@@ -826,10 +833,13 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		  {
 		    return -1;
 		  }
-		step->arg1p = (DB_VALUE **) (intptr_t) c1;
+		step->arg1p = EXPR_ARG_ENCODE (c1);
 		step->out_cell = (DB_VALUE **) (intptr_t) cell;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
+		/* an inline literal never changes: coerce it once, not per row (a
+		 * TYPE_CONSTANT dbvalptr CAN change between rows -- not hoistable) */
+		bctx->step_prologue[step - bctx->steps] = (arith->leftptr->type == TYPE_DBVAL);
 		c1 = cell;
 	      }
 	    if (t2 != DB_TYPE_NUMERIC)
@@ -844,10 +854,11 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 		  {
 		    return -1;
 		  }
-		step->arg1p = (DB_VALUE **) (intptr_t) c2;
+		step->arg1p = EXPR_ARG_ENCODE (c2);
 		step->out_cell = (DB_VALUE **) (intptr_t) cell;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
+		bctx->step_prologue[step - bctx->steps] = (arith->rightptr->type == TYPE_DBVAL);
 		c2 = cell;
 	      }
 	  }
@@ -883,10 +894,14 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	  {
 	    return -1;
 	  }
-	step->arg1p = (DB_VALUE **) (intptr_t) c1;
-	step->arg2p = (DB_VALUE **) (intptr_t) c2;
+	step->arg1p = EXPR_ARG_ENCODE (c1);
+	step->arg2p = EXPR_ARG_ENCODE (c2);
 	step->out_cell = (DB_VALUE **) (intptr_t) cell;
-	step->domain = regu->domain;
+	/* the trailing coercion is a verified no-op for a non-parameterized result domain
+	 * whose type the kernel already produces (tp_value_cast_internal returns straight
+	 * away when desired_type == original_type, !is_parameterized and src == dest), so
+	 * skip the call; NUMERIC is parameterized (precision/scale) and keeps it */
+	step->domain = (rtype == DB_TYPE_NUMERIC) ? regu->domain : NULL;
 	step->regu = regu;
 	step->out = (DB_VALUE *) 1;	/* owned slot */
 	bctx->n_slots++;
@@ -932,12 +947,12 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
 	}
       roots[n++] = &node->value;
     }
-  return expr_prog_compile_roots (thread_p, roots, n, vd, true, NULL);
+  return expr_prog_compile_roots (thread_p, roots, n, vd, true, false, NULL);
 }
 
 EXPR_PROG *
 expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
-			 bool allow_fallback_roots, int *root_idx_out)
+			 bool allow_fallback_roots, bool allow_wired_only, int *root_idx_out)
 {
   EXPR_BUILD_CTX bctx;
   EXPR_PROG *prog = NULL;
@@ -981,7 +996,7 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       root_cells[n_roots++] = cell;
     }
 
-  if (!compiled_something || n_roots == 0)
+  if (n_roots == 0 || (!compiled_something && !allow_wired_only))
     {
       /* everything fell back or was excluded: the program would only add indirection */
       return NULL;
@@ -1018,24 +1033,45 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       prog->cells[i] = bctx.cells[i];	/* stable addresses; step-published cells start NULL */
     }
   memcpy (prog->root_cells, root_cells, sizeof (int) * prog->n_roots);
-  memcpy (prog->steps, bctx.steps, sizeof (EXPR_STEP) * prog->n_steps);
+
+  /* prologue steps first (literal-only inputs -- hoisting cannot reorder a dependency),
+   * per-row steps after, both keeping their relative order */
+  prog->n_prologue = 0;
+  prog->prologue_done = false;
+  for (i = 0; i < bctx.n_steps; i++)
+    {
+      if (bctx.step_prologue[i])
+	{
+	  prog->steps[prog->n_prologue++] = bctx.steps[i];
+	}
+    }
+  slot_next = prog->n_prologue;
+  for (i = 0; i < bctx.n_steps; i++)
+    {
+      if (!bctx.step_prologue[i])
+	{
+	  prog->steps[slot_next++] = bctx.steps[i];
+	}
+    }
+  slot_next = 0;
 
   /* materialize: cell indexes -> cell addresses, owned-slot markers -> slot addresses */
   for (i = 0; i < prog->n_steps; i++)
     {
       EXPR_STEP *step = &prog->steps[i];
 
+      /* argument cells were encoded 1-based (EXPR_ARG_ENCODE); NULL means unused */
       if (step->arg1p != NULL)
 	{
-	  step->arg1p = &prog->cells[(intptr_t) step->arg1p];
+	  step->arg1p = &prog->cells[(intptr_t) step->arg1p - 1];
 	}
       if (step->arg2p != NULL)
 	{
-	  step->arg2p = &prog->cells[(intptr_t) step->arg2p];
+	  step->arg2p = &prog->cells[(intptr_t) step->arg2p - 1];
 	}
       if (step->arg3p != NULL)
 	{
-	  step->arg3p = &prog->cells[(intptr_t) step->arg3p];
+	  step->arg3p = &prog->cells[(intptr_t) step->arg3p - 1];
 	}
       step->out_cell = &prog->cells[(intptr_t) step->out_cell];
       if (step->out != NULL)
@@ -1098,7 +1134,16 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   ctx.obj_oid = obj_oid;
   ctx.tpl = tpl;
 
-  for (i = 0; i < prog->n_steps; i++)
+  i = 0;
+  if (prog->prologue_done)
+    {
+      i = prog->n_prologue;
+    }
+  else
+    {
+      prog->prologue_done = true;
+    }
+  for (; i < prog->n_steps; i++)
     {
       error = prog->steps[i].kernel (&prog->steps[i], &ctx);
       if (error != NO_ERROR)
