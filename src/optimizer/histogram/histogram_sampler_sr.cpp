@@ -2080,11 +2080,30 @@ cleanup:
 	out_ndv[c] = merged[c]->compute_ndv (total_rows);
 	if (out_sketches != NULL)
 	  {
-	    stats_ndv_sketch_set::column col;
-	    col.id = attr_ids[c];
-	    col.non_null_rows = total_rows - merged[c]->null_rows;
-	    col.hll = std::move (merged[c]->m_hll);
-	    (*out_sketches)->cols.push_back (std::move (col));
+	    try
+	      {
+		/* the column's hyperloglog and the vector growth allocate through STL, whose
+		 * failures arrive as std::bad_alloc: catch them here so OOM fails this request
+		 * with an error instead of terminating the server, and so the collectors of the
+		 * remaining columns (16 KiB sketch + row reservoir each) are still released */
+		stats_ndv_sketch_set::column col;
+		col.id = attr_ids[c];
+		col.non_null_rows = total_rows - merged[c]->null_rows;
+		col.hll = std::move (merged[c]->m_hll);
+		(*out_sketches)->cols.push_back (std::move (col));
+	      }
+	    catch (const std::bad_alloc &)
+	      {
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+		for (int c2 = c; c2 < attr_cnt; c2++)
+		  {
+		    delete merged[c2];
+		    merged[c2] = NULL;
+		  }
+		delete *out_sketches;
+		*out_sketches = NULL;
+		return ER_OUT_OF_VIRTUAL_MEMORY;
+	      }
 	  }
 	delete merged[c];
       }
@@ -2742,11 +2761,24 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
 	}
       if (out_sketches != NULL)
 	{
-	  stats_ndv_sketch_set::column col;
-	  col.id = attr_ids[i];
-	  col.non_null_rows = n_nn;
-	  col.hll = std::move (hlls[i]);
-	  (*out_sketches)->cols.push_back (std::move (col));
+	  try
+	    {
+	      /* same STL-allocation exposure as the parallel path: fail this request with an
+	       * error instead of letting std::bad_alloc terminate the server */
+	      stats_ndv_sketch_set::column col;
+	      col.id = attr_ids[i];
+	      col.non_null_rows = n_nn;
+	      col.hll = std::move (hlls[i]);
+	      (*out_sketches)->cols.push_back (std::move (col));
+	    }
+	  catch (const std::bad_alloc &)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) 0);
+	      delete *out_sketches;
+	      *out_sketches = NULL;
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
 	}
     }
 

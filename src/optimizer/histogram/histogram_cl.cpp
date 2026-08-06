@@ -2359,6 +2359,71 @@ bind_fp_hash_value (const DB_VALUE *val)
  * out_hv (out)   : the host-variable node, NULL if not matched
  * out_reversed (out) : true when the host variable is on the left ('? op col')
  */
+/* only USER host variables count: their value is unknown until EXECUTE, which is what the
+ * unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized literals
+ * (index >= host_var_count; see pt_rewrite_to_auto_param) are constants the compiler
+ * already saw -- treating them as bind variables made every catalog-vclass query (whose
+ * view spec is full of literals) replan on its first EXECUTE. */
+static bool
+histogram_is_user_host_var (const PARSER_CONTEXT *parser, const PT_NODE *hv)
+{
+  return hv != NULL && hv->node_type == PT_HOST_VAR && hv->info.host_var.index < parser->host_var_count;
+}
+
+/*
+ * histogram_split_hv_range () - is this a (column RANGE {... ?, ...}) predicate?
+ * return         : true when node is PT_RANGE on a column with a host variable in a bound
+ * node (in)      : expression node to test
+ * out_name (out) : the column node (end of a path expression), NULL if not matched
+ *
+ * Note: the rewriter turns a comparison against a host variable into a range term
+ *       (qo_convert_to_range: `col > ?` becomes `col range (? gt_inf max)`), and the
+ *       bind-sensitive paths run on the rewritten tree. Without this the whole range
+ *       family -- every `col > ?` / `col BETWEEN ? AND ?` -- was invisible to them, so
+ *       such a statement was never peeked and kept the plan chosen under unbound markers.
+ */
+static bool
+histogram_split_hv_range (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name)
+{
+  PT_NODE *lhs, *range_node;
+
+  if (out_name != NULL)
+    {
+      *out_name = NULL;
+    }
+
+  if (node == NULL || node->node_type != PT_EXPR || node->info.expr.op != PT_RANGE)
+    {
+      return false;
+    }
+
+  lhs = pt_get_end_path_node (node->info.expr.arg1);
+  if (lhs == NULL || lhs->node_type != PT_NAME)
+    {
+      /* (attr, attr) RANGE {...} over a function node: no single column to probe */
+      return false;
+    }
+
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
+    {
+      if (range_node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+      if (histogram_is_user_host_var (parser, range_node->info.expr.arg1)
+	  || histogram_is_user_host_var (parser, range_node->info.expr.arg2))
+	{
+	  if (out_name != NULL)
+	    {
+	      *out_name = lhs;
+	    }
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 static bool
 histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **out_name, PT_NODE **out_hv,
 			      bool *out_reversed)
@@ -2387,21 +2452,11 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
       return false;
     }
 
-  /* only USER host variables count: their value is unknown until EXECUTE, which is what
-   * the unpeeked-plan flag and the bind fingerprint are about. Auto-parameterized
-   * literals (index >= host_var_count; see pt_rewrite_to_auto_param) are constants the
-   * compiler already saw -- treating them as bind variables made every catalog-vclass
-   * query (whose view spec is full of literals) replan on its first EXECUTE. */
-  auto is_user_host_var = [parser] (const PT_NODE * hv)
-  {
-    return hv->info.host_var.index < parser->host_var_count;
-  };
-
   PT_NODE *a1 = pt_get_end_path_node (node->info.expr.arg1);
   PT_NODE *a2 = node->info.expr.arg2;
 
   if (a1 != NULL && a1->node_type == PT_NAME && a2 != NULL && a2->node_type == PT_HOST_VAR
-      && is_user_host_var (a2))
+      && histogram_is_user_host_var (parser, a2))
     {
       if (out_name != NULL)
 	{
@@ -2414,7 +2469,7 @@ histogram_split_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE **o
       return true;
     }
 
-  if (a1 != NULL && a1->node_type == PT_HOST_VAR && is_user_host_var (a1)
+  if (a1 != NULL && a1->node_type == PT_HOST_VAR && histogram_is_user_host_var (parser, a1)
       && (a2 = pt_get_end_path_node (a2)) != NULL && a2->node_type == PT_NAME)
     {
       if (out_name != NULL)
@@ -2442,6 +2497,110 @@ struct bind_fp_walk_ctx
   bool found;
 };
 
+/* fingerprint contribution of one host-variable bound of a range item: the same histogram
+ * probe and the same quantization the (column op ?) path uses, so a bound that lands in
+ * the same estimate band keeps the plan. include_equal/is_ge follow the range op. */
+static void
+bind_fp_mix_range_bound (bind_fp_walk_ctx *ctx, PT_NODE *name, PT_NODE *bound, PT_OP_TYPE range_op, bool is_ge,
+			 bool include_equal, bool equality)
+{
+  DB_VALUE *val;
+  int idx;
+  double sel = 0.0;
+  bool ok = false;
+  std::uint64_t component;
+
+  if (!histogram_is_user_host_var (ctx->parser, bound))
+    {
+      return;
+    }
+
+  idx = bound->info.host_var.index;
+  if (idx < 0 || idx >= ctx->parser->host_var_count + ctx->parser->auto_param_count
+      || ctx->parser->host_variables == NULL)
+    {
+      return;
+    }
+  val = &ctx->parser->host_variables[idx];
+
+  if (equality)
+    {
+      histogram_get_equal_selectivity (name, val, &sel, &ok);
+    }
+  else
+    {
+      histogram_get_comp_selectivity (name, val, is_ge, include_equal, &sel, &ok);
+    }
+
+  if (ok)
+    {
+      /* stepwise for equality, 0.01 steps for the linearly interpolated range estimate
+       * (see the (column op ?) path for both rationales) */
+      component = equality ? (std::uint64_t) (sel * 1.0e12) : (std::uint64_t) (sel * 100.0);
+    }
+  else
+    {
+      component = bind_fp_hash_value (val);
+    }
+
+  ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) range_op), bind_fp_hash_name (name)),
+			 component);
+  ctx->found = true;
+}
+
+/* fingerprint of a (column RANGE {...}) term: mix every host-variable bound of every range
+ * item. The plan-relevant quantity is the term's total selectivity, which the optimizer
+ * derives from these same per-bound probes (qo_range_selectivity), so banding each bound
+ * bands the total. */
+static void
+bind_fp_mix_range (bind_fp_walk_ctx *ctx, PT_NODE *node, PT_NODE *name)
+{
+  PT_NODE *range_node;
+
+  for (range_node = node->info.expr.arg2; range_node != NULL; range_node = range_node->next)
+    {
+      if (range_node->node_type != PT_EXPR)
+	{
+	  continue;
+	}
+
+      switch (range_node->info.expr.op)
+	{
+	case PT_BETWEEN_EQ_NA:
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_EQ_NA, false, false, true);
+	  break;
+	case PT_BETWEEN_GT_INF:
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GT_INF, true, false, false);
+	  break;
+	case PT_BETWEEN_GE_INF:
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_GE_INF, true, true, false);
+	  break;
+	case PT_BETWEEN_INF_LT:
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LT, false, false, false);
+	  break;
+	case PT_BETWEEN_INF_LE:
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, PT_BETWEEN_INF_LE, false, true, false);
+	  break;
+	case PT_BETWEEN_GE_LE:
+	case PT_BETWEEN_GE_LT:
+	case PT_BETWEEN_GT_LE:
+	case PT_BETWEEN_GT_LT:
+	{
+	  /* two-sided: the lower bound prices as a >= / > probe, the upper as a <= / < one */
+	  const PT_OP_TYPE op = range_node->info.expr.op;
+	  const bool lo_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GE_LT);
+	  const bool hi_include = (op == PT_BETWEEN_GE_LE || op == PT_BETWEEN_GT_LE);
+
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg1, op, true, lo_include, false);
+	  bind_fp_mix_range_bound (ctx, name, range_node->info.expr.arg2, op, false, hi_include, false);
+	  break;
+	}
+	default:
+	  break;
+	}
+    }
+}
+
 static PT_NODE *
 bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
@@ -2449,6 +2608,12 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 
   PT_NODE *name, *hv;
   bool reversed = false;
+
+  if (histogram_split_hv_range (parser, node, &name))
+    {
+      bind_fp_mix_range (ctx, node, name);
+      return node;
+    }
 
   if (!histogram_split_hv_predicate (parser, node, &name, &hv, &reversed))
     {
@@ -2529,7 +2694,8 @@ hv_pred_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
 {
   hv_pred_ctx *ctx = (hv_pred_ctx *) arg;
 
-  if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL))
+  if (histogram_split_hv_predicate (parser, node, NULL, NULL, NULL)
+      || histogram_split_hv_range (parser, node, NULL))
     {
       ctx->found = true;
       *continue_walk = PT_STOP_WALK;

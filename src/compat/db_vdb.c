@@ -3446,23 +3446,39 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
       return err;
     }
 
-  if (force_replan)
-    {
-      PT_NODE *stmt0 = kept->statements[0];
-      UINT64 fp = 0;
+  {
+    PT_NODE *stmt0 = kept->statements[0];
+    UINT64 fp = 0;
+    bool have_fp = PT_IS_QUERY (stmt0) && histogram_bind_fingerprint (kept->parser, stmt0, &fp);
+    bool replan = force_replan;
 
-      /* replan on the kept tree with the current values and record their fingerprint so
-       * the bind-sensitivity check downstream does not replan a second time */
-      err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
-      if (PT_IS_QUERY (stmt0) && histogram_bind_fingerprint (kept->parser, stmt0, &fp))
-	{
-	  stmt0->info.query.bind_fp = fp;
-	}
-    }
+    if (!replan && have_fp && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
+	&& stmt0->info.query.bind_fp != fp)
+      {
+	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
+	 * territory (a different MCV / bucket, hence a different selectivity) than the values
+	 * the kept plan was fixed under, so the plan is regenerated for them. The check has to
+	 * happen here: the equivalent check in db_execute_and_keep_statement_local () is gated
+	 * on parser->flag.set_host_var, which this path (like the recompile path) clears before
+	 * execution, so on the kept tree it never fires. */
+	replan = true;
+      }
+
+    if (replan)
+      {
+	/* regenerate plan + XASL from the kept post-transform tree (no parse / semantic /
+	 * rewrite pass) and record the fingerprint of the values it was fixed under */
+	err = do_replan_statement_with_bind_peek (kept->parser, stmt0);
+	if (err != NO_ERROR)
+	  {
+	    return err;
+	  }
+	if (have_fp)
+	  {
+	    stmt0->info.query.bind_fp = fp;
+	  }
+      }
+  }
 
   kept->parser->flag.is_holdable = session->parser->flag.is_holdable;
   kept->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
