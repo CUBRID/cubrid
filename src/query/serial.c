@@ -256,7 +256,7 @@ xserial_get_cached_num (THREAD_ENTRY * thread_p, int *cached_num, const OID * se
     }
   if (attrid != NOT_FOUND)
     {
-      ret = heap_attrinfo_start (thread_p, oid_Serial_class_oid, 1, &attrid, &attr_info);
+      ret = heap_attrinfo_start (thread_p, &serial_class_oid, 1, &attrid, &attr_info);
       if (ret != NO_ERROR)
 	{
 	  goto exit_on_error;
