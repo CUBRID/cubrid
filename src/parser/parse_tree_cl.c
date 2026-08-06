@@ -16151,6 +16151,8 @@ static PARSER_VARCHAR *
 pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
 {
   PARSER_VARCHAR *b = 0, *r1;
+  const char *sep = " with ";
+  char buf[32];
 
   b = pt_append_nulstring (parser, b, "update statistics on ");
   if (p->info.update_stats.all_classes > 0)
@@ -16167,44 +16169,38 @@ pt_print_update_stats (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.update_stats.with_fullscan > 0 || p->info.update_stats.random_seed > 0
-      || p->info.update_stats.no_histogram > 0 || p->info.update_stats.drop_histogram > 0
-      || p->info.update_stats.bucket_count > 0)
+  /* each option guards its own print; sep flips to ", " after the first one, so nothing is
+   * emitted when no option is set */
+  if (p->info.update_stats.with_fullscan > 0)
     {
-      const char *sep = " with ";
-      char buf[32];
-
-      if (p->info.update_stats.with_fullscan > 0)
-	{
-	  assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
-	  b = pt_append_nulstring (parser, b, sep);
-	  b = pt_append_nulstring (parser, b, "fullscan");
-	  sep = ", ";
-	}
-      if (p->info.update_stats.random_seed > 0)
-	{
-	  b = pt_append_nulstring (parser, b, sep);
-	  b = pt_append_nulstring (parser, b, "random seed");
-	  sep = ", ";
-	}
-      if (p->info.update_stats.no_histogram > 0)
-	{
-	  b = pt_append_nulstring (parser, b, sep);
-	  b = pt_append_nulstring (parser, b, "no histogram");
-	  sep = ", ";
-	}
-      if (p->info.update_stats.drop_histogram > 0)
-	{
-	  b = pt_append_nulstring (parser, b, sep);
-	  b = pt_append_nulstring (parser, b, "drop histogram");
-	  sep = ", ";
-	}
-      if (p->info.update_stats.bucket_count > 0)
-	{
-	  snprintf (buf, sizeof (buf), "%d buckets", p->info.update_stats.bucket_count);
-	  b = pt_append_nulstring (parser, b, sep);
-	  b = pt_append_nulstring (parser, b, buf);
-	}
+      assert (p->info.update_stats.with_fullscan == STATS_WITH_FULLSCAN);
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "fullscan");
+      sep = ", ";
+    }
+  if (p->info.update_stats.random_seed > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "random seed");
+      sep = ", ";
+    }
+  if (p->info.update_stats.no_histogram > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "no histogram");
+      sep = ", ";
+    }
+  if (p->info.update_stats.drop_histogram > 0)
+    {
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, "drop histogram");
+      sep = ", ";
+    }
+  if (p->info.update_stats.bucket_count > 0)
+    {
+      snprintf (buf, sizeof (buf), "%d buckets", p->info.update_stats.bucket_count);
+      b = pt_append_nulstring (parser, b, sep);
+      b = pt_append_nulstring (parser, b, buf);
     }
 
   return b;
