@@ -7619,7 +7619,9 @@ logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SES
 
   if (session->verbose_fp != NULL)
     {
-      fprintf (session->verbose_fp, "[ Forcing a fresh checkpoint before the full backup. ]\n\n");
+      /* Keep the pre-existing wait message: tools and testcases grep this exact phrase, and it stays true --
+       * the backup starts only after the forced checkpoint completes. */
+      fprintf (session->verbose_fp, "[ Database backup will start after checkpointing is complete. ]\n\n");
     }
 
   for (attempt = 0; attempt < max_attempts; attempt++)
