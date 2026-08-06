@@ -806,6 +806,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_BESTSPACE_DISTRIBUTED_INSERT "bestspace_distributed_insert"
 #define PRM_NAME_BESTSPACE_CACHE_COUNT "bestspace_cache_count"
 
+#define PRM_NAME_OPTIMIZER_RANDOM_PAGE_COST_RATIO "optimizer_random_page_cost_ratio"
+
 // #endregion 
 
 /*
@@ -5422,6 +5424,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 40}},
    {false, {.i = 128}},
    {false, {.i = 10}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_OPTIMIZER_RANDOM_PAGE_COST_RATIO,
+   PRM_NAME_OPTIMIZER_RANDOM_PAGE_COST_RATIO,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_HIDDEN),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100.0f}},
+   {false, {.f = 0.1f}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL}

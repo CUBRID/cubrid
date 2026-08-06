@@ -114,6 +114,9 @@ typedef enum
 #define DEFAULT_EXISTS_SELECTIVITY (double) 0.1
 #define DEFAULT_SELECTIVITY (double) 0.1
 #define DEFAULT_EQUAL_SELECTIVITY (double) 0.001
+/* equality over a non-indexable expression (UPPER (col) = ?, col + 1 = ?, ...): nothing is
+ * known about the expression's distribution, so do not price it as a near-unique lookup */
+#define DEFAULT_EXPR_EQUAL_SELECTIVITY (double) 0.01
 #define DEFAULT_EQUIJOIN_SELECTIVITY (double) 0.001
 #define DEFAULT_COMP_SELECTIVITY (double) 0.1
 #define DEFAULT_BETWEEN_SELECTIVITY (double) 0.01
@@ -244,6 +247,8 @@ struct qo_plan
 
   /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
   double limit_nljoin_guessed_card;
+  double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
+				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
