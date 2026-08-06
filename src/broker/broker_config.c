@@ -276,6 +276,10 @@ const char *broker_keywords[] = {
   "MAX_STRING_LENGTH",
   "READ_ONLY_BROKER",
   "STRIPPED_COLUMN_NAME",
+  "QUERY_REWRITE_RULE",
+  "QUERY_REWRITE_MAX_RULES",
+  "QUERY_REWRITE_MAX_QUERY_LEN",
+  "QUERY_REWRITE_ALLOW_NON_SELECT",
   /* Below is a list of reserved keywords for shard extension in the future */
   "DEFAULT_SHARD_NUM_PROXY",
   "DEFAULT_SHARD_PROXY_LOG_DIR",
@@ -785,6 +789,48 @@ broker_config_read_internal (const char *conf_file, T_BROKER_INFO * br_info, int
 	}
       INI_GETSTR_CHK (ini_string, ini, sec_name, "DATABASES_CONNECTION_FILE", DEFAULT_EMPTY_STRING, &lineno);
       MAKE_FILEPATH (br_info[num_brs].db_connection_file, ini_string, BROKER_INFO_PATH_MAX);
+
+      INI_GETSTR_CHK (ini_string, ini, sec_name, "QUERY_REWRITE_RULE", DEFAULT_EMPTY_STRING, &lineno);
+      if (make_abs_path (br_info[num_brs].query_rewrite_rule, NULL, ini_string, BROKER_PATH_MAX) < 0)
+	{
+	  /* conf_error reports errcode; every goto must set it first */
+	  errcode = PARAM_BAD_VALUE;
+	  goto conf_error;
+	}
+
+      /* query rewrite fixed-reservation sizing; an out-of-range value is a config error
+       * (PARAM_BAD_RANGE), not silently clamped -- the segment is sized from these. */
+      br_info[num_brs].query_rewrite_max_rules =
+	ini_getint (ini, sec_name, "QUERY_REWRITE_MAX_RULES", DEFAULT_QR_MAX_RULES, &lineno);
+      if (br_info[num_brs].query_rewrite_max_rules < MIN_QR_MAX_RULES
+	  || br_info[num_brs].query_rewrite_max_rules > MAX_QR_MAX_RULES)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+      br_info[num_brs].query_rewrite_max_query_len =
+	ini_getint (ini, sec_name, "QUERY_REWRITE_MAX_QUERY_LEN", DEFAULT_QR_MAX_QUERY_LEN, &lineno);
+      if (br_info[num_brs].query_rewrite_max_query_len < MIN_QR_MAX_QUERY_LEN
+	  || br_info[num_brs].query_rewrite_max_query_len > MAX_QR_MAX_QUERY_LEN)
+	{
+	  errcode = PARAM_BAD_RANGE;
+	  goto conf_error;
+	}
+
+      /* allow a non-SELECT (DML) replacement query; DDL/DCL/CALL are always rejected */
+      INI_GETSTR_CHK (s, ini, sec_name, "QUERY_REWRITE_ALLOW_NON_SELECT", DEFAULT_QR_ALLOW_NON_SELECT, &lineno);
+      {
+	int on_off = conf_get_value_table_on_off (s);
+
+	/* validate the -1 sentinel while it is still int: the char field is not guaranteed
+	 * signed, so the range check must precede the narrowing. */
+	if (on_off < 0)
+	  {
+	    errcode = PARAM_BAD_VALUE;
+	    goto conf_error;
+	  }
+	br_info[num_brs].query_rewrite_allow_non_select = (char) on_off;
+      }
 
       strcpy (br_info[num_brs].access_log_file, br_info[num_brs].access_log_dir);
       strcpy (br_info[num_brs].error_log_file, CUBRID_BASE_DIR);
@@ -1655,6 +1701,10 @@ broker_config_dump (FILE * fp, const T_BROKER_INFO * br_info, int num_broker, in
       fprintf (fp, "ACCESS_LOG_MAX_SIZE\t=%dK\n", (br_info[i].access_log_max_size));
       fprintf (fp, "ACCESS_LOG_DIR\t\t=%s\n", br_info[i].access_log_dir);
       fprintf (fp, "ACCESS_LIST\t\t=%s\n", br_info[i].acl_file);
+      fprintf (fp, "QUERY_REWRITE_RULE\t=%s\n", br_info[i].query_rewrite_rule);
+      fprintf (fp, "QUERY_REWRITE_MAX_RULES\t=%d\n", br_info[i].query_rewrite_max_rules);
+      fprintf (fp, "QUERY_REWRITE_MAX_QUERY_LEN\t=%d\n", br_info[i].query_rewrite_max_query_len);
+      fprintf (fp, "QUERY_REWRITE_ALLOW_NON_SELECT\t=%s\n", br_info[i].query_rewrite_allow_non_select ? "ON" : "OFF");
       fprintf (fp, "MAX_STRING_LENGTH\t=%d\n", br_info[i].max_string_length);
       fprintf (fp, "NET_BUF_SIZE\t\t=%dK\n", br_info[i].net_buf_size);
       tmp_str = get_conf_string (br_info[i].keep_connection, tbl_keep_connection);

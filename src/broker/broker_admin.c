@@ -306,6 +306,85 @@ main (int argc, char **argv)
 	  admin_log_write (admin_log_file, "info");
 	}
     }
+  else if (strcasecmp (argv[1], "qr") == 0)
+    {
+      /* cubrid broker qr <status [broker]> | <add|reload|disable|enable> <broker> <user@dbname/file> */
+      const char *broker_name, *rulepath, *subcmd_name = NULL;
+      struct
+      {
+	const char *name;
+	QRCMD code;
+      } subcommand_table[] =
+      {
+	{
+	"status", QRCMD_STATUS},
+	{
+	"add", QRCMD_ADD},
+	{
+	"reload", QRCMD_RELOAD},
+	{
+	"disable", QRCMD_DISABLE},
+	{
+      "enable", QRCMD_ENABLE},};
+#define SUBCMD_COUNT (int) (sizeof (subcommand_table) / sizeof (subcommand_table[0]))
+      int i_subcmd;
+      QRCMD subcommand = QRCMD_UNKNOWN;
+
+      if (argc < 3)
+	{
+	  goto qr_usage;
+	}
+
+      /* the table index is not the QRCMD value: always carry the .code around so that
+       * reordering the table cannot silently change which command runs. */
+      for (i_subcmd = 0; i_subcmd < SUBCMD_COUNT; i_subcmd++)
+	{
+	  if (strcasecmp (argv[2], subcommand_table[i_subcmd].name) == 0)
+	    {
+	      subcommand = subcommand_table[i_subcmd].code;
+	      subcmd_name = subcommand_table[i_subcmd].name;
+	      break;
+	    }
+	}
+
+      if (subcommand == QRCMD_UNKNOWN || (subcommand == QRCMD_STATUS && argc > 4)	/* status: broker optional */
+	  || (subcommand != QRCMD_STATUS && argc != 5))	/* the others: exactly broker + rule */
+	{
+	  goto qr_usage;
+	}
+
+      broker_name = (argc >= 4) ? argv[3] : NULL;
+      rulepath = (argc >= 5) ? argv[4] : NULL;
+
+      if (admin_qr_cmd (master_shm_id, subcommand, subcmd_name, broker_name, rulepath) < 0)
+	{
+	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  return -1;
+	}
+      else
+	{
+	  if (subcommand == QRCMD_STATUS)
+	    {
+	      snprintf (msg_buf, sizeof (msg_buf), "%s %s %s", argv[1], subcmd_name,
+			(broker_name != NULL) ? broker_name : "");
+	    }
+	  else
+	    {
+	      snprintf (msg_buf, sizeof (msg_buf), "%s %s %s %s", argv[1], subcmd_name, broker_name, rulepath);
+	    }
+
+	  admin_log_write (admin_log_file, msg_buf);
+	}
+#undef SUBCMD_COUNT
+      return 0;
+
+    qr_usage:
+      PRINT_AND_LOG_ERR_MSG
+	("%s qr status [broker-name]\n or\n%s qr <add|reload|disable|enable> <broker-name> <user@dbname/file>\n",
+	 argv[0], argv[0]);
+
+      return -1;
+    }
   else if (strcasecmp (argv[1], "acl") == 0)
     {
       char *br_name = NULL;
@@ -366,6 +445,6 @@ main (int argc, char **argv)
 
 usage:
   printf ("%s (start | stop | add | drop | restart \
-	    | on | off | reset | info | acl | getid)\n", argv[0]);
+	    | on | off | reset | info | acl | qr | getid)\n", argv[0]);
   return -1;
 }

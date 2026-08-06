@@ -53,6 +53,8 @@
 
 #include "cas_function.h"
 #include "cas_execute.h"
+#include "cas_common_execute.h"
+#include "query_rewrite.h"
 #include "broker_filename.h"
 #include "dbtype.h"
 #include "db_session.h"
@@ -245,6 +247,10 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int srv_h_id;
   T_SRV_HANDLE *srv_handle;
   int i;
+  char *effective_sql;		/* query actually prepared (original or replacement) */
+  int effective_size;
+  int rewrite_rule_idx = -1;
+  char *log_sql;		/* writable alias of effective_sql for the compile-end log */
 
   if (argc < 2)
     {
@@ -280,13 +286,57 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   gettimeofday (&query_start_time, NULL);
   query_timeout = 0;
 
-  cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
-  cas_log_compile_begin_write_query_string (sql_stmt, sql_size - 1, NULL);
+  effective_sql = sql_stmt;
+  effective_size = sql_size;
 
-  SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) sql_stmt));
+  /* try to replace the incoming query with a predefined one.
+   * CALL statements are excluded: the execute path does not remap their binds
+   * (OUT parameters), so they must not be rewritten at prepare time either. */
+  if (!(flag & CCI_PREPARE_CALL))
+    {
+      rewrite_rule_idx = qr_lookup (sql_stmt, sql_size - 1);
+    }
+
+  if (rewrite_rule_idx >= 0)
+    {
+      const char *rewrite_query = qr_get_rewrite_query (rewrite_rule_idx);
+
+      if (rewrite_query == NULL)
+	{
+	  rewrite_rule_idx = -1;
+	}
+      else
+	{
+	  /* prepare the replacement query.  ux_prepare() obtains the authoritative
+	   * marker counts (K_rewrite from the prepared query, K_orig from the original),
+	   * validates the BIND_MAP, records both on the handle, and reports K_orig to
+	   * the driver.  an invalid mapping fails the prepare -> fallback below. */
+	  effective_sql = (char *) rewrite_query;
+	  effective_size = (int) strlen (rewrite_query) + 1;
+#if !defined(NDEBUG)
+	  _er_log_debug (ARG_FILE_LINE, "query rewrite [debug] lookup matched: %s\n",
+			 qr_get_rulepath (rewrite_rule_idx));
+#endif
+	}
+    }
+
+  cas_log_write_nonl (query_seq_num_next_value (), false, "prepare %d ", flag);
+  if (rewrite_rule_idx >= 0)
+    {
+      /* log both the original and the replacement query */
+      cas_log_write2_nonl ("[ORIG] ");
+      cas_log_write_query_string_nonl (sql_stmt, sql_size - 1, NULL);
+      cas_log_write2_nonl (" [REWRITE] ");
+    }
+  /* effective_sql may point into the read-only rewrite segment here; unlike the
+   * compile-end counterpart below, this one writes with CAS_LOG_VISIBLE_PW and so never
+   * modifies the buffer.  keep it that way -- do not switch it to a hiding variant. */
+  cas_log_compile_begin_write_query_string (effective_sql, effective_size - 1, NULL);
+
+  SQL_LOG2_COMPILE_BEGIN (as_info->cur_sql_log2, ((const char *) effective_sql));
 
   /* append query string to as_info->log_msg */
-  if (sql_stmt)
+  if (effective_sql)
     {
       char *s, *t;
       size_t l;
@@ -297,14 +347,79 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	}
       *s++ = ' ';
       l++;
-      for (t = sql_stmt; *t && l < SHM_LOG_MSG_SIZE - 1; s++, t++, l++)
+      for (t = effective_sql; *t && l < SHM_LOG_MSG_SIZE - 1; s++, t++, l++)
 	{
 	  *s = *t;
 	}
       *s = '\0';
     }
 
-  srv_h_id = ux_prepare (sql_stmt, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value ());
+  srv_h_id = ux_prepare (effective_sql, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value (),
+			 rewrite_rule_idx);
+
+  /* the replacement query failed to prepare or its BIND_MAP was invalid: fall back to the
+   * original query so the client never sees the error.  whether the rule is also disabled
+   * depends on the error (below). */
+  if (rewrite_rule_idx >= 0 && srv_h_id < 0)
+    {
+      char msg[QR_RELPATH_LEN + 128];
+      char qr_reason[128];
+
+      /* distinguish a BIND_MAP/marker validation failure (ux_prepare sets
+       * CAS_ER_NUM_BIND) from a plain replacement-query compile failure. */
+      if (err_info.err_number == CAS_ER_NUM_BIND)
+	{
+	  snprintf (qr_reason, sizeof (qr_reason), "marker/bind validation failed");
+	}
+      else
+	{
+	  snprintf (qr_reason, sizeof (qr_reason), "replacement prepare failed (err:%d)", err_info.err_number);
+	}
+
+      cas_log_write (query_seq_num_current_value (), false,
+		     "[REWRITE-FAILED] prepare err:%d, disabled, fallback to orig", err_info.err_number);
+#if !defined(NDEBUG)
+      _er_log_debug (ARG_FILE_LINE, "query rewrite [debug] prepare rejected: %s reason=%s (err:%d)\n",
+		     qr_get_rulepath (rewrite_rule_idx), qr_reason, err_info.err_number);
+#endif
+      snprintf (msg, sizeof (msg), "query rewrite rule disabled: %s reason=%s", qr_get_rulepath (rewrite_rule_idx),
+		qr_reason);
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, msg);
+
+      /* a marker/BIND_MAP validation failure is a defect in the rule itself, so it disables
+       * the rule whatever its tier: qr_exec_error_tier maps every CAS layer code (including
+       * CAS_ER_NUM_BIND) to TRANSIENT, which is right for execute but not here.  the other
+       * TRANSIENT causes -- server down, deadlock, interrupt, out of memory, handle pool
+       * exhausted -- keep the rule enabled for sibling CAS processes and later requests. */
+      if (err_info.err_number == CAS_ER_NUM_BIND || qr_exec_error_tier (err_info.err_number) != QR_ERR_TRANSIENT)
+	{
+	  qr_set_disabled (rewrite_rule_idx);
+	}
+
+      rewrite_rule_idx = -1;
+      effective_sql = sql_stmt;
+      effective_size = sql_size;
+      as_info->num_query_rewrite_fallback++;
+
+      net_buf_clear (net_buf);
+      error_info_clear ();
+
+      /* the failed replacement prepare went through prepare_error, which set
+       * TRAN_AUTOROLLBACK (auto-commit only) and counted a transaction error;
+       * so the fallback retry below starts from a clean request state. */
+      req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
+      if (errors_in_transaction > 0)
+	{
+	  errors_in_transaction--;
+	}
+
+      srv_h_id =
+	ux_prepare (effective_sql, flag, auto_commit_mode, net_buf, req_info, query_seq_num_current_value (), -1);
+    }
+  else if (rewrite_rule_idx >= 0 && srv_h_id >= 0)
+    {
+      as_info->num_query_rewrite_prepare++;
+    }
 
   if (ret_srv_h_id != NULL)
     {
@@ -314,15 +429,25 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   srv_handle = hm_find_srv_handle (srv_h_id);
 
+  /* when the query was rewritten, effective_sql points into the read-only (SHM_RDONLY)
+   * rewrite rule segment, but cas_log_compile_end_write_query_string() hides passwords
+   * by temporarily NUL-terminating its argument in place (hide_password.cpp) -- writing
+   * through that pointer would fault.  ux_prepare() already made a writable heap copy of
+   * the very same text in srv_handle->sql_stmt, so log through that instead of copying
+   * again.  the copy is skipped for CCI_PREPARE_CALL (never rewritten), whose handle
+   * text ux_prepare() trims in place. */
+  log_sql = (rewrite_rule_idx >= 0 && srv_handle != NULL) ? srv_handle->sql_stmt : effective_sql;
+  effective_size = (int) strlen (log_sql) + 1;
+
   if (srv_handle && srv_handle->session)
     {
       assert (((DB_SESSION *) srv_handle->session)->parser);
       PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
-      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, &psr->hide_pwd_info);
+      cas_log_compile_end_write_query_string (log_sql, effective_size - 1, &psr->hide_pwd_info);
     }
   else
     {
-      cas_log_compile_end_write_query_string (sql_stmt, sql_size - 1, NULL);
+      cas_log_compile_end_write_query_string (log_sql, effective_size - 1, NULL);
     }
 
   cas_log_write (query_seq_num_current_value (), false, "prepare srv_h_id %s%d%s%s", (srv_h_id < 0) ? "error:" : "",
@@ -358,7 +483,7 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int max_col_size;
   int bind_value_index;
   int max_row = 0;
-  int ret_code;
+  int ret_code = 0;
   int param_mode_size = 0;
   char forward_only_cursor = 0;
   char auto_commit_mode = 0;
@@ -574,14 +699,110 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
   gettimeofday (&exec_begin, NULL);
 
-  ret_code =
-    (*ux_exec_func) (srv_handle, flag, max_col_size, max_row, argc - bind_value_index, argv + bind_value_index, net_buf,
-		     req_info, clt_cache_time_ptr, &client_cache_reusable);
+  {
+    int exec_bind_argc = argc - bind_value_index;
+    void **exec_bind_argv = argv + bind_value_index;
+    /* CAS is single-threaded, so one process-wide scratch vector is safe; static
+     * keeps 4KB (2 * QR_MAX_BINDS pointers) off every execute's stack, as it is
+     * populated only on the rewritten-with-BIND_MAP path below. */
+    static void *remap_argv[2 * QR_MAX_BINDS];
+
+    /* when the query was rewritten, rebuild the bind argument vector so it matches the
+     * replacement query's markers.  marker counts come from the handle (K_orig =
+     * num_orig_markers, K_rewrite = num_markers); the source-position array from the rule. */
+    if (srv_handle->rewrite_rule_idx >= 0)
+      {
+	assert (!(srv_handle->prepare_flag & CCI_PREPARE_CALL));
+
+	int num_orig_binds = srv_handle->num_orig_markers;
+	int num_rewrite_binds = srv_handle->num_markers;
+	int j, orig_pairs = exec_bind_argc / 2;
+	const short *src_orig_pos;
+
+	if (orig_pairs != num_orig_binds)
+	  {
+	    ret_code = CAS_ER_NUM_BIND;
+	    ERROR_INFO_SET (CAS_ER_NUM_BIND, CAS_ERROR_INDICATOR);
+	    NET_BUF_ERR_SET (net_buf);
+	  }
+	else if ((src_orig_pos = qr_get_bind_src (srv_handle->rewrite_rule_idx)) != NULL)
+	  {
+	    assert (num_rewrite_binds <= QR_MAX_BINDS);
+
+	    for (j = 0; j < num_rewrite_binds; j++)
+	      {
+		remap_argv[2 * j] = exec_bind_argv[2 * (src_orig_pos[j] - 1)];	/* type  */
+		remap_argv[2 * j + 1] = exec_bind_argv[2 * (src_orig_pos[j] - 1) + 1];	/* value */
+	      }
+	    exec_bind_argc = 2 * num_rewrite_binds;
+	    exec_bind_argv = remap_argv;
+	  }
+	else if (num_rewrite_binds == 0)
+	  {
+	    /* BIND_MAP case (1): the original takes binds but the replacement uses no
+	     * marker.  qr_get_bind_src() returns NULL for both the identity mapping and
+	     * an explicitly empty one, so tell them apart by K_rewrite: here every value
+	     * the driver sent is simply dropped. */
+	    exec_bind_argc = 0;
+	    exec_bind_argv = NULL;
+	  }
+	else
+	  {
+	    /* identity mapping: K_orig == K_rewrite, driver layout already matches */
+	    assert (num_orig_binds == num_rewrite_binds);
+	  }
+      }
+
+    if (ret_code >= 0)
+      {
+	ret_code =
+	  (*ux_exec_func) (srv_handle, flag, max_col_size, max_row, exec_bind_argc, exec_bind_argv, net_buf,
+			   req_info, clt_cache_time_ptr, &client_cache_reusable);
+      }
+  }
+
   gettimeofday (&exec_end, NULL);
   ut_timeval_diff (&exec_begin, &exec_end, &elapsed_sec, &elapsed_msec);
   eid_string = get_error_log_eids (err_info.err_number);
   err_number_execute = err_info.err_number;
   logddl_set_err_code (err_info.err_number);
+
+  /* classify the failure and decide whether to demote the rule.  demote = disable
+   * for future prepares (qr_set_disabled) + self-heal this live handle to the
+   * original (done at end of function, after all logging).  a KEEP/TRANSIENT error
+   * or an AMBIGUOUS error below the N-strike threshold leaves the rule/handle as-is. */
+  bool qr_demote = false;
+  if (srv_handle->rewrite_rule_idx >= 0)
+    {
+      if (ret_code >= 0)
+	{
+	  qr_record_exec_result (srv_handle->rewrite_rule_idx, true, QR_ERR_DATA, false);
+	  as_info->num_query_rewrite_execute++;
+	}
+      else
+	{
+	  QR_ERR_TIER tier = qr_exec_error_tier (err_number_execute);
+
+	  if (qr_record_exec_result (srv_handle->rewrite_rule_idx, false, tier, false))
+	    {
+	      char msg[QR_RELPATH_LEN + 128];
+
+	      cas_log_write (SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), false,
+			     "[REWRITE-FAILED] execute err:%d, disabled", err_number_execute);
+#if !defined(NDEBUG)
+	      _er_log_debug (ARG_FILE_LINE, "query rewrite [debug] execute demoted: %s err:%d\n",
+			     qr_get_rulepath (srv_handle->rewrite_rule_idx), err_number_execute);
+#endif
+	      snprintf (msg, sizeof (msg), "query rewrite rule disabled: %s reason=execution failed (err:%d)",
+			qr_get_rulepath (srv_handle->rewrite_rule_idx), err_number_execute);
+	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, msg);
+
+	      qr_set_disabled (srv_handle->rewrite_rule_idx);
+	      as_info->num_query_rewrite_fallback++;
+	      qr_demote = true;	/* trigger handle self-heal at end of function */
+	    }
+	}
+    }
 
   if (fetch_flag && ret_code >= 0 && client_cache_reusable == FALSE)
     {
@@ -616,12 +837,15 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 			      exec_func_name, srv_h_id);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      assert (srv_handle->session);
-	      assert (((DB_SESSION *) srv_handle->session)->parser);
-	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	      /* a rewrite-demoted handle can reach here with the session already freed
+	       * (hm_session_free in ux_execute/ux_execute_array): pass hide_pwd_info only
+	       * while the session and its parser are alive, as the non-slow-log path does. */
+	      PARSER_CONTEXT *psr = (srv_handle->session != NULL) ? ((DB_SESSION *) srv_handle->session)->parser : NULL;
+
+	      assert (srv_handle->session == NULL || psr != NULL);
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
-					       &psr->hide_pwd_info);
+					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
 	      cas_common_bind_value_log (&query_start_time, bind_value_index, argc, argv, param_mode_size, param_mode,
 					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
@@ -652,6 +876,36 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 
       /* reset global plan buffer */
       db_set_execution_plan (NULL, 0);
+    }
+
+  /* self-healing for prepare-once / execute-many: repoint the handle at the ORIGINAL query
+   * and invalidate the prepared statement, so the next execute takes the is_prepared ==
+   * FALSE path (cas_execute.c) and recompiles the original server-side, transparently to
+   * the driver.  rewrite_fallback lets that recompile adopt the statement as prepared again
+   * (is_prepared -> TRUE) so later executes reuse the plan.
+   * done here, after all logging, so THIS request still logged the replacement query it
+   * actually ran (the slow-log path above reads srv_handle->sql_stmt together with the
+   * current session's parser).  gated on qr_demote: a data/transient failure leaves the
+   * rewrite in place. */
+  if (qr_demote && srv_handle->rewrite_rule_idx >= 0)
+    {
+      const char *orig_query = qr_get_orig_query (srv_handle->rewrite_rule_idx);
+      char *orig_dup = NULL;
+
+      if (orig_query != NULL)
+	{
+	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
+	}
+      if (orig_dup != NULL)
+	{
+	  FREE_MEM (srv_handle->sql_stmt);
+	  srv_handle->sql_stmt = orig_dup;	/* recompiled at next execute */
+	  srv_handle->num_markers = srv_handle->num_orig_markers;	/* the driver already binds K_orig */
+	  srv_handle->rewrite_rule_idx = -1;	/* stop rewrite: no remap, block won't re-fire */
+	  srv_handle->is_prepared = FALSE;	/* force db_open_buffer + compile of sql_stmt */
+	  srv_handle->rewrite_fallback = 1;	/* adopt the recompiled original as prepared */
+	}
+      /* orig_dup == NULL (OOM): leave the handle unchanged */
     }
 
   return FN_KEEP_CONN;
@@ -1652,12 +1906,13 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 			      "execute_array srv_h_id %d %d ", srv_h_id, (argc - 2) / 2);
 	  if (srv_handle->sql_stmt != NULL)
 	    {
-	      assert (srv_handle->session);
-	      assert (((DB_SESSION *) srv_handle->session)->parser);
-	      PARSER_CONTEXT *psr = ((DB_SESSION *) srv_handle->session)->parser;
+	      /* see fn_execute_internal: the session may already be freed on this path */
+	      PARSER_CONTEXT *psr = (srv_handle->session != NULL) ? ((DB_SESSION *) srv_handle->session)->parser : NULL;
+
+	      assert (srv_handle->session == NULL || psr != NULL);
 
 	      cas_slow_log_write_query_string (srv_handle->sql_stmt, (int) strlen (srv_handle->sql_stmt),
-					       &psr->hide_pwd_info);
+					       (psr != NULL) ? &psr->hide_pwd_info : NULL);
 	      cas_common_bind_value_log (&query_start_time, 2, argc - 1, argv, 0, NULL,
 					 SRV_HANDLE_QUERY_SEQ_NUM (srv_handle), true, CAS_SCHEMA_DEFAULT_CHARSET);
 	    }
@@ -1679,6 +1934,30 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
 	}
     }
 
+  /* query rewrite: apply the demote that ux_execute_array deferred.  done here, after all
+   * logging, so sql.log/slow-log still describe the replacement query that really ran
+   * (same ordering rule as fn_execute_internal). */
+  if (srv_handle->qr_demote_pending)
+    {
+      const char *orig_query = qr_get_orig_query (srv_handle->rewrite_rule_idx);
+      char *orig_dup = NULL;
+
+      srv_handle->qr_demote_pending = 0;
+
+      if (orig_query != NULL)
+	{
+	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
+	}
+      if (orig_dup != NULL)
+	{
+	  FREE_MEM (srv_handle->sql_stmt);
+	  srv_handle->sql_stmt = orig_dup;
+	  srv_handle->num_markers = srv_handle->num_orig_markers;
+	  srv_handle->rewrite_rule_idx = -1;
+	  srv_handle->is_prepared = FALSE;
+	  srv_handle->rewrite_fallback = 1;
+	}
+    }
 
   return FN_KEEP_CONN;
 }

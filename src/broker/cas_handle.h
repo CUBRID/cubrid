@@ -129,7 +129,16 @@ struct t_srv_handle
   int cur_result_index;
   int num_q_result;
   bool has_result_set;
-  int num_markers;
+  int num_markers;		/* marker count of the prepared (replacement) query = K_rewrite */
+  int rewrite_rule_idx;		/* query rewrite rule index, -1 = no rewrite */
+  int num_orig_markers;		/* driver-facing marker count (original query) = K_orig,
+				 * valid only when rewrite_rule_idx >= 0 */
+  char rewrite_fallback;	/* 1 = handle was self-healed to the original query after a
+				 * replacement-query execute failure; the next successful recompile
+				 * adopts the compiled statement as prepared (is_prepared -> TRUE) */
+  char qr_demote_pending;	/* 1 = ux_execute_array demoted the rule and the handle still has to
+				 * be swapped back to the original query; fn_execute_array applies it
+				 * after all logging so the logs describe the query that really ran */
   int max_col_size;
   int cursor_pos;
   int schema_type;

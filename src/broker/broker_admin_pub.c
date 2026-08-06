@@ -71,6 +71,7 @@
 #include "broker_error.h"
 #include "cas_sql_log2.h"
 #include "broker_acl.h"
+#include "query_rewrite.h"
 #include "chartype.h"
 #include "cubrid_getopt.h"
 #include "dbtype_def.h"
@@ -1319,6 +1320,143 @@ admin_info_cmd (int master_shm_id)
 
   uw_shm_detach (shm_br);
   return 0;
+}
+
+/* `cubrid broker qr status [broker-name]`
+ *   or
+ * `cubrid broker qr <add|reload|disable|enable> <broker-name> <user@dbname/file>`.
+ *
+ * status lists the rules (broker optional); the other subcommands require a broker and a
+ * rulepath, and act on the running broker's rewrite segment (see query_rewrite.c).
+ */
+int
+admin_qr_cmd (int master_shm_id, QRCMD subcmd, const char *subcmd_str, const char *broker_name, const char *rulepath)
+{
+  T_SHM_BROKER *shm_br;
+  int i, rc = 0;
+  char msg[BROKER_PATH_MAX + 256];
+
+  shm_br = (T_SHM_BROKER *) uw_shm_open (master_shm_id, SHM_BROKER, SHM_MODE_MONITOR);
+  if (shm_br == NULL)
+    {
+      SHM_OPEN_ERR_MSG (admin_err_msg, uw_get_error_code (), uw_get_os_error_code ());
+      return -1;
+    }
+
+  if (subcmd == QRCMD_STATUS)
+    {
+      int matched = 0;
+
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (broker_name != NULL && strcasecmp (broker_name, shm_br->br_info[i].name) != 0)
+	    {
+	      continue;
+	    }
+	  matched = 1;
+
+	  fprintf (stdout, "%% %s\n", shm_br->br_info[i].name);
+	  if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
+	    {
+	      fprintf (stdout, "  query rewrite not applicable\n");
+	    }
+	  else if (shm_br->br_info[i].service_flag != ON)
+	    {
+	      fprintf (stdout, "  broker is not running\n");
+	    }
+	  else
+	    {
+	      qr_admin_dump_info (stdout, &shm_br->br_info[i]);
+	    }
+	  fprintf (stdout, "\n");
+	}
+
+      if (broker_name != NULL && matched == 0)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "Cannot find broker [%s]", broker_name);
+	  rc = -1;
+	}
+    }
+  else
+    {
+      /* cubrid broker qr <add|reload|disable|enable> <broker-name> <rulepath> */
+      for (i = 0; i < shm_br->num_broker; i++)
+	{
+	  if (strcasecmp (broker_name, shm_br->br_info[i].name) == 0)
+	    {
+	      break;
+	    }
+	}
+
+      if (i == shm_br->num_broker)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "Cannot find broker [%s]", broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].service_flag != ON)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "broker [%s] is not running", broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].shard_flag == ON || shm_br->br_info[i].appl_server == APPL_SERVER_CAS_CGW)
+	{
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "query rewrite is not applicable for broker [%s]",
+		    broker_name);
+	  rc = -1;
+	  goto error;
+	}
+      else if (shm_br->br_info[i].query_rewrite_rule[0] == '\0')
+	{
+	  /* the subcommands below resolve .qr.lock and the rule file under this directory,
+	   * so it must be configured */
+	  snprintf (admin_err_msg, sizeof (admin_err_msg),
+		    "query rewrite is not enabled for broker [%s]; set QUERY_REWRITE_RULE in cubrid_broker.conf",
+		    broker_name);
+	  rc = -1;
+	  goto error;
+	}
+
+      msg[0] = '\0';
+      switch (subcmd)
+	{
+	case QRCMD_ADD:
+	  rc = qr_admin_add (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_RELOAD:
+	  rc = qr_admin_reload (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_DISABLE:
+	  rc = qr_admin_disable (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	case QRCMD_ENABLE:
+	  rc = qr_admin_enable (&shm_br->br_info[i], rulepath, msg, sizeof (msg));
+	  break;
+	default:
+	  snprintf (msg, sizeof (msg), "unknown subcommand");
+	  rc = -1;
+	  break;
+	}
+
+      if (rc < 0)
+	{
+	  char reason[BROKER_PATH_MAX + 256 + 64];
+
+	  snprintf (admin_err_msg, sizeof (admin_err_msg), "%s", msg);
+	  snprintf (reason, sizeof (reason), "qr %s failed: %s", subcmd_str, msg);
+	  qr_rule_log_write (&shm_br->br_info[i], false, rulepath, reason);
+	}
+      else
+	{
+	  fprintf (stdout, "Command completed successfully. Run 'qr status' to verify.\n");
+	}
+    }
+
+error:
+  uw_shm_detach (shm_br);
+
+  return rc;
 }
 
 static bool

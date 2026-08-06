@@ -380,6 +380,11 @@ struct t_appl_server_info
   int advance_activate_flag;	/* it is used only in shard */
   int proxy_conn_wait_timeout;	/* it is used only in shard */
   bool force_reconnect;		/* it is used only in shard */
+
+  /* query rewrite statistics (cubrid broker status -r) */
+  INT64 num_query_rewrite_prepare;	/* rewrite applied at prepare */
+  INT64 num_query_rewrite_execute;	/* execute of a rewritten statement */
+  INT64 num_query_rewrite_fallback;	/* rewrite reverted to original (prepare retry or execute demote) */
 };
 
 typedef struct t_client_info T_CLIENT_INFO;
@@ -593,6 +598,11 @@ struct t_shm_appl_server
   char access_log_file[CONF_LOG_FILE_LEN];
   char db_connection_file[BROKER_INFO_PATH_MAX];
   unsigned char local_ip_addr[4];
+
+  /* query rewrite feature */
+  char query_rewrite_rule[SHM_BROKER_PATH_MAX];	/* directory of query rewrite rule files */
+  int query_rewrite_shm_key;	/* shm key of rewrite rule segment, 0 = disabled */
+  int query_rewrite_generation;	/* incremented on each rebuild */
 
   /* from br_info */
   /* from here, these are used only in shard */
