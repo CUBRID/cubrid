@@ -184,6 +184,13 @@ struct lang_collation
   unsigned int (*mht2str) (const LANG_COLLATION * lang_coll, const unsigned char *str, const int size);
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
+
+  /* true if LIKE on this collation can be evaluated by byte-lockstep
+   * comparison : UTF-8 codeset, no expansions, no contractions and identity
+   * weights, so byte equality is collation equality; computed once at
+   * collation registration (must stay last : built-in collations use
+   * positional aggregate initializers) */
+  bool byte_lockstep_like;
 };
 
 /* Language locale data */

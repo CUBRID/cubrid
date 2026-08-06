@@ -211,6 +211,7 @@ static LANG_LOCALE_DATA *find_lang_locale_data (const char *name, const INTL_COD
 static int register_lang_locale_data (LANG_LOCALE_DATA * lld);
 static void free_lang_locale_data (LANG_LOCALE_DATA * lld);
 static int register_collation (LANG_COLLATION * coll);
+static void lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll);
 
 static bool lang_is_codeset_allowed (const INTL_LANG intl_id, const INTL_CODESET codeset);
 static int lang_get_builtin_lang_id_from_name (const char *lang_name, INTL_LANG * lang_id);
@@ -869,6 +870,14 @@ lang_init_builtin (void)
   for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
     {
       (void) register_collation (built_In_collations[i]);
+    }
+
+  /* decide byte-lockstep LIKE eligibility only after all built-in collations
+   * are registered : some of them (e.g. utf8_bin) share weight arrays that
+   * another collation's init function fills */
+  for (i = 0; i < (int) (sizeof (built_In_collations) / sizeof (built_In_collations[0])); i++)
+    {
+      lang_set_byte_lockstep_like (built_In_collations[i]);
     }
 
   /* register all built-in locales allowed in current charset Support for multiple locales is required for switching
@@ -1606,7 +1615,58 @@ register_collation (LANG_COLLATION * coll)
       coll->init_coll (coll);
     }
 
+  if (!coll->built_in)
+    {
+      /* loaded collations have complete weight data at this point; built-in
+       * collations are handled after the registration loop in
+       * lang_init_builtin() */
+      lang_set_byte_lockstep_like (coll);
+    }
+
   return NO_ERROR;
+}
+
+/*
+ * lang_set_byte_lockstep_like - decides whether LIKE on this collation can be
+ *   evaluated by byte-lockstep comparison : UTF-8 codeset, no expansions, no
+ *   contractions and identity weights, so byte equality is collation equality
+ *   return: void
+ *   lang_coll(in/out): collation
+ */
+static void
+lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
+{
+  const COLL_DATA *coll;
+  int i;
+
+  assert (lang_coll != NULL);
+
+  coll = &(lang_coll->coll);
+  lang_coll->byte_lockstep_like = false;
+
+  if (lang_coll->codeset != INTL_CODESET_UTF8 || coll->uca_exp_num > 1 || coll->count_contr > 0 || coll->w_count <= 0
+      || coll->weights == NULL)
+    {
+      return;
+    }
+
+  if (lang_coll->strmatch != lang_strmatch_utf8)
+    {
+      /* the fast path mirrors lang_strmatch_utf8 () semantics only; a future
+       * collation with identity weights but a different matcher must not be
+       * silently redirected */
+      return;
+    }
+
+  for (i = 0; i < coll->w_count; i++)
+    {
+      if (coll->weights[i] != (unsigned int) i)
+	{
+	  return;
+	}
+    }
+
+  lang_coll->byte_lockstep_like = true;
 }
 
 /*
