@@ -5537,6 +5537,8 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
     {
       SORT_CMP_FUNC *cmp_fn;
 
+      qfile_close_list (thread_p, gbstate.agg_hash_context->part_list_id);
+
       /* open scan on partial list */
       if (qfile_open_list_scan (gbstate.agg_hash_context->part_list_id, &gbstate.agg_hash_context->part_scan_id) !=
 	  NO_ERROR)
@@ -5558,10 +5560,18 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  cmp_fn = &qfile_compare_all_sort_record;
 	}
 
+      SORT_LISTFILE_PX_ARG part_px;
+      part_px.key_info = &gbstate.agg_hash_context->sort_key;
+      part_px.input_list = gbstate.agg_hash_context->part_list_id;
+      part_px.hash_eligible = 0;
+      part_px.stats = &xasl->groupby_stats;
+      part_px.parallelism = xasl->parallelism;
+
       /* sort and aggregate partial results */
       if (sort_listfile (thread_p, NULL_VOLID, estimated_pages, &qexec_hash_gby_get_next, &gbstate,
 			 &qexec_hash_gby_put_next, &gbstate, cmp_fn, &gbstate.agg_hash_context->sort_key, SORT_DUP,
-			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY) != NO_ERROR)
+			 NO_SORT_LIMIT, gbstate.output_file->tfile_vfid->tde_encrypted, SORT_GROUP_BY,
+			 &part_px) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -5645,7 +5655,7 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   SORT_LISTFILE_PX_ARG gby_px;
   gby_px.key_info = &gbstate.key_info;
   gby_px.input_list = list_id;
-  gby_px.hash_eligible = gbstate.hash_eligible;
+  gby_px.hash_eligible = (gbstate.hash_eligible && gbstate.agg_hash_context->state != HS_REJECT_ALL);
   gby_px.stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
 
