@@ -187,8 +187,12 @@ IDL       [a-zA-Z0-9_]
 [aA][rR][eE]								{ return ARE; }
 [aA][rR][iI][aA]							{ csql_yylval.cptr = pt_makename(yytext);
                                                                           return ARIA; }
-[aA][sS]								{ 
-                                                                          if (expecting_pl_lang_spec) {
+[aA][sS]								{
+                                                                            if (expecting_pkg_plcsql_text) {
+                                                                                expecting_pkg_plcsql_text = 0;
+                                                                                plcsql_begin_end_balance++;
+                                                                                BEGIN(PLCSQL_TEXT);
+                                                                            } else if (expecting_pl_lang_spec) {
                                                                                 expecting_pl_lang_spec = 0;
                                                                                 BEGIN(PL_LANG_SPEC);
                                                                             }
@@ -220,6 +224,7 @@ IDL       [a-zA-Z0-9_]
 [bB][iI][tT]_[xX][oO][rR]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return BIT_XOR; }
 [bB][lL][oO][bB]							{ return BLOB_; }
+[bB][oO][dD][yY]                                                        { return BODY; }
 [bB][oO][oO][lL][eE][aA][nN]						{ return BOOLEAN_; }
 [bB][oO][tT][hH]							{ return BOTH_; }
 [bB][rR][eE][aA][dD][tT][hH]						{ return BREADTH; }
@@ -478,9 +483,13 @@ IDL       [a-zA-Z0-9_]
 [iI][nN][vV][iI][sS][iI][bB][lL][eE]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return INVISIBLE; }
 [iI][sS]								{
-                                                                            if (expecting_pl_lang_spec) {
-                                                                                    expecting_pl_lang_spec = 0;
-                                                                                    BEGIN(PL_LANG_SPEC);
+                                                                            if (expecting_pkg_plcsql_text) {
+                                                                                expecting_pkg_plcsql_text = 0;
+                                                                                plcsql_begin_end_balance++;
+                                                                                BEGIN(PLCSQL_TEXT);
+                                                                            } else if (expecting_pl_lang_spec) {
+                                                                                expecting_pl_lang_spec = 0;
+                                                                                BEGIN(PL_LANG_SPEC);
                                                                             }
                                                                             return IS; }
 [iI][sS][oO][lL][aA][tT][iI][oO][nN]					{ return ISOLATION; }
@@ -670,6 +679,7 @@ IDL       [a-zA-Z0-9_]
 [oO][vV][eE][rR][lL][aA][pP][sS]					{ return OVERLAPS; }
 [oO][wW][nN][eE][rR]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return OWNER; }
+[pP][aA][cC][kK][aA][gG][eE]                                            { return PACKAGE; }
 [pP][aA][gG][eE]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return PAGE; }
                                                                                 
