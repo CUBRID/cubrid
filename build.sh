@@ -35,6 +35,9 @@ default_java_dir="/usr/lib/jvm/java"
 java_dir=""
 configure_options=""
 compiler=""
+# CCI_XA (distributed transaction / XA) support is enabled by default.
+# Disable it with: -c "-DSUPPORT_XA=false"
+support_xa="true"
 
 # if you turn on the unit test of memory monitor
 # configure_options="-DUNIT_TEST_MEMORY_MONITOR=ON" or "-DUNIT_TESTS=ON"
@@ -294,6 +297,8 @@ function build_configure ()
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=RelWithDebInfo" ;;
     debug)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Debug" ;;
+    optdebug)
+      configure_options="$configure_options -DCMAKE_BUILD_TYPE=OptDebug" ;;
     coverage)
       configure_options="$configure_options -DCMAKE_BUILD_TYPE=Coverage" ;;
     profile)
@@ -303,7 +308,7 @@ function build_configure ()
   esac
   print_result "OK"
 
-  print_check "Configuring [with $configure_options]"
+  print_check "Configuring [with -DSUPPORT_XA=$support_xa $configure_options]"
   if [ "$(readlink -f $build_dir/..)" = "$source_dir" ]; then
     configure_dir=".."
   else
@@ -315,7 +320,7 @@ function build_configure ()
     generate_opt="-G Ninja"
   fi
 	
-  cmake -E chdir $build_dir cmake $configure_prefix $configure_options $source_dir $generate_opt
+  cmake -E chdir $build_dir cmake $configure_prefix -DSUPPORT_XA=$support_xa $configure_options $source_dir $generate_opt
 
   [ $? -eq 0 ] && print_result "OK" || print_fatal "Configuring failed"
 }
@@ -439,8 +444,14 @@ function build_package ()
     package_basename="$product_name-$version-Linux.$build_target"
   fi
   
-	if [ ! "$build_mode" = "release" ]; then
-	  package_basename="$package_basename-$build_mode"
+	# The optdebug build masquerades as a debug package so CTP and other tooling
+	# handle it exactly like debug. This must match CPACK_PACKAGE_FILE_SUFFIX
+	# (-debug) set in CMakeLists.txt, otherwise the package summary below cannot
+	# locate the file produced by cpack.
+	package_mode="$build_mode"
+	[ "$build_mode" = "optdebug" ] && package_mode="debug"
+	if [ ! "$package_mode" = "release" ]; then
+	  package_basename="$package_basename-$package_mode"
 	fi
 	if [ "$package" = "tarball" ]; then
 	  package_name="$package_basename.tar.gz"
@@ -507,7 +518,7 @@ function show_usage ()
   echo "Usage: $0 [OPTIONS] [TARGET]"
   echo " OPTIONS"
   echo "  -t arg  Set target machine (32(i386) or 64(x86_64)); [default: 64]"
-  echo "  -m      Set build mode(release, debug or coverage); [default: release]"
+  echo "  -m      Set build mode(release, debug, optdebug, coverage or profile); [default: release]"
   echo "  -i      Increase build number; [default: no]"
   echo "  -a      Run autogen.sh before build; [default: yes]"
   echo "  -g      Specifies the generator for a build (make, ninja); [default: ninja]"
@@ -524,6 +535,8 @@ function show_usage ()
   fi
   echo "  -z arg  Package to generate (src,zip_src,shell,tarball,cci,jdbc,rpm,owfs);"
   echo "          [default: all]"
+  echo "  -x      Enable CCI_XA (distributed transaction/XA) support; [default: enabled]"
+  echo "          (to disable: -c \"-DSUPPORT_XA=false\")"
   echo "  -? | -h Show this help message and exit"
   echo ""
   echo " TARGET"
@@ -535,6 +548,7 @@ function show_usage ()
   echo "  $0                         # Build and pack all packages (64/release)"
   echo "  $0 -t 32 build             # 32bit release build only"
   echo "  $0 -t 64 -m debug dist     # Create 64bit debug mode packages"
+  echo "  $0 -t 64 -m optdebug build # 64bit optimized-debug build (asserts on, release-level speed)"
   echo ""
 }
 
@@ -564,7 +578,7 @@ function get_options ()
 	  packages="$packages $optval"
 	done
       ;;
-      x ) configure_options="$configure_options -DSUPPORT_XA=true" ;;
+      x ) support_xa="true" ;;
       v ) print_version_only=1 ;;
       h|\?|* ) show_usage; exit 1;;
     esac
@@ -578,7 +592,7 @@ function get_options ()
   esac
 
   case $build_mode in
-    release|debug|coverage|profile);;
+    release|debug|optdebug|coverage|profile);;
     *) show_usage; print_fatal "Mode [$build_mode] is not a valid mode" ;;
   esac
 
@@ -667,7 +681,7 @@ function build_build ()
 
   if [ "$build_args" = "all" -o "$build_args" = "ALL" ]; then
     case $build_mode in
-      release|debug)
+      release|debug|optdebug)
 	build_args="clean build dist"
 	;;
       *)

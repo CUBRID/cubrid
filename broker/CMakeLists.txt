@@ -524,6 +524,14 @@ set(BROKER_LOG_TOP_SOURCES
   ${BROKER_DIR}/broker_log_util.c
   ${BROKER_DIR}/log_top_string.c
   ${BROKER_DIR}/broker_log_top_tran.c
+  ${BROKER_DIR}/broker_config.c
+  ${BROKER_DIR}/broker_shm.c
+  ${BROKER_DIR}/query_rewrite.c
+  ${BROKER_DIR}/broker_error.c
+  ${BROKER_DIR}/broker_util.c
+  ${BROKER_DIR}/broker_filename.c
+  ${BROKER_DIR}/shard_metadata.c
+  ${BROKER_DIR}/shard_shm.c
   )
 SET_SOURCE_FILES_PROPERTIES(
   ${BROKER_LOG_TOP_SOURCES}
@@ -534,6 +542,7 @@ if(WIN32)
 endif(WIN32)
 add_executable(broker_log_top ${BROKER_LOG_TOP_SOURCES})
 target_compile_definitions(broker_log_top PRIVATE ${BROKER_DEFS} BROKER_LOG_TOP)
+target_include_directories(broker_log_top PRIVATE ${EP_INCLUDES})
 target_link_libraries(broker_log_top LINK_PRIVATE cubridcs)
 
 if(WITH_CCI)

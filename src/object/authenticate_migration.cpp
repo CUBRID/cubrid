@@ -170,7 +170,7 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
     }
 
   /* error is row count if not negative. */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < NO_ERROR)
     {
@@ -463,7 +463,7 @@ end:
       db_query_end (query_result);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -767,7 +767,7 @@ build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
 
   sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   /* error is row count if not negative. */
   error = db_compile_and_execute_local (query, &query_result, &query_error);
   if (error < 0)
@@ -837,7 +837,7 @@ build_class_grant_list (CLASS_AUTH *cl_auth, MOP class_mop)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   if (query_result != NULL)
     {
       db_query_end (query_result);

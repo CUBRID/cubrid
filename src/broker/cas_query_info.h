@@ -54,5 +54,6 @@ extern int query_info_add (T_QUERY_INFO * qi, int exec_time, int execute_res, ch
 			   char *end_date);
 extern int query_info_add_ne (T_QUERY_INFO * qi, char *end_date);
 extern void query_info_print (void);
+extern void query_info_clear_array (void);
 
 #endif /* _CAS_QUERY_INFO_H_ */

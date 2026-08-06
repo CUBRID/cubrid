@@ -461,6 +461,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     case T_ASCII:
     case T_SPACE:
     case T_MD5:
+    case T_UUID_FORMAT:
+    case T_UUID:
     case T_SHA_ONE:
     case T_TO_BASE64:
     case T_FROM_BASE64:
@@ -1390,6 +1392,17 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  PRIM_SET_NULL (arithptr->value);
 	}
       else if (db_string_md5 (peek_right, arithptr->value) != NO_ERROR)
+	{
+	  goto error;
+	}
+      break;
+
+    case T_UUID_FORMAT:
+      if (DB_IS_NULL (peek_right))
+	{
+	  PRIM_SET_NULL (arithptr->value);
+	}
+      else if (db_uuid_format (peek_right, arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -3517,10 +3530,56 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       /* sys_guid() is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-      if (db_guid (thread_p, arithptr->value) != NO_ERROR)
+      if (db_uuidv4 (arithptr->value) != NO_ERROR)
 	{
 	  goto error;
 	}
+      break;
+
+    case T_UUID:
+      {
+	REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
+	assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+	int version;
+	if (DB_IS_NULL (peek_right))
+	  {
+	    /* NULL version argument is not allowed; UUID() with no argument arrives as the constant 4 */
+	    version = -1;
+	  }
+	else
+	  {
+	    version = db_get_int (peek_right);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    if (db_uuid_bin (UUID_V4, NULL, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else if (version == 7)
+	  {
+	    UUID_STATE uuid_state;
+	    uuid_state.last_ms = &thread_p->uuidv7_last_ms;
+	    uuid_state.seq = &thread_p->uuidv7_seq;
+
+	    if (db_uuid_bin
+		(UUID_V7, &uuid_state,
+		 ((uint64_t) vd->sys_epochtime * 1000ULL) + (uint64_t) (vd->sys_datetime.time % 1000),
+		 arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+	else
+	  {
+	    if (db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, arithptr->value) != NO_ERROR)
+	      {
+		goto error;
+	      }
+	  }
+      }
       break;
 
     case T_TYPEOF:
@@ -3874,6 +3933,8 @@ fetch_peek_arith_end:
     case T_DRANDOM:
       /* sys_guid() is not constant */
     case T_SYS_GUID:
+      /* uuid() is not constant */
+    case T_UUID:
       /* sleep() is not constant */
     case T_SLEEP:
 
@@ -3909,7 +3970,8 @@ error:
 }
 
 /*
- * fetch_peek_dbval () - returns a POINTER to an existing db_value
+ * fetch_peek_dbval_slow () - full fetch path for every regu_var type; the hot cached-attribute case is
+ *                            served by the inline fetch_peek_dbval () wrapper in fetch.h.
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable
  *   vd(in): Value Descriptor
@@ -3920,8 +3982,8 @@ error:
  *
  */
 int
-fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid, OID * obj_oid,
-		  QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
+fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * class_oid,
+		       OID * obj_oid, QFILE_TUPLE tpl, DB_VALUE ** peek_dbval)
 {
   int length;
   const PR_TYPE *pr_type;
@@ -4521,6 +4583,19 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
 	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+
+  /* flag a stable regu_var (cached attr/literal/pos/const) so inline fetch_peek_dbval () peeks it directly */
+  if ((((regu_var->type == TYPE_ATTR_ID || regu_var->type == TYPE_SHARED_ATTR_ID
+	 || regu_var->type == TYPE_CLASS_ATTR_ID) && regu_var->value.attr_descr.cache_dbvalp != NULL)
+       || regu_var->type == TYPE_DBVAL || regu_var->type == TYPE_POS_VALUE
+       || (regu_var->type == TYPE_CONSTANT && regu_var->xasl == NULL && regu_var->value.dbvalptr != NULL))
+      && !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION)
+      && regu_var->domain != NULL
+      && TP_DOMAIN_TYPE (regu_var->domain) != DB_TYPE_VARIABLE
+      && TP_DOMAIN_COLLATION_FLAG (regu_var->domain) == TP_DOMAIN_COLL_NORMAL)
+    {
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
+    }
 
   return NO_ERROR;
 

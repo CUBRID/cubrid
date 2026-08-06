@@ -3035,10 +3035,6 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
 
   assert (conn && buffer);
 
-  request.type = cubconn::connection::worker::message_type::RELEASE_PACKET;
-  request.conn = conn;
-  request.packet.emplace_back ((std::byte *) buffer, 0 /* idk the size */ );
-
   /* lock to access worker and context */
   r = rmutex_lock (NULL, &conn->cmutex);
   assert (r == NO_ERROR);
@@ -3057,14 +3053,30 @@ css_request_release_packet (css_conn_entry * conn, void *buffer)
     }
 
   ctx = static_cast < cubconn::connection::context * >(conn->context);
+  if (ctx->m_recv.m_receiver.try_release (static_cast < std::byte * >(buffer)))
+    {
+      /* unlock */
+      r = rmutex_unlock (NULL, &conn->cmutex);
+      assert (r == NO_ERROR);
+
+      return;
+    }
+
+  request.type = cubconn::connection::worker::message_type::RELEASE_PACKET;
+  request.conn = conn;
   request.ctx = ctx;
   request.id = ctx->m_id;
+  request.packet = static_cast < std::byte * >(buffer);
 
-  conn->worker->enqueue (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request));
+  auto func =[conn] ()noexcept {
+    /* unlock */
+    rmutex_unlock (NULL, &conn->cmutex);
+  };
 
-  /* unlock */
-  r = rmutex_unlock (NULL, &conn->cmutex);
-  assert (r == NO_ERROR);
+  if (!conn->worker->enqueue_and_notify (cubconn::connection::worker::queue_type::IMMEDIATE, std::move (request), func))
+    {
+      assert_release (false);
+    }
 }
 
 void

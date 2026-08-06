@@ -421,6 +421,14 @@ struct insert_proc_node
   int num_val_lists;		/* number of value lists in values clause */
   VALPTR_LIST **valptr_lists;	/* OUTPTR lists for each list of values */
   DB_VALUE *obj_oid;		/* Inserted object OID, used for sub-inserts */
+  /* remote INSERT SELECT sink fields (INSERT INTO remote SELECT FROM local) */
+  bool is_remote_insert;	/* true if inserting into a remote table via DBLink */
+  char *remote_url;		/* DBLink connection URL */
+  char *remote_user;		/* DBLink connection user */
+  char *remote_pwd;		/* DBLink connection password */
+  char *remote_table_name;	/* remote target table name */
+  char **remote_attr_names;	/* remote target column names (array) */
+  int remote_num_attrs;		/* length of remote_attr_names */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
@@ -514,15 +522,17 @@ struct cte_proc_node
 #define XASL_NO_FIXED_SCAN	       (0x1 << 14)	/* disable fixed scan for this proc */
 #define XASL_NEED_SINGLE_TUPLE_SCAN    (0x1 << 15)	/* for exists operation */
 #define XASL_INCLUDES_TDE_CLASS	       (0x1 << 16)	/* is any tde class related */
-#define XASL_SAMPLING_SCAN	       (0x1 << 17)	/* is sampling scan */
+/* (0x1 << 17) was XASL_SAMPLING_SCAN, removed with the query-based statistics sampling path */
 #define XASL_USES_SQ_CACHE	       (0x1 << 18)	/* subquery uses result cache */
 #define XASL_NO_PARALLEL_SUBQUERY       (0x1 << 19)	/* disable parallel subquery */
 #define XASL_ANALYTIC_USES_LIMIT_OPT (0x1 << 20)	/* analytic uses limit optimization */
 #define XASL_ANALYTIC_SKIP_SORT (0x1 << 21)	/* analytic skip sort optimization */
 #define XASL_DBLINK_CURSOR_REWIND	(0x1 << 22)	/* correlated DBLink subquery: rewind CCI cursor instead of re-issuing cci_execute per outer row */
+#define XASL_CORR_DBLINK		(0x1 << 23)	/* correlated push-down (per-row bind); mutually exclusive with XASL_DBLINK_CURSOR_REWIND */
 
 #define XASL_IS_FLAGED(x, f)        (((x)->flag & (int) (f)) != 0)
 #define IS_DBLINK_CURSOR_REWIND_XASL(x)     XASL_IS_FLAGED ((x), XASL_DBLINK_CURSOR_REWIND)
+#define IS_CORR_DBLINK_XASL(x)		XASL_IS_FLAGED ((x), XASL_CORR_DBLINK)
 #define XASL_SET_FLAG(x, f)         (x)->flag |= (int) (f)
 #define XASL_CLEAR_FLAG(x, f)       (x)->flag &= (int) ~(f)
 
@@ -747,8 +757,8 @@ typedef enum
   ACCESS_METHOD_SEQUENTIAL_RECORD_INFO,	/* sequential scan that will read record info */
   ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN,	/* sequential scan access that only scans pages without accessing record data */
   ACCESS_METHOD_INDEX_KEY_INFO,	/* indexed access to obtain key information */
-  ACCESS_METHOD_INDEX_NODE_INFO,	/* indexed access to obtain b-tree node info */
-  ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN	/* sequential sampling scan */
+  ACCESS_METHOD_INDEX_NODE_INFO	/* indexed access to obtain b-tree node info */
+    /* ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN was removed with the query-based statistics sampling path */
 } ACCESS_METHOD;
 
 #define IS_ANY_INDEX_ACCESS(access_) \
@@ -771,8 +781,7 @@ typedef enum
   ACCESS_SPEC_FLAG_NUM_PARALLEL_THREADS = 0x1 << 2,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_MERGEABLE_LIST = 0x1 << 3,	/* used with parallel heap scan. */
   ACCESS_SPEC_FLAG_BUILDVALUE_OPT = 0x1 << 4,	/* used with parallel heap scan buildvalue aggregate optimization. */
-  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5,	/* used with min/max aggregate. */
-  ACCESS_SPEC_FLAG_FORCE_FIXED_SCAN = 0x1 << 6	/* used with keep page hint. */
+  ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN = 0x1 << 5	/* used with min/max aggregate. */
 } ACCESS_SPEC_FLAG;
 
 #define ACCESS_SPEC_IS_FLAGED(spec, f)		((ACCESS_SPEC_FLAGS(spec) & (int) (f)) != 0)
@@ -843,6 +852,8 @@ struct dblink_spec_node
 {
   REGU_VARIABLE_LIST dblink_regu_list_pred;	/* regu list for the predicate */
   REGU_VARIABLE_LIST dblink_regu_list_rest;	/* regu list for rest of attrs */
+  int corr_key_count;		/* correlated push-down key count; 0 if unused */
+  REGU_VARIABLE_LIST corr_key_regu_list;	/* outer-column bind regs (list chain); owned by XASL heap */
   int host_var_count;		/* host variable count for dblink spec */
   int *host_var_index;		/* host variable indexes for dblink spec */
   char *conn_url;		/* connection URL for remote DB server */
@@ -982,6 +993,13 @@ struct groupby_stat
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
+  int parallel_num;
+  UINT64 px_min_groupby_time;
+  UINT64 px_max_groupby_time;
+  UINT64 px_min_groupby_pages;
+  UINT64 px_max_groupby_pages;
+  UINT64 px_min_groupby_ioreads;
+  UINT64 px_max_groupby_ioreads;
 };
 
 struct analytic_stat
@@ -992,6 +1010,13 @@ struct analytic_stat
   int rows;
   bool analytic_stopkey;
   bool analytic_sort;
+  int parallel_num;
+  UINT64 px_min_analytic_time;
+  UINT64 px_max_analytic_time;
+  UINT64 px_min_analytic_pages;
+  UINT64 px_max_analytic_pages;
+  UINT64 px_min_analytic_ioreads;
+  UINT64 px_max_analytic_ioreads;
   struct analytic_stat *next;
 };
 
@@ -1060,6 +1085,7 @@ struct access_spec_node
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */
   bool fixed_scan;		/* scan pages are kept fixed? */
+  bool cached_scan;		/* runtime-only cached-scan activation; not serialized */
   bool pruned;			/* true if partition pruning has been performed */
   bool clear_value_at_clone_decache;	/* true, if need to clear s_dbval at clone decache */
 #endif				/* #if defined (SERVER_MODE) || defined (SA_MODE) */
@@ -1091,6 +1117,10 @@ struct xasl_node
   VAL_LIST *single_tuple;	/* single tuple result */
 
   int is_single_tuple;		/* single tuple subquery? */
+
+  /* predicate-operand regu owning this uncorrelated scalar subquery (NULL otherwise);
+   * gates the precompute/inject/checker-relax path. */
+  REGU_VARIABLE *precomp_owner_regu;
 
   QUERY_OPTIONS option;		/* UNIQUE option */
   OUTPTR_LIST *outptr_list;	/* output pointer list */

@@ -43,9 +43,6 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
-
 using namespace cubpl;
 
 static PT_NODE *
@@ -741,7 +738,7 @@ namespace cubmethod
     int save;
     const char *name = question.name.c_str ();
 
-    AU_DISABLE (save);
+    AU_SAVE_AND_DISABLE (save);
     {
       // TODO
       mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
@@ -820,7 +817,7 @@ namespace cubmethod
     }
 
 exit:
-    AU_ENABLE (save);
+    AU_RESTORE (save);
 
     res.err_id = err;
     if (err != NO_ERROR)

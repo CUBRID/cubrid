@@ -1185,7 +1185,13 @@ db_find_multi_unique (MOP classmop, int size, char *attr_names[], DB_VALUE * val
     obj_find_multi_attr (classmop, size, (const char **) attr_names, (const DB_VALUE **) values,
 			 purpose == DB_FETCH_WRITE ? AU_FETCH_UPDATE : AU_FETCH_READ);
 
-  er_clear ();
+  /* obj_find_multi_attr sets a benign ER_OBJ_OBJECT_NOT_FOUND warning when the key does not
+   * exist; clear it so callers just see NULL. But keep real errors (e.g. BTREE_ERROR_OCCURRED /
+   * ER_LK_UNILATERALLY_ABORTED on server failure) so callers can detect the failure. (CBRD-26667) */
+  if (retval != NULL || er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+    {
+      er_clear ();
+    }
   return retval;
 }
 
