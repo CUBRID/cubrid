@@ -6337,7 +6337,7 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* check if the given oid is root class oid */
@@ -6496,7 +6496,7 @@ lock_transaction_mvccid (THREAD_ENTRY * thread_p, MVCCID mvccid, LOCK lock, int 
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* A TRANSACTION-typed key (keyed by the inserter's MVCCID) never aliases a real class/instance. */
@@ -6718,7 +6718,7 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* get the intentional lock mode to be acquired on class oid */
@@ -6858,7 +6858,7 @@ lock_scan (THREAD_ENTRY * thread_p, const OID * class_oid, int cond_flag, LOCK c
   else
     {
       assert (cond_flag == LK_UNCOND_LOCK);
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   /* acquire the lock on the class */
@@ -6952,7 +6952,7 @@ lock_classes_lock_hint (THREAD_ENTRY * thread_p, LC_LOCKHINT * lockhint)
 #endif
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  wait_msecs = logtb_find_wait_msecs (tran_index);
+  wait_msecs = logtb_find_current_wait_msecs (thread_p);
 
   /* We do not want to rollback the transaction in the event of a deadlock. For now, let's just wait a long time. If
    * deadlock, the transaction is going to be notified of lock timeout instead of aborted. */
@@ -9025,8 +9025,9 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
   fprintf (outfp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_DUMP_LOCK_TABLE),
 	   prm_get_integer_value (PRM_ID_LK_ESCALATION_AT), prm_get_float_value (PRM_ID_LK_RUN_DEADLOCK_INTERVAL));
 
-  /* Don't get block from anything when dumping object lock table. */
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+  /* Don't get block from anything when dumping object lock table. Use the thread-scoped override so the
+   * transaction-global tdes->wait_msecs, shared with sibling threads of the same transaction, is untouched. */
+  old_wait_msecs = logtb_set_thread_wait_msecs_override (thread_p, LK_FORCE_ZERO_WAIT);
 
   /* Dump some information about all transactions */
   fprintf (outfp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_LOCK, MSGCAT_LK_NEWLINE));
@@ -9108,7 +9109,7 @@ xlock_dump (THREAD_ENTRY * thread_p, FILE * outfp, int is_contention)
     }
 
   /* Reset the wait back to the way it was */
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  (void) logtb_set_thread_wait_msecs_override (thread_p, old_wait_msecs);
 #endif /* !SERVER_MODE */
 }
 
@@ -10299,7 +10300,7 @@ lock_rep_read_tran (THREAD_ENTRY * thread_p, LOCK lock, int cond_flag)
     }
   else
     {
-      wait_msecs = logtb_find_wait_msecs (tran_index);
+      wait_msecs = logtb_find_current_wait_msecs (thread_p);
     }
 
   if (lock_internal_perform_lock_object

@@ -36,6 +36,10 @@
 #include <thread>
 
 #include <cassert>
+#include <climits>
+
+/* sentinel for cubthread::entry::wait_msecs_override meaning "no override is active" */
+#define THREAD_WAIT_MSECS_NO_OVERRIDE INT_MIN
 
 // forward definitions
 
@@ -226,6 +230,11 @@ namespace cubthread
 				   * thread */
       int client_id;		/* client id whom this thread is responding */
       int tran_index;		/* tran index to which this thread belongs */
+      int wait_msecs_override;	/* thread-scoped override of the transaction's lock/latch wait interval
+				 * (tdes->wait_msecs). Used by short no-wait latch probes so they never mutate the
+				 * transaction-global value, which is shared with sibling threads executing on behalf
+				 * of the same transaction (parallel query workers). THREAD_WAIT_MSECS_NO_OVERRIDE
+				 * when no override is active. */
       int private_lru_index;	/* private lru index when transaction quota is used */
       pthread_mutex_t tran_index_lock;
       unsigned int rid;		/* request id which this thread is processing */

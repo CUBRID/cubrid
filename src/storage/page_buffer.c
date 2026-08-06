@@ -6462,7 +6462,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       int wait_msec;
 
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      wait_msec = logtb_find_wait_msecs (tran_index);
+      wait_msec = logtb_find_current_wait_msecs (thread_p);
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
@@ -16837,30 +16837,18 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 #endif /* !NDEBUG */
 }
 
-// TODO: find a better place for this, but not log_impl.h
 /*
  * pgbuf_find_current_wait_msecs - find waiting times for current transaction
  *
  * return : wait_msecs...
  *
- * Note: Find the waiting time for the current transaction.
+ * Note: Find the waiting time for the current thread; honors the thread-scoped override used by
+ *       no-wait latch probes (see logtb_set_thread_wait_msecs_override).
  */
 STATIC_INLINE int
 pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes != NULL)
-    {
-      return tdes->wait_msecs;
-    }
-  else
-    {
-      return 0;
-    }
+  return logtb_find_current_wait_msecs (thread_p);
 }
 
 /*

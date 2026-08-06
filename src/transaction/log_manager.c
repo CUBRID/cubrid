@@ -7745,7 +7745,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
    * end up with database corruption problems. That is, no timeouts during
    * rollback.
    */
-  old_wait_msecs = xlogtb_reset_wait_msecs (thread_p, TRAN_LOCK_INFINITE_WAIT);
+  old_wait_msecs = logtb_set_thread_wait_msecs_override (thread_p, TRAN_LOCK_INFINITE_WAIT);
 
   LSA_COPY (&prev_tranlsa, &tdes->undo_nxlsa);
   /*
@@ -7782,7 +7782,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
       if ((logpb_fetch_page (thread_p, &log_lsa, LOG_CS_FORCE_USE, log_pgptr)) != NO_ERROR)
 	{
-	  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+	  (void) logtb_set_thread_wait_msecs_override (thread_p, old_wait_msecs);
 	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_rollback");
 	  if (log_unzip_ptr != NULL)
 	    {
@@ -8038,7 +8038,7 @@ log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LSA * upto_lsa
 
   /* Remember the undo next lsa for partial rollbacks */
   LSA_COPY (&tdes->undo_nxlsa, &prev_tranlsa);
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msecs);
+  (void) logtb_set_thread_wait_msecs_override (thread_p, old_wait_msecs);
 
   if (log_unzip_ptr != NULL)
     {
