@@ -5977,6 +5977,12 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   assert (ptr != NULL && aggregate != NULL);
 
+  /* server-side runtime state, never part of the stream */
+  aggregate->operand_prog = NULL;
+  aggregate->operand_prog_idx = NULL;
+  aggregate->operand_prog_state = 0;
+  aggregate->operand_prog_base = -1;
+
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
   aggregate->original_domain = aggregate->domain;
