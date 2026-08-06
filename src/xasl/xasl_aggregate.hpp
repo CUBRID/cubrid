@@ -95,6 +95,15 @@ namespace cubxasl
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
 #if defined (SERVER_MODE) || defined (SA_MODE)
     aggregate_accumulator_domain accumulator_domain;	/* holds domain info on accumulator */
+
+    /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
+     * list HEAD node only.  Server-side runtime state -- never serialized.  See
+     * expr_compile.h; built lazily on the first evaluated row when the bound host
+     * variable types are known. */
+    void *operand_prog;		/* EXPR_PROG *, head node only */
+    int *operand_prog_idx;	/* program root index per operand ordinal or -1; head only */
+    int operand_prog_state;	/* 0 = untried, 1 = active, 2 = disabled; head only */
+    int operand_prog_base;	/* THIS node's first ordinal in operand_prog_idx, or -1 */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {

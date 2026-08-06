@@ -40,6 +40,7 @@
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
+#include "expr_compile.h"
 #include "query_opfunc.h"
 #include "fetch.h"
 #include "dbtype.h"
@@ -2288,6 +2289,16 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
   int pg_cnt;
 
   pg_cnt = 0;
+
+  /* release the compiled operand program (head node only; see expr_compile.h) */
+  if (list != NULL && list->operand_prog != NULL)
+    {
+      expr_prog_free ((EXPR_PROG *) list->operand_prog);
+      list->operand_prog = NULL;
+      db_private_free_and_init (thread_p, list->operand_prog_idx);
+      list->operand_prog_state = 0;
+    }
+
   for (p = list; p; p = p->next)
     {
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
