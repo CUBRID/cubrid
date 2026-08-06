@@ -332,7 +332,8 @@ dblink_2pc_recovery_callback (const DBLINK_GLOBAL_TRAN_ROW * row_data)
   snprintf (participant.password, sizeof (participant.password), "%s", row_data->password);
 
   /* Enqueue to daemon for processing (one entry per participant) */
-  (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, &participant);
+  /* Recovery replays decisions nobody is waiting for - the sessions that produced them are gone. */
+  (void) dblink_2pc_daemon_enqueue (row_data->gtrid, state, &participant, NULL);
 
   return true;			/* continue to next row */
 }
@@ -413,10 +414,16 @@ dblink_2pc_daemon_execute (cubthread::entry & thread_ref)
 
       if (ret != NO_ERROR)
 	{
-	  /* Error: re-enqueue this single participant for retry */
-	  (void) dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant);
+	  /* Error: re-enqueue this single participant for retry.  The waiter travels with the entry and
+	   * keeps its slot, so the commit path stays blocked until the retry succeeds or its bound
+	   * expires - it must not be woken by a decision that was not delivered. */
+	  (void) dblink_2pc_daemon_enqueue (e.gtrid, send_state, &e.participant, e.waiter);
 	  return;
 	}
+
+      /* Delivered: the remote changes are visible now, so release the commit path before doing the
+       * catalog cleanup below.  That cleanup is recovery bookkeeping and nobody waits on it. */
+      dblink_2pc_waiter_done (e.waiter);
 
       thread_p = &thread_ref;
       /* P5: Crash after (6) send decision, before (7) DELETE - recovery: daemon resends decision then DELETE */
@@ -469,7 +476,7 @@ dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e)
 }
 
 int
-dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant)
+dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant, DBLINK_2PC_WAITER * waiter)
 {
   assert (participant != NULL);
 
@@ -498,6 +505,7 @@ dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * parti
   global_tran_queue[global_tran_queue_tail].gtrid = gtrid;
   global_tran_queue[global_tran_queue_tail].state = state;
   global_tran_queue[global_tran_queue_tail].participant = *participant;
+  global_tran_queue[global_tran_queue_tail].waiter = waiter;
   global_tran_queue_tail = (global_tran_queue_tail + 1) % global_tran_queue_size;
   global_tran_queue_count++;
 
@@ -578,8 +586,32 @@ dblink_2pc_daemon_stop (void)
       dblink_2pc_Daemon_context_manager = NULL;
     }
 
+  /* Settle whatever is still queued before the queue goes away.  These decisions were not delivered
+   * and recovery will replay them from _db_global_tran, but their waiters must not be left counting
+   * entries that no longer exist: any commit path still blocked here would otherwise sit out its
+   * full bound, and the waiters themselves would never be freed.
+   *
+   * This depends on the ordering above: destroy_daemon() joins the daemon thread, so by now no entry
+   * is in flight - the one being processed at stop time either completed (and settled itself) or
+   * failed and went back on the queue, where the loop below finds it.  Draining before the join
+   * would miss it.
+   *
+   * A waiter settled here can wake its commit path with everything "settled" even though nothing was
+   * delivered.  That is accepted: the caller ignores the result and treats it exactly like the
+   * timeout, and recovery redelivers.  Waking it is better than making it wait out the bound while
+   * the server goes down. */
   if (global_tran_queue != NULL)
     {
+      pthread_mutex_lock (&global_tran_queue_mutex);
+      for (i = 0; i < global_tran_queue_count; i++)
+	{
+	  int nth = (global_tran_queue_head + i) % global_tran_queue_size;
+
+	  dblink_2pc_waiter_done (global_tran_queue[nth].waiter);
+	  global_tran_queue[nth].waiter = NULL;
+	}
+      pthread_mutex_unlock (&global_tran_queue_mutex);
+
       free_and_init (global_tran_queue);
     }
   global_tran_queue_size = 0;

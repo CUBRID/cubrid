@@ -462,6 +462,9 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
   TRAN_STATE expected_state;
   LOG_RECTYPE complete_type;
   char new_state;
+#ifdef SERVER_MODE
+  DBLINK_2PC_WAITER *waiter = NULL;
+#endif
 #endif
 
   /* Start the first phase of 2PC. Prepare to commit or voting phase */
@@ -567,13 +570,25 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 	}
 
-      /* P4: Crash after (4),(3) before (5) enqueue - recovery: daemon sends decision then DELETE */
+      /* P4: Crash after (4),(3) before (5) enqueue and wait - recovery: daemon sends decision then DELETE */
       FI_TEST (thread_p, FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6, 0);
+#ifdef SERVER_MODE
+      /* Wait, further down, until the daemon has delivered these decisions, so that the remote
+       * changes are already visible when this statement's response reaches the client.  A NULL
+       * waiter simply means we do not wait - the daemon still delivers, as it does today. */
+      waiter = dblink_2pc_waiter_create (tdes->coord->num_particps);
+#endif
       /* Enqueue one entry per participant for daemon (only failed participants are retried) */
       for (i = 0; i < tdes->coord->num_particps; i++)
 	{
 #ifdef SERVER_MODE
-	  (void) dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i]);
+	  dblink_2pc_waiter_ref (waiter);
+	  if (dblink_2pc_daemon_enqueue (tdes->gtrid, new_state, &participants[i], waiter) != NO_ERROR)
+	    {
+	      /* Not queued, so nothing will ever settle this entry: release it here instead of
+	       * letting the wait below sit out its whole bound on a decision that is not coming. */
+	      dblink_2pc_waiter_done (waiter);
+	    }
 #else
 	  /* SA mode: no daemon/queue; run send decision and _db_global_tran delete in a system transaction */
 	  log_sysop_start (thread_p);
@@ -596,6 +611,21 @@ log_2pc_commit_first_phase (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_2PC_EX
 	    }
 #endif
 	}
+
+#ifdef SERVER_MODE
+      /* Wait here rather than inside the loop above: the daemon delivers serially either way, so the
+       * total wait is the same, and letting every entry reach the queue first lets it work through
+       * them back to back.
+       *
+       * This spot is deliberate.  log_commit_local() has already released the local locks, and
+       * waiting touches no data, so no MVCCID is acquired - which is what keeps the invariant
+       * checked in logtb_clear_tdes() intact (see log_complete() just below).  Giving up on the
+       * bound is not an error: the decisions stay queued and the daemon keeps delivering them,
+       * which is the pre-existing asynchronous behaviour. */
+      (void) dblink_2pc_waiter_wait (waiter, DBLINK_2PC_DECISION_WAIT_MSEC);
+      dblink_2pc_waiter_unref (waiter);
+      waiter = NULL;
+#endif
 
       *state =
 	log_complete (thread_p, tdes, complete_type, LOG_NEED_NEWTRID,

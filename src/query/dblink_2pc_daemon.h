@@ -83,6 +83,7 @@ struct global_tran_queue_entry
   int gtrid;
   char state;			/* DBLINK_2PC_STATE_PREPARE / ABORT / COMMIT */
   DBLINK_CONN_INFO participant;	/* single participant (embedded) */
+  DBLINK_2PC_WAITER *waiter;	/* commit path waiting on this decision, NULL if nobody waits */
 };
 
 /*
@@ -118,9 +119,12 @@ extern void dblink_2pc_waiter_done (DBLINK_2PC_WAITER * waiter);
 
 /*
  * Wait until every participant's decision has been settled or timeout_msec elapses.
- * Returns true if all were settled.  A false return is not an error: the decisions remain queued
- * and the daemon keeps delivering them.  A timeout_msec of 0 or less polls - it reports whether
- * everything is already settled without blocking.
+ * Returns true if all were settled - which means there is nothing left to wait for, not that every
+ * decision reached its participant: server shutdown settles the entries it drops.  A false return
+ * is not an error either: the decisions remain queued and the daemon keeps delivering them.  Either
+ * way the caller just stops waiting, which is why callers ignore the result.
+ * A timeout_msec of 0 or less polls - it reports whether everything is already settled without
+ * blocking.
  */
 extern bool dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec);
 
@@ -131,9 +135,13 @@ extern bool dblink_2pc_waiter_wait (DBLINK_2PC_WAITER * waiter, int timeout_msec
  * - After prepare (decision phase): state = DBLINK_2PC_STATE_ABORT or DBLINK_2PC_STATE_COMMIT
  *   -> daemon sends abort/commit decision to this participant.
  * participant is copied by the function; caller can free after return.
+ * waiter may be NULL.  When it is not, the caller must already hold a reference for this entry
+ * (dblink_2pc_waiter_ref); on failure the entry is not queued, so the caller settles that reference
+ * itself with dblink_2pc_waiter_done.
  * Returns NO_ERROR on success, ER_* on failure (e.g. queue full).
  */
-extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant);
+extern int dblink_2pc_daemon_enqueue (int gtrid, char state, const DBLINK_CONN_INFO * participant,
+				      DBLINK_2PC_WAITER * waiter);
 extern int dblink_2pc_daemon_dequeue (GLOBAL_TRAN_QUEUE_ENTRY * e);
 
 /* Start the send_2pc_decision daemon thread. Called during server boot.
