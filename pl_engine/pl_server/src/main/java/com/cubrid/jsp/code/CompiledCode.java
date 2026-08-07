@@ -47,7 +47,13 @@ public class CompiledCode extends SimpleJavaFileObject {
     public CompiledCode(String className) throws java.net.URISyntaxException {
         super(new URI(className), Kind.CLASS);
 
-        this.className = className;
+        int idx = className.indexOf(".");
+        if (idx != -1) {
+            this.className = className.substring(0, idx);
+
+        } else {
+            this.className = className;
+        }
         this.baos = new ByteArrayOutputStream();
     }
 
