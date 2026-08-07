@@ -1624,8 +1624,9 @@ register_collation (LANG_COLLATION * coll)
 }
 
 /*
- * lang_set_byte_lockstep_like - decides whether LIKE can use byte-lockstep matching :
- *   UTF-8 codeset with identity weights makes byte equality collation equality
+ * lang_set_byte_lockstep_like - decides which byte-lockstep LIKE matcher instance (kind)
+ *   this collation is eligible for; UTF-8 codeset with identity weights makes byte
+ *   equality collation equality
  *   return: void
  *   lang_coll(in/out): collation
  */
@@ -1638,17 +1639,35 @@ lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
   assert (lang_coll != NULL);
 
   coll = &(lang_coll->coll);
-  lang_coll->byte_lockstep_like = false;
+  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_NONE;
 
-  if (lang_coll->codeset != INTL_CODESET_UTF8 || coll->uca_exp_num > 1 || coll->count_contr > 0 || coll->w_count <= 0
-      || coll->weights == NULL)
+  if (coll->uca_exp_num > 1 || coll->count_contr > 0)
     {
       return;
     }
 
-  if (lang_coll->strmatch != lang_strmatch_utf8)
+  if (lang_coll->codeset == INTL_CODESET_BINARY)
     {
-      /* the fast path mirrors lang_strmatch_utf8 () semantics only */
+      /* raw-byte matcher : no weight table involved */
+      if (lang_coll->strmatch == lang_strmatch_binary)
+	{
+	  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_BINARY;
+	}
+      return;
+    }
+
+  if (lang_coll->codeset == INTL_CODESET_KSC5601_EUC)
+    {
+      /* per-character memcmp matcher : no weight table involved */
+      if (lang_coll->strmatch == lang_strmatch_ko)
+	{
+	  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_EUCKR;
+	}
+      return;
+    }
+
+  if (coll->w_count <= 0 || coll->weights == NULL)
+    {
       return;
     }
 
@@ -1656,11 +1675,20 @@ lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
     {
       if (coll->weights[i] != (unsigned int) i)
 	{
+	  /* non-identity weights (e.g. case folding) : byte equality is not
+	   * collation equality */
 	  return;
 	}
     }
 
-  lang_coll->byte_lockstep_like = true;
+  if (lang_coll->codeset == INTL_CODESET_UTF8 && lang_coll->strmatch == lang_strmatch_utf8)
+    {
+      lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_UTF8;
+    }
+  else if (lang_coll->codeset == INTL_CODESET_ISO88591 && lang_coll->strmatch == lang_strmatch_byte)
+    {
+      lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_SB;
+    }
 }
 
 /*

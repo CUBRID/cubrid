@@ -5894,7 +5894,7 @@ db_string_fix_string_size (DB_VALUE * src_string)
   return error_status;
 }
 
-/* return codes of qstr_like_match_lockstep () */
+/* return codes of the qstr_like_match_lockstep_* () instances (like_match_lockstep.i) */
 #define QSTR_LIKE_LOCKSTEP_TRUE	      1
 #define QSTR_LIKE_LOCKSTEP_FALSE      0
 #define QSTR_LIKE_LOCKSTEP_ABORT      (-1)
@@ -5903,14 +5903,19 @@ db_string_fix_string_size (DB_VALUE * src_string)
 /* max recursion depth (one level per '%' group); deeper patterns fall back to the generic loop */
 #define QSTR_LIKE_LOCKSTEP_MAX_DEPTH  256
 
-/* byte equality under identity-weight UTF-8 collations; {0x00, 0x20} is the only
- * non-trivial equivalence class (lang_strmatch_utf8 () forces SPACE to weight zero) */
-#define QSTR_LIKE_BYTE_EQ(b1, b2) \
-  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
-
-/* advance one UTF-8 character with the same lead-byte length table as intl_nextchar_utf8 ();
- * a truncated last character makes remain negative, which callers treat as exhausted */
-#define QSTR_LIKE_NEXT_CHAR(p, remain) \
+/*
+ * UTF8 instance : identical behavior to the pre-template matcher (the body
+ * lived here before moving to like_match_lockstep.i).
+ * - BYTE_EQ : {0x00, 0x20} is the only non-trivial equivalence class
+ *   (lang_strmatch_utf8 () forces SPACE to weight zero)
+ * - NEXT_CHAR : same lead-byte length table as intl_nextchar_utf8 (); a
+ *   truncated last character leaves remain < 0
+ * - MEMCHR_OK : firstpat cannot be a continuation byte (0x80..0xBF), so every
+ *   memchr () hit is a character start; an invalid lead range keeps the
+ *   per-character walk
+ */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_utf8
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
   do \
     { \
       int nc_len_ = intl_Len_utf8_char[*(p)]; \
@@ -5927,201 +5932,152 @@ db_string_fix_string_size (DB_VALUE * src_string)
 	} \
     } \
   while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 || (firstpat) >= 0xC0)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
 
 /*
- * qstr_like_match_lockstep () - byte-lockstep LIKE matcher for identity-weight UTF-8 collations,
- *				 ported from PostgreSQL's UTF8_MatchText
- *   return: QSTR_LIKE_LOCKSTEP_TRUE / _FALSE / _ABORT (no target suffix can match) / _FALLBACK
+ * SB instance : single-byte codeset (iso88591) collations with identity
+ * weights; lang_strmatch_byte () folds SPACE to weight zero on both sides, so
+ * the {0x00, 0x20} class carries over and every byte is a character
+ */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_sb
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), LOCKSTEP_BYTE_EQ (*(t), (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/*
+ * BINARY instance : raw bytes; lang_strmatch_binary () compares bytes without
+ * any weight or space folding, so equality is pure ==; the trailing 0x20 pad
+ * rule comes from the generic driver's expr-exhausted branch
+ */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_binary
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      (p)++; \
+      (remain)--; \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) ((b1) == (b2))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) \
+  ((void) (patlen), (*(t) == (pat)[0]))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) return QSTR_LIKE_LOCKSTEP_FALSE
+#define LOCKSTEP_MEMCHR_OK(firstpat) (1)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
+#include "like_match_lockstep.i"
+
+/*
+ * EUCKR helpers : the zero-weight space class of lang_strmatch_ko () is
+ * {0x00, 0x20, 0xA1 0xA1} (the last is the EUC-KR full-width space).
+ * Character-boundary invariant: in valid EUC-KR every trail byte is in
+ * 0xA1..0xFE, so 0x00/0x20 can never appear inside a multi-byte character
+ * and a mid-character resync can only see a false A1A1 pair when the other
+ * side is not a space element (which returns FALSE, matching the generic
+ * matcher); only invalid byte sequences can diverge (documented scope).
  */
 static int
-qstr_like_match_lockstep (const unsigned char *t, int tlen, const unsigned char *p, int plen, int escape_byte,
-			  int depth)
+qstr_euckr_space_len (const unsigned char *s, int len)
 {
-  if (depth > QSTR_LIKE_LOCKSTEP_MAX_DEPTH)
+  if (len >= 1 && (s[0] == 0x00 || s[0] == 0x20))
     {
-      return QSTR_LIKE_LOCKSTEP_FALLBACK;
+      return 1;
     }
-
-  /* fast path for a match-everything pattern */
-  if (plen == 1 && *p == LIKE_WILDCARD_MATCH_MANY)
+  if (len >= 2 && s[0] == 0xA1 && s[1] == 0xA1)
     {
-      return QSTR_LIKE_LOCKSTEP_TRUE;
+      return 2;
     }
-
-  while (tlen > 0 && plen > 0)
-    {
-      if (*p == LIKE_WILDCARD_MATCH_MANY)
-	{
-	  unsigned char firstpat;
-
-	  /* collapse the wildcard run after '%' (N '_' plus '%'s == N '_' plus one '%'),
-	   * so the recursive scan below always starts at a regular or escaped literal */
-	  p++;
-	  plen--;
-	  while (plen > 0)
-	    {
-	      if (*p == LIKE_WILDCARD_MATCH_MANY)
-		{
-		  p++;
-		  plen--;
-		}
-	      else if (*p == LIKE_WILDCARD_MATCH_ONE)
-		{
-		  if (tlen <= 0)
-		    {
-		      return QSTR_LIKE_LOCKSTEP_ABORT;
-		    }
-		  QSTR_LIKE_NEXT_CHAR (t, tlen);
-		  if (tlen < 0)
-		    {
-		      /* truncated last character (invalid UTF-8) */
-		      return QSTR_LIKE_LOCKSTEP_FALSE;
-		    }
-		  p++;
-		  plen--;
-		}
-	      else
-		{
-		  break;
-		}
-	    }
-
-	  if (plen <= 0)
-	    {
-	      /* a trailing '%' matches all remaining target */
-	      return QSTR_LIKE_LOCKSTEP_TRUE;
-	    }
-
-	  /* scan for a target position at which the rest of the pattern can
-	   * match; candidate positions are pre-filtered with the first
-	   * literal pattern byte to avoid recursing more than necessary */
-	  if (escape_byte >= 0 && *p == escape_byte && plen >= 2)
-	    {
-	      firstpat = p[1];
-	    }
-	  else
-	    {
-	      firstpat = *p;
-	    }
-
-	  if (firstpat < 0x80 || firstpat >= 0xC0)
-	    {
-	      /* firstpat cannot be a continuation byte (0x80..0xBF), so every memchr () hit
-	       * is a character start : same candidate set as the per-character walk */
-	      while (tlen > 0)
-		{
-		  const unsigned char *hit = (const unsigned char *) memchr (t, firstpat, tlen);
-		  int matched;
-
-		  if (hit == NULL && firstpat != 0x00 && firstpat != 0x20)
-		    {
-		      break;
-		    }
-		  if (hit != NULL && (firstpat == 0x00 || firstpat == 0x20))
-		    {
-		      /* space and NUL match each other : take the earlier candidate */
-		      const unsigned char *hit2 =
-			(const unsigned char *) memchr (t, firstpat == 0x00 ? 0x20 : 0x00, CAST_BUFLEN (hit - t));
-		      if (hit2 != NULL)
-			{
-			  hit = hit2;
-			}
-		    }
-		  else if (hit == NULL)
-		    {
-		      /* firstpat is space or NUL : its class partner may still match */
-		      hit = (const unsigned char *) memchr (t, firstpat == 0x00 ? 0x20 : 0x00, tlen);
-		      if (hit == NULL)
-			{
-			  break;
-			}
-		    }
-
-		  tlen -= CAST_BUFLEN (hit - t);
-		  t = hit;
-
-		  matched = qstr_like_match_lockstep (t, tlen, p, plen, escape_byte, depth + 1);
-		  if (matched != QSTR_LIKE_LOCKSTEP_FALSE)
-		    {
-		      return matched;	/* _TRUE, _ABORT or _FALLBACK */
-		    }
-		  t++;
-		  tlen--;
-		}
-	    }
-	  else
-	    {
-	      /* invalid UTF-8 lead range : keep the per-character walk */
-	      while (tlen > 0)
-		{
-		  if (QSTR_LIKE_BYTE_EQ (*t, firstpat))
-		    {
-		      int matched = qstr_like_match_lockstep (t, tlen, p, plen, escape_byte, depth + 1);
-
-		      if (matched != QSTR_LIKE_LOCKSTEP_FALSE)
-			{
-			  return matched;	/* _TRUE, _ABORT or _FALLBACK */
-			}
-		    }
-		  QSTR_LIKE_NEXT_CHAR (t, tlen);
-		}
-	    }
-
-	  /* end of target with no match : no later position can match */
-	  return QSTR_LIKE_LOCKSTEP_ABORT;
-	}
-      else if (*p == LIKE_WILDCARD_MATCH_ONE)
-	{
-	  QSTR_LIKE_NEXT_CHAR (t, tlen);
-	  if (tlen < 0)
-	    {
-	      /* truncated last character (invalid UTF-8) */
-	      return QSTR_LIKE_LOCKSTEP_FALSE;
-	    }
-	  p++;
-	  plen--;
-	  continue;
-	}
-      else
-	{
-	  if (escape_byte >= 0 && *p == escape_byte && plen >= 2)
-	    {
-	      /* escaped pattern byte matches literally; a trailing escape stays a normal character */
-	      p++;
-	      plen--;
-	    }
-	  if (!QSTR_LIKE_BYTE_EQ (*p, *t))
-	    {
-	      return QSTR_LIKE_LOCKSTEP_FALSE;
-	    }
-	  t++;
-	  tlen--;
-	  p++;
-	  plen--;
-	}
-    }
-
-  if (tlen > 0)
-    {
-      /* pattern exhausted : the target still matches if only trailing spaces
-       * remain (same rule as the generic loop) */
-      assert (plen <= 0);
-      while (tlen > 0 && *t == 0x20)
-	{
-	  t++;
-	  tlen--;
-	}
-      return (tlen == 0) ? QSTR_LIKE_LOCKSTEP_TRUE : QSTR_LIKE_LOCKSTEP_FALSE;
-    }
-
-  /* target exhausted : match iff the remaining pattern is zero or more '%' */
-  while (plen > 0 && *p == LIKE_WILDCARD_MATCH_MANY)
-    {
-      p++;
-      plen--;
-    }
-  return (plen <= 0) ? QSTR_LIKE_LOCKSTEP_TRUE : QSTR_LIKE_LOCKSTEP_ABORT;
+  return 0;
 }
+
+/* '%'-scan candidate predicate : space-class pattern heads match any space
+ * form; ASCII heads match by byte; multi-byte heads need all bytes present
+ * and equal (a truncated side is false) */
+static int
+qstr_euckr_cand_eq (const unsigned char *t, int tlen, const unsigned char *pat, int patlen)
+{
+  int clen;
+
+  if (qstr_euckr_space_len (pat, patlen) > 0)
+    {
+      return qstr_euckr_space_len (t, tlen) > 0;
+    }
+  if (pat[0] < 0x80)
+    {
+      return t[0] == pat[0];
+    }
+  clen = (pat[0] == 0x8F) ? 3 : 2;
+  if (patlen < clen || tlen < clen)
+    {
+      return 0;
+    }
+  return memcmp (t, pat, clen) == 0;
+}
+
+/*
+ * EUCKR instance : mirrors lang_strmatch_ko () — per-character memcmp with the
+ * {0x00, 0x20, A1A1} zero class; the variable-length class member (A1A1) is
+ * handled by MISMATCH_RESYNC consuming one space element from each side
+ */
+#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_euckr
+#define LOCKSTEP_NEXT_CHAR(p, remain) \
+  do \
+    { \
+      int nc_len_ = (*(p) < 0x80) ? 1 : ((*(p) == 0x8F) ? 3 : 2); \
+      if (nc_len_ > (remain)) \
+	{ \
+	  (p) += (remain); \
+	  (remain) = -1; \
+	} \
+      else \
+	{ \
+	  (p) += nc_len_; \
+	  (remain) -= nc_len_; \
+	} \
+    } \
+  while (0)
+#define LOCKSTEP_BYTE_EQ(b1, b2) \
+  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
+#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) qstr_euckr_cand_eq ((t), (tlen), (pat), (patlen))
+#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) \
+  do \
+    { \
+      int t_sp_ = qstr_euckr_space_len ((t), (tlen)); \
+      int p_sp_ = qstr_euckr_space_len ((p), (plen)); \
+      if (t_sp_ > 0 && p_sp_ > 0) \
+	{ \
+	  (t) += t_sp_; \
+	  (tlen) -= t_sp_; \
+	  (p) += p_sp_; \
+	  (plen) -= p_sp_; \
+	} \
+      else \
+	{ \
+	  return QSTR_LIKE_LOCKSTEP_FALSE; \
+	} \
+    } \
+  while (0)
+#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 && (firstpat) != 0x00 && (firstpat) != 0x20)
+#define LOCKSTEP_TAIL_IS_PAD(t, tlen) \
+  ((*(t) == 0x20) ? 1 : (((tlen) >= 2 && (t)[0] == 0xA1 && (t)[1] == 0xA1) ? 2 : 0))
+#include "like_match_lockstep.i"
 
 /*
  * qstr_eval_like () -
@@ -6156,22 +6112,62 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
   current_collation = lang_get_collation (coll_id);
   intl_pad_char (codeset, pad_char, &pad_char_size);
 
-  /* byte-lockstep fast path for identity-weight UTF-8 collations; multi-byte escapes and
-   * escapes colliding with a wildcard change wildcard interpretation, so those fall through */
-  if (codeset == INTL_CODESET_UTF8 && current_collation->byte_lockstep_like
-      && (escape == NULL
-	  || ((unsigned char) *escape < 0x80 && *escape != LIKE_WILDCARD_MATCH_MANY
-	      && *escape != LIKE_WILDCARD_MATCH_ONE)))
+  /* byte-lockstep fast path dispatch; the kind<->codeset cross-guard keeps a mis-tagged
+   * collation on the generic loop. Multi-byte escapes and escapes colliding with a
+   * wildcard change wildcard interpretation, so those fall through as well */
+  if (escape == NULL
+      || ((unsigned char) *escape < 0x80 && *escape != LIKE_WILDCARD_MATCH_MANY && *escape != LIKE_WILDCARD_MATCH_ONE))
     {
-      int match = qstr_like_match_lockstep (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
-					    REINTERPRET_CAST (const unsigned char *, expr), expr_length,
-					    (escape != NULL) ? (int) (unsigned char) *escape : -1, 0);
+      int match = QSTR_LIKE_LOCKSTEP_FALLBACK;
+      int escape_byte = (escape != NULL) ? (int) (unsigned char) *escape : -1;
+
+      switch (current_collation->byte_lockstep_kind)
+	{
+	case LANG_LOCKSTEP_UTF8:
+	  if (codeset == INTL_CODESET_UTF8)
+	    {
+	      match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						     REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						     escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_SB:
+	  /* escape 0x00/0x20 stays on the generic loop : lang_strmatch_byte () folds
+	   * SPACE to weight zero before its escape comparison, so such an escape
+	   * never matches there */
+	  if (codeset == INTL_CODESET_ISO88591 && escape_byte != 0x00 && escape_byte != 0x20)
+	    {
+	      match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						   REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						   escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_BINARY:
+	  if (codeset == INTL_CODESET_BINARY)
+	    {
+	      match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						       REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						       escape_byte, 0);
+	    }
+	  break;
+	case LANG_LOCKSTEP_EUCKR:
+	  if (codeset == INTL_CODESET_KSC5601_EUC)
+	    {
+	      match = qstr_like_match_lockstep_euckr (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+						      REINTERPRET_CAST (const unsigned char *, expr), expr_length,
+						      escape_byte, 0);
+	    }
+	  break;
+	default:
+	  break;
+	}
 
       if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
 	{
 	  return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
 	}
-      /* pathologically deep pattern : fall through to the generic loop */
+      /* ineligible kind, kind/codeset mismatch or pathologically deep pattern :
+       * fall through to the generic loop */
     }
 
   tar_ptr = REINTERPRET_CAST (const unsigned char *, tar);
