@@ -170,6 +170,23 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
+const int REGU_VARIABLE_CONTAINS_ORDBYNUM = 0x2000;	/* this regu variable is a decode()/case-like TYPE_INARITH
+							 * node (T_DECODE) whose pred compares a nested ORDERBY_NUM(),
+							 * with plain TYPE_CONSTANT/TYPE_DBVAL leftptr/rightptr operands
+							 * (see qexec_ordbynum_expr_arith() in query_executor.c for the
+							 * exact supported shape). The value computed for it during the
+							 * initial (pre-sort) projection is meaningless, since ordbynum_val
+							 * is only known once the sort/TOP-N heap has determined each row's
+							 * final position. TYPE_CONSTANT leaves are captured while the scan
+							 * is still live (qexec_capture_ordbynum_expr_leaves()) and replayed
+							 * just before re-evaluating the whole expression once ordbynum_val
+							 * is correct (qexec_refresh_ordbynum_expr_leaves(), both in
+							 * query_executor.c). Currently only wired up for the TOP-N/LIMIT
+							 * heap plan (qexec_topn_tuples_to_list_id()); the general ORDER BY
+							 * sort path (qexec_ordby_put_next()) patches an already-packed,
+							 * fixed-size tuple in place and cannot safely accommodate a
+							 * differently-sized re-evaluated value, so this flag is
+							 * intentionally not acted on there. */
 
 class regu_variable_node
 {

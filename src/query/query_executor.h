@@ -138,7 +138,8 @@ extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node *
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
 extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd);
 extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
-					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
+					    QFILE_TUPLE_DESCRIPTOR * tpldescr, DB_VALUE * ordbynum_extra,
+					    int ordbynum_extra_cnt);
 extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 bool is_final, QFILE_LIST_ID * merged_results);
 #endif /* _QUERY_EXECUTOR_H_ */

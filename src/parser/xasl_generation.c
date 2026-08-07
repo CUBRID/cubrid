@@ -14338,6 +14338,51 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      else
 		{
 		  regu = pt_to_regu_variable (parser, col, unbox);
+
+		  if (regu != NULL)
+		    {
+		      /* col is not itself a bare ORDERBY_NUM() (handled above), but may still contain one
+		       * nested inside it (e.g. decode(orderby_num(), 1, x, y)); see
+		       * REGU_VARIABLE_CONTAINS_ORDBYNUM's definition for why that needs special handling at
+		       * execution time, and for exactly which shapes are currently supported -- this is a
+		       * deliberately narrow, conservative check: any shape it doesn't recognize is simply
+		       * left unflagged and behaves exactly as before (i.e. still wrong for nested
+		       * ORDERBY_NUM() under an explicit sort, but no worse or riskier than today). */
+		      bool has_ordbynum = false;
+
+		      (void) parser_walk_leaves (parser, col, pt_check_orderbynum_pre, NULL, pt_check_orderbynum_post,
+						 &has_ordbynum);
+		      if (has_ordbynum && regu->type == TYPE_INARITH && regu->value.arithptr->opcode == T_DECODE
+			  && regu->value.arithptr->thirdptr == NULL)
+			{
+			  ARITH_TYPE *decode_arith = regu->value.arithptr;
+			  REGU_VARIABLE *leaf;
+			  bool leaves_supported = true;
+			  int constant_leaf_cnt = 0;
+			  int i;
+
+			  for (i = 0; i < 2; i++)
+			    {
+			      leaf = (i == 0) ? decode_arith->leftptr : decode_arith->rightptr;
+			      if (leaf == NULL || (leaf->type != TYPE_DBVAL && leaf->type != TYPE_CONSTANT))
+				{
+				  /* some other, unrecognized leaf shape (e.g. a nested arith expression, an
+				   * attribute fetch, ...) -- decline rather than risk mishandling it */
+				  leaves_supported = false;
+				  break;
+				}
+			      if (leaf->type == TYPE_CONSTANT)
+				{
+				  constant_leaf_cnt++;
+				}
+			    }
+
+			  if (leaves_supported && constant_leaf_cnt > 0)
+			    {
+			      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_CONTAINS_ORDBYNUM);
+			    }
+			}
+		    }
 		}
 
 	      if (regu == NULL)
