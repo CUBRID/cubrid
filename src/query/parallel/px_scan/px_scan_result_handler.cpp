@@ -849,11 +849,8 @@ namespace parallel_scan
 	      {
 		if (tl.is_topn)
 		  {
-		    /* REGU_VARIABLE_CONTAINS_ORDBYNUM re-evaluation (see qexec_capture_ordbynum_expr_leaves () in
-		     * query_executor.c) is not wired up for the parallel scan path; pass no captured leaves so
-		     * this behaves exactly as it did before that feature existed. */
 		    TOPN_STATUS topn_status = qexec_add_tuple_to_topn (thread_p, tl.xasl->topn_items,
-					      &tl.writer_result_p->tpl_descr, NULL, 0);
+					      &tl.writer_result_p->tpl_descr);
 		    if (topn_status == TOPN_SUCCESS)
 		      {
 			return true;

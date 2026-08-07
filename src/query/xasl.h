@@ -1051,12 +1051,6 @@ struct topn_tuple
 {
   DB_VALUE *values;		/* tuple values */
   int values_size;		/* total size in bytes occupied by the objects stored in the values array */
-  DB_VALUE *ordbynum_expr_extra;	/* auxiliary values captured, while the scan producing this row was
-					 * still live, for REGU_VARIABLE_CONTAINS_ORDBYNUM expressions in the
-					 * output list (see qexec_capture_ordbynum_expr_leaves() in
-					 * query_executor.c); NULL if this query has no such expressions.
-					 * Allocated/freed the same way as `values`. */
-  int ordbynum_expr_extra_cnt;	/* number of valid entries in ordbynum_expr_extra; 0 when it is NULL */
 };
 
 struct partition_spec_node

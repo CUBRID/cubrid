@@ -326,10 +326,6 @@ struct analytic_state
   bool is_output_rec;
 };
 
-/* capacity of the per-row buffer used to capture REGU_VARIABLE_CONTAINS_ORDBYNUM leaves while the scan is
- * still live; see qexec_capture_ordbynum_expr_leaves (). */
-#define ORDBYNUM_EXPR_MAX_TOTAL 8
-
 /*
  * Information required for processing the ORDBY_NUM() function. See
  * qexec_eval_ordbynum_pred ().
@@ -442,11 +438,6 @@ static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
 					  bool is_final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
-static ARITH_TYPE *qexec_ordbynum_expr_arith (REGU_VARIABLE * regu);
-static int qexec_capture_ordbynum_expr_leaves (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, VAL_DESCR * vd,
-						DB_VALUE * extra, int *extra_cnt, int max_extra);
-static int qexec_refresh_ordbynum_expr_leaves (ARITH_TYPE * decode_arith, DB_VALUE * extra, int *extra_idx,
-						int extra_cnt);
 static int qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg);
 static int qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS option,
 				   XASL_STATE * xasl_state);
@@ -1138,9 +1129,6 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
   int ret = NO_ERROR;
   bool output_tuple = true;
-  DB_VALUE ordbynum_extra[ORDBYNUM_EXPR_MAX_TOTAL];
-  int ordbynum_extra_cnt = 0;
-  int i;
 
   if ((COMPOSITE_LOCK (xasl->scan_op_type) || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl))
       && !XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
@@ -1227,24 +1215,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	case QPROC_TPLDESCR_SUCCESS:
 	  if (xasl->topn_items != NULL)
 	    {
-	      if (qexec_capture_ordbynum_expr_leaves (thread_p, xasl->outptr_list, &xasl_state->vd, ordbynum_extra,
-						       &ordbynum_extra_cnt, ORDBYNUM_EXPR_MAX_TOTAL) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      topn_stauts =
-		qexec_add_tuple_to_topn (thread_p, xasl->topn_items, &xasl->list_id->tpl_descr, ordbynum_extra,
-					  ordbynum_extra_cnt);
-	      /* qexec_add_tuple_to_topn () / qexec_topn_tuple_set_ordbynum_extra () clone whatever they need to
-	       * keep from ordbynum_extra[] into their own storage, on every possible outcome (stored, rejected as
-	       * smaller than the current heap root, or overflowed); this local copy must be cleared here every
-	       * time regardless of topn_stauts, or it leaks one string allocation per scanned row (see
-	       * ORDBYNUM_EXPR_MAX_TOTAL / qexec_capture_ordbynum_expr_leaves ()). */
-	      for (i = 0; i < ordbynum_extra_cnt; i++)
-		{
-		  pr_clear_value (&ordbynum_extra[i]);
-		}
-	      ordbynum_extra_cnt = 0;
+	      topn_stauts = qexec_add_tuple_to_topn (thread_p, xasl->topn_items, &xasl->list_id->tpl_descr);
 	      if (topn_stauts == TOPN_SUCCESS)
 		{
 		  /* successfully added tuple */
@@ -3789,149 +3760,6 @@ qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info)
     }
 
   return ev_res;
-}
-
-/*
- * qexec_ordbynum_expr_arith () - if regu is a decode()-like TYPE_INARITH node flagged with
- *   REGU_VARIABLE_CONTAINS_ORDBYNUM, return its ARITH_TYPE; NULL otherwise. Defensive: the flag should
- *   only ever be set (by pt_to_outlist () in xasl_generation.c) on a node matching this exact shape, but
- *   re-verify at runtime rather than trust it blindly, since acting on a mismatched shape here would mean
- *   reading/writing the wrong union member.
- *   return: ARITH_TYPE * or NULL
- *   regu(in):
- */
-static ARITH_TYPE *
-qexec_ordbynum_expr_arith (REGU_VARIABLE * regu)
-{
-  if (regu == NULL || !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_CONTAINS_ORDBYNUM) || regu->type != TYPE_INARITH)
-    {
-      return NULL;
-    }
-
-  return regu->value.arithptr;
-}
-
-/*
- * qexec_capture_ordbynum_expr_leaves () - for every REGU_VARIABLE_CONTAINS_ORDBYNUM expression in
- *   outptr_list, evaluate and save its TYPE_CONSTANT leaves' current values into extra[], while the scan
- *   producing this row is still live (see REGU_VARIABLE_CONTAINS_ORDBYNUM's definition in regu_var.hpp
- *   for why this can't be safely deferred). extra[] is walked again, in the exact same order, by
- *   qexec_refresh_ordbynum_expr_leaves () once ordbynum_val is known to be correct for this row.
- *   return: NO_ERROR or error code
- *   thread_p(in):
- *   outptr_list(in): may be NULL
- *   vd(in):
- *   extra(out): caller-allocated array of size >= max_extra
- *   extra_cnt(out): number of entries written to extra[]
- *   max_extra(in): capacity of extra[]; additional leaves beyond this are silently left uncaptured, and
- *                  qexec_refresh_ordbynum_expr_leaves () will in turn leave them unrefreshed at finalize
- *                  time (fail safe: keeps whatever the initial, wrong evaluation produced, rather than
- *                  reading or writing out of bounds)
- */
-static int
-qexec_capture_ordbynum_expr_leaves (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, VAL_DESCR * vd,
-				     DB_VALUE * extra, int *extra_cnt, int max_extra)
-{
-  REGU_VARIABLE_LIST varp;
-  ARITH_TYPE *decode_arith;
-  REGU_VARIABLE *leaf;
-  DB_VALUE *peek_val;
-  int error, i;
-
-  *extra_cnt = 0;
-
-  if (outptr_list == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  for (varp = outptr_list->valptrp; varp != NULL; varp = varp->next)
-    {
-      decode_arith = qexec_ordbynum_expr_arith (&varp->value);
-      if (decode_arith == NULL)
-	{
-	  continue;
-	}
-
-      for (i = 0; i < 2; i++)
-	{
-	  leaf = (i == 0) ? decode_arith->leftptr : decode_arith->rightptr;
-	  if (leaf == NULL || leaf->type != TYPE_CONSTANT)
-	    {
-	      continue;
-	    }
-
-	  if (*extra_cnt >= max_extra)
-	    {
-	      continue;
-	    }
-
-	  error = fetch_peek_dbval (thread_p, leaf, vd, NULL, NULL, NULL, &peek_val);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-
-	  error = pr_clone_value (peek_val, &extra[*extra_cnt]);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  (*extra_cnt)++;
-	}
-    }
-
-  return NO_ERROR;
-}
-
-/*
- * qexec_refresh_ordbynum_expr_leaves () - counterpart to qexec_capture_ordbynum_expr_leaves (): replay the
- *   previously-captured TYPE_CONSTANT leaf values of one decode_arith node, consuming from extra[] starting
- *   at *extra_idx (a running index shared across all REGU_VARIABLE_CONTAINS_ORDBYNUM entries of the same
- *   outptr_list -- callers must walk that list in the same order it was captured in). After this call,
- *   decode_arith's leaves hold the values they had when this row was first scanned; decode_arith->pred
- *   (which compares ordbynum_val) is deliberately left untouched here, since by the time this runs
- *   ordbynum_val itself already holds this row's correct, final value (see the increment inside
- *   qexec_eval_ordbynum_pred ()) -- only the OTHER leaves need refreshing.
- *   return: NO_ERROR or error code
- *   decode_arith(in):
- *   extra(in):
- *   extra_idx(in/out):
- *   extra_cnt(in): total number of valid entries in extra[]; do not read past this
- */
-static int
-qexec_refresh_ordbynum_expr_leaves (ARITH_TYPE * decode_arith, DB_VALUE * extra, int *extra_idx, int extra_cnt)
-{
-  REGU_VARIABLE *leaf;
-  int i, error;
-
-  for (i = 0; i < 2; i++)
-    {
-      leaf = (i == 0) ? decode_arith->leftptr : decode_arith->rightptr;
-      if (leaf == NULL || leaf->type != TYPE_CONSTANT)
-	{
-	  continue;
-	}
-
-      if (*extra_idx >= extra_cnt)
-	{
-	  continue;
-	}
-
-      error = pr_clear_value (leaf->value.dbvalptr);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      error = pr_clone_value (&extra[*extra_idx], leaf->value.dbvalptr);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      (*extra_idx)++;
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -27212,75 +27040,18 @@ qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_LIST * sort_spec)
 }
 
 /*
- * qexec_topn_tuple_set_ordbynum_extra () - deep-copy ordbynum_extra[0..ordbynum_extra_cnt) into tpl's own
- *   ordbynum_expr_extra array, replacing (and freeing) whatever was there before. A no-op, leaving
- *   ordbynum_expr_extra NULL, when ordbynum_extra_cnt is 0 (the common case: this query has no
- *   REGU_VARIABLE_CONTAINS_ORDBYNUM expressions at all).
- *   return: NO_ERROR or error code
- *   thread_p(in):
- *   tpl(in/out):
- *   ordbynum_extra(in):
- *   ordbynum_extra_cnt(in):
- */
-static int
-qexec_topn_tuple_set_ordbynum_extra (THREAD_ENTRY * thread_p, TOPN_TUPLE * tpl, DB_VALUE * ordbynum_extra,
-				      int ordbynum_extra_cnt)
-{
-  int i, error;
-
-  if (tpl->ordbynum_expr_extra != NULL)
-    {
-      for (i = 0; i < tpl->ordbynum_expr_extra_cnt; i++)
-	{
-	  pr_clear_value (&tpl->ordbynum_expr_extra[i]);
-	}
-      db_private_free_and_init (thread_p, tpl->ordbynum_expr_extra);
-      tpl->ordbynum_expr_extra_cnt = 0;
-    }
-
-  if (ordbynum_extra_cnt <= 0)
-    {
-      return NO_ERROR;
-    }
-
-  tpl->ordbynum_expr_extra = (DB_VALUE *) db_private_alloc (thread_p, ordbynum_extra_cnt * sizeof (DB_VALUE));
-  if (tpl->ordbynum_expr_extra == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  for (i = 0; i < ordbynum_extra_cnt; i++)
-    {
-      error = pr_clone_value (&ordbynum_extra[i], &tpl->ordbynum_expr_extra[i]);
-      if (error != NO_ERROR)
-	{
-	  tpl->ordbynum_expr_extra_cnt = i;
-	  return error;
-	}
-    }
-  tpl->ordbynum_expr_extra_cnt = ordbynum_extra_cnt;
-
-  return NO_ERROR;
-}
-
-/*
  * qexec_add_tuple_to_topn () - add a new tuple to top-n tuples
  * return : TOPN_SUCCESS if tuple was successfully processed, TOPN_OVERFLOW if
  *	    the new tuple does not fit into memory or TOPN_FAILURE on error
  * thread_p (in)  :
  * topn_items (in): topn items
  * tpldescr (in)  : new tuple
- * ordbynum_extra (in) : REGU_VARIABLE_CONTAINS_ORDBYNUM leaves captured for this row by
- *                        qexec_capture_ordbynum_expr_leaves () while the scan was still live
- * ordbynum_extra_cnt (in) : number of valid entries in ordbynum_extra[]; 0 if this query has no such
- *                            expressions
  *
  * Note: We only add a tuple here if the top-n heap has fewer than n elements
  *  or if the new tuple can replace one of the existing tuples
  */
 TOPN_STATUS
-qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFILE_TUPLE_DESCRIPTOR * tpldescr,
-			  DB_VALUE * ordbynum_extra, int ordbynum_extra_cnt)
+qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFILE_TUPLE_DESCRIPTOR * tpldescr)
 {
   int error = NO_ERROR;
   BH_CMP_RESULT res = BH_EQ;
@@ -27308,11 +27079,6 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
       assert_release (tpl->values == NULL);
 
       error = qdata_tuple_to_values_array (thread_p, tpldescr, &tpl->values);
-      if (error != NO_ERROR)
-	{
-	  return TOPN_FAILURE;
-	}
-      error = qexec_topn_tuple_set_ordbynum_extra (thread_p, tpl, ordbynum_extra, ordbynum_extra_cnt);
       if (error != NO_ERROR)
 	{
 	  return TOPN_FAILURE;
@@ -27370,11 +27136,6 @@ qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items, QFIL
     {
       return TOPN_FAILURE;
     }
-  error = qexec_topn_tuple_set_ordbynum_extra (thread_p, heap_max, ordbynum_extra, ordbynum_extra_cnt);
-  if (error != NO_ERROR)
-    {
-      return TOPN_FAILURE;
-    }
 
   heap_max->values_size = tpldescr->tpl_size;
   topn_items->total_size += tpldescr->tpl_size;
@@ -27406,7 +27167,6 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
   REGU_VARIABLE_LIST varp = NULL;
   TOPN_TUPLE *tuple = NULL;
   int row = 0, i, value_size, values_count, error = NO_ERROR;
-  int extra_idx;
   ORDBYNUM_INFO ordby_info;
   DB_LOGICAL res = V_FALSE;
   bool use_xasl_list = (merged_results == NULL);
@@ -27475,7 +27235,6 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
       tpl_descr->tpl_size = QFILE_TUPLE_LENGTH_SIZE;
 
       tpl_descr->f_cnt = 0;
-      extra_idx = 0;
 
       for (varp = xasl->outptr_list->valptrp; varp != NULL; varp = varp->next)
 	{
@@ -27487,34 +27246,6 @@ qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_ST
 	  if (varp->value.type == TYPE_ORDERBY_NUM)
 	    {
 	      pr_clone_value (ordby_info.ordbynum_val, &tuple->values[tpl_descr->f_cnt]);
-	    }
-	  else
-	    {
-	      ARITH_TYPE *decode_arith = qexec_ordbynum_expr_arith (&varp->value);
-
-	      if (decode_arith != NULL)
-		{
-		  DB_VALUE *peek_val;
-
-		  /* ordby_info.ordbynum_val (just set above by qexec_eval_ordbynum_pred ()) already holds this
-		   * row's correct, final rank; refresh decode_arith's other leaves from what was captured while
-		   * the scan was still live, then re-evaluate the whole expression now that both are correct. */
-		  error = qexec_refresh_ordbynum_expr_leaves (decode_arith, tuple->ordbynum_expr_extra, &extra_idx,
-							       tuple->ordbynum_expr_extra_cnt);
-		  if (error != NO_ERROR)
-		    {
-		      goto cleanup;
-		    }
-
-		  error = fetch_peek_dbval (thread_p, &varp->value, &xasl_state->vd, NULL, NULL, NULL, &peek_val);
-		  if (error != NO_ERROR)
-		    {
-		      goto cleanup;
-		    }
-
-		  pr_clear_value (&tuple->values[tpl_descr->f_cnt]);
-		  pr_clone_value (peek_val, &tuple->values[tpl_descr->f_cnt]);
-		}
 	    }
 
 	  tpl_descr->f_valp[tpl_descr->f_cnt] = &tuple->values[tpl_descr->f_cnt];
@@ -27643,16 +27374,6 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
       db_private_free_and_init (thread_p, tuple->values);
     }
   tuple->values_size = 0;
-
-  if (tuple->ordbynum_expr_extra != NULL)
-    {
-      for (i = 0; i < tuple->ordbynum_expr_extra_cnt; i++)
-	{
-	  pr_clear_value (&tuple->ordbynum_expr_extra[i]);
-	}
-      db_private_free_and_init (thread_p, tuple->ordbynum_expr_extra);
-    }
-  tuple->ordbynum_expr_extra_cnt = 0;
 }
 
 /*
