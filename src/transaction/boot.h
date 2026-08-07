@@ -59,6 +59,11 @@
 	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 \
 	 || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
 
+#define BOOT_IS_LOADDB_CLIENT_TYPE(client_type) \
+        ((client_type) == DB_CLIENT_TYPE_LOADDB_UTILITY \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_2 \
+         || (client_type) == DB_CLIENT_TYPE_ADMIN_LOADDB_COMPAT_UNDER_11_4)
+
 #define BOOT_LOG_REPLICATOR_TYPE(client_type) \
         ((client_type) == DB_CLIENT_TYPE_LOG_COPIER \
          || (client_type) == DB_CLIENT_TYPE_LOG_APPLIER)
