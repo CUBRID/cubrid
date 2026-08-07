@@ -32,6 +32,7 @@
 #include <float.h>
 #include <assert.h>
 #include <math.h>
+#include <limits.h>
 
 #include "authenticate.h"
 #include "db_value_printer.hpp"
@@ -113,6 +114,15 @@ struct pt_string_block
   int size;
 };
 
+/* A fresh block owns no buffer; the first append allocates one.
+ * A failed append leaves a negative size, which makes later appends do nothing.
+ *
+ * The buffer is malloc'd and the parser context does not own it,
+ * so an arena OOM under jmp_env_active longjmps past the code that frees it.
+ * Nothing reclaims it: reaching here means the process is already out of memory,
+ * and what leaks is one statement's worth. */
+#define PT_STRING_BLOCK_INITIALIZER { NULL, 0, 0 }
+
 typedef struct pt_copy_cte_info PT_CTE_COPY_INFO;
 struct pt_copy_cte_info
 {
@@ -136,7 +146,9 @@ static PARSER_PRINT_NODE_FUNC *pt_print_f = NULL;
 static PARSER_APPLY_NODE_FUNC *pt_apply_f = NULL;
 PARSER_CONTEXT *parent_parser = NULL;
 
-static void strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail);
+static void strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail);
+static void pt_string_block_disable (PT_STRING_BLOCK * local_print_buf);
+static void pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length);
 static PT_NODE *pt_lambda_check_reduce_eq (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg,
 					   int *continue_walk);
 static PT_NODE *pt_lambda_node (PARSER_CONTEXT * parser, PT_NODE * tree_or_name, void *void_arg, int *continue_walk);
@@ -472,20 +484,87 @@ extern "C"
  *   tail(in):
  */
 static void
-strcat_with_realloc (PT_STRING_BLOCK * sb, const char *tail)
+strcat_with_realloc (PT_STRING_BLOCK * local_print_buf, const char *tail)
 {
-  char *cp = sb->body;
+  assert (local_print_buf != NULL);
+
+  pt_string_block_append_bytes (local_print_buf, tail, strlen (tail));
+}
+
+/*
+ * pt_string_block_disable () - give the buffer back and let nothing more into the block
+ *   return:
+ *   local_print_buf(in/out):
+ */
+static void
+pt_string_block_disable (PT_STRING_BLOCK * local_print_buf)
+{
+  assert (local_print_buf != NULL);
+
+  free_and_init (local_print_buf->body);
+  local_print_buf->size = -1;
+  local_print_buf->length = 0;
+}
+
+/*
+ * pt_string_block_append_bytes () - append to the local print buffer
+ *   return:
+ *   local_print_buf(in/out):
+ *   tail(in):
+ *   tail_length(in):
+ *
+ * A PARSER_VARCHAR accumulator grows in place only while it is the last string of its PARSER_STRING_BLOCK,
+ * and any other append copies the whole accumulator,
+ * so the printers build the text here first and hand it over in one append.
+ * realloc allocates when the body is NULL, so there is no separate allocation step.
+ */
+static void
+pt_string_block_append_bytes (PT_STRING_BLOCK * local_print_buf, const char *tail, int tail_length)
+{
+  size_t available, needed;
   int margin = 32;
 
-  if (sb->size - sb->length < strlen (tail) + margin)
+  assert (local_print_buf != NULL);
+  assert (tail != NULL);
+  assert (tail_length >= 0);
+
+  if (local_print_buf->size < 0)
     {
-      sb->size = (sb->size + strlen (tail) + margin) * 2;
-      sb->body = (char *) realloc (sb->body, sb->size);
-      cp = sb->body;
+      return;
     }
 
-  strcat (cp, tail);
-  sb->length = sb->length + strlen (tail);
+  available = (size_t) (local_print_buf->size - local_print_buf->length);
+  needed = (size_t) tail_length + margin;
+
+  if (available < needed)
+    {
+      /* size_t keeps the sum exact. The block measures itself in int, so a doubling
+       * that does not fit one is a failure rather than a wrapped, undersized buffer */
+      size_t new_size = ((size_t) local_print_buf->size + needed) * 2;
+      char *body;
+
+      if (new_size > INT_MAX)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+	  pt_string_block_disable (local_print_buf);
+	  return;
+	}
+
+      body = (char *) realloc (local_print_buf->body, new_size);
+      if (body == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, new_size);
+	  pt_string_block_disable (local_print_buf);
+	  return;
+	}
+
+      local_print_buf->body = body;
+      local_print_buf->size = (int) new_size;
+    }
+
+  memcpy (local_print_buf->body + local_print_buf->length, tail, tail_length);
+  local_print_buf->length = local_print_buf->length + tail_length;
+  local_print_buf->body[local_print_buf->length] = 0;
 }
 
 /*
@@ -2407,11 +2486,11 @@ PARSER_VARCHAR *
 pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 {
   PARSER_VARCHAR *q = 0, *r, *prev;
-  PT_STRING_BLOCK sb;
+  PT_STRING_BLOCK local_print_buf;
 
-  sb.body = NULL;
-  sb.length = 0;
-  sb.size = 1024;
+  local_print_buf.body = NULL;
+  local_print_buf.length = 0;
+  local_print_buf.size = 1024;
 
   if (!p)
     {
@@ -2425,16 +2504,16 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
       return prev;
     }
 
-  sb.body = (char *) malloc (sb.size);
-  if (sb.body == NULL)
+  local_print_buf.body = (char *) malloc (local_print_buf.size);
+  if (local_print_buf.body == NULL)
     {
       return NULL;
     }
 
-  sb.body[0] = 0;
+  local_print_buf.body[0] = 0;
   if (prev)
     {
-      strcat_with_realloc (&sb, (const char *) prev->bytes);
+      strcat_with_realloc (&local_print_buf, (const char *) prev->bytes);
     }
 
   while (p->next)
@@ -2445,25 +2524,26 @@ pt_print_bytes_l (PARSER_CONTEXT * parser, const PT_NODE * p)
 	{
 	  if (prev)
 	    {
-	      strcat_with_realloc (&sb, ", ");
+	      strcat_with_realloc (&local_print_buf, ", ");
 	    }
 
-	  strcat_with_realloc (&sb, (const char *) r->bytes);
+	  strcat_with_realloc (&local_print_buf, (const char *) r->bytes);
 	  prev = r;
 	}
-      if (0 < parser->max_print_len && parser->max_print_len < sb.length)
+      if (local_print_buf.size < 0	/* an append failed */
+	  || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
 	{
 	  /* to help early break */
 	  break;
 	}
     }
 
-  if (sb.length > 0)
+  if (local_print_buf.length > 0)
     {
-      q = pt_append_nulstring (parser, q, sb.body);
+      q = pt_append_nulstring (parser, q, local_print_buf.body);
     }
 
-  free (sb.body);
+  free (local_print_buf.body);
 
   return q;
 }
@@ -10065,7 +10145,7 @@ pt_init_expr (PT_NODE * p)
 }
 
 static void
-pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, PARSER_VARCHAR * lhs)
+pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * local_print_buf, PT_NODE * t, PARSER_VARCHAR * lhs)
 {
   const char *op1 = NULL, *op2 = NULL;
   PARSER_VARCHAR *rhs1 = NULL, *rhs2 = NULL;
@@ -10117,16 +10197,16 @@ pt_print_range_op (PARSER_CONTEXT * parser, PT_STRING_BLOCK * sb, PT_NODE * t, P
 
   if (lhs && rhs1)
     {
-      strcat_with_realloc (sb, (const char *) lhs->bytes);
-      strcat_with_realloc (sb, (char *) op1);
-      strcat_with_realloc (sb, (const char *) rhs1->bytes);
+      strcat_with_realloc (local_print_buf, (const char *) lhs->bytes);
+      strcat_with_realloc (local_print_buf, (char *) op1);
+      strcat_with_realloc (local_print_buf, (const char *) rhs1->bytes);
 
       if (rhs2)
 	{
-	  strcat_with_realloc (sb, " and ");
-	  strcat_with_realloc (sb, (const char *) lhs->bytes);
-	  strcat_with_realloc (sb, (char *) op2);
-	  strcat_with_realloc (sb, (const char *) rhs2->bytes);
+	  strcat_with_realloc (local_print_buf, " and ");
+	  strcat_with_realloc (local_print_buf, (const char *) lhs->bytes);
+	  strcat_with_realloc (local_print_buf, (char *) op2);
+	  strcat_with_realloc (local_print_buf, (const char *) rhs2->bytes);
 	}
     }
 }
@@ -12220,52 +12300,52 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
     case PT_RANGE:
       if (parser->custom_print & PT_CONVERT_RANGE)
 	{
-	  PT_STRING_BLOCK sb;
-	  sb.length = 0;
-	  sb.size = 1024;
-	  sb.body = NULL;
+	  PT_STRING_BLOCK local_print_buf;
+	  local_print_buf.length = 0;
+	  local_print_buf.size = 1024;
+	  local_print_buf.body = NULL;
 
-	  sb.body = (char *) malloc (sb.size);
-	  if (sb.body == NULL)
+	  local_print_buf.body = (char *) malloc (local_print_buf.size);
+	  if (local_print_buf.body == NULL)
 	    {
 	      return NULL;
 	    }
 
-	  sb.body[0] = 0;
+	  local_print_buf.body[0] = 0;
 
 	  r4 = pt_print_bytes (parser, p->info.expr.arg1);
 
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      strcat_with_realloc (&sb, "(");
+	      strcat_with_realloc (&local_print_buf, "(");
 	    }
 
 	  for (t = p->info.expr.arg2; t; t = t->or_next)
 	    {
 	      if (!p->info.expr.paren_type)
 		{
-		  strcat_with_realloc (&sb, "(");
+		  strcat_with_realloc (&local_print_buf, "(");
 		}
 
-	      pt_print_range_op (parser, &sb, t, r4);
+	      pt_print_range_op (parser, &local_print_buf, t, r4);
 
 	      if (!p->info.expr.paren_type)
 		{
-		  strcat_with_realloc (&sb, ")");
+		  strcat_with_realloc (&local_print_buf, ")");
 		}
 
 	      if (t->or_next)
 		{
-		  strcat_with_realloc (&sb, " or ");
+		  strcat_with_realloc (&local_print_buf, " or ");
 		}
 	    }
 	  if (p->info.expr.arg2 && p->info.expr.arg2->or_next)
 	    {
-	      strcat_with_realloc (&sb, ")");
+	      strcat_with_realloc (&local_print_buf, ")");
 	    }
 
-	  q = pt_append_nulstring (parser, q, sb.body);
-	  free (sb.body);
+	  q = pt_append_nulstring (parser, q, local_print_buf.body);
+	  free (local_print_buf.body);
 
 	  /* break case PT_RANGE */
 	  break;
@@ -13208,6 +13288,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *b = NULL, *r1, *r2;
   PT_NODE *crt_list = NULL;
   bool is_first_list = true, multiple_values_insert = false;
+  PT_STRING_BLOCK local_print_buf = PT_STRING_BLOCK_INITIALIZER;
 
   // TODO: [PL/CSQL] need refactoring
   unsigned int save_custom = parser->custom_print;
@@ -13310,7 +13391,7 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
     {
       if (!is_first_list)
 	{
-	  b = pt_append_nulstring (parser, b, ", ");
+	  strcat_with_realloc (&local_print_buf, ", ");
 	}
 
       switch (crt_list->info.node_list.list_type)
@@ -13318,20 +13399,23 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	case PT_IS_DEFAULT_VALUE:
 	  if (is_first_list && multiple_values_insert)
 	    {
-	      b = pt_append_nulstring (parser, b, "values ");
+	      strcat_with_realloc (&local_print_buf, "values ");
 	    }
-	  b = pt_append_nulstring (parser, b, "default values");
+	  strcat_with_realloc (&local_print_buf, "default values");
 	  break;
 
 	case PT_IS_VALUE:
 	  r1 = pt_print_bytes_l (parser, crt_list->info.node_list.list);
 	  if (is_first_list)
 	    {
-	      b = pt_append_nulstring (parser, b, "values ");
+	      strcat_with_realloc (&local_print_buf, "values ");
 	    }
-	  b = pt_append_nulstring (parser, b, "(");
-	  b = pt_append_varchar (parser, b, r1);
-	  b = pt_append_nulstring (parser, b, ")");
+	  strcat_with_realloc (&local_print_buf, "(");
+	  if (r1)
+	    {
+	      pt_string_block_append_bytes (&local_print_buf, (const char *) r1->bytes, r1->length);
+	    }
+	  strcat_with_realloc (&local_print_buf, ")");
 	  break;
 
 	case PT_IS_SUBQUERY:
@@ -13344,7 +13428,10 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 		ptr_subquery->info.query.is_subquery = (PT_MISC_TYPE) 0;
 	      }
 	    r1 = pt_print_bytes (parser, ptr_subquery);
-	    b = pt_append_varchar (parser, b, r1);
+	    if (r1)
+	      {
+		pt_string_block_append_bytes (&local_print_buf, (const char *) r1->bytes, r1->length);
+	      }
 	  }
 	  break;
 
@@ -13352,7 +13439,27 @@ pt_print_insert (PARSER_CONTEXT * parser, PT_NODE * p)
 	  assert (false);
 	  break;
 	}
+
+      if (local_print_buf.size < 0	/* an append failed */
+	  || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
+	{
+	  /* to help early break */
+	  break;
+	}
     }
+
+  if (local_print_buf.size < 0)
+    {
+      /* an append failed and freed the buffer; return NULL instead of a truncated statement */
+      return NULL;
+    }
+
+  if (local_print_buf.length > 0)
+    {
+      b = pt_append_bytes (parser, b, local_print_buf.body, local_print_buf.length);
+    }
+
+  pt_string_block_disable (&local_print_buf);
 
   if (p->info.insert.into_var)
     {
