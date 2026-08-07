@@ -15139,6 +15139,14 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 		  free_and_init (stream.xasl_id);
 		}
 	    }
+	  if (stream.xasl_header->xasl_flag & HV_PRED_PLAN_UNPEEKED)
+	    {
+	      /* the cached plan was chosen with unbound host-variable predicate markers; record it so
+	       * the first execution replans under the real values. The SQL-level PREPARE/EXECUTE
+	       * consumer of this header flag (do_get_prepared_statement_info ()) is never reached by
+	       * CCI/JDBC prepared statements, which arrive through this driver-neutral path. */
+	      statement->flag.hv_pred_plan_unpeeked = 1;
+	    }
 	}
     }
 
@@ -15155,6 +15163,11 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (contextp->xasl && statement->info.query.oids_included)
 	{
 	  contextp->xasl->header.xasl_flag |= RESULT_CACHE_INHIBITED;
+	}
+      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+	{
+	  /* freshly compiled with unbound host-variable markers (see the cache-hit branch above) */
+	  statement->flag.hv_pred_plan_unpeeked = 1;
 	}
       AU_RESTORE (au_save);
 

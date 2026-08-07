@@ -2172,7 +2172,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
   else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
-      if (db_is_bind_sensitive (statement) && PT_IS_QUERY (statement)
+      /* The first execution peek is driver-neutral: the plan carries HV_PRED_PLAN_UNPEEKED when it was
+       * chosen with unbound host-variable markers (recorded on the statement by do_prepare_select ()),
+       * and that first replan happens regardless of plan_cache_bind_sensitivity / the BIND_SENSITIVE
+       * hint -- exactly as the SQL-level PREPARE/EXECUTE path does. The parameter and the hint then
+       * control only whether a LATER value in different histogram territory replans again. Without
+       * this, CCI/JDBC prepared statements -- which never build a PT_EXECUTE_PREPARE node and so never
+       * reach the header-flag consumer in do_get_prepared_statement_info () -- would never price a
+       * `?` predicate with real values. */
+      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)) && PT_IS_QUERY (statement)
 	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
 	{
 	  UINT64 bind_fp = 0;
@@ -2194,6 +2202,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  return err;
 		}
 	      statement->info.query.bind_fp = bind_fp;
+	      /* the regenerated plan was chosen under real values, so the unpeeked contract is
+	       * satisfied; any further replan is up to the parameter / hint */
+	      statement->flag.hv_pred_plan_unpeeked = 0;
 	    }
 	}
 
