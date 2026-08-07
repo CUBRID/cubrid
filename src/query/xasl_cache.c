@@ -382,6 +382,11 @@ xcache_finalize (THREAD_ENTRY * thread_p)
   xcache_check_logging ();
   xcache_log ("finalize.\n");
 
+  if (xcache_Cleanup_array)
+    {
+      free_and_init (xcache_Cleanup_array);
+    }
+
   xcache_Hashmap.destroy ();
 
   /* Use global heap */
