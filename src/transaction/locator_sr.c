@@ -181,8 +181,17 @@ static int locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES
 						 FUNC_PRED_UNPACK_INFO * func_preds,
 						 LOCATOR_INDEX_ACTION_FLAG idx_action_flag, bool has_BU_lock,
 						 bool skip_checking_fk);
+static bool locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id);
 static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid,
-				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
+				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea,
+				      ATTR_ID * att_id, int n_att_id);
+static int locator_check_object_still_references (THREAD_ENTRY * thread_p, const ATTR_ID * attr_ids, int n_atts,
+					          DB_VALUE * key, const OID * oid, RECDES * recdes,
+					          HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references);
+static int locator_lock_and_get_fk_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid,
+					   RECDES * recdes, HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code,
+					   const ATTR_ID * attr_ids, int n_atts, DB_VALUE * key,
+					   HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -4007,6 +4016,41 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
 }
 
 /*
+ * locator_index_has_attr () - Check whether any of the given attributes is a column of the index.
+ *
+ * return: true if any attribute in att_id is a column of the index, or if att_id is "all" (NULL); false otherwise.
+ * index(in): the index to check
+ * att_id(in): array of attribute IDs to look for (NULL means "all")
+ * n_att_id(in): number of entries in att_id (0 means "all")
+ */
+static bool
+locator_index_has_attr (OR_INDEX * index, ATTR_ID * att_id, int n_att_id)
+{
+  int i, j;
+
+  assert (index != NULL);
+
+  if (att_id == NULL || n_att_id <= 0)
+    {
+      /* Conservative: full update or unknown attribute set. */
+      return true;
+    }
+
+  for (i = 0; i < index->n_atts; i++)	/* index columns */
+    {
+      for (j = 0; j < n_att_id; j++)	/* att_id entries */
+	{
+	  if (att_id[j] == index->atts[i]->id)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
  * locator_check_foreign_key () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4021,7 +4065,8 @@ locator_end_force_scan_cache (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cac
  */
 static int
 locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * inst_oid, RECDES * recdes,
-			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea)
+			   RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea, ATTR_ID * att_id,
+			   int n_att_id)
 {
   int num_found, i;
   HEAP_CACHE_ATTRINFO index_attrinfo;
@@ -4067,6 +4112,14 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
       index = &(index_attrinfo.last_classrepr->indexes[i]);
       if (index->type != BTREE_FOREIGN_KEY)
 	{
+	  continue;
+	}
+
+      if (!locator_index_has_attr (index, att_id, n_att_id))
+	{
+	  /* Because this update modifies none of this FK's referencing columns,
+	   * the child row still references the same, already-valid parent row: no re-check is needed.
+	   * (On the INSERT path att_id is NULL, so nothing is ever skipped.) */
 	  continue;
 	}
 
@@ -4143,7 +4196,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 		}
 	    }
 	  ret =
-	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, key_dbvalue, &part_oid, &unique_oid, true);
+	    xbtree_find_unique (thread_p, &local_btid, S_SELECT_FK_EXISTS, key_dbvalue, &part_oid, &unique_oid, true);
 	  if (ret == BTREE_KEY_NOTFOUND)
 	    {
 	      char *val_print = NULL;
@@ -4198,6 +4251,167 @@ error:
 }
 
 /*
+ * locator_lock_and_get_fk_object () - X_LOCK and fetch a row the FK index scan returned,
+ *                                     wait out a still-active inserter,
+ *                                     then re-check that it still references the searched key.
+ *
+ * return                 : NO_ERROR, or an error code if a fetch, the wait or the re-check failed.
+ * thread_p (in)          : Thread entry.
+ * oid (in)               : Candidate OID returned by the scan.
+ * class_oid (in)         : Class OID of the referencing class.
+ * recdes (out)           : Fetched record.
+ * scan_cache (in)        : Scan cache used for the fetches.
+ * scan_code (out)        : Fetch result; S_DOESNT_EXIST once the inserter rolled back.
+ * attr_ids (in)          : Attribute ids of the referencing columns, in index order.
+ * n_atts (in)            : Number of referencing columns.
+ * key (in)               : Parent key the scan searched for.
+ * fk_attrinfo (in/out)   : Attribute cache started on the referencing columns (attr_ids); it is read
+ *                          per candidate row, so the class's full cache would decode every column each time.
+ * still_references (out) : false once the row references some other key; the caller skips it.
+ *
+ * Note: the CASCADE/SET NULL scan reads dirty, so it can hand back a row whose inserter is still active.
+ *	 Appended rows take no per-row X-lock, so the X_LOCK here is granted at once;
+ *	 the wait is on the inserter's MVCCID instead.
+ */
+static int
+locator_lock_and_get_fk_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, RECDES * recdes,
+				HEAP_SCANCACHE * scan_cache, SCAN_CODE * scan_code, const ATTR_ID * attr_ids,
+				int n_atts, DB_VALUE * key, HEAP_CACHE_ATTRINFO * fk_attrinfo, bool * still_references)
+{
+  MVCC_REC_HEADER mvcc_header;
+  MVCCID insert_mvccid;
+  int error_code;
+
+  assert (oid != NULL && !OID_ISNULL (oid));
+  assert (class_oid != NULL && !OID_ISNULL (class_oid));
+  assert (recdes != NULL && scan_cache != NULL && scan_code != NULL);
+  assert (attr_ids != NULL && n_atts > 0);
+  assert (key != NULL && fk_attrinfo != NULL && still_references != NULL);
+
+  *still_references = true;
+
+  recdes->data = NULL;
+  *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY, NULL_CHN,
+					    LOG_ERROR_IF_DELETED);
+
+  while (*scan_code == S_SUCCESS)
+    {
+      if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      if (!MVCC_IS_FLAG_SET (&mvcc_header, OR_MVCC_FLAG_VALID_INSID))
+	{
+	  break;
+	}
+
+      insert_mvccid = MVCC_GET_INSID (&mvcc_header);
+      if (!logtb_is_active_other_tran (thread_p, insert_mvccid))
+	{
+	  break;
+	}
+
+      error_code = logtb_wait_for_tran_end (thread_p, insert_mvccid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      /* That transaction ended; the row is now either committed or gone.
+       * The record in hand predates the wait, so fetch again to see which. */
+      recdes->data = NULL;
+      *scan_code = locator_lock_and_get_object (thread_p, oid, class_oid, recdes, scan_cache, X_LOCK, COPY,
+						NULL_CHN, LOG_WARNING_IF_DELETED);
+    }
+
+  if (*scan_code != S_SUCCESS)
+    {
+      return NO_ERROR;
+    }
+
+  return locator_check_object_still_references (thread_p, attr_ids, n_atts, key, oid, recdes, fk_attrinfo,
+						still_references);
+}
+
+/*
+ * locator_check_object_still_references () - Does this child row still hold the key the scan searched for?
+ *
+ * return                 : NO_ERROR, or an error code if the row could not be read.
+ * thread_p (in)          : Thread entry.
+ * attr_ids (in)          : Attribute ids of the referencing columns, in index order.
+ * n_atts (in)            : Number of referencing columns.
+ * key (in)               : Parent key the scan searched for.
+ * oid (in)               : Child row the scan returned.
+ * recdes (in)            : Its record, as read after any wait.
+ * fk_attrinfo (in/out)   : Attribute cache started on the referencing columns.
+ * still_references (out) : false once the row references some other key.
+ *
+ * Note: an index entry outlives the row version that made it, so the scan can return a child
+ *	 whose reference a concurrent UPDATE has already changed -- and the wait above is what lets
+ *	 that UPDATE commit first. The entry is therefore not evidence; the row itself decides.
+ */
+static int
+locator_check_object_still_references (THREAD_ENTRY * thread_p, const ATTR_ID * attr_ids, int n_atts, DB_VALUE * key,
+				       const OID * oid, RECDES * recdes, HEAP_CACHE_ATTRINFO * fk_attrinfo,
+				       bool * still_references)
+{
+  DB_VALUE key_element;
+  DB_VALUE *row_value, *key_value;
+  int i;
+  int error_code;
+
+  assert (attr_ids != NULL && n_atts > 0);
+  assert (key != NULL);
+  assert (oid != NULL && !OID_ISNULL (oid));
+  assert (recdes != NULL && fk_attrinfo != NULL && still_references != NULL);
+
+  *still_references = true;
+
+  error_code = heap_attrinfo_read_dbvalues (thread_p, oid, recdes, fk_attrinfo);
+  if (error_code != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return error_code;
+    }
+
+  for (i = 0; i < n_atts; i++)
+    {
+      row_value = heap_attrinfo_access (attr_ids[i], fk_attrinfo);
+      if (row_value == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+
+      if (n_atts == 1)
+	{
+	  key_value = key;
+	}
+      else
+	{
+	  /* A multi-column key arrives as a midxkey whose components are in index order. */
+	  assert (DB_VALUE_DOMAIN_TYPE (key) == DB_TYPE_MIDXKEY);
+	  if (pr_midxkey_get_element_nocopy (db_get_midxkey (key), i, &key_element, NULL, NULL) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+	      return error_code;
+	    }
+	  key_value = &key_element;
+	}
+
+      if (tp_value_compare (row_value, key_value, 1, 1) != DB_EQ)
+	{
+	  *still_references = false;
+	  return NO_ERROR;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * locator_check_primary_key_delete () -
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -4219,12 +4433,18 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool is_upd_scan_init;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attrinfo;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
+
+  /* error3 releases both caches, and it is reachable before either is started. */
+  attr_info.num_values = -1;
+  fk_attrinfo.num_values = -1;
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT dirty_snapshot;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4232,12 +4452,10 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      error_code = er_errid ();
-      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-    }
+  /* Collect dirty: a visible-only scan would skip uncommitted children and orphan them.
+   * A child inserted later blocks on the parent's DELID in its own check, so none is missed here. */
+  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+  mvcc_snapshot = &dirty_snapshot;
 
   db_make_null (&null_value);
   db_make_null (&key_val_range.key1);
@@ -4261,8 +4479,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1, fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
-		  /* Unlock child object. */
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &found_oid, &fkref->self_oid, S_LOCK);
 		  goto error3;
 		}
 	    }
@@ -4412,6 +4628,14 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			  goto error1;
 			}
 
+		      /* Only the referencing columns: the re-check reads them per candidate row. */
+		      error_code =
+			heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error1;
+			}
+
 		      for (i = 0; i < attr_info.num_values; i++)
 			{
 			  value = &attr_info.values[i];
@@ -4428,11 +4652,17 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
-		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
+		  bool still_references = true;
 
-		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+		  error_code =
+		    locator_lock_and_get_fk_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						    &scan_code, attr_ids, index->n_atts, key, &fk_attrinfo,
+						    &still_references);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4451,6 +4681,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  if (!still_references)
+		    {
+		      /* Its reference changed while we waited, so this key's action has no claim on it. */
+		      continue;
 		    }
 
 		  if (fkref->del_action == SM_FOREIGN_KEY_CASCADE)
@@ -4526,6 +4762,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 		{
 		  heap_attrinfo_end (thread_p, &attr_info);
+		  heap_attrinfo_end (thread_p, &fk_attrinfo);
 		}
 	    }
 
@@ -4572,6 +4809,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attrinfo);
 
   goto end;
 }
@@ -4598,12 +4836,18 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool is_upd_scan_init;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attrinfo;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
+
+  /* error3 releases both caches, and it is reachable before either is started. */
+  attr_info.num_values = -1;
+  fk_attrinfo.num_values = -1;
   int k;
   int *keys_prefix_length = NULL;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
+  MVCC_SNAPSHOT dirty_snapshot;
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
@@ -4611,12 +4855,10 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
   oid_list.oidp = NULL;
 
-  mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
-  if (mvcc_snapshot == NULL)
-    {
-      error_code = er_errid ();
-      return (error_code == NO_ERROR ? ER_FAILED : error_code);
-    }
+  /* Collect dirty: a visible-only scan would skip uncommitted children and orphan them.
+   * A child inserted later blocks on the parent's DELID in its own check, so none is missed here. */
+  dirty_snapshot.snapshot_fnc = mvcc_satisfies_dirty;
+  mvcc_snapshot = &dirty_snapshot;
 
   db_make_null (&key_val_range.key1);
   db_make_null (&key_val_range.key2);
@@ -4639,8 +4881,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_RESTRICT, 1, fkref->fkname);
 		  error_code = ER_FK_RESTRICT;
-		  /* Unlock child object. */
-		  lock_unlock_object_donot_move_to_non2pl (thread_p, &found_oid, &fkref->self_oid, S_LOCK);
 		  goto error3;
 		}
 	    }
@@ -4777,17 +5017,30 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      goto error1;
 		    }
+
+		  /* Only the referencing columns: the re-check reads them per candidate row. */
+		  error_code = heap_attrinfo_start (thread_p, &fkref->self_oid, index->n_atts, attr_ids, &fk_attrinfo);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 		}
 
 	      for (i = 0; i < oid_cnt; i++)
 		{
 		  OID *oid_ptr = &(oid_list.oidp[i]);
 		  SCAN_CODE scan_code = S_SUCCESS;
-		  recdes.data = NULL;
-		  /* TO DO - handle reevaluation */
+		  bool still_references = true;
 
-		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
-							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED);
+		  error_code =
+		    locator_lock_and_get_fk_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
+						    &scan_code, attr_ids, index->n_atts, key, &fk_attrinfo,
+						    &still_references);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
+
 		  if (scan_code != S_SUCCESS)
 		    {
 		      if (scan_code == S_DOESNT_EXIST && er_errid () != ER_HEAP_UNKNOWN_OBJECT)
@@ -4805,6 +5058,12 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		      error_code = er_errid ();
 		      error_code = (error_code == NO_ERROR ? ER_FAILED : error_code);
 		      goto error1;
+		    }
+
+		  if (!still_references)
+		    {
+		      /* Its reference changed while we waited, so this key's action has no claim on it. */
+		      continue;
 		    }
 
 		  if ((error_code = heap_attrinfo_clear_dbvalues (&attr_info)) != NO_ERROR)
@@ -4860,6 +5119,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      heap_scancache_end_modify (thread_p, &scan_cache);
 	      heap_attrinfo_end (thread_p, &attr_info);
+	      heap_attrinfo_end (thread_p, &fk_attrinfo);
 	    }
 
 	  btree_scan_clear_key (&bt_scan);
@@ -4905,6 +5165,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attrinfo);
 
   goto end;
 }
@@ -5199,7 +5460,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	{
 	  error_code =
 	    locator_check_foreign_key (thread_p, &real_hfid, &real_class_oid, oid, recdes, &new_recdes, &is_cached,
-				       &cache_attr_copyarea);
+				       &cache_attr_copyarea, NULL, 0);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error1;
@@ -6011,7 +6272,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    {
 	      error_code =
 		locator_check_foreign_key (thread_p, hfid, class_oid, oid, recdes, &new_record, &is_cached,
-					   &cache_attr_copyarea);
+					   &cache_attr_copyarea, att_id, n_att_id);
 	      if (error_code != NO_ERROR)
 		{
 		  goto error;
@@ -7927,8 +8188,10 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	      CUBRID_IDX_INSERT_START (classname, index->btname);
 #endif /* ENABLE_SYSTEMTAP */
 
-	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk)
+	      if (index->type == BTREE_FOREIGN_KEY && !skip_checking_fk && mvcc_is_mvcc_disabled_class (class_oid))
 		{
+		  /* An MVCC row needs no lock here: the parent-side check waits on the inserter's MVCCID.
+		   * A non-MVCC row carries no MVCCID to wait on, so reserve it for that check to block on. */
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
 		      goto error;
@@ -13360,9 +13623,9 @@ locator_get_object (THREAD_ENTRY * thread_p, const OID * oid, OID * class_oid, R
  * class_oid (in)      : Class OID.
  * recdes (out)	       : Record descriptor.
  * scan_cache (in)     : Heap scan cache.
+ * lock (in)	       : Lock mode.
  * ispeeking (in)      : PEEK or COPY.
  * old_chn (in)	       : CHN of known record data.
- * mvcc_reev_data (in) : MVCC reevaluation data.
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning

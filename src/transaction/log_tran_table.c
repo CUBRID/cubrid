@@ -4098,8 +4098,8 @@ logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_i
 
 /*
  * logtb_self_lock_assigned_mvccid () - Best-effort self-lock of a just-assigned MVCCID -- the choke point every
- *					INSID producer passes, making "an observable INSID implies a held X
- *					self-lock" hold by construction.
+ *					INSID/DELID producer passes, making "an observable INSID or DELID implies
+ *					a held X self-lock" hold by construction.
  *
  *   thread_p(in): thread entry
  *   curr_mvcc_info(in/out): current MVCC info
@@ -4163,7 +4163,7 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
  *
  * Note: the error-propagating layer over the choke-point acquisition (logtb_self_lock_assigned_mvccid): a fast
  *	 no-op via the self_locked_mvccid hint when the choke point succeeded, otherwise re-tries and returns the
- *	 error so the caller can fail the statement before the INSID stamp becomes observable.
+ *	 error so the caller can fail the statement before the INSID or DELID stamp becomes observable.
  */
 int
 logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
@@ -4185,6 +4185,63 @@ logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
 #else /* SERVER_MODE */
   return NO_ERROR;
 #endif /* SERVER_MODE */
+}
+
+/*
+ * logtb_is_active_other_tran () - Is mvccid an in-progress operation by another transaction?
+ *
+ * return	 : true if some other transaction is still working under mvccid.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : Candidate MVCCID (e.g. BTREE_MVCC_INFO_INSID or BTREE_MVCC_INFO_DELID of the record).
+ *
+ * Note: guards the "wait for that transaction to end" paths. False when the id is invalid, is our own
+ *	 operation, or the transaction has already ended -- in those cases there is nothing to wait on.
+ */
+bool
+logtb_is_active_other_tran (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  return MVCCID_IS_NORMAL (mvccid) && !logtb_is_current_mvccid (thread_p, mvccid)
+    && log_Gl.mvcc_table.is_active (mvccid);
+}
+
+/*
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends: S_LOCK on the
+ *				self-lock logtb_ensure_mvccid_self_lock () holds, then release.
+ *
+ * return	 : NO_ERROR once that transaction has ended. An error if the lock failed, or if the
+ *		   self-lock invariant is breached (grant while the transaction is still active) --
+ *		   the wait was a no-op and waiting again cannot recover it, so fail the
+ *		   statement rather than spin.
+ * thread_p (in) : Thread entry.
+ * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
+ *
+ * Note: call with no page latch held.
+ */
+int
+logtb_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID mvccid)
+{
+  int error_code;
+
+  if (lock_transaction_mvccid (thread_p, mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      error_code = er_errid ();
+      if (error_code == NO_ERROR)
+	{
+	  error_code = ER_CANNOT_GET_LOCK;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
+	}
+      return error_code;
+    }
+  lock_unlock_transaction_mvccid (thread_p, mvccid, S_LOCK);
+
+  if (log_Gl.mvcc_table.is_active (mvccid))
+    {
+      /* Invariant breach: no-op grant while that transaction is still active. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
+      assert (false);
+      return ER_CANNOT_GET_LOCK;
+    }
+  return NO_ERROR;
 }
 
 /*

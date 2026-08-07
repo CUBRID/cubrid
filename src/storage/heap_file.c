@@ -23404,6 +23404,17 @@ heap_delete_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
     {
       is_mvcc_op = true;
     }
+
+  /* An MVCC delete's row may be seen DELETE_IN_PROGRESS by the lockless referential integrity checks,
+   * which wait on the deleter's MVCCID rather than a row lock, so take the same self-lock the insert path takes. */
+  if (is_mvcc_op)
+    {
+      rc = logtb_ensure_mvccid_self_lock (thread_p);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
 #else /* SERVER_MODE */
   is_mvcc_op = false;
 #endif /* SERVER_MODE */

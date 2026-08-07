@@ -6444,8 +6444,10 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   OID_SET_NULL (&find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
-  /* Use S_LOCK to block found object. */
-  find_fk_object.lock_mode = S_LOCK;
+  /* The referencing row is not reserved: a conflicting transaction is waited out on its MVCCID
+   * and the key is re-read, so no lock has to outlive the check.
+   * A non-MVCC row carries no MVCCID to wait on, so reserve it as before. */
+  find_fk_object.lock_mode = mvcc_is_mvcc_disabled_class (class_oid) ? S_LOCK : NULL_LOCK;
 #endif /* SERVER_MODE */
   /* Prepare scan. */
   BTREE_INIT_SCAN (&btree_scan);
@@ -6472,6 +6474,9 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   COPY_OID (found_oid, &find_fk_object.found_oid);
 
 #if defined (SERVER_MODE)
+  /* Safe guard: the lockless path must leave nothing locked. */
+  assert (find_fk_object.lock_mode != NULL_LOCK || OID_ISNULL (&find_fk_object.locked_object));
+
   if (error_code != NO_ERROR || OID_ISNULL (&find_fk_object.found_oid))
     {
       /* Release lock on object if any. */
@@ -24254,83 +24259,26 @@ btree_key_find_and_lock_unique (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB
 
 #if defined (SERVER_MODE)
 /*
- * btree_is_active_other_inserter () - Is insert_mvccid an in-progress insert by another transaction?
- *
- * return	      : true if some other transaction is still inserting under insert_mvccid.
- * thread_p (in)      : Thread entry.
- * insert_mvccid (in) : Candidate inserter MVCCID (e.g. BTREE_MVCC_INFO_INSID of the record).
- *
- * Note: guards the "wait for the inserter to end" paths. False when the id is invalid, is our own
- *	 insert, or the inserter has already ended -- in those cases there is nothing to wait on.
- */
-static bool
-btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
-{
-  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
-    && log_Gl.mvcc_table.is_active (insert_mvccid);
-}
-
-/*
- * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
- *				    S_LOCK on its MVCCID self-lock, then release.
- *
- * return	      : NO_ERROR once the inserter has ended. An error if the lock failed, or if the
- *			self-lock invariant is breached (grant while the inserter is still active) --
- *			the wait was a no-op and waiting again cannot recover it, so fail the
- *			statement rather than spin.
- * thread_p (in)      : Thread entry.
- * insert_mvccid (in) : MVCCID of the in-progress inserter to wait out.
- *
- * Note: call with no page latch held.
- */
-static int
-btree_wait_for_inserter_end (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
-{
-  int error_code;
-
-  if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
-    {
-      error_code = er_errid ();
-      if (error_code == NO_ERROR)
-	{
-	  error_code = ER_CANNOT_GET_LOCK;
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 0);
-	}
-      return error_code;
-    }
-  lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
-
-  if (log_Gl.mvcc_table.is_active (insert_mvccid))
-    {
-      /* Invariant breach: no-op grant while the inserter is still active. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CANNOT_GET_LOCK, 0);
-      assert (false);
-      return ER_CANNOT_GET_LOCK;
-    }
-  return NO_ERROR;
-}
-
-/*
- * btree_key_wait_for_insert_mvccid () - Wait for the transaction inserting a conflicting object to
- *					 end, then signal a restart from root.
+ * btree_key_wait_for_tran_end () - Wait for the writer working under the given MVCCID to end,
+ *				    then signal a restart from root.
  *
  * return	       : Error code (NO_ERROR on success, with *restart set to true).
  * thread_p (in)       : Thread entry.
- * insert_mvccid (in)  : MVCCID of the in-progress inserter to wait on.
+ * writer_mvccid (in)  : MVCCID of the in-progress inserter or deleter to wait on.
  * find_unique_helper (in/out) : Find-unique state; any object it has locked is released first.
  * leaf_page (in/out)  : Leaf node page latch; unfixed before suspending and left NULL.
  * overflow_page (in/out) : Optional overflow node page latch (..._of_non_unique () scans overflow pages);
  *			    unfixed before suspending and left NULL. NULL when there is no overflow page.
  * restart (out)       : Set to true so the caller re-reads the key from root.
  *
- * Note: shared by ..._of_unique () and ..._of_non_unique (); blocks on the inserter transaction
+ * Note: shared by ..._of_unique () and ..._of_non_unique (); blocks on that writer's MVCCID self-lock
  *	 (S_LOCK then release) since appended rows take no per-row X-lock, then restarts from root.
  *	 All page latches must be released before blocking on the lock (never wait while holding a latch).
  */
 static int
-btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
-				  BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
-				  PAGE_PTR * overflow_page, bool * restart)
+btree_key_wait_for_tran_end (THREAD_ENTRY * thread_p, MVCCID writer_mvccid,
+			     BTREE_FIND_UNIQUE_HELPER * find_unique_helper, PAGE_PTR * leaf_page,
+			     PAGE_PTR * overflow_page, bool * restart)
 {
   int error_code = NO_ERROR;
 
@@ -24348,13 +24296,13 @@ btree_key_wait_for_insert_mvccid (THREAD_ENTRY * thread_p, MVCCID insert_mvccid,
     }
   pgbuf_unfix_and_init (thread_p, *leaf_page);
 
-  error_code = btree_wait_for_inserter_end (thread_p, insert_mvccid);
+  error_code = logtb_wait_for_tran_end (thread_p, writer_mvccid);
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
 
-  /* Inserter has ended; the page may have changed during the wait, so re-read the key from root. */
+  /* That transaction has ended; the page may have changed during the wait, so re-read the key from root. */
   *restart = true;
   return NO_ERROR;
 }
@@ -24407,8 +24355,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
   PERF_UTIME_TRACKER_TIME (thread_p, &find_unique_helper->time_track, PSTAT_BT_TRAVERSE);
   PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &find_unique_helper->time_track, PSTAT_BT_FIND_UNIQUE_TRAVERSE);
 
-  /* Locking is required. */
-  assert (find_unique_helper->lock_mode >= S_LOCK);
+  /* Locking is required unless this is the lockless referential integrity check. */
+  assert (find_unique_helper->lock_mode >= S_LOCK || find_unique_helper->lock_mode == NULL_LOCK);
 
   /* Assume result is BTREE_KEY_NOTFOUND. It will be set to BTREE_KEY_FOUND if key is found and its first object is
    * successfully locked. */
@@ -24492,19 +24440,41 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    {
 	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
 	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, insert_mvccid))
 		{
-		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   NULL, restart);
+		  return btree_key_wait_for_tran_end (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+						      NULL, restart);
 		}
 	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
 	    }
+	  else if (satisfies_delete == DELETE_RECORD_DELETE_IN_PROGRESS
+		   && find_unique_helper->lock_mode == NULL_LOCK /* S_SELECT_FK_EXISTS */)
+	    {
+	      /* Conflicting object still being deleted: wait for that transaction to end, then restart. */
+	      MVCCID delete_mvccid = BTREE_MVCC_INFO_DELID (&mvcc_info);
+	      if (logtb_is_active_other_tran (thread_p, delete_mvccid))
+		{
+		  return btree_key_wait_for_tran_end (thread_p, delete_mvccid, find_unique_helper, leaf_page,
+						      NULL, restart);
+		}
+	      /* Deleter ended in the race: restart rather than consume the stale DELETE_IN_PROGRESS. */
+	      *restart = true;
+	      return NO_ERROR;
+	    }
 	  /* Object is being inserted/deleted. We need to lock and suspend until it's fate is decided. */
-	  assert (!lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
+	  assert (find_unique_helper->lock_mode == NULL_LOCK
+		  || !lock_has_lock_on_object (&unique_oid, &unique_class_oid, find_unique_helper->lock_mode));
 #endif /* SERVER_MODE */
 	  [[fallthrough]];
 	case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
+	  if (find_unique_helper->lock_mode == NULL_LOCK)
+	    {
+	      /* The object exists and no other transaction is changing it. Nothing to hold. */
+	      COPY_OID (&find_unique_helper->oid, &unique_oid);
+	      find_unique_helper->found_object = true;
+	      return NO_ERROR;
+	    }
 	  /* Must lock object. */
 	  if (!OID_ISNULL (&find_unique_helper->locked_oid))
 	    {
@@ -24815,10 +24785,10 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	    {
 	      /* Conflicting object still being inserted: wait for that transaction to end, then restart. */
 	      MVCCID insert_mvccid = BTREE_MVCC_INFO_INSID (&mvcc_info);
-	      if (btree_is_active_other_inserter (thread_p, insert_mvccid))
+	      if (logtb_is_active_other_tran (thread_p, insert_mvccid))
 		{
-		  return btree_key_wait_for_insert_mvccid (thread_p, insert_mvccid, find_unique_helper, leaf_page,
-							   &overflow_page, restart);
+		  return btree_key_wait_for_tran_end (thread_p, insert_mvccid, find_unique_helper, leaf_page,
+						      &overflow_page, restart);
 		}
 	      /* No active inserter (e.g. our own in-progress insert) -- fall through to the row-lock path. */
 	    }
@@ -25420,7 +25390,7 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
   /* Assert expected arguments. */
   assert (btid != NULL);
   assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK || scan_op_type == S_DELETE
-	  || scan_op_type == S_UPDATE);
+	  || scan_op_type == S_UPDATE || scan_op_type == S_SELECT_FK_EXISTS);
   assert (class_oid != NULL && !OID_ISNULL (class_oid));
   assert (oid != NULL);
 
@@ -25443,7 +25413,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
 #if defined (SERVER_MODE)
   /* Make sure transaction has intention lock on table. */
-  class_lock = (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK) ? IS_LOCK : IX_LOCK;
+  class_lock = (scan_op_type == S_SELECT || scan_op_type == S_SELECT_WITH_LOCK
+		|| scan_op_type == S_SELECT_FK_EXISTS) ? IS_LOCK : IX_LOCK;
   lock_result = lock_object (thread_p, class_oid, oid_Root_class_oid, class_lock, LK_UNCOND_LOCK);
   if (lock_result != LK_GRANTED)
     {
@@ -25484,6 +25455,22 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 	      scan_op_type = S_SELECT_WITH_LOCK;
 	    }
 	}
+    }
+  else if (scan_op_type == S_SELECT_FK_EXISTS)
+    {
+      if (mvcc_is_mvcc_disabled_class (class_oid))
+	{
+	  /* A non-MVCC row carries no MVCCID to wait on, so reserve the referenced row as before. */
+	  scan_op_type = S_SELECT_WITH_LOCK;
+	  find_unique_helper.lock_mode = S_LOCK;
+	}
+      else
+	{
+	  /* The referenced row is not reserved: a conflicting transaction is waited out on its MVCCID
+	   * and the key is re-read, so no lock has to outlive the check. */
+	  find_unique_helper.lock_mode = NULL_LOCK;
+	}
+      key_function = btree_key_find_and_lock_unique;
     }
   else
     {
@@ -25549,8 +25536,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
     }
 
 #if defined (SERVER_MODE)
-  /* Safe guard: if op is S_SELECT, nothing should be locked. */
-  assert (scan_op_type != S_SELECT || OID_ISNULL (&find_unique_helper.locked_oid));
+  /* Safe guard: the ops that take no lock must leave nothing locked. */
+  assert ((scan_op_type != S_SELECT && scan_op_type != S_SELECT_FK_EXISTS)
+	  || OID_ISNULL (&find_unique_helper.locked_oid));
 #endif /* SERVER_MODE */
 
   if (find_unique_helper.found_object)
@@ -25562,7 +25550,8 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
 #if defined (SERVER_MODE)
       /* Safe guard: object is supposed to be locked. */
-      assert (scan_op_type == S_SELECT || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
+      assert (scan_op_type == S_SELECT || scan_op_type == S_SELECT_FK_EXISTS
+	      || lock_has_lock_on_object (oid, class_oid, find_unique_helper.lock_mode) > 0);
 #endif /* SERVER_MODE */
 
       return BTREE_KEY_FOUND;
@@ -27400,9 +27389,9 @@ btree_range_scan_find_fk_any_object (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
  * find_fk_obj (in/out): FK-find state; any object it has locked is released.
  * class_oid (in)      : Class OID of the locked object.
  *
- * Note: shared by the INSERT_IN_PROGRESS and DELETE_IN_PROGRESS paths of btree_fk_object_does_exist ();
- *       both must drop all latches before blocking on the conflicting transaction. The two paths differ
- *       only in how they then wait (transaction self-lock vs. object lock), which stays at the call site.
+ * Note: shared by the INSERT_IN_PROGRESS, DELETE_IN_PROGRESS and object-lock paths of btree_fk_object_does_exist ();
+ *       each must drop all latches before blocking on the conflicting transaction. How each path then waits
+ *       (transaction self-lock vs. object lock) stays at the call site.
  */
 static void
 btree_fk_release_pages_and_locks (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_FK_EXIST_ARG * fk_arg,
@@ -27479,7 +27468,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	MVCCID fk_insert_mvccid = BTREE_MVCC_INFO_INSID (mvcc_info);
 	int fk_wait_error;
 
-	if (!btree_is_active_other_inserter (thread_p, fk_insert_mvccid))
+	if (!logtb_is_active_other_tran (thread_p, fk_insert_mvccid))
 	  {
 	    /* Inserter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
 	     * INSERT_IN_PROGRESS as "not found" (mirrors the unique-scan recheck). */
@@ -27491,7 +27480,7 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
 	 * latches and any locked object, then wait out the inserter. */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
-	fk_wait_error = btree_wait_for_inserter_end (thread_p, fk_insert_mvccid);
+	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_insert_mvccid);
 	if (fk_wait_error != NO_ERROR)
 	  {
 	    return fk_wait_error;
@@ -27509,9 +27498,33 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* Object is being deleted by an active transaction. We have to wait for that transaction to commit. Fall through
-       * to suspend. */
-      break;
+      /* Referenced row still being deleted. */
+      {
+	MVCCID fk_delete_mvccid = BTREE_MVCC_INFO_DELID (mvcc_info);
+	int fk_wait_error;
+
+	if (!logtb_is_active_other_tran (thread_p, fk_delete_mvccid))
+	  {
+	    /* Deleter ended in the race since mvcc_satisfies_delete: re-read the key rather than consume the stale
+	     * DELETE_IN_PROGRESS as a live reference (mirrors the INSERT_IN_PROGRESS recheck above). */
+	    btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	    *stop = true;
+	    return NO_ERROR;
+	  }
+
+	/* Wait for that transaction to end before deciding whether the FK reference holds: release all page
+	 * latches and any locked object, then wait out the deleter. */
+	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
+	fk_wait_error = logtb_wait_for_tran_end (thread_p, fk_delete_mvccid);
+	if (fk_wait_error != NO_ERROR)
+	  {
+	    return fk_wait_error;
+	  }
+
+	/* Deleter ended; trigger re-check. */
+	*stop = true;
+	return NO_ERROR;
+      }
 #else	/* !SERVER_MODE */		   /* SA_MODE */
       /* Impossible: no other active transactions. */
       assert_release (false);
@@ -27520,6 +27533,14 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
 
     case DELETE_RECORD_CAN_DELETE:
 #if defined (SERVER_MODE)
+      if (find_fk_obj->lock_mode == NULL_LOCK)
+	{
+	  /* The object exists and no other transaction is changing it. Nothing to hold. */
+	  COPY_OID (&find_fk_obj->found_oid, oid);
+	  bts->end_scan = true;
+	  *stop = true;
+	  return NO_ERROR;
+	}
       /* Try conditional lock */
       /* Make sure there is no other object already locked. */
       if (!OID_ISNULL (&find_fk_obj->locked_object))
