@@ -11594,6 +11594,74 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
       goto exit_on_error;
     }
 
+  /* Hand over a value whose type already matches the column domain by struct copy,
+   * skipping the domain check, the domain init and the setval dispatch,
+   * which repeat the same verdict for every row of a multi-row INSERT.
+   * The slow path below passes strings by reference as well (setval with copy == false),
+   * so the shallow copy does not change ownership.
+   * CHAR needs pad semantics and set/LOB types need real cloning -- slow path. */
+  if (!DB_IS_NULL (attr_val))
+    {
+      TP_DOMAIN *domain = value->last_attrepr->domain;
+      DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (attr_val);
+
+      if (src_type == TP_DOMAIN_TYPE (domain))
+	{
+	  bool use_fast_path = false;
+
+	  switch (src_type)
+	    {
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_FLOAT:
+	    case DB_TYPE_DOUBLE:
+	      use_fast_path = true;
+	      break;
+	    case DB_TYPE_VARCHAR:
+	      /* Precision counts characters. Byte size settles it whenever it already fits,
+	       * which covers a single-byte codeset and anything with room to spare;
+	       * only a multi-byte value that fills the column needs the character count,
+	       * and that is a value the generic path would count as well. */
+	      if (attr_val->data.ch.info.is_max_string == false
+		  && db_get_string_codeset (attr_val) == TP_DOMAIN_CODESET (domain)
+		  && db_get_string_collation (attr_val) == TP_DOMAIN_COLLATION (domain)
+		  && (db_get_string_size (attr_val) <= domain->precision
+		      || db_get_string_length (attr_val) <= domain->precision))
+		{
+		  use_fast_path = true;
+		}
+	      break;
+	    default:
+	      break;
+	    }
+
+	  if (use_fast_path)
+	    {
+	      ret = pr_clear_value (&value->dbvalue);
+	      if (ret != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      value->dbvalue = *attr_val;
+	      value->dbvalue.need_clear = false;
+	      if (src_type == DB_TYPE_VARCHAR)
+		{
+		  value->dbvalue.data.ch.info.compressed_need_clear = false;
+		  /* The generic path coerces into the column domain, so the value it leaves
+		   * carries the column's precision. Carry it here too, or the same column
+		   * would hold values whose precision depends on which path set them. */
+		  value->dbvalue.domain.char_info.length = domain->precision;
+		}
+
+	      value->state = HEAP_WRITTEN_ATTRVALUE;
+
+	      return NO_ERROR;
+	    }
+	}
+    }
+
   pr_type = pr_type_from_id (value->last_attrepr->type);
   if (pr_type == NULL)
     {
