@@ -1045,13 +1045,6 @@ struct topn_tuples
   int values_count;		/* number of values in a tuple */
   UINT64 total_size;		/* size in bytes of stored tuples */
   UINT64 max_size;		/* maximum size which tuples may occupy */
-  DB_VALUE *ordbynum_expr_buf;	/* reusable per-row scratch buffer for REGU_VARIABLE_CONTAINS_ORDBYNUM leaf
-					 * capture (see qexec_capture_ordbynum_expr_leaves() in query_executor.c);
-					 * sized exactly to ordbynum_expr_leaf_cnt below, allocated once in
-					 * qexec_setup_topn_proc(); NULL when ordbynum_expr_leaf_cnt is 0 */
-  int ordbynum_expr_leaf_cnt;	/* total number of capturable TYPE_CONSTANT leaves across every
-				 * REGU_VARIABLE_CONTAINS_ORDBYNUM expression in outptr_list; computed once in
-				 * qexec_setup_topn_proc() so ordbynum_expr_buf is never undersized */
 };
 
 struct topn_tuple

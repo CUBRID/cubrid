@@ -326,6 +326,10 @@ struct analytic_state
   bool is_output_rec;
 };
 
+/* capacity of the per-row buffer used to capture REGU_VARIABLE_CONTAINS_ORDBYNUM leaves while the scan is
+ * still live; see qexec_capture_ordbynum_expr_leaves (). */
+#define ORDBYNUM_EXPR_MAX_TOTAL 8
+
 /*
  * Information required for processing the ORDBY_NUM() function. See
  * qexec_eval_ordbynum_pred ().
@@ -439,7 +443,6 @@ static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * x
 					  bool is_final);
 static DB_LOGICAL qexec_eval_ordbynum_pred (THREAD_ENTRY * thread_p, ORDBYNUM_INFO * ordby_info);
 static ARITH_TYPE *qexec_ordbynum_expr_arith (REGU_VARIABLE * regu);
-static int qexec_count_ordbynum_expr_leaves (OUTPTR_LIST * outptr_list);
 static int qexec_capture_ordbynum_expr_leaves (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, VAL_DESCR * vd,
 						DB_VALUE * extra, int *extra_cnt, int max_extra);
 static int qexec_refresh_ordbynum_expr_leaves (ARITH_TYPE * decode_arith, DB_VALUE * extra, int *extra_idx,
@@ -1135,6 +1138,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
   TOPN_STATUS topn_stauts = TOPN_SUCCESS;
   int ret = NO_ERROR;
   bool output_tuple = true;
+  DB_VALUE ordbynum_extra[ORDBYNUM_EXPR_MAX_TOTAL];
   int ordbynum_extra_cnt = 0;
   int i;
 
@@ -1223,24 +1227,22 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	case QPROC_TPLDESCR_SUCCESS:
 	  if (xasl->topn_items != NULL)
 	    {
-	      if (qexec_capture_ordbynum_expr_leaves (thread_p, xasl->outptr_list, &xasl_state->vd,
-						       xasl->topn_items->ordbynum_expr_buf, &ordbynum_extra_cnt,
-						       xasl->topn_items->ordbynum_expr_leaf_cnt) != NO_ERROR)
+	      if (qexec_capture_ordbynum_expr_leaves (thread_p, xasl->outptr_list, &xasl_state->vd, ordbynum_extra,
+						       &ordbynum_extra_cnt, ORDBYNUM_EXPR_MAX_TOTAL) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 	      topn_stauts =
-		qexec_add_tuple_to_topn (thread_p, xasl->topn_items, &xasl->list_id->tpl_descr,
-					  xasl->topn_items->ordbynum_expr_buf, ordbynum_extra_cnt);
+		qexec_add_tuple_to_topn (thread_p, xasl->topn_items, &xasl->list_id->tpl_descr, ordbynum_extra,
+					  ordbynum_extra_cnt);
 	      /* qexec_add_tuple_to_topn () / qexec_topn_tuple_set_ordbynum_extra () clone whatever they need to
-	       * keep from ordbynum_expr_buf[] into their own storage, on every possible outcome (stored,
-	       * rejected as smaller than the current heap root, or overflowed); this scratch buffer (sized
-	       * once in qexec_setup_topn_proc (), reused every row) must be cleared here every time regardless
-	       * of topn_stauts, or it leaks one allocation per scanned row (see
-	       * qexec_capture_ordbynum_expr_leaves ()). */
+	       * keep from ordbynum_extra[] into their own storage, on every possible outcome (stored, rejected as
+	       * smaller than the current heap root, or overflowed); this local copy must be cleared here every
+	       * time regardless of topn_stauts, or it leaks one string allocation per scanned row (see
+	       * ORDBYNUM_EXPR_MAX_TOTAL / qexec_capture_ordbynum_expr_leaves ()). */
 	      for (i = 0; i < ordbynum_extra_cnt; i++)
 		{
-		  pr_clear_value (&xasl->topn_items->ordbynum_expr_buf[i]);
+		  pr_clear_value (&ordbynum_extra[i]);
 		}
 	      ordbynum_extra_cnt = 0;
 	      if (topn_stauts == TOPN_SUCCESS)
@@ -2878,11 +2880,6 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 	      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
 	    }
 
-	  if (xasl->topn_items->ordbynum_expr_buf != NULL)
-	    {
-	      db_private_free_and_init (thread_p, xasl->topn_items->ordbynum_expr_buf);
-	    }
-
 	  db_private_free_and_init (thread_p, xasl->topn_items);
 	}
 
@@ -3106,11 +3103,6 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 	  if (xasl->topn_items->tuples != NULL)
 	    {
 	      db_private_free_and_init (thread_p, xasl->topn_items->tuples);
-	    }
-
-	  if (xasl->topn_items->ordbynum_expr_buf != NULL)
-	    {
-	      db_private_free_and_init (thread_p, xasl->topn_items->ordbynum_expr_buf);
 	    }
 
 	  db_private_free_and_init (thread_p, xasl->topn_items);
@@ -3820,50 +3812,6 @@ qexec_ordbynum_expr_arith (REGU_VARIABLE * regu)
 }
 
 /*
- * qexec_count_ordbynum_expr_leaves () - count the total number of capturable TYPE_CONSTANT leaves across
- *   every REGU_VARIABLE_CONTAINS_ORDBYNUM expression in outptr_list. outptr_list is fixed for the lifetime
- *   of a query (compiled once at XASL-generation time), so this is computed once in qexec_setup_topn_proc ()
- *   to size the ordbynum_expr_buf scratch buffer exactly, instead of guessing at a fixed capacity that a
- *   select list with enough flagged expressions could silently overflow (see qexec_capture_ordbynum_expr_
- *   leaves ()'s max_extra parameter).
- *   return: leaf count (>= 0)
- *   outptr_list(in): may be NULL
- */
-static int
-qexec_count_ordbynum_expr_leaves (OUTPTR_LIST * outptr_list)
-{
-  REGU_VARIABLE_LIST varp;
-  ARITH_TYPE *decode_arith;
-  REGU_VARIABLE *leaf;
-  int cnt = 0, i;
-
-  if (outptr_list == NULL)
-    {
-      return 0;
-    }
-
-  for (varp = outptr_list->valptrp; varp != NULL; varp = varp->next)
-    {
-      decode_arith = qexec_ordbynum_expr_arith (&varp->value);
-      if (decode_arith == NULL)
-	{
-	  continue;
-	}
-
-      for (i = 0; i < 2; i++)
-	{
-	  leaf = (i == 0) ? decode_arith->leftptr : decode_arith->rightptr;
-	  if (leaf != NULL && leaf->type == TYPE_CONSTANT)
-	    {
-	      cnt++;
-	    }
-	}
-    }
-
-  return cnt;
-}
-
-/*
  * qexec_capture_ordbynum_expr_leaves () - for every REGU_VARIABLE_CONTAINS_ORDBYNUM expression in
  *   outptr_list, evaluate and save its TYPE_CONSTANT leaves' current values into extra[], while the scan
  *   producing this row is still live (see REGU_VARIABLE_CONTAINS_ORDBYNUM's definition in regu_var.hpp
@@ -3873,12 +3821,12 @@ qexec_count_ordbynum_expr_leaves (OUTPTR_LIST * outptr_list)
  *   thread_p(in):
  *   outptr_list(in): may be NULL
  *   vd(in):
- *   extra(out): caller-allocated array of size >= max_extra; on error, any entries already written by this
- *               call are cleared again before returning, so the caller never needs to inspect *extra_cnt
- *               to know what to clean up on failure
- *   extra_cnt(out): number of entries written to extra[]; reset to 0 before returning on error
- *   max_extra(in): capacity of extra[]; callers size this via qexec_count_ordbynum_expr_leaves () so it is
- *                  never exceeded in practice, but the bound is still enforced defensively here
+ *   extra(out): caller-allocated array of size >= max_extra
+ *   extra_cnt(out): number of entries written to extra[]
+ *   max_extra(in): capacity of extra[]; additional leaves beyond this are silently left uncaptured, and
+ *                  qexec_refresh_ordbynum_expr_leaves () will in turn leave them unrefreshed at finalize
+ *                  time (fail safe: keeps whatever the initial, wrong evaluation produced, rather than
+ *                  reading or writing out of bounds)
  */
 static int
 qexec_capture_ordbynum_expr_leaves (THREAD_ENTRY * thread_p, OUTPTR_LIST * outptr_list, VAL_DESCR * vd,
@@ -3921,27 +3869,19 @@ qexec_capture_ordbynum_expr_leaves (THREAD_ENTRY * thread_p, OUTPTR_LIST * outpt
 	  error = fetch_peek_dbval (thread_p, leaf, vd, NULL, NULL, NULL, &peek_val);
 	  if (error != NO_ERROR)
 	    {
-	      goto error_return;
+	      return error;
 	    }
 
 	  error = pr_clone_value (peek_val, &extra[*extra_cnt]);
 	  if (error != NO_ERROR)
 	    {
-	      goto error_return;
+	      return error;
 	    }
 	  (*extra_cnt)++;
 	}
     }
 
   return NO_ERROR;
-
-error_return:
-  for (i = 0; i < *extra_cnt; i++)
-    {
-      pr_clear_value (&extra[i]);
-    }
-  *extra_cnt = 0;
-  return error;
 }
 
 /*
@@ -27127,8 +27067,6 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
 
   top_n->max_size = max_size;
   top_n->total_size = 0;
-  top_n->ordbynum_expr_buf = NULL;
-  top_n->ordbynum_expr_leaf_cnt = 0;
 
   top_n->tuples = (TOPN_TUPLE *) db_private_alloc (thread_p, ubound * sizeof (TOPN_TUPLE));
   if (top_n->tuples == NULL)
@@ -27149,21 +27087,6 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   top_n->sort_items = xasl->orderby_list;
   top_n->values_count = count;
 
-  /* size the REGU_VARIABLE_CONTAINS_ORDBYNUM leaf-capture scratch buffer exactly to what this query's
-   * outptr_list needs (see qexec_count_ordbynum_expr_leaves ()), instead of a fixed capacity that a select
-   * list with enough flagged expressions could silently overflow. */
-  top_n->ordbynum_expr_leaf_cnt = qexec_count_ordbynum_expr_leaves (xasl->outptr_list);
-  if (top_n->ordbynum_expr_leaf_cnt > 0)
-    {
-      top_n->ordbynum_expr_buf =
-	(DB_VALUE *) db_private_alloc (thread_p, top_n->ordbynum_expr_leaf_cnt * sizeof (DB_VALUE));
-      if (top_n->ordbynum_expr_buf == NULL)
-	{
-	  error = ER_FAILED;
-	  goto error_return;
-	}
-    }
-
   xasl->topn_items = top_n;
 
   return NO_ERROR;
@@ -27175,10 +27098,6 @@ error_return:
     }
   if (top_n != NULL)
     {
-      if (top_n->ordbynum_expr_buf != NULL)
-	{
-	  db_private_free (thread_p, top_n->ordbynum_expr_buf);
-	}
       if (top_n->tuples != NULL)
 	{
 	  db_private_free (thread_p, top_n->tuples);
@@ -27648,10 +27567,6 @@ cleanup:
 	{
 	  db_private_free (thread_p, xasl->topn_items->tuples);
 	}
-      if (xasl->topn_items->ordbynum_expr_buf != NULL)
-	{
-	  db_private_free (thread_p, xasl->topn_items->ordbynum_expr_buf);
-	}
       db_private_free (thread_p, xasl->topn_items);
       xasl->topn_items = NULL;
     }
@@ -27698,11 +27613,6 @@ qexec_clear_topn_items (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   if (xasl->topn_items->tuples != NULL)
     {
       db_private_free_and_init (thread_p, xasl->topn_items->tuples);
-    }
-
-  if (xasl->topn_items->ordbynum_expr_buf != NULL)
-    {
-      db_private_free_and_init (thread_p, xasl->topn_items->ordbynum_expr_buf);
     }
 
   db_private_free_and_init (thread_p, xasl->topn_items);
