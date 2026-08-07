@@ -421,7 +421,7 @@ public class ExecuteThread extends Thread {
                         writeJar(codeSet, baos);
                         data = baos.toByteArray();
 
-                        response.compiledCode = Base64.getEncoder().encode(data);
+                        response.setCompiledCode(Base64.getEncoder().encode(data));
                         break;
 
                     case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_BODY:

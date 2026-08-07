@@ -839,6 +839,14 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
+  db_make_string (&value, info.compile_id.data ());
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
   db_make_int (&value, info.stype);
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_STYPE, &value);
   pr_clear_value (&value);
@@ -926,6 +934,14 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 
   db_make_string (&value, info.name.data ());
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_make_string (&value, info.compile_id.data ());
+  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

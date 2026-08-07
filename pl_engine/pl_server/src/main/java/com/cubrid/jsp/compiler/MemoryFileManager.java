@@ -56,7 +56,7 @@ public class MemoryFileManager extends ForwardingJavaFileManager<JavaFileManager
             FileObject sibling)
             throws IOException {
         try {
-            CompiledCode c = new CompiledCode(className);
+            CompiledCode c = new CompiledCode(className, false);
 
             // register CompiledCode in GlobalClassStore
             codeList.add(c);

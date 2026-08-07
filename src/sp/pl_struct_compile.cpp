@@ -158,7 +158,7 @@ namespace cubpl
 	  {
 	  case PLCSQL_COMPILE_TYPE_SP:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code, java_signature, sql_data_access);
+	    deserializator.unpack_all (translated_code, class_name, compile_id, compiled_code, java_signature, sql_data_access);
 
 	    int dependencies_size = 0;
 	    deserializator.unpack_int (dependencies_size);
@@ -175,7 +175,7 @@ namespace cubpl
 
 	  case PLCSQL_COMPILE_TYPE_PKG_SPEC:
 	  {
-	    deserializator.unpack_all (translated_code, class_name, compiled_code);
+	    deserializator.unpack_all (translated_code, class_name, compile_id, compiled_code);
 
 	    // dependencies
 	    int dependencies_size = 0;

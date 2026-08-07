@@ -73,18 +73,10 @@ public class PlcsqlCompilerMain {
         }
     }
 
-    private static synchronized long getCompileSeqNo() {
-        return compileSeqNo++;
-    }
-
     public static CompileResponse compilePLCSQL(CompileRequest request) {
-        return compilePLCSQL(request, Long.toString(getCompileSeqNo()));
-    }
-
-    public static CompileResponse compilePLCSQL(CompileRequest request, String compileSeqNo) {
 
         try {
-            return compileInner(new InstanceStore(), compileSeqNo, request);
+            return compileInner(new InstanceStore(), request);
         } catch (SyntaxError e) {
             CompileResponse err = new CompileResponse(-1, e.line, e.column, e.getMessage());
             return err;
@@ -207,8 +199,7 @@ public class PlcsqlCompilerMain {
         return t;
     }
 
-    private static CompileResponse compileInner(
-            InstanceStore iStore, String compileSeqNo, CompileRequest request) {
+    private static CompileResponse compileInner(InstanceStore iStore, CompileRequest request) {
 
         int type = request.type;
         String code = request.code;
@@ -313,7 +304,7 @@ public class PlcsqlCompilerMain {
         Unit unit;
         UnitSp unitSp = null;
         UnitPkg unitPkg = null;
-        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner, compileSeqNo);
+        ParseTreeConverter converter = new ParseTreeConverter(iStore, owner);
 
         if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
             unit = unitSp = (UnitSp) converter.visit(codeTree);

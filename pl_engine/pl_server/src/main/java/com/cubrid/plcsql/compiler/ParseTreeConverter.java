@@ -76,10 +76,9 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     public final Set<Dependency> dependencies = new HashSet<>();
     public NodeList<Decl> pkgSpecItems;
 
-    public ParseTreeConverter(InstanceStore iStore, String spOwner, String compileSeqNo) {
+    public ParseTreeConverter(InstanceStore iStore, String spOwner) {
         this.iStore = iStore;
         this.spOwner = Misc.getNormalizedText(spOwner);
-        this.compileSeqNo = compileSeqNo;
         this.sqlSerialNo = 1;
     }
 
@@ -165,7 +164,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         // but its scope must be set as other declarations
         declPkg.setScope(symbolStack.getCurrentScope());
 
-        return new UnitPkg(specContext, connectionRequired, spOwner, compileSeqNo, declPkg);
+        return new UnitPkg(specContext, connectionRequired, spOwner, declPkg);
     }
 
     public void askServerSemanticQuestions() {
@@ -343,7 +342,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         topLevelStmt = CREATE_SP;
         DeclRoutine decl = visitCreate_routine(ctx.create_routine());
-        ret = new UnitSp(ctx, connectionRequired, spOwner, compileSeqNo, decl);
+        ret = new UnitSp(ctx, connectionRequired, spOwner, decl);
 
         // every other stacks must have been popped except for PREDEFINED and MAIN (level 0 and 1)
         assert symbolStack.getSize() == 2;
@@ -3141,7 +3140,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
             new LinkedHashMap<>();
 
     private final String spOwner;
-    private final String compileSeqNo;
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
 

@@ -84,6 +84,7 @@ namespace cubpl
     // common to sp and package spec
     string translated_code;
     string class_name;
+    string compile_id;
     string compiled_code;
     vector <plcsql_dependency> dependencies;
 

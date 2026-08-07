@@ -68,7 +68,7 @@ public class CompiledCodeSet {
                     continue;
                 }
                 final String key = jarEntry.getName();
-                CompiledCode c = new CompiledCode(key);
+                CompiledCode c = new CompiledCode(key, true);
                 OutputStream os = c.openOutputStream();
 
                 final long fileSize = jarEntry.getSize();
