@@ -25,6 +25,8 @@
 
 #ident "$Id$"
 
+#include <signal.h>
+
 #include "cas_protocol.h"
 #include "cas_network.h"
 #include "cas_common_function.h"
@@ -33,6 +35,13 @@ int cas_get_graceful_down_timeout (void);
 void cas_sig_handler (int signo);
 void cas_final (void);
 void cas_free (bool from_sighandler);
+
+/* Set by cas_sig_handler() on SIGTERM/SIGINT to request a graceful shutdown
+ * that is carried out from the main loop (CBRD-26322). */
+extern volatile sig_atomic_t cas_shutdown_requested;
+#if !defined(WINDOWS)
+void cas_register_signal_handlers (void);
+#endif
 
 typedef void (*cas_cleanup_callback_t) (void);
 

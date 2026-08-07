@@ -72,6 +72,11 @@ static int query_sequence_num;
 
 FN_RETURN cas_main_fn_ret = FN_KEEP_CONN;
 
+/* Set by the signal handler to request a graceful shutdown (CBRD-26322).
+ * The handler must remain async-signal-safe, so the actual cleanup (cas_free,
+ * fopen-based logging, malloc) runs later from the main loop, not here. */
+volatile sig_atomic_t cas_shutdown_requested = 0;
+
 static cas_cleanup_callback_t cleanup_callback = NULL;
 static cas_database_shutdown_callback_t database_shutdown_callback = NULL;
 
@@ -113,6 +118,11 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* WINDOWS */
     for (;;)
       {
+	if (cas_shutdown_requested)
+	  {
+	    cas_final ();	/* graceful shutdown requested by signal; does not return */
+	  }
+
 	ssl_client = false;
 	error_info_clear ();
 	cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_INACTIVE;
@@ -122,6 +132,10 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	if (IS_INVALID_SOCKET (br_sock_fd))
 	  {
+	    if (cas_shutdown_requested)
+	      {
+		cas_final ();	/* accept() was interrupted by a shutdown signal; does not return */
+	      }
 	    goto finish_cas;
 	  }
 
@@ -322,7 +336,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    fn_ret = FN_KEEP_CONN;
 	    cas_main_fn_ret = fn_ret;
-	    while (fn_ret == FN_KEEP_CONN)
+	    while (fn_ret == FN_KEEP_CONN && !cas_shutdown_requested)
 	      {
 #if !defined(WINDOWS)
 		signal (SIGUSR1, query_cancel);
@@ -523,6 +537,16 @@ cas_sig_handler (int signo)
 {
   static int is_doing_signal_handler = 0;
 
+  if (signo == SIGTERM || signo == SIGINT)
+    {
+      /* Graceful shutdown request. Only record it here and return; the cleanup
+       * (cas_free) is async-signal-unsafe (it calls fopen/malloc) and must run
+       * from the main loop instead. Doing it in the handler can re-enter malloc
+       * and abort the process (CBRD-26322). */
+      cas_shutdown_requested = signo;
+      return;
+    }
+
   if (is_doing_signal_handler)
     {
       return;
@@ -533,10 +557,9 @@ cas_sig_handler (int signo)
 
   er_print_crash_callstack (signo);
 
-  if (signo == SIGTERM || signo == SIGABRT || signo == SIGINT)
-    {
-      cas_free (true);
-    }
+  /* Fatal signal (SIGSEGV/SIGABRT/SIGFPE/SIGILL/SIGBUS/SIGSYS): the process
+   * state may be corrupted, so do not attempt cas_free() cleanup here - it is
+   * async-signal-unsafe and likely to crash again. Just record status and exit. */
   as_info->pid = 0;
   as_info->uts_status = UTS_STATUS_RESTART;
 
@@ -546,6 +569,35 @@ cas_sig_handler (int signo)
   _exit (0);
 #endif
 }
+
+#if !defined(WINDOWS)
+void
+cas_register_signal_handlers (void)
+{
+  struct sigaction act;
+
+  /* SIGTERM/SIGINT request a graceful shutdown handled later in the main loop
+   * (see cas_shutdown_requested). Install them without SA_RESTART so that a
+   * blocking accept() in an idle CAS returns EINTR and the shutdown is noticed
+   * promptly instead of being auto-restarted. */
+  memset (&act, 0, sizeof (act));
+  act.sa_handler = cas_sig_handler;
+  sigemptyset (&act.sa_mask);
+  act.sa_flags = 0;
+  sigaction (SIGTERM, &act, NULL);
+  sigaction (SIGINT, &act, NULL);
+
+  signal (SIGSEGV, cas_sig_handler);
+  signal (SIGABRT, cas_sig_handler);
+  signal (SIGFPE, cas_sig_handler);
+  signal (SIGILL, cas_sig_handler);
+  signal (SIGBUS, cas_sig_handler);
+  signal (SIGSYS, cas_sig_handler);
+  signal (SIGUSR1, SIG_IGN);
+  signal (SIGPIPE, SIG_IGN);
+  signal (SIGXFSZ, SIG_IGN);
+}
+#endif /* !WINDOWS */
 
 void
 cas_final (void)
