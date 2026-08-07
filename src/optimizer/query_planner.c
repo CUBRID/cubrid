@@ -103,6 +103,11 @@
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
 
+/* Cost tie detection for the plan comparison steps: exact floating-point equality
+ * virtually never fires after any nontrivial cost arithmetic, so ties fell through
+ * to an ordering decided by the argument order instead of the tie-break rules. */
+#define QO_COST_EQ(x, y) (fabs ((x) - (y)) <= 1e-6 * MAX (1.0, MAX (fabs (x), fabs (y))))
+
 #define	qo_scan_walk	qo_generic_walk
 #define	qo_worst_walk	qo_generic_walk
 
@@ -455,6 +460,7 @@ static double qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 static double qo_all_some_in_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static double qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr);
+static double qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr);
 
 static int qo_index_cardinality (QO_ENV * env, PT_NODE * attr);
 static int qo_index_cardinality_with_dedup (QO_ENV * env, PT_NODE * attr, BITSET * seg_bitset);
@@ -4805,7 +4811,7 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 	return PLAN_COMP_GT;
       }
 
-    if (af == bf && aa == ba)
+    if (QO_COST_EQ (af, bf) && QO_COST_EQ (aa, ba))
       {
 	if (a->plan_un.scan.index_equi == b->plan_un.scan.index_equi && qo_is_index_covering_scan (a)
 	    && qo_is_index_covering_scan (b))
@@ -4876,11 +4882,15 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
 
 cost_cmp:
 
-  if (a == b || (af == bf && aa == ba))
+  /* Compare by TOTAL cost with an epsilon tie: the old test demanded exact equality of both
+   * the fixed and variable components, so two plans with the same total but a different
+   * fixed/variable split satisfied "af + aa <= bf + ba" from BOTH argument orders -- the
+   * comparison was asymmetric and the winner depended on which plan was visited first. */
+  if (a == b || QO_COST_EQ (af + aa, bf + ba))
     {
       return PLAN_COMP_EQ;
     }
-  if (af + aa <= bf + ba)
+  if (af + aa < bf + ba)
     {
       QO_PLAN_CMP_CHECK_COST (af + aa, bf + ba);
       return PLAN_COMP_LT;
@@ -9876,6 +9886,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       /* per-node: an IS [NOT] NULL node must not suppress the null-correction of its siblings */
       not_null_calculated = false;
 
+      /* per-disjunct reset: an operator with no case below must contribute the default guess;
+       * without this it reuses the previous disjunct's selectivity (or the 0.0 initializer when
+       * it is the first disjunct), which turns the whole term into a zero-row estimate. The
+       * guess is not histogram-derived; the default case below marks the fallback. */
+      selectivity = DEFAULT_SELECTIVITY;
+
       switch (node->info.expr.op)
 	{
 	case PT_OR:
@@ -9929,6 +9945,7 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_LIKE_ESCAPE:
+	  env->sel_hist_fallback = true;
 	  selectivity = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
 	  break;
 	case PT_LIKE:
@@ -9941,6 +9958,17 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    selectivity = 1 - qo_like_selectivity (env, node);
 	    break;
 	  }
+	case PT_RLIKE:
+	case PT_RLIKE_BINARY:
+	  selectivity = qo_rlike_selectivity (env, node);
+	  break;
+
+	case PT_NOT_RLIKE:
+	case PT_NOT_RLIKE_BINARY:
+	  lhs_selectivity = qo_rlike_selectivity (env, node);
+	  selectivity = qo_not_selectivity (env, lhs_selectivity);
+	  break;
+
 	case PT_SETNEQ:
 	case PT_SETEQ:
 	case PT_SUPERSETEQ:
@@ -9949,10 +9977,12 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PT_SUBSETEQ:
 	case PT_IS:
 	case PT_XOR:
+	  env->sel_hist_fallback = true;
 	  selectivity = DEFAULT_SELECTIVITY;
 	  break;
 
 	case PT_IS_NOT:
+	  env->sel_hist_fallback = true;
 	  selectivity = qo_not_selectivity (env, DEFAULT_SELECTIVITY);
 	  break;
 
@@ -9969,15 +9999,18 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	case PT_LT_ALL:
 	case PT_LE_ALL:
 	case PT_IS_IN:
+	  env->sel_hist_fallback = true;
 	  selectivity = qo_all_some_in_selectivity (env, node);
 	  break;
 
 	case PT_IS_NOT_IN:
+	  env->sel_hist_fallback = true;
 	  lhs_selectivity = qo_all_some_in_selectivity (env, node);
 	  selectivity = qo_not_selectivity (env, lhs_selectivity);
 	  break;
 
 	case PT_IS_NULL:
+	  env->sel_hist_fallback = true;
 	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
 	      selectivity = node->info.expr.arg1->info.name.null_frequency;
@@ -9990,6 +10023,7 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	case PT_IS_NOT_NULL:
+	  env->sel_hist_fallback = true;
 	  if (node->info.expr.arg1->node_type == PT_NAME && node->info.expr.arg1->info.name.null_frequency >= 0.0)
 	    {
 	      selectivity = node->info.expr.arg1->info.name.null_frequency;
@@ -10007,6 +10041,9 @@ qo_expr_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  break;
 
 	default:
+	  /* fall-through operator: selectivity stays at the per-disjunct DEFAULT_SELECTIVITY
+	   * reset above -- a guess, so keep the term from being tagged histogram-derived */
+	  env->sel_hist_fallback = true;
 	  break;
 	}
 
@@ -10113,6 +10150,84 @@ qo_like_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       selectivity = MAX (selectivity, 0.0);
       selectivity = MIN (selectivity, 1.0);
     }
+
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
+    }
+
+  return selectivity;
+}
+
+/*
+ * qo_rlike_selectivity () - Estimate the selectivity of a regex (RLIKE) predicate by matching
+ *                           the pattern against histogram MCVs and bucket boundary values
+ *   return: double
+ *   env(in):
+ *   pt_expr(in): RLIKE expression (PT_RLIKE / PT_RLIKE_BINARY / PT_NOT_RLIKE / PT_NOT_RLIKE_BINARY;
+ *                the NOT variants are negated by the caller)
+ */
+static double
+qo_rlike_selectivity (QO_ENV * env, PT_NODE * pt_expr)
+{
+  PT_NODE *lhs, *rhs;
+  DB_VALUE *host_var = NULL;
+  PRED_CLASS pc_lhs, pc_rhs;
+  double fallback, selectivity;
+  bool case_sensitive, success = false;
+
+  fallback = (double) prm_get_float_value (PRM_ID_LIKE_TERM_SELECTIVITY);
+  selectivity = fallback;
+
+  lhs = pt_expr->info.expr.arg1;
+  rhs = pt_expr->info.expr.arg2;
+
+  if (lhs == NULL || rhs == NULL)
+    {
+      return selectivity;
+    }
+
+  pc_lhs = qo_classify (lhs);
+  pc_rhs = qo_classify (rhs);
+
+  if (pc_lhs == PC_ATTR)
+    {
+      if (pc_rhs == PC_CONST)
+	{
+	  host_var = &rhs->info.value.db_value;
+	}
+      else if (pc_rhs == PC_HOST_VAR)
+	{
+	  host_var = &env->parser->host_variables[rhs->info.host_var.index];
+	}
+
+      /* the parser derives the runtime case flag (arg3) from the operator, so the operator is
+       * an equally authoritative source and needs no constant-folding assumptions */
+      case_sensitive = (pt_expr->info.expr.op == PT_RLIKE_BINARY || pt_expr->info.expr.op == PT_NOT_RLIKE_BINARY);
+
+      histogram_get_rlike_selectivity (lhs, host_var, case_sensitive, fallback, &selectivity, &success);
+
+      if (!success)
+	{
+	  selectivity = fallback;
+	}
+    }
+
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
+    }
+
+  selectivity = MAX (selectivity, 0.0);
+  selectivity = MIN (selectivity, 1.0);
 
   return selectivity;
 }
@@ -10483,6 +10598,15 @@ qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
     }
 
+  if (success)
+    {
+      env->sel_hist_used = true;
+    }
+  else
+    {
+      env->sel_hist_fallback = true;
+    }
+
   return selectivity;
 }
 
@@ -10621,7 +10745,13 @@ qo_comp_selectivity (QO_ENV * env, PT_NODE * pt_expr)
       break;
     }
 
-  return success ? selectivity : DEFAULT_COMP_SELECTIVITY;
+  if (success)
+    {
+      env->sel_hist_used = true;
+      return selectivity;
+    }
+  env->sel_hist_fallback = true;
+  return DEFAULT_COMP_SELECTIVITY;
 }
 
 /*
@@ -10642,6 +10772,7 @@ qo_between_selectivity (QO_ENV * env, PT_NODE * pt_expr)
   QO_ASSERT (env, and_node->node_type == PT_EXPR);
   QO_ASSERT (env, pt_is_between_range_op (and_node->info.expr.op));
 
+  env->sel_hist_fallback = true;
   return DEFAULT_BETWEEN_SELECTIVITY;
 }
 
@@ -10703,6 +10834,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
     }
   else
     {
+      env->sel_hist_fallback = true;
       return DEFAULT_RANGE_SELECTIVITY;
     }
 #if 1				/* unused anymore - DO NOT DELETE ME */
@@ -10833,6 +10965,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	    }
 	  if (!(success1 && success2))
 	    {
+	      env->sel_hist_fallback = true;
 	      if (op_type == PT_BETWEEN_INF_LT || op_type == PT_BETWEEN_INF_LE || op_type == PT_BETWEEN_GE_INF
 		  || op_type == PT_BETWEEN_GT_INF)
 		{
@@ -10842,6 +10975,10 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		{
 		  selectivity = DEFAULT_BETWEEN_SELECTIVITY;
 		}
+	    }
+	  else
+	    {
+	      env->sel_hist_used = true;
 	    }
 	}
       else if (op_type == PT_BETWEEN_EQ_NA)
@@ -10853,6 +10990,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 	  if (pc1 == PC_ATTR)
 	    {
 	      /* attr1 range (attr2 = ) */
+	      env->sel_hist_fallback = true;
 	      rhs_icard = qo_index_cardinality (env, arg1);
 
 	      icard = MAX (lhs_icard, rhs_icard);
@@ -10873,6 +11011,7 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 
 	      if (!success)
 		{
+		  env->sel_hist_fallback = true;
 		  /* attr1 range (const = ) */
 		  if (lhs_icard != 0)
 		    {
@@ -10883,7 +11022,16 @@ qo_range_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 		      selectivity = DEFAULT_EQUAL_SELECTIVITY;
 		    }
 		}
+	      else
+		{
+		  env->sel_hist_used = true;
+		}
 	    }
+	}
+      else
+	{
+	  /* op not estimated above (e.g. unnormalized PT_BETWEEN_AND) */
+	  env->sel_hist_fallback = true;
 	}
 
 

@@ -4484,7 +4484,7 @@ lock_internal_demote_class_lock (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, 
     }
 
   // to_be_lock mode should be weaker than the current lock.
-  assert (NULL_LOCK < to_be_lock && to_be_lock != U_LOCK && to_be_lock < holder->granted_mode);
+  assert (NULL_LOCK < to_be_lock && to_be_lock < holder->granted_mode);
 
 #if defined(LK_DUMP)
   if (lk_Gl.config.dump_level >= 1)
@@ -7764,8 +7764,7 @@ lock_has_xlock (THREAD_ENTRY * thread_p)
 
   /*
    * Exclusive locks in this context mean IX_LOCK, SIX_LOCK, X_LOCK and
-   * SCH_M_LOCK. NOTE that U_LOCK are excluded from exclusive locks.
-   * Because U_LOCK is currently for reading the object.
+   * SCH_M_LOCK.
    */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tran_lock = &lk_Gl.tran_lock_table[tran_index];
