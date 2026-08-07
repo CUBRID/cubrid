@@ -654,15 +654,22 @@ jobs:
           no_output_timeout: 30m
           command: |
             set -eo pipefail
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
             dir="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
             tmp="${dir}.tmp.${CIRCLE_BUILD_NUM}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
             cp -a /home/CUBRID "$tmp/CUBRID"
             touch "$tmp/${BUILD_SENTINEL}"
-            # One rename publishes it, so a consumer never sees a half-copied
-            # tree and a run that loses the rename drops its staging dir.
-            mv -T "$tmp" "$dir" 2> /dev/null || rm -rf "$tmp"
+            # One rename publishes it, so a consumer never sees a half-copied tree.
+            if ! mv -T "$tmp" "$dir"; then
+              rm -rf "$tmp"
+              # Only a run that published first may be ignored; it left the
+              # sentinel. Any other mv failure published nothing, so fail here
+              # rather than let test_shell wait for a build that never lands.
+              test -f "${dir}/${BUILD_SENTINEL}"
+              echo "Another run published this commit first"
+            fi
             df -h /home/build-cache
       - collect-build-logs
 
