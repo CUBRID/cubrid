@@ -99,9 +99,7 @@ namespace parallel_scan
 	m_.is_list_id_domain_resolved = false;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
 
-	/* Identify pass-through ROWNUM output columns. The checker only lets an instnum_val query reach
-	 * MERGEABLE_LIST when every reference is a top-level pass-through valptr, so collecting those column
-	 * positions here reproduces the checker's decision. Column index == position in outptr valptr list. */
+	/* collect pass-through ROWNUM output columns; index == position in the outptr valptr list. */
 	m_.renumber_instnum = false;
 	XASL_NODE *ox = orig_xasl_tree_for_domain_resolve;
 	if (ox->instnum_val != nullptr && ox->instnum_pred == nullptr && ox->save_instnum_val == nullptr
@@ -121,11 +119,8 @@ namespace parallel_scan
 	      }
 	  }
 
-	/* atomic-draw mode: single-term "inst_num() <= ?" filter. The checker only lets such an
-	 * instnum_pred reach MERGEABLE_LIST when the same shape test passes, so rhs != null here
-	 * mirrors the checker's decision. The limit value is resolved lazily in write_initialize
-	 * (needs a VAL_DESCR). Note renumber_instnum requires instnum_pred == NULL above, so the
-	 * two modes are mutually exclusive by construction. */
+	/* atomic-draw mode; the limit is resolved later in write_initialize (needs a VAL_DESCR).
+	 * renumber_instnum requires instnum_pred == NULL, so the two modes cannot both be set. */
 	m_.atomic_instnum_mode = false;
 	m_.instnum_limit_rhs = parallel_scan::get_instnum_upper_limit_rhs (ox, &m_.instnum_limit_is_lt);
 	if (m_.instnum_limit_rhs != nullptr)
@@ -291,8 +286,7 @@ namespace parallel_scan
 	    }
 	  if (m_.atomic_instnum_mode && !m_.instnum_limit_resolved)
 	    {
-	      /* resolve the "inst_num() <= ?" rhs once, under the same mutex; every worker carries the
-	       * same host-variable values so the first arrival's resolution is authoritative. */
+	      /* resolve the rhs once under the mutex; all workers carry the same host variables. */
 	      DB_VALUE *limit_val = nullptr;
 	      m_.instnum_limit = 0;
 	      if (fetch_peek_dbval (thread_p, m_.instnum_limit_rhs, tl.vd, NULL, NULL, NULL, &limit_val) != NO_ERROR)
@@ -311,9 +305,8 @@ namespace parallel_scan
 		    }
 		  pr_clear_value (&coerced);
 		}
-	      /* NULL rhs keeps limit 0: "inst_num() <= NULL" is unknown for every row -> no rows, like serial.
-	       * Clamp before the decrement: BIGINT_MIN-- would wrap to BIGINT_MAX and turn a 0-row query
-	       * into a full scan, so force non-positive limits to 0 first. */
+	      /* NULL rhs keeps limit 0 (unknown for every row -> no rows, like serial).
+	       * Clamp before the decrement so BIGINT_MIN cannot wrap to BIGINT_MAX. */
 	      if (m_.instnum_limit <= 0)
 		{
 		  m_.instnum_limit = 0;
@@ -357,8 +350,8 @@ namespace parallel_scan
 	tl.xasl = curr_xasl;
 	if ((m_.renumber_instnum || m_.atomic_instnum_mode) && tl.xasl->instnum_val != nullptr)
 	  {
-	    /* guarantee a V_BOUND fixed 8-byte BIGINT slot. Renumber mode: placeholder 0, main overwrites
-	     * 1..N in place at merge. Atomic mode: write() stores the drawn number before each emit. */
+	    /* guarantee a V_BOUND 8-byte BIGINT slot: renumber mode overwrites it at merge,
+	     * atomic mode stores the drawn number before each emit. */
 	    db_make_bigint (tl.xasl->instnum_val, 0);
 	  }
 	tl.agg_hash_state = HS_NONE;
@@ -677,16 +670,14 @@ namespace parallel_scan
       }
   }
 
-  /* Assign global ROWNUM 1..N in-place across the worker partial lists, in writer_results order, BEFORE
-   * merge_list_ids concatenates them (and before any final ORDER BY sort). Each worker list is one segment
-   * with an independent [base+1 .. base+tuple_cnt] range, so this pass can later be parallelized per segment.
-   * Returns NO_ERROR or ER_FAILED. */
+  /* Assign global ROWNUM in-place across the worker lists, before merge and before any ORDER BY sort.
+   * Continues from start_at: a scan block reset rebuilds the handler while dest keeps its rows. */
   static int
   renumber_instnum_writer_lists (THREAD_ENTRY *thread_p, std::vector<QFILE_LIST_ID *> &lists,
-				 const std::vector<int> &col_indices)
+				 const std::vector<int> &col_indices, INT64 start_at)
   {
     DB_VALUE rownum_val;
-    INT64 counter = 0;
+    INT64 counter = start_at;
     for (QFILE_LIST_ID *list_id : lists)
       {
 	if (list_id == nullptr || list_id->tuple_cnt <= 0)
@@ -756,7 +747,9 @@ namespace parallel_scan
 
 	if (m_.renumber_instnum)
 	  {
-	    if (renumber_instnum_writer_lists (thread_p, m_.writer_results, m_.rownum_col_indices) != NO_ERROR)
+	    /* dest may already hold rows from an earlier batch after a scan block reset; continue from there. */
+	    if (renumber_instnum_writer_lists (thread_p, m_.writer_results, m_.rownum_col_indices,
+					       dest->tuple_cnt > 0 ? (INT64) dest->tuple_cnt : 0) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this ();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -928,9 +921,8 @@ namespace parallel_scan
 	    INT64 draw = m_.instnum_counter.fetch_add (1, std::memory_order_relaxed) + 1;
 	    if (draw > m_.instnum_limit)
 	      {
-		/* quota exhausted: skip this row; every worker stops at its next page boundary via the
-		 * interrupt poll in task::loop. CAS from NO_INTERRUPT only, so a concurrent error code
-		 * (or JOB_ENDED) is never overwritten. Not an error -> return true. */
+		/* quota exhausted: skip the row and signal; workers stop at the next page boundary.
+		 * CAS from NO_INTERRUPT only, so an error code is never overwritten. Not an error. */
 		parallel_query::interrupt::interrupt_code expected =
 			parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
 		m_interrupt_p->m_code.compare_exchange_strong (expected,

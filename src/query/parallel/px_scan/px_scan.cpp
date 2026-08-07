@@ -2018,8 +2018,7 @@ namespace parallel_scan
 	  }
 	  break;
 	  case parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED:
-	    /* benign early-stop: the "inst_num() <= ?" quota was met; the merged list already holds
-	     * exactly the first N rows, so pass the read result through unchanged. */
+	    /* benign early-stop: quota met, merged list already holds the first N rows. */
 	    break;
 	  default:
 	    break;

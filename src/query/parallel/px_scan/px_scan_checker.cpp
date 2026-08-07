@@ -155,9 +155,8 @@ namespace parallel_scan
       }
   }
 
-  /* shared shape conditions for both instnum fast-path modes (merge-time renumbering and atomic draw):
-   * plain BUILDLIST without sort/group interactions, and instnum_val referenced in the output only as a
-   * top-level pass-through column (never inside an expression). Sets *passthrough_cnt_out (may be 0). */
+  /* shared shape test for both instnum fast-path modes: plain BUILDLIST, and instnum_val used in the
+   * output only as a top-level pass-through column. Sets *passthrough_cnt_out (may be 0). */
   static bool
   instnum_xasl_shape_ok (XASL_NODE *x, int *passthrough_cnt_out)
   {
@@ -203,9 +202,7 @@ namespace parallel_scan
     return true;
   }
 
-  /* true only when inst_num() is a plain pass-through output column that main can renumber at merge.
-   * inst_num() used in WHERE is represented as instnum_pred (required NULL here), so no separate
-   * predicate walk is needed. */
+  /* inst_num() is a plain pass-through output column that main can renumber at merge. */
   static bool
   is_renumberable_instnum (XASL_NODE *x)
   {
@@ -217,8 +214,7 @@ namespace parallel_scan
     return instnum_xasl_shape_ok (x, &passthrough) && passthrough >= 1;
   }
 
-  /* true when the instnum_pred is a single-term "inst_num() <= ?" upper limit: workers can then draw
-   * global row numbers from a shared atomic counter, evaluate the limit locally, and stop early. */
+  /* single-term "inst_num() <= ?": workers can draw numbers from a shared counter and stop early. */
   static bool
   is_atomic_instnum_eligible (XASL_NODE *x)
   {
@@ -987,11 +983,8 @@ namespace parallel_scan
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_SKIP_SORT)
 	    || XASL_IS_FLAGED (arg, XASL_ANALYTIC_USES_LIMIT_OPT);
 
-    /* Atomic-draw ROWNUM keeps an arbitrary N rows, which is fine on a heap (no scan order to begin
-     * with) but not on a materialized temp list: "WITH q AS (... ORDER BY c) SELECT * FROM q LIMIT n"
-     * is the usual top-N idiom and a serial list scan returned the sorted prefix. Keep list specs
-     * serial whenever an instnum_pred is present. Merge-time renumbering (output ROWNUM only, which
-     * requires instnum_pred == NULL) does not change which rows are returned, so it is unaffected. */
+    /* atomic draw keeps an arbitrary N rows: fine on a heap, but a temp list is usually a sorted
+     * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
     const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);

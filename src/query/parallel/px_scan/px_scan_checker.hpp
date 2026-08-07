@@ -30,10 +30,8 @@ extern "C" int scan_check_parallel_scan_possible (XASL_NODE *xasl);
 
 namespace parallel_scan
 {
-  /* Returns the rhs regu var of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, or nullptr
-   * when the predicate does not have that exact shape. Shared by the checker (client side, eligibility)
-   * and the mergeable-list result handler (server side, atomic-draw limit resolution) so both sides
-   * agree; defined inline here because the checker translation unit is linked into cs/sa only. */
+  /* rhs of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, else nullptr. Inline because the
+   * checker TU links into cs/sa only, while the server-side result handler needs the same test. */
   inline REGU_VARIABLE *
   get_instnum_upper_limit_rhs (XASL_NODE *x, bool *is_less_than)
   {
