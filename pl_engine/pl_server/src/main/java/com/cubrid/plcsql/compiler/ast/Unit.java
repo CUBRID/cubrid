@@ -36,7 +36,6 @@ import org.antlr.v4.runtime.ParserRuleContext;
 public abstract class Unit extends AstNode {
 
     public final boolean connectionRequired;
-
     public final String owner;
     public final String compileSeqNo;
 

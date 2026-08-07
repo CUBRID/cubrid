@@ -357,14 +357,7 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // Java code generation
 
-        String javaCode;
-        if (type == CompileRequest.PLCSQL_COMPILE_TYPE_SP) {
-            javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
-        } else {
-            // temporary code
-            javaCode =
-                    String.format("public class %s { public int i = 1; }", unitPkg.getClassName());
-        }
+        String javaCode = new JavaCodeWriter(iStore, sqlUsesInRecursiveCalls).buildCodeLines(unit);
 
         if (verbose) {
             logElapsedTime(logStore, "Java code generation", t0);

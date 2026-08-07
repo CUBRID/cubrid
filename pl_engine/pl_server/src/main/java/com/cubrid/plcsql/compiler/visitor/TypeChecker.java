@@ -256,11 +256,6 @@ public class TypeChecker extends AstVisitor<Type> {
             // forward declaration
             assert node.recordTypeSpec != null;
             visitTypeSpec(node.recordTypeSpec);
-
-            if (node.bodyDecl != null) {
-                assert node.bodyDecl instanceof DeclCursor;
-                visitDeclCursor((DeclCursor) node.bodyDecl);
-            }
         }
         return null;
     }
@@ -1443,11 +1438,6 @@ public class TypeChecker extends AstVisitor<Type> {
         }
 
         routineDefNestLevel--;
-
-        if (node.bodyDecl != null) {
-            assert node.body == null;
-            visit(node.bodyDecl);
-        }
 
         return null;
     }

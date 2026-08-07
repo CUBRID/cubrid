@@ -562,6 +562,16 @@ public class SpLib {
         }
     }
 
+    public static class IMPL_NOT_GIVEN extends PlcsqlRuntimeError {
+        public IMPL_NOT_GIVEN() {
+            super(CODE_IMPL_NOT_GIVEN, MSG_IMPL_NOT_GIVEN);
+        }
+
+        public IMPL_NOT_GIVEN(String msg) {
+            super(CODE_IMPL_NOT_GIVEN, isEmptyStr(msg) ? MSG_IMPL_NOT_GIVEN : msg);
+        }
+    }
+
     //
     // builtin exceptions
     // ---------------------------------------------------------------------------------------
@@ -807,6 +817,46 @@ public class SpLib {
             } catch (SQLException e) {
                 throw new SQL_ERROR(e.getMessage());
             }
+        }
+    }
+
+    // cursor declared in a package spec but whose implementation is not given
+    public static class QueryUnimplemented extends Query {
+
+        public QueryUnimplemented() {
+            super(""); // non-null but empty query
+        }
+
+        public void open(Connection conn, PreparedStatement[] pstmtRef, Object... val) {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public void close() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public boolean isOpen() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public boolean fetch() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public Boolean found() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public Boolean notFound() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public long rowCount() {
+            throw new IMPL_NOT_GIVEN();
+        }
+
+        public void updateRowCount() {
+            throw new IMPL_NOT_GIVEN();
         }
     }
 
@@ -4297,6 +4347,7 @@ public class SpLib {
     private static final int CODE_TOO_MANY_ROWS = 7;
     private static final int CODE_VALUE_ERROR = 8;
     private static final int CODE_ZERO_DIVIDE = 9;
+    private static final int CODE_IMPL_NOT_GIVEN = 10;
     private static final int CODE_APP_ERROR = 1000;
 
     private static final String MSG_CASE_NOT_FOUND = "case not found";
@@ -4309,6 +4360,7 @@ public class SpLib {
     private static final String MSG_TOO_MANY_ROWS = "too many rows";
     private static final String MSG_VALUE_ERROR = "value error";
     private static final String MSG_ZERO_DIVIDE = "division by zero";
+    private static final String MSG_IMPL_NOT_GIVEN = "no implementation in the package body";
     private static final String MSG_APP_ERROR = "user defined exception";
 
     private static final Byte BYTE_ZERO = Byte.valueOf((byte) 0);

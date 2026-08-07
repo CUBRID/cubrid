@@ -79,6 +79,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         javaTypesUsed.add("com.cubrid.jsp.jdbc.CUBRIDServerSideJDBCErrorCode");
         javaTypesUsed.add("com.cubrid.plcsql.predefined.PlcsqlRuntimeError");
         javaTypesUsed.add("java.util.List");
+        if (unit.connectionRequired) {
+            javaTypesUsed.add("java.sql.*");
+        }
 
         CodeToResolve ctr = visit(unit);
         ctr.resolve(0, codeLines, codeRangeMarkers);
@@ -107,47 +110,138 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // UnitPkg
     //
 
+    private static final String[] strGetConn =
+            new String[] {
+                "private static final Connection conn;",
+                "static {",
+                "  try {",
+                "    conn = DriverManager.getConnection(\"jdbc:default:connection::\");",
+                "  } catch (SQLException e) {",
+                "    throw new ExceptionInInitializerError(e);",
+                "  }",
+                "}"
+            };
+
+    private static final String[] tmplPkgInit =
+            new String[] {
+                "static {", "  %'+BODY'%", "}",
+            };
+
+    private static final String[] tmplPkgUnit =
+            new String[] {
+                "%'+IMPORTS'%",
+                "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
+                "public class %'CLASS-NAME'% {",
+                "  %'+GET-CONNECTION'%",
+                "  %'+DECLARATIONS'%",
+                "  %'+OPT-INITIALIZER'%",
+                "  %'+RECORD-DEFS'%",
+                "  %'+RECORD-ASSIGN-FUNCS'%"
+            };
+
+    private String[] getRecordDefs() {
+        List<String> lines = new LinkedList<>();
+        for (TypeRecord rec : iStore.typeRecord.values()) {
+            lines.addAll(getRecordDeclCode(rec));
+        }
+        return lines.toArray(DUMMY_STRING_ARRAY);
+    }
+
+    // get all Java code of record-to-record coercion functions
+    private String[] getRecordAssignFuncs() {
+        List<String> lines = new LinkedList<>();
+        lines.addAll(Coercion.RecordToRecord.getAllJavaCode(iStore));
+        return lines.toArray(DUMMY_STRING_ARRAY);
+    }
+
+    private String[] getImportsArray() {
+        List<String> lines = new LinkedList<>();
+        for (String javaType : javaTypesUsed) {
+            if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
+                // no need to import Cursor now
+            } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {
+                // no need to import java.lang.*;
+            } else if (javaType.startsWith("Null")) {
+                // NULL type is not a java type but an internal type for convenience in
+                // typechecking.
+            } else if (javaType.startsWith("$Record_")) {
+                // no need to import record types: they are defined in the generated Java code
+            } else {
+                lines.add("import " + javaType + ";");
+            }
+        }
+        return lines.toArray(DUMMY_STRING_ARRAY);
+    }
+
     @Override
     public CodeToResolve visitUnitPkg(UnitPkg node) {
-        // TODO package
-        assert false;
-        return null;
+
+        CodeToResolve pkgItemsCode = visitNodeList(node.pkg.pkgItems);
+        Object pkgInitCode;
+        if (node.pkg.initializer == null) {
+            pkgInitCode = "";
+        } else {
+            pkgInitCode =
+                    new CodeTemplate(
+                            "package initializer",
+                            Misc.UNKNOWN_LINE_COLUMN,
+                            tmplPkgInit,
+                            "%'+BODY'%",
+                            visitBody(node.pkg.initializer));
+        }
+        String[] recordDefs = getRecordDefs();
+        String[] recordAssignFuncs = getRecordAssignFuncs();
+
+        // imports
+        // CAUTION: importsArray must be made after visiting all the subnodes of this UnitPkg
+        // because javaTypesUsed,
+        //  which is the set of Java types to appear in the generated Java code, is built while
+        // visiting the submodes
+        String[] importsArray = getImportsArray();
+
+        return new CodeTemplate(
+                "UnitPkg",
+                new int[] {1, 1},
+                tmplPkgUnit,
+                "%'+IMPORTS'%",
+                importsArray,
+                "%'CLASS-NAME'%",
+                node.getClassName(),
+                "%'+GET-CONNECTION'%",
+                node.connectionRequired ? strGetConn : "",
+                "%'+DECLARATIONS'%",
+                pkgItemsCode,
+                "%'+OPT-INITIALIZER'%",
+                pkgInitCode,
+                "%'+RECORD-DEFS'%",
+                recordDefs,
+                "%'+RECORD-ASSIGN-FUNCS'%",
+                recordAssignFuncs);
     }
 
     // -----------------------------------------------------------------
     // UnitSp
     //
 
-    private static final String strGetConn =
-            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
-
     private static final String[] tmplMainUserCode =
             new String[] {
-                "%'OPT-RETURN'%new Object() {",
-                "  %'RETURN-TYPE'% %'METHOD-NAME'%(",
-                "      %'+PARAMETERS'%",
-                "    ) throws Exception {",
-                "    Long[] sql_rowcount = new Long[] { null };",
-                "    %'+NULLIFY-OUT-PARAMETERS'%",
-                "    %'+CHECK-INOUT-PARAMETERS'%",
-                "    %'+DECL-CLASS'%",
-                "    %'+BODY'%",
-                "  }",
-                "}.%'METHOD-NAME'%(%'PARAMETER-NAMES'%);"
+                "Long[] sql_rowcount = new Long[] { null };",
+                "%'+NULLIFY-OUT-PARAMETERS'%",
+                "%'+CHECK-INOUT-PARAMETERS'%",
+                "%'+DECL-CLASS'%",
+                "%'+BODY'%"
             };
 
-    private static final String[] tmplUnit =
+    private static final String[] tmplSpUnit =
             new String[] {
                 "%'+IMPORTS'%",
                 "import static com.cubrid.plcsql.predefined.sp.SpLib.*;",
-                "",
                 "public class %'CLASS-NAME'% {",
-                "",
+                "  %'+GET-CONNECTION'%",
                 "  public static %'RETURN-TYPE'% %'METHOD-NAME'%(",
                 "      %'+PARAMETERS'%",
                 "    ) throws Exception {",
                 "    try {",
-                "      %'GET-CONNECTION'%",
                 "      %'+MAIN-USER-CODE'%",
                 // exceptions that escaped from the exception handlers of the body
                 "    } catch (PlcsqlRuntimeError e) {",
@@ -180,10 +274,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
     @Override
     public CodeToResolve visitUnitSp(UnitSp node) {
-
-        if (node.connectionRequired) {
-            javaTypesUsed.add("java.sql.*");
-        }
 
         // declarations
         Object codeDeclClass =
@@ -224,10 +314,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "main user code",
                         Misc.UNKNOWN_LINE_COLUMN,
                         tmplMainUserCode,
-                        "%'OPT-RETURN'%",
-                        node.routine.retTypeSpec == null ? "" : "return ",
-                        "%'+PARAMETERS'%",
-                        objParamArr,
                         "%'+NULLIFY-OUT-PARAMETERS'%",
                         strNullifyOutParam,
                         "%'+CHECK-INOUT-PARAMETERS'%",
@@ -235,49 +321,21 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                         "%'+DECL-CLASS'%",
                         codeDeclClass,
                         "%'+BODY'%",
-                        bodyCode,
-                        "%'PARAMETER-NAMES'%",
-                        getParameterNames(node.routine.paramList));
+                        bodyCode);
         if (!sqlUsesReachableFromLoop.isEmpty()) {
             mainUserCode =
                     wrapWithStmtDeclareAndClose(null, sqlUsesReachableFromLoop, mainUserCode);
         }
 
-        // record definitions
-        List<String> recordLines = new LinkedList<>();
-        for (TypeRecord rec : iStore.typeRecord.values()) {
-            recordLines.addAll(getRecordDeclCode(rec));
-        }
-        String[] recordDefs = recordLines.toArray(DUMMY_STRING_ARRAY);
-
-        // add all Java code of record-to-record coercion functions
-        recordLines.clear();
-        recordLines.addAll(Coercion.RecordToRecord.getAllJavaCode(iStore));
-        String[] recordAssignFuncs = recordLines.toArray(DUMMY_STRING_ARRAY);
+        String[] recordDefs = getRecordDefs();
+        String[] recordAssignFuncs = getRecordAssignFuncs();
 
         // imports
-        // CAUTION: importsArray must be made after visiting all the subnodes of this UnitSp node
+        // CAUTION: importsArray must be made after visiting all the subnodes of this UnitSp
         // because javaTypesUsed,
         //  which is the set of Java types to appear in the generated Java code, is built while
         // visiting the submodes
-        int i = 0;
-        String[] importsArray = new String[javaTypesUsed.size()];
-        for (String javaType : javaTypesUsed) {
-            if ("com.cubrid.plcsql.predefined.sp.SpLib.Query".equals(javaType)) {
-                // no need to import Cursor now
-            } else if (javaType.startsWith("java.lang.") && javaType.lastIndexOf('.') == 9) {
-                // no need to import java.lang.*;
-            } else if (javaType.startsWith("Null")) {
-                // NULL type is not a java type but an internal type for convenience in
-                // typechecking.
-            } else if (javaType.startsWith("$Record_")) {
-                // no need to import record types: they are defined in the generated Java code
-            } else {
-                importsArray[i] = "import " + javaType + ";";
-                i++;
-            }
-        }
-        importsArray = Arrays.copyOf(importsArray, i);
+        String[] importsArray = getImportsArray();
 
         // parameters - need to visit again to obtain another object instance though the contents
         // are the same,
@@ -290,7 +348,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         return new CodeTemplate(
                 "UnitSp",
                 new int[] {1, 1},
-                tmplUnit,
+                tmplSpUnit,
                 "%'+MAIN-USER-CODE'%",
                 mainUserCode,
                 "%'+IMPORTS'%",
@@ -303,7 +361,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 node.routine.name,
                 "%'+PARAMETERS'%",
                 objParamArr,
-                "%'GET-CONNECTION'%",
+                "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
                 "%'+RECORD-DEFS'%",
                 recordDefs,
@@ -326,41 +384,77 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "}"
             };
 
+    private static final String[] tmplDeclRoutineWithoutBody =
+            new String[] {
+                "%'RETURN-TYPE'% %'METHOD-NAME'%(",
+                "    %'+PARAMETERS'%",
+                "  ) {",
+                "  throw new IMPL_NOT_GIVEN();",
+                "}"
+            };
+
     private CodeToResolve visitDeclRoutine(DeclRoutine node) {
 
-        assert node.paramList != null;
+        if (node.codeGenDone) {
+            return getEmptyCode();
+        }
 
-        // declarations
-        Object codeDeclClass =
-                node.decls == null
-                        ? ""
-                        : new CodeTemplate(
-                                "DeclClass of Routine",
-                                Misc.UNKNOWN_LINE_COLUMN,
-                                tmplDeclBlock,
-                                "%'BLOCK'%",
-                                node.getDeclBlockName(),
-                                "%'+DECLARATIONS'%",
-                                visitNodeList(node.decls));
+        if (node.body == null) {
+            if (node.bodyDecl == null) {
+                return new CodeTemplate(
+                        "DeclRoutine",
+                        Misc.UNKNOWN_LINE_COLUMN,
+                        tmplDeclRoutineWithoutBody,
+                        "%'RETURN-TYPE'%",
+                        node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
+                        "%'+PARAMETERS'%",
+                        visitNodeList(node.paramList).setDelimiter(","),
+                        "%'METHOD-NAME'%",
+                        node.name);
+            } else {
+                // code gen for body must be done at the position of its package spec counterpart
+                // because the order matters in the initialization of static members of Java class
+                // unlike non-static ones
+                CodeToResolve ret = visitDeclRoutine((DeclRoutine) node.bodyDecl);
+                node.bodyDecl.codeGenDone = true;
+                return ret;
+            }
+        } else {
 
-        String[] strNullifyOutParam = getNullifyOutParamCode(node.paramList);
+            assert node.paramList != null;
 
-        return new CodeTemplate(
-                "DeclRoutine",
-                Misc.UNKNOWN_LINE_COLUMN,
-                tmplDeclRoutine,
-                "%'RETURN-TYPE'%",
-                node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
-                "%'+PARAMETERS'%",
-                visitNodeList(node.paramList).setDelimiter(","),
-                "%'+NULLIFY-OUT-PARAMETERS'%",
-                strNullifyOutParam,
-                "%'+DECL-CLASS'%",
-                codeDeclClass,
-                "%'+BODY'%",
-                visitBody(node.body),
-                "%'METHOD-NAME'%",
-                node.name);
+            // declarations
+            Object codeDeclClass =
+                    node.decls == null
+                            ? ""
+                            : new CodeTemplate(
+                                    "DeclClass of Routine",
+                                    Misc.UNKNOWN_LINE_COLUMN,
+                                    tmplDeclBlock,
+                                    "%'BLOCK'%",
+                                    node.getDeclBlockName(),
+                                    "%'+DECLARATIONS'%",
+                                    visitNodeList(node.decls));
+
+            String[] strNullifyOutParam = getNullifyOutParamCode(node.paramList);
+
+            return new CodeTemplate(
+                    "DeclRoutine",
+                    Misc.UNKNOWN_LINE_COLUMN,
+                    tmplDeclRoutine,
+                    "%'RETURN-TYPE'%",
+                    node.retTypeSpec == null ? "void" : getJavaCodeOfType(node.retTypeSpec),
+                    "%'+PARAMETERS'%",
+                    visitNodeList(node.paramList).setDelimiter(","),
+                    "%'+NULLIFY-OUT-PARAMETERS'%",
+                    strNullifyOutParam,
+                    "%'+DECL-CLASS'%",
+                    codeDeclClass,
+                    "%'+BODY'%",
+                    visitBody(node.body),
+                    "%'METHOD-NAME'%",
+                    node.name);
+        }
     }
 
     @Override
@@ -462,14 +556,35 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     @Override
     public CodeToResolve visitDeclCursor(DeclCursor node) {
 
-        String code =
-                String.format(
-                        "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
-                        node.name,
-                        StringEscapeUtils.escapeJava(node.staticSql.rewritten),
-                        Arrays.toString(node.paramRefCounts),
-                        Arrays.toString(node.paramNumOfHostExpr));
-        return new CodeTemplate("DeclCursor", Misc.UNKNOWN_LINE_COLUMN, code);
+        if (node.codeGenDone) {
+            return getEmptyCode();
+        }
+
+        if (node.staticSql == null) {
+
+            if (node.bodyDecl == null) {
+                String code =
+                        String.format("final Query %s = new QueryUnimplemented();", node.name);
+                return new CodeTemplate("DeclCursor", Misc.UNKNOWN_LINE_COLUMN, code);
+            } else {
+                // code gen for body must be done at the position of its package spec counterpart
+                // because the order matters in the initialization of static members of Java class
+                // unlike non-static ones
+                CodeToResolve ret = visitDeclCursor((DeclCursor) node.bodyDecl);
+                node.bodyDecl.codeGenDone = true;
+                return ret;
+            }
+        } else {
+
+            String code =
+                    String.format(
+                            "final Query %s = new Query(\"%s\", false); // param-ref-counts:%s, param-num-of-host-expr:%s",
+                            node.name,
+                            StringEscapeUtils.escapeJava(node.staticSql.rewritten),
+                            Arrays.toString(node.paramRefCounts),
+                            Arrays.toString(node.paramNumOfHostExpr));
+            return new CodeTemplate("DeclCursor", Misc.UNKNOWN_LINE_COLUMN, code);
+        }
     }
 
     @Override
@@ -3843,5 +3958,9 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 code,
                 "%'+CLOSE-STATEMENTS'%",
                 closes);
+    }
+
+    private static CodeTemplate getEmptyCode() {
+        return new CodeTemplate("empty code", Misc.UNKNOWN_LINE_COLUMN, "");
     }
 }
