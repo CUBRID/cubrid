@@ -56,6 +56,7 @@
 #include "page_buffer.h"
 #include "perf_monitor.h"
 #include "porting.h"
+#include "porting_inline.hpp"
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
@@ -8787,36 +8788,21 @@ lock_reacquire_crash_locks (THREAD_ENTRY * thread_p, LK_ACQUIRED_LOCKS * acqlock
  *   dest(out): key of the gathered entry
  *   src(in): key of the lock resource the entry was gathered from
  *
- * Note: A struct assignment would carry the source's padding along, and an LK_RES key is filled
- *       member by member (lock_res_key_copy) on a malloc'd, recycled resource, so its padding holds
- *       whatever the previous owner left. The entry is written to the log verbatim, so zero the key
- *       and copy only the members its type selects -- that keeps the record a function of the lock
- *       set alone.
+ * Note: The assignment carries the source's whole object representation, padding included, and the entry
+ *       goes into the log verbatim. An LK_RES comes from malloc and lock_res_key_copy fills only the
+ *       members the key's type selects, so the four bytes after `type` -- and, for a transaction
+ *       self-lock, the eight bytes of `reserved` -- hold whatever the recycled resource left, and they
+ *       reach the log too. Every reader dispatches on key.type and never looks at them, so this costs
+ *       only the record's determinism: the same lock set can produce differing bytes.
+ *
+ *       This stays a named seam rather than three open-coded assignments so that trade can be revisited
+ *       in one place. Filling the key member by member here instead would make the record a function of
+ *       the lock set alone, at the cost of a per-type switch on the gather path.
  */
-static void
+STATIC_INLINE void
 lock_copy_key_for_log (LK_RES_KEY * dest, const LK_RES_KEY * src)
 {
-  memset (dest, 0, sizeof (*dest));
-
-  dest->type = src->type;
-  switch (src->type)
-    {
-    case LOCK_RESOURCE_INSTANCE:
-    case LOCK_RESOURCE_CLASS:
-    case LOCK_RESOURCE_ROOT_CLASS:
-      COPY_OID (&dest->oid, &src->oid);
-      COPY_OID (&dest->class_oid, &src->class_oid);
-      break;
-
-    case LOCK_RESOURCE_TRANSACTION:
-      /* transaction self-lock: the MVCCID is the key; reserved stays zeroed */
-      dest->mvccid = src->mvccid;
-      break;
-
-    default:
-      assert (false);
-      break;
-    }
+  *dest = *src;
 }
 #endif /* SERVER_MODE */
 
@@ -8892,8 +8878,8 @@ lock_unlock_all_shared_get_all_exclusive (THREAD_ENTRY * thread_p, LK_ACQUIRED_L
 	}
 
       /* This buffer is written verbatim into the 2PC prepare record. Zero it so the padding that follows each
-       * entry's lock member carries no uninitialized heap bytes; the key's own padding is handled by
-       * lock_copy_key_for_log below. */
+       * entry's lock member carries no uninitialized heap bytes. The key's own padding is not covered -- it
+       * comes from the source resource, see lock_copy_key_for_log below. */
       memset (acqlocks->locks, 0, SIZEOF_LK_ACQ_LOCK * acqlocks->nlocks);
 
       /* initialize idx in acqlocks->locks array */
