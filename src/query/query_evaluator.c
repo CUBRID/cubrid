@@ -2787,10 +2787,11 @@ eval_mark_lazy_always_eager_regu (const REGU_VARIABLE * regu, HEAP_CACHE_ATTRINF
 }
 
 /*
- * eval_mark_first_term_attrs () - find the leftmost predicate term - eval_pred () walks the right-linear
- *   AND/OR chains left to right with short-circuit, so that term is evaluated for EVERY row and the lazy
- *   read cannot skip its attributes; it would only pay the fetch_peek_dbval_slow () dispatch on them. Flag
- *   those attributes' slots to stay on the eager path (heap_attrinfo_read_dbvalues_lazy () reads them now).
+ * eval_mark_first_term_attrs () - find the terms eval_pred () evaluates for EVERY row: it walks the
+ *   right-linear AND/OR chains left to right with short-circuit, so their leftmost term always runs, and
+ *   B_XOR / B_IS / B_IS_NOT have no short-circuit, so both of their sides always run. The lazy read cannot
+ *   skip those terms' attributes; it would only pay the fetch_peek_dbval_slow () dispatch on them. Flag
+ *   their slots to stay on the eager path (heap_attrinfo_read_dbvalues_lazy () reads them now).
  *   return: none
  *   pr(in): data filter predicate
  *   attr_cache(in/out): predicate attribute cache
@@ -2802,7 +2803,17 @@ eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cac
     {
       if (pr->type == T_PRED)
 	{
-	  pr = pr->pe.m_pred.lhs;
+	  if (pr->pe.m_pred.bool_op == B_AND || pr->pe.m_pred.bool_op == B_OR)
+	    {
+	      /* short-circuit: only the leftmost term is evaluated on every row */
+	      pr = pr->pe.m_pred.lhs;
+	    }
+	  else
+	    {
+	      /* B_XOR / B_IS / B_IS_NOT evaluate both sides on every row - mark both */
+	      eval_mark_first_term_attrs (pr->pe.m_pred.lhs, attr_cache);
+	      pr = pr->pe.m_pred.rhs;
+	    }
 	}
       else if (pr->type == T_NOT_TERM)
 	{
@@ -2836,6 +2847,7 @@ eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cac
     case T_RLIKE_EVAL_TERM:
       eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.src, attr_cache);
       eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.pattern, attr_cache);
+      eval_mark_lazy_always_eager_regu (pr->pe.m_eval_term.et.et_rlike.case_sensitive, attr_cache);
       break;
     default:
       break;

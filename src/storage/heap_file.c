@@ -10234,6 +10234,7 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
     }
   OID_SET_NULL (&attr_info->inst_oid);
   attr_info->inst_chn = NULL_CHN;
+  attr_info->lazy_recdes = NULL;	/* borrowed record the cleared values were read from - reset with them */
 
   return ret;
 }
