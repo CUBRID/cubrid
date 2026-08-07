@@ -374,6 +374,8 @@ namespace cubstorage
 
       static tier size_to_tier (std::uint16_t size);
 
+      void add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			  std::uint64_t recs_sumlen);
       void set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
       void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
       void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,

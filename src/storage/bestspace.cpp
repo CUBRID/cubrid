@@ -1486,6 +1486,18 @@ namespace cubstorage
   }
 
   void
+  bestspace::add_estimates (cubthread::entry &thread_ref, int num_pages, std::uint64_t recs_num,
+			    std::uint64_t recs_sumlen)
+  {
+    std::size_t shard;
+
+    // any shard may take the count -- get_estimates () sums them all.
+    // find ()'s rule is reused so the count lands on the shard this thread already works on
+    shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
+    m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
+  }
+
+  void
   bestspace::set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen)
   {
     std::size_t i;
