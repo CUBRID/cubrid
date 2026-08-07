@@ -146,8 +146,8 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
   // todo - concurrency safe-guard
   log_Gl.hdr.append_lsa = *lsa;
   log_Gl.prior_info.prior_lsa = *lsa;
-  /* The prior list is empty at *lsa now, so everything below it is reachable through logpb_fetch_page ().
-   * Publishing here is what keeps copied_lsa <= append_lsa across every reset. */
+  /* The prior list is empty at *lsa now. Publishing here is what keeps copied_lsa <= append_lsa across
+   * every reset. */
   log_Gl.append.set_copied_lsa (*lsa);
 }
 
@@ -1381,13 +1381,10 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   LOG_REC_MVCC_UNDOREDO *mvcc_undoredo = NULL;
   LOG_VACUUM_INFO *vacuum_info = NULL;
   MVCCID mvccid = MVCCID_NULL;
-  PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
 
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
-      PERF_UTIME_TRACKER_START (thread_p, &time_track);
       log_Gl.prior_info.prior_lsa_mutex.lock ();
-      PERF_UTIME_TRACKER_TIME_AND_RESTART (thread_p, &time_track, PSTAT_LOG_PRIOR_MUTEX_ACQUIRE);
     }
 
   prior_lsa_start_append (thread_p, node, tdes);
@@ -1524,8 +1521,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   /* END append */
   prior_lsa_end_append (thread_p, node);
 
-  /* The node is complete and nothing writes into it again, so it can be published now - in start_lsa
-   * order, the same order the drain retires in. */
+  /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
+   * retires in. */
   if (log_prior_inflight_is_registrable (node->log_header.type))
     {
       log_prior_inflight_register (start_lsa, node);
@@ -1547,7 +1544,6 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
   if (with_lock == LOG_PRIOR_LSA_WITHOUT_LOCK)
     {
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_MUTEX_HOLD);
       log_Gl.prior_info.prior_lsa_mutex.unlock ();
 
       if (log_Gl.prior_info.list_size >= (INT64) logpb_get_memsize ())
@@ -1557,6 +1553,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 #if defined(SERVER_MODE)
 	  if (!log_is_in_crash_recovery ())
 	    {
+	      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
 	      PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	      log_wakeup_log_flush_daemon ();
 
@@ -1565,18 +1563,14 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 	    }
 	  else
 	    {
-	      PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	      LOG_CS_ENTER (thread_p);
 	      logpb_prior_lsa_append_all_list (thread_p);
 	      LOG_CS_EXIT (thread_p);
-	      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_BACKPRESSURE);
 	    }
 #else
-	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	  LOG_CS_ENTER (thread_p);
 	  logpb_prior_lsa_append_all_list (thread_p);
 	  LOG_CS_EXIT (thread_p);
-	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_BACKPRESSURE);
 #endif
 	}
     }

@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,18 +21,17 @@
 //
 
 /*
- * Protocol - what the header describes, and why the three roles need no lock between them:
+ * Protocol - why the three roles need no lock between them:
  *   register    append path, under prior_lsa_mutex - one writer, in LSA order
  *   retire      drain, in that same order, so always the node at the ring head
  *   pin_lookup  reader, wait-free scan of [head, tail)
  *
  * A slot is published by storing start_lsa (release) after the node pointer, and consumed by loading
- * start_lsa (acquire) before it; that pair makes the node's contents visible. start_lsa never repeats, so
- * re-reading it after taking the node pointer detects slot reuse - no generation counter needed.
+ * start_lsa (acquire) before it. start_lsa never repeats, so re-reading it after taking the node pointer
+ * detects slot reuse - no generation counter needed.
  *
  * The drain does not free a registered node: it unlinks the slot and hands the node to lockfree::tran
- * epoch reclamation, which frees it once every reader pinned at retire time has left. Same
- * unlink-before-retire / pin-before-read discipline lockfree_hashmap uses.
+ * epoch reclamation. Same unlink-before-retire / pin-before-read discipline lockfree_hashmap uses.
  */
 
 #include "log_prior_inflight.hpp"
@@ -42,7 +41,6 @@
 #include "lockfree_transaction_system.hpp"
 #include "lockfree_transaction_table.hpp"
 #include "log_impl.h"
-#include "perf_monitor.h"
 #include "thread_entry.hpp"
 #include "thread_lockfree_hash_map.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -50,8 +48,7 @@
 
 namespace
 {
-  /* 64Ki slots = 1 MiB. Wide enough that a drain-paced window does not wrap; on saturation registration
-   * is skipped and the reader drains. */
+  /* 64Ki slots = 1 MiB. Wide enough that a drain-paced window does not wrap. */
   constexpr uint64_t LOG_INFLIGHT_CAPACITY = 1 << 16;
   static_assert ((LOG_INFLIGHT_CAPACITY & (LOG_INFLIGHT_CAPACITY - 1)) == 0,
 		 "capacity must be a power of two - the ring index is a mask");
@@ -66,9 +63,6 @@ namespace
   std::atomic<uint64_t> log_Inflight_head {0};	/* advanced by the drain (retire) */
   std::atomic<uint64_t> log_Inflight_tail {0};	/* advanced by producers (register), under prior_lsa_mutex */
 
-  /* Nodes retired but not freed yet (retire - reclaim). Exposed as a statdump gauge. */
-  std::atomic<INT64> log_Inflight_retired_backlog {0};
-
   log_inflight_slot &
   log_inflight_slot_at (uint64_t sequence)
   {
@@ -76,8 +70,7 @@ namespace
   }
 
   /* Owned by the log page buffer pool so it is destroyed before lf_destroy_transaction_systems () takes
-   * the system it refers to, as every lockfree_hashmap does with its own table. NULL while the pool is
-   * down. */
+   * the system it refers to, as every lockfree_hashmap does. NULL while the pool is down. */
   lockfree::tran::table *log_Inflight_table = NULL;
 
   /* NULL when there is nothing to pin with: no window, or no transaction index - recovery and standalone
@@ -107,7 +100,7 @@ namespace
     const uint64_t tail = log_Inflight_tail.load (std::memory_order_acquire);
 
     /* head is a snapshot the drain keeps moving, so the range can be wider than the ring. Only the last
-     * capacity slots can still hold anything; skip the rest rather than scan a slot twice. */
+     * capacity slots can still hold anything. */
     if (tail - head > LOG_INFLIGHT_CAPACITY)
       {
 	head = tail - LOG_INFLIGHT_CAPACITY;
@@ -142,8 +135,7 @@ namespace
 
 /*
  * log_prior_inflight_holder - holds a retired node for epoch reclamation, so its buffers outlive every
- *   reader that could still be reading them. A registered node points at its own holder, and that
- *   pointer is what log_prior_inflight_is_registered () tests.
+ *   reader still on it. A registered node points at its own holder.
  */
 class log_prior_inflight_holder : public lockfree::tran::reclaimable_node
 {
@@ -155,10 +147,6 @@ class log_prior_inflight_holder : public lockfree::tran::reclaimable_node
 
     void reclaim () override
     {
-      /* Can run on any thread, so pass no thread entry; perfmon falls back to the current tran index. */
-      perfmon_inc_stat (NULL, PSTAT_LOG_INFLIGHT_RECLAIM);
-      log_Inflight_retired_backlog.fetch_sub (1, std::memory_order_relaxed);
-
       if (m_node->data_header != NULL)
 	{
 	  free_and_init (m_node->data_header);
@@ -182,8 +170,7 @@ class log_prior_inflight_holder : public lockfree::tran::reclaimable_node
 void
 log_prior_inflight_initialize ()
 {
-  /* The pool re-initializes in place on a page-size change, so start from a clean ring, not an assumed
-   * one. */
+  /* The pool re-initializes in place on a page-size change, so start from a clean ring. */
   log_prior_inflight_finalize ();
 
   for (uint64_t sequence = 0; sequence < LOG_INFLIGHT_CAPACITY; ++sequence)
@@ -194,7 +181,7 @@ log_prior_inflight_initialize ()
   log_Inflight_head.store (0, std::memory_order_relaxed);
   log_Inflight_tail.store (0, std::memory_order_relaxed);
 
-  /* operator new is noexcept here and yields NULL on OOM; a window that cannot be built stays down. */
+  /* operator new is noexcept here and yields NULL on OOM; a window that cannot be built stays down */
   log_Inflight_table = new lockfree::tran::table (cubthread::get_thread_entry_lftransys ());
 }
 
@@ -206,9 +193,8 @@ log_prior_inflight_finalize ()
       return;			/* never built, or already finalized */
     }
 
-  /* The window owns the holder, the prior list owns the node. So drop the holders of whatever is still
-   * staged and leave those nodes to whoever drains or discards the list, which then sees an unregistered
-   * node and frees it the ordinary way. */
+  /* The window owns the holder, the prior list owns the node. Drop the holders of whatever is still
+   * staged; whoever drains or discards the list then sees an unregistered node and frees it as usual. */
   uint64_t head = log_Inflight_head.load (std::memory_order_relaxed);
   uint64_t tail = log_Inflight_tail.load (std::memory_order_relaxed);
 
@@ -229,7 +215,7 @@ log_prior_inflight_finalize ()
   log_Inflight_head.store (0, std::memory_order_relaxed);
   log_Inflight_tail.store (0, std::memory_order_relaxed);
 
-  /* ~descriptor reclaims what is still retired, while perfmon and the memory wrapper are still up. */
+  /* ~descriptor reclaims what is still retired, while the memory wrapper is still up. */
   delete log_Inflight_table;
   log_Inflight_table = NULL;
 }
@@ -259,7 +245,7 @@ log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node)
       return;			/* OOM degrades the same way as a full ring */
     }
 
-  /* The node becomes the drain's to retire rather than to free before the slot is visible to anyone. */
+  /* Set before the slot is visible: the node is the drain's to retire, not to free. */
   node->inflight_holder = holder;
 
   log_inflight_slot &slot = log_inflight_slot_at (tail);
@@ -273,13 +259,8 @@ log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
 {
   assert (log_prior_inflight_is_registered (node));
 
-  /* Counted here and again in reclaim (), so retire - reclaim is what is still held for deferred freeing
-   * whichever of the two paths below is taken. */
-  perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_RETIRE);
-  log_Inflight_retired_backlog.fetch_add (1, std::memory_order_relaxed);
-
   /* The drain retires in registration order, so this node is the one at the head. Unlink before retiring:
-   * a later reader cannot reach the node at all, and one already holding it is covered by its pin. */
+   * a later reader cannot reach it, and one already holding it is covered by its pin. */
   uint64_t head = log_Inflight_head.load (std::memory_order_relaxed);
   log_inflight_slot &slot = log_inflight_slot_at (head);
 
@@ -293,8 +274,7 @@ log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
   lockfree::tran::descriptor *tdes = log_inflight_descriptor (thread_p);
   if (tdes == NULL)
     {
-      /* Draining without a transaction descriptor - recovery and standalone mode. No concurrent reader to
-       * protect against, so free the node right away. */
+      /* Recovery and standalone mode: no concurrent reader, so free right away. */
 #if defined (SERVER_MODE)
       assert (!LOG_ISRESTARTED ());
 #endif
@@ -312,8 +292,7 @@ log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa)
 
   if (tdes == NULL)
     {
-      /* Nothing to pin with, so nothing may be read out of the window. The caller drains instead. */
-      return NULL;
+      return NULL;		/* nothing to pin with; the caller drains instead */
     }
 
   /* Pin before reading any slot: a node retired from here on cannot be freed until this thread leaves,
@@ -336,10 +315,4 @@ log_prior_inflight_unpin (THREAD_ENTRY *thread_p)
 
   assert (tdes != NULL);
   tdes->end_tran ();
-}
-
-INT64
-log_prior_inflight_backlog ()
-{
-  return log_Inflight_retired_backlog.load (std::memory_order_relaxed);
 }

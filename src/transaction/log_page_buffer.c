@@ -352,7 +352,6 @@ static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY curren
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static void logpb_free_prior_node (LOG_PRIOR_NODE * node);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
-static PERF_STAT_ID logpb_prior_drain_stat_id (THREAD_ENTRY * thread_p);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
 
@@ -690,8 +689,7 @@ logpb_finalize_pool (THREAD_ENTRY * thread_p)
       log_Gl.append.log_pgptr = NULL;
     }
   log_Gl.append.set_nxio_lsa (NULL_LSA);
-  /* Nothing is reachable through logpb_fetch_page () with the pool down; NULL_LSA is the conservative
-   * value. */
+  /* nothing is reachable through logpb_fetch_page () with the pool down */
   log_Gl.append.set_copied_lsa (NULL_LSA);
   LSA_SET_NULL (&log_Gl.append.prev_lsa);
   /* copy log_Gl.append.prev_lsa to log_Gl.prior_info.prev_lsa */
@@ -1758,9 +1756,9 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
   /* This pre-check reads copied_lsa rather than log_Gl.hdr.append_lsa, which is not atomic and can be
-   * read torn. copied_lsa never runs ahead of append_lsa, so the substitution is conservative: it can
-   * only send this thread into the LOG_CS block below, which re-checks append_lsa under the lock, more
-   * often than strictly needed - never skip a drain the requested page turns out to want. */
+   * read torn. copied_lsa never runs ahead of append_lsa, so the substitution only sends this thread
+   * into the LOG_CS block below - which re-checks append_lsa under the lock - more often than needed,
+   * never past a drain the requested page wants. */
   append_lsa = log_Gl.append.get_copied_lsa ();
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
@@ -1785,10 +1783,7 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
        */
       if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
 	{
-	  PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
-	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	  logpb_prior_lsa_append_all_list (thread_p);
-	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FETCH_RETRY);
 	}
 
       LOG_CS_EXIT (thread_p);
@@ -3099,13 +3094,13 @@ logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list)
 
       logpb_append_next_record (thread_p, node);
 
-      /* append_lsa now sits at the end of the record just copied. Publish that before the node leaves the
+      /* append_lsa now sits at the end of the record just copied. Publish it before the node leaves the
        * window below, so a reader arriving too late for the window still finds the record copied. */
       log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);
 
       if (log_prior_inflight_is_registered (node))
 	{
-	  /* A reader may hold this node, so epoch reclamation frees it rather than this loop. */
+	  /* a reader may hold this node, so epoch reclamation frees it rather than this loop */
 	  log_prior_inflight_retire (thread_p, node);
 	}
       else
@@ -3152,7 +3147,7 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
   INT64 current_size;
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
-  /* LOG_CS is the only place append_lsa reads safely, so this is where the watermark is checkable. */
+  /* LOG_CS is the only place append_lsa reads safely, so this is where the invariant is checkable. */
   assert (log_Gl.append.get_copied_lsa () <= log_Gl.hdr.append_lsa);
 
   log_Gl.prior_info.prior_lsa_mutex.lock ();
@@ -3168,8 +3163,8 @@ logpb_prior_lsa_append_all_list (THREAD_ENTRY * thread_p)
       logpb_append_prior_lsa_list (thread_p, prior_list);
     }
 
-  /* Everything up to append_lsa is in the log page buffer now, and append_lsa ends on a record
-   * boundary. Covers the case where the list was empty and the loop above published nothing. */
+  /* Everything up to append_lsa is in the log page buffer now. Covers the case where the list was empty
+   * and the loop above published nothing. */
   log_Gl.append.set_copied_lsa (log_Gl.hdr.append_lsa);
 
   return NO_ERROR;
@@ -3994,26 +3989,6 @@ error:
 }
 
 /*
- * logpb_prior_drain_stat_id - which counter a drain from logpb_flush_pages_direct () belongs to
- *
- * return: the statistic to attribute the drain to
- *
- * NOTE: charged to whoever paid for it - the log flush daemon, or a foreground thread flushing directly.
- */
-static PERF_STAT_ID
-logpb_prior_drain_stat_id (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  if (thread_p != NULL && thread_p->type == TT_DAEMON)
-    {
-      return PSTAT_LOG_PRIOR_DRAIN_FLUSH_DAEMON;
-    }
-#endif /* SERVER_MODE */
-
-  return PSTAT_LOG_PRIOR_DRAIN_FLUSH_DIRECT;
-}
-
-/*
  * logpb_flush_pages_direct - flush all pages by itself.
  *
  * return: nothing
@@ -4022,19 +3997,18 @@ logpb_prior_drain_stat_id (THREAD_ENTRY * thread_p)
 void
 logpb_flush_pages_direct (THREAD_ENTRY * thread_p)
 {
+  PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+
 #if defined(CUBRID_DEBUG)
   er_log_debug (ARG_FILE_LINE, "logpb_flush_pages_direct: [%d]flush direct\n", (int) THREAD_ID ());
 #endif /* CUBRID_DEBUG */
 
   assert (LOG_CS_OWN_WRITE_MODE (thread_p));
 
-  {
-    PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
+  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+  logpb_prior_lsa_append_all_list (thread_p);
+  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_FLUSH);
 
-    PERF_UTIME_TRACKER_START (thread_p, &time_track);
-    logpb_prior_lsa_append_all_list (thread_p);
-    PERF_UTIME_TRACKER_TIME (thread_p, &time_track, logpb_prior_drain_stat_id (thread_p));
-  }
   (void) logpb_flush_all_append_pages (thread_p);
   log_Stat.direct_flush_count++;
 }

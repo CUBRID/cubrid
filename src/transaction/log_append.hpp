@@ -77,13 +77,12 @@ struct log_append_info
   std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
   /* todo - not really belonging here. should be part of page buffer. */
   /* Record-aligned watermark: everything below it has left the prior list, so logpb_fetch_page () reaches
-   * it - from the log page buffer or from disk. Published (release) by the drain and by
-   * LOG_RESET_APPEND_LSA (), read (acquire) by readers running ahead of the flush.
+   * it. Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers
+   * running ahead of the flush.
    *
-   * Invariant copied_lsa <= append_lsa, and only that direction is safe: lagging just sends a caller
-   * through the LOG_CS re-check, while running ahead makes one skip a drain it needed. Hence a store,
-   * never a max (). Distinct axis from nxio_lsa (what reached disk) - the two coincide at the flush points
-   * only because a full drain precedes them, so do not maintain either from the other. */
+   * Invariant copied_lsa <= append_lsa. Only that direction is safe - lagging just sends a caller through
+   * the LOG_CS re-check, running ahead makes one skip a drain it needed. Hence a store, never a max ().
+   * Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
   std::atomic<LOG_LSA> copied_lsa;
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */
@@ -117,8 +116,8 @@ struct log_prior_node
   int rlength;
   char *rdata;
 
-  /* Non-NULL while this node is registered in the in-flight window (log_prior_inflight.hpp): it holds
-   * the node for epoch reclamation, and tells the drain to retire the node instead of freeing it. */
+  /* Non-NULL while registered in the in-flight window (log_prior_inflight.hpp). Holds the node for epoch
+   * reclamation, and tells the drain to retire it instead of freeing it. */
   log_prior_inflight_holder *inflight_holder;
 
   LOG_PRIOR_NODE *next;

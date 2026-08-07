@@ -9758,13 +9758,12 @@ log_set_db_restore_time (THREAD_ENTRY * thread_p, INT64 db_restore_time)
 }
 
 /*
- * log_get_undo_record_from_data () - decompress a contiguous undo image, if zipped, and copy it into
- *   recdes. A recdes too small for it is reported as S_DOESNT_FIT with recdes->length set to minus the
- *   needed size, so that the caller can grow it and retry. Shared by the callers that read the image
- *   from a log page and the one that reads it from a staged prior node.
+ * log_get_undo_record_from_data () - unzip a contiguous undo image, if zipped, and copy it into recdes.
+ *   A recdes too small is reported as S_DOESNT_FIT with recdes->length set to minus the needed size.
+ *   Shared by the log page reader and the staged prior node reader.
  *   return: S_SUCCESS / S_DOESNT_FIT / S_ERROR
  *
- * undo_data (in): contiguous undo bytes (possibly zlib-compressed)
+ * undo_data (in): contiguous undo bytes
  * udata_size (in): byte length of undo_data
  * is_zipped (in): whether undo_data is zlib-compressed
  * recdes (out): destination record
@@ -9828,9 +9827,8 @@ exit:
 
 /*
  * log_get_undo_record_from_node () - read a staged prior node's undo image into recdes, without going
- *   through the log page buffer. node->udata already holds the same contiguous image the drain would
- *   copy onto a page, and its zip flag sits in the node's data header where the page path reads it
- *   from too. The caller must have the node pinned.
+ *   through the log page buffer. node->udata already holds the image the drain would copy onto a page,
+ *   and its zip flag sits in the data header the page path reads it from too. Node must be pinned.
  *   return: S_SUCCESS / S_DOESNT_FIT / S_ERROR
  */
 static SCAN_CODE
@@ -9859,8 +9857,8 @@ log_get_undo_record_from_node (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, R
 }
 
 /*
- * log_get_undo_record_from_inflight () - read an undo image out of the in-flight window, if the record
- *   is still staged there, without draining. Pins the node for as long as it is being read.
+ * log_get_undo_record_from_inflight () - read an undo image out of the in-flight window, without
+ *   draining. Pins the node while it is read.
  *   return: whether the window held the record; if it did, scan_out carries the read's result
  */
 bool
@@ -10011,7 +10009,6 @@ log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_page_p, LOG_LSA pro
       undo_data = area;
     }
 
-  /* decompress (if zipped) and copy into recdes via the shared parse core */
   scan = log_get_undo_record_from_data (thread_p, undo_data, udata_size, is_zipped, recdes);
 
 exit:
@@ -10463,13 +10460,7 @@ log_flush_execute (cubthread::entry & thread_ref)
   // refresh log trace flush time
   thread_ref.event_stats.trace_log_flush_time = prm_get_integer_value (PRM_ID_LOG_TRACE_FLUSH_TIME_MSECS);
 
-  {
-    PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
-
-    PERF_UTIME_TRACKER_START (&thread_ref, &time_track);
-    LOG_CS_ENTER (&thread_ref);
-    PERF_UTIME_TRACKER_TIME (&thread_ref, &time_track, PSTAT_LOG_CS_WRITE_WAIT_FLUSH);
-  }
+  LOG_CS_ENTER (&thread_ref);
   logpb_flush_pages_direct (&thread_ref);
   LOG_CS_EXIT (&thread_ref);
 

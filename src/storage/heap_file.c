@@ -25335,10 +25335,10 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   log_page_p (in): Scratch log page, used only when the version is read from the log.
  *   recdes (out): Record descriptor.
  *
- * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual. One
- *       not copied yet is read straight out of its staged prior node in the in-flight window; only when
- *       the window lacks it too is a drain forced. Decided per hop rather than once, because the chain
- *       runs toward older versions and any hop along it may still be waiting to be copied.
+ * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual.
+ *       One not copied yet is read from its staged prior node in the in-flight window; only when the
+ *       window lacks it too is a drain forced. Decided per hop, since any hop along the version chain
+ *       may still be waiting to be copied.
  */
 static SCAN_CODE
 heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
@@ -25349,6 +25349,7 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
   if (LSA_LT (&copied_lsa, version_lsa))
     {
       SCAN_CODE window_scan;
+      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
 
       if (log_get_undo_record_from_inflight (thread_p, version_lsa, recdes, &window_scan))
 	{
@@ -25356,10 +25357,8 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	  return window_scan;
 	}
 
-      /* In neither place: type not kept in the window, window full when it was appended, or copied and
+      /* Not in the window either: type not staged, window full when it was appended, or copied and
        * released just now. Drain, and read from the page below. */
-      PERF_UTIME_TRACKER time_track = PERF_UTIME_TRACKER_INITIALIZER;
-
       perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
       PERF_UTIME_TRACKER_START (thread_p, &time_track);
       LOG_CS_ENTER (thread_p);
