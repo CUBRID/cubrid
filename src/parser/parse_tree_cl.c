@@ -2856,6 +2856,11 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   saved_print_db_value = parser->print_db_value;
   saved_dont_prt_long_string = parser->flag.dont_prt_long_string;
+  /* long_string_skipped is the caller's: this print runs inside its clear -> print -> check window
+   * (see execute_statement.c), and the statement body printed before this point may already have set
+   * it. No writer can fire while dont_prt_long_string is 0 below - every one of them sits behind that
+   * guard - so restoring it is a no-op today. The pair is kept so that lowering the guard here can
+   * never flip the caller's cannot_prepare decision. */
   saved_long_string_skipped = parser->flag.long_string_skipped;
 
   /* The guard that skips long strings must not apply here: a value left out of the hash input would
