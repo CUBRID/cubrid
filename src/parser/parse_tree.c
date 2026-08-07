@@ -190,7 +190,6 @@ static pthread_mutex_t parser_id_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static PARSER_NODE_BLOCK *parser_Node_blocks[HASH_NUMBER];
 static PARSER_NODE_FREE_LIST *parser_Node_free_lists[HASH_NUMBER];
-static PARSER_STRING_BLOCK *parser_String_blocks[HASH_NUMBER];
 
 static int parser_id = 1;
 
@@ -367,8 +366,8 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 }
 
 /*
- * parser_create_string_block () - reates a new block of strings, links the block
- * on the hash list for the parser, and returns the block
+ * parser_create_string_block () - creates a new block of strings, links the block
+ * on the parser's own list, and returns the block
  *   return:
  *   parser(in):
  *   length(in):
@@ -376,11 +375,7 @@ pt_free_node_blocks (const PARSER_CONTEXT * parser)
 static PARSER_STRING_BLOCK *
 parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
   if (length < (int) STRINGS_PER_BLOCK)
     {
@@ -428,16 +423,11 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
   block->last_string_end = -1;
   block->u.chars[0] = 0;
 
-  /* link blocks on the hash list for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  block->next = parser_String_blocks[idhash];
-  parser_String_blocks[idhash] = block;
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
+  /* link on the parser's own list, newest first. The list is private to the
+   * parser -- and to its thread -- so no lock; the newest block is the one
+   * with room, so the allocation scan usually stops at the first node. */
+  block->next = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  ((PARSER_CONTEXT *) parser)->string_blocks = block;
 
   return block;
 }
@@ -460,28 +450,15 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 void *
 parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
 
-  /* find free string list for for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  block = parser_String_blocks[idhash];
-  while (block != NULL
-	 && (block->parser_id != parser->id
-	     || ((block->block_end - block->last_string_end) < (length + (align - 1) + 1))))
+  /* the parser's own list holds only its blocks, newest first */
+  block = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  while (block != NULL && ((block->block_end - block->last_string_end) < (length + (align - 1) + 1)))
     {
       block = block->next;
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
 
   if (block == NULL)
     {
@@ -503,7 +480,7 @@ parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, 
 
 /*
  * pt_free_a_string_block() - finds a string block, removes it from
- * 			    the hash table linked list frees the memory
+ * 			    the parser's own list and frees the memory
  *   return:
  *   parser(in):
  *   string_to_free(in):
@@ -513,19 +490,11 @@ pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * str
 {
   PARSER_STRING_BLOCK **previous_string;
   PARSER_STRING_BLOCK *string;
-  int idhash;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-  /* find string holding old_string for for this parse_id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  previous_string = &parser_String_blocks[idhash];
+  /* unlink from the parser's own list */
+  previous_string = (PARSER_STRING_BLOCK **) & (((PARSER_CONTEXT *) parser)->string_blocks);
   string = *previous_string;
-  while (string != string_to_free)
+  while (string != NULL && string != string_to_free)
     {
       previous_string = &string->next;
       string = *previous_string;
@@ -536,9 +505,6 @@ pt_free_a_string_block (const PARSER_CONTEXT * parser, PARSER_STRING_BLOCK * str
       *previous_string = string->next;
       free_and_init (string);
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
 }
 
 /*
@@ -552,25 +518,14 @@ static PARSER_STRING_BLOCK *
 pt_find_string_block (const PARSER_CONTEXT * parser, const char *old_string)
 {
   PARSER_STRING_BLOCK *string;
-  int idhash;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-  /* find string holding old_string for for this parse_id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  string = parser_String_blocks[idhash];
-  while (string != NULL
-	 && (string->parser_id != parser->id || &(string->u.chars[string->last_string_start]) != old_string))
+  /* the parser's own list; the block being appended to is almost always the
+   * newest, so this usually stops at the first node */
+  string = (PARSER_STRING_BLOCK *) parser->string_blocks;
+  while (string != NULL && &(string->u.chars[string->last_string_start]) != old_string)
     {
       string = string->next;
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
 
   return string;
 }
@@ -1125,40 +1080,17 @@ pt_get_varchar_length (const PARSER_VARCHAR * string)
 static void
 pt_free_string_blocks (const PARSER_CONTEXT * parser)
 {
-  int idhash;
   PARSER_STRING_BLOCK *block;
-  PARSER_STRING_BLOCK **previous_block;
-#if defined(SERVER_MODE)
-  int rv;
-#endif /* SERVER_MODE */
 
-  /* unlink blocks on the hash list for this id */
-  idhash = parser->id % HASH_NUMBER;
-#if defined(SERVER_MODE)
-  rv = pthread_mutex_lock (&parser_memory_lock);
-#endif /* SERVER_MODE */
-  previous_block = &parser_String_blocks[idhash];
-  block = *previous_block;
-
+  /* the whole list is this parser's; free it outright */
+  block = (PARSER_STRING_BLOCK *) parser->string_blocks;
   while (block != NULL)
     {
-      if (block->parser_id == parser->id)
-	{
-	  /* remove it from list, and free it */
-	  *previous_block = block->next;
-	  free_and_init (block);
-	}
-      else
-	{
-	  /* keep it, and move to next block pointer */
-	  previous_block = &block->next;
-	}
-      /* re-establish invariant */
-      block = *previous_block;
+      PARSER_STRING_BLOCK *next = block->next;
+      free_and_init (block);
+      block = next;
     }
-#if defined(SERVER_MODE)
-  pthread_mutex_unlock (&parser_memory_lock);
-#endif /* SERVER_MODE */
+  ((PARSER_CONTEXT *) parser)->string_blocks = NULL;
 }
 
 
