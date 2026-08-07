@@ -235,6 +235,7 @@ static PT_NODE *pt_check_pushable (PARSER_CONTEXT * parser, PT_NODE * tree, void
 static bool pt_check_pushable_subquery_select_list (PARSER_CONTEXT * parser, PT_NODE * query, int pos);
 static PT_NODE *pt_find_only_name_id (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static bool pt_check_pushable_term (PARSER_CONTEXT * parser, PT_NODE * term, FIND_ID_INFO * infop);
+static bool mq_is_bare_name_list (PT_NODE * list);
 static PUSHABLE_TYPE mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery,
 					      PT_NODE * class_spec, bool is_vclass, PT_NODE * order_by,
 					      PT_NODE * class_);
@@ -1886,6 +1887,36 @@ pt_check_odku_refs_view (PARSER_CONTEXT * parser, PT_NODE * statement)
  *  - has method
  *  TO_DO : check all cases using is_vclass
  */
+
+/*
+ * mq_is_bare_name_list () - check whether every item in a node list is a plain PT_NAME, with nothing else
+ *   (no PT_EXPR, PT_FUNCTION, PT_VALUE, ...) wrapping it.
+ *   return: true if list is NULL or every item is a bare PT_NAME
+ *   list(in):
+ * NOTE:
+ *  Used by mq_is_pushable_subquery () (CBRD-27189) to recognize a mainquery select list that does nothing
+ *  but pass a subquery's columns straight through. This is intentionally coarse: it does not check whether
+ *  a non-PT_NAME item actually references the subquery's numbering column at all (e.g. an unrelated literal
+ *  in the select list is also treated as "not bare"), trading a few needlessly-blocked merges for a simple,
+ *  easy-to-verify check. Refining this to precisely track which item(s) reference the risky column is left
+ *  for a follow-up.
+ */
+static bool
+mq_is_bare_name_list (PT_NODE * list)
+{
+  PT_NODE *item;
+
+  for (item = list; item != NULL; item = item->next)
+    {
+      if (item->node_type != PT_NAME)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 static PUSHABLE_TYPE
 mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * mainquery, PT_NODE * class_spec,
 			 bool is_vclass, PT_NODE * order_by, PT_NODE * class_)
@@ -2148,8 +2179,23 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check inst num or orderby_num */
-  if (!is_only_spec && pt_has_inst_in_where_and_select_list (parser, subquery))
+  if (pt_has_inst_in_where_and_select_list (parser, subquery)
+      && (!is_only_spec || !mq_is_bare_name_list (select_list)
+	  || (PT_IS_SELECT (mainquery) && mainquery->info.query.q.select.group_by != NULL) || order_by != NULL))
     {
+      /* CBRD-27189: is_only_spec alone used to be enough to allow this merge through, on the assumption
+       * that such a "simple" merge (single spec, no real predicate, no conflicting order by) can't cause
+       * trouble. That assumption breaks when subquery exposes rownum/orderby_num/groupby_num as a plain
+       * output column and mainquery does anything other than pass it straight through: after merging, the
+       * value referenced by mainquery is not yet final (it only becomes correct once subquery's own
+       * sort/TOP-N processing completes -- see qexec_topn_tuples_to_list_id ()/qexec_ordby_put_next () in
+       * query_executor.c), so embedding it in a select-list expression (e.g. DECODE()/CASE/arithmetic)
+       * or grouping/ordering by it produces wrong results. A bare passthrough in the select list is fine,
+       * since that is the one shape CUBRID already patches correctly post-sort/TOP-N.
+       * WHERE is deliberately not re-checked here: is_only_spec already guarantees mainquery's WHERE is
+       * either absent or a "rownum only" predicate (mq_is_rownum_only_predicate ()), which is the native,
+       * already-correctly-handled ROWNUM<->ORDERBY_NUM merge conversion done elsewhere in this function,
+       * not the bug this guards against. */
       return NON_PUSHABLE;
     }
 
