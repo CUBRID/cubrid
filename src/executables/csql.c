@@ -886,7 +886,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	      && feof (csql_Input_fp) && check_contents_has_noncomment ())
 	    {
 	      /* single-line-oriented execution */
-	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, line_no);
+	      csql_execute_statements (csql_arg, EDITOR_INPUT, NULL, start_line_no);
 	      csql_edit_contents_clear ();
 	    }
 
@@ -2197,6 +2197,10 @@ csql_execute_statements (const CSQL_ARGUMENT * csql_arg, int type, const void *s
   if (csql_Is_interactive)
     {
       csql_yyset_lineno (1);
+    }
+  else if (stmt_start_line_no > 0)
+    {
+      csql_yyset_lineno (stmt_start_line_no);
     }
 
   if (type == FILE_INPUT)
