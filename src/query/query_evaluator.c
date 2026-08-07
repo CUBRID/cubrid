@@ -2850,6 +2850,8 @@ eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cac
  * Note: with every predicate column read up front (all slots flagged lazy_always_eager) nothing is ever
  *   deferred, so short-circuit evaluation has nothing to skip. A single predicate column, or two conditions
  *   on the same column, is exactly this case; no measurement is needed to know it cannot pay off.
+ *   Also the feature's off switch: with the enable_lazy_predicate_read system parameter off, every scan
+ *   starts disabled and reads exactly as before.
  */
 void
 eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
@@ -2858,6 +2860,13 @@ eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
 
   if (attr_cache == NULL || attr_cache->num_values <= 0)
     {
+      return;
+    }
+
+  if (!prm_get_bool_value (PRM_ID_ENABLE_LAZY_PREDICATE_READ))
+    {
+      /* the feature's off switch: behave as before this optimization */
+      attr_cache->lazy_disabled = true;
       return;
     }
 

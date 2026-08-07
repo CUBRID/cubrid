@@ -4005,6 +4005,18 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       /* is not constant */
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+      if (regu_var->value.attr_descr.cache_slot != NULL
+	  && regu_var->value.attr_descr.cache_slot->state == HEAP_LAZY_ATTRVALUE
+	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
+	{
+	  *peek_dbval = heap_attrvalue_peek_lazy (regu_var->value.attr_descr.cache_slot,
+						  regu_var->value.attr_descr.cache_attrinfo);
+	  if (*peek_dbval == NULL)
+	    {
+	      goto exit_on_error;
+	    }
+	  break;
+	}
       *peek_dbval = regu_var->value.attr_descr.cache_dbvalp;
       if (*peek_dbval != NULL)
 	{

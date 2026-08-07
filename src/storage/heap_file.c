@@ -10178,6 +10178,7 @@ heap_attrinfo_end (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info)
       db_private_free_and_init (thread_p, attr_info->values);
     }
   OID_SET_NULL (&attr_info->class_oid);
+  attr_info->lazy_recdes = NULL;	/* borrowed from a caller's frame - leave no dangling record armed */
 
   /*
    * Bash this so that we ensure that heap_attrinfo_end is idempotent.
@@ -10586,6 +10587,8 @@ exit_on_error:
 }
 
 #define HEAP_LAZY_CALIBRATE_ROWS 10000	/* rows measured before judging whether the lazy read pays off */
+#define HEAP_LAZY_ROWS_PER_SAVED_COL 2	/* keep lazy only when it saves at least one column read per this
+					 * many rows (i.e. half a column per row) */
 
 /*
  * heap_attrinfo_read_dbvalues_lazy () - Defer reading of predicate columns
@@ -10687,7 +10690,7 @@ heap_attrinfo_read_dbvalues_lazy (THREAD_ENTRY * thread_p, const OID * inst_oid,
   attr_info->lazy_rows++;
   attr_info->lazy_deferred += deferred;
   if (attr_info->lazy_rows == HEAP_LAZY_CALIBRATE_ROWS
-      && (attr_info->lazy_deferred - attr_info->lazy_decoded) * 2 < attr_info->lazy_rows)
+      && (attr_info->lazy_deferred - attr_info->lazy_decoded) * HEAP_LAZY_ROWS_PER_SAVED_COL < attr_info->lazy_rows)
     {
       attr_info->lazy_disabled = true;
     }
