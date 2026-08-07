@@ -196,9 +196,8 @@ struct lang_collation
   /* collation data init function */
   void (*init_coll) (LANG_COLLATION * lang_coll);
 
-  /* byte-lockstep LIKE eligibility kind; NONE=0 is mandatory (built-in collations rely on
-   * positional aggregate initializers zero-filling this field); computed at registration;
-   * must stay last */
+  /* byte-lockstep LIKE eligibility kind, computed at registration; NONE=0 is mandatory and the
+   * field must stay last (built-in collations use positional aggregate initializers) */
   LANG_LOCKSTEP_KIND byte_lockstep_kind;
 };
 

@@ -17,67 +17,22 @@
  */
 
 /*
- * like_match_lockstep.i - codeset-parameterized byte-lockstep LIKE matcher body,
- *                         following PostgreSQL's like_match.c template pattern
+ * like_match_lockstep.i - codeset-parameterized byte-lockstep LIKE matcher body (PostgreSQL
+ *                         like_match.c template pattern); included once per instance
  *
- * This file is included by string_opfunc.c once per eligible codeset. Before
- * each inclusion the following macros must be defined; all of them are
- * undefined again at the end of this file.
+ * Required seam macros (all #undef'd at the end of this file):
+ *   LOCKSTEP_FN_NAME                      - name of the generated static matcher
+ *   LOCKSTEP_NEXT_CHAR(p, remain)         - advance one character; a truncated tail must leave remain < 0
+ *   LOCKSTEP_BYTE_EQ(b1, b2)              - reflexive/symmetric byte equivalence; single-byte classes only
+ *   LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) - '%'-scan candidate test at a character boundary;
+ *                                            false positives are filtered, false negatives are forbidden
+ *   LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) - on BYTE_EQ failure: consume one equivalent variable-length
+ *                                                element from both sides, or return QSTR_LIKE_LOCKSTEP_FALSE
+ *   LOCKSTEP_MEMCHR_OK(firstpat)          - nonzero when a raw memchr () hit is always a character start
+ *   LOCKSTEP_TAIL_IS_PAD(t, tlen)         - byte length of an ignorable trailing pad element, or 0
  *
- * LOCKSTEP_FN_NAME
- *   Name of the generated static matcher function.
- *
- * LOCKSTEP_NEXT_CHAR(p, remain)
- *   Statement. Advance `p` (const unsigned char *) by exactly one character of
- *   the instance codeset and decrease `remain` (int) by the same byte count.
- *   Precondition: remain >= 1 and p is on a character boundary. Postcondition:
- *   a character truncated by the buffer end must leave remain < 0 with p at
- *   the buffer end (callers treat remain < 0 as an exhausted invalid tail).
- *
- * LOCKSTEP_BYTE_EQ(b1, b2)
- *   Expression. 1:1 byte equivalence used for the literal lockstep walk.
- *   Must be reflexive and symmetric, and every non-trivial equivalence class
- *   must consist of single bytes only (variable-length classes are handled by
- *   LOCKSTEP_MISMATCH_RESYNC instead). The {0x00, 0x20} space-NUL class of
- *   identity-weight collations belongs here; BINARY uses plain equality.
- *
- * LOCKSTEP_CAND_EQ(t, tlen, pat, patlen)
- *   Expression. '%'-scan candidate predicate for the per-character walk.
- *   `t`/`tlen` is a target position on a character boundary (tlen >= 1) and
- *   `pat`/`patlen` is the first pattern character after '%'-run collapsing and
- *   escape skipping (patlen >= 1). Must return nonzero iff `t` can start a
- *   collation-equivalent occurrence of the pattern character. False positives
- *   are filtered by the recursive lockstep walk and are therefore harmless;
- *   false negatives lose matches and are forbidden. Must not advance pointers.
- *
- * LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen)
- *   Statement. Runs when LOCKSTEP_BYTE_EQ failed on a literal byte pair.
- *   The default (all fixed-width instances) is `return LOCKSTEP_FALSE`.
- *   A codeset with variable-length equivalence classes (EUC-KR space
- *   0xA1 0xA1 vs ASCII space/NUL) may instead consume one equivalent
- *   character from BOTH sides, each by its own element length, and fall
- *   through to continue the walk; when the pair is not equivalent it must
- *   `return QSTR_LIKE_LOCKSTEP_FALSE`.
- *
- * LOCKSTEP_MEMCHR_OK(firstpat)
- *   Expression. Nonzero when a memchr () scan on `firstpat` enumerates a
- *   superset of the character-boundary candidate positions (i.e. a raw byte
- *   hit can never fall inside a multi-byte character of the codeset, or a
- *   false candidate is otherwise impossible). When zero, the matcher falls
- *   back to the per-character LOCKSTEP_CAND_EQ walk.
- *
- * LOCKSTEP_TAIL_IS_PAD(t, tlen)
- *   Expression. Once the pattern is exhausted, returns the byte length of a
- *   pad/space element at `t` (tlen >= 1) that may be ignored at the end of
- *   the target, or 0 when `t` does not start such an element. Mirrors the
- *   trailing-pad rule of the generic qstr_eval_like () loop for the codeset.
- *
- * The function body itself is codeset-agnostic: every UTF-8 assumption of the
- * original matcher is expressed through the macros above. The UTF8 instance
- * reproduces the pre-template code literally (same candidate sets, same
- * early-abort behavior, same trailing-space handling).
+ * The body is codeset-agnostic; the UTF8 instance reproduces the pre-template matcher literally.
  */
-
 static int
 LOCKSTEP_FN_NAME (const unsigned char *t, int tlen, const unsigned char *p, int plen, int escape_byte, int depth)
 {
@@ -174,8 +129,7 @@ LOCKSTEP_FN_NAME (const unsigned char *t, int tlen, const unsigned char *p, int 
 		  if (hit != NULL && partner >= 0)
 		    {
 		      /* space and NUL match each other : take the earlier candidate */
-		      const unsigned char *hit2 =
-			(const unsigned char *) memchr (t, partner, CAST_BUFLEN (hit - t));
+		      const unsigned char *hit2 = (const unsigned char *) memchr (t, partner, CAST_BUFLEN (hit - t));
 		      if (hit2 != NULL)
 			{
 			  hit = hit2;
