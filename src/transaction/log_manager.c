@@ -160,6 +160,8 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    && ((RCVI) != RVBT_NO_LOGGING_INDEX_DURABLE) \
+    && ((RCVI) != RVBT_NO_LOGGING_INDEX_COMMITTED) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
@@ -319,7 +321,6 @@ static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_EN
 				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -1810,6 +1811,15 @@ log_final (THREAD_ENTRY * thread_p)
 	       * affects this process' in-memory bookkeeping, the same as what a crash would do. */
 	      LOG_SET_CURRENT_TRAN_INDEX (thread_p, i);
 	      lock_unlock_all (thread_p);
+
+	      /* tdes->mvccinfo.id is deliberately preserved (see logtb_release_tran_index()) so a
+	       * coordinator daemon can still complete this transaction while the server is up. Once
+	       * we get here the server is going down regardless, so clear it the same way the locks
+	       * above are released: this only clears in-memory bookkeeping in this dying process and
+	       * has no effect on disk state. Without it, logtb_clear_tdes() would assert on a
+	       * still-valid mvccinfo.id below.
+	       */
+	      tdes->mvccinfo.reset ();
 	      anyloose_ends = true;
 	    }
 	}
@@ -4166,13 +4176,13 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_sysop_get_level () - Get current system operation level. If no system operation is started, it returns -1.
+ * log_get_system_op_level () - Get current system operation level. If no system operation is started, it returns -1.
  *
  * return        : System op level
  * thread_p (in) : Thread entry
  */
-STATIC_INLINE int
-log_sysop_get_level (THREAD_ENTRY * thread_p)
+int
+log_get_system_op_level (THREAD_ENTRY * thread_p)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
