@@ -25145,6 +25145,7 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
   char *invalid_pos = NULL;
   int composed_size;
   const int str_size = strlen (str);
+  static const int check_base_size = ((DB_MAX_IDENTIFIER_LENGTH / 3) * 2);
 
   if (strchr (str, '[') || strchr (str, ']'))
     {
@@ -25170,19 +25171,24 @@ pt_check_identifier (PARSER_CONTEXT *parser, PT_NODE *p, const char *str)
       return (char*) "";
     }
 
-#if 0  
-   /* Now, when reading strings corresponding to identifiers in the lexer, 
-    * they are truncated at IDENTIFIER_MAX_LIMIT (DB_MAX_IDENTIFIER_LENGTH + 10).
-    * Additionally, an error is now handled if it exceeds DB_MAX_IDENTIFIER_LENGTH.
-    * Therefore, character corruption caused by incorrect truncation of user-inputted identifier strings will no longer occur. 
-    * For that reason, we are removing the call to intl_identifier_fix()
-    */  
-  else if (intl_identifier_fix ((char *) str, -1, true) != NO_ERROR)
+  /*
+   * The byte size may increase when changing the case.
+   * Usernames must be converted to uppercase, while all other cases should be converted to lowercase.
+   * Since the maximum length of a username is smaller than DB_MAX_IDENTIFIER_LENGTH, it does not need to be checked here.
+   * Therefore, we only check for cases where text is converted to lowercase
+   */
+  if (str_size >= check_base_size)
     {
-      PT_ERRORf (parser, p, "invalid identifier : %s", str);
-      return (char*) "";
+      int lower_length = intl_identifier_lower_string_size (str);
+      if (lower_length > DB_MAX_IDENTIFIER_LENGTH)
+	{
+	  PT_ERRORf4 (this_parser, p,
+		      "Identifier name \"%s\" is too long. Maximum length is %d.\n"
+                      "The current length is %d, but it becomes %d when converted to lowercase.",
+                      str, DB_MAX_IDENTIFIER_LENGTH - 1, str_size, lower_length);
+	  return (char *) "";
+	}
     }
-#endif
 
   if (LANG_SYS_CODESET == INTL_CODESET_UTF8
       && unicode_string_need_compose (str, str_size, &composed_size,
