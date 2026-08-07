@@ -279,19 +279,17 @@ typedef enum
 #define PGBUF_AOUT_NOT_FOUND  -2
 
 #if defined (SERVER_MODE)
-/* vacuum workers, checkpoint thread and scan-resistant scans (statistics collection) should not
- * contribute to promoting a bcb as active/hot */
-#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th) || (th)->pgbuf_no_boost_scan)
+/* vacuum workers and checkpoint thread should not contribute to promoting a bcb as active/hot */
+#define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) (VACUUM_IS_THREAD_VACUUM_WORKER (th))
 #else
 #define PGBUF_VACUUM_SHOULD_IGNORE_UNFIX(th) false
 #endif
 
 #if defined (SERVER_MODE)
-/* vacuum workers, checkpoint thread, scan-resistant scans and temp pages should not contribute to
- * promoting a bcb as active/hot */
+/* vacuum workers, checkpoint thread and temp pages should not contribute to promoting a bcb as
+ * active/hot */
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) \
-  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || (th)->pgbuf_no_boost_scan \
-   || pgbuf_is_temporary_volume (buf->vpid.volid))
+  (VACUUM_IS_THREAD_VACUUM_WORKER (th) || pgbuf_is_temporary_volume (buf->vpid.volid))
 #else
 #define PGBUF_SHOULD_IGNORE_UNFIX(th, buf) false
 #endif

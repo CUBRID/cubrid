@@ -654,35 +654,24 @@ namespace
     return 1.0;
   }
 
-  /* scope guard: mark this thread's page unfixes as non-promoting (vacuum-style scan resistance)
-   * for the duration of a collection scan, so the scan cannot push the production working set out
-   * of the hot LRU zones. Restores the flag on every exit path. */
-  struct pgbuf_no_boost_guard
+  /* The scan demotes each page it leaves to the LRU bottom (pgbuf_mark_page_for_lru_bottom),
+   * but only when the heap is large enough that its pages are not worth keeping resident: a
+   * small hot table (a code table an OLTP load keeps reading) fits in the buffer pool, and
+   * demoting its pages during UPDATE STATISTICS would turn the next lookups into disk re-reads.
+   * Gate on a fraction of the data buffer, like PostgreSQL's BAS_BULKREAD ring (only for scans
+   * over more than shared_buffers/4) and Oracle's small-table threshold. */
+  static bool
+  histogram_scan_should_demote_pages (int npages)
   {
-    THREAD_ENTRY *m_thread;
-    bool m_prev = false;
-
-    explicit pgbuf_no_boost_guard (THREAD_ENTRY *thread_p)
-      : m_thread (thread_p)
-    {
-      if (m_thread != NULL)
-	{
-	  /* save/restore instead of set/clear: the multi-column full scan holds a
-	   * function-scope guard while each ftab partition scan constructs its own --
-	   * an unconditional clear in the inner destructor would re-enable boosting
-	   * for the remainder of the outer scan */
-	  m_prev = m_thread->pgbuf_no_boost_scan;
-	  m_thread->pgbuf_no_boost_scan = true;
-	}
-    }
-    ~pgbuf_no_boost_guard ()
-    {
-      if (m_thread != NULL)
-	{
-	  m_thread->pgbuf_no_boost_scan = m_prev;
-	}
-    }
-  };
+    if (npages <= 0)
+      {
+	return false;
+      }
+    /* data_buffer_pages is the pool size in pages; demote only when the heap exceeds a quarter
+     * of it, so a table that comfortably fits stays cached */
+    int buffer_pages = prm_get_integer_value (PRM_ID_PB_NBUFFERS);
+    return buffer_pages <= 0 || npages > buffer_pages / 4;
+  }
 
   /* Page-level iterator over an ftab_set. Kept out of the shared ftab_set (which is a plain sector
    * container used by parallel scan / index load / external sort) so only this histogram consumer
@@ -740,13 +729,22 @@ namespace
       /* page-sampling filter: keep a page iff hash (vpid) < fraction * 2^64. The hash is
        * deterministic per page -- independent of worker partitioning and scan order -- so the kept
        * page set is stable and reproducible for a given fraction. fraction >= 1.0 disables it. */
-      void set_page_sample (double fraction, std::uint64_t seed)
+      void set_page_sample (double fraction, std::uint64_t seed, bool demote_on_leave)
       {
 	if (fraction < 1.0)
 	  {
 	    m_sample_threshold = (std::uint64_t) (fraction * (double) UINT64_MAX);
 	    m_sample_seed = seed;
 	  }
+	m_demote_on_leave = demote_on_leave;
+      }
+
+      /* whether the scan should demote each page it leaves to the LRU bottom: true only for a heap
+       * large enough that keeping its pages resident is not worthwhile (see
+       * histogram_scan_should_demote_pages) */
+      bool should_demote () const
+      {
+	return m_demote_on_leave;
       }
 
       /* data pages enumerated / accepted by the filter: the walker visits the WHOLE ftab, so the
@@ -769,6 +767,7 @@ namespace
       std::uint64_t m_sample_seed = 0;
       std::int64_t m_pages_seen = 0;
       std::int64_t m_pages_kept = 0;
+      bool m_demote_on_leave = false;
   };
 
 #if defined (SERVER_MODE)
@@ -794,7 +793,6 @@ namespace
     PGBUF_WATCHER old_pw;
 
     PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-    pgbuf_no_boost_guard no_boost_guard (thread_p);
     *total_rows = 0;
     *null_rows = 0;
 
@@ -855,7 +853,10 @@ namespace
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		if (part.should_demote ())
+		  {
+		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		  }
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -868,7 +869,10 @@ namespace
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
-	    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	      }
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -950,10 +954,14 @@ cleanup:
   static int
   reserve_and_split (THREAD_ENTRY *thread_p, const HFID *hfid, int sample_rows_target, int attr_cnt,
 		     int str_attr_cnt, bool with_fullscan, std::vector<ftab_set> &parts,
-		     parallel_query::worker_manager **out_wm, double *out_sample_fraction)
+		     parallel_query::worker_manager **out_wm, double *out_sample_fraction, bool *out_demote)
   {
     *out_wm = NULL;
     *out_sample_fraction = 1.0;
+    if (out_demote != NULL)
+      {
+	*out_demote = false;
+      }
 
     /* page count from the file allocation metadata only: heap_get_num_objects () syncs the
      * best-space statistics by walking EVERY heap page, which alone costs a full-scan's worth
@@ -974,6 +982,12 @@ cleanup:
       }
 
     *out_sample_fraction = histogram_compute_sample_fraction (npages, sample_rows_target, with_fullscan);
+    if (out_demote != NULL)
+      {
+	/* demote scanned pages only for a heap large enough that keeping them resident is not
+	 * worthwhile (same page count the sampling gate/fraction use) */
+	*out_demote = histogram_scan_should_demote_pages (npages);
+      }
 
     /* This dedicated UPDATE STATISTICS / histogram full scan requests up to 2x the configured
      * 'parallelism' cap (without changing the global parameter). Passing an explicit hint_degree
@@ -1272,7 +1286,6 @@ cleanup:
     PGBUF_WATCHER old_pw;
 
     PGBUF_INIT_WATCHER (&old_pw, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-    pgbuf_no_boost_guard no_boost_guard (thread_p);
     *total_rows = 0;
 
     error = heap_scancache_start (thread_p, &scan_cache, hfid, class_oid, true /* cache_last_fix_page */, snapshot);
@@ -1332,7 +1345,10 @@ cleanup:
 	  {
 	    if (old_pw.pgptr != NULL)
 	      {
-		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		if (part.should_demote ())
+		  {
+		    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+		  }
 		pgbuf_ordered_unfix (thread_p, &old_pw);
 	      }
 	    if (fix_err != NO_ERROR && fix_err != ER_PB_BAD_PAGEID)
@@ -1345,7 +1361,10 @@ cleanup:
 	  }
 	if (old_pw.pgptr != NULL)
 	  {
-	    pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	    if (part.should_demote ())
+	      {
+		pgbuf_mark_page_for_lru_bottom (thread_p, old_pw.pgptr);
+	      }
 	    pgbuf_ordered_unfix (thread_p, &old_pw);
 	  }
 	if (pgbuf_get_page_ptype (thread_p, scan_cache.page_watcher.pgptr) != PAGE_HEAP)
@@ -1443,8 +1462,8 @@ cleanup:
     public:
       multi_scan_task (const OID *class_oid, const HFID *hfid, const ATTR_ID *attr_ids, int attr_cnt,
 		       MVCC_SNAPSHOT *snapshot, ftab_set part, double sample_fraction, std::uint64_t sample_seed,
-		       multi_worker_result *result, THREAD_ENTRY *parent, parallel_query::worker_manager *wm,
-		       std::atomic<bool> *abort_flag)
+		       bool demote, multi_worker_result *result, THREAD_ENTRY *parent,
+		       parallel_query::worker_manager *wm, std::atomic<bool> *abort_flag)
 	: m_class_oid (*class_oid)
 	, m_hfid (*hfid)
 	, m_attr_ids (attr_ids)
@@ -1456,7 +1475,7 @@ cleanup:
 	, m_wm (wm)
 	, m_abort (abort_flag)
       {
-	m_part.set_page_sample (sample_fraction, sample_seed);
+	m_part.set_page_sample (sample_fraction, sample_seed, demote);
       }
 
       void execute (cubthread::entry &thread_ref) override
@@ -1543,6 +1562,7 @@ cleanup:
 
     std::vector<ftab_set> parts;
     parallel_query::worker_manager *wm = NULL;
+    bool demote = false;
     int str_attr_cnt = 0;
     for (int a = 0; a < attr_cnt; a++)
       {
@@ -1553,7 +1573,7 @@ cleanup:
 	  }
       }
     int degree = reserve_and_split (thread_p, hfid, sample_size, attr_cnt, str_attr_cnt, with_fullscan, parts, &wm,
-				    out_sample_fraction);
+				    out_sample_fraction, &demote);
     if (degree < 2)
       {
 	return NO_ERROR;	/* caller runs the serial single scan */
@@ -1613,7 +1633,8 @@ cleanup:
       {
 	multi_scan_task *task =
 		new multi_scan_task (class_oid, hfid, attr_ids, attr_cnt, snapshot, std::move (parts[w]),
-				     *out_sample_fraction, sample_seed, &results[w], thread_p, wm, &abort_flag);
+				     *out_sample_fraction, sample_seed, demote, &results[w], thread_p, wm,
+				     &abort_flag);
 	if (task == NULL)
 	  {
 	    /* non-throwing operator new: OOM. The partitions of the unpushed workers would go
@@ -2170,7 +2191,6 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
   std::int64_t serial_pages_kept = 0;
   std::int64_t total_rows = 0;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
-  pgbuf_no_boost_guard no_boost_guard (thread_p);
   std::vector<col_collector *> collectors (attr_cnt, (col_collector *) NULL);
   std::vector<std::pair<OID, HFID>> targets;
 
@@ -2323,7 +2343,8 @@ xhistogram_build_multi_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID 
 	  }
 
 	ftab_page_walker walker (std::move (tgt_ftab));
-	walker.set_page_sample (serial_fraction, (std::uint64_t) sample_seed);
+	walker.set_page_sample (serial_fraction, (std::uint64_t) sample_seed,
+				histogram_scan_should_demote_pages (serial_npages));
 
 	error = scan_ftab_partition_multi (thread_p, tgt_oid, tgt_hfid, attr_ids, attr_cnt, snapshot, walker,
 					   collectors, &tgt_rows, NULL /* abort_flag */);
@@ -2593,7 +2614,6 @@ xstats_collect_ndv_by_fullscan_reservoir (THREAD_ENTRY *thread_p, const OID *cla
   bool scancache_inited = false;
   bool attrinfo_inited = false;
   MVCC_SNAPSHOT *snapshot = logtb_get_mvcc_snapshot (thread_p);
-  pgbuf_no_boost_guard no_boost_guard (thread_p);
 
   *out_total_rows = 0;
   if (out_sketches != NULL)
