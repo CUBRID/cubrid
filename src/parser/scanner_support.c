@@ -926,6 +926,15 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);
 	    }
 	  break;
+
+	case PT_HINT_BIND_SENSITIVE:
+	  /* query-level hint (pt_query_info.hint lives outside the q union), so it is read the same
+	   * way for every PT_IS_QUERY node the bind-sensitivity check runs on */
+	  if (PT_IS_QUERY (node))
+	    {
+	      node->info.query.hint = (PT_HINT_ENUM) (node->info.query.hint | hint_table[i].hint);
+	    }
+	  break;
 	default:
 	  break;
 	}

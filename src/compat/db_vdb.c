@@ -114,6 +114,27 @@ static PT_NODE *do_process_prepare_subquery_pre (PARSER_CONTEXT * parser, PT_NOD
 
 static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
+/*
+ * db_is_bind_sensitive () - is value-adaptive replanning requested for this statement?
+ * return         : true when the statement carries the BIND_SENSITIVE hint or the
+ *                  plan_cache_bind_sensitivity parameter is on
+ * statement (in) : statement being executed
+ *
+ * Note: the hint is the per-statement form of the parameter, for systems where only a few
+ *       queries benefit from replanning per bind value while the rest would just pay the
+ *       fingerprint cost. Plain OR: there is no NO_BIND_SENSITIVE counterpart because the
+ *       parameter is off by default.
+ */
+static bool
+db_is_bind_sensitive (PT_NODE * statement)
+{
+  if (statement != NULL && PT_IS_QUERY (statement) && (statement->info.query.hint & PT_HINT_BIND_SENSITIVE) != 0)
+    {
+      return true;
+    }
+  return prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY);
+}
+
 int g_open_buffer_control_flags = 0;
 
 /* Per-session registry of the compiled subsessions of SQL-level prepared statements
@@ -2151,7 +2172,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     }
   else if (prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
-      if (prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY) && PT_IS_QUERY (statement)
+      if (db_is_bind_sensitive (statement) && PT_IS_QUERY (statement)
 	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
 	{
 	  UINT64 bind_fp = 0;
@@ -3452,8 +3473,7 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
     bool have_fp = PT_IS_QUERY (stmt0) && histogram_bind_fingerprint (kept->parser, stmt0, &fp);
     bool replan = force_replan;
 
-    if (!replan && have_fp && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY)
-	&& stmt0->info.query.bind_fp != fp)
+    if (!replan && have_fp && db_is_bind_sensitive (stmt0) && stmt0->info.query.bind_fp != fp)
       {
 	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
 	 * territory (a different MCV / bucket, hence a different selectivity) than the values
