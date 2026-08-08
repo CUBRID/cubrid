@@ -44,6 +44,12 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         this.sessionId = sessionId;
     }
 
+    public void markChildrenAsOld() {
+        for (CatalogClassLoader ccl : unitClassLoaders.values()) {
+            ccl.setOld(true);
+        }
+    }
+
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
 

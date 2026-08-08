@@ -98,6 +98,7 @@ public class StoredProcedure {
         switch (lang) {
             case LANG_PLCSQL:
                 // compileId is relevant only for LANG_PLCSQL
+                assert compileId != null && compileId.length() > 0;
                 c =
                         ctx.getCatalogClassLoaderRelay()
                                 .findClassWithCompileId(mainClassName, compileId);
