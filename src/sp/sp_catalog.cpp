@@ -85,7 +85,7 @@ static int sp_builtin_init ()
   db_sys_datetime (&current_datetime);
 
   // common
-  v.lang = SP_LANG_PLCSQL;
+  v.lang = SP_LANG_JAVA;
   v.is_system_generated = true;
   v.directive = SP_DIRECTIVE_RIGHTS_OWNER;
   v.owner = Au_public_user;
@@ -521,6 +521,14 @@ sp_add_stored_procedure_internal (SP_INFO &info, bool has_savepoint)
 	goto error;
       }
 
+    db_make_string (&value, info.compile_id.data ());
+    err = dbt_put_internal (obt_p, SP_ATTR_COMPILE_ID, &value);
+    pr_clear_value (&value);
+    if (err != NO_ERROR)
+      {
+	goto error;
+      }
+
     db_make_string (&value, info.target_class.data ());
     err = dbt_put_internal (obt_p, SP_ATTR_TARGET_CLASS, &value);
     pr_clear_value (&value);
@@ -839,14 +847,6 @@ sp_add_stored_procedure_code (SP_CODE_INFO &info)
       goto error;
     }
 
-  db_make_string (&value, info.compile_id.data ());
-  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
   db_make_int (&value, info.stype);
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_STYPE, &value);
   pr_clear_value (&value);
@@ -934,14 +934,6 @@ sp_edit_stored_procedure_code (MOP code_mop, SP_CODE_INFO &info)
 
   db_make_string (&value, info.name.data ());
   err = dbt_put_internal (obt_p, SP_CODE_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto error;
-    }
-
-  db_make_string (&value, info.compile_id.data ());
-  err = dbt_put_internal (obt_p, SP_CODE_ATTR_COMPILE_ID, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {

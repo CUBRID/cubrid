@@ -896,7 +896,8 @@ namespace cubschema
       {SP_ATTR_PKG_NAME, format_varchar (SP_ATTR_PKG_NAME_LEN)},
       {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
       {SP_ATTR_DIRECTIVE, "integer"},
-      {SP_ATTR_TARGET_CLASS, format_varchar (SP_ATTR_TARGET_CLASS_LEN)},
+      {SP_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
+      {SP_ATTR_TARGET_CLASS, format_varchar (PLCSQL_TARGET_CLASS_LEN)},
       {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
       {SP_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_ATTR_SQL_DATA_ACCESS, "integer"},
@@ -958,8 +959,7 @@ namespace cubschema
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
     {
-      {SP_CODE_ATTR_NAME, format_varchar (SP_ATTR_TARGET_CLASS_LEN)}, // generated Java class name. (= _db_stored_procedure.target_class)
-      {SP_CODE_ATTR_COMPILE_ID, format_varchar (SP_CODE_ATTR_COMPILE_ID_LEN)},
+      {SP_CODE_ATTR_NAME, format_varchar (PLCSQL_TARGET_CLASS_LEN)}, // generated Java class name (= _db_stored_procedure.target_class)
       {SP_CODE_ATTR_CREATED_TIME, format_varchar (16)},
       {SP_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
       {SP_CODE_ATTR_IS_STATIC, "integer"},
@@ -1312,6 +1312,8 @@ namespace cubschema
       {PKG_ATTR_UNIQUE_NAME, format_varchar (255)},
       {PKG_ATTR_PKG_NAME, format_varchar (255)},
       {PKG_ATTR_FLAGS, "integer"}, // bit0: system pkg or not, bit1~: reserved
+      {PKG_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
+      {PKG_ATTR_TARGET_CLASS, format_varchar (PLCSQL_TARGET_CLASS_LEN)},
       {PKG_ATTR_OWNER, AU_USER_CLASS_NAME},
       {PKG_ATTR_CODE, CT_PACKAGE_CODE_NAME},
       {PKG_ATTR_PROCEDURES_CNT, "integer"},
@@ -1351,8 +1353,6 @@ namespace cubschema
 		   // columns
     {
       {PKG_CODE_ATTR_PKG_UNIQUE_NAME, format_varchar (PKG_CODE_ATTR_PKG_UNIQUE_NAME_LEN)},
-      {PKG_CODE_ATTR_NAME, format_varchar (PKG_CODE_ATTR_NAME_LEN)},    // generated Java class name
-      {PKG_CODE_ATTR_COMPILE_ID, format_varchar (PKG_CODE_ATTR_COMPILE_ID_LEN)},
       {PKG_CODE_ATTR_STYPE, "integer"},
       {PKG_CODE_ATTR_SCODE_SPEC, "string"},
       {PKG_CODE_ATTR_SCODE_BODY, "string"},

@@ -446,6 +446,7 @@ public class ExecuteThread extends Thread {
 
     private StoredProcedure makeStoredProcedure(CUBRIDUnpacker unpacker) throws Exception {
         String methodSig = unpacker.unpackCString();
+        String compileId = unpacker.unpackCString();
         String authUser = unpacker.unpackCString();
         int lang = unpacker.unpackInt();
         int paramCount = unpacker.unpackInt();
@@ -464,7 +465,8 @@ public class ExecuteThread extends Thread {
         boolean transactionControl = unpacker.unpackBool();
         getCurrentContext().setTransactionControl(transactionControl);
 
-        storedProcedure = new StoredProcedure(methodSig, lang, authUser, arguments, returnType);
+        storedProcedure =
+                new StoredProcedure(methodSig, compileId, lang, authUser, arguments, returnType);
         return storedProcedure;
     }
 

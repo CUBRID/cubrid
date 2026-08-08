@@ -49,17 +49,13 @@ public class CompiledCode extends SimpleJavaFileObject {
 
         assert name.endsWith(".class") == fromJar;
 
-        int idx = name.lastIndexOf(".");
         if (fromJar) {
             // it does not start with a package name but ends with ".class"
-            this.className = name.substring(0, idx);
+            this.className = name.substring(0, name.length() - ".class".length());
         } else {
             // it starts with a package name "com.cubrid.generated..."
-            this.className = name.substring(idx + 1);
+            this.className = name;
         }
-
-        // no dots in className
-        assert this.className.indexOf(".") == -1;
 
         this.baos = new ByteArrayOutputStream();
     }

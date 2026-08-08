@@ -48,6 +48,7 @@ namespace cubpl
     int tran_id;
 
     std::string signature;
+    std::string compile_id;
     std::string auth;
     int lang;
     int num_args;

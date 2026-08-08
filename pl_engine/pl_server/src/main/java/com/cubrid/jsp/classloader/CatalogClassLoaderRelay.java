@@ -31,11 +31,9 @@
 
 package com.cubrid.jsp.classloader;
 
-// import com.cubrid.jsp.code.CompiledCode;
-// import com.cubrid.jsp.code.CompiledCodeSet;
-// import java.util.Map.Entry;
-// import java.util.UUID;
-
+import com.cubrid.jsp.code.ClassAccess;
+import com.cubrid.jsp.code.CompiledCodeSet;
+import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -53,34 +51,29 @@ public class CatalogClassLoaderRelay extends ClassLoader {
         // name because
         //   . it does not call defineClass(), and
         //   . JVM does not call loadClass on it, but only the application code does.
-        // This overriding is only to check the assertion. TODO: remove this overridding after some
-        // time.
+        // This overriding is only to check the assertion.
+        // TODO: remove this overridding after some time.
 
         assert findLoadedClass(name) == null
-                : "CatalogClassLoaderRelay may not be a initiating class loader for " + name;
+                : "CatalogClassLoaderRelay cannot be a initiating class loader for " + name;
         return super.loadClass(name);
     }
 
-    @Override
-    public Class<?> findClass(String name) throws ClassNotFoundException {
+    public Class<?> findClassWithCompileId(String mainClassName, String compileId)
+            throws ClassNotFoundException {
 
-        // NOTE: (class) name ends with a string of the form
-        // _<seqno>_<creation-time>[$<nested-class-postfix>]
-        // Detaching this string yields the invariant part of the main class name of the form
-        // Proc_<owner>_<procedure-name> or Func_<owner>_<function-name>.
-        String mainClassName = getMainClassName(name); // which ends with _<seqno>_<creation-time>
-        String unitKey = getInvariantPartOfMainClassName(mainClassName);
-        if (unitKey == null) {
-            // the name is not an unit (procedure, function) class name
-            throw new ClassNotFoundException(name);
-        }
+        // this is only called from StoredProcedure::findTargetMethod
+        assert (mainClassName.startsWith("Proc_")
+                || mainClassName.startsWith("Func_")
+                || mainClassName.startsWith("Pckg_"));
 
-        CatalogClassLoader classLoader = unitClassLoaders.get(unitKey);
-        if (classLoader == null || !mainClassName.equals(classLoader.mainClassName)) {
-            // if the unit's class is first loaded or it is recompiled to a new class
-            classLoader = new CatalogClassLoader(mainClassName, this);
-            CatalogClassLoader old = unitClassLoaders.put(unitKey, classLoader);
-            if (old != null) {
+        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+        if (classLoader == null) {
+            classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+        } else {
+            if (!compileId.equals(classLoader.codeSet.compileId)) {
+                classLoader = new CatalogClassLoader(mainClassName, compileId, this);
+                CatalogClassLoader old = unitClassLoaders.put(mainClassName, classLoader);
                 old.clear();
             }
         }
@@ -89,7 +82,50 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         // CAUTION: do not use classLoader.loadClass() :
         //  it will result in an infinite loop because classLoader's parent is this relaying class
-        return classLoader.findClass(name);
+        return classLoader.findClass(JavaCodeWriter.JAVA_PKG_OF_GENERATED + "." + mainClassName);
+    }
+
+    @Override
+    public Class<?> findClass(String className) throws ClassNotFoundException {
+
+        // control reaches here only when a stored procedure or pacakge is referenced by another,
+        // and to find the class for that reference
+
+        String mainClassName = getMainClassName(className);
+        assert (mainClassName.startsWith("Proc_")
+                || mainClassName.startsWith("Func_")
+                || mainClassName.startsWith("Pckg_"));
+
+        CatalogClassLoader classLoader = unitClassLoaders.get(mainClassName);
+        if (classLoader == null) {
+            CompiledCodeSet codeSet = ClassAccess.getObjectCodeOf(mainClassName);
+            if (codeSet == null) {
+                // was it dropped?
+                throw new ClassNotFoundException(className);
+            }
+            classLoader = new CatalogClassLoader(codeSet, this);
+        } else {
+            if (classLoader.isOld) {
+                CompiledCodeSet codeSet0 = classLoader.codeSet;
+                CompiledCodeSet codeSet1 = ClassAccess.getObjectCodeNewerThan(codeSet0);
+                if (codeSet1 == null) {
+                    // was it dropped?
+                    throw new ClassNotFoundException(className);
+                } else if (codeSet1 == codeSet0) {
+                    classLoader.setOld(false); // it is up-to-date
+                } else {
+                    classLoader = new CatalogClassLoader(codeSet1, this);
+                    CatalogClassLoader old = unitClassLoaders.put(mainClassName, classLoader);
+                    old.clear();
+                }
+            }
+        }
+
+        assert classLoader != null;
+
+        // CAUTION: do not use classLoader.loadClass() :
+        //  it will result in an infinite loop because classLoader's parent is this relaying class
+        return classLoader.findClass(className);
     }
 
     public void clear() {
@@ -105,12 +141,12 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
     private static String getMainClassName(String className) {
 
-        int mainClassNameEnd = className.indexOf('$');
-        if (mainClassNameEnd == -1) {
-            return className;
-        } else {
-            return className.substring(0, mainClassNameEnd);
-        }
+        // nested class cannot reach here
+        assert className.indexOf('$') == -1;
+        // only pl/csql compiler generated code can reach here
+        assert className.startsWith(JavaCodeWriter.JAVA_PKG_OF_GENERATED + ".");
+
+        return className.substring(JavaCodeWriter.JAVA_PKG_OF_GENERATED.length() + 1);
     }
 
     private static String getInvariantPartOfMainClassName(String mainClassName) {

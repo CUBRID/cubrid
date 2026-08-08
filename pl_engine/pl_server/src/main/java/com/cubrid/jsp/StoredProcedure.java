@@ -44,7 +44,6 @@ import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Time;
@@ -67,7 +66,12 @@ public class StoredProcedure {
     private static final int LANG_PLCSQL = 4;
 
     public StoredProcedure(
-            String signature, int lang, String authUser, Value[] args, int returnType)
+            String signature,
+            String compileId,
+            int lang,
+            String authUser,
+            Value[] args,
+            int returnType)
             throws Exception {
         this.signature = signature;
         this.authUser = authUser;
@@ -75,26 +79,28 @@ public class StoredProcedure {
         this.returnType = returnType;
         this.lang = lang;
 
-        this.target = findTargetMethod(signature);
+        this.target = findTargetMethod(signature, compileId);
 
         this.cachedResolved = null;
 
         checkArgs();
     }
 
-    private TargetMethod findTargetMethod(String sigString) throws Exception {
+    private TargetMethod findTargetMethod(String signature, String compileId) throws Exception {
 
         Context ctx = ContextManager.getContextofCurrentThread();
 
-        Connection conn = ctx.getConnection();
-        Signature sig = Signature.parse(sigString);
-        String mainClassName = sig.getClassName();
-
         Class<?> c = null;
+
+        Signature sig = Signature.parse(signature);
+        String mainClassName = sig.getClassName();
 
         switch (lang) {
             case LANG_PLCSQL:
-                c = ctx.getCatalogClassLoaderRelay().loadClass(mainClassName);
+                // compileId is relevant only for LANG_PLCSQL
+                c =
+                        ctx.getCatalogClassLoaderRelay()
+                                .findClassWithCompileId(mainClassName, compileId);
                 break;
 
             case LANG_JAVASP:

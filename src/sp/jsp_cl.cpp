@@ -1076,8 +1076,7 @@ jsp_get_pkg_scode_body (const char *unique_name, DB_VALUE *value)
 }
 
 static int
-jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_body, const char *compile_id,
-				  const char *ocode)
+jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_body, const char *ocode)
 {
   int err;
   int save;
@@ -1155,13 +1154,6 @@ jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_bod
 
   if (ocode)
     {
-      db_make_string (&value, compile_id);
-      err = dbt_put_internal (obt, PKG_CODE_ATTR_COMPILE_ID, &value);
-      pr_clear_value (&value);
-      if (err != NO_ERROR)
-	{
-	  goto cleanup1;
-	}
       db_make_int (&value, SPOC_JAVA_JAR);  // currently, Java Jar only
       err = dbt_put_internal (obt, PKG_CODE_ATTR_OTYPE, &value);
       if (err != NO_ERROR)
@@ -1207,12 +1199,88 @@ cleanup0:
 }
 
 static int
+jsp_set_pkg_compile_id (const char *unique_name, const char *compile_id)
+{
+  int err;
+  int save;
+  MOP pkg_mop;
+  DB_OTMPL *obt;
+  DB_VALUE value, current_datetime;
+  DB_OBJECT *object;
+
+  err = NO_ERROR;
+  obt = NULL;
+
+  AU_SAVE_AND_DISABLE (save);    // side effect 0
+
+  pkg_mop = jsp_find_pkg (unique_name, DB_AUTH_NONE);
+  if (pkg_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+
+  obt = dbt_edit_object (pkg_mop);      // side effect 1
+  if (obt == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup0;
+    }
+
+  db_make_string (&value, compile_id);
+  err = dbt_put_internal (obt, PKG_ATTR_COMPILE_ID, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup1;
+    }
+
+  err = db_sys_datetime (&current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup1;
+    }
+
+  err = dbt_put_internal (obt, PKG_ATTR_UPDATED_TIME, &current_datetime);
+  pr_clear_value (&current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup1;
+    }
+
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    }
+  obt = NULL;   // side effect 1 cleaned
+
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  AU_RESTORE (save);
+  return NO_ERROR;
+
+cleanup1:
+  assert (obt);
+  dbt_abort_object (obt);
+
+cleanup0:
+  AU_RESTORE (save);
+  return err;
+}
+
+static int
 jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *owner_name, MOP owner_mop)
 {
   int err;
   MOP pkg_code_mop;
   DB_VALUE scode_body_value, scode_spec_value;
-  DB_VALUE compile_id, ocode_value;
+  DB_VALUE ocode_value;
   DB_OTMPL *obt;
   int save;
 
@@ -1310,7 +1378,6 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	  if (err == NO_ERROR && pkg_compile_response.err_code == NO_ERROR)
 	    {
 	      // side effect 1
-	      db_make_string (&compile_id, pkg_compile_response.compile_id.data());
 	      db_make_string (&ocode_value, pkg_compile_response.compiled_code.data());
 	    }
 	  else
@@ -1323,19 +1390,18 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	    }
 	}
 
+	err = jsp_set_pkg_compile_id (unique_name, pkg_compile_response.compile_id.data());
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup1;
+	  }
+
 	obt = dbt_edit_object (pkg_code_mop);
 	if (obt == NULL)
 	  {
 	    ASSERT_ERROR_AND_SET (err);
 	    goto cleanup1;
 	  }     // side effect 2
-
-	// compile_id must have been changed
-	err = dbt_put_internal (obt, PKG_CODE_ATTR_COMPILE_ID, &compile_id);
-	if (err != NO_ERROR)
-	  {
-	    goto cleanup2;
-	  }
 
 	// set null to the scode_body column
 	db_make_null (&scode_body_value);
@@ -1626,7 +1692,7 @@ cleanup0:
 }
 
 static int
-sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_name, const char *compile_id,
+sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name,
 		 const char *scode_spec, const char *scode_body, const char *ocode)
 {
 
@@ -1677,24 +1743,6 @@ sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
   // attribute pkg_unique_name
   db_make_string (&value, pkg_unique_name);
   err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto cleanup0;
-    }
-
-  // attribute name
-  db_make_string (&value, class_name);
-  err = dbt_put_internal (obt, PKG_CODE_ATTR_NAME, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto cleanup0;
-    }
-
-  // attribute compile_id
-  db_make_string (&value, compile_id);
-  err = dbt_put_internal (obt, PKG_CODE_ATTR_COMPILE_ID, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
     {
@@ -2663,13 +2711,14 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
   DB_OTMPL *obt;
   DB_VALUE value, current_datetime, v;
   int save, err, size, i;
-  const char *pkg_name, *class_name;
+  const char *pkg_name, *class_name, *compile_id;
   DB_SET *seq;
   MOP mop;
 
   err = NO_ERROR;
   obt = NULL;
   pkg_name = unique_name + strlen (owner_name) + 1;	// +1: dot in <user>.<package>
+  compile_id = pkg_compile_response.compile_id.data();
   class_name = pkg_compile_response.class_name.data();
 
   err = db_sys_datetime (&current_datetime);
@@ -2721,6 +2770,24 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       goto cleanup2;
     }
 
+  // attribute compile_id
+  db_make_string (&value, compile_id);
+  err = dbt_put_internal (obt, PKG_ATTR_COMPILE_ID, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute target_class
+  db_make_string (&value, class_name);
+  err = dbt_put_internal (obt, PKG_ATTR_TARGET_CLASS, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
   // attribute owner
   db_make_object (&value, owner);
   err = dbt_put_internal (obt, PKG_ATTR_OWNER, &value);
@@ -2734,7 +2801,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
   {
     const char *compile_id = pkg_compile_response.compile_id.data();
     const char *ocode = pkg_compile_response.compiled_code.data();
-    err = sp_set_pkg_code (&mop, unique_name, class_name, compile_id, scode_spec, scode_body, ocode);
+    err = sp_set_pkg_code (&mop, unique_name, scode_spec, scode_body, ocode);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3113,8 +3180,17 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 	  ocode = NULL;
 	}
 
+      if (compile_id)
+	{
+	  err = jsp_set_pkg_compile_id (unique_name, compile_id);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+
       // package spec has not been updated, and hence no spec-related updates in system tables
-      err = jsp_set_pkg_scode_body_and_ocode (unique_name, pkg_compile_request.body_code.data(), compile_id, ocode);
+      err = jsp_set_pkg_scode_body_and_ocode (unique_name, pkg_compile_request.body_code.data(), ocode);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3626,6 +3702,7 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
 			   NULL);
 	  goto error_exit;
 	}
+      sp_info.compile_id = pl_sp_compile_response.compile_id;
       sp_info.sql_data_access = (SP_SQL_DATA_ACCESS_TYPE) pl_sp_compile_response.sql_data_access;
     }
   else				/* SP_LANG_JAVA */
@@ -3706,7 +3783,6 @@ jsp_create_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
       }
 
       code_info.name = sp_info.target_class;
-      code_info.compile_id = pl_sp_compile_response.compile_id;
       code_info.created_time = stm.str ();
       code_info.stype = SPSC_PLCSQL;
       code_info.scode.assign (rewritten_code, strlen (rewritten_code));
@@ -4311,14 +4387,13 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
       goto error;
     }
 
-  if (decl)
-    {
-      std::string target = decl;
-      sp_split_target_signature (target, sp_info.target_class, sp_info.target_method);
-    }
+  sp_info.compile_id = pl_sp_compile_response.compile_id;
+  {
+    std::string target = decl;
+    sp_split_target_signature (target, sp_info.target_class, sp_info.target_method);
+  }
 
   code_info.name = sp_info.target_class;
-  code_info.compile_id = pl_sp_compile_response.compile_id;
   code_info.ocode = pl_sp_compile_response.compiled_code;
 
   if (sp_recompile == 1)
@@ -4343,6 +4418,14 @@ alter_stored_procedure_code (PARSER_CONTEXT *parser, MOP sp_mop, const char *nam
   if (obt_p == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
+      goto error;
+    }
+
+  db_make_string (&value, sp_info.compile_id.data ());
+  err = dbt_put_internal (obt_p, SP_ATTR_COMPILE_ID, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
       goto error;
     }
 
@@ -4637,6 +4720,7 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
       }
     else
       {
+	sig.ext.sp.compile_id = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_COMPILE_ID]));
 	sig.ext.sp.target_class_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_CLASS]));
 	sig.ext.sp.target_method_name = db_private_strdup (NULL, db_get_string (&entry.vals[INDEX_SP_ATTR_TARGET_METHOD]));
 	if (sig.ext.sp.target_class_name != NULL)

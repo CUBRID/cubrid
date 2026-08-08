@@ -19,10 +19,15 @@
 #ifndef _SP_CONSTANTS_HPP_
 #define _SP_CONSTANTS_HPP_
 
+#define PLCSQL_COMPILE_ID_LEN           (39)    // 19 (max long len) * 2 + 1 (delimiter)
+#define PLCSQL_TARGET_CLASS_LEN        (255)
+
 #define PKG_ATTR_LIST    \
     MAP_LIST_ITEM(UNIQUE_NAME) \
     MAP_LIST_ITEM(PKG_NAME) \
     MAP_LIST_ITEM(FLAGS) \
+    MAP_LIST_ITEM(COMPILE_ID) \
+    MAP_LIST_ITEM(TARGET_CLASS) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(CODE) \
     MAP_LIST_ITEM(PROCEDURES_CNT) \
@@ -42,6 +47,8 @@
 #define PKG_ATTR_UNIQUE_NAME         "unique_name"
 #define PKG_ATTR_PKG_NAME            "pkg_name"
 #define PKG_ATTR_FLAGS               "flags"
+#define PKG_ATTR_COMPILE_ID          "compile_id"
+#define PKG_ATTR_TARGET_CLASS        "target_class"
 #define PKG_ATTR_OWNER               "owner"
 #define PKG_ATTR_CODE                "code"
 #define PKG_ATTR_PROCEDURES_CNT      "procedures_cnt"
@@ -68,8 +75,6 @@ enum index_pkg_attr
 
 #define PKG_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(PKG_UNIQUE_NAME) \
-    MAP_LIST_ITEM(NAME) \
-    MAP_LIST_ITEM(COMPILE_ID) \
     MAP_LIST_ITEM(STYPE) \
     MAP_LIST_ITEM(SCODE_SPEC) \
     MAP_LIST_ITEM(SCODE_BODY) \
@@ -77,8 +82,6 @@ enum index_pkg_attr
     MAP_LIST_ITEM(OCODE)
 
 #define PKG_CODE_ATTR_PKG_UNIQUE_NAME       "pkg_unique_name"
-#define PKG_CODE_ATTR_NAME                  "name"
-#define PKG_CODE_ATTR_COMPILE_ID            "compile_id"
 #define PKG_CODE_ATTR_STYPE                 "stype"
 #define PKG_CODE_ATTR_SCODE_SPEC            "scode_spec"
 #define PKG_CODE_ATTR_SCODE_BODY            "scode_body"
@@ -86,8 +89,6 @@ enum index_pkg_attr
 #define PKG_CODE_ATTR_OCODE                 "ocode"
 
 #define PKG_CODE_ATTR_PKG_UNIQUE_NAME_LEN   (255)
-#define PKG_CODE_ATTR_NAME_LEN              (255)
-#define PKG_CODE_ATTR_COMPILE_ID_LEN        (39)    // 19 (max long len) * 2 + 1 (delimiter)
 
 enum index_pkg_code_attr
 {
@@ -190,6 +191,7 @@ enum index_pkg_record_type_attr
     MAP_LIST_ITEM(PKG_NAME) \
     MAP_LIST_ITEM(IS_SYSTEM_GENERATED) \
     MAP_LIST_ITEM(DIRECTIVE) \
+    MAP_LIST_ITEM(COMPILE_ID) \
     MAP_LIST_ITEM(TARGET_CLASS) \
     MAP_LIST_ITEM(TARGET_METHOD) \
     MAP_LIST_ITEM(OWNER) \
@@ -208,6 +210,7 @@ enum index_pkg_record_type_attr
 #define SP_ATTR_PKG_NAME                "pkg_name"
 #define SP_ATTR_IS_SYSTEM_GENERATED     "is_system_generated"
 #define SP_ATTR_DIRECTIVE               "directive"
+#define SP_ATTR_COMPILE_ID              "compile_id"
 #define SP_ATTR_TARGET_CLASS            "target_class"
 #define SP_ATTR_TARGET_METHOD           "target_method"
 #define SP_ATTR_OWNER                   "owner"
@@ -219,7 +222,6 @@ enum index_pkg_record_type_attr
 #define SP_ATTR_UNIQUE_NAME_LEN         (255)
 #define SP_ATTR_SP_NAME_LEN             (255)
 #define SP_ATTR_PKG_NAME_LEN            (1024)
-#define SP_ATTR_TARGET_CLASS_LEN        (255)
 #define SP_ATTR_TARGET_METHOD_LEN       (4096)
 #define SP_ATTR_COMMENT_LEN             (1024)
 
@@ -263,7 +265,6 @@ enum index_sp_arg_attr
 
 #define SP_CODE_ATTR_LIST    \
     MAP_LIST_ITEM(NAME) \
-    MAP_LIST_ITEM(COMPILE_ID) \
     MAP_LIST_ITEM(CREATED_TIME) \
     MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(IS_STATIC) \
@@ -274,7 +275,6 @@ enum index_sp_arg_attr
     MAP_LIST_ITEM(OCODE)
 
 #define SP_CODE_ATTR_NAME                   "name"
-#define SP_CODE_ATTR_COMPILE_ID             "compile_id"
 #define SP_CODE_ATTR_CREATED_TIME           "created_time"
 #define SP_CODE_ATTR_OWNER                  "owner"
 #define SP_CODE_ATTR_IS_STATIC              "is_static"
@@ -284,7 +284,6 @@ enum index_sp_arg_attr
 #define SP_CODE_ATTR_OTYPE                  "otype"
 #define SP_CODE_ATTR_OCODE                  "ocode"
 
-#define SP_CODE_ATTR_COMPILE_ID_LEN              (39)    // 19 (max long len) * 2 + 1 (delimiter)
 
 enum index_sp_code_attr
 {

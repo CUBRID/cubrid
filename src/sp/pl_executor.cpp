@@ -46,6 +46,7 @@ namespace cubpl
     : tran_id (tid)
   {
     signature.assign (sig->ext.sp.target_class_name).append (".").append (sig->ext.sp.target_method_name);
+    compile_id.assign (sig->ext.sp.compile_id);
     auth.assign (sig->auth);
     lang = sig->type;
     result_type = sig->result_type;
@@ -69,6 +70,7 @@ namespace cubpl
   {
     serializator.pack_int (tran_id);
     serializator.pack_string (signature);
+    serializator.pack_string (compile_id);
     serializator.pack_string (auth);
     serializator.pack_int (lang);
     serializator.pack_int (num_args);
@@ -95,6 +97,7 @@ namespace cubpl
   {
     size_t size = serializator.get_packed_int_size (start_offset); // tran_id
     size += serializator.get_packed_string_size (signature, size); // signature
+    size += serializator.get_packed_string_size (compile_id, size); // compile_id
     size += serializator.get_packed_string_size (auth, size); // auth
     size += serializator.get_packed_int_size (size); // lang
     size += serializator.get_packed_int_size (size); // num_args

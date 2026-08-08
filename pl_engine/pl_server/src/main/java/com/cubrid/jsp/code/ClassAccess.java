@@ -32,6 +32,7 @@ package com.cubrid.jsp.code;
 
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.context.Context;
+import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.data.CUBRIDPacker;
 import com.cubrid.jsp.data.CUBRIDUnpacker;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -46,14 +47,83 @@ import java.util.Base64;
 public class ClassAccess {
 
     // get object code of the SP being invoked
-    public static CompiledCodeSet getObjectCode(Connection conn) {
+    public static CompiledCodeSet getObjectCodeOfCurrentInvoke() {
 
         CompiledCodeSet code = null;
 
         try {
+            Context ctx = ContextManager.getContextofCurrentThread();
+            Connection conn = ctx.getConnection();
+
             byte[] jarCode = getObjectCodeBytes(conn);
             if (jarCode != null) {
                 code = CompiledCodeSet.loadFromJar(jarCode);
+                // mainClassName, and compileId will be set later
+            }
+        } catch (Exception e) {
+            Server.log(e);
+        }
+
+        return code;
+    }
+
+    public static CompiledCodeSet getObjectCodeOf(String mainClassName) {
+
+        // get the object code of given class name from ocode of _db_stored_procedure_code or
+        // _db_package_code
+        // or return null if absent for that name
+
+        CompiledCodeSet code = null;
+
+        try {
+            Context ctx = ContextManager.getContextofCurrentThread();
+            Connection conn = ctx.getConnection();
+
+            String[] compileIdRef = new String[1];
+            byte[] jarCode =
+                    getObjectCodeBytesWithNameAndId(mainClassName, null, conn, compileIdRef);
+            if (jarCode == null) {
+                return null;
+            } else {
+                assert jarCode.length > 0;
+                code = CompiledCodeSet.loadFromJar(jarCode);
+                code.setMainClassName(mainClassName);
+                code.setCompileId(compileIdRef[0]);
+            }
+        } catch (Exception e) {
+            Server.log(e);
+        }
+
+        return code;
+    }
+
+    public static CompiledCodeSet getObjectCodeNewerThan(CompiledCodeSet codeSet) {
+
+        // get the object code of given class name from ocode of _db_stored_procedure_code or
+        // _db_package_code.
+        // if no record exist with the name of codeSet, then return null.
+        // if the current compileId of the code in the table is the same as that of codeSet, just
+        // return codeSet.
+        // otherwise, return a new CompiledCodeSet.
+
+        CompiledCodeSet code = null;
+
+        try {
+            Context ctx = ContextManager.getContextofCurrentThread();
+            Connection conn = ctx.getConnection();
+
+            String[] compileIdRef = new String[1];
+            byte[] jarCode =
+                    getObjectCodeBytesWithNameAndId(
+                            codeSet.mainClassName, codeSet.compileId, conn, compileIdRef);
+            if (jarCode == null) {
+                return null;
+            } else if (jarCode.length == 0) {
+                return codeSet;
+            } else {
+                code = CompiledCodeSet.loadFromJar(jarCode);
+                code.setMainClassName(codeSet.mainClassName);
+                code.setCompileId(compileIdRef[0]);
             }
         } catch (Exception e) {
             Server.log(e);
@@ -65,6 +135,23 @@ public class ClassAccess {
     // ======================
     // Private
     // ======================
+
+    private static byte[] EMPTY_BYTES = new byte[0];
+
+    private static byte[] getObjectCodeBytesWithNameAndId(
+            String mainClassName, String compileId, Connection conn, String[] compileIdRef) {
+        // return null if no ocode found in _db_stored_procedure_code or _db_package_code with
+        // mainClassName.
+        // return EMPTY_BYTES if compileId is not null and the compile_id column in
+        // _db_stored_procedure_code or
+        // _db_package_code with mainClassName is the same as compileId.
+        // otherwise, update the 0-th item of compileIdRef with the new compile_id and return the
+        // bytes of ocode found with mainClassName.
+        //
+        // TODO: claude help
+
+        return null;
+    }
 
     private static byte[] getObjectCodeBytes(Connection conn)
             throws IOException, TypeMismatchException {

@@ -98,7 +98,6 @@ typedef sp_directive SP_DIRECTIVE_ENUM;
 struct sp_code_info
 {
   std::string name;
-  std::string compile_id;
   std::string created_time;
   MOP owner;
   int is_static;
@@ -120,6 +119,7 @@ struct sp_info
   bool is_system_generated;
   std::vector <sp_arg_info> args;
   SP_LANG_ENUM lang;
+  std::string compile_id;
   std::string target_class;
   std::string target_method;
   SP_DIRECTIVE_ENUM directive;

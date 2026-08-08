@@ -51,8 +51,7 @@ import org.apache.commons.text.StringEscapeUtils;
 
 public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
-    public static final String JAVA_PKG_OF_PLCSQL_PKG = "com.cubrid.generated.pkg";
-    public static final String JAVA_PKG_OF_PLCSQL_SP = "com.cubrid.generated.sp";
+    public static final String JAVA_PKG_OF_GENERATED = "com.cubrid.plcsql.generated";
 
     private final InstanceStore iStore;
     private final Set<SqlUse> sqlUsesReachableFromLoop;
@@ -208,7 +207,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 new int[] {1, 1},
                 tmplPkgUnit,
                 "%'PACKAGE'%",
-                JAVA_PKG_OF_PLCSQL_PKG,
+                JAVA_PKG_OF_GENERATED,
                 "%'+IMPORTS'%",
                 importsArray,
                 "%'CLASS-NAME'%",
@@ -359,7 +358,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+MAIN-USER-CODE'%",
                 mainUserCode,
                 "%'PACKAGE'%",
-                JAVA_PKG_OF_PLCSQL_SP,
+                JAVA_PKG_OF_GENERATED,
                 "%'+IMPORTS'%",
                 importsArray,
                 "%'CLASS-NAME'%",
