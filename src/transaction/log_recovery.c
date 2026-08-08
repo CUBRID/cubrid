@@ -107,6 +107,7 @@ static int log_recovery_get_redo_parallel_count ();
 #endif
 
 static void log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const LOG_LSA * end_redo_lsa);
+static void log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p);
 static void log_recovery_refuse_no_logging_index_replay (THREAD_ENTRY * thread_p, const LOG_LSA * lsa);
 static void log_recovery_abort_interrupted_sysop (THREAD_ENTRY * thread_p, LOG_TDES * tdes,
 						  const LOG_LSA * postpone_start_lsa);
@@ -3269,6 +3270,55 @@ REGISTER_WORKERPOOL (parallel_recovery_redo, []() { return log_recovery_get_redo
 #endif
 
 /*
+ * log_recovery_2pc_reactivate_mvccids - re-mark the MVCCIDs of in-doubt 2PC-prepared transactions as active
+ *
+ * return: nothing
+ *
+ * Note: Called once after the final reset_start_mvccid, which anchored the active set above every MVCCID seen during
+ *       redo -- leaving in-doubt ids reading as committed. Re-mark them so checkers keep waiting on the self-lock.
+ *       rv_reactivate_mvccid keeps the long-tran list sorted, hence the ascending selection sort.
+ */
+static void
+log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
+{
+  MVCCID last_added = MVCCID_NULL;
+
+  while (true)
+    {
+      MVCCID next = MVCCID_NULL;
+      int i;
+
+      for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (i);
+	  MVCCID id;
+
+	  if (tdes == NULL || tdes->trid == NULL_TRANID || tdes->state != TRAN_UNACTIVE_2PC_PREPARE)
+	    {
+	      continue;
+	    }
+	  id = tdes->mvccinfo.id;
+	  if (!MVCCID_IS_NORMAL (id))
+	    {
+	      continue;
+	    }
+	  /* pick the smallest id strictly greater than the last one already re-marked */
+	  if (MVCC_ID_PRECEDES (last_added, id) && (next == MVCCID_NULL || MVCC_ID_PRECEDES (id, next)))
+	    {
+	      next = id;
+	    }
+	}
+
+      if (next == MVCCID_NULL)
+	{
+	  break;
+	}
+      log_Gl.mvcc_table.rv_reactivate_mvccid (next);
+      last_added = next;
+    }
+}
+
+/*
  * log_recovery_refuse_no_logging_index_replay () - fail-stop a media recovery replay that reaches a record left
  *   by a no-logging index build (loaddb).  Its index pages were never WAL-logged, so replaying past it
  *   cannot reconstruct them.  A replay in which the index would survive always dispatches either the
@@ -4009,6 +4059,10 @@ log_recovery_redo (THREAD_ENTRY * thread_p, const LOG_LSA * start_redolsa, const
   LOG_CS_ENTER (thread_p);
 
   log_Gl.mvcc_table.reset_start_mvccid ();
+
+  /* Must run after the last reset_start_mvccid: otherwise an in-doubt transaction's rows read as visible and checkers
+   * skip the self-lock wait. */
+  log_recovery_2pc_reactivate_mvccids (thread_p);
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHING_UP, 1, "REDO");
 
@@ -5505,6 +5559,10 @@ log_recovery_resetlog (THREAD_ENTRY * thread_p, const LOG_LSA * new_append_lsa, 
   return;
 }
 
+/* Largest addend for one LOG_READ_ADD_ALIGN: log_lsa::offset is a 16-bit field and the call adds to it before unwinding
+ * the excess into page advances. A multiple of DOUBLE_ALIGNMENT, so each call's realign stays a no-op. */
+#define LOG_LSA_OFFSET_SAFE_STEP 8192
+
 /*
  * log_startof_nxrec - FIND START OF NEXT RECORD (USED FOR PARTIAL RECOVERY)
  *
@@ -5542,7 +5600,8 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
 
   int undo_length;		/* Undo length */
   int redo_length;		/* Redo length */
-  unsigned int nobj_locks;
+  unsigned int nlocks;
+  int gtrinfo_length;
   int repl_log_length;
   size_t size;
 
@@ -5796,20 +5855,28 @@ log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr)
       /* Get the DATA HEADER */
       LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
       prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_pgptr->area + log_lsa.offset);
-      nobj_locks = prepared->num_object_locks;
+      /* Read before the first advance: it may refetch the page prepared points into. */
+      nlocks = prepared->num_locks;
+      gtrinfo_length = prepared->gtrinfo_length;
       /* ignore npage_locks */
 
       LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_REC_2PC_PREPCOMMIT), &log_lsa, log_pgptr);
 
-      if (prepared->gtrinfo_length > 0)
+      if (gtrinfo_length > 0)
 	{
-	  LOG_READ_ADD_ALIGN (thread_p, prepared->gtrinfo_length, &log_lsa, log_pgptr);
+	  LOG_READ_ADD_ALIGN (thread_p, gtrinfo_length, &log_lsa, log_pgptr);
 	}
 
-      if (nobj_locks > 0)
+      if (nlocks > 0)
 	{
-	  size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  LOG_READ_ADD_ALIGN (thread_p, (INT16) size, &log_lsa, log_pgptr);
+	  size = nlocks * sizeof (LK_ACQ_LOCK);
+	  while (size > 0)
+	    {
+	      size_t step = (size < LOG_LSA_OFFSET_SAFE_STEP) ? size : LOG_LSA_OFFSET_SAFE_STEP;
+
+	      LOG_READ_ADD_ALIGN (thread_p, step, &log_lsa, log_pgptr);
+	      size -= step;
+	    }
 	}
       break;
 
