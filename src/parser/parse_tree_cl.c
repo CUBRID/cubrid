@@ -2028,6 +2028,39 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
   return tree;
 }
 
+/*
+ * parser_copy_memory_input () - copy input bytes up to the terminator in one step
+ *   return: number of bytes copied into buffer
+ *   parser(in): parser context
+ *   buffer(out): destination
+ *   max_size(in): destination capacity
+ *
+ * The terminating NUL is left in the input,
+ * so the caller's loop still reaches end of input through buffgetin.
+ */
+int
+parser_copy_memory_input (PARSER_CONTEXT * parser, char *buffer, int max_size)
+{
+  assert (buffer != NULL);
+  assert (max_size > 0);
+
+  /* copy in bulk only when the statement is in memory and no DBCS filter is set;
+   * next_char is buffgetin in exactly that case.
+   * With the filter, buffgetin moves to next_byte and every byte must pass the filter. */
+  if (parser == NULL || parser->next_char != buffgetin || max_size <= 0)
+    {
+      return 0;
+    }
+
+  int n = (int) strnlen (parser->buffer, max_size);
+  memcpy (buffer, parser->buffer, n);
+
+  /* n stops before the NUL, so this leaves it as the next input byte */
+  parser->buffer += n;
+
+  return n;
+}
+
 #if defined (ENABLE_UNUSED_FUNCTION)
 /*
  * parser_parse_binary() - reset and initialize the parser
