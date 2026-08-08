@@ -192,19 +192,38 @@ LOCKSTEP_FN_NAME (const unsigned char *t, int tlen, const unsigned char *p, int 
 	}
       else
 	{
+	  const unsigned char *pchar_end;
+	  int pchar_remain;
+
 	  if (escape_byte >= 0 && *p == escape_byte && plen >= 2)
 	    {
 	      /* escaped pattern byte matches literally; a trailing escape stays a normal character */
 	      p++;
 	      plen--;
 	    }
-	  if (!LOCKSTEP_BYTE_EQ (*p, *t))
+
+	  /* the literal spans one full pattern character; the generic loop walks the
+	   * pattern per character, so bytes after a multi-byte lead are part of the
+	   * character and must never be re-read as a wildcard or an escape.  A
+	   * truncated trailing character leaves pchar_end at the pattern end. */
+	  pchar_end = p;
+	  pchar_remain = plen;
+	  LOCKSTEP_NEXT_CHAR (pchar_end, pchar_remain);
+
+	  while (p < pchar_end)
 	    {
-	      /* variable-length equivalence rescue; the default is `return _FALSE` */
-	      LOCKSTEP_MISMATCH_RESYNC (t, tlen, p, plen);
-	    }
-	  else
-	    {
+	      if (tlen <= 0)
+		{
+		  /* target exhausted inside a literal pattern character : no
+		   * shorter candidate can supply the missing bytes either */
+		  return QSTR_LIKE_LOCKSTEP_ABORT;
+		}
+	      if (!LOCKSTEP_BYTE_EQ (*p, *t))
+		{
+		  /* variable-length equivalence rescue; the default is `return _FALSE` */
+		  LOCKSTEP_MISMATCH_RESYNC (t, tlen, p, plen);
+		  break;
+		}
 	      t++;
 	      tlen--;
 	      p++;
