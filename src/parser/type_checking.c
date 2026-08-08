@@ -6960,6 +6960,40 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
 }
 
 /*
+ * pt_true_search_condition () - Test for constant-folded search condition
+ * 				  that evaluated true
+ *   return: true if there is no search condition or all of the conjuncts are
+ *           effectively true, false otherwise
+ *   parser(in):
+ *   node(in):
+ *
+ * Note: A search condition folded to TRUE is a no-op, but it is not removed
+ *       from the CNF list. pt_where_type () removes such a conjunct while it
+ *       runs in the type checking walk of pt_semantic_type (), which is done
+ *       before the constant folding walk. So an expression of constants like
+ *       '1=1' is still an expression when it is checked and it becomes a
+ *       folded TRUE value only afterwards.
+ *       Use this function instead of a plain 'where == NULL' test to keep a
+ *       no-op predicate from being treated as a real one.
+ */
+bool
+pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  while (node)
+    {
+      if (node->or_next != NULL || node->node_type != PT_VALUE || node->type_enum != PT_TYPE_LOGICAL
+	  || node->info.value.data_value.i != 1)
+	{
+	  return false;
+	}
+
+      node = node->next;
+    }
+
+  return true;
+}
+
+/*
  * pt_to_false_subquery () -
  *   return:
  *   parser(in):

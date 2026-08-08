@@ -1973,8 +1973,10 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
 
   /* determine if class_spec is the only spec in the statement */
   is_rownum_only = mq_is_rownum_only_predicate (parser, statement_spec, mainquery, order_by, subquery, class_);
+  /* A predicate folded to TRUE, e.g. 'WHERE 1=1', is a no-op. Do not count it as a real predicate here, otherwise it
+   * blocks the merging of a view which would be merged without it. */
   is_only_spec =
-    ((statement_spec->next == NULL && (pred == NULL || is_rownum_only)
+    ((statement_spec->next == NULL && (pt_true_search_condition (parser, pred) || is_rownum_only)
       && (subquery->info.query.order_by == NULL || order_by == NULL)) ? true : false);
 
   /* check if orderby_for set to PT_EXPR_INFO_ROWNUM_ONLY */
