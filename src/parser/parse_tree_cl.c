@@ -1983,8 +1983,10 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
   parser->original_buffer = buffer;
 
   parser->next_byte = buffgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  if (lang_charset () == INTL_CODESET_KSC5601_EUC)
     {
+      /* the DBCS filter is for the 2-byte codeset only: on UTF-8 its full-width space fold never matches
+       * and its byte pairing corrupts multi-byte characters */
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
     }
@@ -2044,8 +2046,10 @@ parser_parse_binary (PARSER_CONTEXT * parser, const char *buffer, size_t size)
     return 0;
   parser->buffer = buffer;
   parser->next_byte = binarygetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  if (lang_charset () == INTL_CODESET_KSC5601_EUC)
     {
+      /* the DBCS filter is for the 2-byte codeset only: on UTF-8 its full-width space fold never matches
+       * and its byte pairing corrupts multi-byte characters */
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
     }
@@ -2092,8 +2096,10 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
     }
   parser->file = file;
   parser->next_byte = fgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  if (lang_charset () == INTL_CODESET_KSC5601_EUC)
     {
+      /* the DBCS filter is for the 2-byte codeset only: on UTF-8 its full-width space fold never matches
+       * and its byte pairing corrupts multi-byte characters */
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
     }
@@ -2149,8 +2155,10 @@ pt_init_one_statement_parser (PARSER_CONTEXT * parser, FILE * file)
     }
   parser->file = file;
   parser->next_byte = fgetin;
-  if (LANG_VARIABLE_CHARSET (lang_charset ()))
+  if (lang_charset () == INTL_CODESET_KSC5601_EUC)
     {
+      /* the DBCS filter is for the 2-byte codeset only: on UTF-8 its full-width space fold never matches
+       * and its byte pairing corrupts multi-byte characters */
       parser->next_char = dbcs_get_next;
       parser->casecmp = intl_identifier_casecmp;
     }
