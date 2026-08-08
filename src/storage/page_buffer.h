@@ -410,6 +410,7 @@ extern VOLID pgbuf_get_volume_id (PAGE_PTR pgptr);
 extern const char *pgbuf_get_volume_label (PAGE_PTR pgptr);
 extern void pgbuf_force_to_check_for_interrupts (void);
 extern bool pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p);
+extern bool pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force);
 extern void pgbuf_unfix_all (THREAD_ENTRY * thread_p);
 extern void pgbuf_set_lsa_as_temporary (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 extern void pgbuf_set_page_ptype (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, PAGE_TYPE ptype);

@@ -5354,6 +5354,40 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
+ * pgbuf_set_force_latch_wait () - make page latches ignore the transaction's no-wait setting
+ *   return: the old value, to be restored by the caller
+ *   thread_p(in): thread entry
+ *   force(in): new value
+ *
+ * Note: The scope must be kept to the fix of a structural page, whose latch is internal and held for
+ *       microseconds: honoring no-wait there gains nothing and only turns an unconditional fix into
+ *       ER_LK_PAGE_TIMEOUT, which callers that assume an unconditional latch cannot fail report as an
+ *       unexpected error. The flag lives in the thread entry rather than in LOG_TDES because parallel scan
+ *       workers share their parent's tran_index: a save/restore on tdes->wait_msecs would race between
+ *       sibling workers and could drop the user's lock_timeout.
+ */
+bool
+pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
+{
+#if defined (SERVER_MODE)
+  bool old_val;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_val = thread_p->force_latch_wait;
+  thread_p->force_latch_wait = force;
+
+  return old_val;
+#else /* not SERVER_MODE = SA_MODE */
+  /* single threaded, no latch contention */
+  return false;
+#endif /* not SERVER_MODE */
+}
+
+/*
  * pgbuf_set_lsa_as_temporary () - The log sequence address of the page is set to temporary lsa address
  *   return: void
  *   pgptr(in): Pointer to page
@@ -16889,6 +16923,20 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
 {
   LOG_TDES *tdes;		/* Transaction descriptor */
   int tran_index;
+
+#if defined (SERVER_MODE)
+  /* A structural page must not inherit the transaction's no-wait setting; see pgbuf_set_force_latch_wait ().
+   * Resolve NULL the way that function does, so the flag is read from the entry it was written to. Do not
+   * assign to thread_p - LOG_FIND_THREAD_TRAN_INDEX below relies on its own NULL handling. */
+  {
+    THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
+
+    if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
+      {
+	return LK_INFINITE_WAIT;
+      }
+  }
+#endif /* SERVER_MODE */
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
