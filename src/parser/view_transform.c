@@ -2161,17 +2161,6 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
       return NON_PUSHABLE;
     }
 
-  /* subquery's select list has inst_num/rownum nested inside another expression (not as a bare
-   * column). merging would inline that expression into mainquery's tree (e.g. producing
-   * DECODE(rownum, ...)), and if a later merge step then absorbs an ORDER BY and converts that
-   * rownum to orderby_num() in place, the result is DECODE(orderby_num(), ...), which the engine
-   * cannot validly re-parse (see MSGCAT_SEMANTIC_ORDERBYNUM_SELECT_LIST_ERR). this is unsafe
-   * regardless of is_only_spec, so it is not covered by the check above. */
-  if (pt_has_expr_of_inst_in_sel_list (parser, subquery->info.query.q.select.list))
-    {
-      return NON_PUSHABLE;
-    }
-
   /* check method */
   cpi.check_query = false;	/* subqueries are pushable */
   cpi.check_method = true;	/* methods are non-pushable */
