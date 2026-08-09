@@ -5571,6 +5571,31 @@ pt_append_name (const PARSER_CONTEXT * parser, PARSER_VARCHAR * string, const ch
 }
 
 /*
+ * pt_print_quoted_value_text () - printed form of a plain string literal
+ *   return: quoted text held by the parser, NULL on allocation failure
+ *   parser(in):
+ *   str(in): literal bytes
+ *   length(in): byte length
+ *
+ * The grammar fills info.value.text with this instead of running the tree printer per literal.
+ * pt_create_char_string_literal sets string_type to ' ' before calling this,
+ * so pt_append_string_prefix would add nothing and only the quoting makes bytes.
+ * It is only a wrapper, needed because pt_append_quoted_string is static to this file.
+ */
+const char *
+pt_print_quoted_value_text (PARSER_CONTEXT * parser, const char *str, int length)
+{
+  PARSER_VARCHAR *text;
+
+  assert (parser != NULL);
+  assert (str != NULL);
+
+  text = pt_append_quoted_string (parser, NULL, str, length);
+
+  return (text != NULL) ? (const char *) text->bytes : NULL;
+}
+
+/*
  * pt_append_quoted_string () - Quote and append a string,
  *                              breaking it into pieces if necessary
  *   return:

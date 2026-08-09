@@ -25337,7 +25337,18 @@ pt_create_char_string_literal (PARSER_CONTEXT *parser, const PT_TYPE_ENUM char_t
         node->type_enum = char_type;
         node->info.value.string_type = ' ';
 
-        PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	/* A fresh plain literal prints as the quoted string and nothing else:
+	 * everything that could change the printed form is still unset here.
+	 * Set info.value.text here instead of running the tree printer per literal.
+	 * The char_type test guards a future caller; this file defines NCHAR as CHAR. */
+	if (char_type == PT_TYPE_CHAR && parser->custom_print == 0 && parser->flag.dont_prt_long_string == 0)
+	  {
+	    node->info.value.text = pt_print_quoted_value_text (parser, (const char *) string, length);
+	  }
+	else
+	  {
+	    PT_NODE_PRINT_VALUE_TO_TEXT (parser, node);
+	  }
       }
 
   return node;
