@@ -2179,23 +2179,30 @@ mq_is_pushable_subquery (PARSER_CONTEXT * parser, PT_NODE * subquery, PT_NODE * 
     }
 
   /* check inst num or orderby_num */
-  if (pt_has_inst_in_where_and_select_list (parser, subquery)
-      && (!is_only_spec || !mq_is_bare_name_list (select_list)
-	  || (PT_IS_SELECT (mainquery) && mainquery->info.query.q.select.group_by != NULL) || order_by != NULL))
+  if (pt_has_inst_in_where_and_select_list (parser, subquery) && (!is_only_spec || !mq_is_bare_name_list (select_list)))
     {
       /* CBRD-27189: is_only_spec alone used to be enough to allow this merge through, on the assumption
        * that such a "simple" merge (single spec, no real predicate, no conflicting order by) can't cause
        * trouble. That assumption breaks when subquery exposes rownum/orderby_num/groupby_num as a plain
-       * output column and mainquery does anything other than pass it straight through: after merging, the
-       * value referenced by mainquery is not yet final (it only becomes correct once subquery's own
-       * sort/TOP-N processing completes -- see qexec_topn_tuples_to_list_id ()/qexec_ordby_put_next () in
-       * query_executor.c), so embedding it in a select-list expression (e.g. DECODE()/CASE/arithmetic)
-       * or grouping/ordering by it produces wrong results. A bare passthrough in the select list is fine,
-       * since that is the one shape CUBRID already patches correctly post-sort/TOP-N.
-       * WHERE is deliberately not re-checked here: is_only_spec already guarantees mainquery's WHERE is
-       * either absent or a "rownum only" predicate (mq_is_rownum_only_predicate ()), which is the native,
-       * already-correctly-handled ROWNUM<->ORDERBY_NUM merge conversion done elsewhere in this function,
-       * not the bug this guards against. */
+       * output column and mainquery's select list does anything other than pass it straight through:
+       * after merging, the value referenced by mainquery is not yet final (it only becomes correct once
+       * subquery's own sort/TOP-N processing completes -- see qexec_topn_tuples_to_list_id ()/
+       * qexec_ordby_put_next () in query_executor.c), so embedding it in a select-list expression (e.g.
+       * DECODE()/CASE/arithmetic) produces wrong results. A bare passthrough in the select list is fine,
+       * since that is the one shape CUBRID already patches correctly post-sort/TOP-N -- and this holds
+       * regardless of whether mainquery also has its own GROUP BY/ORDER BY (even one that embeds the
+       * risky column in an expression, e.g. ORDER BY -rn or GROUP BY rn+0): those clauses are evaluated
+       * from the already-patched, materialized tuple in a separate, later phase, not from the same
+       * in-flight state the initial (wrong) projection reads from. Verified empirically (forcing the
+       * merge through with this check disabled): bare SELECT with GROUP BY/ORDER BY on or embedding the
+       * risky column, including a collision-revealing GROUP BY MOD(rn,2) aggregate check, all still
+       * produced correct results merged -- so GROUP BY/ORDER BY presence is deliberately not part of
+       * this condition (an earlier revision of this fix also disqualified on their presence; removed
+       * after this verification showed it only cost merges without preventing any real bug).
+       * WHERE is deliberately not re-checked here either: is_only_spec already guarantees mainquery's
+       * WHERE is either absent or a "rownum only" predicate (mq_is_rownum_only_predicate ()), which is
+       * the native, already-correctly-handled ROWNUM<->ORDERBY_NUM merge conversion done elsewhere in
+       * this function, not the bug this guards against. */
       return NON_PUSHABLE;
     }
 
