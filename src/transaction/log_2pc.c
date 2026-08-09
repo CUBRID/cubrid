@@ -69,6 +69,10 @@
 #define	CSS_ENABLE_INTERRUPTS
 #endif /* !SERVER_MODE */
 
+/* Entries replayed per batch from the prepare record's lock array, bounding the working buffer no matter how many
+ * locks the transaction held. */
+#define LOG_2PC_LOCK_CHUNK 512
+
 /* Variables */
 struct log_2pc_global_data
 {
@@ -90,6 +94,9 @@ struct log_2pc_global_data log_2pc_Userfun =
 struct log_2pc_global_data log_2pc_Userfun = { NULL, NULL, NULL, NULL, NULL, NULL };
 #endif
 
+static void log_2pc_restore_mvccid_from_locks (log_tdes * tdes, const LK_ACQUIRED_LOCKS * acq_locks);
+static int log_2pc_reacquire_lock_chunk (THREAD_ENTRY * thread_p, log_tdes * tdes, LK_ACQ_LOCK * locks,
+					 unsigned int nlocks);
 static int log_2pc_get_num_participants (int *partid_len, void **block_particps_ids);
 static int log_2pc_make_global_tran_id (TRANID tranid);
 static bool log_2pc_check_duplicate_global_tran_id (int gtrid);
@@ -1423,14 +1430,6 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
       /* Now proceed as participant of the distributed transaction */
     }
 
-  /* CBRD-27079 fallback: materialize per-row X-locks for lockless inserts so the prepare record carries them
-   * and restart recovery restores the in-doubt serialization. Vote no if a lock cannot be acquired. Remove
-   * together with CBRD-27079. */
-  if (logtb_2pc_lock_lockless_inserts (thread_p, tdes) != NO_ERROR)
-    {
-      return tdes->state;
-    }
-
   lock_unlock_all_shared_get_all_exclusive (thread_p, &acq_locks);
 
   /*
@@ -1438,19 +1437,23 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
    */
 
   size = 0;
-  if (acq_locks.obj != NULL)
+  if (acq_locks.locks != NULL)
     {
-      size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
+      size = acq_locks.nlocks * sizeof (LK_ACQ_LOCK);
     }
+
+  /* The gathered list already carries the self-lock that keeps this transaction's appended rows serialized until the
+   * 2PC decision. Sub-transactions complete by prepare time, so no sub-id self-lock can still be held. */
+  assert (tdes->mvccinfo.sub_ids.empty ());
 
   node =
     prior_lsa_alloc_and_copy_data (thread_p, LOG_2PC_PREPARE, RV_NOT_DEFINED, NULL, tdes->gtrinfo.info_length,
-				   (char *) tdes->gtrinfo.info_data, size, (char *) acq_locks.obj);
+				   (char *) tdes->gtrinfo.info_data, size, (char *) acq_locks.locks);
   if (node == NULL)
     {
-      if (acq_locks.obj != NULL)
+      if (acq_locks.locks != NULL)
 	{
-	  free_and_init (acq_locks.obj);
+	  free_and_init (acq_locks.locks);
 	}
 
       return TRAN_UNACTIVE_UNKNOWN;
@@ -1459,17 +1462,19 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   prepared = (LOG_REC_2PC_PREPCOMMIT *) node->data_header;
 
   memcpy (prepared->user_name, tdes->client.get_db_user (), DB_MAX_USER_LENGTH);
+  /* The copy stops one byte short of the field; a max-length name would be left unterminated. */
+  prepared->user_name[DB_MAX_USER_LENGTH] = '\0';
   prepared->gtrid = gtrid;
   prepared->gtrinfo_length = tdes->gtrinfo.info_length;
-  prepared->num_object_locks = acq_locks.nobj_locks;
-  /* ignore num_page_locks */
+  prepared->num_locks = acq_locks.nlocks;
+  /* Dead field, but the header is malloc'd: unassigned means indeterminate bytes in the log. */
   prepared->num_page_locks = 0;
 
   start_lsa = prior_lsa_next_record (thread_p, node, tdes);
 
-  if (acq_locks.obj != NULL)
+  if (acq_locks.locks != NULL)
     {
-      free_and_init (acq_locks.obj);
+      free_and_init (acq_locks.locks);
     }
 
   /*
@@ -1481,6 +1486,54 @@ log_2pc_prepare_global_tran (THREAD_ENTRY * thread_p, int gtrid)
   logpb_flush_pages (thread_p, &start_lsa);
 
   return tdes->state;
+}
+
+/*
+ * log_2pc_restore_mvccid_from_locks - Restore an in-doubt transaction's MVCCID from its re-read lock list
+ *
+ * return: nothing
+ *
+ *   tdes(in/out): Transaction descriptor of the in-doubt transaction
+ *   acq_locks(in): Locks read back from the 2PC prepare log record
+ *
+ * Note: Recovery rebuilds a prepared tdes without MVCC info, so take the id back from the self-lock's key;
+ *       log_recovery_2pc_reactivate_mvccids re-marks it active afterwards. At most one such entry exists.
+ */
+static void
+log_2pc_restore_mvccid_from_locks (log_tdes * tdes, const LK_ACQUIRED_LOCKS * acq_locks)
+{
+  unsigned int i;
+
+  for (i = 0; i < acq_locks->nlocks; i++)
+    {
+      if (acq_locks->locks[i].key.type == LOCK_RESOURCE_TRANSACTION)
+	{
+	  assert (!MVCCID_IS_VALID (tdes->mvccinfo.id));
+	  tdes->mvccinfo.id = acq_locks->locks[i].key.mvccid;
+	}
+    }
+}
+
+/*
+ * log_2pc_reacquire_lock_chunk - Re-acquire one batch of the prepare record's lock array
+ *
+ * return: LK_GRANTED, or the failing lock_reacquire_crash_locks status
+ *
+ *   tdes(in/out): Transaction descriptor of the in-doubt transaction
+ *   locks(in): Batch of lock entries already read from the log
+ *   nlocks(in): Number of entries in the batch
+ */
+static int
+log_2pc_reacquire_lock_chunk (THREAD_ENTRY * thread_p, log_tdes * tdes, LK_ACQ_LOCK * locks, unsigned int nlocks)
+{
+  LK_ACQUIRED_LOCKS acq_locks;
+
+  acq_locks.locks = locks;
+  acq_locks.nlocks = nlocks;
+
+  log_2pc_restore_mvccid_from_locks (tdes, &acq_locks);
+
+  return lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index);
 }
 
 /*
@@ -1510,8 +1563,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 		      LOG_PAGE * log_page_p)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
-  LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
-  int size;
+  LK_ACQ_LOCK *locks;		/* One batch of the acquired locks held before the system crash */
+  unsigned int remaining;	/* Entries of the lock array still to replay */
 
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
@@ -1521,6 +1574,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  remaining = prepared->num_locks;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
@@ -1549,34 +1604,33 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
 
-      acq_locks.nobj_locks = prepared->num_object_locks;
-      acq_locks.obj = NULL;
-
-      if (acq_locks.nobj_locks > 0)
+      if (remaining > 0)
 	{
-	  /* obtain the list of locks to acquire on objects */
-	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
-	  if (acq_locks.obj == NULL)
+	  /* Read and re-acquire in batches: the array is as large as the transaction's lock set, which is not bounded
+	   * by anything the record itself carries. */
+	  locks = (LK_ACQ_LOCK *) malloc (MIN (remaining, LOG_2PC_LOCK_CHUNK) * sizeof (LK_ACQ_LOCK));
+	  if (locks == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
-	  logpb_copy_from_log (thread_p, (char *) acq_locks.obj, size, log_lsa, log_page_p);
-	  LOG_READ_ALIGN (thread_p, log_lsa, log_page_p);
-	}
-
-      if (acq_locks.nobj_locks > 0)
-	{
-	  /* Acquire the locks */
-	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
+	  while (remaining > 0)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
+	      unsigned int nlocks = MIN (remaining, LOG_2PC_LOCK_CHUNK);
+
+	      logpb_copy_from_log (thread_p, (char *) locks, nlocks * sizeof (LK_ACQ_LOCK), log_lsa, log_page_p);
+
+	      if (log_2pc_reacquire_lock_chunk (thread_p, tdes, locks, nlocks) != LK_GRANTED)
+		{
+		  free_and_init (locks);
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+		  return;
+		}
+	      remaining -= nlocks;
 	    }
 
-	  free_and_init (acq_locks.obj);
+	  free_and_init (locks);
 	}
     }
 }
@@ -1585,8 +1639,8 @@ void
 log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tdes, log_reader & log_pgptr_reader)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;	/* A 2PC prepare to commit log record */
-  LK_ACQUIRED_LOCKS acq_locks;	/* List of acquired locks before the system crash */
-  int size;
+  LK_ACQ_LOCK *locks;		/* One batch of the acquired locks held before the system crash */
+  unsigned int remaining;	/* Entries of the lock array still to replay */
 
   log_pgptr_reader.advance_when_does_not_fit (sizeof (*prepared));
 
@@ -1598,6 +1652,8 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
   tdes->gtrid = prepared->gtrid;
   tdes->gtrinfo.info_length = prepared->gtrinfo_length;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  remaining = prepared->num_locks;
 
   log_pgptr_reader.add_align (sizeof (*prepared));
 
@@ -1626,34 +1682,33 @@ log_2pc_read_prepare (THREAD_ENTRY * thread_p, int acquire_locks, log_tdes * tde
 
       log_pgptr_reader.align ();
 
-      acq_locks.nobj_locks = prepared->num_object_locks;
-      acq_locks.obj = NULL;
-
-      if (acq_locks.nobj_locks > 0)
+      if (remaining > 0)
 	{
-	  /* obtain the list of locks to acquire on objects */
-	  size = acq_locks.nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-	  acq_locks.obj = (LK_ACQOBJ_LOCK *) malloc (size);
-	  if (acq_locks.obj == NULL)
+	  /* Read and re-acquire in batches: the array is as large as the transaction's lock set, which is not bounded
+	   * by anything the record itself carries. */
+	  locks = (LK_ACQ_LOCK *) malloc (MIN (remaining, LOG_2PC_LOCK_CHUNK) * sizeof (LK_ACQ_LOCK));
+	  if (locks == NULL)
 	    {
 	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
 	      return;
 	    }
 
-	  log_pgptr_reader.copy_from_log ((char *) acq_locks.obj, size);
-	  log_pgptr_reader.align ();
-	}
-
-      if (acq_locks.nobj_locks > 0)
-	{
-	  /* Acquire the locks */
-	  if (lock_reacquire_crash_locks (thread_p, &acq_locks, tdes->tran_index) != LK_GRANTED)
+	  while (remaining > 0)
 	    {
-	      logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
-	      return;
+	      unsigned int nlocks = MIN (remaining, LOG_2PC_LOCK_CHUNK);
+
+	      log_pgptr_reader.copy_from_log ((char *) locks, nlocks * sizeof (LK_ACQ_LOCK));
+
+	      if (log_2pc_reacquire_lock_chunk (thread_p, tdes, locks, nlocks) != LK_GRANTED)
+		{
+		  free_and_init (locks);
+		  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_2pc_read_prepare");
+		  return;
+		}
+	      remaining -= nlocks;
 	    }
 
-	  free_and_init (acq_locks.obj);
+	  free_and_init (locks);
 	}
     }
 }
@@ -1674,22 +1729,22 @@ log_2pc_dump_gtrinfo (FILE * fp, int length, void *data)
 }
 
 /*
- * log_2pc_dump_acqobj_locks - DUMP THE ACQUIRED OBJECT LOCKS
+ * log_2pc_dump_acq_locks - DUMP THE ACQUIRED LOCKS
  *
  * return: nothing
  *
  *   length(in): Length to dump in bytes
  *   data(in): The data being logged
  *
- * NOTE: Dump the acquired object lock structure.
+ * NOTE: Dump the acquired lock structure. Covers every resource type the key can carry, not just objects.
  */
 void
-log_2pc_dump_acqobj_locks (FILE * fp, int length, void *data)
+log_2pc_dump_acq_locks (FILE * fp, int length, void *data)
 {
   LK_ACQUIRED_LOCKS acq_locks;
 
-  acq_locks.nobj_locks = length / sizeof (LK_ACQOBJ_LOCK);
-  acq_locks.obj = (LK_ACQOBJ_LOCK *) data;
+  acq_locks.nlocks = length / sizeof (LK_ACQ_LOCK);
+  acq_locks.locks = (LK_ACQ_LOCK *) data;
   lock_dump_acquired (fp, &acq_locks);
 }
 
