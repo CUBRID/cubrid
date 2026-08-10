@@ -40,18 +40,17 @@ import com.cubrid.jsp.protocol.RequestCode;
 import com.cubrid.jsp.value.Value;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.sql.Connection;
 import java.util.Base64;
 
 public class ClassAccess {
 
     // get object code of the SP being invoked
-    public static CompiledCodeSet getObjectCode(Connection conn) {
+    public static CompiledCodeSet getObjectCode() {
 
         CompiledCodeSet code = null;
 
         try {
-            byte[] jarCode = getObjectCodeBytes(conn);
+            byte[] jarCode = getObjectCodeBytes();
             if (jarCode != null) {
                 code = CompiledCodeSet.loadFromJar(jarCode);
             }
@@ -66,8 +65,7 @@ public class ClassAccess {
     // Private
     // ======================
 
-    private static byte[] getObjectCodeBytes(Connection conn)
-            throws IOException, TypeMismatchException {
+    private static byte[] getObjectCodeBytes() throws IOException, TypeMismatchException {
         byte[] jar = null;
 
         sendGetCodeAttr("ocode");

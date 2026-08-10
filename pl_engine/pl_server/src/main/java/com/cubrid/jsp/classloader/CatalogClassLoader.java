@@ -34,9 +34,6 @@ package com.cubrid.jsp.classloader;
 import com.cubrid.jsp.code.ClassAccess;
 import com.cubrid.jsp.code.CompiledCode;
 import com.cubrid.jsp.code.CompiledCodeSet;
-import com.cubrid.jsp.context.Context;
-import com.cubrid.jsp.context.ContextManager;
-import java.sql.Connection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -49,12 +46,21 @@ public class CatalogClassLoader extends ClassLoader {
 
         this.mainClassName = mainClassName;
 
-        Context ctx = ContextManager.getContextofCurrentThread();
-        Connection conn = ctx.getConnection();
-        codeSet = ClassAccess.getObjectCode(conn);
+        codeSet = ClassAccess.getObjectCode();
         if (codeSet == null) {
             throw new IllegalStateException(
                     "retrieving object code failed for a class " + mainClassName);
+        }
+    }
+
+    @Override
+    public Class<?> loadClass(String name) throws ClassNotFoundException {
+        // The unit's own classes (the main class and its nested classes) are all in codeSet.codeMap
+        // Load them here and do not let them reach the relaying parent.
+        if (codeSet.codeMap.containsKey(name)) {
+            return findClass(name);
+        } else {
+            return super.loadClass(name);
         }
     }
 

@@ -44,7 +44,6 @@ import com.cubrid.jsp.value.ValueUtilities;
 import cubrid.sql.CUBRIDOID;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
-import java.sql.Connection;
 import java.sql.Date;
 import java.sql.ResultSet;
 import java.sql.Time;
@@ -86,7 +85,6 @@ public class StoredProcedure {
 
         Context ctx = ContextManager.getContextofCurrentThread();
 
-        Connection conn = ctx.getConnection();
         Signature sig = Signature.parse(sigString);
         String mainClassName = sig.getClassName();
 

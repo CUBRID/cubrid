@@ -31,48 +31,47 @@
 
 package com.cubrid.jsp.classloader;
 
-// import com.cubrid.jsp.code.CompiledCode;
-// import com.cubrid.jsp.code.CompiledCodeSet;
-// import java.util.Map.Entry;
-// import java.util.UUID;
-
 import java.util.HashMap;
 import java.util.Map;
 
 public class CatalogClassLoaderRelay extends ClassLoader {
 
-    public CatalogClassLoaderRelay(long sessionId) {
+    public CatalogClassLoaderRelay() {
         super(getSystemClassLoader());
-        this.sessionId = sessionId;
     }
 
     @Override
     public Class<?> loadClass(String name) throws ClassNotFoundException {
 
-        // CatalogClassLoaderRelay cannot be a initiating class loader of the class of the given
+        // CatalogClassLoaderRelay cannot be an initiating class loader of the class of the given
         // name because
         //   . it does not call defineClass(), and
         //   . JVM does not call loadClass on it, but only the application code does.
-        // This overriding is only to check the assertion. TODO: remove this overridding after some
+        // This overriding is only to check the assertion. TODO: remove this overriding after some
         // time.
 
         assert findLoadedClass(name) == null
-                : "CatalogClassLoaderRelay may not be a initiating class loader for " + name;
+                : "CatalogClassLoaderRelay may not be an initiating class loader for " + name;
         return super.loadClass(name);
     }
 
     @Override
-    public Class<?> findClass(String name) throws ClassNotFoundException {
+    public Class<?> findClass(String mainClassName) throws ClassNotFoundException {
 
-        // NOTE: (class) name ends with a string of the form
-        // _<seqno>_<creation-time>[$<nested-class-postfix>]
-        // Detaching this string yields the invariant part of the main class name of the form
-        // Proc_<owner>_<procedure-name> or Func_<owner>_<function-name>.
-        String mainClassName = getMainClassName(name); // which ends with _<seqno>_<creation-time>
+        // The argument mainClassName must be always the name of a main class of an SP because
+        // the only reaching path to this method is from StoredProcedure::findTargetMethod.
+        // Especially, delegation from a CatalogClassLoader does not reach here because classloading
+        // of a main class's nested class is done within the CatalogClassLoader (see
+        // CatalogClassLoader::loadClass)
+
+        // main class name ends with a string of the form _<seqno>_<creation-time>
+        // Detaching this string yields the invariant part of the main class name
+        // (invariant over recreations by executing CREATE OR REPLACE PROCEDURE/FUNCTION)
+        // of the form Proc_<owner>_<procedure-name> or Func_<owner>_<function-name>.
         String unitKey = getInvariantPartOfMainClassName(mainClassName);
         if (unitKey == null) {
-            // the name is not an unit (procedure, function) class name
-            throw new ClassNotFoundException(name);
+            // the name is not a unit (procedure, function) class name
+            throw new ClassNotFoundException(mainClassName);
         }
 
         CatalogClassLoader classLoader = unitClassLoaders.get(unitKey);
@@ -89,7 +88,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
 
         // CAUTION: do not use classLoader.loadClass() :
         //  it will result in an infinite loop because classLoader's parent is this relaying class
-        return classLoader.findClass(name);
+        return classLoader.findClass(mainClassName);
     }
 
     public void clear() {
@@ -100,18 +99,7 @@ public class CatalogClassLoaderRelay extends ClassLoader {
     // Private
     // =======================
 
-    private final long sessionId;
     private Map<String, CatalogClassLoader> unitClassLoaders = new HashMap<>();
-
-    private static String getMainClassName(String className) {
-
-        int mainClassNameEnd = className.indexOf('$');
-        if (mainClassNameEnd == -1) {
-            return className;
-        } else {
-            return className.substring(0, mainClassNameEnd);
-        }
-    }
 
     private static String getInvariantPartOfMainClassName(String mainClassName) {
 
