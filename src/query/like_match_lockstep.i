@@ -17,8 +17,8 @@
  */
 
 /*
- * like_match_lockstep.i - codeset-parameterized byte-lockstep LIKE matcher body (PostgreSQL
- *                         like_match.c template pattern); included once per instance
+ * like_match_lockstep.i - codeset-parameterized byte-lockstep LIKE matcher body; included once
+ *                         per instance
  *
  * Required seam macros (all #undef'd at the end of this file):
  *   LOCKSTEP_FN_NAME                      - name of the generated static matcher
