@@ -4305,6 +4305,8 @@ pt_find_default_expression (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, 
     case PT_USER:
     case PT_CURRENT_USER:
     case PT_UNIX_TIMESTAMP:
+    case PT_UUID:
+    case PT_SYS_GUID:
       *default_expr = tree;
       *continue_walk = PT_STOP_WALK;
       break;
@@ -7890,13 +7892,10 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
   PT_NODE *attr, *col;
   PT_NODE *columns = pt_get_select_list (parser, qry);
   PT_NODE *default_data = NULL;
-  PT_NODE *default_value = NULL, *default_op_value = NULL;
+  PT_NODE *default_value = NULL;
   PT_NODE *spec, *entity_name;
   DB_OBJECT *obj;
   DB_ATTRIBUTE *col_attr;
-  const char *lang_str;
-  int flag = 0;
-  bool has_user_format;
 
   /* Import default value and on update default expr from referenced table
    * for those attributes in the the view that don't have them. */
@@ -7972,54 +7971,12 @@ pt_check_default_vclass_query_spec (PARSER_CONTEXT * parser, PT_NODE * qry, PT_N
 	    }
 	  else
 	    {
-	      default_op_value = parser_new_node (parser, PT_EXPR);
-	      if (default_op_value == NULL)
+	      default_value =
+		pt_make_default_value_tree_from_default_expr (parser, &col_attr->default_value.default_expr);
+	      if (default_value == NULL)
 		{
 		  PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  goto error;
-		}
-
-	      default_op_value->info.expr.op =
-		pt_op_type_from_default_expr_type (col_attr->default_value.default_expr.default_expr_type);
-
-	      if (col_attr->default_value.default_expr.default_expr_op != T_TO_CHAR)
-		{
-		  default_value = default_op_value;
-		}
-	      else
-		{
-		  PT_NODE *arg1, *arg2, *arg3;
-
-		  arg1 = default_op_value;
-		  has_user_format = col_attr->default_value.default_expr.default_expr_format ? 1 : 0;
-		  arg2 = pt_make_string_value (parser, col_attr->default_value.default_expr.default_expr_format);
-		  if (arg2 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value);
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
-
-		  arg3 = parser_new_node (parser, PT_VALUE);
-		  if (arg3 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value);
-		      parser_free_tree (parser, arg2);
-		    }
-		  arg3->type_enum = PT_TYPE_INTEGER;
-		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-		  arg3->info.value.data_value.i = (long) flag;
-
-		  default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-		  if (default_value == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value);
-		      parser_free_tree (parser, arg2);
-		      parser_free_tree (parser, arg3);
-		      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      goto error;
-		    }
 		}
 
 	      default_data = parser_new_node (parser, PT_DATA_DEFAULT);
@@ -10718,15 +10675,45 @@ static void
 pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int into_cnt)
 {
   // set external into labels in parser context
+  int i = 0;
+  int is_fail = 1;
   PT_NODE *into = qry->info.query.into_list;
 
   char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
-  for (int i = 0; i < into_cnt; i++)
+  if (external_into_label == NULL)
     {
-      external_into_label[i] = (char *) malloc (sizeof (char) * 255);
-      strncpy (external_into_label[i], into->info.name.original, 254);
+      goto error_exit;
+    }
+
+  for (i = 0; i < into_cnt; i++)
+    {
+      external_into_label[i] = strdup (into->info.name.original);
+      if (external_into_label[i] == NULL)
+	{
+	  goto error_exit;
+	}
       into = into->next;
     }
+  is_fail = 0;
+
+error_exit:
+  if (is_fail == 1)
+    {
+      // clear memory
+      if (external_into_label)
+	{
+	  for (--i; i >= 0; i--)
+	    {
+	      free (external_into_label[i]);
+	    }
+	  free (external_into_label);
+	  external_into_label = NULL;
+	}
+
+      PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      into_cnt = 0;
+    }
+
   parser->external_into_label_cnt = into_cnt;
   parser->external_into_label = external_into_label;
 
@@ -12201,6 +12188,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	}
 #endif /* 0 */
 
+      sc_info_ptr->system_class = false;
       if (!pt_has_error (parser))
 	{
 	  if ((node->node_type == PT_INSERT && node->info.insert.spec->info.spec.remote_server_name)
@@ -12208,11 +12196,88 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
+	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
+	       * breaks out of the normal query semantic check below, so the subquery is never processed
+	       * as a stand-alone query. Run the same steps a top-level SELECT receives
+	       * (pt_resolve_names -> pt_check_where -> pt_mark_union_leaf_nodes -> pt_semantic_check_local)
+	       * so its WHERE / GROUP BY / HAVING / ORDER BY / LIMIT / expressions / aggregates / UNION are
+	       * handled; otherwise ORDER BY raises a "generate order_by" system error, LIMIT is ignored, etc. */
+	      /* Sink form only (DML text not serialized, qstr == NULL): the SELECT subquery runs
+	       * locally, so it needs the local semantic pass below. The full-pushdown form
+	       * (qstr set) ships the whole statement to the remote server, where it is parsed
+	       * and type-checked; the local pass would fail on remote columns whose types are
+	       * unknown locally. */
+	      if (node->node_type == PT_INSERT
+		  && node->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML
+		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
+		{
+		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+		  if (subq != NULL)
+		    {
+		      PT_NODE *saved_top = sc_info_ptr->top_node;
+
+		      pt_resolve_names (parser, subq, sc_info_ptr);
+		      if (!pt_has_error (parser))
+			{
+			  sc_info_ptr->top_node = subq;
+			  subq = pt_check_where (parser, subq);
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq =
+				parser_walk_tree (parser, subq, pt_mark_union_leaf_nodes, NULL, pt_continue_walk, NULL);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      subq = parser_walk_tree (parser, subq, NULL, NULL, pt_semantic_check_local, sc_info_ptr);
+			    }
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      /* The remote DML path skips the statement-level mq_translate (db_vdb.c, the whole
+			       * statement is sent to the remote server). For a remote INSERT SELECT the SELECT
+			       * subquery runs locally, so translate it here as a stand-alone query: this applies
+			       * view expansion, dblink derived-table rewrite and set-operator operand marking
+			       * (PT_IS_UNION_SUBQUERY) from the canonical code, so the operand/derived XASLs are
+			       * gathered into aptr_list and executed. Runs after the local semantic check above,
+			       * matching the normal semantic-check -> mq_translate order. */
+			      subq = mq_translate (parser, subq);
+			      if (subq == NULL && !pt_has_error (parser))
+				{
+				  /* Match the canonical mq_translate contract (db_vdb.c): a NULL result is a
+				   * failure even when no error was recorded. Without this the stale subquery
+				   * would reach XASL generation. */
+				  PT_INTERNAL_ERROR (parser,
+						     "remote INSERT SELECT: failed to translate the SELECT subquery");
+				}
+			    }
+			  sc_info_ptr->top_node = saved_top;
+			  if (subq != NULL && !pt_has_error (parser))
+			    {
+			      node->info.insert.value_clauses->info.node_list.list = subq;
+
+			      /* The remote path also skips the INSERT-level attribute/value count check, so an
+			       * explicit column list whose size differs from the SELECT projection would reach
+			       * XASL generation and abort there. Validate it here with the same semantic error a
+			       * local INSERT uses. */
+			      if (node->info.insert.attr_list != NULL)
+				{
+				  int ac = pt_length_of_list (node->info.insert.attr_list);
+				  int cc = pt_length_of_select_list (pt_get_select_list (parser, subq),
+								     EXCLUDE_HIDDEN_COLUMNS);
+				  if (ac != cc)
+				    {
+				      PT_ERRORmf2 (parser, node, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_ATT_CNT_COL_CNT_NE, ac, cc);
+				    }
+				}
+			    }
+			}
+		    }
+		}
 	      break;
 	    }
 	}
 
-      sc_info_ptr->system_class = false;
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
       if (!pt_has_error (parser))

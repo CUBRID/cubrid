@@ -1495,7 +1495,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    while (error == NO_ERROR && retry_in)
 		      {
 			/* Display prompt, then get user's input. */
-			fprintf (stdout, display_string);
+			fprintf (stdout, "%s", display_string);
 			pr_status = ER_FAILED;
 			pr_len = 0;
 			retry_in = false;
@@ -1513,7 +1513,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else
@@ -1559,7 +1559,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else if (x == reprompt_value)
@@ -1688,7 +1688,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &print_str);
-			fprintf (stdout, print_str);
+			fprintf (stdout, "%s", print_str);
 			fflush (stdout);
 		      }
 		    free_and_init (print_data);
@@ -3616,13 +3616,13 @@ net_client_shutdown_server (void)
  *    communications. It sets up CSS and verifies connection with the server.
  */
 int
-net_client_init (const char *dbname, const char *hostname)
+net_client_init (const char *dbname, const char *hostname, int client_type)
 {
   int error = NO_ERROR;
 
   /* don't really need to do this every time but bruce says its ok - we probably need to guarentee that a css_terminate
    * is always called before this */
-  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname);
+  error = __gv_cvar.css_client_init (prm_get_integer_value (PRM_ID_TCP_PORT_ID), dbname, hostname, client_type);
   if (error != NO_ERROR)
     {
       goto end;
@@ -3666,7 +3666,7 @@ end:
 int
 net_client_sub_init ()
 {
-  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host);
+  return __gv_cvar.css_client_sub_init (net_Server_name, net_Server_host, db_get_client_type ());
 }
 
 void

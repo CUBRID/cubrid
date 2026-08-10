@@ -131,7 +131,6 @@ static KEYWORD_RECORD keywords[] = {
   {CSV_, "CSV", 0},
   {DELIMITER_, "DELIMITER", 0},
   {QUOTE_, "QUOTE", 0},
-  {HEADER_, "HEADER", 0},
   {BULK_, "BULK", 0},
   {CORRESPONDING, "CORRESPONDING", 0},
   {COST, "COST", 1},
@@ -541,6 +540,7 @@ static KEYWORD_RECORD keywords[] = {
   {SUPERSETEQ, "SUPERSETEQ", 0},
   {SYNONYM, "SYNONYM", 1},
   {SYS_CONNECT_BY_PATH, "SYS_CONNECT_BY_PATH", 0},
+  {SYS_REFCURSOR, "SYS_REFCURSOR", 0},
   {SYSTEM, "SYSTEM", 1},
   {SYSTEM_USER, "SYSTEM_USER", 0},
   {SYS_DATE, "SYS_DATE", 0},
@@ -779,6 +779,8 @@ static FUNCTION_MAP functions[] = {
   {0, "to_base64", PT_TO_BASE64},
   {0, "from_base64", PT_FROM_BASE64},
   {0, "sys_guid", PT_SYS_GUID},
+  {0, "uuid", PT_UUID},
+  {0, "uuid_format", PT_UUID_FORMAT},
   {0, "sleep", PT_SLEEP},
   {0, "to_datetime_tz", PT_TO_DATETIME_TZ},
   {0, "to_timestamp_tz", PT_TO_TIMESTAMP_TZ},
@@ -1113,7 +1115,7 @@ pt_find_function_name (const char *text)
 #endif
     }
 
-  char temp[MAX_KEYWORD_SIZE];
+  char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);

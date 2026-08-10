@@ -2928,6 +2928,12 @@ css_send_req_with_large_buffer (CSS_CONN_ENTRY *conn, int request, unsigned shor
    return --working_task_count;
  }
 
+ bool
+ css_conn_entry::has_working_task () const
+ {
+   return working_task_count > 0;
+ }
+
  void
  css_conn_entry::init_working_task ()
  {

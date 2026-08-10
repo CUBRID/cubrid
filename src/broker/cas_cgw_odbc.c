@@ -1320,7 +1320,7 @@ cgw_set_bindparam (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int bind_num, void *
 	    sql_bind_type = SQL_CHAR;
 
 	    value_list->string_val = value;
-	    value_list->cbValue = (SQLLEN) val_size;
+	    value_list->cbValue = SQL_NTS;
 
 	    SQL_CHK_ERR (srv_handle->cgw_hstmt,
 			 SQL_HANDLE_STMT,
@@ -1329,8 +1329,8 @@ cgw_set_bindparam (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, int bind_num, void *
 						      SQL_PARAM_INPUT,
 						      c_data_type,
 						      sql_bind_type,
-						      val_size + 1,
-						      0, value_list->string_val, val_size + 1, &value_list->cbValue));
+						      val_size - 1,
+						      0, value_list->string_val, val_size, &value_list->cbValue));
 	  }
 	else
 	  {

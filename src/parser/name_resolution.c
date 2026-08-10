@@ -59,6 +59,7 @@
 #endif
 
 #include <cas_cci.h>
+#include <broker_cas_protocol.h>	/* CAS_*_DBMS_* values returned by cci_get_dbms_type */
 
 extern "C"
 {
@@ -434,6 +435,15 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       return node;
     }
 
+  /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
+   * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
+   * on any unbound name in the value clause. */
+  if (spec->info.spec.remote_server_name)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   level_p = (short *) spec->etc;
 
   switch (node->node_type)
@@ -488,6 +498,14 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   short *level_p = NULL;
 
   if (spec == NULL)
+    {
+      return node;
+    }
+
+  /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
+   * post callback must not decrement it either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name)
     {
       return node;
     }
@@ -1840,8 +1858,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
   assert (node->node_type == PT_INSERT || node->node_type == PT_MERGE);
 
-  /* if an attribute has a default expression as default value and that expression refers to the current date and time,
-   * then we make sure that we mark this statement as one that needs the system datetime from the server */
+  /* If an attribute default expression needs server time information, make sure this statement fetches it before any
+   * client-side evaluation path uses the cached default value. */
   if (node->node_type == PT_INSERT)
     {
       cls_name = node->info.insert.spec->info.spec.entity_name;
@@ -1860,10 +1878,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
+	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
+	      db_make_null (&parser->sys_epochtime);
 	      break;
 	    }
 	}
@@ -2068,12 +2088,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* mark spec to scan for record info */
 	      node->info.query.q.select.from->info.spec.flag =
 		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
-	    }
-	  else if (node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
-	    {
-	      /* mark spec to scan for sampling scan */
-	      node->info.query.q.select.from->info.spec.flag =
-		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_SAMPLING_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
@@ -3842,9 +3856,6 @@ int
 pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   DB_ATTRIBUTE *att = NULL;
-  const char *lang_str;
-  int flag = 0;
-  bool has_user_format;
 
   if (name->node_type != PT_NAME)
     {
@@ -3878,51 +3889,12 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
   if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       /* if the default value is an expression, make a node for it */
-      PT_OP_TYPE op;
-      PT_NODE *default_op_value_node;
-
-      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-      assert (op != (PT_OP_TYPE) 0);
-      default_op_value_node = pt_expression_0 (parser, op);
-
-      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+      name->info.name.default_value =
+	pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
+      if (name->info.name.default_value == NULL)
 	{
-	  name->info.name.default_value = default_op_value_node;
-	}
-      else
-	{
-	  PT_NODE *arg1, *arg2, *arg3;
-	  arg1 = default_op_value_node;
-	  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
-	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-	  if (arg2 == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return ER_FAILED;
-	    }
-
-	  arg3 = parser_new_node (parser, PT_VALUE);
-	  if (arg3 == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      parser_free_tree (parser, arg2);
-	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return ER_FAILED;
-	    }
-	  arg3->type_enum = PT_TYPE_INTEGER;
-	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	  arg3->info.value.data_value.i = (long) flag;
-
-	  name->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-	  if (name->info.name.default_value == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      parser_free_tree (parser, arg2);
-	      parser_free_tree (parser, arg3);
-	      return ER_FAILED;
-	    }
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
 	}
     }
   else
@@ -3958,9 +3930,6 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
   PT_NODE *cname = flat;
-  const char *lang_str;
-  int flag = 0;
-  bool has_user_format;
 
   if (!flat || !attr)
     {
@@ -4023,52 +3992,12 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      /* if the default value is an expression, make a node for it */
-	      PT_OP_TYPE op;
-	      PT_NODE *default_op_value_node;
-
-	      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-	      assert (op != (PT_OP_TYPE) 0);
-	      default_op_value_node = pt_expression_0 (parser, op);
-
-	      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	      attr->info.name.default_value =
+		pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
+	      if (attr->info.name.default_value == NULL)
 		{
-		  attr->info.name.default_value = default_op_value_node;
-		}
-	      else
-		{
-		  PT_NODE *arg1, *arg2, *arg3;
-		  arg1 = default_op_value_node;
-		  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
-		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-		  if (arg2 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
-
-		  arg3 = parser_new_node (parser, PT_VALUE);
-		  if (arg3 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
-		  arg3->type_enum = PT_TYPE_INTEGER;
-		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-		  arg3->info.value.data_value.i = (long) flag;
-
-		  attr->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-		  if (attr->info.name.default_value == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      parser_free_tree (parser, arg3);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
+		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return 0;
 		}
 	    }
 	  else
@@ -5064,7 +4993,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
+static PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
@@ -5187,12 +5116,21 @@ pt_dblink_table_fill_attr_def (PARSER_CONTEXT * parser, PT_NODE * attr_def_node,
 
       dt->info.data_type.dec_precision = attr->dec_precision;
       dt->info.data_type.precision = attr->precision;
-      dt->info.data_type.units = attr->charset;
-      /* CCI remote-column metadata carries a codeset (units) but no collation;
-       * collation_id then defaults to 0 (LANG_COLL_ISO_BINARY), violating the
-       * pt_check_expr_collation invariant that equal collation_id implies equal
-       * codeset. Assign the codeset's binary collation to keep them consistent. */
-      dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (attr->charset);
+      if (PT_HAS_COLLATION (attr_def_node->type_enum))
+	{
+	  /* DBLink converts the remote string to the LOCAL DB codeset at run time
+	   * (the codeset conversion in dblink_scan.c). Declare the column with that
+	   * local codeset/collation so compile-time type/collation checks match the
+	   * run-time value; attr->charset (remote) diverges and breaks UNION/IN. */
+	  dt->info.data_type.units = LANG_SYS_CODESET;
+	  dt->info.data_type.collation_id = LANG_GET_BINARY_COLLATION (LANG_SYS_CODESET);
+	}
+      else
+	{
+	  /* non-string (BIT/VARBIT/NUMERIC/...): codeset/collation are not semantically
+	   * used; keep the prior assignment. */
+	  dt->info.data_type.units = attr->charset;
+	}
     }
 
   attr_def_node->data_type = dt;
@@ -10684,9 +10622,63 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     case DB_DEFAULT_CURRENTDATE:
       return PT_CURRENT_DATE;
 
+    case DB_DEFAULT_SYSGUID:
+      return PT_SYS_GUID;
+
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      return PT_UUID;
+
     default:
       return (PT_OP_TYPE) 0;
     }
+}
+
+PT_NODE *
+pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node, DB_DEFAULT_EXPR_TYPE expr_type)
+{
+  PT_OP_TYPE op;
+
+  op = pt_op_type_from_default_expr_type (expr_type);
+  assert (op != (PT_OP_TYPE) 0);
+
+  if (node == NULL)
+    {
+      node = pt_expression_0 (parser, op);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  switch (expr_type)
+    {
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      {
+	PT_NODE *arg1 = parser_new_node (parser, PT_VALUE);
+	if (arg1 == NULL)
+	  {
+	    parser_free_tree (parser, node);
+	    return NULL;
+	  }
+
+	arg1->type_enum = PT_TYPE_INTEGER;
+	arg1->info.value.data_value.i = (expr_type == DB_DEFAULT_UUIDV4) ? 4 : 7;
+	node->info.expr.arg1 = arg1;
+	node->flag.do_not_fold = true;
+      }
+      break;
+
+    case DB_DEFAULT_SYSGUID:
+      node->flag.do_not_fold = true;
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }
 
 DB_OBJECT *
@@ -12178,6 +12170,42 @@ pt_check_dblink_column_alias (PARSER_CONTEXT * parser, PT_NODE * dblink)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * pt_dblink_get_remote_col_charset () - physical remote codeset of a DBLink column
+ *   return: INTL_CODESET of the named remote column, or -1 if not found
+ *   remote_col_list(in): PT_DBLINK_INFO.remote_col_list (S_REMOTE_TBL_COLS *)
+ *   col_name(in): bare remote column name
+ *
+ * The CCI column metadata carries the remote column's true (physical) codeset, which
+ * is preserved here regardless of how the parse-tree attr_def later declares the
+ * column's codeset.  The correlated push-down guard uses this to detect a cross-codeset
+ * key (remote physical codeset != local outer codeset) and fall back to local evaluation.
+ */
+int
+pt_dblink_get_remote_col_charset (void *remote_col_list, const char *col_name)
+{
+  S_REMOTE_TBL_COLS *cols = (S_REMOTE_TBL_COLS *) remote_col_list;
+
+  if (cols == NULL || col_name == NULL)
+    {
+      return -1;
+    }
+
+  for (int i = 0; i < cols->get_attr_size (); i++)
+    {
+      /* Match the DBLink column-name comparison used elsewhere (pt_mk_attr_def_node /
+       * pt_remake_dblink_select_list): the parse-tree column name may be a quoted
+       * identifier, so use the _for_dblink variant (dblink name first) to strip quotes;
+       * a plain casecmp would miss quoted keys and fall back to the declared codeset. */
+      if (intl_identifier_casecmp_for_dblink (col_name, cols->get_name (i)) == 0)
+	{
+	  return cols->get_attr (i)->charset;
+	}
+    }
+
+  return -1;
 }
 
 void

@@ -28,6 +28,7 @@
 
 #ifdef __cplusplus
 #include <atomic>
+#include "thread_compat.hpp"
 #endif
 
 #include "storage_common.h"
@@ -579,6 +580,38 @@ struct qfile_list_sector_scan_info
   // *INDENT-ON*
 };
 #endif /*  __cplusplus */
+
+#ifdef __cplusplus
+/*
+ * sector_page_iterator
+ *
+ * Per-thread sector-based page iterator over a QFILE_LIST_ID's data pages.
+ * Phase 1: one worker (the CAS winner of membuf_claimed) iterates the
+ *          membuf region sequentially.
+ * Phase 2: all workers split disk pages by atomically claiming sectors
+ *          via next_sector_index and walking each sector's bitmap.
+ */
+// *INDENT-OFF*
+class sector_page_iterator
+{
+  public:
+    sector_page_iterator ();
+
+    PAGE_PTR get_next_page (THREAD_ENTRY *thread_p, QFILE_LIST_SECTOR_SCAN_INFO &sector_scan);
+
+    inline struct qmgr_temp_file *get_current_tfile () const { return m_current_tfile; }
+    inline VPID get_current_vpid () const { return m_last_vpid; }
+
+  private:
+    int m_membuf_index;		/* -1 = initial, >=0 = CAS winner iterating membuf, -2 = not winner */
+    int m_sector_index;
+    UINT64 m_current_bitmap;
+    VSID m_current_vsid;
+    VPID m_last_vpid;		/* VPID of the last returned page */
+    struct qmgr_temp_file *m_current_tfile;
+};
+// *INDENT-ON*
+#endif /* __cplusplus */
 
 /* SORTING RELATED DEFINITIONS */
 

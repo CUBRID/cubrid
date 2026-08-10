@@ -31,6 +31,8 @@
 
 package com.cubrid.jsp.value;
 
+import static com.cubrid.plcsql.predefined.sp.SpLib.Query;
+
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.ExecuteException;
 import com.cubrid.jsp.exception.TypeMismatchException;
@@ -133,6 +135,18 @@ public class ValueUtilities {
             val = new OidValue((CUBRIDOID) o);
         } else if (o instanceof ResultSet) {
             val = new ResultSetValue((ResultSet) o);
+        } else if (o instanceof Query) {
+            Query query = (Query) o;
+            if (query.rs == null) {
+                val = new NullValue();
+            } else {
+                val = new ResultSetValue(query.rs);
+                // NOTE: query.close() does not close server-side resource, especially query
+                // results, of query.rs
+                // CUBRIDServerSideResultSet.close() does nothing in the current implementation.
+                // query.close() is just to close CUBRIDServerSideStatement in the query.
+                query.close();
+            }
         } else if (o instanceof byte[]) {
             val = new StringValue((byte[]) o);
         } else if (o instanceof short[]) {

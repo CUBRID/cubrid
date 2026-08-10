@@ -54,6 +54,16 @@ using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
 
+typedef enum
+{
+  TOPN_SUCCESS,
+  TOPN_OVERFLOW,
+  TOPN_FAILURE
+} TOPN_STATUS;
+
+struct topn_tuples;
+typedef struct topn_tuples TOPN_TUPLES;
+
 typedef struct upddel_class_instances_lock_info UPDDEL_CLASS_INSTANCE_LOCK_INFO;
 struct upddel_class_instances_lock_info
 {
@@ -89,6 +99,7 @@ extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, x
 extern int qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
 extern int qexec_start_mainblock_iterations (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
 extern int qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool for_parallel_aptr);
+extern void qexec_clear_topn_items (THREAD_ENTRY * thread_p, xasl_node * xasl);
 extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_context * pred_filter,
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);
@@ -125,4 +136,9 @@ extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p,
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					    QFILE_TUPLE_RECORD * tplrec, QFILE_TUPLE_DESCRIPTOR * tpldesc,
 					    QFILE_LIST_ID * groupby_list, bool * output_tuple);
+extern int qexec_setup_topn_proc (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd);
+extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES * topn_items,
+					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
+extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
+					 bool is_final, QFILE_LIST_ID * merged_results);
 #endif /* _QUERY_EXECUTOR_H_ */
