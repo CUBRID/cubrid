@@ -5262,6 +5262,7 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = prm_default_max_connection_worker ()}},
    {false, {.i = (int) cubthread::system_core_count ()}},
 #else
+   /* TODO: unused - the connection pool is server-only; to be removed */
    {false, {.i = 2}},
    {false, {.i = 2}},
    NULL_SYSPRM_PARAM_VALUE,
