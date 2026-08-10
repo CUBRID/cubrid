@@ -3038,8 +3038,9 @@ parser_print_tree_list (PARSER_CONTEXT * parser, const PT_NODE * node)
 PARSER_VARCHAR *
 pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 {
-  PARSER_VARCHAR *q = NULL, *r1;
+  PARSER_VARCHAR *r1;
   const PT_NODE *n;
+  PT_STRING_BLOCK local_print_buf = PT_STRING_BLOCK_INITIALIZER;
 
   if (!p)
     {
@@ -3063,27 +3064,34 @@ pt_print_and_list (PARSER_CONTEXT * parser, const PT_NODE * p)
 
       r1 = pt_print_bytes (parser, n);
 
-      if (q != NULL)
+      if (local_print_buf.length > 0)
 	{
-	  q = pt_append_nulstring (parser, q, " and ");
+	  strcat_with_realloc (&local_print_buf, " and ");
 	}
 
       if (n->node_type == PT_EXPR && !n->info.expr.paren_type && n->or_next)
 	{
 	  /* found non-parenthesis OR */
-	  q = pt_append_nulstring (parser, q, "(");
-	  q = pt_append_varchar (parser, q, r1);
-	  q = pt_append_nulstring (parser, q, ")");
+	  strcat_with_realloc (&local_print_buf, "(");
+	  pt_string_block_append_varchar (&local_print_buf, r1);
+	  strcat_with_realloc (&local_print_buf, ")");
 	}
       else
 	{
-	  q = pt_append_varchar (parser, q, r1);
+	  pt_string_block_append_varchar (&local_print_buf, r1);
+	}
+
+      if (local_print_buf.size < 0	/* an append failed */
+	  || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
+	{
+	  /* to help early break */
+	  break;
 	}
     }
 
   parser->flag.is_in_and_list = 0;
 
-  return q;
+  return pt_string_block_flush (parser, &local_print_buf, NULL);
 }
 
 /*
@@ -14622,6 +14630,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
   bool is_first_list;
   unsigned int save_custom = 0;
   PT_NODE *from = NULL, *derived_table = NULL;
+  PT_STRING_BLOCK local_print_buf = PT_STRING_BLOCK_INITIALIZER;
 
   from = p->info.query.q.select.from;
   if (from != NULL && from->info.spec.derived_table_type == PT_IS_SHOWSTMT
@@ -14715,21 +14724,36 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	{
 	  if (!is_first_list)
 	    {
-	      q = pt_append_nulstring (parser, q, ",(");
+	      strcat_with_realloc (&local_print_buf, ",(");
 	    }
 	  else
 	    {
-	      q = pt_append_nulstring (parser, q, "(");
+	      strcat_with_realloc (&local_print_buf, "(");
 	      is_first_list = false;
 	    }
 
 	  r1 = pt_print_bytes_l (parser, temp->info.node_list.list);
-	  q = pt_append_varchar (parser, q, r1);
+	  pt_string_block_append_varchar (&local_print_buf, r1);
 
-	  q = pt_append_nulstring (parser, q, ")");
+	  strcat_with_realloc (&local_print_buf, ")");
+
+	  if (local_print_buf.size < 0	/* an append failed */
+	      || (0 < parser->max_print_len && parser->max_print_len < local_print_buf.length))
+	    {
+	      /* to help early break */
+	      break;
+	    }
 	}
 
       parser->custom_print = save_custom;
+
+      q = pt_string_block_flush (parser, &local_print_buf, q);
+      if (q == NULL)
+	{
+	  /* an append failed; going on would start a new PARSER_VARCHAR
+	   * and print the statement without what came before */
+	  return NULL;
+	}
     }
   else
     {
