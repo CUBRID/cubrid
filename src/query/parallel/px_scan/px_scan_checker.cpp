@@ -207,6 +207,8 @@ namespace parallel_scan
 	  }
 	break;
       default:
+	/* refers_post_scan_state () walks the same grammar in a second switch that defaults the
+	 * other way (no scan-state reference); a new type read after the gather belongs there too. */
 	set_flag (result, CANNOT_PARALLEL_SCAN);
 	break;
       }
