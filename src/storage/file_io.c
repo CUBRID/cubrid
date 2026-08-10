@@ -2258,12 +2258,10 @@ fileio_create_backup_volume (THREAD_ENTRY * thread_p, const char *db_full_name_p
 		  /* sleep for 100 milli-seconds : consider cs & sa mode */
 		  select (0, NULL, NULL, NULL, &to);
 
-#if !defined(CS_MODE)
 		  if (pgbuf_is_log_check_for_interrupts (thread_p) == true)
 		    {
 		      return NULL_VOLDES;
 		    }
-#endif
 		  continue;
 		}
 	      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_FORMAT_FAIL, 3, vol_label_p, -1, -1LL);
@@ -8243,7 +8241,6 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
 }
 #endif /* SERVER_MODE */
 
-#if !defined(CS_MODE)
 /*
  * fileio_backup_volume () - Include the given database volume/file as part of
  *                       the backup
@@ -8621,7 +8618,6 @@ error:
   session_p->dbfile.vlabel = NULL;
   return ER_FAILED;
 }
-#endif /* !CS_MODE */
 
 /*
  * fileio_flush_backup () - Flush any buffered data
@@ -10288,7 +10284,6 @@ exit_on_error:
   goto exit_on_end;
 }
 
-#if !defined(CS_MODE)
 /*
  * fileio_restore_volume () - Restore a volume/file of given database
  *   return:
@@ -10589,7 +10584,6 @@ error:
 
   return ER_FAILED;
 }
-#endif /* !CS_MODE */
 
 /*
  * fileio_write_restore () - Write the content of the page described by pageid
@@ -10614,9 +10608,7 @@ fileio_write_restore (THREAD_ENTRY * thread_p, FILEIO_RESTORE_PAGE_BITMAP * page
   bool is_set;
   FILEIO_WRITE_MODE write_mode = FILEIO_WRITE_DEFAULT_WRITE;
 
-#if !defined (CS_MODE)
   write_mode = dwb_is_created () == true ? FILEIO_WRITE_NO_COMPENSATE_WRITE : FILEIO_WRITE_DEFAULT_WRITE;
-#endif
 
   if (page_bitmap == NULL)
     {
