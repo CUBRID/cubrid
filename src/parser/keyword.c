@@ -1098,7 +1098,7 @@ pt_find_function_name (const char *text)
 #endif
     }
 
-  char temp[MAX_KEYWORD_SIZE];
+  char temp[DB_MAX_IDENTIFIER_LENGTH];
 
   dummy.keyword = temp;
   return (FUNCTION_MAP *) find_keyword_tables (functions, dummy, finfo, keyword_hash_comparator < FUNCTION_MAP >, text);
