@@ -1656,16 +1656,6 @@ lang_set_byte_lockstep_like (LANG_COLLATION * lang_coll)
       return;
     }
 
-  if (lang_coll->codeset == INTL_CODESET_KSC5601_EUC)
-    {
-      /* per-character memcmp matcher : no weight table involved */
-      if (lang_coll->strmatch == lang_strmatch_ko)
-	{
-	  lang_coll->byte_lockstep_kind = LANG_LOCKSTEP_EUCKR;
-	}
-      return;
-    }
-
   if (coll->w_count <= 0 || coll->weights == NULL)
     {
       return;

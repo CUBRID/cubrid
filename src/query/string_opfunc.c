@@ -144,90 +144,6 @@
 #define LOCKSTEP_TAIL_IS_PAD(t, tlen) ((*(t) == 0x20) ? 1 : 0)
 #include "like_match_lockstep.i"
 
-/* EUCKR space class of lang_strmatch_ko () : {0x00, 0x20, 0xA1 0xA1}; valid EUC-KR trail bytes are
- * 0xA1..0xFE, so a mid-character resync can never falsely rescue (only invalid sequences diverge) */
-static int
-qstr_euckr_space_len (const unsigned char *s, int len)
-{
-  if (len >= 1 && (s[0] == 0x00 || s[0] == 0x20))
-    {
-      return 1;
-    }
-  if (len >= 2 && s[0] == 0xA1 && s[1] == 0xA1)
-    {
-      return 2;
-    }
-  return 0;
-}
-
-/* '%'-scan candidate : space-class heads match any space form; ASCII heads by byte;
- * multi-byte heads by full compare (truncated side false) */
-static int
-qstr_euckr_cand_eq (const unsigned char *t, int tlen, const unsigned char *pat, int patlen)
-{
-  int clen;
-
-  if (qstr_euckr_space_len (pat, patlen) > 0)
-    {
-      return qstr_euckr_space_len (t, tlen) > 0;
-    }
-  if (pat[0] < 0x80)
-    {
-      return t[0] == pat[0];
-    }
-  clen = (pat[0] == 0x8F) ? 3 : 2;
-  if (patlen < clen || tlen < clen)
-    {
-      return 0;
-    }
-  return memcmp (t, pat, clen) == 0;
-}
-
-/* EUCKR instance : per-character equivalence of lang_strmatch_ko (); the variable-length A1A1
- * space form is handled by MISMATCH_RESYNC consuming one space element from each side */
-#define LOCKSTEP_FN_NAME qstr_like_match_lockstep_euckr
-#define LOCKSTEP_NEXT_CHAR(p, remain) \
-  do \
-    { \
-      int nc_len_ = (*(p) < 0x80) ? 1 : ((*(p) == 0x8F) ? 3 : 2); \
-      if (nc_len_ > (remain)) \
-	{ \
-	  (p) += (remain); \
-	  (remain) = -1; \
-	} \
-      else \
-	{ \
-	  (p) += nc_len_; \
-	  (remain) -= nc_len_; \
-	} \
-    } \
-  while (0)
-#define LOCKSTEP_BYTE_EQ(b1, b2) \
-  ((b1) == (b2) || (((b2) == 0x00 || (b2) == 0x20) && ((b1) == 0x00 || (b1) == 0x20)))
-#define LOCKSTEP_CAND_EQ(t, tlen, pat, patlen) qstr_euckr_cand_eq ((t), (tlen), (pat), (patlen))
-#define LOCKSTEP_MISMATCH_RESYNC(t, tlen, p, plen) \
-  do \
-    { \
-      int t_sp_ = qstr_euckr_space_len ((t), (tlen)); \
-      int p_sp_ = qstr_euckr_space_len ((p), (plen)); \
-      if (t_sp_ > 0 && p_sp_ > 0) \
-	{ \
-	  (t) += t_sp_; \
-	  (tlen) -= t_sp_; \
-	  (p) += p_sp_; \
-	  (plen) -= p_sp_; \
-	} \
-      else \
-	{ \
-	  return QSTR_LIKE_LOCKSTEP_FALSE; \
-	} \
-    } \
-  while (0)
-#define LOCKSTEP_MEMCHR_OK(firstpat) ((firstpat) < 0x80 && (firstpat) != 0x00 && (firstpat) != 0x20)
-#define LOCKSTEP_TAIL_IS_PAD(t, tlen) \
-  ((*(t) == 0x20) ? 1 : (((tlen) >= 2 && (t)[0] == 0xA1 && (t)[1] == 0xA1) ? 2 : 0))
-#include "like_match_lockstep.i"
-
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -6123,14 +6039,6 @@ qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_leng
 	      match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
 						       REINTERPRET_CAST (const unsigned char *, expr), expr_length,
 						       escape_byte, 0);
-	    }
-	  break;
-	case LANG_LOCKSTEP_EUCKR:
-	  if (codeset == INTL_CODESET_KSC5601_EUC)
-	    {
-	      match = qstr_like_match_lockstep_euckr (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
-						      REINTERPRET_CAST (const unsigned char *, expr), expr_length,
-						      escape_byte, 0);
 	    }
 	  break;
 	default:
