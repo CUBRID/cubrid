@@ -53,8 +53,24 @@ executors:
       # GlusterFS build layout contract, defined once for both sides:
       # download-build publishes <root>/<sha>/<mode>/CUBRID + sentinel,
       # test_shell waits on the sentinel and mounts that tree.
-      BUILD_CACHE_ROOT: /home/build-cache/builds
-      BUILD_SENTINEL: .complete
+      BUILD_CACHE_ROOT: &build_cache_root /home/build-cache/builds
+      BUILD_SENTINEL: &build_sentinel .complete
+
+  # CUBRIDQA-1506, temporary. The Helm values pin cubridci:test_shell on this
+  # resource class; the image named here wins, so this needs no runner change.
+  cubrid-build-node:
+    docker:
+      - image: cubridci/cubridci:rl8.10
+    resource_class: cubrid/ramdisk
+    working_directory: /home/cubrid
+    environment:
+      BUILD_CACHE_ROOT: *build_cache_root
+      BUILD_SENTINEL: *build_sentinel
+      BUILD_MIRROR: /home/build-cache/cubrid-mirror
+      CCACHE_DIR: /home/build-cache/ccache-shell-debug
+      # No CCACHE_HARDLINK: this cache is on GlusterFS and the build tree is
+      # not, so hardlinking would silently fall back to copying.
+      CCACHE_COMPILERCHECK: content
 
 commands:
   submodules:
@@ -478,12 +494,12 @@ jobs:
           mode: optdebug
           build-args: "-m optdebug"
       # Package when a test job will consume it, or on develop for preservation.
+      # Not for shell: it builds on its own node now (CUBRIDQA-1506).
       - when:
           condition:
             or:
               - << pipeline.parameters.run_sql_test >>
               - << pipeline.parameters.run_medium_test >>
-              - << pipeline.parameters.run_shell_test >>
               - equal: [ develop, << pipeline.git.branch >> ]
           steps:
             - package-build:
@@ -568,6 +584,95 @@ jobs:
                 root: /tmp/tcws
                 paths: [ BRANCH_TESTCASES ]
 
+  # CUBRIDQA-1506, temporary: stands in for download-build on the shell path
+  # and goes away with CircleCI (CUBRIDQA-1501).
+  build-debug-node:
+    description: "Build the debug package on the runner node and publish it to GlusterFS"
+    executor: cubrid-build-node
+    steps:
+      - resolve-testcases:
+          tc-repo: cubrid-testcases-private-ex
+      - run:
+          name: Persist testcases branch for shell pods
+          command: |
+            mkdir -p /tmp/tcws
+            echo "$BRANCH_TESTCASES" > /tmp/tcws/BRANCH_TESTCASES
+      - persist_to_workspace:
+          root: /tmp/tcws
+          paths: [ BRANCH_TESTCASES ]
+      - run:
+          # Halting ends the job as a success, so the workspace above has to be
+          # written before it or the shell pods get no testcases branch.
+          name: Reuse an existing build
+          command: |
+            [ -f "${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug/${BUILD_SENTINEL}" ] || exit 0
+            echo "[debug] ${CIRCLE_SHA1} is already published"
+            circleci-agent step halt
+      - run:
+          name: Check out the source
+          no_output_timeout: 30m
+          command: |
+            set -eo pipefail
+            if [ -d "$BUILD_MIRROR/cubrid.git" ]; then
+              git clone --quiet --shared --no-checkout "$BUILD_MIRROR/cubrid.git" .
+            else
+              echo "[warn] no mirror at $BUILD_MIRROR; cloning the full history over the WAN"
+              git clone --progress --no-checkout https://github.com/CUBRID/cubrid.git .
+            fi
+            # Never shallow: the build number counts commits, so a shallow
+            # clone would stamp the package 0001.
+            git fetch --quiet https://github.com/CUBRID/cubrid.git "$CIRCLE_SHA1"
+            git checkout --quiet --detach "$CIRCLE_SHA1"
+
+            git submodule sync
+            git submodule init
+            # Mirror only where it holds the commit this revision pins; a
+            # submodule bumped since the mirror was seeded comes from GitHub.
+            while read -r sha path; do
+              url=$(git config -f .gitmodules --get "submodule.${path}.url")
+              mirror="$BUILD_MIRROR/$(basename "${url%.git}").git"
+              git -C "$mirror" cat-file -e "${sha}^{commit}" 2> /dev/null \
+                && git config "submodule.${path}.url" "$mirror"
+            done < <(git ls-tree HEAD | awk '$2 == "commit" { print $3, $4 }')
+            # git 2.38 refuses to clone a submodule from a path without this.
+            git -c protocol.file.allow=always submodule update
+      - run:
+          # From the source root, which is the executor's working_directory:
+          # the entrypoint only detects a failed build when it finds build.sh
+          # in the current directory.
+          name: Build the debug package
+          no_output_timeout: 45m
+          command: |
+            set -eo pipefail
+            mkdir -p "$CCACHE_DIR"
+            ccache --max-size=5G
+            ccache -z
+            /entrypoint.sh build -m optdebug
+            ccache -s
+      - run:
+          name: Publish the build to GlusterFS
+          no_output_timeout: 30m
+          command: |
+            set -eo pipefail
+            : "${BUILD_CACHE_ROOT:?}" "${BUILD_SENTINEL:?}"
+            dir="${BUILD_CACHE_ROOT}/${CIRCLE_SHA1}/debug"
+            tmp="${dir}.tmp.${CIRCLE_BUILD_NUM}"
+            rm -rf "$tmp"
+            mkdir -p "$tmp"
+            cp -a /home/CUBRID "$tmp/CUBRID"
+            touch "$tmp/${BUILD_SENTINEL}"
+            # One rename publishes it, so a consumer never sees a half-copied tree.
+            if ! mv -T "$tmp" "$dir"; then
+              rm -rf "$tmp"
+              # Only a run that published first may be ignored; it left the
+              # sentinel. Any other mv failure published nothing, so fail here
+              # rather than let test_shell wait for a build that never lands.
+              test -f "${dir}/${BUILD_SENTINEL}"
+              echo "Another run published this commit first"
+            fi
+            df -h /home/build-cache
+      - collect-build-logs
+
 # Test jobs are gated by expression-based filters (evaluated server-side).
 workflows:
   build_test:
@@ -585,8 +690,11 @@ workflows:
           parallelism: 10
           requires: [build_debug]
           filters: pipeline.parameters.run_sql_test
-      - download-build:
-          requires: [build_debug]
+      # Keeps the name: it is the commit status context and what test_shell
+      # requires. No requires of its own -- not waiting for the cloud build is
+      # where the time goes (CUBRIDQA-1506).
+      - build-debug-node:
+          name: download-build
           filters: pipeline.parameters.run_shell_test
       - test_shell:
           requires: [download-build]
