@@ -4433,15 +4433,20 @@ copy_stmt
 				node->info.copy.bulk = 1;
 			      }
 
-			    if (delim != NULL && delim->info.value.data_value.str != NULL
-				&& delim->info.value.data_value.str->length >= 1)
+			    /* DELIMITER / QUOTE take exactly one character. Anything else is
+			     * marked -1 here and rejected by do_copy, so that a two-character
+			     * delimiter is not silently truncated to its first byte. */
+			    if (delim != NULL && delim->info.value.data_value.str != NULL)
 			      {
-				node->info.copy.fmt.csv.delimiter = delim->info.value.data_value.str->bytes[0];
+				node->info.copy.fmt.csv.delimiter =
+				  (delim->info.value.data_value.str->length == 1)
+				  ? delim->info.value.data_value.str->bytes[0] : -1;
 			      }
-			    if (quote != NULL && quote->info.value.data_value.str != NULL
-				&& quote->info.value.data_value.str->length >= 1)
+			    if (quote != NULL && quote->info.value.data_value.str != NULL)
 			      {
-				node->info.copy.fmt.csv.quote = quote->info.value.data_value.str->bytes[0];
+				node->info.copy.fmt.csv.quote =
+				  (quote->info.value.data_value.str->length == 1)
+				  ? quote->info.value.data_value.str->bytes[0] : -1;
 			      }
 			    if (hdr != NULL)
 			      {

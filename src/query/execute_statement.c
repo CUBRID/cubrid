@@ -22505,6 +22505,15 @@ do_copy (PARSER_CONTEXT * parser, PT_NODE * statement)
       return ER_COPY_NOT_SUPPORTED;
     }
 
+  /* The grammar marks a DELIMITER / QUOTE literal that is not exactly one character as -1. */
+  if (statement->info.copy.fmt.csv.delimiter < 0 || statement->info.copy.fmt.csv.quote < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_COPY_NOT_SUPPORTED, 1,
+	      "DELIMITER and QUOTE must be exactly one character");
+      free_and_init (col_types);
+      return ER_COPY_NOT_SUPPORTED;
+    }
+
   error = copy_from_init (table_name, col_types, ncols, statement->info.copy.format,
 			  statement->info.copy.fmt.csv.delimiter, statement->info.copy.fmt.csv.quote,
 			  statement->info.copy.fmt.csv.header, statement->info.copy.bulk);
