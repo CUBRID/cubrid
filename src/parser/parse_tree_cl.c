@@ -4164,6 +4164,8 @@ pt_show_priv (PT_PRIV_TYPE t)
       return "execute";
     case PT_EXECUTE_PROCEDURE_PRIV:
       return "execute on procedure";
+    case PT_EXECUTE_PACKAGE_PRIV:
+      return "execute on package";
     case PT_INDEX_PRIV:
       return "index";
     case PT_INSERT_PRIV:

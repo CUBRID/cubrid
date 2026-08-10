@@ -103,7 +103,11 @@
 #define CT_DBCHARSET_DEFAULT_COLLATION	  "default_collation"
 #define CT_DBCHARSET_CHAR_SIZE		  "char_size"
 
-#define SP_ATTR_TARGET_METHOD_LEN       (4096)
+// common to many system tables and views
+#define CT_ATTR_UNIQUE_NAME             "unique_name"
+#define CT_ATTR_OWNER                   "owner"
+#define CT_ATTR_COMMENT                 "comment"
+
 
 /*
  * !! CAUTION !!

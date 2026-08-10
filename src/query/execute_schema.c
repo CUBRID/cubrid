@@ -2119,6 +2119,30 @@ do_grant (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 		    }
 		}
 	    }
+	  else if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PACKAGE_PRIV)
+	    {
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      for (PT_NODE * pkgs = spec_list; pkgs != NULL; pkgs = pkgs->next)
+		{
+		  const char *pkg_name = pkgs->info.name.original;
+
+		  MOP pkg_mop = jsp_find_package (pkg_name, DB_AUTH_NONE);
+		  if (pkg_mop == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = db_grant_object (DB_OBJECT_PACKAGE, user_obj, pkg_mop, db_auth, grant_option);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	    }
 	  else
 	    {
 	      for (PT_NODE * spec = spec_list; spec != NULL; spec = spec->next)
@@ -2222,6 +2246,30 @@ do_revoke (const PARSER_CONTEXT * parser, const PT_NODE * statement)
 
 		  // TODO: In CBRD-24912, GRANT/REVOKE for stored procedure is implemented, the following will be processed properly
 		  error = db_revoke_object (DB_OBJECT_PROCEDURE, user_obj, proc_mop, db_auth);
+		  if (error != NO_ERROR)
+		    {
+		      goto end;
+		    }
+		}
+	    }
+	  else if (auth->info.auth_cmd.auth_cmd == PT_EXECUTE_PACKAGE_PRIV)
+	    {
+	      // NOTE: db_auth is always DB_AUTH_EXECUTE
+	      assert (db_auth == DB_AUTH_EXECUTE);
+
+	      for (PT_NODE * pkgs = spec_list; pkgs != NULL; pkgs = pkgs->next)
+		{
+		  const char *pkg_name = pkgs->info.name.original;
+
+		  MOP pkg_mop = jsp_find_package (pkg_name, DB_AUTH_NONE);
+		  if (pkg_mop == NULL)
+		    {
+		      assert (er_errid () != NO_ERROR);
+		      error = er_errid ();
+		      goto end;
+		    }
+
+		  error = db_revoke_object (DB_OBJECT_PACKAGE, user_obj, pkg_mop, db_auth);
 		  if (error != NO_ERROR)
 		    {
 		      goto end;

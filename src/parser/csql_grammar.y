@@ -8618,6 +8618,17 @@ authorized_execute_procedure_cmd
                         $$ = node;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
                 }}
+        | EXECUTE ON_ PACKAGE
+                {{
+			PT_NODE *node = parser_new_node (this_parser, PT_AUTH_CMD);
+			if (node)
+			  {
+			    node->info.auth_cmd.auth_cmd = PT_EXECUTE_PACKAGE_PRIV;
+                            node->info.auth_cmd.attr_mthd_list = NULL;
+			  }
+                        $$ = node;
+			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+                }}
         ;
 
 authorized_cmd

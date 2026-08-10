@@ -47,10 +47,10 @@
 #endif /* SA_MODE */
 
 static int au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option);
-static int au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
+static int au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option);
 
 static int au_revoke_class (MOP user, MOP class_mop, DB_AUTH type, MOP drop_user);
-static int au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
+static int au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user);
 
 static int check_grant_option (MOP classop, SM_CLASS *sm_class, DB_AUTH type);
 static int collect_class_grants (MOP class_mop, DB_AUTH type, MOP revoked_auth, int revoked_grant_index,
@@ -95,7 +95,8 @@ au_grant (DB_OBJECT_TYPE obj_type, MOP user, MOP class_mop, DB_AUTH type, bool g
       break;
 
     case DB_OBJECT_PROCEDURE:
-      error = au_grant_procedure (user, class_mop, type, grant_option);
+    case DB_OBJECT_PACKAGE:
+      error = au_grant_proc_or_pkg (obj_type, user, class_mop, type, grant_option);
       break;
     default:
       error = ER_FAILED;
@@ -192,7 +193,7 @@ au_grant_class (MOP user, MOP class_mop, DB_AUTH type, bool grant_option)
       else if (ws_is_same_object (classobj->owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_CLASS));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
       else if ((error = au_compare_grantor_and_return (&grantor, class_mop, type, Au_user, classobj->owner,
 			NULL)) != NO_ERROR)
@@ -312,7 +313,7 @@ fail_end:
 }
 
 static int
-au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
+au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 {
   int error = NO_ERROR;
   DB_VALUE value;
@@ -324,13 +325,13 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
   assert (type == AU_EXECUTE);
 
   AU_SAVE_AND_DISABLE (save);
-  MOP sp_owner = jsp_get_owner (obj_mop);
+  MOP owner = jsp_get_owner (obj_mop);
 
   /*
-   * The WITH GRANT OPTION is not yet supported for stored procedures.
+   * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
    * Therefore, only the DBA, member of the DBA group, and the owner can grant privileges.
    */
-  if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
+  if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (owner, Au_user))
     {
       error = ER_AU_OWNER_ONLY_GRANT_PRIVILEGE;
       er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, "EXECUTE");
@@ -348,12 +349,12 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
     }
   else
     {
-      if (ws_is_same_object (sp_owner, user))
+      if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_GRANT_OWNER;
-	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	}
-      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, NULL)) != NO_ERROR)
+      else if ((error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, NULL)) != NO_ERROR)
 	{
 	  goto end;
 	}
@@ -403,14 +404,14 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 		  if (ins_bits)
 		    {
 		      error =
-			      accessor.insert_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.insert_auth (obj_type, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 
 		  upd_bits = (DB_AUTH) (~ins_bits & (int) type);
 		  if ((error == NO_ERROR) && upd_bits)
 		    {
 		      error =
-			      accessor.update_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
+			      accessor.update_auth (obj_type, grantor, user, obj_mop, AU_EXECUTE, DB_AUTH_NONE);
 		    }
 		}
 
@@ -434,7 +435,7 @@ au_grant_procedure (MOP user, MOP obj_mop, DB_AUTH type, bool grant_option)
 	      if (gindex == -1)
 		{
 		  /* There is no grant entry, add a new one. */
-		  gindex = add_grant_entry (grants, DB_OBJECT_PROCEDURE, obj_mop, grantor);
+		  gindex = add_grant_entry (grants, obj_type, obj_mop, grantor);
 		}
 	      set_put_element (grants, GRANT_ENTRY_CACHE (gindex), &value);
 	      set_free (grants);
@@ -494,7 +495,8 @@ au_revoke (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP dro
       break;
 
     case DB_OBJECT_PROCEDURE:
-      error = au_revoke_procedure (user, obj_mop, type, drop_user);
+    case DB_OBJECT_PACKAGE:
+      error = au_revoke_proc_or_pkg (obj_type, user, obj_mop, type, drop_user);
       break;
     default:
       error = ER_FAILED;
@@ -723,7 +725,7 @@ fail_end:
 }
 
 static int
-au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
+au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 {
   int error = NO_ERROR;
   DB_SET *grants = NULL;
@@ -731,7 +733,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
   int save = 0, current = 0, gindex, mask, savepoint_revoke = 0;
   AU_GRANT *grant_list;
   DB_VALUE cache_element;
-  MOP sp_owner;
+  MOP owner;
   MOP grantor = NULL;
 
   AU_SAVE_AND_DISABLE (save);
@@ -742,8 +744,8 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
       goto fail_end;
     }
 
-  sp_owner = jsp_get_owner (obj_mop);
-  if (sp_owner == NULL)
+  owner = jsp_get_owner (obj_mop);
+  if (owner == NULL)
     {
       error = ER_FAILED;
       goto fail_end;
@@ -751,7 +753,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 
   if (error == NO_ERROR)
     {
-      if (ws_is_same_object (sp_owner, user))
+      if (ws_is_same_object (owner, user))
 	{
 	  error = ER_AU_CANT_REVOKE_OWNER;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, MSGCAT_GET_GLOSSARY_MSG (MSGCAT_GLOSSARY_PROCEDURE));
@@ -772,14 +774,14 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
        *   call login(class db_user,'public','');
        *   REVOKE EXECUTE ON PROCEDURE u1.hello FROM u2;
        */
-      if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (sp_owner, Au_user))
+      if (!au_is_dba_group_member (Au_user) && !au_is_user_group_member (owner, Au_user))
 	{
 	  error = ER_AU_EXECUTE_FAILURE;
 	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 0);
 	  goto fail_end;
 	}
 
-      error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, sp_owner, drop_user);
+      error = au_compare_grantor_and_return (&grantor, obj_mop, type, Au_user, owner, drop_user);
       if (error != NO_ERROR)
 	{
 	  goto fail_end;
@@ -848,7 +850,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 		  mask = (int) ~ (type | (type << AU_GRANT_SHIFT));
 
 		  /* propagate the revoke to the affected classes */
-		  if ((error = propagate_revoke (DB_OBJECT_PROCEDURE, grant_list, sp_owner, (DB_AUTH) mask)) == NO_ERROR)
+		  if ((error = propagate_revoke (obj_type, grant_list, owner, (DB_AUTH) mask)) == NO_ERROR)
 		    {
 
 		      /*
@@ -879,7 +881,7 @@ au_revoke_procedure (MOP user, MOP obj_mop, DB_AUTH type, MOP drop_user)
 			{
 #endif /* SA_MODE */
 			  au_auth_accessor accessor;
-			  error = accessor.delete_auth (DB_OBJECT_PROCEDURE, grantor, user, obj_mop, type);
+			  error = accessor.delete_auth (obj_type, grantor, user, obj_mop, type);
 #if defined(SA_MODE)
 			}
 #endif /* SA_MODE */
@@ -2054,15 +2056,18 @@ au_print_grants (MOP auth, FILE *fp)
     }
 }
 
-int
-au_check_procedure_authorization (MOP procedure_mop)
+// Check that the current user has AU_EXECUTE on the given routine/package object.
+// A stored procedure and a package share the same authorization cache and the same "owner"
+// attribute, so a single implementation serves both, parameterized by obj_type.
+static int
+au_check_execute_authorization (MOP obj_mop, DB_OBJECT_TYPE obj_type)
 {
   int error = NO_ERROR;
   DB_VALUE owner;
   MOP owner_mop;
 
-  // if procedure cache does not exist, update the procedure cache
-  uint32_t *bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+  // if the cache does not exist, update it
+  uint32_t *bits = Au_cache.get_proc_or_pkg_cache_bits (obj_mop);
   if (bits == NULL)
     {
       assert (false);
@@ -2073,14 +2078,14 @@ au_check_procedure_authorization (MOP procedure_mop)
     {
       if (*bits == AU_CACHE_INVALID)
 	{
-	  error = db_get (procedure_mop, SP_ATTR_OWNER, &owner);
+	  error = db_get (obj_mop, CT_ATTR_OWNER, &owner);
 	  owner_mop = db_get_object (&owner);
 
 	  /* update the cache and try again */
-	  error = Au_cache.update (DB_OBJECT_PROCEDURE, procedure_mop, owner_mop);
+	  error = Au_cache.update (obj_type, obj_mop, owner_mop);
 	  if (error == NO_ERROR)
 	    {
-	      bits = Au_cache.get_procedure_cache_bits (procedure_mop);
+	      bits = Au_cache.get_proc_or_pkg_cache_bits (obj_mop);
 	      if (bits == NULL)
 		{
 		  return er_errid ();
@@ -2100,6 +2105,18 @@ au_check_procedure_authorization (MOP procedure_mop)
     }
 
   return error;
+}
+
+int
+au_check_procedure_authorization (MOP procedure_mop)
+{
+  return au_check_execute_authorization (procedure_mop, DB_OBJECT_PROCEDURE);
+}
+
+int
+au_check_package_authorization (MOP package_mop)
+{
+  return au_check_execute_authorization (package_mop, DB_OBJECT_PACKAGE);
 }
 
 #if defined (SA_MODE)

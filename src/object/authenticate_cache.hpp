@@ -149,7 +149,7 @@ class authenticate_cache
     void set_cache_index (int idx);
 
     unsigned int *get_cache_bits (SM_CLASS *sm_class);
-    unsigned int *get_procedure_cache_bits (MOP proc_mop);
+    unsigned int *get_proc_or_pkg_cache_bits (MOP proc_mop);
 
     void free_authorization_cache (void *cache);
 
@@ -171,10 +171,9 @@ class authenticate_cache
   private:
 
     // procedure cache
-    using procedure_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure, cache bits>
+    using proc_or_pkg_cache_t = std::unordered_map<MOP, std::vector<unsigned int>*>; // <procedure, cache bits>
 
-    procedure_cache_t procedure_cache;
-    std::unordered_map<MOP, MOP> procedure_owner_map;
+    proc_or_pkg_cache_t proc_or_pkg_cache;
 
     // migrate static methods
     AU_CLASS_CACHE *make_class_cache (int depth);
