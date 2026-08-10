@@ -574,18 +574,11 @@ namespace parallel_scan
     return result;
   }
 
-  /* BUILDVALUE_OPT workers accumulate aggregate operands only; the outptr_list and the
-   * buildvalue HAVING predicate are fetched once on the main thread after the gather,
-   * where the val_list was never populated with any scanned row. Any reference to
-   * per-row scan state from those places -- a scan column emitted as a hidden output
-   * for an enclosing correlated scalar subquery (pt_make_aptr_parent_node), a direct
-   * attribute read, or a correlated (dptr) subquery -- would evaluate against NULL
-   * columns and diverge from serial execution, so it must disqualify BUILDVALUE_OPT. */
+  /* BUILDVALUE_OPT workers accumulate aggregate operands only, so outptr_list and the HAVING
+   * predicate are fetched once on the main thread after the gather, against a val_list that no
+   * scanned row ever populated. Reading per-row scan state there yields NULL instead of the last
+   * scanned row, which diverges from serial, so such plans must not take this optimization. */
   static bool refers_post_scan_state (REGU_VARIABLE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
-				      const std::unordered_set<DB_VALUE *> &scan_vals);
-  static bool refers_post_scan_state (rv_list_node *arg, const std::unordered_set<XASL_NODE *> &dptrs,
-				      const std::unordered_set<DB_VALUE *> &scan_vals);
-  static bool refers_post_scan_state (ARITH_TYPE *arg, const std::unordered_set<XASL_NODE *> &dptrs,
 				      const std::unordered_set<DB_VALUE *> &scan_vals);
   static bool refers_post_scan_state (PRED_EXPR *arg, const std::unordered_set<XASL_NODE *> &dptrs,
 				      const std::unordered_set<DB_VALUE *> &scan_vals);
@@ -803,10 +796,12 @@ namespace parallel_scan
 	  }
       }
 
-    if (buildvalue_opt)
+    /* Must stay above the dptrs erase below: regu-linked subquery outputs are still in the set
+     * here. The cheap unconditional disqualifiers are folded into the condition so plans that
+     * cannot take BUILDVALUE_OPT anyway skip the walk. */
+    if (buildvalue_opt && !is_flag_set (result, CANNOT_PARALLEL_SCAN) && arg->connect_by_ptr == NULL
+	&& arg->instnum_pred == NULL && arg->instnum_val == NULL)
       {
-	/* main-thread post-gather fetch sites (outptr_list, HAVING) must not read per-row
-	 * scan state; see refers_post_scan_state () above. */
 	std::unordered_set<DB_VALUE *> scan_vals;
 	for (XASL_NODE *xptr = arg; xptr != nullptr; xptr = xptr->scan_ptr)
 	  {
