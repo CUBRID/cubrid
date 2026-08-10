@@ -3289,9 +3289,9 @@ session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_ses
   /* one stream session per connection (the invariant the transport seam depends on) */
   if (stream_session_p != NULL && state_p->stream_session_p != NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_UNIMPLEMENTED, 1,
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
 	      "a stream session is already active on this connection");
-      return ER_DB_UNIMPLEMENTED;
+      return ER_STREAM_SESSION_ERROR;
     }
 
   state_p->stream_session_p = stream_session_p;

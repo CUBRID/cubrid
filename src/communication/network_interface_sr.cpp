@@ -12674,6 +12674,13 @@ sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	}
     }
 
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
 
