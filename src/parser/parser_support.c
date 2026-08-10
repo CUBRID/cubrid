@@ -11277,6 +11277,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   PARSER_VARCHAR *vq = NULL;
   char *name_ptr = NULL;
   char *owner_ptr = NULL;
+  bool owner_is_defaulted = false;
   SERVER_NAME_LIST *snl = (SERVER_NAME_LIST *) arg;
   PT_NODE *new_name, *new_owner;
 
@@ -11348,72 +11349,52 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
     }
 
   snl->server_cnt++;
-  /* An unqualified server reference implicitly resolves to the current session user, the same way
-   * server_find() in execute_statement.c defaults an omitted owner at execution time, so "srv" and
-   * "dba.srv" name one server when dba is the current user.  The name is resolved lazily and at
-   * most once per call, and released once after the loop, because a slot that turns out not to be
-   * a duplicate keeps the scan running. */
-  {
-    const char *current_user_name = NULL;
-    bool current_user_fetched = false;
-    bool is_duplicate = false;
-
-    for (int i = 0; i < snl->stored_cnt; i++)
-      {
-	const char *effective_owner;
-
-	if (name_ptr == NULL || strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
-	  {
-	    continue;		/* name mismatch: not a duplicate of this slot, keep scanning */
-	  }
-
-	if (owner_ptr == NULL && snl->server[i]->next == NULL)
-	  {
-	    is_duplicate = true;	/* exact duplicate (no owner qualifier on either side) */
-	    break;
-	  }
-
-	if (owner_ptr != NULL && snl->server[i]->next != NULL)
-	  {
-	    if (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) != 0)
-	      {
-		continue;	/* same name, different owner: distinct server, keep scanning */
-	      }
-	    is_duplicate = true;	/* same name and same owner qualifier: exact duplicate */
-	    break;
-	  }
-
-	/* Same name, owner-presence differs (one qualified, one not): the unqualified side stands for
-	 * the current user, so the two notations are the same server only when the qualified side
-	 * names that user. */
-	if (!current_user_fetched)
-	  {
-	    current_user_name = au_get_current_user_name ();
-	    current_user_fetched = true;
-	  }
-
-	effective_owner = (owner_ptr != NULL) ? owner_ptr : snl->server[i]->next->info.name.original;
-	if (current_user_name != NULL && strcasecmp (effective_owner, current_user_name) == 0)
-	  {
-	    is_duplicate = true;
-	    break;
-	  }
-      }
-
-    if (current_user_name != NULL)
-      {
-	db_string_free ((char *) current_user_name);
-      }
-
-    if (is_duplicate)
-      {
-	return node;
-      }
-  }
 
   if (name_ptr == NULL)
     {
-      return node;
+      return node;		/* no server name: nothing to compare against or to store */
+    }
+
+  /* An unqualified server reference implicitly resolves to the current session user, the same way
+   * server_find() in execute_statement.c defaults an omitted owner at execution time, so "srv" and
+   * "dba.srv" name one server when dba is the current user.  Defaulting it once here, before the
+   * duplicate scan and before the reference is stored, normally leaves every stored entry
+   * owner-qualified, so that name and owner together decide a match.  It is only "normally"
+   * because au_get_current_user_name () can fail, and an entry defaulted by a failed call stays
+   * unqualified -- the loop below handles that.  The name is owned by this call from this point
+   * on and is released at "end", which every path below goes through. */
+  if (owner_ptr == NULL)
+    {
+      owner_ptr = (char *) au_get_current_user_name ();
+      owner_is_defaulted = (owner_ptr != NULL);
+    }
+
+  for (int i = 0; i < snl->stored_cnt; i++)
+    {
+      bool is_duplicate;
+
+      if (strcasecmp (snl->server[i]->info.name.original, name_ptr) != 0)
+	{
+	  continue;		/* different server name: keep scanning */
+	}
+
+      if (owner_ptr != NULL && snl->server[i]->next != NULL)
+	{
+	  is_duplicate = (strcasecmp (snl->server[i]->next->info.name.original, owner_ptr) == 0);
+	}
+      else
+	{
+	  /* One or both sides carry no owner, meaning the defaulting was a no-op there because the
+	   * current user name could not be resolved.  Two unqualified references still name one
+	   * server; when only one side is unqualified there is nothing left to compare it against,
+	   * so leave the pair distinct rather than guess. */
+	  is_duplicate = (owner_ptr == NULL && snl->server[i]->next == NULL);
+	}
+
+      if (is_duplicate)
+	{
+	  goto end;
+	}
     }
 
   if (snl->stored_cnt >= (int) (sizeof (snl->server) / sizeof (snl->server[0])))
@@ -11423,7 +11404,7 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
        * into local_cnt; otherwise pt_convert_dblink_dml_query's local_cnt>0 check is skipped and
        * the wrong rejection message (multi-remote instead of local-mixed-remote) is raised. */
       snl->distinct_cnt++;
-      return node;
+      goto end;
     }
 
   new_name = parser_new_node (parser, PT_NAME);
@@ -11444,6 +11425,12 @@ pt_get_server_name_list (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
   snl->server[snl->stored_cnt] = new_name;
   snl->stored_cnt++;
   snl->distinct_cnt++;		/* a store always means exactly one new distinct server (lockstep) */
+
+end:
+  if (owner_is_defaulted)
+    {
+      db_string_free (owner_ptr);
+    }
 
   return node;
 }
@@ -11600,7 +11587,10 @@ find_circle_at_char (bool ansi_quotes, bool no_escape, char *ps)
 
 #if defined (ENABLE_UNUSED_FUNCTION)
 /* not migrated to stored_cnt/distinct_cnt (CBRD-26966): dead code, excluded from the build.
- * if ever revived, its server_node_cnt uses below must become stored_cnt (array bound). */
+ * if ever revived, its server_node_cnt uses below must become stored_cnt (array bound), and the
+ * server_full_name matching below must stop assuming the stored name is what the user typed:
+ * pt_get_server_name_list now defaults an omitted owner to the current user before storing, so
+ * "tbl@srv" is recorded as "U1.srv" and no longer matches the text that follows '@'. */
 static PARSER_VARCHAR *
 pt_make_remote_query (PARSER_CONTEXT * parser, char *sql_user_text, SERVER_NAME_LIST * snl)
 {
