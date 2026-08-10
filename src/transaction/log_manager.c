@@ -9864,7 +9864,8 @@ log_get_undo_record_from_node (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, R
 bool
 log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes, SCAN_CODE * scan_out)
 {
-  LOG_PRIOR_NODE *node = log_prior_inflight_pin_lookup (thread_p, *lsa);
+  LOG_PRIOR_INFLIGHT_PIN pin = NULL;
+  LOG_PRIOR_NODE *node = log_prior_inflight_pin_lookup (thread_p, *lsa, pin);
 
   if (node == NULL)
     {
@@ -9872,7 +9873,7 @@ log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa,
     }
 
   *scan_out = log_get_undo_record_from_node (thread_p, node, recdes);
-  log_prior_inflight_unpin (thread_p);
+  log_prior_inflight_unpin (pin);
 
   return true;
 }

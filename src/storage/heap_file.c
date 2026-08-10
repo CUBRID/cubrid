@@ -25358,15 +25358,22 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	}
 
       /* Not in the window either: type not staged, window full when it was appended, or copied and
-       * released just now. Drain, and read from the page below. */
+       * released just now. Re-read the watermark before paying for a drain - in that last case the record
+       * has reached a page already and there is nothing left to drain for. */
       perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
-      PERF_UTIME_TRACKER_START (thread_p, &time_track);
-      LOG_CS_ENTER (thread_p);
-      logpb_prior_lsa_append_all_list (thread_p);
-      LOG_CS_EXIT (thread_p);
-      PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
-
       copied_lsa = log_Gl.append.get_copied_lsa ();
+
+      if (LSA_LT (&copied_lsa, version_lsa))
+	{
+	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
+	  LOG_CS_ENTER (thread_p);
+	  logpb_prior_lsa_append_all_list (thread_p);
+	  LOG_CS_EXIT (thread_p);
+	  PERF_UTIME_TRACKER_TIME (thread_p, &time_track, PSTAT_LOG_PRIOR_DRAIN_READER_GUARD);
+
+	  copied_lsa = log_Gl.append.get_copied_lsa ();
+	}
+
       assert (!LSA_LT (&copied_lsa, version_lsa));
     }
 

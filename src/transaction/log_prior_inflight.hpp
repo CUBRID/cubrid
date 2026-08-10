@@ -38,8 +38,22 @@
 #include "log_record.hpp"
 #include "thread_compat.hpp"
 
+namespace lockfree
+{
+  namespace tran
+  {
+    class descriptor;
+  } // namespace tran
+} // namespace lockfree
+
+/* What a reader holds between pin_lookup () and unpin (), so that unpin () never has to derive it again -
+ * deriving it a second time can come back empty if the window went down in between. NULL = nothing pinned. */
+using LOG_PRIOR_INFLIGHT_PIN = lockfree::tran::descriptor *;
+
 /* Lifetime of the log page buffer pool. Called under LOG_CS write mode from logpb_initialize_pool () /
- * logpb_finalize_pool (), both idempotent. While down, registration is skipped and readers drain. */
+ * logpb_finalize_pool (), both idempotent. While down, registration is skipped and readers drain.
+ * finalize () requires that no reader is between pin_lookup () and unpin (), which is what taking down the
+ * pool already means. */
 void log_prior_inflight_initialize ();
 void log_prior_inflight_finalize ();
 
@@ -65,8 +79,10 @@ void log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node
 /* Drain, in the LSA order register () used. Only for a node log_prior_inflight_is_registered () holds for. */
 void log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 
-/* Reader. Returns the staged node at lsa, pinned, or NULL. A non-NULL result must be unpinned. */
-LOG_PRIOR_NODE *log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa);
-void log_prior_inflight_unpin (THREAD_ENTRY *thread_p);
+/* Reader. Returns the staged node at lsa, pinned, or NULL. A non-NULL result must be unpinned with the pin
+ * this filled in. */
+LOG_PRIOR_NODE *log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa,
+    LOG_PRIOR_INFLIGHT_PIN &pin);
+void log_prior_inflight_unpin (LOG_PRIOR_INFLIGHT_PIN &pin);
 
 #endif // !_LOG_PRIOR_INFLIGHT_HPP_
