@@ -7582,6 +7582,106 @@ logpb_destroy_backup_read_worker_pool ()
   thread_get_manager ()->destroy_worker_pool (g_backup_read_worker_pool);
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logpb_backup_ensure_fresh_checkpoint - Force a checkpoint that completes strictly after entry, before an
+ *                                        online FULL backup proceeds
+ *
+ * return: NO_ERROR if a fresh checkpoint completed, ER status otherwise
+ *
+ *   session(in): the backup session (for verbose output only)
+ *
+ * NOTE: A no-logging (no-redo) index build appends a replay-barrier record, and media recovery refuses to
+ *   replay past it.  An online full backup is self-consistent only when the checkpoint it starts from lies
+ *   after every such barrier.  Forcing a fresh checkpoint here establishes the invariant R >= T > B
+ *   (R: log_Gl.chkpt_redo_lsa of the completed checkpoint, T: append LSA captured at entry, B: any barrier
+ *   appended before the backup started), without tracking barrier LSAs and without changing any backup or
+ *   log header format.
+ *
+ *   logpb_checkpoint () returns NULL_PAGEID both when another checkpoint is already running and on failure,
+ *   so success is judged only by R reaching T.  A checkpoint that was already in progress at entry is waited
+ *   out but never counted as fresh (its redo LSA may predate T).  If R never reaches T within the bounded
+ *   attempts, the backup fails -- the caller has not yet deleted any previous backup volume at this point.
+ */
+static int
+logpb_backup_ensure_fresh_checkpoint (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session)
+{
+  LOG_LSA target_lsa;		/* T: append LSA at entry */
+  LOG_LSA redo_lsa;		/* R: redo LSA of the last completed checkpoint */
+  const int max_attempts = 3;
+  int attempt;
+  int rv;
+  bool continue_check;
+
+  LOG_CS_ENTER (thread_p);
+  LSA_COPY (&target_lsa, &log_Gl.hdr.append_lsa);
+  LOG_CS_EXIT (thread_p);
+
+  if (session->verbose_fp != NULL)
+    {
+      fprintf (session->verbose_fp, "[ Forcing a fresh checkpoint before the full backup. ]\n\n");
+    }
+
+  for (attempt = 0; attempt < max_attempts; attempt++)
+    {
+      /* wait out any in-progress checkpoint; it may have started before T and is never counted as fresh */
+      while (true)
+	{
+	  LOG_CS_ENTER (thread_p);
+	  if (log_Gl.run_nxchkpt_atpageid != NULL_PAGEID)
+	    {
+	      LOG_CS_EXIT (thread_p);
+	      break;
+	    }
+	  LOG_CS_EXIT (thread_p);
+
+	  if (logtb_get_check_interrupt (thread_p) == true
+	      && logtb_is_interrupted (thread_p, true, &continue_check) == true)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	      return ER_INTERRUPTED;
+	    }
+	  thread_sleep (1000);	/* 1000 msec, same cadence as the checkpoint wait in logpb_backup () */
+	}
+
+      /* any checkpoint that completed after T -- ours or the daemon's -- satisfies the invariant */
+      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+      if (LSA_GE (&redo_lsa, &target_lsa))
+	{
+	  return NO_ERROR;
+	}
+
+      /* NULL_PAGEID means either the daemon won the race (the next attempt observes its result) or the
+       * checkpoint failed (R stays below T and the bounded attempts run out). */
+      (void) logpb_checkpoint (thread_p);
+
+      rv = pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
+      LSA_COPY (&redo_lsa, &log_Gl.chkpt_redo_lsa);
+      pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+      if (LSA_GE (&redo_lsa, &target_lsa))
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  /* leave the R/T LSAs behind so a non-convergence (pages that never flush) can be diagnosed */
+  _er_log_debug (ARG_FILE_LINE,
+		 "logpb_backup_ensure_fresh_checkpoint: no fresh checkpoint after %d attempts; "
+		 "chkpt_redo_lsa (%lld|%d) is still below the target append LSA (%lld|%d)\n",
+		 max_attempts, LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+  if (session->verbose_fp != NULL)
+    {
+      fprintf (session->verbose_fp,
+	       "[ Backup failed: no fresh checkpoint completed; redo LSA (%lld|%d) < target LSA (%lld|%d). ]\n\n",
+	       LSA_AS_ARGS (&redo_lsa), LSA_AS_ARGS (&target_lsa));
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LOG_DBBACKUP_FAIL, 1, log_Gl.hdr.prefix_name);
+  return ER_LOG_DBBACKUP_FAIL;
+}
+#endif /* SERVER_MODE */
+
 /*
  * logpb_backup - Execute a level backup for the given database volume
  *
@@ -7714,6 +7814,18 @@ logpb_backup (THREAD_ENTRY * thread_p, int num_perm_vols, const char *allbackup_
       assert (false);
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       goto error;
+    }
+
+  if (backup_level != FILEIO_BACKUP_BIG_INCREMENT_LEVEL && backup_level != FILEIO_BACKUP_SMALL_INCREMENT_LEVEL)
+    {
+      /* Online FULL backup: force a fresh checkpoint so that the checkpoint this backup starts from
+       * postdates any no-logging index build replay barrier already in the log.  Runs strictly before
+       * any previous backup volume is deleted below, so a failure here loses nothing. */
+      error_code = logpb_backup_ensure_fresh_checkpoint (thread_p, &session);
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
 
   print_backupdb_waiting_reason = false;
