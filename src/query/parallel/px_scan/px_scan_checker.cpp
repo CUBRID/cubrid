@@ -155,10 +155,10 @@ namespace parallel_scan
       }
   }
 
-  /* shared shape test for both instnum fast-path modes: plain BUILDLIST, and instnum_val used in the
-   * output only as a top-level pass-through column. Sets *passthrough_cnt_out (may be 0). */
+  /* shared precondition for both instnum fast-path modes: instnum_val appears in the output only as a
+   * top-level pass-through column. Sets *passthrough_cnt_out (may be 0). */
   static bool
-  instnum_xasl_shape_ok (XASL_NODE *x, int *passthrough_cnt_out)
+  is_plain_instnum_buildlist (XASL_NODE *x, int *passthrough_cnt_out)
   {
     if (x == nullptr || x->instnum_val == nullptr || x->save_instnum_val != nullptr)
       {
@@ -211,7 +211,7 @@ namespace parallel_scan
       {
 	return false;
       }
-    return instnum_xasl_shape_ok (x, &passthrough) && passthrough >= 1;
+    return is_plain_instnum_buildlist (x, &passthrough) && passthrough >= 1;
   }
 
   /* single-term "inst_num() <= ?": workers can draw numbers from a shared counter and stop early. */
@@ -222,7 +222,7 @@ namespace parallel_scan
       {
 	return false;
       }
-    return instnum_xasl_shape_ok (x, nullptr);
+    return is_plain_instnum_buildlist (x, nullptr);
   }
 
   using rv_list_node = struct regu_variable_list_node;

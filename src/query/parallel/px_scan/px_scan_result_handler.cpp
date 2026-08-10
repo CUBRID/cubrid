@@ -127,6 +127,9 @@ namespace parallel_scan
 	  {
 	    assert (!m_.renumber_instnum);
 	    m_.atomic_instnum_mode = true;
+	    /* a scan block reset rebuilds this handler while the output list keeps the rows already
+	     * emitted, so resume the quota from there instead of granting it again per block. */
+	    m_.instnum_counter.store (ox->list_id != nullptr ? (INT64) ox->list_id->tuple_cnt : 0);
 	  }
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -298,10 +301,28 @@ namespace parallel_scan
 	      if (limit_val != nullptr && !DB_IS_NULL (limit_val))
 		{
 		  DB_VALUE coerced;
+		  TP_DOMAIN_STATUS dom_status;
+
 		  db_make_null (&coerced);
-		  if (tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain) == DOMAIN_COMPATIBLE)
+		  dom_status = tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain);
+		  if (dom_status == DOMAIN_COMPATIBLE)
 		    {
 		      m_.instnum_limit = db_get_bigint (&coerced);
+		    }
+		  else if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (limit_val) == DB_TYPE_NUMERIC)
+		    {
+		      /* serial widens inst_num() rather than coercing the bound, so out of BIGINT range a
+		       * positive bound admits every row and a negative one none (cf. key-limit handling). */
+		      m_.instnum_limit = DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (limit_val) ? 0 : DB_BIGINT_MAX;
+		      er_clear ();
+		    }
+		  else
+		    {
+		      pr_clear_value (&coerced);
+		      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, limit_val, &tp_Bigint_domain);
+		      m_err_messages_p->move_top_error_message_to_this();
+		      m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      return;
 		    }
 		  pr_clear_value (&coerced);
 		}
@@ -354,6 +375,7 @@ namespace parallel_scan
 	     * atomic mode stores the drawn number before each emit. */
 	    db_make_bigint (tl.xasl->instnum_val, 0);
 	  }
+	tl.instnum_quota_done = false;	/* tls outlives the scan; a reused worker must not inherit it */
 	tl.agg_hash_state = HS_NONE;
 	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
@@ -622,9 +644,12 @@ namespace parallel_scan
       }
   }
 
-  void merge_list_ids (THREAD_ENTRY *thread_p, QFILE_LIST_ID *dest, std::vector<QFILE_LIST_ID *> &lists)
+  /* a dropped segment would silently truncate the result, and the ROWNUM watermark taken from
+   * dest->tuple_cnt would go with it, so connect failures are propagated. */
+  int merge_list_ids (THREAD_ENTRY *thread_p, QFILE_LIST_ID *dest, std::vector<QFILE_LIST_ID *> &lists)
   {
     QFILE_LIST_ID *tmp_merged_list = nullptr;
+    int error = NO_ERROR;
     for (QFILE_LIST_ID *list_id : lists)
       {
 	assert (list_id != nullptr);
@@ -635,9 +660,9 @@ namespace parallel_scan
 	      {
 		tmp_merged_list = list_id;
 	      }
-	    else
+	    else if (qfile_connect_list (thread_p, tmp_merged_list, list_id) != NO_ERROR)
 	      {
-		qfile_connect_list (thread_p, tmp_merged_list, list_id);
+		error = ER_FAILED;
 	      }
 	  }
 	else
@@ -656,7 +681,10 @@ namespace parallel_scan
 	      {
 		qfile_close_list (thread_p, dest);
 	      }
-	    qfile_connect_list (thread_p, dest, tmp_merged_list);
+	    if (qfile_connect_list (thread_p, dest, tmp_merged_list) != NO_ERROR)
+	      {
+		error = ER_FAILED;
+	      }
 	  }
 	else
 	  {
@@ -668,6 +696,7 @@ namespace parallel_scan
 	    QFILE_FREE_AND_INIT_LIST_ID (tmp_merged_list);
 	  }
       }
+    return error;
   }
 
   /* Assign global ROWNUM in-place across the worker lists, before merge and before any ORDER BY sort.
@@ -747,9 +776,8 @@ namespace parallel_scan
 
 	if (m_.renumber_instnum)
 	  {
-	    /* dest may already hold rows from an earlier batch after a scan block reset; continue from there. */
 	    if (renumber_instnum_writer_lists (thread_p, m_.writer_results, m_.rownum_col_indices,
-					       dest->tuple_cnt > 0 ? (INT64) dest->tuple_cnt : 0) != NO_ERROR)
+					       dest->tuple_cnt) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this ();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -757,12 +785,32 @@ namespace parallel_scan
 	      }
 	  }
 
-	merge_list_ids (thread_p, dest, m_.writer_results);
+	if (merge_list_ids (thread_p, dest, m_.writer_results) != NO_ERROR)
+	  {
+	    m_err_messages_p->move_top_error_message_to_this();
+	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    return S_ERROR;
+	  }
+
+	if (m_.renumber_instnum || m_.atomic_instnum_mode)
+	  {
+	    /* a later block of the same scan may run serially and resume from instnum_val, so leave the
+	     * watermark there; the parallel path takes it from dest->tuple_cnt instead. */
+	    if (m_.orig_xasl->instnum_val != nullptr)
+	      {
+		db_make_bigint (m_.orig_xasl->instnum_val, dest->tuple_cnt);
+	      }
+	  }
 
 	if (m_.g_hash_eligible)
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
-	    merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results);
+	    if (merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return S_ERROR;
+	      }
 	    /* HS_REJECT_ALL forces 'hash: partial' trace for hgby with part list IDs (cf. qdump_print_stats_text). */
 	    m_.orig_xasl->groupby_stats.groupby_hash = HS_REJECT_ALL;
 	  }
@@ -918,6 +966,11 @@ namespace parallel_scan
 
 	if (m_.atomic_instnum_mode)
 	  {
+	    if (tl.instnum_quota_done)
+	      {
+		/* stop paying for the shared counter until the loop reaches its next page boundary. */
+		return true;
+	      }
 	    INT64 draw = m_.instnum_counter.fetch_add (1, std::memory_order_relaxed) + 1;
 	    if (draw > m_.instnum_limit)
 	      {
@@ -927,6 +980,7 @@ namespace parallel_scan
 			parallel_query::interrupt::interrupt_code::NO_INTERRUPT;
 		m_interrupt_p->m_code.compare_exchange_strong (expected,
 		    parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED);
+		tl.instnum_quota_done = true;
 		return true;
 	      }
 	    if (tl.xasl->instnum_val != nullptr)

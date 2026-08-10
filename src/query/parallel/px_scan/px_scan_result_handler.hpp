@@ -144,6 +144,8 @@ namespace parallel_scan
       int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
+      /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
+      bool instnum_quota_done = false;
   };
 
   class xasl_snapshot_tls
