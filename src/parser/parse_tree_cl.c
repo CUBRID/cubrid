@@ -7689,11 +7689,8 @@ pt_print_create_user (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_nulstring (parser, b, " password ");
       b = pt_append_varchar (parser, b, r1);
     }
-  if (p->info.create_user.login_capability == PT_LOGIN)
-    {
-      b = pt_append_nulstring (parser, b, " login");
-    }
-  else if (p->info.create_user.login_capability == PT_NOLOGIN)
+  /* "login" is the default, so the output stays the same as before the clause existed. */
+  if (p->info.create_user.login_capability == PT_NOLOGIN)
     {
       b = pt_append_nulstring (parser, b, " nologin");
     }
