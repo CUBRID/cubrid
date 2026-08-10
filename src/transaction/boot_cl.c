@@ -481,6 +481,7 @@ boot_check_and_fill_connection_info (BOOT_CLIENT_CREDENTIAL * client_credential,
 		{
 		  intl_identifier_upper (user_name, upper_case_name);
 		  client_credential->db_user = upper_case_name;
+		  free_and_init (upper_case_name);
 		}
 	      free_and_init (user_name);
 	    }

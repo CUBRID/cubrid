@@ -85,7 +85,10 @@ inline void operator delete [] (void *ptr, size_t sz) noexcept
   cub_free (ptr);
 }
 
+#if !defined(__SANITIZE_ADDRESS__)
 #define new new(__FILE__, __LINE__)
+#endif
+
 #endif // SERVER_MODE
 #endif // !WINDOWS
 
