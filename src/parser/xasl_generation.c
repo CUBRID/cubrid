@@ -22035,6 +22035,15 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser_free_tree (parser, aptr_statement);
     }
 
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, statement))
+    {
+      /* same contract as the SELECT producer in pt_plan_query (): the plan was chosen with
+       * unbound host-variable predicate markers, so the first execution replans once under
+       * the actual bind values */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+
   return xasl;
 
 error_return:
@@ -22963,6 +22972,15 @@ cleanup:
   else if (error != NO_ERROR)
     {
       xasl = NULL;
+    }
+
+  if (xasl != NULL && !parser->flag.set_host_var && parser->host_var_count > 0
+      && histogram_stmt_has_hv_predicate (parser, statement))
+    {
+      /* same contract as the SELECT producer in pt_plan_query (): the plan was chosen with
+       * unbound host-variable predicate markers, so the first execution replans once under
+       * the actual bind values */
+      xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
   return xasl;
 }

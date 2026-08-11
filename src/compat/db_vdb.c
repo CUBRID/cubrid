@@ -128,11 +128,56 @@ static PT_NODE *do_execute_cte_pre (PARSER_CONTEXT * parser, PT_NODE * stmt, voi
 static bool
 db_is_bind_sensitive (PT_NODE * statement)
 {
-  if (statement != NULL && PT_IS_QUERY (statement) && (statement->info.query.hint & PT_HINT_BIND_SENSITIVE) != 0)
+  if (statement != NULL)
     {
-      return true;
+      PT_HINT_ENUM hint = PT_HINT_NONE;
+
+      if (PT_IS_QUERY (statement))
+	{
+	  hint = statement->info.query.hint;
+	}
+      else if (statement->node_type == PT_UPDATE)
+	{
+	  hint = statement->info.update.hint;
+	}
+      else if (statement->node_type == PT_DELETE)
+	{
+	  hint = statement->info.delete_.hint;
+	}
+      if ((hint & PT_HINT_BIND_SENSITIVE) != 0)
+	{
+	  return true;
+	}
     }
   return prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY);
+}
+
+/*
+ * db_stmt_bind_fp_ptr () - the statement's bind-value fingerprint slot, when the statement
+ *   type takes part in bind-value plan fixing (queries, UPDATE, DELETE)
+ * return         : pointer to the fingerprint or NULL
+ * statement (in) : statement being executed
+ */
+static UINT64 *
+db_stmt_bind_fp_ptr (PT_NODE * statement)
+{
+  if (statement == NULL)
+    {
+      return NULL;
+    }
+  if (PT_IS_QUERY (statement))
+    {
+      return &statement->info.query.bind_fp;
+    }
+  if (statement->node_type == PT_UPDATE)
+    {
+      return &statement->info.update.bind_fp;
+    }
+  if (statement->node_type == PT_DELETE)
+    {
+      return &statement->info.delete_.bind_fp;
+    }
+  return NULL;
 }
 
 int g_open_buffer_control_flags = 0;
@@ -1953,6 +1998,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
   PT_NODE *statement;
   DB_QUERY_RESULT *qres;
   DB_VALUE *val;
+  UINT64 *bind_fp_p;
   int err = NO_ERROR;
   int server_info_bits;
 
@@ -2180,12 +2226,13 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
        * this, CCI/JDBC prepared statements -- which never build a PT_EXECUTE_PREPARE node and so never
        * reach the header-flag consumer in do_get_prepared_statement_info () -- would never price a
        * `?` predicate with real values. */
-      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)) && PT_IS_QUERY (statement)
+      bind_fp_p = db_stmt_bind_fp_ptr (statement);
+      if ((statement->flag.hv_pred_plan_unpeeked || db_is_bind_sensitive (statement)) && bind_fp_p != NULL
 	  && parser->flag.set_host_var && parser->host_var_count > 0 && statement->xasl_id != NULL)
 	{
 	  UINT64 bind_fp = 0;
 
-	  if (histogram_bind_fingerprint (parser, statement, &bind_fp) && statement->info.query.bind_fp != bind_fp)
+	  if (histogram_bind_fingerprint (parser, statement, &bind_fp) && *bind_fp_p != bind_fp)
 	    {
 	      /* The bound values land in different histogram territory (a different MCV/bucket,
 	       * hence a different selectivity) than the values the cached plan was chosen under --
@@ -2201,7 +2248,7 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  assert (result == NULL || *result == NULL);
 		  return err;
 		}
-	      statement->info.query.bind_fp = bind_fp;
+	      *bind_fp_p = bind_fp;
 	      /* the regenerated plan was chosen under real values, so the unpeeked contract is
 	       * satisfied; any further replan is up to the parameter / hint */
 	      statement->flag.hv_pred_plan_unpeeked = 0;
@@ -3493,10 +3540,11 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
   {
     PT_NODE *stmt0 = kept->statements[0];
     UINT64 fp = 0;
-    bool have_fp = PT_IS_QUERY (stmt0) && histogram_bind_fingerprint (kept->parser, stmt0, &fp);
+    UINT64 *fp_p = db_stmt_bind_fp_ptr (stmt0);
+    bool have_fp = fp_p != NULL && histogram_bind_fingerprint (kept->parser, stmt0, &fp);
     bool replan = force_replan;
 
-    if (!replan && have_fp && db_is_bind_sensitive (stmt0) && stmt0->info.query.bind_fp != fp)
+    if (!replan && have_fp && db_is_bind_sensitive (stmt0) && *fp_p != fp)
       {
 	/* plan_cache_bind_sensitivity: this execution's values land in different histogram
 	 * territory (a different MCV / bucket, hence a different selectivity) than the values
@@ -3518,7 +3566,7 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
 	  }
 	if (have_fp)
 	  {
-	    stmt0->info.query.bind_fp = fp;
+	    *fp_p = fp;
 	  }
       }
   }
@@ -3634,8 +3682,11 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	}
     }
 
-  if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && statement->info.execute.using_list != NULL
-      && new_session->statements[0] != NULL && PT_IS_QUERY (new_session->statements[0]))
+  if ((statement->info.execute.stmt_type == CUBRID_STMT_SELECT
+       || statement->info.execute.stmt_type == CUBRID_STMT_UPDATE
+       || statement->info.execute.stmt_type == CUBRID_STMT_DELETE)
+      && statement->info.execute.using_list != NULL && new_session->statements[0] != NULL
+      && db_stmt_bind_fp_ptr (new_session->statements[0]) != NULL)
     {
       UINT64 fp = 0;
 
@@ -3655,7 +3706,7 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	    {
 	      return err;
 	    }
-	  new_session->statements[0]->info.query.bind_fp = fp;
+	  *db_stmt_bind_fp_ptr (new_session->statements[0]) = fp;
 	  is_bind_candidate = true;
 	}
     }

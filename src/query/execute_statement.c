@@ -9801,6 +9801,9 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 
 	      if (err != NO_ERROR)
@@ -9814,6 +9817,13 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 
@@ -9829,6 +9839,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	      /* pt_to_update_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_update_xasl (parser, statement, &not_nulls);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))
@@ -11160,6 +11175,9 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
 	    {
+	      XASL_NODE_HEADER xasl_header = { 0, 0 };
+
+	      stream.xasl_header = &xasl_header;
 	      err = prepare_query (contextp, &stream);
 	      if (err != NO_ERROR)
 		{
@@ -11172,6 +11190,13 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		    {
 		      free_and_init (stream.xasl_id);
 		    }
+		}
+	      else if (stream.xasl_id != NULL && (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* the cached plan was chosen with unbound host-variable predicate markers;
+		   * record it so the first execution replans under the real values (same
+		   * driver-neutral recording as do_prepare_select ()) */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -11186,6 +11211,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 
 	      /* pt_to_delete_xasl() will build XASL tree from parse tree */
 	      contextp->xasl = pt_to_delete_xasl (parser, statement);
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & HV_PRED_PLAN_UNPEEKED))
+		{
+		  /* freshly compiled with unbound host-variable markers */
+		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
 	      AU_RESTORE (au_save);
 
 	      if (contextp->xasl && (err >= NO_ERROR))

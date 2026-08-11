@@ -2181,6 +2181,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3031,6 +3033,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
+  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
+				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
