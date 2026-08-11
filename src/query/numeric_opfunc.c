@@ -2611,6 +2611,116 @@ float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VAL
   return ret;
 }
 
+/* deferred-carry NUMERIC sum accumulator (see numeric_opfunc.h).  All inputs of one
+ * aggregate share a fixed scale, so per-row accumulation reduces to one magnitude-word
+ * addition into a sign bucket; every remaining step of float_numeric_db_value_add ()
+ * runs once, in numeric_sum_state_result (). */
+
+#define NUMERIC_SUM_STATE_WORDS 4	/* 256 bits: 128 bits of headroom above 38 digits */
+
+struct numeric_sum_state
+{
+  uint64_t pos[NUMERIC_SUM_STATE_WORDS];	/* magnitude sum of non-negative inputs */
+  uint64_t neg[NUMERIC_SUM_STATE_WORDS];	/* magnitude sum of negative inputs */
+  int scale;			/* the fixed input scale */
+};
+
+NUMERIC_SUM_STATE *
+numeric_sum_state_alloc (int scale)
+{
+  NUMERIC_SUM_STATE *state = (NUMERIC_SUM_STATE *) malloc (sizeof (NUMERIC_SUM_STATE));
+
+  if (state != NULL)
+    {
+      memset (state, 0, sizeof (*state));
+      state->scale = scale;
+    }
+  return state;
+}
+
+void
+numeric_sum_state_free (NUMERIC_SUM_STATE * state)
+{
+  if (state != NULL)
+    {
+      free (state);
+    }
+}
+
+/* returns false when the value cannot join this state (scale mismatch); the caller
+ * then materializes the state and keeps the generic per-row path */
+bool
+numeric_sum_state_accumulate (NUMERIC_SUM_STATE * state, const DB_VALUE * value)
+{
+  uint64_t word[NUMERIC_SUM_STATE_WORDS];
+  uint64_t *bucket;
+  int prec, scale;
+
+  db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+  if (scale != state->scale)
+    {
+      return false;
+    }
+
+  memset (word, 0, sizeof (word));
+  numeric_bytes_to_words (db_locate_numeric (value), DB_NUMERIC_BUF_SIZE, word, NUMERIC_SUM_STATE_WORDS,
+			  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t));
+
+  bucket = numeric_is_negative (value) ? state->neg : state->pos;
+  float_numeric_add (bucket, word, bucket, NUMERIC_SUM_STATE_WORDS);
+  /* the headroom makes a per-row overflow check unnecessary */
+  return true;
+}
+
+int
+numeric_sum_state_result (const NUMERIC_SUM_STATE * state, DB_VALUE * result)
+{
+  uint64_t res_word[NUMERIC_SUM_STATE_WORDS];
+  uint8_t res_buf[DB_NUMERIC_BUF_SIZE];
+  bool sign;
+  int prec, scale = state->scale;
+  int ret;
+
+  /* mirror of the signed-addition tail of float_numeric_db_value_add () */
+  if (float_numeric_operation_compare (state->pos, state->neg, NUMERIC_SUM_STATE_WORDS) >= 0)
+    {
+      float_numeric_sub (state->pos, state->neg, res_word, NUMERIC_SUM_STATE_WORDS);
+      sign = false;
+    }
+  else
+    {
+      float_numeric_sub (state->neg, state->pos, res_word, NUMERIC_SUM_STATE_WORDS);
+      sign = true;
+    }
+
+  prec = float_numeric_get_decimal_digit (res_word, NUMERIC_SUM_STATE_WORDS);
+  if (sign && prec == 1 && res_word[NUMERIC_SUM_STATE_WORDS - 1] == 0)
+    {
+      /* Prevent -0; zero is always treated as positive. */
+      sign = false;
+    }
+
+  ret = float_numeric_check_overflow_and_adjust_scale (&prec, &scale, result);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
+
+  ret =
+    float_numeric_round_and_pack (res_word, NUMERIC_SUM_STATE_WORDS,
+				  NUMERIC_SUM_STATE_WORDS * (int) sizeof (uint64_t), res_buf, &prec, &scale);
+  if (ret != NO_ERROR)
+    {
+      TP_DOMAIN *domain = tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
+      db_value_domain_init (result, DB_TYPE_NUMERIC, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
+      return ret;
+    }
+
+  db_make_numeric (result, res_buf, prec, scale, DB_NUMERIC_BUF_SIZE, sign, true);
+  return NO_ERROR;
+}
+
 /*
  * numeric_db_value_sub () -
  *   return: NO_ERROR, or ER_code

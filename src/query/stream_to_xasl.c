@@ -5987,6 +5987,7 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   aggregate->operand_prog_state = 0;
   aggregate->operand_prog_base = -1;
   aggregate->acc_kernel = NULL;
+  aggregate->accumulator.sum_state = NULL;
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);

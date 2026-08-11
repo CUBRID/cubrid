@@ -148,6 +148,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 	}
 
       /* CAUTION : if modify initializing ACC's value then should change qdata_alloc_agg_hvalue() */
+      qdata_numeric_sum_discard (&agg_p->accumulator);
       agg_p->accumulator.curr_cnt = 0;
       if (db_value_domain_init (agg_p->accumulator.value, DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value),
 				DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
@@ -208,6 +209,12 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 {
   TP_DOMAIN *double_domain;
   int error = NO_ERROR;
+
+  /* a deferred NUMERIC sum on either side must be materialized before merging */
+  if (qdata_numeric_sum_flush (acc) != NO_ERROR || qdata_numeric_sum_flush (new_acc) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
 
   switch (func_type)
     {
@@ -619,6 +626,59 @@ qdata_aggregate_multiple_values_to_accumulator (cubthread::entry *thread_p, cubx
   return NO_ERROR;
 }
 
+/* deferred-carry NUMERIC sum: the accumulator's sum_state wraps the numeric state
+ * together with the target accumulator domain so every flush site is self-contained */
+typedef struct qdata_sum_state_holder QDATA_SUM_STATE_HOLDER;
+struct qdata_sum_state_holder
+{
+  NUMERIC_SUM_STATE *state;
+  tp_domain *value_dom;
+};
+
+/*
+ * qdata_numeric_sum_flush () - materialize a pending deferred NUMERIC sum into
+ *				acc->value (mirror: per-row adds + the trailing domain
+ *				coercion), then drop the state
+ */
+int
+qdata_numeric_sum_flush (cubxasl::aggregate_accumulator *acc)
+{
+  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+  int error;
+
+  if (holder == NULL)
+    {
+      return NO_ERROR;
+    }
+  acc->sum_state = NULL;
+
+  pr_clear_value (acc->value);
+  error = numeric_sum_state_result (holder->state, acc->value);
+  if (error == NO_ERROR)
+    {
+      error = expr_coerce_result_to_domain (acc->value, holder->value_dom);
+    }
+  numeric_sum_state_free (holder->state);
+  free_and_init (holder);
+  return (error == NO_ERROR) ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * qdata_numeric_sum_discard () - drop a pending deferred sum without materializing
+ */
+void
+qdata_numeric_sum_discard (cubxasl::aggregate_accumulator *acc)
+{
+  QDATA_SUM_STATE_HOLDER *holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+
+  if (holder != NULL)
+    {
+      acc->sum_state = NULL;
+      numeric_sum_state_free (holder->state);
+      free_and_init (holder);
+    }
+}
+
 /*
  * Per-row accumulate kernels (resolved in qdata_agg_operand_prog_compile () below).
  * A kernel replaces the interpreted per-row tail for ONE aggregate whose single operand
@@ -720,26 +780,61 @@ static int
 qdata_acc_kernel_sum_numeric (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_p,
 			      cubxasl::aggregate_accumulator *acc, DB_VALUE *value)
 {
+  QDATA_SUM_STATE_HOLDER *holder;
+
   if (DB_IS_NULL (value))
     {
       return NO_ERROR;
     }
-  if (acc->curr_cnt < 1 || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC
-      || DB_VALUE_DOMAIN_TYPE (acc->value) != DB_TYPE_NUMERIC)
+  if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
     {
+      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
+	{
+	  acc->curr_cnt++;
+	  return ER_FAILED;
+	}
       return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
     }
 
-  if (float_numeric_db_value_add (acc->value, value, acc->value) != NO_ERROR)
+  holder = (QDATA_SUM_STATE_HOLDER *) acc->sum_state;
+  if (holder == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
-      acc->curr_cnt++;
-      return ER_FAILED;
+      /* deferred-carry accumulation: the state absorbs every row (including the
+       * first) and one numeric_sum_state_result () at a flush point replaces the
+       * per-row digit-scan/round/pack/coerce of the interpreted path */
+      int prec, scale;
+
+      if (acc->curr_cnt >= 1)
+	{
+	  /* a materialized partial sum already sits in acc->value (e.g. after a merge
+	   * or spill): keep the generic per-row path for this accumulator */
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      db_get_numeric_precision_and_scale (value, &prec, &scale, NULL);
+      holder = (QDATA_SUM_STATE_HOLDER *) malloc (sizeof (QDATA_SUM_STATE_HOLDER));
+      if (holder == NULL)
+	{
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      holder->state = numeric_sum_state_alloc (scale);
+      if (holder->state == NULL)
+	{
+	  free_and_init (holder);
+	  return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
+	}
+      holder->value_dom = agg_p->accumulator_domain.value_dom;
+      acc->sum_state = holder;
     }
-  if (expr_coerce_result_to_domain (acc->value, agg_p->accumulator_domain.value_dom) != NO_ERROR)
+
+  if (!numeric_sum_state_accumulate (holder->state, value))
     {
-      acc->curr_cnt++;
-      return ER_FAILED;
+      /* unexpected input scale: materialize what we have and fall back for this row */
+      if (qdata_numeric_sum_flush (acc) != NO_ERROR)
+	{
+	  acc->curr_cnt++;
+	  return ER_FAILED;
+	}
+      return qdata_acc_kernel_generic (thread_p, agg_p, acc, value);
     }
   acc->curr_cnt++;
   return NO_ERROR;
@@ -1699,6 +1794,15 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   OR_BUF buf;
   double dbl;
 
+  /* materialize deferred NUMERIC sums before any accumulator value is consumed */
+  for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (qdata_numeric_sum_flush (&agg_p->accumulator) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+
   db_make_null (&sqr_val);
   db_make_null (&dbval);
   db_make_null (&xavgval);
@@ -2524,6 +2628,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
     {
       value->accumulators[i].value = pr_make_value ();
       value->accumulators[i].value2 = pr_make_value ();
+      value->accumulators[i].sum_state = NULL;	/* raw allocation: must not inherit garbage */
     }
   /* initialize accumulators.value */
   for (i = 0, agg_p = g_agg_list; agg_p != NULL; agg_p = agg_p->next, i++)
@@ -2573,6 +2678,8 @@ qdata_free_agg_hvalue (cubthread::entry *thread_p, aggregate_hash_value *value)
     {
       for (i = 0; i < value->func_count; i++)
 	{
+	  qdata_numeric_sum_discard (&value->accumulators[i]);
+
 	  if (value->accumulators[i].value != NULL)
 	    {
 	      pr_free_value (value->accumulators[i].value);
@@ -2832,6 +2939,11 @@ qdata_load_agg_hvalue_in_agg_list (aggregate_hash_value *value, cubxasl::aggrega
 
       if (agg_list->function != PT_GROUPBY_NUM)
 	{
+	  /* a deferred NUMERIC sum must be materialized before its value is copied;
+	   * the destination accumulator cannot carry a pending state either */
+	  (void) qdata_numeric_sum_flush (&value->accumulators[i]);
+	  qdata_numeric_sum_discard (&agg_list->accumulator);
+
 	  if (copy_vals)
 	    {
 	      /* set tuple count */
@@ -2905,6 +3017,11 @@ qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, aggregate_hash_key *k
 
   for (i = 0; i < value->func_count; i++)
     {
+      /* a deferred NUMERIC sum must be materialized before its value is serialized */
+      if (qdata_numeric_sum_flush (&value->accumulators[i]) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value;
       list_id->tpl_descr.f_valp[col++] = value->accumulators[i].value2;
 

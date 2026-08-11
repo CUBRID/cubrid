@@ -67,6 +67,12 @@ namespace cubxasl
     INT64 curr_cnt;			/* current number of items */
     bool clear_value_at_clone_decache;	/* true, if need to clear value at clone decache */
     bool clear_value2_at_clone_decache;	/* true, if need to clear value2 at clone decache */
+
+    /* deferred-carry NUMERIC SUM/AVG accumulation (NUMERIC_SUM_STATE *, server runtime
+     * only, never serialized).  While non-NULL it holds the pending sum INSTEAD of
+     * value; every consumer of value materializes it first through
+     * qdata_numeric_sum_flush () (finalize, accumulator merge, hash spill, clear). */
+    void *sum_state;
   };
 
 #if defined (SERVER_MODE) || defined (SA_MODE)

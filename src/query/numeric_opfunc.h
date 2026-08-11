@@ -172,6 +172,17 @@ extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
 extern int numeric_get_precision_digits (uint8_t * calc_buf);
+/* deferred-carry NUMERIC sum accumulator (aggregate SUM/AVG fast path): raw magnitude
+ * words are added per row into a sign bucket with plenty of headroom, and ALL of the
+ * per-row work of float_numeric_db_value_add () -- precision/scale lookup, decimal
+ * digit scan, overflow/scale adjustment, rounding, packing, DB_VALUE construction --
+ * is deferred to one finalize call */
+typedef struct numeric_sum_state NUMERIC_SUM_STATE;
+extern NUMERIC_SUM_STATE *numeric_sum_state_alloc (int scale);
+extern void numeric_sum_state_free (NUMERIC_SUM_STATE * state);
+extern bool numeric_sum_state_accumulate (NUMERIC_SUM_STATE * state, const DB_VALUE * value);
+extern int numeric_sum_state_result (const NUMERIC_SUM_STATE * state, DB_VALUE * result);
+
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);

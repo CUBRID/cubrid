@@ -2301,6 +2301,7 @@ qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AGGREGATE_TYP
 
   for (p = list; p; p = p->next)
     {
+      qdata_numeric_sum_discard (&p->accumulator);
       if (XASL_IS_FLAGED (xasl_p, XASL_DECACHE_CLONE))
 	{
 	  if (p->accumulator.clear_value_at_clone_decache)
