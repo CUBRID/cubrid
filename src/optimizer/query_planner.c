@@ -31,7 +31,7 @@
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
-#include "cubrid_json.h"
+#include "json_builder.h"
 
 #include "parser.h"
 #include "object_primitive.h"

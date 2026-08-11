@@ -17,7 +17,7 @@
  */
 
 /*
- * cubrid_json.h - JSON tree building for execution plan output
+ * json_builder.h - JSON tree building for execution plan output
  *
  * Note: This is the interface the plan and trace dump code uses to build a JSON
  *       document and serialize it. It is implemented over RapidJSON, the same
@@ -28,8 +28,8 @@
  *       value they are given, and json_decref () releases the whole tree.
  */
 
-#ifndef _CUBRID_JSON_H_
-#define _CUBRID_JSON_H_
+#ifndef _JSON_BUILDER_H_
+#define _JSON_BUILDER_H_
 
 #ident "$Id$"
 
@@ -84,4 +84,4 @@ extern "C"
 }
 #endif
 
-#endif				/* _CUBRID_JSON_H_ */
+#endif				/* _JSON_BUILDER_H_ */

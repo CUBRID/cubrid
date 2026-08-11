@@ -17,10 +17,10 @@
  */
 
 /*
- * cubrid_json.cpp - JSON tree building for execution plan output, over RapidJSON
+ * json_builder.cpp - JSON tree building for execution plan output, over RapidJSON
  */
 
-#include "cubrid_json.h"
+#include "json_builder.h"
 
 #include "db_rapidjson.hpp"
 #include "rapidjson/prettywriter.h"

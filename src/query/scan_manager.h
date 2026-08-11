@@ -33,7 +33,7 @@
 #include <cstddef>		/* offsetof for paired pisid/isid layout asserts */
 #include <time.h>
 #if defined(SERVER_MODE)
-#include "cubrid_json.h"
+#include "json_builder.h"
 #endif
 
 #include "btree.h"		/* TODO: for BTREE_SCAN */

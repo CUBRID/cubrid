@@ -28,7 +28,7 @@
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
-#include "cubrid_json.h"
+#include "json_builder.h"
 #include "px_scan_result_type.hpp"
 #include "px_scan_type_enum.hpp"
 

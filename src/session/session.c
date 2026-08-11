@@ -34,7 +34,7 @@
 #include "session.h"
 
 #include "boot_sr.h"
-#include "cubrid_json.h"
+#include "json_builder.h"
 #include "critical_section.h"
 #include "error_manager.h"
 #include "system_parameter.h"

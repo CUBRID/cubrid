@@ -76,7 +76,7 @@ set(BASE_SOURCES
   ${BASE_DIR}/binaryheap.c
   ${BASE_DIR}/bit.c
   ${BASE_DIR}/chartype.c
-  ${BASE_DIR}/cubrid_json.cpp
+  ${BASE_DIR}/json_builder.cpp
   ${BASE_DIR}/databases_file.c
   ${BASE_DIR}/dtoa.c
   ${BASE_DIR}/dynamic_array.c
@@ -611,7 +611,7 @@ set_source_files_properties(${BISON_loader_grammar_OUTPUTS} PROPERTIES GENERATED
 set_source_files_properties(${FLEX_loader_lexer_OUTPUTS} PROPERTIES GENERATED true)
 
 if(UNIX)
-  set_source_files_properties(${BASE_DIR}/cubrid_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
+  set_source_files_properties(${BASE_DIR}/json_builder.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_allocator.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
   set_source_files_properties(${COMPAT_DIR}/db_json_path.cpp PROPERTIES COMPILE_FLAGS -Wno-unknown-pragmas)
