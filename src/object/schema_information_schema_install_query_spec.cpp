@@ -394,7 +394,10 @@ const char *sm_define_view_key_column_usage_spec (void)
       "[idx].[class_of].[class_name] AS [table_name], "
       "[idx_key].[key_attr_name] AS [column_name], "
       "([idx_key].[key_order] + 1) AS [ordinal_position], "
-      "([ref_key].[key_order] + 1) AS [position_in_unique_constraint] "
+      "([ref_key].[key_order] + 1) AS [position_in_unique_constraint], "
+      "[idx].[referential_index].[class_of].[owner].[name] AS [referenced_table_schema], "
+      "[idx].[referential_index].[class_of].[class_name] AS [referenced_table_name], "
+      "[ref_key].[key_attr_name] AS [referenced_column_name] "
     "FROM "
       /* CT_INDEXKEY_NAME */
       "[%s] AS [idx_key] "

@@ -301,6 +301,9 @@ namespace cubschema
       {"column_name", format_varchar (255)},
       {"ordinal_position", "integer"},
       {"position_in_unique_constraint", "integer"},
+      {"referenced_table_schema", format_varchar (DB_MAX_USER_LENGTH)},
+      {"referenced_table_name", format_varchar (255)},
+      {"referenced_column_name", format_varchar (255)},
       {attribute_kind::QUERY_SPEC, sm_define_view_key_column_usage_spec ()}
     },
     // constraint
