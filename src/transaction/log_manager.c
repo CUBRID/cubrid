@@ -6880,31 +6880,34 @@ static LOG_PAGE *
 log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;
-  unsigned int nobj_locks;
+  unsigned int nlocks;
+  int gtrinfo_length;
   int size;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
   prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num objlocks = %u\n", prepared->user_name, prepared->gtrid,
-	   prepared->num_object_locks);
+  fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num locks = %u\n", prepared->user_name, prepared->gtrid,
+	   prepared->num_locks);
 
-  nobj_locks = prepared->num_object_locks;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  nlocks = prepared->num_locks;
+  gtrinfo_length = prepared->gtrinfo_length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
   /* Dump global transaction user information */
-  if (prepared->gtrinfo_length > 0)
+  if (gtrinfo_length > 0)
     {
-      log_dump_data (thread_p, out_fp, prepared->gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
+      log_dump_data (thread_p, out_fp, gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
     }
 
-  /* Dump object locks */
-  if (nobj_locks > 0)
+  /* Dump acquired locks */
+  if (nlocks > 0)
     {
-      size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acqobj_locks, NULL);
+      size = nlocks * sizeof (LK_ACQ_LOCK);
+      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acq_locks, NULL);
     }
 
   return log_page_p;

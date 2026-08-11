@@ -990,6 +990,7 @@ struct groupby_stat
   UINT64 groupby_pages;
   UINT64 groupby_ioreads;
   int rows;
+  INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
   bool run_groupby;
   bool groupby_sort;
