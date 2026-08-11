@@ -2910,6 +2910,12 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned uncorr_hoisted:1;	/* correlation_level was 0 (uncorrelated) until pt_uncorr_post ()
+				 * hoisted this subquery into an enclosing aptr list, overwriting
+				 * the level. Lets a plan regeneration from the same tree (see
+				 * do_replan_statement_with_bind_peek ()) restore the level to 0
+				 * first, so the subquery keeps its XASL_ZERO_CORR_LEVEL
+				 * (uncorrelated, parallel-executable) marking. */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */

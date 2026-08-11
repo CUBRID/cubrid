@@ -3092,14 +3092,16 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	    }
 	}
 
-      if ((xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED) && prm_get_bool_value (PRM_ID_PLAN_CACHE_BIND_SENSITIVITY))
+      if (xasl_header.xasl_flag & HV_PRED_PLAN_UNPEEKED)
 	{
 	  /* the cached plan was chosen with unbound host-variable predicate markers (at
 	   * PREPARE). Null the XASL_ID so this first execution takes the recompile path and
 	   * fixes the plan under the actual bind values; the regenerated plan does not carry
 	   * the flag, and its post-transform tree is kept, so later executions reuse the
-	   * fixed plan (plan_cache_bind_sensitivity then controls only whether a later
-	   * bucket change replans again). */
+	   * fixed plan (plan_cache_bind_sensitivity / BIND_SENSITIVE then control only
+	   * whether a later bucket change replans again). Unconditional like the
+	   * driver-neutral first peek in do_prepare_select () -- same SQL, same first
+	   * execution behavior on every driver. */
 	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	}
     }
@@ -3413,6 +3415,16 @@ db_reset_cte_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
       /* the previous generation's CTE proc must not be reused: with host variables
        * bound, parser_generate_xasl_post () asserts cte.xasl == NULL and regenerates */
       node->info.cte.xasl = NULL;
+    }
+  else if (node != NULL && PT_IS_QUERY (node) && node->info.query.flag.uncorr_hoisted)
+    {
+      /* the previous generation hoisted this uncorrelated subquery into an enclosing
+       * aptr list and overwrote its correlation level (pt_uncorr_post ()). Restore the
+       * level so this generation classifies the subquery as uncorrelated again --
+       * otherwise it loses XASL_ZERO_CORR_LEVEL and with it its parallel-executable
+       * status (check_parallel_subquery_possible ()) */
+      node->info.query.correlation_level = 0;
+      node->info.query.flag.uncorr_hoisted = 0;
     }
   return node;
 }

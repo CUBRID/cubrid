@@ -14590,6 +14590,11 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 		  q = pt_append_nulstring (parser, q, " ");
 		}
 	    }
+	  if (p->info.query.hint & PT_HINT_BIND_SENSITIVE)
+	    {
+	      /* replan when the bound values change histogram bucket */
+	      q = pt_append_nulstring (parser, q, "BIND_SENSITIVE ");
+	    }
 	  if (p->info.query.q.select.hint & PT_HINT_ORDERED)
 	    {
 	      /* force join left-to-right */

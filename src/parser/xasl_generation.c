@@ -13878,8 +13878,11 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	{
 	  if (node->info.query.correlation_level == 0)
 	    {
-	      /* add to this level */
+	      /* add to this level; the overwrite is remembered so a regeneration from this
+	       * same tree can restore the level (and with it the subquery's uncorrelated,
+	       * parallel-executable status) before generating again */
 	      node->info.query.correlation_level = info->level;
+	      node->info.query.flag.uncorr_hoisted = 1;
 	    }
 
 	  if (node->info.query.correlation_level == info->level)
