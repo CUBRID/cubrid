@@ -7594,6 +7594,36 @@ pt_capture_first_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *
   return tree;
 }
 
+typedef struct pt_capture_named_arg PT_CAPTURE_NAMED_ARG;
+struct pt_capture_named_arg
+{
+  const char *name;
+  PT_NODE *result;
+};
+
+static PT_NODE *
+pt_capture_named_name (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_CAPTURE_NAMED_ARG *a = (PT_CAPTURE_NAMED_ARG *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (a->result != NULL)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return tree;
+    }
+
+  if (tree->node_type == PT_NAME && tree->info.name.original != NULL && a->name != NULL
+      && intl_identifier_casecmp (tree->info.name.original, a->name) == 0)
+    {
+      a->result = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
 /*
  * pt_collect_func_index_cover () - walk a chosen plan and register, for each covered function-index scan
  *   whose projected function result must be materialized from the index key, the routing information used
@@ -7635,6 +7665,7 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 	      SM_ATTRIBUTE **atts = index_entry->constraints->attributes;
 	      int arg_start = index_entry->constraints->func_index_info->attr_index_start;
 	      bool arg_missing_from_key = false;
+	      const char *route_arg_name = NULL;
 	      int k, m;
 
 	      for (k = arg_start; atts[k] != NULL; k++)
@@ -7652,6 +7683,7 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 		  if (!found_as_key_col)
 		    {
 		      arg_missing_from_key = true;
+		      route_arg_name = atts[k]->header.name;
 		      break;
 		    }
 		}
@@ -7669,6 +7701,7 @@ pt_collect_func_index_cover (PARSER_CONTEXT * parser, QO_PLAN * plan)
 		    {
 		      entry->expr_str = index_entry->constraints->func_index_info->expr_str;
 		      entry->spec_id = spec->info.spec.id;
+		      entry->arg_col_name = route_arg_name;
 		      entry->next = parser->symbols->func_idx_cover_list;
 		      parser->symbols->func_idx_cover_list = entry;
 		    }
@@ -7746,6 +7779,29 @@ pt_get_func_index_cover_arg (PARSER_CONTEXT * parser, PT_NODE * node)
       if (e->expr_str != NULL && e->spec_id == col->info.name.spec_id
 	  && !intl_identifier_casecmp (expr_str, e->expr_str))
 	{
+	  /* Route the result to the argument column that is missing from the key (its value-list slot is free to
+	   * repurpose). The first PT_NAME may be a genuine key column also projected raw; repurposing that slot
+	   * would corrupt the raw projection (e.g. SELECT a, MOD(a,b) on index (a, MOD(a,b))). */
+	  if (e->arg_col_name != NULL)
+	    {
+	      PT_CAPTURE_NAMED_ARG na;
+
+	      na.name = e->arg_col_name;
+	      na.result = NULL;
+	      (void) parser_walk_tree (parser, node->info.expr.arg1, pt_capture_named_name, &na, NULL, NULL);
+	      if (na.result == NULL)
+		{
+		  (void) parser_walk_tree (parser, node->info.expr.arg2, pt_capture_named_name, &na, NULL, NULL);
+		}
+	      if (na.result == NULL)
+		{
+		  (void) parser_walk_tree (parser, node->info.expr.arg3, pt_capture_named_name, &na, NULL, NULL);
+		}
+	      if (na.result != NULL)
+		{
+		  return na.result;
+		}
+	    }
 	  return col;
 	}
     }
@@ -12995,6 +13051,7 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		 * (pt_to_index_info) is built outside this window: range regus must keep the original
 		 * expression form (see validate_regu_key_function_index). */
 		PT_FUNC_INDEX_COVER *saved_func_idx_cover = symbols->func_idx_cover_list;
+		PT_FUNC_INDEX_RESULT_COL *saved_func_idx_result_cols = symbols->func_idx_result_cols;
 
 		symbols->func_idx_cover_list = NULL;
 		pt_collect_func_index_cover (parser, plan);
@@ -13005,6 +13062,10 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  pt_to_regu_variable_list (parser, key_attrs, UNBOX_AS_VALUE, table_info->value_list, key_offsets);
 
 		symbols->func_idx_cover_list = saved_func_idx_cover;
+		/* Result-column registrations made while building the key filter are local to this window; drop
+		 * them so they cannot rewrite a later raw argument-column regu of the same spec to the sentinel
+		 * on non-buildlist XASL paths (UPDATE/DELETE), which do not restore this list themselves. */
+		symbols->func_idx_result_cols = saved_func_idx_result_cols;
 	      }
 
 	      symbols->cache_attrinfo = cache_pred;

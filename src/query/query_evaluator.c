@@ -2956,9 +2956,15 @@ eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_
 		     * -- the key filter references the function expression, whose value is exactly that result. */
 		    int midx_pos = is_func_result ? filterp->func_idx_col_id : ((j < func_idx_col_id) ? j : j + 1);
 
-		    if (filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
+		    if (!is_func_result && filterp->func_idx_col_id != -1 && midx_pos >= midxkey->ncolumns)
 		      {
-			midx_pos = filterp->func_idx_col_id;
+			/* A raw function-argument column with no key slot reached the key filter without being
+			 * routed to the function-result sentinel. The raw argument is not stored in the key, so
+			 * reading the function result here would silently double-apply the function
+			 * (e.g. sqrt(d1) evaluated as sqrt(sqrt(d1))). Unreachable for a correctly routed covered
+			 * scan; fail loudly instead of returning a wrong answer. */
+			assert (false);
+			return V_ERROR;
 		      }
 
 		    if (pr_midxkey_get_element_nocopy (((midx_pos < prefix_size) ? prefix_midxkey : midxkey), midx_pos,

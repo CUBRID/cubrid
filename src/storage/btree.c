@@ -16782,7 +16782,9 @@ btree_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, DB_VALUE * curr_key, BTRE
 	    {
 	      /* A raw function-argument column was requested. Only the function result is stored in the index
 	       * key, not the argument itself; this happens when the argument column is referenced only by a
-	       * key filter/range (not projected), so its materialized value is never used. Store NULL. */
+	       * key filter/range (not projected), so its materialized value is never used. Store NULL.
+	       * Only a function index can overshoot the key this way; on a plain index it is a mapping bug. */
+	      assert (func_index_col_id != -1);
 	      db_make_null (&(attr_value->dbvalue));
 	      attr_value->state = HEAP_WRITTEN_ATTRVALUE;
 	      attr_value++;

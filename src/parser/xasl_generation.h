@@ -90,6 +90,7 @@ struct pt_func_index_cover
   PT_FUNC_INDEX_COVER *next;
   const char *expr_str;		/* function index expression string provided by the covered index */
   UINTPTR spec_id;		/* spec id of the scanned table */
+  const char *arg_col_name;	/* argument column missing from the key: its value-list slot carries the result */
 };
 
 /* one entry per argument column of a covered projected function-index expression. The column's value list

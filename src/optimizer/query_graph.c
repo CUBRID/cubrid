@@ -4734,7 +4734,6 @@ qo_alloc_index (QO_ENV * env, int n)
       bitset_init (&(entryp->terms), env);
       entryp->all_unique_index_columns_are_equi_terms = false;
       entryp->cover_segments = false;
-      entryp->cover_func_result = false;
       entryp->is_iss_candidate = false;
       entryp->first_sort_column = -1;
       entryp->orderby_skip = false;
@@ -7004,8 +7003,6 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
       return false;
     }
 
-  index_entry->cover_func_result = false;
-
   /*
    * If NO_COVERING_IDX hint is given, we do not generate a plan for
    * covering index scan.
@@ -7152,12 +7149,27 @@ qo_is_coverage_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entr
 	      }
 	  }
 
-	  /* The projected function result must be materialized from the index key; remember this so the client
-	   * routes the projected function expression to that value instead of recomputing it. */
-	  if (BITSET_MEMBER (env->final_segs, QO_SEG_IDX (seg)))
-	    {
-	      index_entry->cover_func_result = true;
-	    }
+	}
+    }
+
+  /* pt_to_index_info later disables XASL coverage when an index attribute has a type that cannot support
+   * covering (TIMESTAMPTZ/DATETIMETZ) or a collation that forbids index optimization. For a function index the
+   * client has by then already routed the projected/key-filter expression to a sentinel attr id, which would
+   * flow into a non-covered heap scan and crash. Reflect both gates here so such a function index is never
+   * chosen as covering in the first place. Restricted to function indexes to avoid perturbing plain-index
+   * plan choices, whose develop-era covering-then-fallback path is harmless. */
+  if (index_entry->constraints != NULL && index_entry->constraints->func_index_info != NULL)
+    {
+      COLL_OPT coll_opt;
+
+      if (!qo_check_type_index_covering (index_entry))
+	{
+	  return false;
+	}
+      qo_check_coll_optimization (index_entry, &coll_opt);
+      if (!coll_opt.allow_index_opt)
+	{
+	  return false;
 	}
     }
 
