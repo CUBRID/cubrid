@@ -442,6 +442,31 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* ---- EXTRACT over a DATE operand ---- */
+
+/* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case): decode
+ * the date and take the compile-time-fixed field; NULL propagates through the cleared
+ * result slot exactly like the interpreted pre-switch pr_clear_value () */
+static int
+expr_k_extract_date (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *src = *step->arg1p;
+  DB_DATE date;
+  int month, day, year;
+
+  pr_clear_value (step->out);
+  *step->out_cell = step->out;
+  if (DB_IS_NULL (src))
+    {
+      return NO_ERROR;
+    }
+
+  date = *db_get_date (src);
+  db_date_decode (&date, &month, &day, &year);
+  db_make_int (step->out, (step->aux == (int) YEAR) ? year : (step->aux == (int) MONTH) ? month : day);
+  return NO_ERROR;
+}
+
 /* ---- CASE family: compiled predicates, branch regions ---- */
 
 /* mirror of the eval_value_rel_cmp () rel_op mapping for ordinal comparisons */
@@ -1362,6 +1387,43 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 	    return cell;
 	  }
 
+	if (arith->opcode == T_EXTRACT)
+	  {
+	    /* DATE operand with a date-part field and an INTEGER result only (other
+	     * input types and time fields keep the interpreted path) */
+	    if (rtype != DB_TYPE_INTEGER
+		|| (arith->misc_operand != YEAR && arith->misc_operand != MONTH && arith->misc_operand != DAY)
+		|| arith->rightptr == NULL || expr_node_type (bctx, arith->rightptr) != DB_TYPE_DATE)
+	      {
+		return -1;
+	      }
+	    c1 = expr_compile_node (bctx, arith->rightptr, compiled_something);
+	    if (c1 < 0)
+	      {
+		return -1;
+	      }
+	    cell = expr_cse_find (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1);
+	    if (cell >= 0)
+	      {
+		return cell;
+	      }
+	    cell = expr_new_cell (bctx, NULL);
+	    step = expr_new_step (bctx, expr_k_extract_date, cell);
+	    if (cell < 0 || step == NULL)
+	      {
+		return -1;
+	      }
+	    step->arg1p = EXPR_ARG_ENCODE (c1);
+	    step->out_cell = (DB_VALUE **) (intptr_t) cell;
+	    step->out = (DB_VALUE *) 1;
+	    bctx->n_slots++;
+	    step->aux = (int) arith->misc_operand;
+	    step->regu = regu;
+	    expr_cse_add (bctx, NULL, T_EXTRACT, c1, (int) arith->misc_operand, -1, cell);
+	    *compiled_something = true;
+	    return cell;
+	  }
+
 	if (arith->opcode == T_CAST)
 	  {
 	    c1 = expr_compile_node (bctx, arith->rightptr, compiled_something);
@@ -1928,6 +1990,8 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     expr_k_predicate, "predicate"},
     {
     expr_k_leaf_fetch, "leaf_fetch"},
+    {
+    expr_k_extract_date, "extract_date"},
     {
     expr_k_hostvar, "hostvar"},
     {
