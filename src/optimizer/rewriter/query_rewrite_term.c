@@ -2355,6 +2355,10 @@ qo_rewrite_like_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * like, P
   between->next = like->next;
   like->next = between;
 
+  /* Mark the derived range so row-count aggregation excludes it (subset of the
+   * retained LIKE). Set before the copy so it is preserved. */
+  PT_EXPR_INFO_SET_FLAG (between, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+
   /* fold range bounds : this will allow auto-parametrization */
   like_save = parser_copy_tree_list (parser, like);
   if (like_save == NULL)
@@ -4029,6 +4033,73 @@ qo_apply_range_intersection_helper (PARSER_CONTEXT * parser, PT_NODE * node1, PT
 }
 
 /*
+ * qo_range_spec_equals () - true when a RANGE node holds exactly one range spec
+ *   equal to `spec` (same op and same bound values). Used to tell whether a
+ *   range intersection left a LIKE-derived range intact or actually tightened
+ *   it. Only the single-spec shape the LIKE rewrite produces is recognized; any
+ *   other shape (empty, multiple OR specs, different op/bounds) returns false.
+ *   return: true if merged's sole spec equals spec
+ *   parser(in):
+ *   merged(in): a PT_RANGE node (the surviving range after intersection)
+ *   spec(in): a snapshot of the derived range's spec taken before the merge
+ */
+static bool
+qo_range_spec_equals (PARSER_CONTEXT * parser, PT_NODE * merged, PT_NODE * spec)
+{
+  PT_NODE *m;
+  DB_VALUE *mv, *sv;
+  int i;
+
+  if (merged == NULL || spec == NULL)
+    {
+      return false;
+    }
+
+  m = merged->info.expr.arg2;	/* range spec list */
+  if (m == NULL || m->or_next != NULL)
+    {
+      /* empty or more than one spec: not the intact single-spec shape */
+      return false;
+    }
+  if (m->info.expr.op != spec->info.expr.op)
+    {
+      return false;
+    }
+
+  /* compare the lower (arg1) and upper (arg2) bounds */
+  for (i = 1; i <= 2; i++)
+    {
+      PT_NODE *mb = (i == 1) ? m->info.expr.arg1 : m->info.expr.arg2;
+      PT_NODE *sb = (i == 1) ? spec->info.expr.arg1 : spec->info.expr.arg2;
+
+      if ((mb == NULL) != (sb == NULL))
+	{
+	  return false;
+	}
+      if (mb != NULL)
+	{
+	  /* Guard pt_value_to_db with a constant check, exactly as the range-merge
+	   * helper does (see pt_is_const_not_hostvar uses there): calling it on a
+	   * non-constant (host-var or expression) bound can push a semantic error.
+	   * A non-constant bound also cannot be value-compared, so treat it as "not
+	   * equal" - the caller keeps such derived ranges by a separate path. */
+	  if (!pt_is_const_not_hostvar (mb) || !pt_is_const_not_hostvar (sb))
+	    {
+	      return false;
+	    }
+	  mv = pt_value_to_db (parser, mb);
+	  sv = pt_value_to_db (parser, sb);
+	  if (mv == NULL || sv == NULL || db_value_compare (mv, sv) != DB_EQ)
+	    {
+	      return false;
+	    }
+	}
+    }
+
+  return true;
+}
+
+/*
  * qo_apply_range_intersection () - Apply range intersection
  *   return:
  *   parser(in):
@@ -4040,6 +4111,8 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
   PT_NODE *node, *sibling, *node_prev, *sibling_prev;
   int location;
   PT_NODE *arg1_prior, *sibling_prior;
+  PT_NODE *derived, *derived_spec;
+  bool node_derived, sibling_derived;
 
   /* traverse CNF list and keep track of the pointer to previous node */
   node_prev = NULL;
@@ -4173,12 +4246,54 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 
 	  /* found a node of the same attribute */
 
+	  /* A LIKE-derived range must stay excluded from row-count only while it is
+	   * still the pure LIKE proxy. The flag only needs adjusting when the two
+	   * ranges are actually combined into one (sibling fully absorbed below):
+	   * then the survivor is `node` and we must decide its flag. If they are not
+	   * merged - a non-constant/host-var bound the helper skips, or a looser
+	   * bound that leaves the range untouched - both terms survive with their
+	   * original flags, so the derived range keeps its flag with no action here
+	   * (order-independent: the derived range may be node or sibling).
+	   *
+	   * Snapshot the derived spec before the merge so we can compare it to the
+	   * survivor. Both operands LIKE-derived -> whatever tightened the range is
+	   * another LIKE proxy, not a real user bound, so keep the flag.
+	   *
+	   * Approximation: the flag is per-range, not per-bound. When only one bound
+	   * is tightened by a real user range (v LIKE 'PRE%MID%' AND v >= 'PREM': the
+	   * lower becomes 'PREM' but the upper is still the LIKE-derived 'PRF'), the
+	   * whole range is counted, so the LIKE-correlated bound is mildly double
+	   * counted - same direction as, but far smaller than, the original bug. */
+	  node_derived = PT_EXPR_INFO_IS_FLAGED (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+	  sibling_derived = PT_EXPR_INFO_IS_FLAGED (sibling, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+	  derived = node_derived ? node : (sibling_derived ? sibling : NULL);
+	  derived_spec = NULL;
+	  if (derived != NULL && derived->info.expr.arg2 != NULL && derived->info.expr.arg2->or_next == NULL)
+	    {
+	      derived_spec = parser_copy_tree (parser, derived->info.expr.arg2);
+	    }
+
 	  /* combine each range specs of two RANGE nodes */
 	  qo_apply_range_intersection_helper (parser, node, sibling);
 
-	  /* remove the sibling node if its range is empty */
+	  /* remove the sibling node if its range is empty (i.e. it was absorbed) */
 	  if (sibling->info.expr.arg2 == NULL)
 	    {
+	      if (derived != NULL)
+		{
+		  if ((node_derived && sibling_derived)
+		      || (derived_spec != NULL && qo_range_spec_equals (parser, node, derived_spec)))
+		    {
+		      /* merged range is still a LIKE proxy: keep it excluded */
+		      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+		    }
+		  else
+		    {
+		      /* a real user bound tightened the range: count it normally */
+		      PT_EXPR_INFO_CLEAR_FLAG (node, PT_EXPR_INFO_LIKE_DERIVED_RANGE);
+		    }
+		}
+
 	      sibling_prev->next = sibling->next;
 	      sibling->next = NULL;
 	      /* sibling->or_next == NULL */
@@ -4186,7 +4301,12 @@ qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep)
 	    }
 	  else
 	    {
+	      /* not merged: both terms keep their original flags, nothing to do */
 	      sibling_prev = sibling_prev->next;
+	    }
+	  if (derived_spec != NULL)
+	    {
+	      parser_free_tree (parser, derived_spec);
 	    }
 
 	  if (node->info.expr.arg2 == NULL)

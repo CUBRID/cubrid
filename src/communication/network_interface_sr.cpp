@@ -4626,7 +4626,10 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  bool eligible_no_redo = false;
   int ib_thread_count = 0;
+  int no_logging_index = 0;
+  size_t tail_offset;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4714,6 +4717,17 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
+  /* Optional tail: older clients do not send this field and their request may end exactly at ptr, so
+   * bound it with integer offsets only (a pointer past one-past-the-end is UB even if only compared). */
+  tail_offset = DB_ALIGN ((size_t) (ptr - request), INT_ALIGNMENT);
+  if (tail_offset + OR_INT_SIZE <= (size_t) reqlen)
+    {
+      ptr = or_unpack_int (ptr, &no_logging_index);	/* Get no-logging index build request. */
+    }
+  /* The client flag is only a request; the server decides. Restricting the no-redo build to
+   * loaddb client types keeps it out of ordinary traffic no matter what a client sends. */
+  eligible_no_redo = no_logging_index != 0
+		     && BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index));
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
@@ -4729,7 +4743,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	      xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				 attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
 				 fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-				 func_attr_index_start);
+				 func_attr_index_start, eligible_no_redo);
     }
 
   if (return_btid == NULL)

@@ -2560,10 +2560,18 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 		  if ('1' <= *ptr && *ptr <= '9')
 		    {
 		      int length = strlen (ptr);
+
 		      if (length > DB_MAX_NUMERIC_PRECISION)
 			{
-			  s -= (length - DB_MAX_NUMERIC_PRECISION);
+			  /* The round up grew a value at the max precision by one digit; the buffer fits
+			   * 41 digits, so give that digit to the scale. It is a '0' cleared above. */
+			  assert (length == DB_MAX_NUMERIC_PRECISION + 1 && end[-1] == '0');
+
+			  s--;
 			  p = DB_MAX_NUMERIC_PRECISION;
+
+			  end--;
+			  *end = '\0';
 			}
 
 		      if (s < DB_MIN_NUMERIC_SCALE)

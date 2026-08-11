@@ -25,9 +25,7 @@
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "regu_var.hpp"
-#include "schema_manager.h"
 #include "storage_common.h"
-#include "work_space.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -347,38 +345,6 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* filtered index → serial: bug-prone + low usage, excluded as a constraint. function indexes are plain B-tree keys, not blocked. */
-  static bool
-  is_filtered_index (const INDX_INFO *indexptr)
-  {
-    if (indexptr == NULL)
-      {
-	return false;
-      }
-    if (OID_ISNULL (&indexptr->class_oid))
-      {
-	return false;
-      }
-    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
-    if (class_mop == NULL)
-      {
-	return false;
-      }
-    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
-    for (; cons != NULL; cons = cons->next)
-      {
-	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
-	  {
-	    if (cons->filter_predicate != NULL)
-	      {
-		return true;
-	      }
-	    break;
-	  }
-      }
-    return false;
-  }
-
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -417,12 +383,6 @@ namespace parallel_scan
 		/* orderby/groupby skip+desc need globally ordered traversal. */
 		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
 		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
-
-		/* filtered index: bug-prone + low usage, excluded. */
-		if (is_filtered_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }

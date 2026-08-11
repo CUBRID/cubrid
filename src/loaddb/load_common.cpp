@@ -191,6 +191,7 @@ namespace cubload
     , no_user_specified_name (false)
     , schema_file_list ()
     , cs_mode (false)
+    , no_logging_index (false)
   {
     //
   }

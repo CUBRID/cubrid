@@ -160,6 +160,8 @@ static int rv;
 #define LOG_NEED_TO_SET_LSA(RCVI, PGPTR) \
    (((RCVI) != RVBT_MVCC_INCREMENTS_UPD) \
     && ((RCVI) != RVBT_LOG_GLOBAL_UNIQUE_STATS_COMMIT) \
+    && ((RCVI) != RVBT_NO_LOGGING_INDEX_DURABLE) \
+    && ((RCVI) != RVBT_NO_LOGGING_INDEX_COMMITTED) \
     && ((RCVI) != RVBT_REMOVE_UNIQUE_STATS) \
     && ((RCVI) != RVLOC_CLASSNAME_DUMMY) \
     && ((RCVI) != RVDK_LINK_PERM_VOLEXT || !pgbuf_is_lsa_temporary(PGPTR)))
@@ -319,7 +321,6 @@ static void log_sysop_commit_internal (THREAD_ENTRY * thread_p, LOG_REC_SYSOP_EN
 				       const char *data, bool is_rv_finish_postpone);
 STATIC_INLINE void log_sysop_get_tran_index_and_tdes (THREAD_ENTRY * thread_p, int *tran_index_out,
 						      LOG_TDES ** tdes_out) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE int log_sysop_get_level (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 
 static void log_tran_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes);
 static void log_sysop_do_postpone (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_REC_SYSOP_END * sysop_end,
@@ -4175,13 +4176,13 @@ log_sysop_attach_to_outer (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_sysop_get_level () - Get current system operation level. If no system operation is started, it returns -1.
+ * log_get_system_op_level () - Get current system operation level. If no system operation is started, it returns -1.
  *
  * return        : System op level
  * thread_p (in) : Thread entry
  */
-STATIC_INLINE int
-log_sysop_get_level (THREAD_ENTRY * thread_p)
+int
+log_get_system_op_level (THREAD_ENTRY * thread_p)
 {
   int tran_index;
   LOG_TDES *tdes = NULL;
@@ -6879,31 +6880,34 @@ static LOG_PAGE *
 log_dump_record_2pc_prepare_commit (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * log_lsa, LOG_PAGE * log_page_p)
 {
   LOG_REC_2PC_PREPCOMMIT *prepared;
-  unsigned int nobj_locks;
+  unsigned int nlocks;
+  int gtrinfo_length;
   int size;
 
   /* Get the DATA HEADER */
   LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (*prepared), log_lsa, log_page_p);
   prepared = (LOG_REC_2PC_PREPCOMMIT *) ((char *) log_page_p->area + log_lsa->offset);
 
-  fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num objlocks = %u\n", prepared->user_name, prepared->gtrid,
-	   prepared->num_object_locks);
+  fprintf (out_fp, ", Client_name = %s, Gtrid = %d, Num locks = %u\n", prepared->user_name, prepared->gtrid,
+	   prepared->num_locks);
 
-  nobj_locks = prepared->num_object_locks;
+  /* Read before the first advance: it may refetch the page prepared points into. */
+  nlocks = prepared->num_locks;
+  gtrinfo_length = prepared->gtrinfo_length;
 
   LOG_READ_ADD_ALIGN (thread_p, sizeof (*prepared), log_lsa, log_page_p);
 
   /* Dump global transaction user information */
-  if (prepared->gtrinfo_length > 0)
+  if (gtrinfo_length > 0)
     {
-      log_dump_data (thread_p, out_fp, prepared->gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
+      log_dump_data (thread_p, out_fp, gtrinfo_length, log_lsa, log_page_p, log_2pc_dump_gtrinfo, NULL);
     }
 
-  /* Dump object locks */
-  if (nobj_locks > 0)
+  /* Dump acquired locks */
+  if (nlocks > 0)
     {
-      size = nobj_locks * sizeof (LK_ACQOBJ_LOCK);
-      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acqobj_locks, NULL);
+      size = nlocks * sizeof (LK_ACQ_LOCK);
+      log_dump_data (thread_p, out_fp, size, log_lsa, log_page_p, log_2pc_dump_acq_locks, NULL);
     }
 
   return log_page_p;
