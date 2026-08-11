@@ -270,8 +270,11 @@ PAGE_PTR pgbuf_simple_fix (THREAD_ENTRY * thread_p, const VPID * vpid, bool need
 void pgbuf_simple_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr);
 int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_free);
 
-/* discard buffered pages of destroyed file sectors without flushing or logging */
-extern int pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects);
+/* discard the buffered copies of a destroyed file's pages without flushing or logging.
+ * pgbuf_discard_pages_of_sectors scans the buffer pool once (cost: pool size);
+ * pgbuf_discard_page probes one page in the buffer hash (cost per call: O(1); file-size proportional overall). */
+extern void pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects);
+extern void pgbuf_discard_page (THREAD_ENTRY * thread_p, const VPID * vpid);
 
 #if !defined(NDEBUG)
 
