@@ -79,8 +79,7 @@ static int smt_add_constraint_to_property (SM_TEMPLATE * template_, SM_CONSTRAIN
 					   char *shared_cons_name, SM_PREDICATE_INFO * filter_index,
 					   SM_FUNCTION_INFO * function_index, const char *comment,
 					   SM_INDEX_STATUS index_status);
-static int smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value,
-						 DB_DEFAULT_EXPR * default_expr);
+static void smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value);
 static int smt_drop_constraint_from_property (SM_TEMPLATE * template_, const char *constraint_name,
 					      SM_ATTRIBUTE_FLAG constraint);
 static int smt_check_foreign_key (SM_TEMPLATE * template_, const char *constraint_name, SM_ATTRIBUTE ** atts,
@@ -1378,11 +1377,12 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	    }
 	  else
 	    {
-	      DB_DEFAULT_EXPR default_expr_copy;
-	      classobj_initialize_default_expr (&default_expr_copy);
+	      pr_clear_value (&att->default_value.value);
+	      pr_clone_value (value, &att->default_value.value);
+	      classobj_clear_default_expr (&att->default_value.default_expr);
 	      if (default_expr != NULL)
 		{
-		  error = classobj_copy_default_expr (&default_expr_copy, default_expr);
+		  error = classobj_copy_default_expr (&att->default_value.default_expr, default_expr);
 		}
 
 	      /* if there wasn't an previous original value, take this one. This can only happen for new templates OR
@@ -1392,19 +1392,7 @@ smt_set_attribute_default (SM_TEMPLATE * template_, const char *name, int class_
 	       * about "original_value". */
 	      if (error == NO_ERROR && (att->flags & SM_ATTFLAG_NEW))
 		{
-		  error = smt_set_attribute_orig_default_value (att, value, default_expr);
-		}
-
-	      if (error == NO_ERROR)
-		{
-		  pr_clear_value (&att->default_value.value);
-		  pr_clone_value (value, &att->default_value.value);
-		  classobj_clear_default_expr (&att->default_value.default_expr);
-		  att->default_value.default_expr = default_expr_copy;
-		}
-	      else
-		{
-		  classobj_clear_default_expr (&default_expr_copy);
+		  smt_set_attribute_orig_default_value (att, value);
 		}
 	    }
 	}
@@ -1426,7 +1414,6 @@ end:
  *   return: void
  *   att(in/out): attribute
  *   new_orig_value(in): original value to set
- *   default_expr(in): default expression
  *
  *  Note : This function modifies the initial default value of the attribute.
  *	   The initial default value is the default value assigned when adding
@@ -1435,36 +1422,18 @@ end:
  *	   unchanged (until attribute is dropped).
  *	   The (current) default value is stored as att->value; the initial
  *	   default value is stored as att->original_value.
+ *	   The default expression is not touched: callers set it on the
+ *	   attribute right before calling here.
  */
 
-static int
-smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value, DB_DEFAULT_EXPR * default_expr)
+static void
+smt_set_attribute_orig_default_value (SM_ATTRIBUTE * att, DB_VALUE * new_orig_value)
 {
   assert (att != NULL);
   assert (new_orig_value != NULL);
 
-  DB_DEFAULT_EXPR default_expr_copy;
-  int error = NO_ERROR;
-
-  /* deep-copy before clearing: default_expr may alias the attribute's own
-   * default expression (see smt_set_attribute_default) */
-  classobj_initialize_default_expr (&default_expr_copy);
-  if (default_expr != NULL)
-    {
-      error = classobj_copy_default_expr (&default_expr_copy, default_expr);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-
   pr_clear_value (&att->default_value.original_value);
   pr_clone_value (new_orig_value, &att->default_value.original_value);
-
-  classobj_clear_default_expr (&att->default_value.default_expr);
-  att->default_value.default_expr = default_expr_copy;
-
-  return NO_ERROR;
 }
 
 /*
@@ -4686,18 +4655,24 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
      The default value's domain should be checked even though the new default is not specified
    */
   db_make_null (&default_value);
+  classobj_initialize_default_expr (&default_expr);
   if (new_default_value == NULL && new_default_expr->default_expr_type == DB_DEFAULT_NONE)
     {
       pr_clone_value (&(*found_att)->default_value.value, &default_value);
-      default_expr = (*found_att)->default_value.default_expr;
 
       if (!DB_IS_NULL (&default_value))
 	{
 	  new_default_value = &default_value;
 	}
 
-      if (default_expr.default_expr_type != DB_DEFAULT_NONE)
+      if ((*found_att)->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	{
+	  error = classobj_copy_default_expr (&default_expr, &(*found_att)->default_value.default_expr);
+	  if (error != NO_ERROR)
+	    {
+	      db_value_clear (&default_value);
+	      return error;
+	    }
 	  new_default_expr = &default_expr;
 	}
     }
@@ -4710,6 +4685,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
 					 new_default_expr);
 
       db_value_clear (&default_value);
+      classobj_clear_default_expr (&default_expr);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -4757,7 +4733,7 @@ smt_change_attribute_w_dflt_w_order (DB_CTMPL * def, const char *name, const cha
   error = db_value_coerce (orig_value, new_orig_value, (*found_att)->domain);
   if (error == NO_ERROR)
     {
-      smt_set_attribute_orig_default_value (*found_att, new_orig_value, new_default_expr);
+      smt_set_attribute_orig_default_value (*found_att, new_orig_value);
     }
   else
     {
