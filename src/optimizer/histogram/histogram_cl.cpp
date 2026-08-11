@@ -475,6 +475,73 @@ histogram_collect_clear (HISTOGRAM_COLLECT *hc)
   hc->null_freqs = NULL;
 }
 
+/* histogram blob of a resolved column name, from the class statistics cache. The name-node
+ * annotation (query_graph.c) exists only while an optimization pass has run over this tree;
+ * the bind-fingerprint walk runs at EXECUTE time on a tree that may not have been optimized
+ * yet (e.g. the freshly compiled statement of a SQL-level EXECUTE), where the annotation is
+ * absent. The blob itself lives on the class object (smclass->histogram, loaded by
+ * sm_get_class_with_statistics () during any earlier optimization of the class), so look it
+ * up there. When the histogram is not loaded yet (a first EXECUTE fingerprints BEFORE this
+ * process ever optimizes the class), fetch it once into the same cache slot the optimizer
+ * uses -- later fingerprints and optimizations then hit the cache. */
+static DB_VALUE *
+histogram_blob_from_class_cache (PT_NODE *name)
+{
+  const char *class_name = name->info.name.resolved;
+  const char *attr_name = name->info.name.original;
+
+  if (class_name == NULL || attr_name == NULL)
+    {
+      return NULL;
+    }
+
+  DB_OBJECT *classop = db_find_class (class_name);
+  if (classop == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+
+  SM_CLASS *class_ = NULL;
+  if (au_fetch_class (classop, &class_, AU_FETCH_READ, AU_SELECT) != NO_ERROR || class_ == NULL)
+    {
+      er_clear ();
+      return NULL;
+    }
+  if (class_->histogram == NULL)
+    {
+      if (stats_get_histogram (classop, &class_->histogram) != NO_ERROR)
+	{
+	  /* same contract as sm_get_class_with_statistics (): the histogram is optional and a
+	   * transient fetch failure must not fail the statement */
+	  stats_free_histogram_and_init (class_->histogram);
+	  class_->histogram = NULL;
+	  er_clear ();
+	  return NULL;
+	}
+    }
+  if (class_->histogram == NULL || class_->histogram->attr_ids == NULL)
+    {
+      return NULL;
+    }
+
+  int attr_id = sm_att_id (classop, attr_name);
+  if (attr_id < 0)
+    {
+      er_clear ();
+      return NULL;
+    }
+
+  for (int h = 0; h < class_->histogram->n_attrs; h++)
+    {
+      if (class_->histogram->attr_ids[h] == attr_id)
+	{
+	  return class_->histogram->histogram[h];
+	}
+    }
+  return NULL;
+}
+
 static bool
 histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
 {
@@ -490,6 +557,10 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
     }
 
   DB_VALUE *histogram_value = lhs->info.name.histogram;
+  if (histogram_value == NULL)
+    {
+      histogram_value = histogram_blob_from_class_cache (lhs);
+    }
   if (histogram_value == NULL)
     {
       return false;
@@ -2306,47 +2377,6 @@ bind_fp_hash_name (const PT_NODE *name)
   return bind_fp_mix (h, (std::uint64_t) name->info.name.spec_id);
 }
 
-/* typed hash of a bound value -- the fallback granularity (value equality) when the predicate has
- * no usable histogram estimate */
-static std::uint64_t
-bind_fp_hash_value (const DB_VALUE *val)
-{
-  if (val == NULL || DB_IS_NULL (val))
-    {
-      return 0x9E1BULL;
-    }
-
-  hist::histogram_key key;
-  if (histogram_extract_key (val, key))
-    {
-      switch (key.kind)
-	{
-	case hist::histogram_key_kind::i64:
-	  return bind_fp_mix (1, (std::uint64_t) key.i64);
-	case hist::histogram_key_kind::dbl:
-	{
-	  std::uint64_t bits;
-	  memcpy (&bits, &key.dbl, sizeof (bits));
-	  return bind_fp_mix (2, bits);
-	}
-	case hist::histogram_key_kind::u64:
-	  return bind_fp_mix (3, key.u64);
-	case hist::histogram_key_kind::str:
-	{
-	  std::uint64_t h = 1469598103934665603ULL;
-	  for (const char c : key.str)
-	    {
-	      h ^= (unsigned char) c;
-	      h *= 1099511628211ULL;
-	    }
-	  return bind_fp_mix (4, h);
-	}
-	default:
-	  break;
-	}
-    }
-  return bind_fp_mix (5, (std::uint64_t) DB_VALUE_TYPE (val));
-}
 
 /*
  * histogram_split_hv_predicate () - recognize a histogram-priceable host-variable predicate
@@ -2532,16 +2562,16 @@ bind_fp_mix_range_bound (bind_fp_walk_ctx *ctx, PT_NODE *name, PT_NODE *bound, P
       histogram_get_comp_selectivity (name, val, is_ge, include_equal, &sel, &ok);
     }
 
-  if (ok)
+  if (!ok)
     {
-      /* stepwise for equality, 0.01 steps for the linearly interpolated range estimate
-       * (see the (column op ?) path for both rationales) */
-      component = equality ? (std::uint64_t) (sel * 1.0e12) : (std::uint64_t) (sel * 100.0);
+      /* no histogram estimate for this bound -> no band to fingerprint; contribute
+       * nothing (see the (column op ?) path for the full rationale) */
+      return;
     }
-  else
-    {
-      component = bind_fp_hash_value (val);
-    }
+
+  /* stepwise for equality, 0.01 steps for the linearly interpolated range estimate
+   * (see the (column op ?) path for both rationales) */
+  component = equality ? (std::uint64_t) (sel * 1.0e12) : (std::uint64_t) (sel * 100.0);
 
   ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) range_op), bind_fp_hash_name (name)),
 			 component);
@@ -2652,27 +2682,33 @@ bind_fp_walk (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_wa
       break;
     }
 
-  std::uint64_t component;
-  if (ok)
+  if (!ok)
     {
-      if (op == PT_EQ)
-	{
-	  /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
-	   * the same class produce the same estimate, hence the same fingerprint, hence reuse */
-	  component = (std::uint64_t) (sel * 1.0e12);
-	}
-      else
-	{
-	  /* range estimates interpolate LINEARLY inside the straddling bucket, so the raw
-	   * estimate is continuous in the bound value: a fine quantization would hand nearly
-	   * every bound its own fingerprint (a replan per value). 0.01 steps bound the
-	   * distinct fingerprints of one predicate to ~100. */
-	  component = (std::uint64_t) (sel * 100.0);
-	}
+      /* the histogram cannot price this predicate (no histogram on the column, or an
+       * unprobeable type/value). The whole machine is specified over histogram estimate
+       * bands -- without an estimate there is no band, so this term contributes nothing:
+       * a raw value hash here would (a) replan the first execution of statements on
+       * never-analyzed tables for zero gain (the recompile still prices with
+       * DEFAULT_*_SELECTIVITY) and (b) under bind sensitivity give every distinct value
+       * its own fingerprint, replanning per value. Value-shape recompiles (LIKE, MRO,
+       * SORT-LIMIT) have their own machinery and do not need this one. */
+      return node;
+    }
+
+  std::uint64_t component;
+  if (op == PT_EQ)
+    {
+      /* equality estimates are stepwise (MCV hit or the flat non-MCV residual): values in
+       * the same class produce the same estimate, hence the same fingerprint, hence reuse */
+      component = (std::uint64_t) (sel * 1.0e12);
     }
   else
     {
-      component = bind_fp_hash_value (val);
+      /* range estimates interpolate LINEARLY inside the straddling bucket, so the raw
+       * estimate is continuous in the bound value: a fine quantization would hand nearly
+       * every bound its own fingerprint (a replan per value). 0.01 steps bound the
+       * distinct fingerprints of one predicate to ~100. */
+      component = (std::uint64_t) (sel * 100.0);
     }
 
   ctx->fp = bind_fp_mix (bind_fp_mix (bind_fp_mix (ctx->fp, (std::uint64_t) op), bind_fp_hash_name (name)),
