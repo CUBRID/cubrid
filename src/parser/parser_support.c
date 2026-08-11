@@ -10799,8 +10799,13 @@ pt_cdt_put_node_header (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node, i
       return ER_FAILED;
     }
 
-  if (buf->ptr + 3 * OR_INT_SIZE + DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT) + OR_INT_SIZE
-      > buf->endptr)
+  /* everything written below plus the arity int the caller writes right
+   * after this header */
+  int tag_code_qualifier_size = 3 * OR_INT_SIZE;
+  int aligned_domain_size = DB_ALIGN (or_packed_domain_size (domain, 0), INT_ALIGNMENT);
+  int arity_size = OR_INT_SIZE;
+
+  if (buf->ptr + tag_code_qualifier_size + aligned_domain_size + arity_size > buf->endptr)
     {
       return ER_TF_BUFFER_OVERFLOW;
     }
@@ -10843,19 +10848,19 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	/* pre-check the space: see pt_cdt_put_node_header.  or_packed_value_size
 	 * is the exact pair of or_put_value and already includes the trailing
 	 * pad up to a 4-byte boundary. */
-	if (buf->ptr + OR_INT_SIZE + or_packed_value_size (db_value, 1, 1, 0) > buf->endptr)
+	int tag_size = OR_INT_SIZE;
+	int packed_value_size = or_packed_value_size (db_value, 1, 1, 0);
+
+	if (buf->ptr + tag_size + packed_value_size > buf->endptr)
 	  {
 	    return ER_TF_BUFFER_OVERFLOW;
 	  }
 
-	rc = or_put_int (buf, PT_CDT_TAG_VALUE);
+	or_put_int (buf, PT_CDT_TAG_VALUE);
+	rc = or_put_value (buf, db_value, 1, 1, 0);
 	if (rc == NO_ERROR)
 	  {
-	    rc = or_put_value (buf, db_value, 1, 1, 0);
-	  }
-	if (rc == NO_ERROR)
-	  {
-	    rc = or_put_align32 (buf);
+	    or_put_align32 (buf);
 	  }
 	return rc;
       }
@@ -10885,7 +10890,7 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	  return ER_FAILED;
 	}
 
-      rc = or_put_int (buf, arity);
+      or_put_int (buf, arity);
       for (i = 0; i < arity && rc == NO_ERROR; i++)
 	{
 	  rc = pt_cdt_put_node (parser, buf, args[i]);
@@ -10900,7 +10905,7 @@ pt_cdt_put_node (PARSER_CONTEXT * parser, OR_BUF * buf, PT_NODE * node)
 	}
 
       arity = pt_length_of_list (node->info.function.arg_list);
-      rc = or_put_int (buf, arity);
+      or_put_int (buf, arity);
       for (arg = node->info.function.arg_list; arg != NULL && rc == NO_ERROR; arg = arg->next)
 	{
 	  rc = pt_cdt_put_node (parser, buf, arg);
@@ -10950,14 +10955,10 @@ pt_cdt_serialize (PARSER_CONTEXT * parser, PT_NODE * expr, char **stream, int *s
 
       if (rc == NO_ERROR)
 	{
-	  char *fitted;
-
+	  /* the over-allocation is not worth reclaiming: the caller frees the
+	   * stream as soon as it is copied into a catalog property */
+	  *stream = data;
 	  *stream_size = CAST_BUFLEN (buf.ptr - buf.buffer);
-
-	  /* shrink the buffer to the bytes actually produced; on realloc
-	   * failure just keep the larger buffer */
-	  fitted = (char *) realloc (data, *stream_size);
-	  *stream = (fitted != NULL) ? fitted : data;
 	  return NO_ERROR;
 	}
 

@@ -3967,6 +3967,10 @@ pt_resolve_default_external (PARSER_CONTEXT * parser, PT_NODE * alter)
  *	and trailing whitespace; the string itself is not modified
  *   str(in/out): start of the region
  *   len(in/out): its length
+ *
+ * The parser printer leaves whitespace around some keyword tokens (e.g.
+ * " unix_timestamp()"), so printed fragments are trimmed before they are
+ * analyzed or embedded in the normalized DEFAULT text.
  */
 static void
 pt_trim_whitespace_edges (const char **str, size_t * len)
@@ -4011,8 +4015,7 @@ pt_default_expr_normalized_text (PARSER_CONTEXT * parser, PT_NODE * node)
       return NULL;
     }
 
-  /* trim whitespace the printer leaves around some keywords (" unix_timestamp()")
-   * up front, so the wrapped-group detection below sees the parentheses */
+  /* trim up front so the wrapped-group detection below sees the parentheses */
   len = strlen (printed);
   pt_trim_whitespace_edges (&printed, &len);
 
