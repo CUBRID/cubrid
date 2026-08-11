@@ -1264,7 +1264,7 @@ again:
 
       if (fp == NULL || fscanf (fp, format_string, user, &pid, host, &tmp_lock_time) != 4)
 	{
-	  strcpy (user, "???");
+	  strncpy_bufsize (user, "???");
 	  strcpy (host, "???");
 	  pid = 0;
 	  lock_time = 0;
@@ -1353,7 +1353,7 @@ again:
 
       if (getuserid (login_name, FILEIO_USER_NAME_SIZE) == NULL)
 	{
-	  strcpy (login_name, "???");
+	  strncpy_bufsize (login_name, "???");
 	}
 
       (void) fprintf (fp, "%s %d %s %ld", login_name, (int) GETPID (), host, time (NULL));
@@ -1456,7 +1456,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 
       if (fp == NULL || fscanf (fp, format_string, last_deleted_arv_num, user, &pid, host, &tmp_lock_time) != 5)
 	{
-	  strcpy (user, "???");
+	  strncpy_bufsize (user, "???");
 	  strcpy (host, "???");
 	  pid = 0;
 	  lock_time = 0;
@@ -1502,7 +1502,7 @@ fileio_lock_la_log_path (const char *db_full_name_p, const char *lock_path_p, in
 
       if (getuserid (login_name, FILEIO_USER_NAME_SIZE) == NULL)
 	{
-	  strcpy (login_name, "???");
+	  strncpy_bufsize (login_name, "???");
 	}
 
       if (*last_deleted_arv_num < 0)
@@ -1778,7 +1778,7 @@ fileio_check_lockby_file (char *name_info_lock_p)
       sprintf (format_string, "%%%ds %%d %%%ds", FILEIO_USER_NAME_SIZE - 1, CUB_MAXHOSTNAMELEN - 1);
       if (fscanf (fp, format_string, user, &pid, host) != 3)
 	{
-	  strcpy (user, "???");
+	  strncpy_bufsize (user, "???");
 	  strcpy (host, "???");
 	  pid = 0;
 	}
@@ -4780,10 +4780,7 @@ fileio_read_user_area (THREAD_ENTRY * thread_p, int vol_fd, PAGEID page_id, off_
 
   memcpy (area_p, io_page_p->page + start_offset, nbytes);
 
-  if (io_page_p != NULL)
-    {
-      free_and_init (io_page_p);
-    }
+  free_and_init (io_page_p);
 
   perfmon_inc_stat (thread_p, PSTAT_FILE_NUM_IOREADS);
   return area_p;
