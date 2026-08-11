@@ -478,29 +478,27 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
   int err_num = 0;
   int ret, req, col_count;
   char time[TIME_BUF_SIZE];
-  char query_with_hint[LINE_MAX];
+  char *query_with_hint;
   struct timeval start_time;
   T_CCI_ERROR err_buf;
-  T_CCI_SQLX_CMD cmd_type;
+  T_CCI_SQLX_CMD cmd_type = CUBRID_STMT_NONE;
   T_CCI_COL_INFO *col_info = NULL;
 
   do
     {
       memset (tester_err_msg, 0, sizeof (tester_err_msg));
 
-      if (br_tester_info.shard_flag == ON && !br_tester_info.single_shard)
+      query_with_hint =
+	build_hinted_query (query, (br_tester_info.shard_flag == ON && !br_tester_info.single_shard) ? shard_id : -1);
+      if (query_with_hint == NULL)
 	{
-	  snprintf (query_with_hint, sizeof (query_with_hint), "%s /*+ shard_id(%d) */" BR_TESTER_HINT, query,
-		    shard_id);
-	}
-      else
-	{
-	  snprintf (query_with_hint, sizeof (query_with_hint), "%s" BR_TESTER_HINT, query);
+	  return -1;
 	}
 
       gettimeofday (&start_time, NULL);
 
       req = cci_prepare (conn_handle, query_with_hint, 0, &err_buf);
+      FREE_MEM (query_with_hint);	/* cci_prepare keeps its own copy of the text */
       if (req < 0)
 	{
 	  snprintf_dots_truncate (tester_err_msg, sizeof (tester_err_msg) - 1, "ERROR CODE : %d\n%s\n\n",
@@ -566,7 +564,10 @@ execute_test_with_query (int conn_handle, char *query, int shard_flag)
 	    }
 	}
 
-      cci_close_req_handle (req);
+      if (req >= 0)
+	{
+	  cci_close_req_handle (req);
+	}
 
       cci_end_tran (conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
 
@@ -1680,12 +1681,18 @@ flush_stmt_one (int conn_handle, T_BR_STMT * st, int shard_flag, int shard_id, b
 
 	      if (n != m)
 		{
-		  fprintf (stderr, "warning: %d result(s) for %d array row(s)\n", n, m);
+		  fprintf (stderr, "%d result(s) for %d array row(s)\n", n, m);
+		  err_num++;
 		}
 
 	      for (r = 1; r <= n; r++)
 		{
 		  int err_no = CCI_QUERY_RESULT_ERR_NO (qr, r);
+
+		  if (err_no != 0)
+		    {
+		      err_num++;
+		    }
 
 		  print_result ((err_no == 0) ? CCI_QUERY_RESULT_RESULT (qr, r) : -1, err_no, shard_flag, shard_id,
 				time, st->query);
@@ -1994,7 +2001,8 @@ flush_batch (int conn_handle, T_BR_STMT * st, int shard_flag)
 
       if (n != st->batch_count)
 	{
-	  fprintf (stderr, "warning: %d result(s) for %d batched statement(s)\n", n, st->batch_count);
+	  fprintf (stderr, "%d result(s) for %d batched statement(s)\n", n, st->batch_count);
+	  err_num++;
 	}
 
       if (br_tester_info.shard_flag == ON)
@@ -2006,6 +2014,11 @@ flush_batch (int conn_handle, T_BR_STMT * st, int shard_flag)
       for (i = 1; i <= n; i++)
 	{
 	  int err_no = CCI_QUERY_RESULT_ERR_NO (qr, i);
+
+	  if (err_no != 0)
+	    {
+	      err_num++;
+	    }
 
 	  print_result ((err_no == 0) ? CCI_QUERY_RESULT_RESULT (qr, i) : -1, err_no, shard_flag, shard_id, time,
 			st->batch_sql[i - 1]);
