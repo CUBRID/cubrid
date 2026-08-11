@@ -55,6 +55,16 @@
  * overhead for malloc headers plus string block header.
  */
 #define STRINGS_PER_BLOCK (8192-(4*sizeof(long)+sizeof(char *)+40))
+
+/*
+ * How many of the newest blocks an allocation looks at before taking a new one.
+ * Searching the whole list costs more than the room it finds -- it grows with the statement.
+ * Searching only the newest spends blocks instead -- the tail a block just left still takes
+ * a smaller request.
+ * Searching deeper than a few does neither -- similar requests follow one another, so a
+ * block that failed one keeps failing.
+ */
+#define STRING_BLOCK_SCAN_LIMIT 8
 #define HASH_NUMBER 128
 #define NODES_PER_BLOCK 256
 
@@ -450,14 +460,20 @@ parser_create_string_block (const PARSER_CONTEXT * parser, const int length)
 void *
 parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align)
 {
-  PARSER_STRING_BLOCK *block;
+  PARSER_STRING_BLOCK *block, *candidate;
+  int scanned;
 
 
-  /* the parser's own list holds only its blocks, newest first */
-  block = (PARSER_STRING_BLOCK *) parser->string_blocks;
-  while (block != NULL && ((block->block_end - block->last_string_end) < (length + (align - 1) + 1)))
+  /* the parser's own list holds only its blocks, newest first; look at the newest few */
+  block = NULL;
+  for (candidate = (PARSER_STRING_BLOCK *) parser->string_blocks, scanned = 0;
+       candidate != NULL && scanned < STRING_BLOCK_SCAN_LIMIT; candidate = candidate->next, scanned++)
     {
-      block = block->next;
+      if ((candidate->block_end - candidate->last_string_end) >= (length + (align - 1) + 1))
+	{
+	  block = candidate;
+	  break;
+	}
     }
 
   if (block == NULL)
