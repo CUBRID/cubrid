@@ -25337,8 +25337,7 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *
  * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual.
  *       One not copied yet is read from its staged prior node in the in-flight window; only when the
- *       window lacks it too is a drain forced. Decided per hop, since any hop along the version chain
- *       may still be waiting to be copied.
+ *       window lacks it too is a drain forced. Decided per hop, since any hop may still be uncopied.
  */
 static SCAN_CODE
 heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
@@ -25357,9 +25356,8 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	  return window_scan;
 	}
 
-      /* Not in the window either: type not staged, window full when it was appended, or copied and
-       * released just now. Re-read the watermark before paying for a drain - in that last case the record
-       * has reached a page already and there is nothing left to drain for. */
+      /* Not in the window either: type not staged, ring full when it was appended, or copied and released
+       * just now. Re-read the watermark first - in that last case a page already has the record. */
       perfmon_inc_stat (thread_p, PSTAT_LOG_INFLIGHT_WINDOW_MISS);
       copied_lsa = log_Gl.append.get_copied_lsa ();
 

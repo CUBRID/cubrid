@@ -350,7 +350,6 @@ static void logpb_append_data (THREAD_ENTRY * thread_p, int length, const char *
 static void logpb_append_crumbs (THREAD_ENTRY * thread_p, int num_crumbs, const LOG_CRUMB * crumbs);
 static void logpb_next_append_page (THREAD_ENTRY * thread_p, LOG_SETDIRTY current_setdirty);
 static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
-static void logpb_free_prior_node (LOG_PRIOR_NODE * node);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
@@ -1755,10 +1754,9 @@ logpb_fetch_page (THREAD_ENTRY * thread_p, const LOG_LSA * req_lsa, LOG_CS_ACCES
 
   logpb_log ("called logpb_fetch_page with pageid = %lld\n", (long long int) req_lsa->pageid);
 
-  /* This pre-check reads copied_lsa rather than log_Gl.hdr.append_lsa, which is not atomic and can be
-   * read torn. copied_lsa never runs ahead of append_lsa, so the substitution only sends this thread
-   * into the LOG_CS block below - which re-checks append_lsa under the lock - more often than needed,
-   * never past a drain the requested page wants. */
+  /* Read copied_lsa, not log_Gl.hdr.append_lsa, which is not atomic and can be read torn. copied_lsa
+   * never runs ahead of it, so this only enters the LOG_CS block below - which re-checks append_lsa under
+   * the lock - more often than needed, never past a drain the requested page wants. */
   append_lsa = log_Gl.append.get_copied_lsa ();
   LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
 
@@ -3049,7 +3047,7 @@ logpb_append_next_record (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node)
  *
  *   node(in/out): node no reader can reach any more
  */
-static void
+void
 logpb_free_prior_node (LOG_PRIOR_NODE * node)
 {
   if (node->data_header != NULL)

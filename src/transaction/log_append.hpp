@@ -78,11 +78,9 @@ struct log_append_info
   /* todo - not really belonging here. should be part of page buffer. */
   /* Record-aligned watermark: everything below it has left the prior list, so logpb_fetch_page () reaches
    * it. Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers
-   * running ahead of the flush.
-   *
-   * Invariant copied_lsa <= append_lsa. Only that direction is safe - lagging just sends a caller through
-   * the LOG_CS re-check, running ahead makes one skip a drain it needed. Hence a store, never a max ().
-   * Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
+   * running ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through
+   * the LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never
+   * a max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
   std::atomic<LOG_LSA> copied_lsa;
   LOG_LSA prev_lsa;		/* Address of last append log record */
   LOG_PAGE *log_pgptr;		/* The log page which is fixed */

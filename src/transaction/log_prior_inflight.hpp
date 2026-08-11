@@ -46,21 +46,27 @@ namespace lockfree
   } // namespace tran
 } // namespace lockfree
 
-/* What a reader holds between pin_lookup () and unpin (), so that unpin () never has to derive it again -
- * deriving it a second time can come back empty if the window went down in between. NULL = nothing pinned. */
+/* What a reader holds between pin_lookup () and unpin (). NULL = nothing pinned. */
 using LOG_PRIOR_INFLIGHT_PIN = lockfree::tran::descriptor *;
 
 /* Lifetime of the log page buffer pool. Called under LOG_CS write mode from logpb_initialize_pool () /
  * logpb_finalize_pool (), both idempotent. While down, registration is skipped and readers drain.
- * finalize () requires that no reader is between pin_lookup () and unpin (), which is what taking down the
- * pool already means. */
+ * finalize () requires that no reader is between pin_lookup () and unpin (). */
 void log_prior_inflight_initialize ();
 void log_prior_inflight_finalize ();
 
-/* Only what prev_version_lsa can point at is worth staging. */
+/* Only what prev_version_lsa can point at is worth staging. An MVCC insert logs a registrable type but
+ * carries no undo image - udata stays NULL - and no version chain reaches it, so it is left out. An
+ * unregistered node is always safe: a reader that wants it drains. */
 inline bool
-log_prior_inflight_is_registrable (LOG_RECTYPE rectype)
+log_prior_inflight_is_registrable (const LOG_PRIOR_NODE *node)
 {
+  if (node->udata == NULL)
+    {
+      return false;
+    }
+
+  const LOG_RECTYPE rectype = node->log_header.type;
   return rectype == LOG_MVCC_UNDO_DATA || rectype == LOG_MVCC_UNDOREDO_DATA
 	 || rectype == LOG_MVCC_DIFF_UNDOREDO_DATA;
 }
@@ -79,8 +85,8 @@ void log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node
 /* Drain, in the LSA order register () used. Only for a node log_prior_inflight_is_registered () holds for. */
 void log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node);
 
-/* Reader. Returns the staged node at lsa, pinned, or NULL. A non-NULL result must be unpinned with the pin
- * this filled in. */
+/* Reader. Returns the staged node at lsa, pinned, or NULL. A non-NULL result must be unpinned with the
+ * pin this filled in. */
 LOG_PRIOR_NODE *log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa,
     LOG_PRIOR_INFLIGHT_PIN &pin);
 void log_prior_inflight_unpin (LOG_PRIOR_INFLIGHT_PIN &pin);

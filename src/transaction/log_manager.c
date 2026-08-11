@@ -9827,8 +9827,8 @@ exit:
 
 /*
  * log_get_undo_record_from_node () - read a staged prior node's undo image into recdes, without going
- *   through the log page buffer. node->udata already holds the image the drain would copy onto a page,
- *   and its zip flag sits in the data header the page path reads it from too. Node must be pinned.
+ *   through the log page buffer. node->udata holds the image the drain would copy onto a page, and its
+ *   zip flag sits in the data header the page path reads it from too. Node must be pinned.
  *   return: S_SUCCESS / S_DOESNT_FIT / S_ERROR
  */
 static SCAN_CODE
@@ -9837,7 +9837,7 @@ log_get_undo_record_from_node (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * node, R
   int header_ulength;
 
   /* the window only ever stages types this switch knows */
-  assert (log_prior_inflight_is_registrable (node->log_header.type));
+  assert (log_prior_inflight_is_registrable (node));
 
   switch (node->log_header.type)
     {

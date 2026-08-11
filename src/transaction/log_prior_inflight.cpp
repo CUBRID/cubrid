@@ -48,19 +48,16 @@
 
 namespace
 {
-  /* 64Ki slots = 1 MiB. Wide enough that a drain-paced window does not wrap. It is not tied to what the
-   * prior list itself allows - logpb_get_memsize () is 64M-256M by default, which is far more staged nodes
-   * than this - so a flush that falls behind fills the ring. Registration then stops and readers go back to
-   * draining, which is what they did before the window existed; the existing window hit/miss pair and
-   * log_prior_drain_reader_guard already show that the gain is gone. */
+  /* 64Ki slots = 1 MiB, far fewer than the prior list allows - logpb_get_memsize () is 64M-256M - so a
+   * flush that falls behind fills the ring. Registration then stops and readers drain, as they did before
+   * the window existed. */
   constexpr uint64_t LOG_INFLIGHT_CAPACITY = 1 << 16;
   static_assert ((LOG_INFLIGHT_CAPACITY & (LOG_INFLIGHT_CAPACITY - 1)) == 0,
 		 "capacity must be a power of two - the ring index is a mask");
 
-  /* How far back a reader walks before giving up and draining instead. Past this depth the scan costs more
-   * than the drain it is trying to avoid, and a window this deep means the flush is behind - which is when
-   * the wanted version is least likely to still be staged anyway. Must stay within the ring: beyond
-   * capacity the sequence numbers alias onto slots that hold something else entirely. */
+  /* How far back a reader walks before giving up and draining instead. A window this deep means the flush
+   * is behind, which is when the wanted version is least likely to still be staged. Capped to the ring:
+   * beyond capacity the sequence numbers alias onto other slots. */
   constexpr uint64_t LOG_INFLIGHT_SCAN_LIMIT = 1 << 12;
   static_assert (LOG_INFLIGHT_SCAN_LIMIT <= LOG_INFLIGHT_CAPACITY, "the scan cannot outrun the ring");
 
@@ -106,27 +103,24 @@ namespace
     return &table->get_descriptor (tran_index);
   }
 
-  /* Wait-free scan for lsa, newest slot first: the version a reader wants - the previous version of a row
-   * it has just read - is the newest thing that can still be staged, while older hops along the chain are
-   * already copied and never reach the window at all. The caller must already be pinned. */
+  /* Wait-free scan for lsa, newest slot first: the wanted version is the previous version of a row just
+   * read, so it is the newest thing that can still be staged. The caller must already be pinned. */
   LOG_PRIOR_NODE *
   log_inflight_find (const LOG_LSA &lsa)
   {
-    /* head before tail, so the snapshot cannot come out inverted: head only moves up, and a tail read
-     * afterwards is at least as new. */
+    /* head first, so the snapshot cannot come out inverted: head only moves up. */
     uint64_t head = log_Inflight_head.load (std::memory_order_acquire);
     const uint64_t tail = log_Inflight_tail.load (std::memory_order_acquire);
 
-    /* head is a snapshot the drain keeps moving, so the range can come out wider than the scan is willing
-     * to walk - and wider than the ring, which the limit is capped to for exactly that reason. */
+    /* head is a snapshot the drain keeps moving, so the range can come out wider than the scan walks. */
     if (tail - head > LOG_INFLIGHT_SCAN_LIMIT)
       {
 	head = tail - LOG_INFLIGHT_SCAN_LIMIT;
       }
 
-    for (uint64_t sequence = tail; sequence != head;)
+    for (uint64_t sequence = tail; sequence != head; --sequence)
       {
-	log_inflight_slot &slot = log_inflight_slot_at (--sequence);
+	log_inflight_slot &slot = log_inflight_slot_at (sequence - 1);
 	LOG_LSA slot_lsa = slot.start_lsa.load (std::memory_order_acquire);
 
 	if (!LSA_EQ (&slot_lsa, &lsa))
@@ -165,19 +159,7 @@ class log_prior_inflight_holder : public lockfree::tran::reclaimable_node
 
     void reclaim () override
     {
-      if (m_node->data_header != NULL)
-	{
-	  free_and_init (m_node->data_header);
-	}
-      if (m_node->udata != NULL)
-	{
-	  free_and_init (m_node->udata);
-	}
-      if (m_node->rdata != NULL)
-	{
-	  free_and_init (m_node->rdata);
-	}
-      free_and_init (m_node);
+      logpb_free_prior_node (m_node);
       delete this;
     }
 
@@ -214,10 +196,9 @@ log_prior_inflight_finalize ()
       return;			/* never built, or already finalized */
     }
 
-  /* Close the window before the table it hands out descriptors from goes away, so a reader arriving from
-   * here on finds no window and drains rather than reaching into freed memory. One already between
-   * pin_lookup () and unpin () is not covered - it holds its own descriptor pointer - which is why taking
-   * the pool down requires that there is none. */
+  /* Close the window before the table it hands descriptors out from goes away, so a reader arriving from
+   * here on drains rather than reaching into freed memory. One already holding a pin is not covered, which
+   * is why taking the pool down requires that there is none. */
   log_Inflight_table.store (NULL, std::memory_order_release);
 
   /* The window owns the holder, the prior list owns the node. Drop the holders of whatever is still
@@ -249,7 +230,7 @@ log_prior_inflight_finalize ()
 void
 log_prior_inflight_register (const LOG_LSA &start_lsa, LOG_PRIOR_NODE *node)
 {
-  assert (log_prior_inflight_is_registrable (node->log_header.type));
+  assert (log_prior_inflight_is_registrable (node));
   assert (!log_prior_inflight_is_registered (node));
 
   if (log_Inflight_table.load (std::memory_order_acquire) == NULL)
@@ -292,10 +273,8 @@ log_prior_inflight_retire (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
 
   if (slot.node.load (std::memory_order_relaxed) != node)
     {
-      /* The ring and the prior list have diverged. Continuing would unlink somebody else's slot and push
-       * head past a node a reader can still find, which frees it underneath that reader - so stop here
-       * rather than corrupt memory quietly, the same way logpb_append_next_record () stops on a start_lsa
-       * that does not match append_lsa. */
+      /* The ring and the prior list have diverged. Unlinking somebody else's slot would push head past a
+       * node a reader can still find and free it underneath - stop rather than corrupt memory quietly. */
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_prior_inflight_retire");
       return;
@@ -351,8 +330,8 @@ log_prior_inflight_pin_lookup (THREAD_ENTRY *thread_p, const LOG_LSA &lsa, LOG_P
 void
 log_prior_inflight_unpin (LOG_PRIOR_INFLIGHT_PIN &pin)
 {
-  /* Only a non-NULL pin_lookup () result is unpinned, so the pin is the descriptor that took the pin - no
-   * second derivation, which could come back NULL if the window went down in between. */
+  /* The pin is the descriptor that took it, so nothing is derived a second time - a second derivation can
+   * come back NULL if the window went down in between. */
   assert (pin != NULL);
   if (pin == NULL)
     {

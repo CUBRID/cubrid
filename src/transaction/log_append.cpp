@@ -1523,7 +1523,7 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
 
   /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
    * retires in. */
-  if (log_prior_inflight_is_registrable (node->log_header.type))
+  if (log_prior_inflight_is_registrable (node))
     {
       log_prior_inflight_register (start_lsa, node);
     }
