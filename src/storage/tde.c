@@ -146,6 +146,10 @@ tde_initialize (THREAD_ENTRY * thread_p, HFID * keyinfo_hfid)
     }
   else if (err == ER_BO_VOLUME_EXISTS)
     {
+      /* the existing keys file is expected when reusing an initialized volume. */
+      er_clear ();
+      err = NO_ERROR;
+
       vdes = fileio_mount (thread_p, boot_db_full_name (), mk_path, LOG_DBTDE_KEYS_VOLID, false, false);
       if (vdes == NULL_VOLDES)
 	{

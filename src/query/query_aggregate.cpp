@@ -1295,7 +1295,7 @@ cleanup:
  */
 int
 qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-			       bool keep_list_file, sampling_info *sampling)
+			       bool keep_list_file)
 {
   int error = NO_ERROR;
   AGGREGATE_TYPE *agg_p;
@@ -1313,8 +1313,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   const PR_TYPE *pr_type_p;
   OR_BUF buf;
   double dbl;
-  int sampling_weight = 1;
-  int adjust_sam_weight = 1;
 
   db_make_null (&sqr_val);
   db_make_null (&dbval);
@@ -1324,13 +1322,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   db_make_null (&xavg2val);
   db_make_null (&varval);
   db_make_null (&dval);
-
-  /* check sampling scan */
-  if (sampling)
-    {
-      assert (sampling->weight > 0);
-      sampling_weight = sampling->weight;
-    }
 
   for (agg_p = agg_list_p; agg_p != NULL; agg_p = agg_p->next)
     {
@@ -1345,7 +1336,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* set count-star aggregate values */
       if (agg_p->function == PT_COUNT_STAR)
 	{
-	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt * sampling_weight);
+	  db_make_bigint (agg_p->accumulator.value, agg_p->accumulator.curr_cnt);
 	}
 
       /* the value of groupby_num() remains unchanged; it will be changed while evaluating groupby_num predicates
@@ -1436,8 +1427,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->function == PT_COUNT)
 		{
-		  adjust_sam_weight = stats_adjust_sampling_weight (list_id_p->tuple_cnt, sampling_weight);
-		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt * adjust_sam_weight);
+		  db_make_bigint (agg_p->accumulator.value, list_id_p->tuple_cnt);
 		}
 	      else
 		{

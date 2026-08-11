@@ -25,9 +25,7 @@
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "regu_var.hpp"
-#include "schema_manager.h"
 #include "storage_common.h"
-#include "work_space.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -347,38 +345,6 @@ namespace parallel_scan
 	   (arg->case_sensitive);
   }
 
-  /* filtered index → serial: bug-prone + low usage, excluded as a constraint. function indexes are plain B-tree keys, not blocked. */
-  static bool
-  is_filtered_index (const INDX_INFO *indexptr)
-  {
-    if (indexptr == NULL)
-      {
-	return false;
-      }
-    if (OID_ISNULL (&indexptr->class_oid))
-      {
-	return false;
-      }
-    MOP class_mop = ws_mop (&indexptr->class_oid, NULL);
-    if (class_mop == NULL)
-      {
-	return false;
-      }
-    SM_CLASS_CONSTRAINT *cons = sm_class_constraints (class_mop);
-    for (; cons != NULL; cons = cons->next)
-      {
-	if (BTID_IS_EQUAL (&cons->index_btid, &indexptr->btid))
-	  {
-	    if (cons->filter_predicate != NULL)
-	      {
-		return true;
-	      }
-	    break;
-	  }
-      }
-    return false;
-  }
-
   template <>
   possible_flags check<false> (ACCESS_SPEC_TYPE *arg)
   {
@@ -417,12 +383,6 @@ namespace parallel_scan
 		/* orderby/groupby skip+desc need globally ordered traversal. */
 		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
 		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
-		  {
-		    set_flag (result, CANNOT_PARALLEL_SCAN);
-		  }
-
-		/* filtered index: bug-prone + low usage, excluded. */
-		if (is_filtered_index (arg->indexptr))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -543,6 +503,15 @@ namespace parallel_scan
 	set_flag (result, CANNOT_LIST_MERGE);
       }
 
+    if (sibling->after_join_pred)
+      {
+	temp = check<is_outptr_list> (sibling->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
+      }
+
     if (sibling->if_pred)
       {
 	temp = check<is_outptr_list> (sibling->if_pred);
@@ -594,11 +563,9 @@ namespace parallel_scan
 	    set_flag (result, CANNOT_LIST_MERGE);
 	    buildvalue_opt = true;
 	    AGGREGATE_TYPE *agg_it = arg->proc.buildvalue.agg_list;
-	    int agg_cnt = 0;
 	    temp = 0;
 	    for (; agg_it; agg_it = agg_it->next)
 	      {
-		agg_cnt++;
 		if (!is_buildvalue_opt_supported_function (agg_it->function))
 		  {
 		    buildvalue_opt = false;
@@ -610,10 +577,6 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-	      }
-	    if (agg_cnt != arg->outptr_list->valptr_cnt)
-	      {
-		buildvalue_opt = false;
 	      }
 	  }
 	break;
@@ -719,6 +682,15 @@ namespace parallel_scan
       {
 	set_flag (result, CANNOT_LIST_MERGE);
 	buildvalue_opt = false;
+      }
+
+    if (arg->after_join_pred)
+      {
+	temp = check<is_outptr_list> (arg->after_join_pred);
+	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
+	  {
+	    set_flag (result, CANNOT_PARALLEL_SCAN);
+	  }
       }
 
     if (arg->if_pred)
@@ -836,7 +808,9 @@ namespace parallel_scan
 
     for (XASL_NODE *xaslp = arg->aptr_list; xaslp; xaslp = xaslp->next)
       {
-	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE))
+	/* regu-linked subqueries force-blocked from parallelism (CBRD-26722) except uncorrelated
+	 * scalar ones (precomp_owner_regu set), which recurse so inner scans parallelize. */
+	if (XASL_IS_FLAGED (xaslp, XASL_LINK_TO_REGU_VARIABLE) && xaslp->precomp_owner_regu == NULL)
 	  {
 	    process_xasl_node_recursive_force_cannot_parallel (xaslp);
 	  }

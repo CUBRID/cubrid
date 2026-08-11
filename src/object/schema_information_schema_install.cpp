@@ -73,7 +73,7 @@ info_schema_install (void)
   const size_t num_vclasses = info_schema_list.size ();
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   au_set_user (Au_dba_user);
 
   using info_builder = cubschema::information_schema_builder;
@@ -96,7 +96,7 @@ info_schema_install (void)
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   info_schema_list.clear ();
 
   return error_code;

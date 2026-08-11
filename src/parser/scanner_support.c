@@ -47,12 +47,6 @@ int parser_input_host_index = 0;
 int parser_statement_OK = 0;
 PARSER_CONTEXT *this_parser;
 int parser_output_host_index = 0;
-extern "C"
-{
-  extern int yycolumn;
-  extern int csql_yyget_lineno ();
-}
-extern int yycolumn_end;
 
 
 #if defined(SA_MODE) && !defined(NDEBUG)
@@ -258,8 +252,8 @@ pt_parser_line_col (PT_NODE * node)
   if (node == NULL)
     return;
 
-  node->line_number = csql_yyget_lineno ();
-  node->column_number = yycolumn;
+  node->line_number = yytoken_start_line;
+  node->column_number = yytoken_start_column;
 }
 
 /*
@@ -875,7 +869,6 @@ pt_get_hint (const char *text, PT_HINT hint_table[], PT_NODE * node)
 	  break;
 	case PT_HINT_SELECT_RECORD_INFO:
 	case PT_HINT_SELECT_PAGE_INFO:
-	case PT_HINT_SAMPLING_SCAN:
 	  if (node->node_type == PT_SELECT)
 	    {
 	      node->info.query.q.select.hint = (PT_HINT_ENUM) (node->info.query.q.select.hint | hint_table[i].hint);

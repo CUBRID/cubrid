@@ -3797,8 +3797,9 @@ sector_page_iterator::get_next_page (THREAD_ENTRY * thread_p, QFILE_LIST_SECTOR_
 	      break;		/* current sector exhausted — fall through to next-sector fetch */
 	    }
 
+	  /* tfile may be NULL for a cached list file (query result cache):
+	   * these are disk pages read by VPID, and qmgr_get_old_page/qmgr_free_old_page tolerate a NULL tfile. */
 	  QMGR_TEMP_FILE *tfile = (QMGR_TEMP_FILE *) tfiles[m_sector_index];
-	  assert (tfile != NULL);
 
 	  PAGE_PTR page = qmgr_get_old_page (thread_p, &vpid, tfile);
 	  if (page == NULL)
@@ -7424,14 +7425,14 @@ qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
   assert (thread_p != NULL);
   assert (list_id != NULL);
-  assert (list_id->tfile_vfid != NULL);
   assert (sector_info != NULL);
 
   /* reset sector_info */
   qfile_free_list_sector_info (thread_p, sector_info);
 
-  /* membuf exists only in the first list_id */
-  if (list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
+  /* membuf exists only in the first list_id;
+   * a cached list file (query result cache) has no tfile_vfid handle, so no membuf. */
+  if (list_id->tfile_vfid != NULL && list_id->tfile_vfid->membuf != NULL && list_id->tfile_vfid->membuf_last >= 0)
     {
       assert (list_id->tfile_vfid->membuf_npages > 0);
       sector_info->membuf_tfile = list_id->tfile_vfid;
@@ -7439,14 +7440,16 @@ qfile_collect_list_sector_info (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
   for (current = list_id; current != NULL; current = current->dependent_list_id)
     {
-      assert (current->tfile_vfid != NULL);
+      /* a cached list file has no tfile_vfid handle;
+       * enumerate sectors from the preserved temp_vfid (retired by file_temp_retire_preserved on eviction). */
+      VFID *temp_vfid = (current->tfile_vfid != NULL) ? &current->tfile_vfid->temp_vfid : &current->temp_vfid;
 
-      if (VFID_ISNULL (&current->tfile_vfid->temp_vfid))
+      if (VFID_ISNULL (temp_vfid))
 	{
 	  continue;
 	}
 
-      error = file_get_all_data_sectors (thread_p, &current->tfile_vfid->temp_vfid, &collector);
+      error = file_get_all_data_sectors (thread_p, temp_vfid, &collector);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;

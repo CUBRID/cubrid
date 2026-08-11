@@ -51,6 +51,17 @@
 
 #define MAX_LEN_CONNECTION_URL    512
 
+/* SQL buffer size estimates for building the remote INSERT statement
+ * ("INSERT INTO <table> [(cols)] VALUES (?, ...)") in dblink_insert_open():
+ *   HDR_OVERHEAD     - fixed INSERT prefix + trailing slack/NUL
+ *   PER_COLUMN       - separator/parens budget per attribute name
+ *   PER_PLACEHOLDER  - budget per "?," bind placeholder
+ *   VALUES_OVERHEAD  - VALUES (...) wrapper + slack */
+#define DBLINK_INSERT_SQL_HDR_OVERHEAD      64
+#define DBLINK_INSERT_SQL_PER_COLUMN        4
+#define DBLINK_INSERT_SQL_PER_PLACEHOLDER   4
+#define DBLINK_INSERT_SQL_VALUES_OVERHEAD   16
+
 // *INDENT-OFF*
 #define  DATETIME_DECODE(date, dt, m, d, y, hour, min, sec, msec) \
   do \
@@ -1284,4 +1295,355 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
     }
 
   return S_SUCCESS;
+}
+
+/*
+ * dblink_insert_open () - Connect to remote server and prepare an INSERT statement.
+ *   return: NO_ERROR on success, error code on failure.
+ *   thread_p(in)    : thread entry
+ *   url(in)         : CCI connection URL
+ *   user(in)        : remote user name
+ *   pwd(in)         : remote password
+ *   table_name(in)  : remote table name
+ *   attr_names(in)  : explicit column names (NULL for positional INSERT)
+ *   num_attrs(in)   : length of attr_names (0 when positional)
+ *   num_bind(in)    : number of ? placeholders (= SELECT column count)
+ *   state(out)      : filled with conn_handle and stmt_handle on success
+ *
+ * Note: To prevent partial inserts, remote INSERT SELECT ALWAYS:
+ *   1. Sets CCI_AUTOCOMMIT_FALSE on the remote CCI connection (ignores DBLINK_AUTO_COMMIT)
+ *   2. Registers the connection in the per-local-transaction dblink pool
+ *      (qmgr_dblink_add_conn_handle)
+ *
+ *   dblink_insert_close() releases only the stmt handle, not the connection.
+ *   Remote COMMIT/ROLLBACK + disconnect happen in qmgr_check_dblink_trans()
+ *   when the local transaction commits or aborts (explicit COMMIT/ROLLBACK,
+ *   session AUTOCOMMIT, or EXECUTE_QUERY_WITH_COMMIT).
+ */
+int
+dblink_insert_open (THREAD_ENTRY * thread_p, const char *url, const char *user, const char *pwd,
+		    const char *table_name, char **attr_names, int num_attrs, int num_bind, DBLINK_INSERT_STATE * state)
+{
+  int ret, i, remaining;
+  T_CCI_ERROR err_buf;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  char *sql = NULL;
+  size_t sql_len, table_name_len;
+  int *attr_name_lens = NULL;
+  char *p;
+  const char *find;
+
+  state->conn_handle = -1;
+  state->stmt_handle = -1;
+
+  /* guard: must have at least one column to insert */
+  if (num_bind <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: no columns to insert");
+      return ER_DBLINK;
+    }
+
+  /* guard: attr_names must be valid if num_attrs > 0 */
+  if (num_attrs > 0 && attr_names == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: attr_names is NULL");
+      return ER_DBLINK;
+    }
+
+  /* guard: table_name, url, user, pwd must be valid */
+  if (table_name == NULL || table_name[0] == '\0')
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: table_name is NULL or empty");
+      return ER_DBLINK;
+    }
+  if (url == NULL || user == NULL || pwd == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: url/user/pwd is NULL");
+      return ER_DBLINK;
+    }
+
+  /* build connection URL with gateway flag */
+  find = strstr (url, ":?");
+  if (find)
+    {
+      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "&__gateway=true");
+    }
+  else
+    {
+      ret = snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, "?__gateway=true");
+    }
+  /* snprintf returns the length that WOULD have been written (excluding the null terminator);
+   * ret >= buffer size means the URL was truncated. This is a data-modifying path, so fail
+   * explicitly instead of connecting with a truncated (wrong) URL. */
+  if (ret < 0 || ret >= MAX_LEN_CONNECTION_URL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+	      "remote INSERT SELECT: connection URL too long (truncated)");
+      return ER_DBLINK;
+    }
+
+  /* Reuse remote conn from dblink pool within the same local transaction */
+  state->conn_handle = qmgr_dblink_find_conn_handle (thread_p, (char *) url, (char *) user, (char *) pwd, true);
+
+  if (state->conn_handle < 0)
+    {
+      state->conn_handle = cci_connect_with_url_ex (conn_url, (char *) user, (char *) pwd, &err_buf);
+      if (state->conn_handle < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+	  return ER_DBLINK;
+	}
+
+      /* Remote: CCI_AUTOCOMMIT_FALSE (ignore DBLINK_AUTO_COMMIT; partial insert prevention) */
+      ret = cci_set_autocommit (state->conn_handle, CCI_AUTOCOMMIT_FALSE);
+      if (ret < 0)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "set autocommit error");
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	  state->conn_handle = -1;
+	  return ER_DBLINK;
+	}
+
+      /* Register remote conn in dblink pool for qmgr_check_dblink_trans() at local txn end */
+      ret = qmgr_dblink_add_conn_handle (thread_p, state->conn_handle, (char *) url, (char *) user, (char *) pwd, true);
+      if (ret < 0)
+	{
+	  (void) cci_disconnect (state->conn_handle, &err_buf);
+	  state->conn_handle = -1;
+	  return ER_DBLINK;
+	}
+    }
+
+  /* build INSERT SQL: INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...) */
+  table_name_len = strlen (table_name);
+  sql_len = table_name_len + DBLINK_INSERT_SQL_HDR_OVERHEAD;
+  if (num_attrs > 0)
+    {
+      attr_name_lens = (int *) db_private_alloc (thread_p, (size_t) num_attrs * sizeof (int));
+      if (attr_name_lens == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) num_attrs * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (i = 0; i < num_attrs; i++)
+	{
+	  attr_name_lens[i] = (int) strlen (attr_names[i]);
+	  sql_len += (size_t) attr_name_lens[i] + DBLINK_INSERT_SQL_PER_COLUMN;
+	}
+    }
+  sql_len += (size_t) num_bind *DBLINK_INSERT_SQL_PER_PLACEHOLDER + DBLINK_INSERT_SQL_VALUES_OVERHEAD;
+
+  sql = (char *) db_private_alloc (thread_p, sql_len);
+  if (sql == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sql_len);
+      if (attr_name_lens != NULL)
+	{
+	  db_private_free_and_init (thread_p, attr_name_lens);
+	}
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  p = sql;
+  remaining = (int) sql_len;
+
+  /* Bounds-checked buffer append: memcpy for known-length strings, direct byte-store for single
+   * chars. Every length here is already known (literal sizeof, table_name_len, or
+   * attr_name_lens[] computed above). Each write is checked against `remaining` before copying,
+   * so a length mismatch (never expected: sql_len is an over-allocated upper bound; see
+   * DBLINK_INSERT_SQL_* estimates) fails safely via sql_build_error instead of overrunning the
+   * buffer. */
+// *INDENT-OFF*
+#define DBLINK_INSERT_SQL_APPEND_N(src, len) \
+  do \
+    { \
+      size_t _len = (size_t) (len); \
+      if (_len >= (size_t) remaining) \
+        { \
+          goto sql_build_error; \
+        } \
+      memcpy (p, (src), _len); \
+      p += _len; \
+      remaining -= (int) _len; \
+    } \
+  while (0)
+#define DBLINK_INSERT_SQL_APPEND_LIT(lit) DBLINK_INSERT_SQL_APPEND_N (lit, sizeof (lit) - 1)
+#define DBLINK_INSERT_SQL_APPEND_CHAR(c) \
+  do \
+    { \
+      if (remaining <= 1) \
+        { \
+          goto sql_build_error; \
+        } \
+      *p++ = (c); \
+      remaining--; \
+    } \
+  while (0)
+// *INDENT-ON*
+
+  DBLINK_INSERT_SQL_APPEND_LIT ("/* DBLINK INSERT */ INSERT INTO ");
+  DBLINK_INSERT_SQL_APPEND_N (table_name, table_name_len);
+
+  if (num_attrs > 0)
+    {
+      DBLINK_INSERT_SQL_APPEND_CHAR (' ');
+      DBLINK_INSERT_SQL_APPEND_CHAR ('(');
+      for (i = 0; i < num_attrs; i++)
+	{
+	  DBLINK_INSERT_SQL_APPEND_N (attr_names[i], attr_name_lens[i]);
+	  if (i < num_attrs - 1)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	    }
+	}
+      DBLINK_INSERT_SQL_APPEND_CHAR (')');
+      db_private_free_and_init (thread_p, attr_name_lens);
+    }
+
+  DBLINK_INSERT_SQL_APPEND_LIT (" VALUES (");
+  for (i = 0; i < num_bind; i++)
+    {
+      DBLINK_INSERT_SQL_APPEND_CHAR ('?');
+      if (i < num_bind - 1)
+	{
+	  DBLINK_INSERT_SQL_APPEND_LIT (", ");
+	}
+    }
+  DBLINK_INSERT_SQL_APPEND_CHAR (')');
+
+  if (remaining <= 0)
+    {
+      goto sql_build_error;
+    }
+  *p = '\0';
+
+#undef DBLINK_INSERT_SQL_APPEND_N
+#undef DBLINK_INSERT_SQL_APPEND_LIT
+#undef DBLINK_INSERT_SQL_APPEND_CHAR
+
+  /* prepare statement */
+  state->stmt_handle = cci_prepare (state->conn_handle, sql, 0, &err_buf);
+  db_private_free (thread_p, sql);
+
+  if (state->stmt_handle < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
+
+sql_build_error:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: SQL assembly truncated");
+  if (attr_name_lens != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_name_lens);
+    }
+  db_private_free (thread_p, sql);
+  /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
+  return ER_DBLINK;
+}
+
+/*
+ * dblink_insert_execute_row () - Bind values and execute one remote INSERT row.
+ *   return: NO_ERROR on success, error code on failure.
+ *   thread_p(in)  : thread entry
+ *   state(in)     : open insert state (conn_handle, stmt_handle)
+ *   vals(in)      : array of DB_VALUE* (one per SELECT output column)
+ *   num_vals(in)  : length of vals
+ *
+ * Remote transaction behavior (distinct from local session AUTOCOMMIT and DBLINK_AUTO_COMMIT):
+ *   dblink_insert_open always sets CCI_AUTOCOMMIT_FALSE on the remote connection.
+ *   All-or-nothing semantics:
+ *     - On error: dblink_insert_rollback() rolls back the remote txn immediately.
+ *     - On success: qmgr_check_dblink_trans() commits the remote txn when the
+ *       local transaction commits.
+ */
+int
+dblink_insert_execute_row (THREAD_ENTRY * thread_p, DBLINK_INSERT_STATE * state, DB_VALUE ** vals, int num_vals)
+{
+  int k, result, err;
+  T_CCI_ERROR err_buf;
+
+  (void) thread_p;
+
+  /* bind each column value */
+  for (k = 0; k < num_vals; k++)
+    {
+      if (vals[k] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote INSERT SELECT: NULL bind value");
+	  return ER_DBLINK;
+	}
+
+      err = dblink_bind_dbval_to_param (state->stmt_handle, k + 1, vals[k]);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
+  /* execute INSERT */
+  result = cci_execute (state->stmt_handle, 0, 0, &err_buf);
+  if (result < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      return ER_DBLINK;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * dblink_insert_rollback () - Rollback remote transaction immediately on error.
+ *   state(in) : connection handle to rollback
+ *
+ * Note: Called from error paths in qexec_execute_remote_insert_select() to prevent
+ *   partial inserts. Rollback is best-effort on the remote connection; if it fails,
+ *   the conn remains in the dblink pool and qmgr_check_dblink_trans() will attempt
+ *   remote ROLLBACK again at local transaction end (idempotent for already-rolled-back
+ *   remote transactions).
+ */
+void
+dblink_insert_rollback (DBLINK_INSERT_STATE * state)
+{
+  if (state->conn_handle >= 0)
+    {
+      T_CCI_ERROR err_buf;
+      (void) cci_end_tran (state->conn_handle, CCI_TRAN_ROLLBACK, &err_buf);
+    }
+}
+
+/*
+ * dblink_insert_close () - Release CCI statement handle only.
+ *   state(in/out) : stmt_handle is set to -1 after release
+ *
+ * Note: This function only closes the remote stmt handle, NOT the remote connection.
+ *   dblink_insert_open registered the connection in the per-local-transaction dblink pool;
+ *   qmgr_check_dblink_trans() runs when the local transaction ends:
+ *     - COMMIT path: xtran_server_commit -> qmgr_check_dblink_trans(false)
+ *       -> remote COMMIT + disconnect
+ *     - ABORT path:  xtran_server_abort  -> qmgr_check_dblink_trans(true)
+ *       -> remote ROLLBACK + disconnect
+ *
+ *   This asymmetric open/close design prevents partial inserts on remote:
+ *   remote INSERT SELECT uses CCI_AUTOCOMMIT_FALSE (ignores DBLINK_AUTO_COMMIT) and
+ *   ties remote commit/rollback to the local transaction:
+ *     - On error: local txn abort -> remote ROLLBACK -> no partial data on remote
+ *     - On success: local txn commit -> remote COMMIT -> all-or-nothing semantics
+ */
+void
+dblink_insert_close (DBLINK_INSERT_STATE * state)
+{
+  if (state->stmt_handle >= 0)
+    {
+      (void) cci_close_req_handle (state->stmt_handle);
+      state->stmt_handle = -1;
+    }
+
+  /* Remote connection is NOT closed here.
+   * It remains in the dblink pool until the local transaction ends;
+   * qmgr_check_dblink_trans() then remote COMMIT/ROLLBACK + disconnect. */
 }
