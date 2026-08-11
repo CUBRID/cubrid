@@ -56,6 +56,7 @@ static bool
 qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require_where)
 {
   PT_NODE *inner_spec;
+  bool has_subquery;
 
   if (subq == NULL || subq->node_type != PT_SELECT)
     {
@@ -92,6 +93,17 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
    * itself; a deeper subquery's own ROWNUM moves intact inside its scope and rightly stays invisible. */
   if (pt_has_inst_num (parser, subq->info.query.q.select.where)
       || pt_has_inst_num (parser, subq->info.query.q.select.list))
+    {
+      return false;
+    }
+
+  /* the WHERE becomes an ON condition, and the grammar forbids a subquery there
+   * (MSGCAT_SYNTAX_JOIN_COND_SUBQ, raised while parser_within_join_condition). Running after parsing, this
+   * rewrite would build an ON no one could write by hand and nothing downstream would reject it. */
+  has_subquery = false;
+  (void) parser_walk_tree (parser, subq->info.query.q.select.where, pt_check_subquery_pre, NULL,
+			   pt_check_subquery_post, &has_subquery);
+  if (has_subquery)
     {
       return false;
     }
