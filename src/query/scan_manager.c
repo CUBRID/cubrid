@@ -27,7 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
-#include "jansson.h"
+#include "cubrid_json.h"
 
 #include "error_manager.h"
 #include "heap_file.h"

@@ -35,7 +35,7 @@
 #include "porting.h"
 #include "dbi.h"
 #include "parser.h"
-#include "jansson.h"
+#include "cubrid_json.h"
 #include "memory_alloc.h"
 #include "hide_password.h"
 

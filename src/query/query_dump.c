@@ -25,7 +25,7 @@
 #include "config.h"
 #include <stdio.h>
 
-#include "jansson.h"
+#include "cubrid_json.h"
 #include "query_dump.h"
 #include "object_primitive.h"
 #include "system_parameter.h"

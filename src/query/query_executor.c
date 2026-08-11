@@ -67,7 +67,7 @@
 #include "query_dump.h"
 #include "dblink_scan.h"
 #if defined (SERVER_MODE)
-#include "jansson.h"
+#include "cubrid_json.h"
 #endif /* defined (SERVER_MODE) */
 #if defined(ENABLE_SYSTEMTAP)
 #include "probes.h"

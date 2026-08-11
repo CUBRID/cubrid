@@ -66,7 +66,7 @@
 #include "intl_support.h"
 #include "serial.h"
 #include "server_interface.h"
-#include "jansson.h"
+#include "cubrid_json.h"
 #include "pl_sr.h"
 #include "xserver_interface.h"
 #include "session.h"
