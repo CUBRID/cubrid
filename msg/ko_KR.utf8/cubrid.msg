@@ -1474,7 +1474,13 @@ $ LOADDB
 
 1374 파티션 테이블 이름을 생성 할 수 없습니다. 테이블 이름과 파티션 이름 조합의 길이가 %1$d 보다 작아야 합니다.
 
-1375 마지막 에러
+1375 유효하지 않은 UUID입니다. 'UUID_FORMAT' 인자는 HEX로 구성된 32자 문자열, 온전한 UUID 형식을 갖춘 36자 문자열, 혹은 128비트 타입을 허용합니다.
+
+1376 현재의 트랜잭션은 login 메소드를 수행하기 위해 시스템에 의해 묵시적으로 취소됩니다.
+
+1377 no-logging 인덱스 빌드가 vacuum notification 메모리 한도(%1$d 바이트)를 초과했습니다. 동시 트랜잭션이 없는 상태에서 loaddb를 재시도하거나, no-logging 옵션 없이 인덱스를 다시 빌드하십시오.
+
+1378 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1989,6 +1995,9 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 339 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 340 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
 
+337 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
+
+
 
 $set 9 MSGCAT_SET_PARSER_RUNTIME
 1 가상 메모리 없음: %1$d 바이트를 할당할 수 없습니다.
@@ -2274,6 +2283,7 @@ $set 16 MSGCAT_SET_LOG
 29 COMMENT: 보관 로그 %1$s는 로그 페이지 %2$lld 이전까지만 포함되어 HA 유틸리티에서 더 이상 사용되지 않습니다.
 30 보관 로그의 개수가 허용 최대치를 초과했습니다.
 
+31 이 백업과 로그 체인은 loaddb의 no-logging 인덱스 빌드 구간을 포함하여 그 지점을 넘는 재생 복원이 불가능합니다. loaddb 이후에 받은 백업으로 복원하거나, 시점 복원으로 그 이전 시점까지만 복원하십시오.
 $set 17 MSGCAT_SET_GLOSSARY
 1 클래스
 2 트리거

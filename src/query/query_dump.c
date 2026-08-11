@@ -482,8 +482,6 @@ qdump_access_method_string (ACCESS_METHOD access)
       return "index";
     case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
       return "sequential record info";
-    case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
-      return "sequential sampling scan";
     case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
       return "sequential page scan";
     default:
@@ -565,6 +563,7 @@ qdump_print_access_spec (ACCESS_SPEC_TYPE * spec_list_p)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   fprintf (foutput, "\n  grouped scan=%d", spec_list_p->grouped_scan);
   fprintf (foutput, ",fixed scan=%d", spec_list_p->fixed_scan);
+  fprintf (foutput, ",cached scan=%d", spec_list_p->cached_scan);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
   fprintf (foutput, ",single fetch=%d", spec_list_p->single_fetch);
 
@@ -2428,13 +2427,6 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
-      if (XASL_IS_FLAGED (xasl_p, XASL_SAMPLING_SCAN))
-	{
-	  XASL_CLEAR_FLAG (xasl_p, XASL_SAMPLING_SCAN);
-	  fprintf (foutput, "%sXASL_SAMPLING_SCAN", (nflag ? "|" : ""));
-	  nflag++;
-	}
-
       if (XASL_IS_FLAGED (xasl_p, XASL_NL_SEMIJOIN))
 	{
 	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_SEMIJOIN);
@@ -2795,6 +2787,12 @@ qdump_print_xasl (xasl_node * xasl_p)
   if (xasl_p->type == BUILDLIST_PROC)
     {
       qdump_print_xasl (xasl_p->proc.buildlist.eptr_list);
+    }
+
+  if (xasl_p->type == CTE_PROC)
+    {
+      qdump_print_xasl (xasl_p->proc.cte.non_recursive_part);
+      qdump_print_xasl (xasl_p->proc.cte.recursive_part);
     }
 
   qdump_print_xasl (xasl_p->next);
@@ -3384,6 +3382,7 @@ qdump_print_stats_json (xasl_node * xasl_p, json_t * parent)
 	}
 
       json_object_set_new (groupby, "rows", json_integer (gstats->rows));
+      json_object_set_new (groupby, "readrows", json_integer (gstats->read_rows));
       json_object_set_new (proc, "GROUPBY", groupby);
       if (gstats->parallel_num > 0)
 	{
@@ -3979,7 +3978,7 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	{
 	  fprintf (fp, ", sort: false");
 	}
-
+      fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
 
       if (gstats->parallel_num > 0)

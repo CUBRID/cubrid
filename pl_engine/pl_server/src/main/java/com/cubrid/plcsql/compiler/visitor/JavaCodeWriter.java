@@ -106,8 +106,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // -----------------------------------------------------------------
     // Unit
     //
-    private static final String tmplGetConn =
-            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::?autonomous_transaction=%s\");";
+    private static final String strGetConn =
+            "final Connection conn = DriverManager.getConnection(\"jdbc:default:connection::\");";
 
     private static final String[] tmplMainUserCode =
             new String[] {
@@ -172,12 +172,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         if (node.connectionRequired) {
             javaTypesUsed.add("java.sql.*");
         }
-
-        // get connection, if necessary
-        String strGetConn =
-                node.connectionRequired
-                        ? String.format(tmplGetConn, node.autonomousTransaction)
-                        : "";
 
         // declarations
         Object codeDeclClass =
@@ -298,7 +292,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+PARAMETERS'%",
                 objParamArr,
                 "%'GET-CONNECTION'%",
-                strGetConn,
+                node.connectionRequired ? strGetConn : "",
                 "%'+RECORD-DEFS'%",
                 recordDefs,
                 "%'+RECORD-ASSIGN-FUNCS'%",
