@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -83,4 +84,4 @@ extern "C"
 }
 #endif
 
-#endif /* _CUBRID_JSON_H_ */
+#endif				/* _CUBRID_JSON_H_ */

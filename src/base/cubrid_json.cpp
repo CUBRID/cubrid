@@ -1,4 +1,5 @@
 /*
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,9 @@
 #include <cstdarg>
 #include <cstring>
 #include <vector>
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Memory model
@@ -78,7 +82,7 @@ namespace
   }
 
   void
-  arena_release (json_arena * a)
+  arena_release (json_arena *a)
   {
     for (size_t i = 0; i < a->nodes.size (); i++)
       {
@@ -109,7 +113,7 @@ namespace
 
   /* the node stops being a root once its data has been moved into a parent */
   void
-  node_attached (node_impl * n, rapidjson::Value * where)
+  node_attached (node_impl *n, rapidjson::Value *where)
   {
     n->held = where;
     if (n->is_root)
@@ -120,21 +124,21 @@ namespace
   }
 
   inline node_impl *
-  N (json_t * p)
+  N (json_t *p)
   {
-    return reinterpret_cast < node_impl * >(p);
+    return reinterpret_cast < node_impl * > (p);
   }
 
   inline const node_impl *
-  N (const json_t * p)
+  N (const json_t *p)
   {
-    return reinterpret_cast < const node_impl * >(p);
+    return reinterpret_cast < const node_impl * > (p);
   }
 
   inline json_t *
-  H (node_impl * n)
+  H (node_impl *n)
   {
-    return reinterpret_cast < json_t * >(n);
+    return reinterpret_cast < json_t * > (n);
   }
 }				// namespace
 
@@ -208,7 +212,7 @@ json_string (const char *value)
 }
 
 int
-json_object_set_new (json_t * object, const char *key, json_t * value)
+json_object_set_new (json_t *object, const char *key, json_t *value)
 {
   if (object == NULL || key == NULL || value == NULL)
     {
@@ -217,7 +221,7 @@ json_object_set_new (json_t * object, const char *key, json_t * value)
 
   node_impl *o = N (object);
   node_impl *v = N (value);
-  pool_type & pool = o->arena->pool;
+  pool_type &pool = o->arena->pool;
 
   if (!o->held->IsObject ())
     {
@@ -226,12 +230,12 @@ json_object_set_new (json_t * object, const char *key, json_t * value)
 
   rapidjson::Value k (key, (rapidjson::SizeType) strlen (key), pool);
   o->held->AddMember (k, *v->held, pool);
-  node_attached (v, &(o->held->MemberEnd () - 1)->value);
+  node_attached (v, & (o->held->MemberEnd () - 1)->value);
   return 0;
 }
 
 int
-json_array_append_new (json_t * array, json_t * value)
+json_array_append_new (json_t *array, json_t *value)
 {
   if (array == NULL || value == NULL)
     {
@@ -247,12 +251,12 @@ json_array_append_new (json_t * array, json_t * value)
     }
 
   a->held->PushBack (*v->held, a->arena->pool);
-  node_attached (v, &(*a->held)[a->held->Size () - 1]);
+  node_attached (v, & (*a->held)[a->held->Size () - 1]);
   return 0;
 }
 
 int
-json_object_clear (json_t * object)
+json_object_clear (json_t *object)
 {
   if (object == NULL)
     {
@@ -266,7 +270,7 @@ json_object_clear (json_t * object)
 }
 
 void
-json_decref (json_t * node)
+json_decref (json_t *node)
 {
   if (node == NULL)
     {
@@ -288,13 +292,13 @@ json_decref (json_t * node)
 }
 
 void
-json_delete (json_t * node)
+json_delete (json_t *node)
 {
   json_decref (node);
 }
 
 char *
-json_dumps (const json_t * node, size_t flags)
+json_dumps (const json_t *node, size_t flags)
 {
   if (node == NULL)
     {
@@ -342,7 +346,7 @@ json_pack (const char *fmt, ...)
   va_start (ap, fmt);
 
   node_impl *root = node_new (rapidjson::kObjectType);
-  pool_type & pool = root->arena->pool;
+  pool_type &pool = root->arena->pool;
   const char *p = fmt + 1;
   bool ok = true;
 
@@ -372,99 +376,99 @@ json_pack (const char *fmt, ...)
       switch (*p)
 	{
 	case 'o':
-	  {
-	    json_t *arg = va_arg (ap, json_t *);
-	    if (arg != NULL)
-	      {
-		node_impl *v = N (arg);
-		root->held->AddMember (k, *v->held, pool);
-		node_attached (v, &(root->held->MemberEnd () - 1)->value);
-	      }
-	    else
-	      {
-		rapidjson::Value nul (rapidjson::kNullType);
-		root->held->AddMember (k, nul, pool);
-	      }
-	    p++;
-	    break;
-	  }
+	{
+	  json_t *arg = va_arg (ap, json_t *);
+	  if (arg != NULL)
+	    {
+	      node_impl *v = N (arg);
+	      root->held->AddMember (k, *v->held, pool);
+	      node_attached (v, & (root->held->MemberEnd () - 1)->value);
+	    }
+	  else
+	    {
+	      rapidjson::Value nul (rapidjson::kNullType);
+	      root->held->AddMember (k, nul, pool);
+	    }
+	  p++;
+	  break;
+	}
 	case 's':
-	  {
-	    const char *s = va_arg (ap, const char *);
-	    rapidjson::Value sv (s != NULL ? s : "", (rapidjson::SizeType) (s != NULL ? strlen (s) : 0), pool);
-	    root->held->AddMember (k, sv, pool);
-	    p++;
-	    break;
-	  }
+	{
+	  const char *s = va_arg (ap, const char *);
+	  rapidjson::Value sv (s != NULL ? s : "", (rapidjson::SizeType) (s != NULL ? strlen (s) : 0), pool);
+	  root->held->AddMember (k, sv, pool);
+	  p++;
+	  break;
+	}
 	case 'i':
-	  {
-	    rapidjson::Value v (va_arg (ap, int));
-	    root->held->AddMember (k, v, pool);
-	    p++;
-	    break;
-	  }
+	{
+	  rapidjson::Value v (va_arg (ap, int));
+	  root->held->AddMember (k, v, pool);
+	  p++;
+	  break;
+	}
 	case 'I':
-	  {
-	    rapidjson::Value v;
-	    v.SetInt64 ((int64_t) va_arg (ap, json_int_t));
-	    root->held->AddMember (k, v, pool);
-	    p++;
-	    break;
-	  }
+	{
+	  rapidjson::Value v;
+	  v.SetInt64 ((int64_t) va_arg (ap, json_int_t));
+	  root->held->AddMember (k, v, pool);
+	  p++;
+	  break;
+	}
 	case 'f':
-	  {
-	    rapidjson::Value v (va_arg (ap, double));
-	    root->held->AddMember (k, v, pool);
-	    p++;
-	    break;
-	  }
+	{
+	  rapidjson::Value v (va_arg (ap, double));
+	  root->held->AddMember (k, v, pool);
+	  p++;
+	  break;
+	}
 	case 'b':
-	  {
-	    rapidjson::Value v (va_arg (ap, int) != 0);
-	    root->held->AddMember (k, v, pool);
-	    p++;
-	    break;
-	  }
+	{
+	  rapidjson::Value v (va_arg (ap, int) != 0);
+	  root->held->AddMember (k, v, pool);
+	  p++;
+	  break;
+	}
 	case '[':
-	  {
-	    p++;
-	    rapidjson::Value arr (rapidjson::kArrayType);
-	    while (*p != '\0' && *p != ']')
-	      {
-		if (*p == ',' || *p == ' ')
-		  {
-		    p++;
-		    continue;
-		  }
-		if (*p != 'o')
-		  {
-		    ok = false;
-		    break;
-		  }
-		json_t *arg = va_arg (ap, json_t *);
-		if (arg != NULL)
-		  {
-		    node_impl *v = N (arg);
-		    arr.PushBack (*v->held, pool);
-		    node_attached (v, &arr[arr.Size () - 1]);
-		  }
-		else
-		  {
-		    arr.PushBack (rapidjson::Value (rapidjson::kNullType), pool);
-		  }
-		p++;
-	      }
-	    if (!ok)
-	      {
-		break;
-	      }
-	    if (*p == ']')
-	      {
-		p++;
-	      }
-	    root->held->AddMember (k, arr, pool);
-	    break;
-	  }
+	{
+	  p++;
+	  rapidjson::Value arr (rapidjson::kArrayType);
+	  while (*p != '\0' && *p != ']')
+	    {
+	      if (*p == ',' || *p == ' ')
+		{
+		  p++;
+		  continue;
+		}
+	      if (*p != 'o')
+		{
+		  ok = false;
+		  break;
+		}
+	      json_t *arg = va_arg (ap, json_t *);
+	      if (arg != NULL)
+		{
+		  node_impl *v = N (arg);
+		  arr.PushBack (*v->held, pool);
+		  node_attached (v, &arr[arr.Size () - 1]);
+		}
+	      else
+		{
+		  arr.PushBack (rapidjson::Value (rapidjson::kNullType), pool);
+		}
+	      p++;
+	    }
+	  if (!ok)
+	    {
+	      break;
+	    }
+	  if (*p == ']')
+	    {
+	      p++;
+	    }
+	  root->held->AddMember (k, arr, pool);
+	  break;
+	}
 	default:
 	  ok = false;
 	  break;
@@ -482,7 +486,7 @@ json_pack (const char *fmt, ...)
 }
 
 void
-json_set_alloc_funcs (void *(*malloc_fn) (size_t), void (*free_fn) (void *))
+json_set_alloc_funcs (void * (*malloc_fn) (size_t), void (*free_fn) (void *))
 {
   /* RapidJSON manages its own allocation */
   (void) malloc_fn;
