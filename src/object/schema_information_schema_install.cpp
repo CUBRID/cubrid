@@ -523,6 +523,7 @@ namespace cubschema
       /* SQL:2016 standard names (other views use create_time/update_time) */
       {"created", "datetime"},
       {"last_altered", "datetime"},
+      {"definer", format_varchar (DB_MAX_USER_LENGTH)},
       {attribute_kind::QUERY_SPEC, sm_define_view_routines_spec ()}
     },
     // constraint
@@ -838,6 +839,7 @@ namespace cubschema
       {"action_reference_new_table", format_varchar (3)},
       {"action_reference_old_row", format_varchar (3)},
       {"action_reference_new_row", format_varchar (3)},
+      {"definer", format_varchar (DB_MAX_USER_LENGTH)},
       {"trigger_comment", format_varchar (1024)},
       {"create_time", "datetime"},
       {"update_time", "datetime"},
@@ -873,6 +875,7 @@ namespace cubschema
       {"view_definition", "string"},
       {"check_option", format_varchar (8)},
       {"is_updatable", format_varchar (3)},
+      {"definer", format_varchar (DB_MAX_USER_LENGTH)},
       {"view_comment", format_varchar (2048)},
       {"create_time", "datetime"},
       {"update_time", "datetime"},
