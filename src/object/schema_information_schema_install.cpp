@@ -167,6 +167,7 @@ namespace cubschema
       {"udt_catalog", format_varchar (255)},
       {"udt_schema", format_varchar (DB_MAX_USER_LENGTH)},
       {"udt_name", format_varchar (255)},
+      {"column_key", format_varchar (3)},
       {"extra", format_varchar (255)},
       {"privileges", format_varchar (512)},
       {"column_comment", format_varchar (2048)},

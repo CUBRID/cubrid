@@ -207,6 +207,8 @@ const char *sm_define_view_columns_spec (void)
       "NULL AS [udt_catalog], "
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
+      /* char -> varchar(3) */
+      "CAST (COALESCE ([key_info].[column_key], '') AS VARCHAR (3)) AS [column_key], "
       "CONCAT_WS (' ', "
         "IF (([attr].[flags] & %d) <> 0, 'auto_increment', NULL), "
         "IF (([attr].[flags] & %d) <> 0, 'partition_key', NULL)"
@@ -230,6 +232,27 @@ const char *sm_define_view_columns_spec (void)
       "LEFT OUTER JOIN [%s] AS [charset] ON [charset].[charset_id] = [dom].[code_set] "
       /* CT_COLLATION_NAME */
       "INNER JOIN [%s] AS [coll] ON [coll].[coll_id] = [dom].[collation_id] "
+      "LEFT OUTER JOIN ("
+        "SELECT "
+          "[idx].[class_of] AS [class_of], "
+          "[idx_key].[key_attr_name] AS [key_attr_name], "
+          "CASE "
+            "WHEN MAX ([idx].[is_primary_key]) = 1 THEN 'PRI' "
+            "WHEN MAX (IF ([idx].[is_unique] = 1 AND [idx].[key_count] = 1, 1, 0)) = 1 THEN 'UNI' "
+            "ELSE 'MUL' "
+          "END AS [column_key] "
+        "FROM "
+          /* CT_INDEXKEY_NAME */
+          "[%s] AS [idx_key] "
+          /* CT_INDEX_NAME */
+          "INNER JOIN [%s] AS [idx] ON [idx] = [idx_key].[index_of] "
+        "WHERE "
+          "[idx].[is_primary_key] = 1 "
+          "OR [idx_key].[key_order] = 0 "
+        "GROUP BY "
+          "[idx].[class_of], [idx_key].[key_attr_name]"
+      ") AS [key_info] "
+        "ON [key_info].[class_of] = [cls] AND [key_info].[key_attr_name] = [attr].[attr_name] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
@@ -246,7 +269,9 @@ const char *sm_define_view_columns_spec (void)
     CT_DOMAIN_NAME,
     CT_DATATYPE_NAME,
     CT_CHARSET_NAME,
-    CT_COLLATION_NAME);
+    CT_COLLATION_NAME,
+    CT_INDEXKEY_NAME,
+    CT_INDEX_NAME);
   // *INDENT-ON*
 
   return stmt;
