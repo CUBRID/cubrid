@@ -54,6 +54,7 @@
 #include "transaction_cl.h"
 #include "dbtype.h"
 #include "histogram_cl.hpp"
+#include "optimizer.h"
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
@@ -3481,6 +3482,7 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
 {
   int err;
   unsigned int save_recompile = statement->flag.recompile;
+  int save_level;
 
   if (statement->xasl_id != NULL)
     {
@@ -3492,7 +3494,18 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
   pt_reset_error (parser);
   parser->query_id = NULL_QUERY_ID;
 
+  /* this regeneration is an internal step of executing the statement, not a compilation
+   * the user asked for: with plan dumping on (SET OPTIMIZATION LEVEL >= 0x100) it would
+   * print a second, unrequested plan dump for statements that merely happen to be
+   * prepared -- noise in every tool that captures the session output, and an answer-file
+   * dependency on the optimizer for test cases that do not verify plans at all. Keep the
+   * optimization level itself, drop only the dump bits for the span of the replan. */
+  qo_get_optimization_param (&save_level, QO_PARAM_LEVEL);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, save_level & 0xFF);
+
   err = do_prepare_statement (parser, statement);
+
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, save_level);
 
   /* the forced-recompile intent is scoped to this replan; restore the flag so later
    * re-prepares of this kept node (e.g. the XASLNODE_RECOMPILE_REQUESTED retry) can
