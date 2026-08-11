@@ -1878,16 +1878,54 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
   {
     EXPR_KERNEL_FN fn;
     const char *name;
-  } names[] = {
-    {expr_k_add_int, "add_int"}, {expr_k_sub_int, "sub_int"}, {expr_k_mul_int, "mul_int"},
-    {expr_k_div_int, "div_int"}, {expr_k_add_bigint, "add_bigint"}, {expr_k_sub_bigint, "sub_bigint"},
-    {expr_k_mul_bigint, "mul_bigint"}, {expr_k_div_bigint, "div_bigint"}, {expr_k_add_double, "add_double"},
-    {expr_k_sub_double, "sub_double"}, {expr_k_mul_double, "mul_double"}, {expr_k_add_numeric, "add_numeric"},
-    {expr_k_sub_numeric, "sub_numeric"}, {expr_k_mul_numeric, "mul_numeric"}, {expr_k_div_numeric, "div_numeric"},
-    {expr_k_coerce_numeric, "coerce_numeric"}, {expr_k_nvl, "nvl_select"}, {expr_k_cast, "cast"},
-    {expr_k_case, "case"}, {expr_k_predicate, "predicate"}, {expr_k_leaf_fetch, "leaf_fetch"},
-    {expr_k_hostvar, "hostvar"}, {expr_k_fallback, "fallback"},
-  };
+  } names[] =
+  {
+    {
+    expr_k_add_int, "add_int"},
+    {
+    expr_k_sub_int, "sub_int"},
+    {
+    expr_k_mul_int, "mul_int"},
+    {
+    expr_k_div_int, "div_int"},
+    {
+    expr_k_add_bigint, "add_bigint"},
+    {
+    expr_k_sub_bigint, "sub_bigint"},
+    {
+    expr_k_mul_bigint, "mul_bigint"},
+    {
+    expr_k_div_bigint, "div_bigint"},
+    {
+    expr_k_add_double, "add_double"},
+    {
+    expr_k_sub_double, "sub_double"},
+    {
+    expr_k_mul_double, "mul_double"},
+    {
+    expr_k_add_numeric, "add_numeric"},
+    {
+    expr_k_sub_numeric, "sub_numeric"},
+    {
+    expr_k_mul_numeric, "mul_numeric"},
+    {
+    expr_k_div_numeric, "div_numeric"},
+    {
+    expr_k_coerce_numeric, "coerce_numeric"},
+    {
+    expr_k_nvl, "nvl_select"},
+    {
+    expr_k_cast, "cast"},
+    {
+    expr_k_case, "case"},
+    {
+    expr_k_predicate, "predicate"},
+    {
+    expr_k_leaf_fetch, "leaf_fetch"},
+    {
+    expr_k_hostvar, "hostvar"},
+    {
+  expr_k_fallback, "fallback"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
