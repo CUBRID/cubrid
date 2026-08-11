@@ -55,6 +55,7 @@
 #include "dbtype.h"
 #include "histogram_cl.hpp"
 #include "optimizer.h"
+#include "jansson.h"
 #include "util_func.h"
 #include "xasl.h"
 #include "query_cl.h"
@@ -3502,6 +3503,36 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
    * optimization level itself, drop only the dump bits for the span of the replan. */
   qo_get_optimization_param (&save_level, QO_PARAM_LEVEL);
   qo_set_optimization_param (NULL, QO_PARAM_LEVEL, save_level & 0xFF);
+
+  /* the marker compilation queued its plan in parser->plan_trace; that plan is about to
+   * be superseded and will never execute, so sending it to the session trace would show
+   * a plan the execution did not use (and, when the replan picks the same plan, a
+   * duplicated block). Keep only the plan of the compilation that actually runs. */
+  if (parser->query_trace == true && parser->num_plan_trace > 0)
+    {
+      int i;
+
+      for (i = 0; i < parser->num_plan_trace; i++)
+	{
+	  if (parser->plan_trace[i].format == QUERY_TRACE_TEXT)
+	    {
+	      if (parser->plan_trace[i].trace.text_plan != NULL)
+		{
+		  free_and_init (parser->plan_trace[i].trace.text_plan);
+		}
+	    }
+	  else if (parser->plan_trace[i].format == QUERY_TRACE_JSON)
+	    {
+	      if (parser->plan_trace[i].trace.json_plan != NULL)
+		{
+		  json_object_clear (parser->plan_trace[i].trace.json_plan);
+		  json_decref (parser->plan_trace[i].trace.json_plan);
+		  parser->plan_trace[i].trace.json_plan = NULL;
+		}
+	    }
+	}
+      parser->num_plan_trace = 0;
+    }
 
   err = do_prepare_statement (parser, statement);
 
