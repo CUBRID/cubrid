@@ -174,7 +174,7 @@ const char *sm_define_view_column_privileges_spec (void)
 
 const char *sm_define_view_columns_spec (void)
 {
-  static char stmt [4096];
+  static char stmt [8192];
 
   // *INDENT-OFF*
   snprintf (stmt, sizeof (stmt),
@@ -207,6 +207,25 @@ const char *sm_define_view_columns_spec (void)
       "NULL AS [udt_catalog], "
       "NULL AS [udt_schema], "
       "NULL AS [udt_name], "
+      "CASE "
+        /* DB_TYPE_STRING/VARCHAR */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('VARCHAR(', [dom].[prec], ')') "
+        /* DB_TYPE_CHAR */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('CHAR(', [dom].[prec], ')') "
+        /* DB_TYPE_BIT */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT(', [dom].[prec], ')') "
+        /* DB_TYPE_VARBIT */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT VARYING(', [dom].[prec], ')') "
+        /* DB_TYPE_NUMERIC */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('NUMERIC(', [dom].[prec], ',', [dom].[scale], ')') "
+        /* DB_TYPE_SHORT/SMALLINT */
+        "WHEN [attr].[data_type] = %d THEN 'SMALLINT' "
+        /* DB_TYPE_ENUMERATION */
+        "WHEN [attr].[data_type] = %d THEN CONCAT ('ENUM(', "
+          /* the quote in the pattern keeps ", " inside an element from being replaced */
+          "REPLACE (TRIM ('}' FROM TRIM ('{' FROM COLLECTION_TO_STRING ([dom].[enumeration]))), ''', ', ''','), ')') "
+        "ELSE [dt].[type_name] "
+      "END AS [column_type], "
       /* char -> varchar(3) */
       "CAST (COALESCE ([key_info].[column_key], '') AS VARCHAR (3)) AS [column_key], "
       "CONCAT_WS (' ', "
@@ -262,6 +281,13 @@ const char *sm_define_view_columns_spec (void)
     DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
     DB_TYPE_STRING, DB_TYPE_CHAR,
     DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_STRING,
+    DB_TYPE_CHAR,
+    DB_TYPE_BIT,
+    DB_TYPE_VARBIT,
+    DB_TYPE_NUMERIC,
+    DB_TYPE_SHORT,
+    DB_TYPE_ENUMERATION,
     DB_ATTOPT_AUTO_INCREMENT, DB_ATTOPT_PARTITION_KEY,
     DB_ATTOPT_INVISIBLE_COLUMN,
     CT_CLASS_NAME,
