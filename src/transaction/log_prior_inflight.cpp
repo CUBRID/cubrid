@@ -50,14 +50,16 @@ namespace
 {
   /* 64Ki slots = 1 MiB, far fewer than the prior list allows - logpb_get_memsize () is 64M-256M - so a
    * flush that falls behind fills the ring. Registration then stops and readers drain, as they did before
-   * the window existed. */
+   * the window existed. Deliberately not counted on its own: window_miss and log_prior_drain_reader_guard
+   * already say the gain is gone. */
   constexpr uint64_t LOG_INFLIGHT_CAPACITY = 1 << 16;
   static_assert ((LOG_INFLIGHT_CAPACITY & (LOG_INFLIGHT_CAPACITY - 1)) == 0,
 		 "capacity must be a power of two - the ring index is a mask");
 
-  /* How far back a reader walks before giving up and draining instead. A window this deep means the flush
-   * is behind, which is when the wanted version is least likely to still be staged. Capped to the ring:
-   * beyond capacity the sequence numbers alias onto other slots. */
+  /* How far back a reader walks before giving up and draining instead. Past this depth the walk costs more
+   * than the drain it is avoiding, and a window this deep means the flush is behind - which is when the
+   * wanted version is least likely to still be staged. Capped to the ring: beyond capacity the sequence
+   * numbers alias onto other slots. */
   constexpr uint64_t LOG_INFLIGHT_SCAN_LIMIT = 1 << 12;
   static_assert (LOG_INFLIGHT_SCAN_LIMIT <= LOG_INFLIGHT_CAPACITY, "the scan cannot outrun the ring");
 

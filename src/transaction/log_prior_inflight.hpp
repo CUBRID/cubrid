@@ -56,8 +56,9 @@ void log_prior_inflight_initialize ();
 void log_prior_inflight_finalize ();
 
 /* Only what prev_version_lsa can point at is worth staging. An MVCC insert logs a registrable type but
- * carries no undo image - udata stays NULL - and no version chain reaches it, so it is left out. An
- * unregistered node is always safe: a reader that wants it drains. */
+ * carries no undo image - udata stays NULL - and no version chain reaches it, so the udata check has to
+ * stay: staging one spends a slot on a node nothing reads, and reading one dereferences NULL in
+ * log_get_undo_record_from_data (). An unregistered node is always safe; a reader that wants it drains. */
 inline bool
 log_prior_inflight_is_registrable (const LOG_PRIOR_NODE *node)
 {
