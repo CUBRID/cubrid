@@ -13005,10 +13005,12 @@ exit:
  *   callback_func (in): callback executed without any fixed pages
  *   callback_args (in): callback arguments
  *
- * Note: All pages fixed by the current thread must be ordered pages and every fix must have a watcher. The callback
- *       must not leave any page fixed. Previously fixed pages are re-fixed in page order even when the callback
- *       returns an error. If re-fixing fails, some watchers may remain without a fixed page and callers must check
- *       watcher page pointers before using them.
+ * Note: Every ordered page fixed by the current thread must have a watcher, because its fix can only be restored
+ *       through the watcher's page pointer. Fixes on pages that are not ordered pages are left alone: the heap
+ *       allocation path never fixes them, so keeping them cannot deadlock with the allocating thread. The callback
+ *       must not leave any page fixed. Unfixed pages are re-fixed in page order even when the callback returns an
+ *       error. If re-fixing fails, some watchers may remain without a fixed page and callers must check watcher page
+ *       pointers before using them.
  */
 #if !defined(NDEBUG)
 int
@@ -13058,17 +13060,21 @@ pgbuf_ordered_callback_release (THREAD_ENTRY * thread_p, PGBUF_ORDERED_CALLBACK_
 	  goto exit;
 	}
 
+      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
+	{
+	  /* not part of the heap latch ordering protocol, so the heap allocation path never fixes it and keeping it */
+	  /* across the callback cannot deadlock with the thread that owns the allocation. query result page fixed by */
+	  /* the select side of an INSERT ... SELECT is the usual case here, and it carries no watcher. leave it fixed */
+	  /* and untouched, exactly as pgbuf_ordered_fix does for the holders it cannot restore. */
+	  continue;
+	}
+
       if (holder->watch_count <= 0 || holder->fix_count != holder->watch_count
 	  || holder->watch_count > PGBUF_MAX_PAGE_WATCHERS)
 	{
-	  /* raw fix cannot be restored because there is no watcher whose page pointer can be updated. */
-	  assert_release (false);
-	  er_status = ER_FAILED_ASSERTION;
-	  goto exit;
-	}
-
-      if (!PGBUF_IS_ORDERED_PAGETYPE (holder->bufptr->iopage_buffer->iopage.prv.ptype))
-	{
+	  /* ordered page whose fix cannot be restored, because there is no watcher whose page pointer can be */
+	  /* updated. It may be this heap's header or last page, which the allocating thread needs, so waiting while */
+	  /* holding it could deadlock. refuse instead of unfixing what we cannot put back. */
 	  assert_release (false);
 	  er_status = ER_FAILED_ASSERTION;
 	  goto exit;

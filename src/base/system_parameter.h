@@ -537,8 +537,11 @@ enum param_id
 
   PRM_ID_BESTSPACE_SHARD_COUNT,
 
+  PRM_ID_BESTSPACE_DISTRIBUTED_INSERT,
+  PRM_ID_BESTSPACE_CACHE_COUNT,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_BESTSPACE_SHARD_COUNT
+  PRM_LAST_ID = PRM_ID_BESTSPACE_CACHE_COUNT
 };
 typedef enum param_id PARAM_ID;
 
