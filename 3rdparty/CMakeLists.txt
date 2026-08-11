@@ -95,7 +95,20 @@ include(ExternalProject)
 
 set (3RDPARTY_LIBS_DIR ${CMAKE_BINARY_DIR}/3rdparty)
 set_property(DIRECTORY PROPERTY EP_BASE "${3RDPARTY_LIBS_DIR}")
-set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic CFLAGS=-w CXXFLAGS=-w)
+
+# What CUBRID adds to every third-party library built below: -fPIC because these
+# are static archives linked into CUBRID's shared libraries, -w because their
+# warnings are not actionable here.
+#
+# The optimization level stays per-library, at whatever upstream declares and
+# tests; debug info is not carried over. Beware how flags reach a library: a make
+# command-line variable overrides the Makefile's own assignments, and CFLAGS given
+# to configure suppresses autoconf's "-g -O2". Passing only -fPIC or -w leaves the
+# library at -O0.
+set(3RDPARTY_COMMON_FLAGS "-fPIC -w")
+
+# restates the level from autoconf's "-g -O2", which supplying CFLAGS suppresses
+set(DEFAULT_CONFIGURE_OPTS <SOURCE_DIR>/configure --prefix=${CMAKE_BINARY_DIR}/3rdparty --enable-static --disable-shared --with-pic "CFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O2 ${3RDPARTY_COMMON_FLAGS}")
 
 # For Windows
 if(WIN32)
@@ -338,7 +351,8 @@ else()
     DOWNLOAD_NO_PROGRESS 1
     CONFIGURE_COMMAND     ""                  # no configure
     BUILD_IN_SOURCE       true                # lz4 Makefile is designed to run locally
-    BUILD_COMMAND         make CFLAGS=-fPIC   # to allow static linking in shared library
+    # MOREFLAGS is lz4's append hook, so its "CFLAGS ?= -O3" survives
+    BUILD_COMMAND         make "MOREFLAGS=${3RDPARTY_COMMON_FLAGS}"
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -472,7 +486,8 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND ""        # no configure
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
-      BUILD_COMMAND make CFLAGS=-fPIC CXXFLAGS=-fPIC # to allow static linking in shared library
+      # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g"
+      BUILD_COMMAND make "CFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
